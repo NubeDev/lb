@@ -24,8 +24,8 @@ use serde_json::{json, Value};
 use super::error::VizError;
 use super::frame::{detect_time_field, result_to_rows};
 use super::time_override::apply_time_override;
-use crate::dashboard::QueryOptions;
 use crate::boot::Node;
+use crate::dashboard::QueryOptions;
 use crate::tool_call::call_tool_at_depth;
 
 /// The per-panel frame budget (viz transformations scope, "The frame budget is the whole game"): a

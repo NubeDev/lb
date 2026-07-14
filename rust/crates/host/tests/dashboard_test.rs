@@ -67,6 +67,7 @@ fn chart_cell(series: &str) -> Cell {
         panel_ref: String::new(),
         panel_vars: json!(null),
         panel_missing: false,
+        ..Default::default()
     }
 }
 
@@ -151,6 +152,7 @@ async fn page_settings_round_trip_and_preserve() {
         Some("Fleet health at a glance".into()),
         Some("activity".into()),
         Some("#3b82f6".into()),
+        None,
         // Opt the date-select + share controls into the header (toolbar-settings); refresh stays hidden.
         Some(Toolbar {
             date_select: true,
@@ -207,6 +209,7 @@ async fn page_settings_round_trip_and_preserve() {
         "Ops v2",
         None,
         Some("gauge".into()),
+        None,
         None,
         None,
         got.cells.clone(),
@@ -571,6 +574,7 @@ fn v3_timeseries_cell() -> Cell {
         panel_ref: String::new(),
         panel_vars: json!(null),
         panel_missing: false,
+        ..Default::default()
     }
 }
 

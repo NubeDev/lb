@@ -465,3 +465,61 @@ async fn federation_bound_target_resolves_through_federation_query() {
     // The frame for refId A still exists (assembled), just empty — the panel shape is preserved.
     assert_eq!(out["frames"][0]["refId"], json!("A"));
 }
+
+/// Panel time override end to end (grafana-parity-backend P1): `queryOptions.timeFrom` REPLACES the
+/// target's range with `[now - timeFrom, now]`, and `timeShift` moves a caller-supplied range
+/// earlier — proven against the REAL `series.read` dispatch over really-seeded samples (ts 1..4),
+/// not a unit stub. The semantics pin lives in `viz/time_override.rs` + the P1 session doc.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn panel_time_override_applies_to_target_dispatch() {
+    const READ: &str = "mcp:series.read:call";
+    let ws = "viz-timeover";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = principal("user:ada", ws, &[VIZ, READ, WRITE]);
+    seed_series(&node, &p, ws, "cpu", &[10.0, 20.0, 30.0, 40.0]).await; // ts = 1..4
+
+    let series_panel = |query_options: Value, args: Value| {
+        json!({
+            "sources": [{ "refId": "A", "tool": "series.read", "args": args }],
+            "queryOptions": query_options,
+        })
+    };
+    let run = |panel: Value| {
+        let node = node.clone();
+        let p = p.clone();
+        async move {
+            let out = call_tool(
+                &node,
+                &p,
+                ws,
+                "viz.query",
+                &json!({ "panel": panel, "now": 100 }).to_string(),
+            )
+            .await
+            .expect("viz.query runs");
+            let out: Value = serde_json::from_str(&out).expect("json");
+            out["rows"].as_array().expect("rows").len()
+        }
+    };
+
+    // Baseline: no override → all 4 seeded rows.
+    let n = run(series_panel(json!({}), json!({ "series": "cpu" }))).await;
+    assert_eq!(n, 4, "baseline reads every seeded row");
+
+    // timeFrom "50s" at now=100 → range [50, 100]; the seeded ts 1..4 fall OUTSIDE → 0 rows. The
+    // override REPLACES even a caller-supplied range (that is what a Grafana panel override does).
+    let n = run(series_panel(
+        json!({ "timeFrom": "50s" }),
+        json!({ "series": "cpu", "from": 0, "to": 10 }),
+    ))
+    .await;
+    assert_eq!(n, 0, "timeFrom replaced the range with [50,100]");
+
+    // timeShift "1m" over a caller range [61, 100] → [1, 40]; the seeded rows come back into view.
+    let n = run(series_panel(
+        json!({ "timeShift": "1m" }),
+        json!({ "series": "cpu", "from": 61, "to": 100 }),
+    ))
+    .await;
+    assert_eq!(n, 4, "timeShift moved the window back onto the seeded rows");
+}

@@ -93,6 +93,7 @@ fn inline_cell(i: &str, view: &str) -> Cell {
         panel_ref: String::new(),
         panel_vars: Value::Null,
         panel_missing: false,
+        ..Default::default()
     }
 }
 

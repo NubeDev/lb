@@ -127,7 +127,11 @@ pub struct QueryOptions {
     pub time_shift: String,
     /// Display-only (Grafana parity): hide the override badge in the panel header. Never affects
     /// the query.
-    #[serde(default, deserialize_with = "null_default", rename = "hideTimeOverride")]
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        rename = "hideTimeOverride"
+    )]
     pub hide_time_override: bool,
 }
 
@@ -238,11 +242,19 @@ pub struct Cell {
     pub query_options: QueryOptions,
     /// Transparent panel background (Grafana parity) — renderers honor it UI-side; the host carries
     /// it. Skip-if-false so a pre-P1 cell round-trips byte-stable.
-    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "is_false")]
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        skip_serializing_if = "is_false"
+    )]
     pub transparent: bool,
     /// Panel links (Grafana `DashboardLink[]`) — opaque to the host (the UI renders them); carried
     /// verbatim for import fidelity. Skip-if-empty (byte-stable pre-P1 records).
-    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub links: Vec<Value>,
     /// Set by `dashboard.get` hydration when a ref cell's `panel_ref` cannot be resolved (deleted,
     /// unshared, or unreadable by the viewer) — the cell renders an honest "panel not accessible"
@@ -341,7 +353,11 @@ pub struct Variable {
     pub skip_url_sync: bool,
     /// multi/select UX flag (Grafana parity): allow a free-typed value beside the resolved options.
     /// Carried opaque until the UI ships it.
-    #[serde(default, rename = "allowCustomValue", deserialize_with = "null_default")]
+    #[serde(
+        default,
+        rename = "allowCustomValue",
+        deserialize_with = "null_default"
+    )]
     pub allow_custom_value: bool,
 }
 
@@ -580,6 +596,125 @@ mod tests {
         .expect("pre-toolbar shape deserializes");
         assert_eq!(old.toolbar, Toolbar::default());
         assert!(!old.toolbar.date_select && !old.toolbar.refresh_rate && !old.toolbar.share);
+    }
+
+    /// Every P1 field (grafana-parity-backend scope) round-trips through serde with its camelCase
+    /// wire name — `queryOptions` (all six members), `transparent`, `links` on the cell; `timezone`
+    /// on the dashboard; `description`/`skipUrlSync`/`allowCustomValue` on a variable. A field the
+    /// closed structs drop is user data silently lost on save — the exact shipped bug this P1 fixed.
+    #[test]
+    fn p1_fields_round_trip() {
+        let cell: Cell = serde_json::from_value(serde_json::json!({
+            "i": "c1", "x": 0, "y": 0, "w": 6, "h": 4, "v": 3, "view": "timeseries",
+            "transparent": true,
+            "links": [{ "title": "Runbook", "url": "https://example.com" }],
+            "queryOptions": {
+                "maxDataPoints": 300, "minInterval": "10s", "relativeTime": "1h",
+                "timeFrom": "6h", "timeShift": "1d", "hideTimeOverride": true
+            }
+        }))
+        .expect("deserializes");
+        assert!(cell.transparent);
+        assert_eq!(cell.links.len(), 1);
+        assert_eq!(cell.query_options.max_data_points, 300);
+        assert_eq!(cell.query_options.min_interval, "10s");
+        assert_eq!(cell.query_options.relative_time, "1h");
+        assert_eq!(cell.query_options.time_from, "6h");
+        assert_eq!(cell.query_options.time_shift, "1d");
+        assert!(cell.query_options.hide_time_override);
+        let out = serde_json::to_value(&cell).expect("serializes");
+        assert_eq!(out["transparent"], true);
+        assert_eq!(out["links"][0]["title"], "Runbook");
+        assert_eq!(out["queryOptions"]["maxDataPoints"], 300);
+        assert_eq!(out["queryOptions"]["timeFrom"], "6h");
+        assert_eq!(out["queryOptions"]["hideTimeOverride"], true);
+
+        let d: Dashboard = serde_json::from_value(serde_json::json!({
+            "id": "ops", "title": "Ops", "owner": "sub|u1", "updated_ts": 1,
+            "timezone": "Australia/Sydney"
+        }))
+        .expect("deserializes");
+        assert_eq!(d.timezone, "Australia/Sydney");
+        assert_eq!(
+            serde_json::to_value(&d).expect("serializes")["timezone"],
+            "Australia/Sydney"
+        );
+
+        let v: Variable = serde_json::from_value(serde_json::json!({
+            "name": "region", "type": "custom", "custom": ["west"],
+            "description": "Deployment region", "skipUrlSync": true, "allowCustomValue": true
+        }))
+        .expect("deserializes");
+        assert_eq!(v.description, "Deployment region");
+        assert!(v.skip_url_sync && v.allow_custom_value);
+        let out = serde_json::to_value(&v).expect("serializes");
+        assert_eq!(out["description"], "Deployment region");
+        assert_eq!(out["skipUrlSync"], true);
+        assert_eq!(out["allowCustomValue"], true);
+    }
+
+    /// The additive guard: v1/v2/v3 cells (and pre-P1 dashboards/variables) WITHOUT the P1 fields
+    /// still deserialize — everything defaults, never a "missing field" error — and the skip
+    /// predicates keep the empty defaults OFF the wire, so a pre-P1 record round-trips byte-stable.
+    #[test]
+    fn p1_fields_default_on_pre_p1_shapes() {
+        // v1 (binding), v2 (source), v3 (sources/fieldConfig) — none carry a P1 field.
+        for cell_json in [
+            serde_json::json!({ "i": "c1", "x": 0, "y": 0, "w": 4, "h": 3,
+                "widget_type": "chart", "binding": { "series": "cooler.temp" } }),
+            serde_json::json!({ "i": "c2", "x": 0, "y": 0, "w": 4, "h": 3, "v": 2,
+                "view": "stat", "source": { "tool": "series.latest", "args": {} } }),
+            serde_json::json!({ "i": "c3", "x": 0, "y": 0, "w": 4, "h": 3, "v": 3,
+                "view": "timeseries",
+                "sources": [{ "refId": "A", "tool": "series.read", "args": {} }],
+                "fieldConfig": { "defaults": {}, "overrides": [] } }),
+        ] {
+            let cell: Cell = serde_json::from_value(cell_json).expect("pre-P1 cell deserializes");
+            assert!(!cell.transparent);
+            assert!(cell.links.is_empty());
+            assert!(cell.query_options.is_empty());
+            // Byte-stability: the empty defaults stay off the wire.
+            let out = serde_json::to_value(&cell).expect("serializes");
+            assert!(out.get("queryOptions").is_none());
+            assert!(out.get("transparent").is_none());
+            assert!(out.get("links").is_none());
+        }
+
+        // Explicit nulls (the AI-caller shape) also land on defaults, not a type error.
+        let cell: Cell = serde_json::from_value(serde_json::json!({
+            "i": "c4", "x": 0, "y": 0, "w": 4, "h": 3, "v": 3, "view": "stat",
+            "queryOptions": null, "transparent": null, "links": null
+        }))
+        .expect("nulls deserialize as defaults");
+        assert!(cell.query_options.is_empty() && !cell.transparent && cell.links.is_empty());
+
+        let d: Dashboard = serde_json::from_value(serde_json::json!({
+            "id": "old", "title": "Old", "owner": "sub|u1", "updated_ts": 1
+        }))
+        .expect("pre-P1 dashboard deserializes");
+        assert!(d.timezone.is_empty());
+
+        let v: Variable = serde_json::from_value(serde_json::json!({ "name": "env" }))
+            .expect("pre-P1 variable deserializes");
+        assert!(v.description.is_empty() && !v.skip_url_sync && !v.allow_custom_value);
+    }
+
+    /// A PARTIAL `queryOptions` (the shipped UI sends only its trio) deserializes with the rest
+    /// defaulted — the struct never demands the P1 additions.
+    #[test]
+    fn query_options_tolerates_partial_shape() {
+        let cell: Cell = serde_json::from_value(serde_json::json!({
+            "i": "c1", "x": 0, "y": 0, "w": 6, "h": 4, "v": 3, "view": "timeseries",
+            "queryOptions": { "maxDataPoints": 500 }
+        }))
+        .expect("partial queryOptions deserializes");
+        assert_eq!(cell.query_options.max_data_points, 500);
+        assert!(cell.query_options.time_from.is_empty());
+        assert!(!cell.query_options.hide_time_override);
+        assert!(
+            !cell.query_options.is_empty(),
+            "a set field keeps it on the wire"
+        );
     }
 
     /// A pre-advanced variable (only the original fields) still deserializes — the new fields default,

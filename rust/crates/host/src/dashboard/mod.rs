@@ -42,7 +42,8 @@ pub use error::DashboardError;
 pub use get::dashboard_get;
 pub use list::dashboard_list;
 pub use model::{
-    Action, Cell, Dashboard, DashboardSummary, Source, Target, Toolbar, Variable, Visibility,
+    Action, Cell, Dashboard, DashboardSummary, QueryOptions, Source, Target, Toolbar, Variable,
+    Visibility,
 };
 pub use pin::{dashboard_pin, mint_cell_from_envelope, pin_descriptor};
 pub use save::{dashboard_save, dashboard_save_meta, save_descriptor};

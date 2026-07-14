@@ -562,6 +562,7 @@ mod tests {
             panel_ref: String::new(),
             panel_vars: Value::Null,
             panel_missing: false,
+            ..Cell::default()
         };
         let cell = mint_cell_from_envelope(&env, Some(&existing)).expect("re-pin mints");
         assert_eq!(cell.i, "pin-reminder-list");
@@ -618,6 +619,7 @@ mod tests {
             panel_ref: String::new(),
             panel_vars: Value::Null,
             panel_missing: false,
+            ..Cell::default()
         };
         assert_eq!(next_free_y(&[]), 0);
         assert_eq!(next_free_y(&[mk("a", 0, 4)]), 4);

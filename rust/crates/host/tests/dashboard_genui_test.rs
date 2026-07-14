@@ -53,6 +53,7 @@ fn genui_cell(options_genui: Value) -> Cell {
         panel_ref: String::new(),
         panel_vars: json!(null),
         panel_missing: false,
+        ..Default::default()
     }
 }
 

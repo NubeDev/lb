@@ -167,7 +167,7 @@ EXT_UI_DIST  := $(BE_DIR)/extensions/$(EXT)/ui/dist
 EXT_UI_SERVE := $(BE_DIR)/extensions-ui/$(EXT)
 
 .PHONY: setup build build-be build-wasm build-packages build-ui \
-        dev edge cloud ui ui-preview pack publish-ext trusted-pubkey seed-thecrew \
+        dev edge cloud ui ui-preview pack publish-ext trusted-pubkey \
         test test-be test-ui lint fmt fmt-check size clean kill purge-store
 
 # One-time setup: install the UI deps, build the shared workspace packages, and make

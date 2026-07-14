@@ -23,7 +23,29 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-14): series-plane readiness — schema, keyset paging, decimation, retention
+**Just shipped (2026-07-14): viz Grafana-parity backend P1 — model fields + the `queryOptions` hole
+(`docs/scope/viz/grafana-parity-backend-scope.md`, P1; uncommitted in the working tree).** The opener
+verified-then-fixed a shipped silent-data-loss bug: the editor-parity UI's top-level cell field
+`queryOptions {maxDataPoints, minInterval, relativeTime}` was dropped by serde at the `dashboard.save`
+tool boundary (closed `Cell` struct, no catch-all) — confirmed on the real save→get path BEFORE fixing,
+per the scope's risk note; every shipped save carrying it lost the data (unrecoverable)
+([debugging entry](debugging/dashboard/query-options-silently-dropped-on-save.md)). Shipped, all
+additive/serde-default/null-tolerant: typed `Cell.queryOptions` (the UI trio +
+`timeFrom`/`timeShift`/`hideTimeOverride`, skip-if-empty), `Cell.transparent` + `Cell.links` (opaque),
+`Dashboard.timezone` (record-carries-import, prefs-wins-at-render — the scope's open question,
+decided), `Variable.description`/`skipUrlSync`/`allowCustomValue`, and `viz.query` now applies the
+panel time override at target dispatch (`viz/time_override.rs` — Grafana `applyPanelTimeOverrides`
+semantics pinned in the session doc; bounded to numeric epoch `from`/`to` args, never another tool's
+vocabulary). Tests: the headline save→get regression pin (fails on pre-fix code), model round-trip +
+v1/v2/v3 additive guards, override unit tests, and an end-to-end `viz.query` override test over
+really-seeded `series.read`; every touched suite green (three pre-existing/environmental failures in
+this checkout are unrelated and verified against a pre-session commit — see the session doc's suite
+note; the `agent_persona_catalog_test` persona→skill gap needs an owner). Next: release as a
+`node-v*` tag (rubix-ai bumps
+its pin), then **P2** (lb-viz tranche 2a transforms + reduce calcs) and **P3** (the import pin crate).
+Docs: [session](sessions/viz/grafana-parity-backend-p1-session.md).
+
+**Previously shipped (2026-07-14): series-plane readiness — schema, keyset paging, decimation, retention
 (`series-plane-readiness`, issues #55–#58, one PR).** Four slices take the `series` plane from
 demo-shaped to production-shaped. **#55 schema/time:** `ts` is a real `datetime` (idempotent
 migration for legacy numeric rows), named `(series, seq)` / `(series, ts)` indexes, wire `labels` →

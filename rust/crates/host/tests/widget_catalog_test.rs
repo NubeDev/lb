@@ -77,6 +77,7 @@ fn cell(i: &str, view: &str, options: Value) -> Cell {
         panel_ref: String::new(),
         panel_vars: json!(null),
         panel_missing: false,
+        ..Default::default()
     }
 }
 
