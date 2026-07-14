@@ -101,7 +101,11 @@ async fn windowed_read_is_half_open_via_mcp() {
 
     // Row is the full canonical Sample envelope, not a {ts, value} projection.
     assert_eq!(rows[0]["payload"], json!(3.0), "value field is `payload`");
-    assert_eq!(rows[0]["ts"], json!(3000), "ts is epoch ms, not a datetime string");
+    assert_eq!(
+        rows[0]["ts"],
+        json!(3000),
+        "ts is epoch ms, not a datetime string"
+    );
     assert!(rows[0].get("producer").is_some() && rows[0].get("seq").is_some());
 
     // from_seq/to_seq are inclusive on BOTH ends (contrast with the half-open wall-clock window).
