@@ -145,7 +145,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   one-arm routing gap that blocks the above from the native tier: the MCP dispatcher routes
   `authz.*` to `call_authz_tool` but not `grants.*`/`roles.*`/`teams.*` — which that handler
   already implements — so a native extension can *read* the scoped-grant surface over the
-  host callback but cannot *mint* a grant; additive, no new verb/cap/WIT), and
+  host callback but cannot *mint* a grant; additive, no new verb/cap/WIT). The
+  **confirmed wire shapes** an out-of-tree native ext reaches all of the above by live in
+  `mcp/ems-provisioning-verb-shapes-scope.md` (answers issue #48: the exact request/reply of
+  `rules.save`/`series.latest`/`authz.check_scoped`/`scope_filter`/`grants.assign`, each pinned to a
+  green test — no `rules.create`, `series.latest`→`{sample}` not `{value,ts}`). Also see
   `invites-scope.md` (**token onboarding for people
   who don't exist yet** — a durable single-use `invite` record carrying role/team intent + an
   opaque caller payload, delivered via an outbox email target, redeemed on the one pre-auth accept
