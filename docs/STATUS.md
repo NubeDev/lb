@@ -23,6 +23,25 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Shipped 2026-07-14 — native extensions now survive a node restart (issue #64).** A published
+`tier="native"` extension never came back after a restart: `reconcile` planned the start, `load_enabled`
+skipped it ("the node Launcher's job"), and **no node implemented that path** — the plan's native
+actions were computed and dropped, silently. Fixed by mirroring the wasm half: `ext/boot_spawn.rs::spawn_enabled`
+(+ `ext/install_dir.rs`, shared with publish so the `(ws,ext)`→dir rule cannot drift), called from the
+node's boot *after* the gateway block (the token-key ordering the role mounts already document). No new
+persistence or trust — the artifact cache already held exactly what `install_native` takes; the grant
+comes from the durable `Install.granted`, so a restart can't re-approve what an admin narrowed. Open
+question resolved as **log-and-continue** (a hard-fail makes one bad extension an unbootable node, and
+recovery runs *through* that node) — the silence, not the continuing, was the cost, so an
+enabled-but-not-brought-up extension now names itself and its reason every boot. Regressions:
+`ext_boot_spawn_test.rs`, 4 tests over a real supervised OS child on a real store that outlives the
+node; **revert-checked — all 4 fail with the bug's own empty-boot-log signature**. Verified live: publish
+→ restart the node only → the sidecar is back with no republish. Session
+[`native-boot-respawn`](sessions/extensions/native-boot-respawn-session.md); debugging
+[`native-ext-never-respawns-at-boot`](debugging/extensions/native-ext-never-respawns-at-boot.md).
+**Next up:** no start/restart endpoint exists (`/extensions/<ext>/enable` returns 204 but does not spawn),
+and boot bring-up covers only `cfg.workspace` — both tiers, pre-existing.
+
 **Test baseline (2026-07-14, full-suite triage; uncommitted working tree): the Rust suite is down to
 3 genuinely-red binaries, from 12.** A `cargo test --workspace --no-fail-fast -j 4` sweep (390 test
 binaries) plus triage of every red. What the "known-red list" actually was:

@@ -10,9 +10,6 @@
 //! digest + `(ext_id, version)`: re-publishing the same signed bytes upserts the same rows (no-op
 //! success), exactly like the registry-host `ArtifactStore::publish`.
 
-use std::io::Write;
-use std::path::PathBuf;
-
 use lb_auth::Principal;
 use lb_ext_loader::Manifest;
 use lb_mcp::authorize_tool;
@@ -20,6 +17,7 @@ use lb_registry::{verify_artifact, Artifact, TrustedKeys, Visibility};
 use lb_supervisor::OsLauncher;
 
 use super::error::ExtError;
+use super::install_dir::{native_install_dir, write_executable};
 use crate::boot::Node;
 use crate::install::install_extension;
 use crate::native::install_native;
@@ -98,50 +96,4 @@ pub async fn ext_publish(
         .map_err(|e| ExtError::Manifest(e.to_string()))?;
     }
     Ok(())
-}
-
-fn native_install_dir(ws: &str, ext: &str) -> PathBuf {
-    let base = std::env::var("LB_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(".lazybones"));
-    base.join("native")
-        .join(sanitize_component(ws))
-        .join(sanitize_component(ext))
-}
-
-fn sanitize_component(raw: &str) -> String {
-    raw.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
-fn write_executable(dir: &PathBuf, name: &str, bytes: &[u8]) -> Result<(), ExtError> {
-    std::fs::create_dir_all(dir).map_err(io_err)?;
-    let path = dir.join(name);
-    // Write to a temp sibling then RENAME into place: a re-publish over a RUNNING sidecar cannot
-    // open the mapped binary for write (`ETXTBSY` — "Text file busy"), but a rename replaces the
-    // directory entry without touching the executing inode, so the swap is atomic and the old
-    // child keeps running its (unlinked) image until `install_native` stops it.
-    let tmp = dir.join(format!(".{name}.tmp"));
-    let mut f = std::fs::File::create(&tmp).map_err(io_err)?;
-    f.write_all(bytes).map_err(io_err)?;
-    f.flush().map_err(io_err)?;
-    drop(f);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).map_err(io_err)?;
-    }
-    std::fs::rename(&tmp, &path).map_err(io_err)?;
-    Ok(())
-}
-
-fn io_err(e: std::io::Error) -> ExtError {
-    ExtError::Native(format!("writing native binary: {e}"))
 }

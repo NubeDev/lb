@@ -13,6 +13,13 @@
 //! own key — mounting before the gateway installed that key meant every callback 401'd. With the
 //! gateway OFF, the node's boot key stays and the roles mount headless (their callbacks degrade
 //! cleanly).
+//!
+//! **Boot bring-up is per-tier, and the two halves sit in different places for that same reason:**
+//! wasm (`load_enabled`) loads components into the runtime and is key-independent, so it runs early;
+//! native (`spawn_enabled`) spawns children whose tokens are minted with the node's key, so it runs
+//! down in the roles block, AFTER the gateway installed that key. Both consume the one `reconcile`
+//! plan. Calling only the wasm half is what left every published native extension dead after a
+//! restart, silently (issue #64).
 
 use std::sync::Arc;
 
@@ -146,6 +153,17 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // Mount the native sidecar roles + the in-house agent HERE so a served run's tool callbacks verify.
     crate::federation::mount(node.clone()).await;
     crate::control_engine::mount(node.clone()).await;
+
+    // BOOT BRING-UP, native half: respawn every previously-published-and-enabled NATIVE extension, so
+    // a published sidecar survives a restart exactly as a wasm one does (issue #64 — the reconcile
+    // plan's native actions were computed and then dropped, leaving the child dead and the boot log
+    // silent). The node owns the `Launcher`, which is why this half lives here and not in the verb.
+    //
+    // Placed HERE, after the gateway block, for the SAME load-bearing reason the role mounts are (see
+    // the module doc): `install_native` mints each child's `LB_EXT_TOKEN` with `node.key()`, and the
+    // gateway verifies those callback tokens with its own key. Respawning up beside `load_enabled`
+    // would mint every sidecar's token with the pre-gateway key and 401 each callback.
+    spawn_native_enabled(&node, &ws).await;
     let agent_server =
         crate::agent::mount(node.clone(), &cfg.agent_model, cfg.agent_caps.clone()).await;
 
@@ -154,6 +172,51 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
         gateway,
         agent_server,
     })
+}
+
+/// Respawn the workspace's enabled native extensions and LOG every one — including the ones that did
+/// not come back.
+///
+/// **Log-and-continue, deliberately** (the open question issue #64 raised). Hard-failing boot on an
+/// extension that cannot respawn would turn one broken extension into a node that will not start —
+/// and the recovery path for a bad extension (publish a fix, disable it) runs *through the node it
+/// just killed, over the gateway that never came up*. That trades a degraded node for an unbootable
+/// one and can strand a fleet on an unattended box, which is strictly worse than the failure it
+/// guards. Best-effort also matches every neighbouring boot step (`load_enabled`, the seeds, the role
+/// mounts).
+///
+/// What made #64 expensive was never the continuing — it was the SILENCE. So the cure is here: an
+/// extension that should be running and is not says so on stderr, every boot, by name and reason. An
+/// operator who wants "no degraded boots" can build that on this output; an operator whose node is
+/// one broken extension away from unreachable cannot un-build a panic.
+async fn spawn_native_enabled(node: &lb_host::Node, ws: &str) {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    match lb_host::spawn_enabled(node, &lb_supervisor::OsLauncher, ws, ts).await {
+        Ok(spawned) => {
+            for e in &spawned {
+                if e.spawned {
+                    println!("boot-spawned native extension: {}@{}", e.ext, e.version);
+                } else if e.reason != "disabled" && e.reason != "already-running" {
+                    // The load-bearing line: an ENABLED native extension boot did not bring back.
+                    //
+                    // It states what this verb KNOWS (the durable intent said run; boot did not
+                    // start it, for this reason) and NOT "it is not running" — an embedder may mount
+                    // its own sidecars directly after `boot_full` returns, so a later mount can make
+                    // this extension live and that is not a fault. Over-claiming here would send an
+                    // operator hunting a healthy extension, which is the opposite of the point.
+                    eprintln!(
+                        "boot: native extension {}@{} not started by boot bring-up ({}) — it is \
+                         installed and enabled; if nothing else starts it, it is not running",
+                        e.ext, e.version, e.reason
+                    );
+                }
+            }
+        }
+        Err(e) => eprintln!("boot native extension respawn for ws={ws} failed: {e}"),
+    }
 }
 
 /// Open the store the boot config selects: `store_path: Some(non-empty)` ⇒ a durable on-disk store;

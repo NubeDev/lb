@@ -14,10 +14,18 @@
 //! (`mcp:ext.disable:call`), `ext.uninstall` (`mcp:ext.uninstall:call`), `ext.publish`
 //! (`mcp:ext.publish:call` — upload a signed artifact, verify-before-store), plus the un-gated boot
 //! `reconcile` the node calls on start. The MCP bridge ([`call_ext_tool`]) exposes the gated verbs.
+//!
+//! **Boot bring-up is two verbs, one per tier**, both driven by the one `reconcile` plan and both
+//! called by the node on start: [`load_enabled`] loads enabled **wasm** components back into the
+//! runtime, and [`spawn_enabled`] respawns enabled **native** children through the `Launcher` the node
+//! owns. Neither is capability-gated (a node-boot operation, not a caller verb). A node that calls
+//! only one of them silently strands the other tier's extensions — the shape of issue #64.
 
 mod boot_load;
+mod boot_spawn;
 mod enable;
 mod error;
+mod install_dir;
 mod list;
 mod publish;
 mod reconcile;
@@ -26,8 +34,10 @@ mod tool;
 mod uninstall;
 
 pub use boot_load::{load_enabled, LoadedExt};
+pub use boot_spawn::{spawn_enabled, SpawnedExt};
 pub use enable::{ext_disable, ext_enable};
 pub use error::ExtError;
+pub(crate) use install_dir::{native_install_dir, write_executable};
 pub use list::ext_list;
 pub use publish::ext_publish;
 pub use reconcile::{reconcile, ReconcileAction, ReconcilePlan};
