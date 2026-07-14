@@ -7,9 +7,9 @@
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    brand_get, brand_list, brand_save, panel_save, report_delete, report_export, report_get,
-    report_list, report_save, seed_default_brand, BrandColors, BrandError, BrandFonts, Cell,
-    PanelSpec, ReportBlock, ReportError, MAX_BLOCKS,
+    brand_delete, brand_get, brand_list, brand_save, panel_save, report_delete, report_export,
+    report_get, report_list, report_save, seed_default_brand, BrandColors, BrandError, BrandFonts,
+    Cell, PanelSpec, ReportBlock, ReportError, MAX_BLOCKS,
 };
 use lb_store::Store;
 use serde_json::{json, Value};
@@ -39,12 +39,13 @@ const R_EXPORT: &str = "mcp:report.export:call";
 const B_GET: &str = "mcp:brand.get:call";
 const B_LIST: &str = "mcp:brand.list:call";
 const B_SAVE: &str = "mcp:brand.save:call";
+const B_DELETE: &str = "mcp:brand.delete:call";
 // A report that embeds panel refs needs the panel read/save caps too (hydrate/validate re-gate).
 const P_SAVE: &str = "mcp:panel.save:call";
 const P_GET: &str = "mcp:panel.get:call";
 
 const ALL: &[&str] = &[
-    R_GET, R_LIST, R_SAVE, R_DELETE, R_EXPORT, B_GET, B_LIST, B_SAVE, P_SAVE, P_GET,
+    R_GET, R_LIST, R_SAVE, R_DELETE, R_EXPORT, B_GET, B_LIST, B_SAVE, B_DELETE, P_SAVE, P_GET,
 ];
 
 fn markdown_block(body: &str) -> ReportBlock {
@@ -317,6 +318,75 @@ async fn brand_seed_idempotent() {
         "seed must be idempotent (one default brand)"
     );
     assert_eq!(brands[0].id, "default");
+}
+
+/// The seeded default carries the `SYSTEM_OWNER` sentinel; a save/delete against it ADOPTS it (the
+/// writer becomes owner) instead of denying — so the workspace default is brandable in place. Once
+/// adopted, the ordinary owner-only wall applies (a different member can no longer overwrite it).
+#[tokio::test]
+async fn system_owned_seed_is_adopted_on_write() {
+    let store = Store::memory().await.unwrap();
+    let ws = "ws:acme";
+    let ada = principal("user:ada", ws, ALL);
+    let ben = principal("user:ben", ws, ALL);
+
+    seed_default_brand(&store, ws, 1).await.unwrap();
+    // The seed is system-owned, not Ada's — but she adopts it on save (no Denied).
+    let saved = brand_save(
+        &store,
+        &ada,
+        ws,
+        "default",
+        "Acme Brand",
+        "",
+        BrandColors::default(),
+        BrandFonts::default(),
+        "",
+        "",
+        2,
+    )
+    .await
+    .expect("adopt-on-save must not deny the system-owned seed");
+    assert_eq!(saved.name, "Acme Brand");
+    assert_eq!(
+        brand_get(&store, &ada, ws, "default").await.unwrap().owner,
+        "user:ada",
+        "the writer adopts ownership of the seed"
+    );
+
+    // Now that Ada owns it, Ben (a different member) hits the ordinary owner-only wall.
+    let denied = brand_save(
+        &store,
+        &ben,
+        ws,
+        "default",
+        "Ben Brand",
+        "",
+        BrandColors::default(),
+        BrandFonts::default(),
+        "",
+        "",
+        3,
+    )
+    .await;
+    assert!(matches!(denied, Err(BrandError::Denied)), "got {denied:?}");
+}
+
+/// Delete mirrors the save exception: any member with the cap may delete the system-owned seed.
+#[tokio::test]
+async fn system_owned_seed_can_be_deleted() {
+    let store = Store::memory().await.unwrap();
+    let ws = "ws:acme";
+    let ada = principal("user:ada", ws, ALL);
+
+    seed_default_brand(&store, ws, 1).await.unwrap();
+    brand_delete(&store, &ada, ws, "default", 2)
+        .await
+        .expect("the system-owned seed is deletable by any writer");
+    assert!(matches!(
+        brand_get(&store, &ada, ws, "default").await,
+        Err(BrandError::NotFound)
+    ));
 }
 
 #[tokio::test]

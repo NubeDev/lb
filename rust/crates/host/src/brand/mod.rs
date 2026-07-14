@@ -6,8 +6,9 @@
 //! Unlike a panel, a brand carries no visibility tiers: it is workspace-shared (any member with the
 //! read cap reads it), still gated by `mcp:brand.<verb>:call`. The verbs (one per file, FILE-LAYOUT):
 //!   - `brand.get` / `brand.list` — read / roster.
-//!   - `brand.save` — idempotent UPSERT (owner-forced create; owner-only update).
-//!   - `brand.delete` — idempotent tombstone (owner-only, plain soft-delete).
+//!   - `brand.save` — idempotent UPSERT (owner-forced create; owner-only update, except the seeded
+//!     default's `SYSTEM_OWNER` sentinel, which any writer with the cap adopts).
+//!   - `brand.delete` — idempotent tombstone (owner-only + the same `SYSTEM_OWNER` exception).
 //!   - [`seed_default_brand`] — the boot seeder (one neutral default so pickers are never empty).
 //!   - the MCP bridge ([`call_brand_tool`]).
 
