@@ -195,6 +195,8 @@ comemo = "=0.5.1"
 pulldown-cmark = { version = "0.13", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 chrono-tz = "0.10"
+# Grafana-verbatim regex-driven transforms (`renameByRegex`, `filterByRefId`) in the pure lb-viz lib.
+regex = "1"
 # The cron "next after T" math (reminders scope): `Cron::find_next_occurrence(&DateTime, inclusive)`
 # runs on the injected logical clock, never wall-clock. Lives only in `lb-reminders`.
 croner = "3"

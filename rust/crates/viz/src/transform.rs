@@ -87,6 +87,13 @@ fn dispatch(id: &str, frames: Frames, options: &Value) -> Frames {
         "limit" => transforms::limit::apply(frames, options),
         "merge" => transforms::merge::apply(frames, options),
         "seriesToRows" => transforms::series_to_rows::apply(frames, options),
+        // Tranche 2a (viz grafana-parity-backend scope).
+        "renameByRegex" => transforms::rename_by_regex::apply(frames, options),
+        "filterByRefId" => transforms::filter_by_ref_id::apply(frames, options),
+        "convertFieldType" => transforms::convert_field_type::apply(frames, options),
+        "extractFields" => transforms::extract_fields::apply(frames, options),
+        "labelsToFields" => transforms::labels_to_fields::apply(frames, options),
+        "concatenate" => transforms::concatenate::apply(frames, options),
         // Deferred/unknown id: preserved in config (the caller keeps it), not applied here.
         _ => frames,
     }

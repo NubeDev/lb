@@ -523,3 +523,48 @@ async fn panel_time_override_applies_to_target_dispatch() {
     .await;
     assert_eq!(n, 4, "timeShift moved the window back onto the seeded rows");
 }
+
+/// Tranche 2a end to end (grafana-parity-backend P2): a `renameByRegex` + `p90` reduce pipeline —
+/// the scope's example flow — runs through the REAL `viz.query` over a real `store.query` target on
+/// really-seeded rows. And the tranche bound stays honest: an unknown transform id is carried
+/// (skip-with-notice), never an error or a mangled frame.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn tranche_2a_pipeline_runs_end_to_end() {
+    let ws = "viz-t2a";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    seed_series(
+        &node,
+        &p,
+        ws,
+        "cpu",
+        &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+    )
+    .await;
+
+    let panel = sql_panel(
+        "SELECT payload FROM series ORDER BY seq",
+        json!([
+            { "id": "renameByRegex", "options": { "regex": "payload", "renamePattern": "cpu_load" } },
+            { "id": "reduce", "options": { "reducers": ["p90"], "mode": "reduceFields" } }
+        ]),
+    );
+    let out = viz_query(&node, &p, ws, panel).await.expect("runs");
+    let rows = out["rows"].as_array().expect("rows");
+    assert_eq!(rows.len(), 1, "reduceFields collapses to one row");
+    // p90 over 1..=10 = sorted[floor(0.9·9)] = sorted[8] = 9 — computed, not degraded (the pNN pin),
+    // over the REGEX-RENAMED field name.
+    assert_eq!(rows[0]["cpu_load"], json!(9.0));
+
+    // The tranche bound: an unknown id in the same pipeline position is carried — frames unchanged.
+    let panel = sql_panel(
+        "SELECT payload FROM series ORDER BY seq",
+        json!([{ "id": "groupingToMatrix", "options": {} }]),
+    );
+    let out = viz_query(&node, &p, ws, panel).await.expect("runs");
+    assert_eq!(
+        out["rows"].as_array().expect("rows").len(),
+        10,
+        "unknown transform id skipped-with-notice, rows intact"
+    );
+}

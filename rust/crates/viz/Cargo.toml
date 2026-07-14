@@ -10,3 +10,7 @@ rust-version.workspace = true
 # compiled into every node", the structural twin of lb-prefs). Values are canonical serde_json.
 serde.workspace = true
 serde_json.workspace = true
+# Still pure (no I/O): regex powers renameByRegex/filterByRefId; chrono parses convertFieldType's
+# string->time conversions (parsing only — no wall-clock call anywhere in this crate).
+regex.workspace = true
+chrono.workspace = true

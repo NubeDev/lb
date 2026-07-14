@@ -6000,6 +6000,8 @@ dependencies = [
 name = "lb-viz"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "regex",
  "serde",
  "serde_json",
 ]
