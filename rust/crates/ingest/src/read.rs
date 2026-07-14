@@ -40,7 +40,7 @@ pub async fn read(
         bindings.push(("to".into(), Value::Number(to.into())));
     }
     let sql = format!(
-        "SELECT series, producer, seq, ts, payload FROM {SERIES_TABLE} \
+        "SELECT series, producer, seq, time::millis(ts) AS ts, payload FROM {SERIES_TABLE} \
          WHERE {clauses} ORDER BY seq ASC"
     );
     let mut resp = store.query_ws(ws, &sql, bindings).await?;

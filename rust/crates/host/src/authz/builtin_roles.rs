@@ -458,6 +458,11 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:system.subsystem:call",
     "mcp:system.tools:call",
     "mcp:system.acp:call",
+    // series retention — deleting/downsampling other producers' history is workspace data
+    // administration, never an author privilege (series-retention scope).
+    "mcp:series.retention.set:call",
+    "mcp:series.retention.list:call",
+    "mcp:series.retention.gc:call",
     // dashboard admin override (delete a dashboard the admin doesn't own).
     "mcp:dashboard.delete_any:call",
     // nav WRITES (author/share/set the workspace-default menu).

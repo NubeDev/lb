@@ -1,7 +1,13 @@
 # Datasources scope — series raw-row paging (slice B, the fast path)
 
-Status: scope (the ask) — **slice B** of [`page-chaining-scope.md`](page-chaining-scope.md). Promotes to
-`public/datasources/datasources.md` once shipped.
+Status: **shipped** (2026-07-14, issue #56, `series-plane-readiness`) — **slice B** of
+[`page-chaining-scope.md`](page-chaining-scope.md). See
+[`../../sessions/ingest/series-plane-readiness-session.md`](../../sessions/ingest/series-plane-readiness-session.md).
+Implementation notes: slice A's shared cursor crate is still unbuilt, so the opaque cursor codec ships
+inside `lb_ingest::cursor` (versioned `v1`, `(seq, producer)` composite key — liftable into slice A
+later). Default and max `limit` are both 10 000; direction is bidirectional (`fwd` default, `back`).
+The 5M-sample perf gate / `.explain()` assertion is not in CI (indexes are defined + named:
+`series_seq_idx`, `series_ts_idx`).
 
 `series.read` today returns an **unbounded `Vec<Sample>`** for a `seq` range
 ([`ingest/read.rs`](../../../rust/crates/host/src/ingest/read.rs)): a big series either OOMs the call or

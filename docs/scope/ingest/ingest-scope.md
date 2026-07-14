@@ -267,9 +267,13 @@ Plus the load/robustness cases specific to this surface:
 - **Cardinality explosion.** Unbounded series names or label combinations blow up the store. Needs a
   **series-creation policy** (grant-gated prefixes, a cap on distinct series per workspace) — the
   highest-risk item, easy to underestimate. Surface it early.
+  *(Shipped 2026-07-14, issue #55: `series_meta` registry + per-workspace cap at commit — over-cap
+  samples dead-letter, never a new index entry. Grant-by-prefix series creation remains a follow-up.)*
 - **Retention / GC.** Time-series grows forever. Rollup table views + an **eviction/retention policy**
   per series (raw samples age out to rollups) are required, not optional — but defer the *mechanism* to
   a follow-up; the *scope* must name it.
+  *(Shipped 2026-07-14, issue #58: [`series-retention-scope.md`](series-retention-scope.md) —
+  per-prefix policy, rollup tiers, `series.retention.*` verbs, on-demand GC.)*
 - **Buffer durability vs. throughput (resolved in Intent — recorded here as the residual risk).** Staging
   is a **durable append** (cheap: no indexes/edges/rollups) and `series` commit is **batched** (one tx,
   amortizing the index/rollup/edge cost); the relief is cheap-append-vs-expensive-indexed-write, not

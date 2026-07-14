@@ -23,7 +23,28 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-13): subject-scoped `bus.watch` grants + revoke-terminates-stream
+**Just shipped (2026-07-14): series-plane readiness — schema, keyset paging, decimation, retention
+(`series-plane-readiness`, issues #55–#58, one PR).** Four slices take the `series` plane from
+demo-shaped to production-shaped. **#55 schema/time:** `ts` is a real `datetime` (idempotent
+migration for legacy numeric rows), named `(series, seq)` / `(series, ts)` indexes, wire `labels` →
+tag edges once per series at commit (closes the 2026-06-27 "series.find finds nothing ingest wrote"
+debt), per-workspace **series cardinality cap** (over-cap → dead-letter, never silent), and
+wall-clock `{from,to}` bounds on `series.read` (the shape ems already sends). **#56 keyset paging:**
+`series.read {limit, cursor, direction}` → `{samples, next_cursor, prev_cursor}`, seeking the unique
+`(seq, producer)` composite (tie-safe, O(page)); default/max limit 10 000; the cursor is an opaque
+versioned bookmark — re-authorized every page, inert under another ws's token. **#57 decimation:**
+`mode:"buckets"` → `{t, min, max, avg, last, count}` (≤ budget, cap 2 000, sparse; spikes survive in
+min/max) — computed as a chunked fold over the pager (SurrealDB 2 lacks an ordered `last` aggregate;
+documented deviation). **#58 retention:** per-prefix policies + admin-capped
+`series.retention.set/list/delete/gc`; GC rolls raw into stored tiers (sum+count → exact
+re-aggregation) then evicts, tier horizons evict rollups, bucketed reads merge tiers where raw is
+gone — the table stops growing forever. 11 new tests (7 crate + 4 host MCP) incl. the mandatory
+capability-deny (every verb, both read modes) + workspace-isolation (cursor replay, policy/gc); full
+workspace green. Docs: [retention scope](scope/ingest/series-retention-scope.md),
+[session](sessions/ingest/series-plane-readiness-session.md), paging/decimation scopes marked
+shipped, public in `doc-site/content/public/datasources/datasources.mdx`.
+
+**Previously shipped (2026-07-13): subject-scoped `bus.watch` grants + revoke-terminates-stream
 (`bus-watch-subject-scope`, issue #49, tagged `node-v0.4.3`).** Closes two data-isolation gaps on the
 generic bus motion plane so an embedder can stream a per-entity feed safely. **Gap 1:** a
 `bus:<subject>:watch` scoped grant (new `Action::Watch`, `Surface::Bus`, wildcard-capable) narrows
