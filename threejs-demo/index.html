@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>NUBE iO · 3D Site View</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="stage"></canvas>
+
+      <!-- floating hotspot badges are injected here, positioned over the canvas -->
+      <div id="hotspots"></div>
+
+      <header id="topbar">
+        <div class="brand"><span class="dot"></span> NUBE iO · Shell Service Station</div>
+        <div class="sub">Newcastle, NSW · <span id="clock">—</span> · live</div>
+      </header>
+
+      <!-- CC-BY-4.0 attribution required by the model license (models/.../license.txt) -->
+      <a id="credit" href="https://sketchfab.com/3d-models/small-red-gas-station-1a0feafb044148e585bfe588afe617b8"
+         target="_blank" rel="noopener">
+        “Small Red Gas Station” by SmashedBones · CC-BY-4.0
+      </a>
+
+      <aside id="drawer" class="drawer hidden">
+        <button id="drawer-close" class="drawer__close" aria-label="close">×</button>
+        <h2 id="drawer-title">—</h2>
+        <div id="drawer-status" class="pill">—</div>
+        <div id="drawer-value" class="drawer__value">—</div>
+        <canvas id="spark" width="300" height="90" class="spark"></canvas>
+        <ul id="drawer-meta" class="drawer__meta"></ul>
+      </aside>
+
+      <div id="hint" class="hint">drag to orbit · scroll to zoom · click a hotspot</div>
+    </div>
+    <!-- dev: surface any runtime/module error on-page instead of a silent black canvas -->
+    <div id="err" style="position:absolute;top:56px;left:16px;right:16px;max-height:60vh;overflow:auto;
+      background:#2a1416;border:1px solid #f0483e;color:#ffd9d6;font:12px/1.5 monospace;
+      padding:12px 14px;border-radius:10px;white-space:pre-wrap;display:none;z-index:99"></div>
+    <script>
+      const errBox = document.getElementById("err");
+      function showErr(m) { errBox.style.display = "block"; errBox.textContent += m + "\n\n"; }
+      window.addEventListener("error", (e) =>
+        showErr("ERROR: " + (e.message || e.error) + (e.filename ? "\n  at " + e.filename + ":" + e.lineno : "")));
+      window.addEventListener("unhandledrejection", (e) =>
+        showErr("PROMISE REJECTION: " + (e.reason?.stack || e.reason?.message || e.reason)));
+    </script>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

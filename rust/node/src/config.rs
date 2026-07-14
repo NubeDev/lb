@@ -153,6 +153,16 @@ pub struct BootConfig {
     /// every other field, no library code below the seam reads this from env — an embedder fills it.
     pub ext_ui_dir: Option<String>,
 
+    /// An optional static file tree the gateway serves at the site root `/` as a fallback route
+    /// (static-root scope). `Some(dir)` ⇒ any request that matches no API/ext-UI route is served from
+    /// `{static_root}/{path}`, with `/` resolving to that dir's `index.html` — turning the node into a
+    /// self-contained web app host (an embedder bakes its shell/SPA there; the ARM/Pi single-binary
+    /// build points this at its embedded shell FS). `None` (the default) ⇒ today's unchanged behaviour:
+    /// no fallback, unmatched paths 404. Generic and embedder-agnostic — no library code below the seam
+    /// reads this from env, and the gateway never learns whose shell it is (rule 10). Mirrors
+    /// [`ext_ui_dir`](Self::ext_ui_dir)'s posture exactly.
+    pub static_root: Option<String>,
+
     /// The outbox delivery providers (email/push) the relay reactor delivers through (release
     /// scope, gap 1). Additive: `Default` (both `None`) keeps prior behaviour safe — the relay
     /// spawns with logging no-op providers, so effects drain and boot never crashes for lack of
@@ -211,6 +221,9 @@ impl Default for BootConfig {
             // `None` ⇒ the gateway keeps its own `LB_EXT_UI_DIR`/"extensions-ui" default (the standalone
             // binary is untouched); an embedder sets an absolute path to relocate the ext-UI serve dir.
             ext_ui_dir: None,
+            // `None` ⇒ no static-root fallback (unmatched paths 404, today's behaviour); an embedder
+            // sets a dir to serve a self-contained web app at `/`.
+            static_root: None,
             outbox_providers: OutboxProviders::default(),
             // Back-compat embed default: password-less. An embedder opts into `PasswordHash`
             // explicitly; `from_env()` (below) derives it from `LB_DEV_LOGIN` for the binary.
@@ -249,6 +262,12 @@ impl BootConfig {
             // `Gateway::build`, so the standalone `node` binary's ext-UI serve dir is unchanged. Only an
             // embedder (filling the struct directly) uses this field to relocate the dir off env.
             ext_ui_dir: None,
+            // The static-root fallback is a NEW seam with no gateway-internal env read (unlike
+            // `ext_ui_dir`), so the standalone binary honours `LB_STATIC_ROOT` here: set it to serve a
+            // self-contained web app at `/`; unset ⇒ `None` ⇒ no fallback (unchanged 404 behaviour).
+            static_root: std::env::var("LB_STATIC_ROOT")
+                .ok()
+                .filter(|p| !p.is_empty()),
             // The binary configures no real delivery providers today — the relay drains through
             // the logging no-ops. Real adapters come from an embedder filling the struct.
             outbox_providers: OutboxProviders::default(),

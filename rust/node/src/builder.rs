@@ -132,6 +132,11 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             if let Some(dir) = cfg.ext_ui_dir.as_deref().filter(|d| !d.is_empty()) {
                 gw = gw.with_ext_ui_dir(dir);
             }
+            // Serve a static web app at `/` when the embedder set a static root (static-root scope);
+            // `None`/empty leaves the router with no fallback (unmatched paths 404, unchanged).
+            if let Some(dir) = cfg.static_root.as_deref().filter(|d| !d.is_empty()) {
+                gw = gw.with_static_root(dir);
+            }
             Some((gw, *addr))
         }
         GatewayMode::Off => None,

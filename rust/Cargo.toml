@@ -226,9 +226,10 @@ hmac = "0.12"
 argon2 = "0.5"
 
 # HTTP/SSE gateway (the browser path, README §6.13). axum is the chosen Rust web framework
-# (key-stack listed it TBD; resolved here). tower-http adds permissive CORS for the dev UI.
+# (key-stack listed it TBD; resolved here). tower-http adds permissive CORS for the dev UI and
+# `ServeDir` (the `fs` feature) for the optional gateway static-root fallback (static-root scope).
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors", "fs"] }
 futures = "0.3"
 
 # The registry-host client (`HttpSource`) — the first outbound HTTP *client* in the tree (previously

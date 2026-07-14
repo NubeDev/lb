@@ -1,0 +1,11 @@
+Model Information:
+* title:	Small Red Gas Station
+* source:	https://sketchfab.com/3d-models/small-red-gas-station-1a0feafb044148e585bfe588afe617b8
+* author:	SmashedBones (https://sketchfab.com/SmashedBones)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Small Red Gas Station" (https://sketchfab.com/3d-models/small-red-gas-station-1a0feafb044148e585bfe588afe617b8) by SmashedBones (https://sketchfab.com/SmashedBones) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

@@ -50,6 +50,13 @@ pub struct Gateway {
     /// the page; data access is gated at the host bridge), so it is served like any web asset. Seeded
     /// from `LB_EXT_UI_DIR` (default `extensions-ui` beside the cwd); tests point it at a fixture dir.
     pub ext_ui_dir: Arc<std::path::PathBuf>,
+    /// An optional static file tree served at the site root `/` as the router's fallback (static-root
+    /// scope). `Some` ⇒ any request matching no API/ext-UI route is served from this dir via `ServeDir`
+    /// (with `/`→`index.html`), making the node a self-contained web app host; `None` (the default) ⇒
+    /// no fallback, unmatched paths 404 exactly as before. Non-secret static assets, same trust model
+    /// as `ext_ui_dir`. Generic — the gateway never learns whose app it is (rule 10). Behind `Arc` so
+    /// axum clones the state cheaply per request.
+    pub static_root: Arc<Option<std::path::PathBuf>>,
     /// The API-key hash pepper (`HMAC-SHA256(pepper, secret_field)`), api-keys scope. A node secret
     /// from `LB_APIKEY_PEPPER` (never the DB, never committed); the dev default is a per-process
     /// random pepper so API keys work locally without a configured one. Held behind `Arc` so axum
@@ -156,6 +163,9 @@ impl Gateway {
                     .map(std::path::PathBuf::from)
                     .unwrap_or_else(|_| std::path::PathBuf::from("extensions-ui")),
             ),
+            // No static-root fallback by default (unmatched paths 404, unchanged). An embedder pins one
+            // via `with_static_root`; the boot seam fills it from `BootConfig::static_root`.
+            static_root: Arc::new(None),
             // Dev default: a per-process random pepper (no committed constant). Tests override.
             pepper: Arc::from(random_pepper().as_slice()),
             // Default to the password-less dev check on the `new`/`new_live` seams so existing
@@ -191,6 +201,14 @@ impl Gateway {
     /// Point the extension-UI serve dir at `dir` (builder-style) — tests serve a fixture bundle.
     pub fn with_ext_ui_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
         self.ext_ui_dir = Arc::new(dir.into());
+        self
+    }
+
+    /// Serve a static file tree at the site root `/` as the router's fallback (static-root scope) —
+    /// an embedder points this at a self-contained web app; tests point it at a fixture dir. Builder-
+    /// style. Unset (the default) leaves the router with no fallback (unmatched paths 404).
+    pub fn with_static_root(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.static_root = Arc::new(Some(dir.into()));
         self
     }
 

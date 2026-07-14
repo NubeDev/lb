@@ -8,6 +8,7 @@
 use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::routes::{
     accept_invite, ack_insight, add_datasource, add_member, add_team_member, agent_invoke,
@@ -68,7 +69,7 @@ pub fn router(gw: Gateway) -> Router {
     // `DefaultBodyLimit` below is sized from config, not a hardcoded constant. This is the ONE route
     // whose body limit is raised — never a global bump (rule 10). See the `/extensions` route comment.
     let max_ext_upload = gw.max_extension_upload_bytes;
-    Router::new()
+    let router = Router::new()
         .route("/login", post(login))
         // The public inbound webhook endpoint (webhooks scope) — `POST /hooks/{ws}/{id}`. The
         // ONLY unauthenticated-by-session route in the gateway: a third-party service calls it
@@ -448,9 +449,23 @@ pub fn router(gw: Gateway) -> Router {
         // SSE-pool-exhaustion defect (per-feature EventSources saturating the browser's ~6-conn cap).
         .route("/events/stream", get(events_stream))
         .route("/events/{sid}/subscribe", post(events_subscribe))
-        .route("/events/{sid}/unsubscribe", post(events_unsubscribe))
-        .layer(CorsLayer::permissive())
-        .with_state(gw)
+        .route("/events/{sid}/unsubscribe", post(events_unsubscribe));
+
+    // Static-root fallback (static-root scope): when an embedder pinned a static web-app dir, serve it
+    // at `/` for every request that matched none of the API/ext-UI routes above — `/` and unknown paths
+    // resolve to files under the dir (`ServeDir` maps `/` → `index.html`), and a client-router deep link
+    // (a path with no matching file) falls back to `index.html` so the SPA boots and routes in-browser.
+    // Unset ⇒ no fallback, unmatched paths 404 exactly as before (rule 10: generic, no ext knowledge).
+    let router = match gw.static_root.as_ref() {
+        Some(dir) => {
+            let serve = ServeDir::new(dir)
+                .fallback(ServeFile::new(dir.join("index.html")));
+            router.fallback_service(serve)
+        }
+        None => router,
+    };
+
+    router.layer(CorsLayer::permissive()).with_state(gw)
 }
 
 /// Serve the gateway on `addr` (e.g. `127.0.0.1:8080`) until the process ends. The browser app's
