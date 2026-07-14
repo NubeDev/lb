@@ -9,7 +9,6 @@
 // HTTP path by pointing the session + `VITE_GATEWAY_URL` at the spawned server.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { GlobalSetupContext } from "vitest/node";
@@ -21,32 +20,6 @@ const RUST = path.join(REPO, "rust");
 const BIN = path.join(RUST, "target/debug/test_gateway");
 
 let child: ChildProcess | null = null;
-let weatherStub: http.Server | null = null;
-
-/** A canned Open-Meteo `current=` body every `weather.gateway.test.tsx` case reads (weather scope).
- *  A real local HTTP server, not a mocked client (CLAUDE §9) — the ONE sanctioned external fake-
- *  boundary, shared across the whole gateway suite since the spawned node is a single long-lived
- *  process (its env is fixed at spawn time, so this can't vary per test). */
-// `time` is a UTC epoch (SECONDS) — the node requests `timeformat=unixtime`. 1783598400 =
-// 2026-07-09T12:00:00Z (the UI renders it in the viewer's browser timezone).
-const WEATHER_STUB_BODY = JSON.stringify({
-  current: { time: 1783598400, temperature_2m: 21.4, wind_speed_10m: 11.2, weather_code: 3 },
-});
-
-/** Serve the canned weather body on an ephemeral loopback port; returns its base URL. */
-function startWeatherStub(): Promise<string> {
-  return new Promise((resolve) => {
-    weatherStub = http.createServer((_req, res) => {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(WEATHER_STUB_BODY);
-    });
-    weatherStub.listen(0, "127.0.0.1", () => {
-      const addr = weatherStub!.address();
-      const port = typeof addr === "object" && addr ? addr.port : 0;
-      resolve(`http://127.0.0.1:${port}`);
-    });
-  });
-}
 
 export default async function setup({ provide }: GlobalSetupContext) {
   // Build the test-only harness binary first (gated behind the `test-harness` feature so its seed
@@ -57,8 +30,6 @@ export default async function setup({ provide }: GlobalSetupContext) {
     { cwd: RUST, stdio: "inherit" },
   );
   if (build.status !== 0) throw new Error("failed to build test_gateway harness binary");
-
-  const weatherBase = await startWeatherStub();
 
   const url = await new Promise<string>((resolve, reject) => {
     child = spawn(BIN, [], {
@@ -72,10 +43,6 @@ export default async function setup({ provide }: GlobalSetupContext) {
         LB_DEV_LOGIN: "1",
         LB_DEVKIT_ROOT: path.join(RUST, "extensions"),
         LB_DIR: path.join(RUST, "target", "devkit-gateway-lb"),
-        // weather scope: point `weather.current` at the local stub above instead of the real
-        // Open-Meteo — every gateway test gets the SAME canned reading (the node is one shared
-        // long-lived process, so this can't be varied per test).
-        LB_WEATHER_OPEN_METEO_BASE: weatherBase,
       },
     });
     const timer = setTimeout(() => reject(new Error("gateway did not start in time")), 20_000);
@@ -101,7 +68,6 @@ export default async function setup({ provide }: GlobalSetupContext) {
 
   return () => {
     child?.kill("SIGKILL");
-    weatherStub?.close();
   };
 }
 

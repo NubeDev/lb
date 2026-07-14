@@ -30,7 +30,6 @@ import { JsonControl } from "./JsonControl";
 import { JsonView } from "./JsonView";
 import { GenUiView } from "./genui/GenUiView";
 import { InsightsView } from "./insights/InsightsView";
-import { WeatherPanel } from "./weather/WeatherPanel";
 import { RowHeader } from "./RowHeader";
 import { ExtWidget } from "../builder/ExtWidget";
 import { ExtErrorBoundary } from "@/features/ext-host/ExtErrorBoundary";
@@ -45,10 +44,6 @@ export function cellTools(cell: Cell): string[] {
   if (cell.action?.tool) tools.add(cell.action.tool);
   // A read-only stat/gauge control may also read its own source; covered above. The series read sibling
   // of a watch source is added by the builder when it sets the source.
-  // The `weather` view is SELF-SOURCED from the fixed `weather.current` verb (usePanelData builds the
-  // call) — a weather cell carries no user-picked source, so add its tool to the bridge leash here or
-  // the read is refused before it runs. Matches the weather branch in usePanelData.
-  if (cell.view === "weather") tools.add("weather.current");
   return [...tools];
 }
 
@@ -178,10 +173,6 @@ export function WidgetView({
       // verbs through the shell's `insightsClient`; `options.insights` drives the filter + read-only vs
       // ack/resolve/dismiss. The host re-checks the cap + workspace on every verb the widget calls.
       return <InsightsView cell={cell} label={label} />;
-    case "weather":
-      // A shadcn Card of current conditions from `weather.current`; data through `usePanelData` like
-      // every other built-in read view.
-      return <WeatherPanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
     case "row":
       // A panel-rows section header (panel-rows scope). A LAYOUT view: the Grid special-cases
       // `view:"row"` and draws the collapsible header bar itself (with the collapse/rename affordances),

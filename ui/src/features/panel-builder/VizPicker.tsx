@@ -10,7 +10,6 @@
 import {
   BarChart3,
   BarChartHorizontal,
-  CloudSun,
   Gauge as GaugeIcon,
   Hash,
   LayoutTemplate,
@@ -53,11 +52,6 @@ const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
   // rules/flows/agents. Not shape-gated: it isn't source-bound (it reads the `insight.*` verbs through
   // the shell's InsightsClient), so it needs no target — picking it clears the source requirement.
   { id: "insights", label: "Insights", icon: Lightbulb },
-  // Current conditions from the keyless `weather.current` verb (weather scope), rendered as a shadcn
-  // Card. Source-bound like the standard viz set (its target names `weather.current` + a lat/lon), so
-  // it stays shape-gated like any other read view would be — but it's not one of the query-shaped
-  // standard panels `viewFitsShape` validates against, so it is always enabled (parity with genui/template).
-  { id: "weather", label: "Weather", icon: CloudSun },
 ];
 
 /** The flow control/read views (flow-dashboard-binding-ux-scope). An INPUT-port binding offers the

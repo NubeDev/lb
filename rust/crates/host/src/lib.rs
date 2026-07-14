@@ -72,7 +72,6 @@ mod undo;
 mod undo_capture;
 mod users;
 mod viz;
-mod weather;
 mod webhook;
 mod workspaces;
 
@@ -224,9 +223,10 @@ pub use identity::{
 };
 pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
-    authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample, series_find,
-    series_latest_value, series_list, series_read_range, subscribe_series, DrainPass, IngestError,
-    Qos, Sample, SeriesSub, COMMIT_BATCH, DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
+    authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample,
+    series_delete, series_find, series_latest_value, series_list, series_read_range, series_rename,
+    subscribe_series, DrainPass, IngestError, Qos, Sample, SeriesSub, COMMIT_BATCH,
+    DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
 };
 /// The **insights** service — the capability-gated surface over `lb_insights` (insights umbrella
 /// scope + occurrences/subscriptions/notify sub-scopes). The MCP bridge `call_insight_tool` is
@@ -291,7 +291,6 @@ pub use report::{
     report_share, Block as ReportBlock, Report, ReportError, ReportSummary, ReportVisibility,
     MAX_BLOCKS,
 };
-pub use weather::{call_weather_tool, weather_current, WeatherCurrent, OPEN_METEO_BASE_ENV};
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching
 // into `lb_supervisor` internals.

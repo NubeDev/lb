@@ -87,7 +87,6 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "dbschema.",
     "secret.",
     "host.",
-    "weather.",
     "prefs.",
     "message.",
     "bus.",
@@ -516,10 +515,6 @@ async fn dispatch_at_depth(
             crate::call_federation_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("host.") {
             crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("weather.") {
-            // weather scope: the keyless Open-Meteo current-conditions read verb. Store-free —
-            // no `&Node` needed, unlike most host-native families.
-            crate::call_weather_tool(principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("secret.") {
             // secrets scope: the `secret.*` CRUD surface (set/get/set_visibility/delete/list),
             // reached over the same MCP bridge as any verb. The per-verb MCP gate + the

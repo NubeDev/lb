@@ -22,6 +22,7 @@
 mod bucket;
 mod commit;
 mod cursor;
+mod delete;
 mod gc;
 mod labels;
 mod latest;
@@ -29,6 +30,7 @@ mod meta;
 mod overflow;
 mod page;
 mod read;
+mod rename;
 mod retention;
 mod rollup;
 mod sample;
@@ -39,6 +41,7 @@ mod write;
 pub use bucket::{effective_width, read_buckets, Bucket, BucketQuery, MAX_BUCKETS};
 pub use commit::{commit_batch, commit_batch_capped, CommitPass};
 pub use cursor::Cursor;
+pub use delete::delete_series;
 pub use gc::{run_gc, GcPass};
 pub use latest::latest;
 pub use meta::{series_names, DEFAULT_SERIES_CAP};
@@ -47,6 +50,7 @@ pub use page::{
     read_page, Direction, Page, PageError, PageQuery, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
 pub use read::read;
+pub use rename::{rename_series, RenameError};
 pub use retention::{delete_policy, list_policies, set_policy, Policy, Tier, RETENTION_TABLE};
 pub use rollup::{read_rollups, RollupRow};
 pub use sample::{Qos, Sample};

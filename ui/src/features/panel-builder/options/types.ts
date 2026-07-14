@@ -21,11 +21,7 @@ export type OptionControl =
   | { kind: "thresholds" }
   | { kind: "mappings" }
   | { kind: "color-scheme" }
-  | { kind: "data-links" }
-  /** A keyless city/place autocomplete (weather scope) that auto-fills sibling `lat`/`lon` options from
-   *  the picked place. Unlike every other control it writes THREE options at once (label + coordinates),
-   *  so `OptionSectionCard` routes it through `writeGeoPlace`, not the single-path `writeOption`. */
-  | { kind: "geo-search" };
+  | { kind: "data-links" };
 
 /** Where an option's value lives on the cell — the two roots the editor state carries. `fieldConfig`
  *  writes `fieldConfig.defaults.<path>` (and is what an OVERRIDE property sets per-field); `options`

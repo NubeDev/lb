@@ -80,6 +80,50 @@ async fn paged_read_walks_chain_via_mcp() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn windowed_read_is_half_open_via_mcp() {
+    let store = Store::memory().await.unwrap();
+    // seed_via_mcp stamps ts = seq * 1000, seq 1..=10 -> ts 1000..=10000.
+    let p = seed_via_mcp(&store, "acme", 10).await;
+
+    // [3000, 7000): seq 3,4,5,6 (seq 7 has ts 7000, excluded — `to` is exclusive).
+    let out = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "series.read",
+        &json!({ "series": "cpu", "from": 3000, "to": 7000 }),
+    )
+    .await
+    .unwrap();
+    let rows = out["samples"].as_array().unwrap();
+    let seqs: Vec<u64> = rows.iter().map(|r| r["seq"].as_u64().unwrap()).collect();
+    assert_eq!(seqs, vec![3, 4, 5, 6], "from is inclusive, to is exclusive");
+
+    // Row is the full canonical Sample envelope, not a {ts, value} projection.
+    assert_eq!(rows[0]["payload"], json!(3.0), "value field is `payload`");
+    assert_eq!(rows[0]["ts"], json!(3000), "ts is epoch ms, not a datetime string");
+    assert!(rows[0].get("producer").is_some() && rows[0].get("seq").is_some());
+
+    // from_seq/to_seq are inclusive on BOTH ends (contrast with the half-open wall-clock window).
+    let out = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "series.read",
+        &json!({ "series": "cpu", "from_seq": 3, "to_seq": 6 }),
+    )
+    .await
+    .unwrap();
+    let seqs: Vec<u64> = out["samples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["seq"].as_u64().unwrap())
+        .collect();
+    assert_eq!(seqs, vec![3, 4, 5, 6], "from_seq/to_seq bound inclusively");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn bucketed_read_via_mcp_and_deny_without_cap() {
     let store = Store::memory().await.unwrap();
     let p = seed_via_mcp(&store, "acme", 60).await;
@@ -106,6 +150,7 @@ async fn bucketed_read_via_mcp_and_deny_without_cap() {
     let no_cap = principal("client:intruder", "acme", &["mcp:series.latest:call"]);
     for input in [
         json!({ "series": "cpu" }),
+        json!({ "series": "cpu", "from": 0, "to": 1000 }),
         json!({ "series": "cpu", "mode": "buckets", "from": 0, "to": 1000, "budget": 1 }),
     ] {
         let err = call_ingest_tool(&store, &no_cap, "acme", "series.read", &input)

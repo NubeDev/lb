@@ -14,8 +14,7 @@
 import type { View } from "@/lib/dashboard";
 import type { EditorState } from "@/lib/panel-kit/cellEditorState";
 import type { OptionDef } from "./types";
-import { readOption, writeOption, writeGeoPlace } from "./binding";
-import type { GeoPlace } from "./controls/geocode";
+import { readOption, writeOption } from "./binding";
 import { optionLiveness } from "./optionLiveness";
 import { Control } from "./Control";
 
@@ -40,12 +39,7 @@ const BLOCK_CONTROLS = new Set(["thresholds", "mappings", "color-scheme", "data-
 
 export function OptionSectionCard({ def, view, state, patch, onFocus, focused = false }: Props) {
   const value = readOption(state, def);
-  // The geo-search control emits a whole `GeoPlace` and writes THREE sibling options (label/lat/lon);
-  // every other control writes its own single path.
-  const set =
-    def.control.kind === "geo-search"
-      ? (v: unknown) => patch(writeGeoPlace(state, v as GeoPlace))
-      : (v: unknown) => patch(writeOption(state, def, v));
+  const set = (v: unknown) => patch(writeOption(state, def, v));
   const live = optionLiveness(view, def.id);
   const block = BLOCK_CONTROLS.has(def.control.kind);
   const report = onFocus ? () => onFocus(def.id) : undefined;

@@ -45,11 +45,6 @@ function sampleValue(def: OptionDef): unknown {
       return { mode: "fixed", fixedColor: "blue" };
     case "data-links":
       return [{ title: "Docs", url: "https://x/${__value.text}", targetBlank: true }];
-    case "geo-search":
-      // The geo search shares another option's storage path (it writes label+lat/lon via writeGeoPlace,
-      // not a single value) and isn't in a read-back round-trip view — a plain label string suffices for
-      // the exhaustiveness guard.
-      return "Brisbane, Queensland, AU";
   }
 }
 
@@ -95,22 +90,13 @@ describe("option registry round-trip", () => {
     }
   });
 
-  it("the fieldConfig-less views (insights, weather) expose no fieldConfig option cards", () => {
+  it("the fieldConfig-less view (insights) exposes no fieldConfig option cards", () => {
     // A view in NO_FIELDCONFIG_VIEWS renders fixed fields, not a fieldConfig-formatted value — so the
     // universal standard options (unit/decimals/color/thresholds…) are excluded. It may still carry its
-    // OWN `options.*`-scope defs (insights: list options; weather: the self-source LOCATION), just
-    // nothing under `fieldConfig` (so `optionLiveness` is never asked for a fieldConfig row it lacks —
-    // the "no row for weather/color" throw the wizard hit before this).
-    for (const view of ["insights", "weather"] as View[]) {
-      const fieldConfigIds = optionsForView(view).filter((d) => d.scope === "fieldConfig");
-      expect(fieldConfigIds, `${view} must expose no fieldConfig options`).toEqual([]);
-    }
-    // weather's only options are its `options`-scope location fields (search + label + lat/lon), all
-    // view-scoped. `geo` (the city search) and `label` intentionally share the `label` storage path —
-    // the search DISPLAYS the label and writes it (plus lat/lon); the text field edits the same label.
-    const weatherOpts = optionsForView("weather");
-    expect(weatherOpts.map((d) => d.id).sort()).toEqual(["geo", "label", "lat", "lon"]);
-    expect(weatherOpts.every((d) => d.scope === "options" && d.views?.includes("weather"))).toBe(true);
+    // OWN `options.*`-scope defs (insights: list options), just nothing under `fieldConfig` (so
+    // `optionLiveness` is never asked for a fieldConfig row it lacks).
+    const fieldConfigIds = optionsForView("insights" as View).filter((d) => d.scope === "fieldConfig");
+    expect(fieldConfigIds, "insights must expose no fieldConfig options").toEqual([]);
   });
 
   it("clearing every fieldConfig option prunes fieldConfig back to absent (no empty groups linger)", () => {

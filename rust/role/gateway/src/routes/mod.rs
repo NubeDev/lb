@@ -111,7 +111,10 @@ pub use identity::{
     list_identities,
 };
 pub use inbox::{list_inbox, resolve_inbox};
-pub use ingest::{find_series, latest_sample, list_series, read_samples, write_samples};
+pub use ingest::{
+    delete_series_route, find_series, latest_sample, list_series, read_samples,
+    rename_series_route, write_samples,
+};
 pub use insight::{
     ack_insight, delete_insight, delete_occurrence, get_insight, insight_events, list_insights,
     list_occurrences, resolve_insight,

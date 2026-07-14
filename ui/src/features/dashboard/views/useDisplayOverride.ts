@@ -28,7 +28,6 @@ const READ_VIEWS = new Set([
   "table",
   "barchart",
   "piechart",
-  "weather",
 ]);
 
 /** True when this cell renders resolvable frames a table/JSON view can show. */

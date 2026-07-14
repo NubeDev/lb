@@ -84,6 +84,21 @@ pub async fn call_ingest_tool(
                 .map_err(ingest_to_tool)?;
             Ok(json!({ "sample": last }))
         }
+        "series.delete" => {
+            let series = str_arg(input, "series")?;
+            super::series_delete(store, principal, ws, series)
+                .await
+                .map_err(ingest_to_tool)?;
+            Ok(json!({ "ok": true }))
+        }
+        "series.rename" => {
+            let from = str_arg(input, "from")?;
+            let to = str_arg(input, "to")?;
+            super::series_rename(store, principal, ws, from, to)
+                .await
+                .map_err(ingest_to_tool)?;
+            Ok(json!({ "ok": true }))
+        }
         "series.find" => {
             let facets = facets(input)?;
             let hits = super::series_find(store, principal, ws, &facets)

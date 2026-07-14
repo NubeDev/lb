@@ -176,9 +176,6 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:series.find:call",
     "mcp:series.list:call",
     "mcp:series.watch:call",
-    // weather READ (weather scope) — a viewer's weather tile reads current conditions from the
-    // keyless Open-Meteo feed; a harmless read (no writes, no secret), like the series reads above.
-    "mcp:weather.current:call",
     // documents READ (a viewer reads shared docs; put_doc is author).
     "mcp:assets.get_doc:call",
     "mcp:assets.list_docs:call",
@@ -463,6 +460,10 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:series.retention.set:call",
     "mcp:series.retention.list:call",
     "mcp:series.retention.gc:call",
+    // series lifecycle — destroying or renaming a whole series (across every producer's history) is
+    // the same workspace-data-administration privilege as retention, never an author one.
+    "mcp:series.delete:call",
+    "mcp:series.rename:call",
     // dashboard admin override (delete a dashboard the admin doesn't own).
     "mcp:dashboard.delete_any:call",
     // nav WRITES (author/share/set the workspace-default menu).

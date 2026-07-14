@@ -250,16 +250,6 @@
       ]
     },
     {
-      "id": "weather",
-      "label": "Weather",
-      "kind": "read",
-      "version": 1,
-      "buildable": true,
-      "data": true,
-      "action": false,
-      "options": []
-    },
-    {
       "id": "row",
       "label": "Row",
       "kind": "layout",

@@ -15,6 +15,12 @@ use super::store::{scan_brands, write_brand};
 /// The id of the seeded default brand — the picker's non-empty fallback.
 pub const DEFAULT_BRAND_ID: &str = "default";
 
+/// The sentinel owner stamped on the seeded default brand. No real principal's `owner_sub()` is ever
+/// this string, so `brand.save`/`brand.delete` key adopt-on-first-write off it: the first member with
+/// the write cap adopts the seed (owner becomes them), instead of being denied against an unownable
+/// record. Lets an admin brand the workspace default without a reseed. See `save.rs`/`delete.rs`.
+pub const SYSTEM_OWNER: &str = "system";
+
 /// Seed a neutral default brand into `ws` if none exists. No-op when any brand is already present
 /// (including a tombstoned one — a workspace that deliberately deleted every brand is not re-seeded).
 pub async fn seed_default_brand(store: &Store, ws: &str, now: u64) -> Result<(), StoreError> {
@@ -25,9 +31,10 @@ pub async fn seed_default_brand(store: &Store, ws: &str, now: u64) -> Result<(),
     let brand = Brand {
         id: DEFAULT_BRAND_ID.to_string(),
         name: "Default".to_string(),
-        // A seed has no human owner — the system owns it. Owner-only update still lets a member
-        // create their own brands; this one is a workspace-shared read-only default in practice.
-        owner: "system".to_string(),
+        // A seed has no human owner — the SYSTEM_OWNER sentinel marks it. Workspace-shared read-only
+        // UNTIL a member with the write cap first saves/deletes it: save.rs/delete.rs adopt-on-write
+        // off this sentinel, so the default is brandable in place (no reseed).
+        owner: SYSTEM_OWNER.to_string(),
         schema_version: SCHEMA_VERSION,
         updated_ts: now,
         ..Brand::default()

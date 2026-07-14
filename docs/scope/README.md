@@ -453,12 +453,6 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `lb_jobs::pending` an indexed O(pending) query instead of a full-table walk, and bounds the
   terminal `job`/`flow_run`/`flow_step_output` rows that otherwise grow forever and peg a node's CPU
   on the reactor tick — see `debugging/jobs/node-pegs-cpu-reactor-rescans-job-table.md`).
-- `weather/` — a **compile-optional** (`weather` cargo feature, off by default) native (Tier-2)
-  extension over a **free, keyless** feed — Open-Meteo, no API key (`weather-feed-scope.md`): a
-  `weather.current` read verb + `weather_location` config records, driven by a **30-min durable
-  `lb-jobs` poll** with a **Run now** enqueue verb, optionally mirroring readings into the series
-  plane (`store` toggle), shown on one **shadcn dashboard widget**. Federate-vs-mirror from
-  datasources, compile-optional posture from external-agent, schedule from jobs.
 - `reminders/` — a durable, workspace-scoped **scheduled trigger that fires an action**
   (`reminders-scope.md`): a `reminder:{id}` record with a cron schedule + optional `max_runs` +
   `enabled` switch, fired by a `react_to_reminders` durable scan (the same altitude as the S6

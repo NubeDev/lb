@@ -172,6 +172,47 @@ pub async fn read_samples(
     Ok(Json(json!({ "samples": rows })))
 }
 
+/// `DELETE /series/{series}` — remove the series and its whole footprint (samples, rollups, staged
+/// rows, registry row, tag edges). Gated `series.delete`. Idempotent — deleting an unknown series
+/// succeeds. The workspace comes from the token (the hard wall), never the path.
+pub async fn delete_series_route(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(series): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    lb_host::series_delete(&gw.node.store, &p, p.ws(), &series)
+        .await
+        .map_err(ingest_status)?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// `POST /series/{series}/rename` body — the new name. Rejected (`400`) if it is already in use.
+#[derive(Debug, Deserialize)]
+pub struct RenameBody {
+    pub to: String,
+}
+
+/// `POST /series/{series}/rename` — rename `{series}` → `to`, carrying its whole footprint. Gated
+/// `series.rename`. Refuses (`400`) a target that already exists (no silent merge). The workspace
+/// comes from the token.
+pub async fn rename_series_route(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(series): Path<String>,
+    Json(body): Json<RenameBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    lb_host::series_rename(&gw.node.store, &p, p.ws(), &series, &body.to)
+        .await
+        .map_err(ingest_status)?;
+    Ok(Json(json!({ "ok": true })))
+}
+
 /// Map an ingest gate outcome onto an HTTP status. `Denied` is `403` (opaque); `BadInput` is `400`;
 /// a store fault is `403`-opaque like the other gateway routes.
 fn ingest_status(e: IngestError) -> (StatusCode, String) {

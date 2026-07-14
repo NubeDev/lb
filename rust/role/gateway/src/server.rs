@@ -15,24 +15,25 @@ use crate::routes::{
     create_channel, create_def, create_identity, create_team, create_user, create_webhook,
     create_workspace, define_role, delete_brand, delete_dashboard, delete_def, delete_flow,
     delete_insight, delete_message, delete_nav, delete_occurrence, delete_panel, delete_report,
-    delete_role, delete_rule, delete_team, delete_user, disable_extension, disable_user,
-    edit_message, enable_extension, enable_flow, enable_user, events_stream, events_subscribe,
-    events_unsubscribe, export_report, find_series, flow_debug_stream, flow_node_state,
-    flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
-    get_apikey, get_asset_bin, get_brand, get_catalog, get_dashboard, get_def, get_doc, get_flow,
-    get_flow_node, get_flow_run, get_history, get_identity, get_insight, get_layout, get_media,
-    get_nav, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_report,
-    get_rule, get_webhook, grant_skill, identity_workspaces_route, inject_flow, insight_events,
-    latest_sample, lifecycle_flow, link_doc, list_apikeys, list_brands, list_channels,
-    list_dashboards, list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes,
-    list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_insights,
-    list_members, list_navs, list_occurrences, list_panels, list_reports, list_roles, list_rules,
-    list_series, list_shares_nav, list_tables, list_team_members, list_teams, list_users,
-    list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call,
-    panel_usage, patch_flow_run, pin_dashboards, post_message, post_webhook, publish_extension,
-    publish_message, purge_workspace, put_asset_bin, put_doc, put_media_chunk, put_skill,
-    read_graph, read_samples, read_schema, refresh_run_token, remove_datasource, remove_member,
-    remove_team_member, rename_team, rename_workspace, render_catalog_message, reset_extension,
+    delete_role, delete_rule, delete_series_route, delete_team, delete_user, disable_extension,
+    disable_user, edit_message, enable_extension, enable_flow, enable_user, events_stream,
+    events_subscribe, events_unsubscribe, export_report, find_series, flow_debug_stream,
+    flow_node_state, flow_run_stream, format_datetime, format_number, format_quantity,
+    get_agent_config_route, get_apikey, get_asset_bin, get_brand, get_catalog, get_dashboard,
+    get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity,
+    get_insight, get_layout, get_media, get_nav, get_nav_hidden, get_nav_pref, get_outbox_status,
+    get_panel, get_prefs, get_report, get_rule, get_webhook, grant_skill,
+    identity_workspaces_route, inject_flow, insight_events, latest_sample, lifecycle_flow,
+    link_doc, list_apikeys, list_brands, list_channels, list_dashboards, list_datasources,
+    list_defs, list_docs, list_extensions, list_flow_nodes, list_flow_runs, list_flows,
+    list_grants, list_identities, list_inbox, list_insights, list_members, list_navs,
+    list_occurrences, list_panels, list_reports, list_roles, list_rules, list_series,
+    list_shares_nav, list_tables, list_team_members, list_teams, list_users, list_webhooks,
+    list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call, panel_usage,
+    patch_flow_run, pin_dashboards, post_message, post_webhook, publish_extension, publish_message,
+    purge_workspace, put_asset_bin, put_doc, put_media_chunk, put_skill, read_graph, read_samples,
+    read_schema, refresh_run_token, remove_datasource, remove_member, remove_team_member,
+    rename_series_route, rename_team, rename_workspace, render_catalog_message, reset_extension,
     resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey,
     revoke_grant, revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control,
     run_flow, run_query, run_rule, run_stream, save_brand, save_dashboard, save_flow, save_nav,
@@ -295,6 +296,9 @@ pub fn router(gw: Gateway) -> Router {
         .route("/series/find", post(find_series))
         .route("/series/{series}/latest", get(latest_sample))
         .route("/series/{series}/samples", get(read_samples))
+        // series lifecycle (admin) — delete a whole series or rename it, carrying its footprint.
+        .route("/series/{series}", delete(delete_series_route))
+        .route("/series/{series}/rename", post(rename_series_route))
         // dashboard (dashboard scope) — the browser's `dashboard.*` CRUD + the live **series** SSE
         // feed widgets watch. Each route re-checks the three gates server-side; ws+owner from the
         // token. `GET /series/{series}/stream` is the motion analog of the channel stream.

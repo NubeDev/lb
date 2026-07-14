@@ -306,6 +306,17 @@ Resolved in this doc (no longer open): the dedup identity is **`(series, produce
 **single source of truth** for labels (inline `Sample.labels` are a wire declaration converted to edges
 once per series); "never lost" is **scoped to `qos: must-deliver`**; one authoritative ingest path per
 producer (no re-ingest double-count).
+
+**Series lifecycle** (shipped — `sessions/ingest/series-lifecycle-session.md`): a series can be
+**deleted** (`series.delete`) or **renamed** (`series.rename`), carrying/clearing its *whole*
+footprint — sample rows, rollup tiers, staged rows, the `series_meta` registry row (and its
+`labels_applied` latch on rename), and the `series:<name>` tag edges (both the `in` link and the
+denormalized `ent` string `series.find` reads). Retention policies are **prefix-keyed**, so they are
+left untouched. Rename **refuses a merge** into an occupied name (the `(series, producer, seq)` dedup
+identity must stay collision-free) — a `BadInput`, not a `Denied`. Both are minted as their own caps
+(`mcp:series.delete:call` / `mcp:series.rename:call`) granted to the **admin/owner role only**,
+alongside `series.retention.*` — destroying a whole series is workspace-data administration, not an
+author privilege.
 - **Rate-limit granularity:** per-workspace, per-principal, or per-series — and where enforced (the
   ingest verb, the bus subscriber, or both)?
 - **Retention policy shape:** raw→rollup aging rules, who configures them (a workspace admin grant?),
