@@ -82,9 +82,25 @@ pub async fn mcp_call(
     };
     let out = lb_host::call_tool(&gw.node, &principal, principal.ws(), &body.tool, &input)
         .await
-        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+        .map_err(tool_error_status)?;
     let value: Value = serde_json::from_str(&out).unwrap_or(Value::String(out));
     Ok(Json(value))
+}
+
+/// Map a dispatch failure onto the HTTP status a bridge caller can act on. `Denied` and `NotFound`
+/// stay `403` — the opaque deny contract (no existence oracle) — but `BadInput` is `400`: it is
+/// author feedback about the call's shape, not an authorization signal, and collapsing it to `403`
+/// made a wire-shape bug indistinguishable from a capability denial (a sidecar's `SidecarClient`
+/// maps 403 → `Denied`, so a `{key}`-vs-`{id}` arg typo printed as "capability/workspace gate").
+/// An `Extension` failure (the tool ran and errored/trapped) is `502` — upstream fault, not caller.
+fn tool_error_status(e: lb_mcp::ToolError) -> (StatusCode, String) {
+    use lb_mcp::ToolError;
+    let status = match &e {
+        ToolError::Denied | ToolError::NotFound => StatusCode::FORBIDDEN,
+        ToolError::BadInput(_) => StatusCode::BAD_REQUEST,
+        ToolError::Extension(_) => StatusCode::BAD_GATEWAY,
+    };
+    (status, e.to_string())
 }
 
 /// Load the run-payload (the Ask floor) from the job record. `None` if the job is missing, the

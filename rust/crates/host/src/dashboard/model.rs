@@ -262,6 +262,19 @@ pub struct Cell {
     /// `#[serde(skip_serializing_if)]` keeps it off the stored record and `dashboard.save` ignores it.
     #[serde(default, rename = "panelMissing", skip_serializing_if = "is_false")]
     pub panel_missing: bool,
+    /// **Grafana import/export passthrough** (viz import-export scope, Phase 4). A bounded blob of the
+    /// unknown Grafana panel fields the mapper did not recognize on import, re-emitted verbatim on
+    /// export so a supported dashboard round-trips semantically stable. Opaque to the host and to
+    /// every renderer; mapped fields WIN over passthrough on export (passthrough fills only gaps).
+    /// Additive/skip-if-empty so a non-imported cell stays byte-stable; `save` bounds its size
+    /// ([`crate::dashboard::bounds`], `MAX_GRAFANA_PASSTHROUGH`).
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        rename = "_grafana",
+        skip_serializing_if = "Value::is_null"
+    )]
+    pub grafana_passthrough: Value,
 }
 
 /// serde `skip_serializing_if` helper — keeps a `false` [`Cell::panel_missing`] off the wire/record.

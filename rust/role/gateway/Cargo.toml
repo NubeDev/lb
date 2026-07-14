@@ -65,6 +65,9 @@ name = "test_gateway"
 required-features = ["test-harness"]
 
 [dev-dependencies]
+# The Grafana import/export round-trip test (viz import-export scope, Phase 4) asserts the exported
+# `schemaVersion` matches the pin the mapper targets — reads `grafana_map::PINNED_SCHEMA_VERSION`.
+grafana-map.workspace = true
 # The bus-watch revoke test (issue #49) seeds/revokes `bus:<subject>:watch` grants through the real
 # authz write path to prove revoke-terminates-stream against a live node.
 lb-authz.workspace = true

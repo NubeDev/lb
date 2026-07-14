@@ -23,7 +23,90 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-14): viz Grafana-parity backend P1 — model fields + the `queryOptions` hole
+**Just shipped (2026-07-14): viz Grafana-parity Phase 4 — JSON import/export (the interop edge)
+(`docs/scope/frontend/dashboard/viz/import-export-scope.md`; uncommitted working tree).** The user's
+literal ask — *"export a dashboard from Grafana as JSON and import here, and back"* — as two host
+verbs + one bidirectional mapper consuming the P3 `grafana-map` pin. New module
+`crates/host/src/dashboard/grafana/` (one responsibility per file): `view_alias.rs` (panel.type↔view
+id both ways, legacy aliases), `to_cell.rs` (`grafana→cell`: gridPos/type→view/targets→sources/
+fieldConfig/transforms/options, unknown→passthrough), `to_grafana.rs` (inverse; passthrough first,
+**mapped fields overlay it** — the "fills only gaps" rule), `datasources.rs` (collect refs + apply
+remap), `import.rs`/`export.rs` (the verbs + descriptors), `mod.rs` (report types + the `&Node` MCP
+bridge). One additive model field `Cell._grafana` (bounded passthrough, skip-if-null, byte-stable)
++ `MAX_GRAFANA_PASSTHROUGH=8KB` rejected-not-stored in `bounds.rs`. **`dashboard.import
+{json,mappings?,id?,now}`** = 2-phase (preview w/o mappings → `{report}` no write; commit → UPSERT
+via `dashboard_save_meta`), needs BOTH `mcp:dashboard.import:call` (member) AND
+`mcp:dashboard.save:call`; **`dashboard.export {id}`** = a read (`mcp:dashboard.export:call`, viewer)
++ the three-gate get. **Tenancy (the hard wall):** workspace from the TOKEN never the JSON; every
+datasource `mappedTo` verified against the caller's workspace-walled `datasource.list` — a ws-B
+source is invisible in ws-A → import refused `403`. **Honest degradation:** unsupported panel →
+`json` placeholder + `options.unsupportedType` + full panel in `_grafana` (re-exports its ORIGINAL
+type); unmapped datasource / unsupported variable preserved + reported; nothing faked. Wired:
+dispatch (`tool_call.rs`, `&Node` branch before the store-only one), catalog (descriptor + host-tool
+rows), caps (`builtin_roles.rs`), gateway `POST /dashboards/import` + `GET /dashboards/{id}/export`
+(+ the generic `/mcp/call`). Rule-10 clean: branches on Grafana panel/datasource VOCABULARY only,
+never an ext id/role; JSON is interchange, never stored raw. Tests: **48 new green** — host mapper
+12 + bounds 3 + gateway integration 4 (real gateway/store/seeded datasource; Grafana JSON=fixture:
+preview→commit→export round-trip, **ws-isolation wall**, **caps-deny**, v2 rejected) + `grafana-map`
+29 unchanged; **no regressions** (dashboard 34, authz 7, credentials 3, dashboard_routes 6);
+`cargo build --workspace`/fmt/clippy clean. Follow-ups (named): datasource `tool`-fill is the binding
+step's job (matches native v3 targets), bulk import = a future job, the import UI is downstream
+rubix-ai, `__elements`→`panelRef` mapping deferred. Docs:
+[session](sessions/viz/grafana-parity-import-export-p4-session.md). **This closes the viz
+import/export arc (P1→P4).**
+
+**Previously shipped (2026-07-14): viz Grafana-parity backend P3 — the import pin as code
+(`docs/scope/viz/grafana-parity-backend-scope.md`, P3; uncommitted new crate).** New dep-light
+crate `rust/crates/grafana-map` (deps `serde_json` + `thiserror` only — **no host/store/bus dep**,
+the lb-viz posture), consumed identically by the standalone converter (git dep) and the future
+`dashboard.import` verb. Public `pin(root, input_values) -> PinReport` runs **detect → migrate →
+resolve**, one responsibility per file: `detect.rs` (v1/v2/snapshot discriminator — accept v1,
+reject v2 [`dashboard.grafana.app/*` apiVersion or `elements`+`layout`] and snapshots with a
+`classic`-pointing error), `migrate/` (the ported v33 subset: `datasource_ref.rs` string→`{uid}`
+ref [structural half only — `type` filled later by the import verb, which owns the federation
+datasource list] + `panel_type.rs` `graph`→`timeseries`, `singlestat`→`stat`/`gauge`), `inputs.rs`
+(Grafana's `dash_template_evaluator.go` ported: **name-keyed `${NAME}` substitution, no `DS_`/`VAR_`
+prefix magic**, `__expr__` auto-fill, unresolved reported+left-verbatim never blanked, all three
+envelopes [`__inputs`/`__requires`/`__elements`] stripped — our delta from Grafana's strip-only-
+`__inputs`). Order matters: migrate wraps `${DS_*}` into a ref, then resolve substitutes the token
+*inside* it → `{"uid":"fed-prom"}`. `MigrateReport.degraded` fires for schemaVersion <21 / missing
+(applied blind) — the ported subset is an honest floor, never the silent full `DashboardMigrator`
+chain. Rule-10 clean: branches on Grafana panel-type/datasource vocabulary only, never an ext id or
+role; JSON is interchange, never stored. Tests: **29/29 green** (`cargo test -p grafana-map`: 27
+unit + 2 integration over **real export fixtures** — a pre-v33 Prometheus export with `__inputs`/
+string ds/graph+singlestat/row/template-var/`__requires`, and a v2beta1 export rejected); `cargo
+clippy -p grafana-map` clean. Both scope open questions decided (crate = `grafana-map`, no host
+dep). Not built here: the `dashboard.import`/`export` verbs (the real consumer — pin is ready for
+them), `type`-fill on refs, `__elements` library-panel→`panelRef` mapping (mapper's job). Grafana
+reference clone absent this session — ported from the scope's pinned descriptions + P1/P2 knowledge,
+flagged for re-verify. Docs: [session](sessions/viz/grafana-parity-backend-p3-session.md).
+
+**Previously shipped (2026-07-14): viz Grafana-parity backend P2 — lb-viz tranche 2a + reduce calcs
+(`docs/scope/viz/grafana-parity-backend-scope.md`, P2; transforms/reducer already committed in a
+parallel snapshot, the one e2e test fix uncommitted).** Six new transforms, one-per-file under
+`crates/viz/src/transforms/`, Grafana-verbatim ids/options, pure, each unit-tested:
+`renameByRegex`, `filterByRefId`, `convertFieldType`, `extractFields`, `labelsToFields`,
+`concatenate`. `reducer.rs` gains the tranche-2 calcs (`diff`, `diffperc` [ratio], `delta`, `step`,
+`median`, `variance`/`stdDev` [population ÷n], `distinctCount`, `changeCount`, `allIsZero`,
+`allIsNull`) plus the **general `pNN` pattern (1–99, nearest-rank floor)** so any imported
+percentile computes rather than degrades. Deps: `regex` (workspace) + `chrono` added to lb-viz,
+crate stays pure (parsing only). Honest bounds pinned in the session doc: `extractFields` column
+order is alphabetical-per-cell (serde_json Map sorts keys); `convertFieldType` time parsing is
+RFC3339 + two bare-UTC shapes only, NOT the dayjs `dateFormat` grammar. Tranche 2b built only as a
+fixture demands — none did, so none added (unknown id carried opaque, `viz.query`
+skip-with-notice). Tests: `lb-viz` **77/77 green** (transforms + the calc table incl. null/skip
+discipline); the P2 e2e pin (`viz_query_test::tranche_2a_pipeline_runs_end_to_end`) runs a
+`renameByRegex` + `p90` reduce through the **real** `viz.query`/`store.query` on seeded rows +
+proves the unknown-id carry — `viz_query_test` **13/13 green**. The prior session left that pin
+red-and-unrun; the bug was the test's SQL (`ORDER BY` on an unselected column, which SurrealDB
+rejects → `viz.query` degraded the target to an empty frame), not the transforms — fixed by
+ordering on the selected column. Six wider-suite failures are all pre-existing/environmental and
+unrelated (persona catalog/coding, cross_node_routing flaky, devkit_e2e wasm, proof_panel,
+store_query schema — the last verified failing identically at pre-session `9a4b7041`). P3 (the
+import-pin crate) is now shipped — see the block above. Docs:
+[session](sessions/viz/grafana-parity-backend-p2-session.md).
+
+**Previously shipped (2026-07-14): viz Grafana-parity backend P1 — model fields + the `queryOptions` hole
 (`docs/scope/viz/grafana-parity-backend-scope.md`, P1; uncommitted in the working tree).** The opener
 verified-then-fixed a shipped silent-data-loss bug: the editor-parity UI's top-level cell field
 `queryOptions {maxDataPoints, minInterval, relativeTime}` was dropped by serde at the `dashboard.save`

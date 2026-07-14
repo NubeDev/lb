@@ -543,7 +543,7 @@ async fn tranche_2a_pipeline_runs_end_to_end() {
     .await;
 
     let panel = sql_panel(
-        "SELECT payload FROM series ORDER BY seq",
+        "SELECT payload FROM series ORDER BY payload",
         json!([
             { "id": "renameByRegex", "options": { "regex": "payload", "renamePattern": "cpu_load" } },
             { "id": "reduce", "options": { "reducers": ["p90"], "mode": "reduceFields" } }
@@ -558,7 +558,7 @@ async fn tranche_2a_pipeline_runs_end_to_end() {
 
     // The tranche bound: an unknown id in the same pipeline position is carried — frames unchanged.
     let panel = sql_panel(
-        "SELECT payload FROM series ORDER BY seq",
+        "SELECT payload FROM series ORDER BY payload",
         json!([{ "id": "groupingToMatrix", "options": {} }]),
     );
     let out = viz_query(&node, &p, ws, panel).await.expect("runs");

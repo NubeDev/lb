@@ -30,7 +30,11 @@ async fn gateway_with_static_root(tag: &str) -> (Gateway, std::path::PathBuf) {
     // Per-test dir (pid + a test-unique tag) so parallel tests never race on cleanup.
     let dir = std::env::temp_dir().join(format!("lb-static-root-{}-{tag}", std::process::id()));
     std::fs::create_dir_all(dir.join("app")).unwrap();
-    std::fs::write(dir.join("index.html"), b"<!doctype html><title>shell</title>\n").unwrap();
+    std::fs::write(
+        dir.join("index.html"),
+        b"<!doctype html><title>shell</title>\n",
+    )
+    .unwrap();
     std::fs::write(dir.join("app/app.js"), b"console.log('app')\n").unwrap();
     let gw = Gateway::new(node, key, NOW).with_static_root(dir.clone());
     (gw, dir)
@@ -41,8 +45,13 @@ async fn serves_index_at_root() {
     let (gw, dir) = gateway_with_static_root("index").await;
     let resp = router(gw).oneshot(get_req("/")).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), 1 << 20).await.unwrap();
-    assert!(body.starts_with(b"<!doctype html>"), "`/` serves index.html");
+    let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    assert!(
+        body.starts_with(b"<!doctype html>"),
+        "`/` serves index.html"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -51,7 +60,9 @@ async fn serves_a_real_asset_by_path() {
     let (gw, dir) = gateway_with_static_root("asset").await;
     let resp = router(gw).oneshot(get_req("/app/app.js")).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), 1 << 20).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .unwrap();
     assert!(body.starts_with(b"console.log"), "the real asset is served");
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -61,10 +72,18 @@ async fn deep_link_falls_back_to_index_for_the_spa_router() {
     // A client-side route with no matching file must serve index.html (200), not 404 — otherwise a
     // refresh on `/sites/123` would break the SPA.
     let (gw, dir) = gateway_with_static_root("deeplink").await;
-    let resp = router(gw).oneshot(get_req("/sites/deep/link")).await.unwrap();
+    let resp = router(gw)
+        .oneshot(get_req("/sites/deep/link"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), 1 << 20).await.unwrap();
-    assert!(body.starts_with(b"<!doctype html>"), "deep link → index.html");
+    let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    assert!(
+        body.starts_with(b"<!doctype html>"),
+        "deep link → index.html"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -74,7 +93,10 @@ async fn api_routes_win_over_the_fallback() {
     // API's 401, never the static index.
     let (gw, dir) = gateway_with_static_root("apiwins").await;
     let body = serde_json::json!({ "tool": "series.find", "args": { "tags": [] } });
-    let resp = router(gw).oneshot(json_post("/mcp/call", body)).await.unwrap();
+    let resp = router(gw)
+        .oneshot(json_post("/mcp/call", body))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -83,6 +105,9 @@ async fn api_routes_win_over_the_fallback() {
 async fn no_static_root_means_unmatched_paths_404() {
     // The default (no static root) is unchanged: an unmatched path is a 404, not a fallback.
     let (gw, _key) = gateway().await;
-    let resp = router(gw).oneshot(get_req("/some/unknown/path")).await.unwrap();
+    let resp = router(gw)
+        .oneshot(get_req("/some/unknown/path"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }

@@ -18,16 +18,16 @@ use crate::routes::{
     delete_insight, delete_message, delete_nav, delete_occurrence, delete_panel, delete_report,
     delete_role, delete_rule, delete_series_route, delete_team, delete_user, disable_extension,
     disable_user, edit_message, enable_extension, enable_flow, enable_user, events_stream,
-    events_subscribe, events_unsubscribe, export_report, find_series, flow_debug_stream,
-    flow_node_state, flow_run_stream, format_datetime, format_number, format_quantity,
-    get_agent_config_route, get_apikey, get_asset_bin, get_brand, get_catalog, get_dashboard,
-    get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity,
-    get_insight, get_layout, get_media, get_nav, get_nav_hidden, get_nav_pref, get_outbox_status,
-    get_panel, get_prefs, get_report, get_rule, get_webhook, grant_skill,
-    identity_workspaces_route, inject_flow, insight_events, latest_sample, lifecycle_flow,
-    link_doc, list_apikeys, list_brands, list_channels, list_dashboards, list_datasources,
-    list_defs, list_docs, list_extensions, list_flow_nodes, list_flow_runs, list_flows,
-    list_grants, list_identities, list_inbox, list_insights, list_members, list_navs,
+    events_subscribe, events_unsubscribe, export_dashboard, export_report, find_series,
+    flow_debug_stream, flow_node_state, flow_run_stream, format_datetime, format_number,
+    format_quantity, get_agent_config_route, get_apikey, get_asset_bin, get_brand, get_catalog,
+    get_dashboard, get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history,
+    get_identity, get_insight, get_layout, get_media, get_nav, get_nav_hidden, get_nav_pref,
+    get_outbox_status, get_panel, get_prefs, get_report, get_rule, get_webhook, grant_skill,
+    identity_workspaces_route, import_dashboard, inject_flow, insight_events, latest_sample,
+    lifecycle_flow, link_doc, list_apikeys, list_brands, list_channels, list_dashboards,
+    list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes, list_flow_runs,
+    list_flows, list_grants, list_identities, list_inbox, list_insights, list_members, list_navs,
     list_occurrences, list_panels, list_reports, list_roles, list_rules, list_series,
     list_shares_nav, list_tables, list_team_members, list_teams, list_users, list_webhooks,
     list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call, panel_usage,
@@ -328,6 +328,11 @@ pub fn router(gw: Gateway) -> Router {
             get(get_dashboard).delete(delete_dashboard),
         )
         .route("/dashboards/{id}/share", post(share_dashboard))
+        // viz import-export scope (Phase 4): the Grafana-JSON edge. `POST /dashboards/import` is the
+        // two-phase import (preview without mappings, commit with them); `GET /dashboards/{id}/export`
+        // serializes a readable dashboard to Grafana JSON. Both re-check their caps server-side.
+        .route("/dashboards/import", post(import_dashboard))
+        .route("/dashboards/{id}/export", get(export_dashboard))
         // widget-platform scope (Slice B): mint a cell from an `x-lb-render` envelope and upsert it into
         // the dashboard. Generic over the tool id (rule 10). Gated `dashboard.pin`; owner-only update.
         .route("/dashboards/{id}/pin", post(pin_dashboards))
@@ -458,8 +463,7 @@ pub fn router(gw: Gateway) -> Router {
     // Unset ⇒ no fallback, unmatched paths 404 exactly as before (rule 10: generic, no ext knowledge).
     let router = match gw.static_root.as_ref() {
         Some(dir) => {
-            let serve = ServeDir::new(dir)
-                .fallback(ServeFile::new(dir.join("index.html")));
+            let serve = ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")));
             router.fallback_service(serve)
         }
         None => router,

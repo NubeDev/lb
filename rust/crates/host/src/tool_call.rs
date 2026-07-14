@@ -423,6 +423,12 @@ async fn dispatch_at_depth(
             // `dashboard.` branch. Workspace-first; folds only the caller's installed `[[widget]]` tiles.
             let cat = crate::dashboard_catalog(node, principal, ws).await?;
             serde_json::to_value(cat).unwrap_or(Value::Null)
+        } else if qualified_tool == "dashboard.import" || qualified_tool == "dashboard.export" {
+            // viz import-export scope (Phase 4): the Grafana-JSON edge. Import needs the full `&Node`
+            // (it resolves each datasource remap against `datasource.list` — the workspace-walled
+            // grant check), so like `dashboard.catalog` it is dispatched BEFORE the store-only
+            // `dashboard.` branch. Export is grouped with it (same bridge, `&Node`).
+            crate::call_dashboard_grafana_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("dashboard.") {
             crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("nav.") {

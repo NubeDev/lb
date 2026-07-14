@@ -414,6 +414,17 @@ const HOST_TOOLS: &[HostTool] = &[
         description:
             "read-only preflight: walk a dashboard's dependency closure and report, per dependency, whether a subject/team can render it (access-model scope)",
     },
+    HostTool {
+        tool: "dashboard.import",
+        group: "dashboard",
+        description:
+            "import a Grafana dashboard JSON (preview returns a datasource-remap report; commit with mappings upserts a dashboard the caller owns)",
+    },
+    HostTool {
+        tool: "dashboard.export",
+        group: "dashboard",
+        description: "export a dashboard the caller can read as Grafana JSON",
+    },
     // identity.* — the credential-management admin verb (login-hardening scope). The directory
     // verbs (create/get/list/workspaces) also have dedicated admin REST routes.
     HostTool {

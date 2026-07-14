@@ -154,14 +154,17 @@ pub use channel::{
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
 pub use dashboard::{
-    builtin_view_ids, call_dashboard_tool, catalog_descriptor, check_view_cells,
-    dashboard_access_check, dashboard_catalog, dashboard_delete, dashboard_get, dashboard_list,
-    dashboard_pin, dashboard_save, dashboard_save_meta, dashboard_share, mint_cell_from_envelope,
-    pin_descriptor, seed_iot_demo, AccessReport, Action, Cell, Dashboard, DashboardError,
-    DashboardSummary, DepKind, DepVerdict, ExtWidget as DashboardExtWidget, SeedReport,
-    Source as CellSource, Target as CellTarget, Toolbar as DashboardToolbar,
-    Variable as DashboardVariable, Visibility as DashboardVisibility, WidgetCatalog,
-    MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES, MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
+    builtin_view_ids, call_dashboard_grafana_tool, call_dashboard_tool, catalog_descriptor,
+    check_view_cells, dashboard_access_check, dashboard_catalog, dashboard_delete,
+    dashboard_export, dashboard_get, dashboard_import, dashboard_list, dashboard_pin,
+    dashboard_save, dashboard_save_meta, dashboard_share, export_descriptor, import_descriptor,
+    mint_cell_from_envelope, pin_descriptor, seed_iot_demo, AccessReport, Action, Cell, Dashboard,
+    DashboardError, DashboardSummary, DatasourceRemap as GrafanaDatasourceRemap,
+    DegradedItem as GrafanaDegradedItem, DepKind, DepVerdict, ExtWidget as DashboardExtWidget,
+    ImportReport as GrafanaImportReport, SeedReport, Source as CellSource, Target as CellTarget,
+    Toolbar as DashboardToolbar, Variable as DashboardVariable, Visibility as DashboardVisibility,
+    WidgetCatalog, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
+    MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,

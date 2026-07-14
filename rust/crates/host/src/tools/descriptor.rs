@@ -62,6 +62,10 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         crate::dashboard::save_descriptor(),
         // The visibility write (dashboard scope) — schema'd so a model can form the call.
         crate::dashboard::share_descriptor(),
+        // Grafana JSON import/export (viz import-export scope, Phase 4) — schema'd so a model can form
+        // the two-phase import call. Gated by each verb's own cap in the catalog (no `if`).
+        crate::dashboard::import_descriptor(),
+        crate::dashboard::export_descriptor(),
         // The channel write (channel-widgets scope) — schema'd so a model can form the call; the
         // name-only row left the live agent guessing arg names ("missing arg: cid" × a whole run).
         crate::channel::post_descriptor(),

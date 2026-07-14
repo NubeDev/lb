@@ -87,14 +87,20 @@ pub async fn install_native_from_registry<S: Source, L: lb_supervisor::Launcher>
 fn write_executable(dir: &str, name: &str, bytes: &[u8]) -> Result<(), RegistryServiceError> {
     std::fs::create_dir_all(dir).map_err(io_err)?;
     let path = std::path::Path::new(dir).join(name);
-    let mut f = std::fs::File::create(&path).map_err(io_err)?;
+    // Temp-write + rename: a re-install over a RUNNING sidecar cannot open the mapped binary for
+    // write (`ETXTBSY`), but a rename swaps the directory entry atomically without touching the
+    // executing inode (the old child keeps its unlinked image until it is stopped).
+    let tmp = std::path::Path::new(dir).join(format!(".{name}.tmp"));
+    let mut f = std::fs::File::create(&tmp).map_err(io_err)?;
     f.write_all(bytes).map_err(io_err)?;
     f.flush().map_err(io_err)?;
+    drop(f);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).map_err(io_err)?;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).map_err(io_err)?;
     }
+    std::fs::rename(&tmp, &path).map_err(io_err)?;
     Ok(())
 }
 

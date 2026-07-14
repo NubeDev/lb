@@ -124,14 +124,21 @@ fn sanitize_component(raw: &str) -> String {
 fn write_executable(dir: &PathBuf, name: &str, bytes: &[u8]) -> Result<(), ExtError> {
     std::fs::create_dir_all(dir).map_err(io_err)?;
     let path = dir.join(name);
-    let mut f = std::fs::File::create(&path).map_err(io_err)?;
+    // Write to a temp sibling then RENAME into place: a re-publish over a RUNNING sidecar cannot
+    // open the mapped binary for write (`ETXTBSY` — "Text file busy"), but a rename replaces the
+    // directory entry without touching the executing inode, so the swap is atomic and the old
+    // child keeps running its (unlinked) image until `install_native` stops it.
+    let tmp = dir.join(format!(".{name}.tmp"));
+    let mut f = std::fs::File::create(&tmp).map_err(io_err)?;
     f.write_all(bytes).map_err(io_err)?;
     f.flush().map_err(io_err)?;
+    drop(f);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).map_err(io_err)?;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).map_err(io_err)?;
     }
+    std::fs::rename(&tmp, &path).map_err(io_err)?;
     Ok(())
 }
 

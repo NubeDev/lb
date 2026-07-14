@@ -195,6 +195,8 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:dashboard.list:call",
     // access-model scope: the read-only dependency-closure preflight for the viewer's OWN reach.
     "mcp:dashboard.access_check:call",
+    // viz import-export scope: export is a READ (viewer); import (a write) is an author cap below.
+    "mcp:dashboard.export:call",
     // LOAD-BEARING `.catalog`/`.pin` — a viewer sees the catalog + pins their own shortcut.
     "mcp:dashboard.catalog:call",
     "mcp:dashboard.pin:call",
@@ -331,6 +333,9 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:dashboard.save:call",
     "mcp:dashboard.delete:call",
     "mcp:dashboard.share:call",
+    // viz import-export scope: import is a WRITE (creates a dashboard) — an author cap; it also
+    // requires `mcp:dashboard.save:call` above (the two-gate write). export is a viewer read.
+    "mcp:dashboard.import:call",
     // panels — a member's own reusable/standalone panels (author + share).
     "mcp:panel.save:call",
     "mcp:panel.delete:call",

@@ -1,0 +1,14 @@
+{
+  "apiVersion": "dashboard.grafana.app/v2beta1",
+  "kind": "Dashboard",
+  "spec": {
+    "title": "New Model",
+    "elements": {
+      "panel-1": { "kind": "Panel", "spec": { "id": 1, "title": "CPU" } }
+    },
+    "layout": {
+      "kind": "GridLayout",
+      "spec": { "items": [] }
+    }
+  }
+}

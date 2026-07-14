@@ -30,6 +30,7 @@ members = [
     "crates/federation",
     "crates/frame",
     "crates/flows",
+    "crates/grafana-map",
     "crates/host",
     "crates/inbox",
     "crates/ingest",
@@ -116,6 +117,7 @@ lb-tags = { path = "crates/tags" }
 lb-telemetry = { path = "crates/telemetry" }
 lb-undo = { path = "crates/undo" }
 lb-viz = { path = "crates/viz" }
+grafana-map = { path = "crates/grafana-map" }
 lb-host = { path = "crates/host" }
 # The extension SDK is now a standalone, authoritative repo (NubeDev/lb-ext-sdk); lb CONSUMES it by
 # git tag like any other downstream. The WIT world, the version gate, and the native child wire live

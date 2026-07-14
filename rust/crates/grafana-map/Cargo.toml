@@ -1,0 +1,14 @@
+[package]
+name = "grafana-map"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# The import pin (grafana-parity-backend-scope P3): detect v1/v2, resolve `__inputs`, apply the ported
+# v33 migration subset. Dep-light BY DESIGN — no host/store/bus crate — so the standalone converter
+# workspace consumes it as a plain git dep instead of vendoring, and the `dashboard.import` verb calls
+# the same code. Grafana JSON stays interchange (serde_json Values throughout); never storage.
+serde_json.workspace = true
+thiserror.workspace = true

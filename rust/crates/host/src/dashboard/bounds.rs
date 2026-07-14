@@ -20,13 +20,35 @@ pub const MAX_OVERRIDES: usize = 64;
 pub const MAX_MAPPINGS: usize = 64;
 /// Max threshold steps on one field option set.
 pub const MAX_THRESHOLD_STEPS: usize = 64;
+/// Max serialized size of a cell's `_grafana` import/export passthrough blob (viz import-export
+/// scope: "bounded `_grafana` passthrough … ≤8 KB/cell" — an oversized blob is rejected, not stored
+/// unbounded, so a hostile/huge import cannot bloat the dashboard row).
+pub const MAX_GRAFANA_PASSTHROUGH: usize = 8 * 1024;
 
 /// Reject a cell whose v3 record would exceed the panel-model caps. Bounded growth keeps the
 /// dashboard record small for roster/list reads. Delegates to [`check_spec_bounds`] — the same
 /// non-layout-spec check a library panel reuses (library-panels scope: "same record-growth bounds").
 pub fn check_cell_bounds(cell: &Cell) -> Result<(), DashboardError> {
     check_spec_bounds(&cell.transformations, &cell.field_config, &cell.i)
-        .map_err(DashboardError::BadInput)
+        .map_err(DashboardError::BadInput)?;
+    check_passthrough_bounds(&cell.grafana_passthrough, &cell.i).map_err(DashboardError::BadInput)
+}
+
+/// Reject a cell whose `_grafana` passthrough blob exceeds [`MAX_GRAFANA_PASSTHROUGH`]. Empty/null
+/// (the non-imported case) costs nothing. Measured on the serialized bytes — the same thing stored.
+pub fn check_passthrough_bounds(passthrough: &Value, label: &str) -> Result<(), String> {
+    if passthrough.is_null() {
+        return Ok(());
+    }
+    let n = serde_json::to_string(passthrough)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    if n > MAX_GRAFANA_PASSTHROUGH {
+        return Err(format!(
+            "{label}: _grafana passthrough {n} bytes exceeds cap {MAX_GRAFANA_PASSTHROUGH}"
+        ));
+    }
+    Ok(())
 }
 
 /// Bound the non-layout spec pieces (`transformations[]` + `fieldConfig`) — the check shared by a
@@ -119,5 +141,34 @@ fn json_wrap_property(p: &Value, v: &Value) -> Value {
         "mappings" => serde_json::json!({ "mappings": v }),
         "thresholds" => serde_json::json!({ "thresholds": v }),
         _ => Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn empty_passthrough_costs_nothing() {
+        assert!(check_passthrough_bounds(&Value::Null, "c1").is_ok());
+        assert!(check_passthrough_bounds(&json!({"a": 1}), "c1").is_ok());
+    }
+
+    #[test]
+    fn oversized_passthrough_rejected() {
+        // A blob well past the 8 KB cap (viz import-export scope: rejected, not stored unbounded).
+        let big = json!({ "junk": "x".repeat(MAX_GRAFANA_PASSTHROUGH + 100) });
+        let err = check_passthrough_bounds(&big, "c1").unwrap_err();
+        assert!(err.contains("exceeds cap"));
+        assert!(err.contains("c1"));
+    }
+
+    #[test]
+    fn cell_bounds_include_passthrough() {
+        let mut cell = Cell::default();
+        cell.i = "c9".into();
+        cell.grafana_passthrough = json!({ "junk": "y".repeat(MAX_GRAFANA_PASSTHROUGH + 1) });
+        assert!(check_cell_bounds(&cell).is_err());
     }
 }

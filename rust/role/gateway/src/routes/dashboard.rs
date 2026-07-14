@@ -194,6 +194,60 @@ pub async fn share_dashboard(
     Ok(Json(serde_json::to_value(d).unwrap_or(Value::Null)))
 }
 
+/// `POST /dashboards/import` body — a Grafana dashboard JSON + (on commit) datasource mappings + the
+/// target id. Omit `mappings` for a PREVIEW (report only, no write). The workspace comes from the
+/// token, never the JSON (viz import-export scope, tenancy).
+#[derive(Debug, Deserialize)]
+pub struct ImportDashboard {
+    pub json: Value,
+    #[serde(default)]
+    pub mappings: Vec<lb_host::GrafanaDatasourceRemap>,
+    #[serde(default)]
+    pub id: String,
+}
+
+/// `POST /dashboards/import` — import a Grafana dashboard JSON (viz import-export scope, Phase 4).
+/// Two-phase: no `mappings` → a preview `{report}` (no write); `mappings` → commit (gated
+/// `dashboard.import` ∩ `dashboard.save` ∩ each mapped datasource's reach). Needs the full `&node`
+/// (datasource remap resolves against the workspace-walled `datasource.list`).
+pub async fn import_dashboard(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Json(body): Json<ImportDashboard>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let outcome = lb_host::dashboard_import(
+        &gw.node,
+        &p,
+        p.ws(),
+        body.json,
+        body.mappings,
+        &body.id,
+        gw.now(),
+    )
+    .await
+    .map_err(status)?;
+    Ok(Json(serde_json::to_value(outcome).unwrap_or(Value::Null)))
+}
+
+/// `GET /dashboards/{id}/export` — export a readable dashboard as Grafana JSON. Gated
+/// `dashboard.export` (a read) + the three-gate `dashboard.get`.
+pub async fn export_dashboard(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let json = lb_host::dashboard_export(&gw.node, &p, p.ws(), &id)
+        .await
+        .map_err(status)?;
+    Ok(Json(json))
+}
+
 fn parse_visibility(s: &str) -> Option<DashboardVisibility> {
     match s {
         "private" => Some(DashboardVisibility::Private),

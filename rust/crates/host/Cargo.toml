@@ -28,6 +28,7 @@ lb-tags.workspace = true
 lb-telemetry.workspace = true
 lb-undo.workspace = true
 lb-viz.workspace = true
+grafana-map.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
 lb-prql.workspace = true

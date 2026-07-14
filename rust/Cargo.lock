@@ -4104,6 +4104,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
+name = "grafana-map"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "guillotiere"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5532,6 +5540,7 @@ dependencies = [
  "dashmap 6.2.1",
  "dirs 5.0.1",
  "ed25519-dalek",
+ "grafana-map",
  "hmac 0.12.1",
  "hostname",
  "iana-time-zone",
@@ -5820,6 +5829,7 @@ dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
  "futures",
+ "grafana-map",
  "hmac 0.12.1",
  "http-body-util",
  "lb-apikey",
