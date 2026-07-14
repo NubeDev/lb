@@ -2,11 +2,16 @@
 //! ROOTED at the authenticated principal — `{principal}` when the caller declares no sub-namespace,
 //! `{principal}/{declared}` when it does — so the root is un-spoofable while one principal can still
 //! run many independent `seq` spaces (a caller can only ever carve up its own namespace). The
-//! durable exactly-once round-trip is proven end to end through `call_ingest_tool`. The `ingest.write` MCP verb drains staging →
-//! `series` synchronously (there is no background drain worker; the gateway's `POST /ingest` route
-//! drains for the same reason), so a write is visible to the very next read over the same bridge — the
-//! round-trip the proof-panel page proves. A subsequent explicit `drain_workspace` is then a no-op
-//! (exactly-once per `(series, producer, seq)`), which this test asserts.
+//! durable exactly-once round-trip is proven end to end through `call_ingest_tool`. The
+//! `ingest.write` MCP verb drains staging → `series` synchronously (the gateway's `POST /ingest`
+//! route drains for the same reason), so a write is visible to the very next read over the same
+//! bridge — the round-trip the proof-panel page proves. A subsequent explicit `drain_workspace` is
+//! then a no-op (exactly-once per `(series, producer, seq)`), which this test asserts.
+//!
+//! That synchronous drain is now **bounded to the caller's own batch** and a background reactor
+//! (`spawn_ingest_reactors`) owns the backlog — so the round-trip below holds without a caller ever
+//! being billed for another producer's staged rows (drain-backpressure scope). The samples here fit
+//! one batch, so the write commits them inline exactly as before.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{call_ingest_tool, drain_workspace};

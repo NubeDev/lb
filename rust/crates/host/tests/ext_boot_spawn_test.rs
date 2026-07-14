@@ -15,13 +15,23 @@
 //!     as a process restart kills every child) → re-boot on the same store → `spawn_enabled` brings
 //!     the child back, and it ANSWERS a tool call. This is the test that fails without the fix.
 //!   - DURABLE INTENT: a `disable`d native install stays down across the restart.
-//!   - VISIBILITY: an enabled install whose cached artifact is gone reports `no-cached-artifact`
-//!     rather than vanishing silently — the invisibility was half the bug.
+//!   - VISIBILITY: an enabled install that cannot be brought up reports a REASON rather than
+//!     vanishing silently — the invisibility was half the bug — and the two empty-lookup faults
+//!     (`no-catalog-entry` vs `no-cached-bytes`) are reported apart, since they have different fixes.
 //!   - IDEMPOTENCE: a second `spawn_enabled` on a live node does not double-spawn.
+//!
+//! It also covers [`ext_start`](lb_host::ext_start), the on-demand peer that shares boot's path: an
+//! enabled-but-stopped extension starts and answers with NO node restart and NO republish (the
+//! recovery that did not exist), a disabled one is refused rather than resurrected, a start without
+//! `mcp:ext.start:call` is denied and spawns nothing (the mandatory capability-deny), and a second
+//! start is a no-op.
 
 use ed25519_dalek::{Signer, SigningKey as PublisherSigningKey};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_sidecar, ext_disable, ext_publish, spawn_enabled, Node, SpawnedExt};
+use lb_host::{
+    boot_workspaces, call_sidecar, ext_disable, ext_enable, ext_publish, ext_start, spawn_enabled,
+    workspace_create, workspace_delete, ExtError, Node, SpawnedExt,
+};
 use lb_registry::{digest, digest_hex, Artifact, PublisherKey, TrustedKeys, Visibility};
 use lb_store::Store;
 use lb_supervisor::OsLauncher;
@@ -101,20 +111,43 @@ static INSTALL_ROOT: std::sync::LazyLock<std::path::PathBuf> = std::sync::LazyLo
     dir
 });
 
-/// A per-test scratch dir for the STORE. Keyed by test tag + pid, so each test's on-disk store is
-/// its own — and its cleanup can never touch another test's files.
+/// Cap how many of these tests run at once.
+///
+/// Each one boots a real on-disk SurrealDB node (some boot two, across a simulated restart) AND
+/// spawns real OS children. libtest defaults to one thread per core — on a 28-core box that is 7
+/// tests × (node + children) starting simultaneously, and the binary dies under the contention
+/// (SIGTERM, before any test even reports). Nothing about the code under test is wrong: the same 7
+/// pass at `--test-threads=4`, and each half passes alone at full parallelism.
+///
+/// So the file caps ITSELF rather than relying on a flag someone has to remember (and that a
+/// `cargo test --workspace` sweep would not pass anyway). A semaphore, not a mutex: the point is to
+/// bound the peak, not to serialize — three at a time still overlaps, it just never stampedes. Held
+/// for the whole test via the [`Scratch`] guard, so it cannot be forgotten at an early return.
+///
+/// This is a plain `static`, so the permits are shared across libtest's threads even though each
+/// `#[tokio::test]` builds its OWN runtime — `acquire()` parks that test's runtime until a slot
+/// frees. (Sanity check that it is doing something: the file runs ~28s bounded vs ~13s unbounded.)
+///
+/// (The neighbouring `worker_threads = 1` convention makes this sharper: a starved single-worker
+/// runtime cannot progress at all, which is the same class as the known `rules_test` load hang.)
+static SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(3);
+
+/// A per-test scratch dir for the STORE + the concurrency slot. Keyed by test tag + pid, so each
+/// test's on-disk store is its own — and its cleanup can never touch another test's files.
 struct Scratch {
     dir: std::path::PathBuf,
+    _slot: tokio::sync::SemaphorePermit<'static>,
 }
 
 impl Scratch {
-    fn new(tag: &str) -> Scratch {
+    async fn new(tag: &str) -> Scratch {
+        let _slot = SLOTS.acquire().await.expect("semaphore is never closed");
         // Force the one-time LB_DIR init before any test body can reach `native_install_dir`.
         std::sync::LazyLock::force(&INSTALL_ROOT);
         let dir = std::env::temp_dir().join(format!("lb-boot-store-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("scratch dir");
-        Scratch { dir }
+        Scratch { dir, _slot }
     }
     fn store(&self) -> String {
         self.dir.join("store").to_string_lossy().to_string()
@@ -139,7 +172,7 @@ fn row<'a>(rows: &'a [SpawnedExt], ext: &str) -> &'a SpawnedExt {
 /// `start`, and nothing acts on it — `running=false health=stopped`, forever, exactly as reported.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_published_native_extension_respawns_on_boot_and_answers() {
-    let scratch = Scratch::new("survives");
+    let scratch = Scratch::new("survives").await;
     let ws = "boot-native";
     let (kid, sk, trusted) = publisher(31);
     let art = sign(&sidecar_bytes(), &kid, &sk);
@@ -208,7 +241,7 @@ async fn a_published_native_extension_respawns_on_boot_and_answers() {
 /// that the executing half honors it too, which is what the disable promise actually rests on.)
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_disabled_native_install_stays_down_across_a_restart() {
-    let scratch = Scratch::new("disabled");
+    let scratch = Scratch::new("disabled").await;
     let ws = "boot-native-off";
     let (kid, sk, trusted) = publisher(32);
     let art = sign(&sidecar_bytes(), &kid, &sk);
@@ -245,7 +278,7 @@ async fn a_disabled_native_install_stays_down_across_a_restart() {
 /// Here the durable intent survives but the cached artifact does not (an evicted/pruned cache).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_enabled_install_with_no_cached_artifact_is_reported_not_silent() {
-    let scratch = Scratch::new("nocache");
+    let scratch = Scratch::new("nocache").await;
     let ws = "boot-native-nocache";
     let (kid, sk, trusted) = publisher(33);
     let art = sign(&sidecar_bytes(), &kid, &sk);
@@ -271,8 +304,211 @@ async fn an_enabled_install_with_no_cached_artifact_is_reported_not_silent() {
         .expect("boot bring-up does not fail the boot over one extension");
     let echo = row(&spawned, "echo-sidecar");
     assert!(
-        !echo.spawned && echo.reason == "no-cached-artifact",
+        !echo.spawned && echo.reason == "no-cached-bytes",
         "an enabled install that cannot respawn must be reported with a reason, got {echo:?}"
+    );
+}
+
+/// The reason must name the ACTUAL fault. A missing catalog entry (the install record and the
+/// catalog disagreeing about `(ext, version)`) and evicted cache bytes are different faults with
+/// different fixes; reporting both as one reason sends an operator to the wrong one — which is the
+/// same wasted afternoon this whole area is about.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_missing_catalog_entry_is_reported_distinctly_from_evicted_bytes() {
+    let scratch = Scratch::new("nocatalog").await;
+    let ws = "boot-native-nocatalog";
+    let (kid, sk, trusted) = publisher(35);
+    let art = sign(&sidecar_bytes(), &kid, &sk);
+
+    let node1 = boot_on_path(&scratch.store()).await;
+    let caller = principal(ws, PUBLISH);
+    ext_publish(&node1, &caller, ws, art, &trusted, Visibility::Private, 1)
+        .await
+        .expect("publish");
+    // Drop the CATALOG row, keeping the cached bytes and the (enabled) install record: the shape a
+    // pre-coherence-gate store can carry, where `resolve` finds nothing even though bytes exist.
+    node1
+        .store
+        .query_ws(ws, "DELETE registry_catalog", vec![])
+        .await
+        .expect("drop the catalog entry");
+    drop(node1);
+
+    let node2 = boot_on_path(&scratch.store()).await;
+    let spawned = spawn_enabled(&node2, &OsLauncher, ws, 3)
+        .await
+        .expect("boot bring-up runs");
+    let echo = row(&spawned, "echo-sidecar");
+    assert!(
+        !echo.spawned && echo.reason.starts_with("no-catalog-entry"),
+        "a missing catalog entry must NOT be reported as an evicted cache, got {echo:?}"
+    );
+    assert!(
+        echo.reason.contains("echo-sidecar@0.1.0"),
+        "the reason names what was looked for, so the mismatch is diagnosable, got {echo:?}"
+    );
+}
+
+/// **`ext.start` starts a stopped extension without bouncing the node** — the recovery that did not
+/// exist. Before it, `enable` spawned nothing, `restart`/`reset` both needed a live handle, and
+/// republishing the artifact was the only way back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn ext_start_brings_back_a_stopped_extension_and_it_answers() {
+    let scratch = Scratch::new("start").await;
+    let ws = "ext-start";
+    let (kid, sk, trusted) = publisher(36);
+    let art = sign(&sidecar_bytes(), &kid, &sk);
+
+    let node = boot_on_path(&scratch.store()).await;
+    let admin = principal(
+        ws,
+        &[PUBLISH, &["mcp:ext.disable:call", "mcp:ext.start:call"]].concat(),
+    );
+    ext_publish(&node, &admin, ws, art, &trusted, Visibility::Private, 1)
+        .await
+        .expect("publish spawns the child");
+
+    // Stop it the way an operator would: disable (durable intent + stops the live child)...
+    ext_disable(&node, &admin, ws, "echo-sidecar", 2)
+        .await
+        .expect("disable stops the child");
+    assert!(!node.sidecars.is_running(ws, "echo-sidecar"));
+
+    // ...a start must REFUSE while the intent says do-not-run, rather than override it.
+    let refused = ext_start(&node, &OsLauncher, &admin, ws, "echo-sidecar", 3)
+        .await
+        .expect("a disabled start is a row, not an error");
+    assert!(
+        !refused.spawned && refused.reason == "disabled",
+        "start must not resurrect a disabled extension, got {refused:?}"
+    );
+    assert!(!node.sidecars.is_running(ws, "echo-sidecar"));
+
+    // Re-enable (intent only — enable spawns nothing), then START it. No republish, no restart.
+    ext_enable(&node, &admin, ws, "echo-sidecar", 4)
+        .await
+        .expect("enable flips the intent");
+    assert!(
+        !node.sidecars.is_running(ws, "echo-sidecar"),
+        "enable is INTENT — it must not spawn; that is what start is for"
+    );
+
+    let started = ext_start(&node, &OsLauncher, &admin, ws, "echo-sidecar", 5)
+        .await
+        .expect("start runs");
+    assert!(
+        started.spawned && started.reason == "spawned",
+        "an enabled, stopped extension starts on demand, got {started:?}"
+    );
+    assert!(node.sidecars.is_running(ws, "echo-sidecar"));
+
+    // The real bar: it answers, with no node restart and no republish anywhere in this test.
+    let p = principal(ws, &["mcp:echo-sidecar.echo:call", "mcp:native.call:call"]);
+    let out = call_sidecar(
+        &node,
+        &OsLauncher,
+        &p,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""started""#,
+        5,
+    )
+    .await
+    .expect("the started sidecar answers");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["echo"], "started");
+
+    // Idempotent: starting a running extension is a no-op row, not a second child.
+    let again = ext_start(&node, &OsLauncher, &admin, ws, "echo-sidecar", 6)
+        .await
+        .expect("second start runs");
+    assert!(
+        !again.spawned && again.reason == "already-running",
+        "start is idempotent, got {again:?}"
+    );
+}
+
+/// MANDATORY capability-deny (testing scope): `ext.start` without the grant is refused — opaquely,
+/// and nothing is spawned. Spawning a process is exactly the authority a gate exists to hold.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn ext_start_is_denied_without_the_grant_and_nothing_spawns() {
+    let scratch = Scratch::new("startdeny").await;
+    let ws = "ext-start-deny";
+    let (kid, sk, trusted) = publisher(37);
+    let art = sign(&sidecar_bytes(), &kid, &sk);
+
+    let node = boot_on_path(&scratch.store()).await;
+    let admin = principal(ws, &[PUBLISH, &["mcp:ext.disable:call"]].concat());
+    ext_publish(&node, &admin, ws, art, &trusted, Visibility::Private, 1)
+        .await
+        .expect("publish");
+    ext_disable(&node, &admin, ws, "echo-sidecar", 2)
+        .await
+        .expect("stop it, so a successful start would be observable");
+
+    // Everything EXCEPT mcp:ext.start:call — the one grant this verb needs.
+    let nobody = principal(ws, &["mcp:ext.list:call", "mcp:native.install:call"]);
+    let err = ext_start(&node, &OsLauncher, &nobody, ws, "echo-sidecar", 3)
+        .await
+        .expect_err("start without the grant is denied");
+    assert!(
+        matches!(err, ExtError::Denied),
+        "opaque denial, got {err:?}"
+    );
+    assert!(
+        !node.sidecars.is_running(ws, "echo-sidecar"),
+        "a denied start spawns no process"
+    );
+}
+
+/// **The workspace set boot brings up**: `cfg.workspace` ∪ every ACTIVE registered workspace.
+///
+/// A node can serve many workspaces (`workspace.create` is a verb, the UI has a switcher), but boot
+/// brought up only the configured one — so every other workspace's extensions stayed dead after a
+/// restart, silently. The union is load-bearing in both directions, and this pins both:
+///   - the boot workspace is ALWAYS in the set, even though nothing ever registered it (the default
+///     `acme`, every test, an embedder that provisions its own identities) — keying off the directory
+///     alone would bring up NOTHING on those nodes;
+///   - an ARCHIVED workspace is excluded — it is soft-deleted, and spawning its sidecars would
+///     resurrect exactly the activity the archive suppressed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn boot_covers_every_active_workspace_not_just_the_configured_one() {
+    let scratch = Scratch::new("multiws").await;
+    let node = boot_on_path(&scratch.store()).await;
+
+    // Two registered workspaces — one left active, one archived — plus a boot ws nobody registered.
+    let admin = principal(
+        "tenant-a",
+        &["mcp:workspace.create:call", "mcp:workspace.delete:call"],
+    );
+    workspace_create(&node.store, &admin, "tenant-a", "Tenant A", 1)
+        .await
+        .expect("register tenant-a");
+    workspace_create(&node.store, &admin, "tenant-b", "Tenant B", 2)
+        .await
+        .expect("register tenant-b");
+    workspace_delete(&node.store, &admin, "tenant-b")
+        .await
+        .expect("archive tenant-b (soft delete)");
+
+    let wss = boot_workspaces(&node.store, "boot-only-ws")
+        .await
+        .expect("the workspace set resolves");
+
+    assert!(
+        wss.contains(&"boot-only-ws".to_string()),
+        "the CONFIGURED workspace is always brought up, registered or not — otherwise a default \
+         node brings up nothing at all, got {wss:?}"
+    );
+    assert!(
+        wss.contains(&"tenant-a".to_string()),
+        "an active registered workspace is brought up, got {wss:?}"
+    );
+    assert!(
+        !wss.contains(&"tenant-b".to_string()),
+        "an ARCHIVED workspace must NOT have its extensions spawned — the archive suppressed exactly \
+         that activity, got {wss:?}"
     );
 }
 
@@ -281,7 +517,7 @@ async fn an_enabled_install_with_no_cached_artifact_is_reported_not_silent() {
 /// bug in the fix for this one.)
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_second_bring_up_does_not_double_spawn() {
-    let scratch = Scratch::new("idempotent");
+    let scratch = Scratch::new("idempotent").await;
     let ws = "boot-native-twice";
     let (kid, sk, trusted) = publisher(34);
     let art = sign(&sidecar_bytes(), &kid, &sk);

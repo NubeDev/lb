@@ -14,7 +14,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use lb_host::{IngestError, Sample};
+use lb_host::{own_batches, IngestError, Sample};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -55,7 +55,12 @@ pub async fn write_samples(
         .map_err(ingest_status)?;
     // Commit staging so the just-written sample is visible to the next read (the UI refresh). The
     // gateway node carries the ingest path; the drain is exactly-once.
-    let pass = lb_host::drain_workspace(&gw.node.store, p.ws())
+    //
+    // BOUNDED to this request's own work (drain-backpressure scope): an unbounded drain here billed
+    // the POSTing producer for the whole workspace's staged backlog — O(backlog) on a request, which
+    // measured 18.5s for a single sample behind a 4,671-row backlog. The ingest reactor owns the
+    // remainder. `committed` therefore reports what THIS request committed, not the workspace total.
+    let pass = lb_host::drain_workspace_bounded(&gw.node.store, p.ws(), own_batches(accepted))
         .await
         .map_err(ingest_status)?;
     // Publish each committed sample onto its series motion subject so a live dashboard widget sees

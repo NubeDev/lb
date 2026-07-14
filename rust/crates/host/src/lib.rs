@@ -176,9 +176,9 @@ pub use devkit::{
     DevkitRoot,
 };
 pub use ext::{
-    call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
-    reconcile, spawn_enabled, ExtError, ExtRow, LoadedExt, ReconcileAction, ReconcilePlan,
-    SpawnedExt,
+    boot_workspaces, call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_start,
+    ext_uninstall, load_enabled, reconcile, spawn_enabled, ExtError, ExtRow, LoadedExt,
+    ReconcileAction, ReconcilePlan, SpawnedExt,
 };
 pub use federation::{
     call_federation_tool, datasource_add, datasource_list, datasource_remove, datasource_test,
@@ -227,10 +227,10 @@ pub use identity::{
 };
 pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
-    authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample,
-    series_delete, series_find, series_latest_value, series_list, series_read_range, series_rename,
-    subscribe_series, DrainPass, IngestError, Qos, Sample, SeriesSub, COMMIT_BATCH,
-    DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
+    authorize_ingest, call_ingest_tool, drain_workspace, drain_workspace_bounded, ingest_write,
+    own_batches, publish_sample, series_delete, series_find, series_latest_value, series_list,
+    series_read_range, series_rename, spawn_ingest_reactors, subscribe_series, DrainPass,
+    IngestError, Qos, Sample, SeriesSub, COMMIT_BATCH, DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
 };
 /// The **insights** service — the capability-gated surface over `lb_insights` (insights umbrella
 /// scope + occurrences/subscriptions/notify sub-scopes). The MCP bridge `call_insight_tool` is

@@ -75,6 +75,18 @@ pub struct Node {
     /// Behind a `Mutex<Arc>` (like `runtimes`) so a gateway/test can install a shared key after boot
     /// via [`install_key`](Node::install_key) — the key never leaves the node (scope: "Secrets").
     key: Mutex<Arc<SigningKey>>,
+    /// Where a native sidecar POSTs its host callbacks (`{url}/mcp/call`) — this node's own gateway
+    /// address, installed once at boot by the layer that knows it ([`install_gateway_url`]). `None`
+    /// on a headless node (no gateway to call back to), and the child is spawned without a callback
+    /// address exactly as before.
+    ///
+    /// It lives on the `Node` for the same reason the signing `key` does: it is one fact about THIS
+    /// node that the spawn path needs long after the boot layer that knew it has returned, and both
+    /// the gateway and the native token minter must agree on it. Reading it from a process-global
+    /// `LB_GATEWAY_URL` instead made the child's callback address depend on whether some *other*
+    /// component happened to have set that var before the spawn ran — which broke the moment a second
+    /// spawn path (boot bring-up) ran earlier than the one that set it.
+    gateway_url: Mutex<Option<String>>,
     pub role: Role,
 }
 
@@ -102,6 +114,7 @@ impl Node {
             workspace_models: DashMap::new(),
             model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
+            gateway_url: Mutex::new(None),
             role: Role::Solo,
         })
     }
@@ -125,6 +138,7 @@ impl Node {
             workspace_models: DashMap::new(),
             model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
+            gateway_url: Mutex::new(None),
             role,
         })
     }
@@ -147,6 +161,7 @@ impl Node {
             workspace_models: DashMap::new(),
             model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
+            gateway_url: Mutex::new(None),
             role,
         })
     }
@@ -213,6 +228,24 @@ impl Node {
     /// with a known key so a minted child token verifies. The key never leaves the node.
     pub fn install_key(&self, key: SigningKey) {
         *self.key.lock().expect("node key lock") = Arc::new(key);
+    }
+
+    /// Install this node's own gateway URL — where a native sidecar POSTs its host callbacks. Called
+    /// ONCE at boot by the layer that knows the address, beside [`install_key`](Node::install_key)
+    /// (same lifecycle, same reason: one fact the spawn path needs after that layer has returned).
+    ///
+    /// Leave it unset on a headless node: children then spawn with no callback address, and their
+    /// callback client fails cleanly — the pre-existing behaviour for a sidecar that never calls back.
+    pub fn install_gateway_url(&self, url: impl Into<String>) {
+        *self.gateway_url.lock().expect("node gateway url lock") = Some(url.into());
+    }
+
+    /// This node's gateway URL for child callbacks, if one was installed.
+    pub fn gateway_url(&self) -> Option<String> {
+        self.gateway_url
+            .lock()
+            .expect("node gateway url lock")
+            .clone()
     }
 
     /// Select the store engine by **config, not role** (symmetric nodes, §3.1): `LB_STORE_PATH`

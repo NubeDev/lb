@@ -146,6 +146,81 @@ async fn publish_rejects_a_tampered_artifact_even_with_the_grant() {
     );
 }
 
+/// An artifact whose `version` metadata contradicts its own signed manifest is **incoherent** and
+/// must be refused — even though it is perfectly signed.
+///
+/// The digest commits to `(manifest_toml, wasm)` only, so `ext_id`/`version` ride unsigned and
+/// `verify_artifact` cannot see this. The catalog is keyed by the artifact's copy and the install
+/// record by the manifest's, so a mismatch published happily and then **silently stranded the
+/// extension at the next boot**: bring-up resolves the catalog by the install record's version,
+/// finds nothing, and reports a missing artifact — pointing at a cache that was never the problem.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn publish_rejects_an_artifact_whose_version_disagrees_with_its_manifest() {
+    let ws = "pub-incoherent-ver";
+    let node = Node::boot().await.unwrap();
+    let (kid, sk, trusted) = publisher(25);
+    let mut art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
+    // The manifest says 0.2.0. Claim something else in the (unsigned, un-digested) metadata — the
+    // signature stays VALID, which is exactly why only an explicit check catches this.
+    art.version = "9.9.9".into();
+
+    let caller = principal(ws, &[PUBLISH]); // fully granted; refused on coherence, not authority
+    let err = ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+        .await
+        .expect_err("an artifact that contradicts its manifest is refused");
+    assert!(
+        matches!(&err, ExtError::Manifest(m) if m.contains("disagrees with its manifest")),
+        "the error names the real fault, got {err:?}"
+    );
+    assert!(
+        installed(&node, ws, "hello").await.unwrap().is_none(),
+        "nothing is stored on an incoherent publish — verify-before-store covers this gate too"
+    );
+}
+
+/// The `ext_id` half of the same rule: a mismatched id would key the catalog under one name and the
+/// install record under another.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn publish_rejects_an_artifact_whose_ext_id_disagrees_with_its_manifest() {
+    let ws = "pub-incoherent-id";
+    let node = Node::boot().await.unwrap();
+    let (kid, sk, trusted) = publisher(26);
+    let mut art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
+    art.ext_id = "not-hello".into(); // the manifest declares `hello`; signature still valid
+
+    let caller = principal(ws, &[PUBLISH]);
+    let err = ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+        .await
+        .expect_err("an artifact whose ext_id contradicts its manifest is refused");
+    assert!(
+        matches!(&err, ExtError::Manifest(m) if m.contains("disagrees with its manifest")),
+        "the error names the real fault, got {err:?}"
+    );
+    assert!(
+        installed(&node, ws, "hello").await.unwrap().is_none(),
+        "nothing is stored on an incoherent publish"
+    );
+}
+
+/// The gate must not fire on the honest case — a coherent artifact still publishes and installs.
+/// (Without this, "reject everything" would pass the two tests above.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_coherent_artifact_still_publishes() {
+    let ws = "pub-coherent";
+    let node = Node::boot().await.unwrap();
+    let (kid, sk, trusted) = publisher(27);
+    let art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk); // ext_id/version match the manifest
+
+    let caller = principal(ws, &[PUBLISH]);
+    ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+        .await
+        .expect("a coherent artifact publishes");
+    assert!(
+        installed(&node, ws, "hello").await.unwrap().is_some(),
+        "the honest path is untouched by the coherence gate"
+    );
+}
+
 /// Boot a node on an explicit on-disk store `path` WITHOUT touching the global `LB_STORE_PATH`
 /// env (which would race the other tests in this shared binary). Same wiring as `Node::boot`, just a
 /// store handle we control — so we can open node1, drop it, and re-open the same bytes as node2: a

@@ -76,7 +76,12 @@ pub async fn federation_mirror<L: Launcher>(
         ingest_write(&node.store, caller, ws, vec![sample])
             .await
             .map_err(|_| FederationError::Denied)?;
-        crate::ingest::drain_workspace(&node.store, ws)
+        // Commit this row before its checkpoint below, so the cursor only ever advances over rows
+        // that really landed. BOUNDED to this row's own batch (drain-backpressure scope): the
+        // unbounded drain that used to sit here re-drained the ENTIRE workspace backlog once PER
+        // MIRRORED ROW — quadratic in the backlog, the single worst instance of the coupling. One
+        // row in, one batch out; the ingest reactor owns the rest.
+        crate::ingest::drain_workspace_bounded(&node.store, ws, crate::ingest::own_batches(1))
             .await
             .map_err(|e| FederationError::Sidecar(e.to_string()))?;
 

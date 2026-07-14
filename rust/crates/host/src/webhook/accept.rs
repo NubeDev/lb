@@ -73,7 +73,11 @@ pub async fn webhook_accept(
 
     // Drain staging → committed series so a same-bridge `series.latest`/`read` sees the hit. The
     // drain is exactly-once per `(series, producer, seq)`, so a write-then-read never double-commits.
-    crate::ingest::drain_workspace(store, ws).await?;
+    // BOUNDED to this hit's own batch (drain-backpressure scope): an unbounded drain billed the
+    // CALLING webhook for the whole workspace's staged backlog, so a hook firing into a busy
+    // workspace blocked for tens of seconds (and a sender that timed out left the backlog intact for
+    // the next hit). One sample in, one batch out; the ingest reactor owns the remainder.
+    crate::ingest::drain_workspace_bounded(store, ws, crate::ingest::own_batches(1)).await?;
 
     // Publish the motion event (best-effort: state vs motion, rule 3). A live subscriber (a
     // dashboard widget, or the `GET /series/{s}/stream` SSE, or a flow with a trigger on this

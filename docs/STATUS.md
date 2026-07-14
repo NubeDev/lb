@@ -23,7 +23,30 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Shipped 2026-07-14 — native extensions now survive a node restart (issue #64).** A published
+**Shipped 2026-07-15 — `ingest.write` no longer pays for the workspace backlog.** A producer pushing
+ONE sample to a backlogged workspace blocked for tens of seconds and never confirmed: measured live
+at `node-v0.4.5`, one sample against a 4,671-row backlog took **18,569ms**; the same call at backlog
+0 took 21ms. `ingest.write` called `drain_workspace`, which loops until staging is EMPTY — so the
+caller committed every *other* producer's rows. Self-sustaining (a timed-out client abandoned only
+the wait; the backlog stayed and the next push blocked again) and self-concealing (the first write
+heals the backlog, so a second probe reads ~20ms and looks fine). Root cause: **the commit worker the
+ingest scope has always named never had a driver** — `drain.rs` said so outright — so every caller
+became the worker; the outbox, the pattern ingest mirrors, has had `relay_reactor.rs` all along.
+Fixed by bounding each caller's drain to its own batch (`own_batches`, applied at all four call
+sites — the MCP verb, `POST /ingest`, webhook accept, and `federation/mirror.rs`, which was draining
+the whole backlog *per mirrored row*) and wiring the missing `spawn_ingest_reactors` into node boot.
+**Measured 900.7ms → 66.0ms** at the reported backlog on a real on-disk store. The blamed `ORDER BY`
+superlinearity was **measured and disproven** before implementing — no index added, staging stays
+index-free as designed. Revert-checked on both halves; 8/8 stable.
+[scope](scope/ingest/drain-backpressure-scope.md) ·
+[session](sessions/ingest/drain-backpressure-session.md) ·
+[debug](debugging/ingest/write-drains-whole-workspace-backlog.md).
+**Spun out:** [`scope/store/session-concurrency-scope.md`](scope/store/session-concurrency-scope.md) —
+the global session mutex serializes every query node-wide (reproduced: 18 concurrent writers, each
+its own workspace, = 7.0ms = 18 × 0.4ms, zero parallelism). Real and the next structural ceiling, but
+**not** this bug and deliberate (it holds the workspace wall). Tracking only — spike before coding.
+
+**Previously shipped 2026-07-14 — native extensions now survive a node restart (issue #64).** A published
 `tier="native"` extension never came back after a restart: `reconcile` planned the start, `load_enabled`
 skipped it ("the node Launcher's job"), and **no node implemented that path** — the plan's native
 actions were computed and dropped, silently. Fixed by mirroring the wasm half: `ext/boot_spawn.rs::spawn_enabled`

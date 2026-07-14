@@ -42,6 +42,28 @@ pub async fn enable_extension(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `POST /extensions/{ext}/start` — **start a stopped extension now**, without bouncing the node.
+///
+/// The recovery `enable` only implied: `enable` flips durable intent but spawns nothing, and
+/// `reset`/`restart` both need an existing sidecar handle — so before this route the only way to
+/// start a stopped extension was to re-upload its artifact. Gated server-side on `mcp:ext.start:call`
+/// inside `ext_start`. `200` with the outcome row (`spawned` + a `reason`, the same vocabulary the
+/// boot log uses) — a refusal to start a *disabled* extension is a row, not an error: the durable
+/// intent wins, and the caller is told which one it hit.
+pub async fn start_extension(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(ext): Path<String>,
+) -> Result<Json<lb_host::SpawnedExt>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let row = lb_host::ext_start(&gw.node, &lb_host::OsLauncher, &p, p.ws(), &ext, gw.now())
+        .await
+        .map_err(forbid)?;
+    Ok(Json(row))
+}
+
 /// `POST /extensions/{ext}/disable` — durable disable (stop now + do-not-auto-start).
 pub async fn disable_extension(
     State(gw): State<Gateway>,

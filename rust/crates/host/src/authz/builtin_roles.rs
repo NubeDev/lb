@@ -441,6 +441,9 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // extension lifecycle + native supervision + publish.
     "mcp:ext.list:call",
     "mcp:ext.disable:call",
+    // `ext.start` is the peer of `ext.disable`'s stop-half: start a stopped extension now, without
+    // bouncing the node. Same authority tier (an admin who may stop an extension may start it).
+    "mcp:ext.start:call",
     "mcp:ext.uninstall:call",
     "mcp:ext.publish:call",
     "mcp:native.reset:call",

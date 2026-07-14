@@ -11,9 +11,17 @@
 //! extension does not silently return after a restart.
 //!
 //! Verbs (one per file, FILE-LAYOUT §3): `ext.list` (`mcp:ext.list:call`), `ext.enable`/`ext.disable`
-//! (`mcp:ext.disable:call`), `ext.uninstall` (`mcp:ext.uninstall:call`), `ext.publish`
-//! (`mcp:ext.publish:call` — upload a signed artifact, verify-before-store), plus the un-gated boot
-//! `reconcile` the node calls on start. The MCP bridge ([`call_ext_tool`]) exposes the gated verbs.
+//! (`mcp:ext.disable:call`), `ext.start` (`mcp:ext.start:call`), `ext.uninstall`
+//! (`mcp:ext.uninstall:call`), `ext.publish` (`mcp:ext.publish:call` — upload a signed artifact,
+//! verify-before-store), plus the un-gated boot `reconcile` the node calls on start. The MCP bridge
+//! ([`call_ext_tool`]) exposes the gated verbs.
+//!
+//! **`enable` is intent; `start` is the act** — the same split `disable`/`stop` already has.
+//! `enable` marks an install runnable (and auto-startable at boot) without running it; `start` runs
+//! it now, and refuses a disabled one rather than override the intent. Before `ext.start` existed
+//! there was no way to start a stopped extension at all: `enable` spawned nothing, `native.restart`
+//! and `native.reset` both need an existing handle, and republishing the artifact was the only way
+//! back — see [`start`] for why that made a boot gap so expensive.
 //!
 //! **Boot bring-up is two verbs, one per tier**, both driven by the one `reconcile` plan and both
 //! called by the node on start: [`load_enabled`] loads enabled **wasm** components back into the
@@ -23,6 +31,7 @@
 
 mod boot_load;
 mod boot_spawn;
+mod boot_workspaces;
 mod enable;
 mod error;
 mod install_dir;
@@ -30,11 +39,13 @@ mod list;
 mod publish;
 mod reconcile;
 mod row;
+mod start;
 mod tool;
 mod uninstall;
 
 pub use boot_load::{load_enabled, LoadedExt};
 pub use boot_spawn::{spawn_enabled, SpawnedExt};
+pub use boot_workspaces::boot_workspaces;
 pub use enable::{ext_disable, ext_enable};
 pub use error::ExtError;
 pub(crate) use install_dir::{native_install_dir, write_executable};
@@ -42,5 +53,6 @@ pub use list::ext_list;
 pub use publish::ext_publish;
 pub use reconcile::{reconcile, ReconcileAction, ReconcilePlan};
 pub use row::ExtRow;
+pub use start::ext_start;
 pub use tool::call_ext_tool;
 pub use uninstall::ext_uninstall;

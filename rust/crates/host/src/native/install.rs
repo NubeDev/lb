@@ -92,7 +92,17 @@ pub async fn install_native<L: Launcher>(
     // scope). The URL is deployment config the boot layer sets; unset → no callback address injected
     // and the child's callback client fails cleanly (a sidecar that never calls back is unaffected).
     let key = node.key();
-    let gateway_url = std::env::var("LB_GATEWAY_URL").ok();
+    // Ask the NODE where its gateway is, not the process environment. The node knows its own address
+    // (the boot layer installs it beside the signing key); reading `LB_GATEWAY_URL` instead made the
+    // child's callback address depend on whether some *other* component had set that var before this
+    // spawn ran — which silently broke the moment a second spawn path (boot bring-up) ran earlier
+    // than the one that set it, leaving boot-respawned children with no callback address at all.
+    //
+    // The env var remains a fallback for an embedder that sets it and never calls
+    // `install_gateway_url`; the node's own value wins when both are present.
+    let gateway_url = node
+        .gateway_url()
+        .or_else(|| std::env::var("LB_GATEWAY_URL").ok());
     let spec = build_spec(
         native,
         install_dir,

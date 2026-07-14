@@ -41,8 +41,8 @@ use crate::routes::{
     save_panel, save_report, save_rule, scan_table, series_stream, serve_ext_ui,
     set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
     set_nav_hidden, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
-    share_report, surface_reach, system_acp, system_overview, system_subsystem, system_tools,
-    system_topology, telemetry_stream, test_active_def, test_datasource, test_def,
+    share_report, start_extension, surface_reach, system_acp, system_overview, system_subsystem,
+    system_tools, system_topology, telemetry_stream, test_active_def, test_datasource, test_def,
     uninstall_extension, unshare_nav, update_def, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
@@ -276,6 +276,7 @@ pub fn router(gw: Gateway) -> Router {
         .route("/extensions/{ext}/disable", post(disable_extension))
         // native-tier resilience: re-arm an exhausted restart budget + force a fresh child (the
         // Extensions console Reset button). Gated `mcp:native.reset:call` inside the host verb.
+        .route("/extensions/{ext}/start", post(start_extension))
         .route("/extensions/{ext}/reset", post(reset_extension))
         // shared assets (files/skills scope) — the browser's `assets.*` surface, finally reachable
         // over the gateway (was Tauri-only → `unknown command` in the browser). Each re-checks the

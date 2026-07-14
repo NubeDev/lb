@@ -281,6 +281,14 @@ Plus the load/robustness cases specific to this surface:
   un-fsync'd append interval of best-effort samples. Bounded and named, not hidden; a checkpointed
   in-memory ring is a *later* throughput optimization only if measurements demand it, never the
   correctness baseline.
+  *(**Shipped 2026-07-15**: [`drain-backpressure-scope.md`](drain-backpressure-scope.md) /
+  [session](../../sessions/ingest/drain-backpressure-session.md). The batching above amortizes the
+  commit correctly, but the **commit worker this scope names was never given a driver** — so every
+  caller became the worker, synchronously and unbounded: a one-sample `ingest.write` against a
+  4,671-row backlog took 18.5s vs 21ms at backlog 0. Fixed by bounding each caller's drain to its
+  own batch and finally spawning the worker (`spawn_ingest_reactors`, the outbox relay's twin) at
+  node boot. The suspected `ORDER BY` superlinearity was measured and **disproven** — staging stays
+  index-free as this scope intends.)*
 - **The IoT-creep governance risk.** The single biggest *architectural* risk is scope drift: the moment
   a `Device` table, an MQTT dependency, or a "sensor" type lands in a core crate, the platform stops
   being generic. Mitigation: a **review gate** — any core ingest PR is rejected if it names a device

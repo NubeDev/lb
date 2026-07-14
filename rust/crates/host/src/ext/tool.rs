@@ -1,7 +1,8 @@
 //! The MCP bridge for the unified ext lifecycle verbs — host-native tools under the one MCP contract
-//! (lifecycle-management scope). `ext.list` / `ext.enable` / `ext.disable` / `ext.uninstall`. These
-//! dispatch by the `Install.tier` inside each verb (the host lifecycle surface), so the caller sees
-//! one consistent verb set across both tiers. Each authorizes inside the verb; denials are opaque.
+//! (lifecycle-management scope). `ext.list` / `ext.enable` / `ext.disable` /
+//! `ext.uninstall`. These dispatch by the `Install.tier` inside each verb (the host lifecycle
+//! surface), so the caller sees one consistent verb set across both tiers. Each authorizes inside the
+//! verb; denials are opaque.
 
 use lb_auth::Principal;
 use lb_mcp::ToolError;

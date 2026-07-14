@@ -20,6 +20,21 @@
 //! down in the roles block, AFTER the gateway installed that key. Both consume the one `reconcile`
 //! plan. Calling only the wasm half is what left every published native extension dead after a
 //! restart, silently (issue #64).
+//!
+//! Both halves run for **every active workspace** (`boot_workspaces`), not just `cfg.workspace` — a
+//! node can serve many, and bringing up only the configured one stranded the rest's extensions in
+//! exactly the same silent way.
+//!
+//! **The gateway ordering is TWO rules, not one, and the second is easy to miss.** A native child
+//! needs the gateway's signing *key* installed before it spawns (so its `LB_EXT_TOKEN` verifies) —
+//! that is the rule the role mounts document. But a child that loads its config through a host
+//! callback also needs the gateway's socket to be **listening**, and constructing a `Gateway` does
+//! not listen: the bind used to live in `RunningNode::serve()`, which the embedder calls *after*
+//! `boot_full` returns. So "after the gateway block" satisfied the key rule and silently violated the
+//! listen rule — every boot-spawned child POSTed into a closed port, came up with an empty runtime,
+//! and reported healthy while doing nothing. The socket is therefore bound **here**, in the gateway
+//! block, and handed to `serve()` already-bound; the node is told its own URL at the same moment.
+//! Both rules are now satisfied by construction rather than by the order two functions happen to run.
 
 use std::sync::Arc;
 
@@ -39,8 +54,17 @@ use crate::config::{BootConfig, CredentialMode, GatewayMode};
 pub struct RunningNode {
     /// The booted node: store, bus, registry, host verbs. Call `lb_host::*` verbs in-process against it.
     pub node: Arc<Node>,
-    /// The gateway value + bind address, when [`GatewayMode::Addr`] was configured. `None` = headless.
-    pub gateway: Option<(Gateway, std::net::SocketAddr)>,
+    /// The gateway value + its **already-bound listener**, when [`GatewayMode::Addr`] was configured.
+    /// `None` = headless.
+    ///
+    /// The socket is bound inside [`boot_full`], not in [`serve`](RunningNode::serve), and that is
+    /// load-bearing: a native sidecar spawned during boot loads its config through a host callback to
+    /// this very gateway, so the port must be **listening before any child spawns**. Binding here and
+    /// handing the listener over makes that ordering structural — `serve` cannot start "later than"
+    /// a bind that already happened. Returning `addr` alone (and binding in `serve`) meant every
+    /// boot-spawned child POSTed into a closed port: it came up with an empty runtime, reported
+    /// `health=ok`, and did nothing, forever.
+    pub gateway: Option<(Gateway, tokio::net::TcpListener)>,
     /// The served in-house agent, kept alive here (dropping it stops serving routed `agent.invoke`).
     pub agent_server: Option<AgentServer>,
 }
@@ -55,9 +79,14 @@ impl RunningNode {
             agent_server,
             ..
         } = self;
-        if let Some((gw, addr)) = gateway {
+        if let Some((gw, listener)) = gateway {
+            // Already bound (in `boot_full`, before any sidecar spawned) — just start accepting.
+            let addr = listener
+                .local_addr()
+                .map(|a| a.to_string())
+                .unwrap_or_else(|_| "?".into());
             println!("gateway: serving on http://{addr}");
-            lb_role_gateway::serve(gw, addr).await?;
+            lb_role_gateway::serve_listener(gw, listener).await?;
         }
         // Hold the agent server alive until serve returns (or forever, headless would drop here).
         drop(agent_server);
@@ -86,19 +115,30 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
         }
     }
 
-    // BOOT BRING-UP: re-load every previously-published-and-enabled wasm extension for the configured
-    // workspace from the durable cache, so an upload survives a restart. A no-op on a fresh store.
+    // BOOT BRING-UP: re-load every previously-published-and-enabled wasm extension from the durable
+    // cache, so an upload survives a restart. A no-op on a fresh store.
+    //
+    // For EVERY active workspace, not just `cfg.workspace`: this node may serve many (workspace.create
+    // is a verb, the UI has a switcher), and bringing up only the configured one left every other
+    // workspace's extensions dead after a restart — silently, the same shape as the native gap. See
+    // `boot_workspaces` for why the set is a UNION with `cfg.workspace` rather than the directory
+    // alone (a node whose boot workspace was never `workspace.create`d has no row for it).
     let ws = cfg.workspace.clone();
-    match load_enabled(&node, &ws).await {
-        Ok(loaded_exts) => {
-            for e in loaded_exts.iter().filter(|e| e.loaded) {
-                println!(
-                    "boot-loaded extension: {}@{} ({})",
-                    e.ext, e.version, e.reason
-                );
+    let boot_wss = lb_host::boot_workspaces(&node.store, &ws)
+        .await
+        .unwrap_or_else(|_| vec![ws.clone()]);
+    for w in &boot_wss {
+        match load_enabled(&node, w).await {
+            Ok(loaded_exts) => {
+                for e in loaded_exts.iter().filter(|e| e.loaded) {
+                    println!(
+                        "boot-loaded extension: {}@{} ({}) ws={w}",
+                        e.ext, e.version, e.reason
+                    );
+                }
             }
+            Err(e) => eprintln!("boot extension load for ws={w} failed: {e}"),
         }
-        Err(e) => eprintln!("boot extension load for ws={ws} failed: {e}"),
     }
 
     // SEEDS: dev identity, core skills, agent definitions, personas, active-persona migration, default
@@ -144,7 +184,21 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             if let Some(dir) = cfg.static_root.as_deref().filter(|d| !d.is_empty()) {
                 gw = gw.with_static_root(dir);
             }
-            Some((gw, *addr))
+            // BIND NOW — before any native sidecar spawns below.
+            //
+            // A boot-spawned child loads its config through a host callback to THIS gateway. Binding
+            // in `serve()` (which the embedder calls after `boot_full` returns) meant the child POSTed
+            // into a closed port, came up with an empty runtime, and reported `health=ok` while doing
+            // nothing — forever, since the child loads its config exactly once. Binding here makes the
+            // ordering structural rather than a race: the socket is accepting connections before a
+            // child exists to call it. `serve()` then just runs the accept loop on this listener.
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            // Tell the node its OWN callback address (the real one — `bind` may have resolved a
+            // port-0 request to a concrete port). `install_native` reads it from here rather than
+            // from a process-global `LB_GATEWAY_URL` that nothing guarantees is set by spawn time.
+            let bound = listener.local_addr().unwrap_or(*addr);
+            node.install_gateway_url(format!("http://{bound}"));
+            Some((gw, listener))
         }
         GatewayMode::Off => None,
     };
@@ -159,11 +213,17 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // plan's native actions were computed and then dropped, leaving the child dead and the boot log
     // silent). The node owns the `Launcher`, which is why this half lives here and not in the verb.
     //
-    // Placed HERE, after the gateway block, for the SAME load-bearing reason the role mounts are (see
-    // the module doc): `install_native` mints each child's `LB_EXT_TOKEN` with `node.key()`, and the
-    // gateway verifies those callback tokens with its own key. Respawning up beside `load_enabled`
-    // would mint every sidecar's token with the pre-gateway key and 401 each callback.
-    spawn_native_enabled(&node, &ws).await;
+    // Placed HERE, after the gateway block, to satisfy BOTH gateway ordering rules (module doc):
+    // `install_native` mints each child's `LB_EXT_TOKEN` with `node.key()` and the gateway verifies
+    // it with its own key (so the key must be installed first — respawning up beside `load_enabled`
+    // would 401 every callback), AND a child that loads its config over a host callback needs the
+    // gateway's socket already LISTENING, which is why that block now binds rather than deferring the
+    // bind to `serve()`.
+    //
+    // Across the same workspace set the wasm half used — one node, many tenants, one rule.
+    for w in &boot_wss {
+        spawn_native_enabled(&node, w).await;
+    }
     let agent_server =
         crate::agent::mount(node.clone(), &cfg.agent_model, cfg.agent_caps.clone()).await;
 

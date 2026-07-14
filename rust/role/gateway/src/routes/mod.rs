@@ -97,7 +97,7 @@ pub use dbview::{list_tables, read_graph, scan_table};
 pub use events::{events_stream, events_subscribe, events_unsubscribe};
 pub use ext::{
     disable_extension, enable_extension, list_extensions, publish_extension, reset_extension,
-    uninstall_extension,
+    start_extension, uninstall_extension,
 };
 pub use ext_ui::serve_ext_ui;
 pub use flows::{

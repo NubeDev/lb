@@ -14,7 +14,7 @@ use lb_store::Store;
 use lb_tags::Facet;
 use serde_json::{json, Value};
 
-use super::{drain_workspace, ingest_write, series_latest_value, IngestError};
+use super::{drain_workspace_bounded, ingest_write, own_batches, series_latest_value, IngestError};
 
 /// Dispatch an ingest/series MCP call. `input` is the verb's JSON arguments; the return is the
 /// verb's JSON result. Each verb authorizes first; denials are opaque (`ToolError::Denied`).
@@ -32,12 +32,22 @@ pub async fn call_ingest_tool(
             let n = ingest_write(store, principal, ws, samples)
                 .await
                 .map_err(ingest_to_tool)?;
-            // Drain staging → the committed `series` table so the just-written sample is visible to the
-            // very next `series.latest`/`read` over THIS same bridge — the round-trip the proof-panel
-            // page proves. There is no background drain worker; the gateway's own `POST /ingest` route
-            // drains synchronously for the same reason. The drain is exactly-once per
-            // `(series, producer, seq)`, so a write-then-read never double-commits.
-            drain_workspace(store, ws).await.map_err(ingest_to_tool)?;
+            // Drain staging → the committed `series` table so the just-written sample is visible to
+            // the very next `series.latest`/`read` over THIS same bridge — the round-trip the
+            // proof-panel page proves; the gateway's own `POST /ingest` route drains for the same
+            // reason. The drain is exactly-once per `(series, producer, seq)`, so a write-then-read
+            // never double-commits.
+            //
+            // BOUNDED to the caller's own work (drain-backpressure scope): this used to drain until
+            // staging was EMPTY, which billed the caller for every OTHER producer's staged rows —
+            // one sample against a 4,671-row backlog measured 18.5s vs 21ms at backlog 0, and a
+            // caller that timed out abandoned only the wait, so the backlog never drained and every
+            // subsequent push blocked again. The bound is the caller's own sample count: enough to
+            // commit what it just wrote (preserving the round-trip), never the workspace's backlog.
+            // The background ingest reactor drains the remainder off every caller's path.
+            drain_workspace_bounded(store, ws, own_batches(n))
+                .await
+                .map_err(ingest_to_tool)?;
             Ok(json!({ "accepted": n }))
         }
         "series.read" => {

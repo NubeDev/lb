@@ -23,6 +23,47 @@ use crate::install::install_extension;
 use crate::native::install_native;
 use crate::registry::{cache_artifact, record_catalog};
 
+/// Reject an artifact whose `(ext_id, version)` metadata contradicts the manifest it carries.
+///
+/// These two are keyed apart and independently controlled: the **catalog** is addressed by
+/// `Artifact.ext_id`/`Artifact.version` (`CatalogEntry::of`), while the **install record** is
+/// addressed by `Manifest.id`/`Manifest.version` (`Install::new`). Crucially the content digest
+/// commits to exactly `(manifest_toml, wasm)` — it does **not** cover `ext_id`/`version` — so
+/// `verify_artifact` cannot catch a disagreement: those two fields are unsigned, and nothing
+/// downstream reconciled them.
+///
+/// The consequence was a silent strand. Publish reads the manifest and succeeds; boot bring-up
+/// reads the version from the *install* record and resolves the *catalog* by it, so a mismatch means
+/// `resolve` finds nothing and the extension never comes back — reported as `no-cached-artifact`,
+/// which sends an operator hunting an evicted cache that was never the problem. Same shape for a
+/// mismatched `ext_id`. Both tiers resolve this way, so both were affected.
+///
+/// So the rule is enforced at the door: an artifact whose metadata contradicts its own signed
+/// manifest is not a coherent artifact, and there is no sound way to pick a winner between them.
+/// Fail-closed at publish, where the operator is present to read the error.
+///
+/// Validating the unsigned copies against the signed manifest — rather than extending the digest to
+/// cover them — is deliberate: the manifest is *already* signed, so this closes the gap with no new
+/// trust, while changing the digest would be a signing-format break that invalidates every existing
+/// signed artifact for no extra safety.
+fn coherent(artifact: &Artifact, manifest: &Manifest) -> Result<(), ExtError> {
+    if artifact.ext_id != manifest.id {
+        return Err(ExtError::Manifest(format!(
+            "artifact metadata disagrees with its manifest: ext_id {:?} but the manifest declares \
+             id {:?} — the catalog would be keyed by one and the install record by the other",
+            artifact.ext_id, manifest.id
+        )));
+    }
+    if artifact.version != manifest.version {
+        return Err(ExtError::Manifest(format!(
+            "artifact metadata disagrees with its manifest: {} version {:?} but the manifest \
+             declares {:?} — the catalog would be keyed by one and the install record by the other",
+            manifest.id, artifact.version, manifest.version
+        )));
+    }
+    Ok(())
+}
+
 /// Publish `artifact` into workspace `ws`'s catalog for `caller`, then **install + load it live**:
 /// gate, **verify against `trusted` BEFORE storing**, cache the verified bytes + record the catalog
 /// entry with `visibility`, then run the S4 install (persist the durable `Install` grant record and
@@ -53,6 +94,13 @@ pub async fn ext_publish(
     // publisher allow-list. On any failure nothing is stored — the verify-before-store guarantee.
     let verified = verify_artifact(artifact, trusted).map_err(|_| ExtError::Unverified)?;
 
+    // Gate 3: COHERENCE — the artifact's `(ext_id, version)` must agree with the manifest they
+    // carry. Both are parsed BEFORE anything is stored, so an incoherent upload leaves no trace
+    // (the same verify-before-store guarantee gate 2 gives, extended to this check).
+    let manifest = Manifest::parse(&verified.artifact().manifest_toml)
+        .map_err(|e| ExtError::Manifest(e.to_string()))?;
+    coherent(verified.artifact(), &manifest)?;
+
     // Persist the VERIFIED bytes through the existing registry cache + catalog seam (no new store).
     // `cache_artifact` accepts only a `VerifiedArtifact`, so the unverified bytes never had a path here.
     cache_artifact(&node.store, ws, &verified).await?;
@@ -61,8 +109,6 @@ pub async fn ext_publish(
     // Bring it online: persist the durable install grant, then load the component into the runtime.
     // The publisher (this caller) is the approver, so admin_approved = the manifest's requested caps.
     let artifact = verified.artifact();
-    let manifest =
-        Manifest::parse(&artifact.manifest_toml).map_err(|e| ExtError::Manifest(e.to_string()))?;
     if manifest.tier == "native" {
         let install_dir = native_install_dir(ws, &manifest.id);
         let exec = manifest

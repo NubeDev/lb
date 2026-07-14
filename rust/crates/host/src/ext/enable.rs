@@ -1,7 +1,8 @@
 //! `ext.enable` / `ext.disable` — the durable lifecycle **intent**, distinct from `start`/`stop`
 //! (lifecycle-management scope, the load-bearing distinction). `disable` means "do not run this, and
 //! do not auto-start it on boot": it flips the `Install.enabled` flag false AND stops a running
-//! native sidecar now; `enable` flips it true (the boot reconciler / next start brings it up). A
+//! native sidecar now; `enable` flips it true — it spawns nothing itself, so bring it up now with
+//! [`ext.start`](super::ext_start) or leave it to the boot reconciler. A
 //! `stop` (native lifecycle) only stops the live instance — boot would restart it; `disable` would
 //! not. Conflating them lets a "disabled" extension silently return after a restart — the bug this
 //! split prevents.

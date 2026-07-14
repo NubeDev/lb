@@ -126,6 +126,34 @@ the child is live **and answers a tool call**, no republish),
   operator hunting a healthy component, which is the same wasted afternoon this issue is about,
   just pointed the other way. It now states the intent, the action, and the reason — and stops.
 
+## The fix had a regression, found live the same day (now fixed)
+
+**Boot-spawned children could not call the host back**, so a child that loads its config over a host
+callback came up with an **empty runtime** — `health=ok`, doing nothing, forever. Two causes, both in
+lb, both closed in `boot_callback_ready_test.rs`:
+
+- **The child was never told the address.** `install_native` read `LB_GATEWAY_URL` from the *process
+  environment*. Nothing guarantees it is set by spawn time — in the downstream product it was set by
+  an embedder-side mount that runs *after* `boot_full`, so boot-spawned children got no address at
+  all. The node now carries its own gateway URL (installed at boot beside the signing key, the same
+  lifecycle) and `install_native` asks the node; the env var stays as a fallback.
+- **The port was not listening.** This one is on the fix above: its comment says the spawn sits
+  "after the gateway block", which is true and satisfied the *key* rule — but that block only
+  **constructs** a `Gateway`. The `bind` lived in `RunningNode::serve()`, which the embedder calls
+  *after* `boot_full` returns. So every boot-spawned child POSTed into a closed port. The socket is
+  now bound inside `boot_full` and handed to `serve()` already-bound (`serve_listener`, which already
+  existed for the desktop shell), making the ordering structural instead of a race.
+
+The race was **fatal, not self-healing**: the child loads its config exactly once, so minutes later it
+was still empty. Proved both directions with a probe connecting at the instant `boot_full` returns:
+pre-fix `Connection refused (os error 111)`, post-fix connected. Reverting the listener change now
+fails to **compile** the test — the type carries the invariant.
+
+**The lesson, and it is the sharper one:** *"after the gateway block"* was a claim about **two**
+orderings (key installed, socket listening) and only one of them was real. Constructing a server is
+not starting it. When a comment asserts an ordering, name the *observable* it guarantees — and if a
+child depends on a socket, the test must **connect to the socket**, not read a field.
+
 ## Follow-up (not fixed here)
 
 **No start/restart endpoint.** `/extensions/<ext>/enable` returns 204 but does not spawn a

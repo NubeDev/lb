@@ -126,8 +126,9 @@ pub(crate) async fn bump_restart_count(
 ///
 /// Unlike `restart_native`, this recovers a sidecar whose handle is present-but-dead (the exhausted
 /// state leaves the handle in the map with a closed channel): it `rearm`s that handle. If no handle
-/// exists at all (never started / already removed) it is `NotRunning` — use `ext.enable`/install to
-/// start a stopped extension. Resets the durable `restart_count` to 0 and re-opens the cool-off clock.
+/// exists at all (never started / already removed) it is `NotRunning` — use **`ext.start`** to start a
+/// stopped extension (it spawns from the durable install + cached artifact). Resets the durable
+/// `restart_count` to 0 and re-opens the cool-off clock.
 pub async fn reset_native<L: lb_supervisor::Launcher>(
     node: &Node,
     launcher: &L,

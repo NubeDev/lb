@@ -237,7 +237,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   and the CLI drive CE identically to the UI. Live COV rides the generic `extensions/extension-watch-scope.md`
   primitive (`ce.watch`), the only — and generic — core addition it implies.
 - `core/`, `crate-layout/`, `extensions/`, `mcp/`, `node-roles/`, `registry/`, `secrets/`,
-  `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `core/` also holds
+  `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `store/` also holds
+  `session-concurrency-scope.md` — a **tracking** scope (not a green light) for the global session
+  mutex that serializes every query node-wide: measured, 18 concurrent writers each in their OWN
+  workspace take 7.0ms = 18 × 0.4ms (zero parallelism). Deliberate — it makes `use_ns` + query one
+  critical section and removing it reintroduces a cross-workspace leak — and cheap enough today
+  (0.4ms/op) that the recommendation is spike-before-coding, not fix. `core/` also holds
   `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
   + a runnable `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs
   all speak one grammar the palette and `lb` CLI render mechanically; renames the outliers
@@ -410,7 +415,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
-  emitting an ingest `Sample`, wrapped by a generic flow `webhook` source node; no provider nodes).
+  emitting an ingest `Sample`, wrapped by a generic flow `webhook` source node; no provider nodes),
+  and `drain-backpressure-scope.md` — **shipped 2026-07-15**: `ingest.write` drained the WHOLE
+  workspace backlog inside the caller's call (one sample → 18.5s against a 4.6k-row backlog, and
+  self-sustaining — a caller that timed out left the rows staged). Root cause was the **missing
+  driver** for the commit worker this scope has always named, so every caller became the worker.
+  Fixed by bounding each caller's drain to its own batch (`own_batches`, all four call sites) and
+  wiring `spawn_ingest_reactors` — the `outbox` relay's twin — into node boot. Measured
+  900.7ms → 66.0ms. The blamed `ORDER BY` re-sort was **disproven** by measurement and left alone.
 - `insights/` — a durable, queryable **data-insight record** (`insights-scope.md`): the one
   missing piece over the shipped detect/orchestrate/attention planes — `insight:{ws}:{id}` with
   severity, origin provenance (rule/flow/agent + run), a `dedup_key` with occurrence counting

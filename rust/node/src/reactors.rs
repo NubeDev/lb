@@ -66,6 +66,16 @@ pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
         Duration::from_secs(2),
     );
 
+    // INGEST DRAIN REACTOR TICK (drain-backpressure scope — previously never booted): commit staged
+    // samples → the `series` tables off every caller's request path. The ingest scope always named a
+    // "commit worker mounted by the ingest role" and `drain.rs` said outright there was no
+    // background drain worker — so every CALLER was the worker, draining the whole workspace backlog
+    // inside its own call (one sample against a 4,671-row backlog measured 18.5s vs 21ms at backlog
+    // 0, and it never recovered: a caller that timed out abandoned only the wait). Callers now drain
+    // only their own batch; this tick owns the backlog. A few seconds is ample — a writer's own
+    // samples already commit inline, so nothing here is latency-critical.
+    lb_host::spawn_ingest_reactors(node.clone(), vec![ws.to_string()], Duration::from_secs(2));
+
     // INSIGHT DIGEST REACTOR TICK: digest the anti-spam ladder — one message per (sub, window), decay
     // quiet keys, post under each sub's stored principal. 30s cadence (windows are hours/days).
     lb_host::spawn_insight_digest_reactors(

@@ -22,6 +22,7 @@ use lb_assets::{list_installs, Tier};
 use lb_auth::Principal;
 use lb_ext_loader::Manifest;
 use lb_supervisor::Launcher;
+use serde::{Deserialize, Serialize};
 
 use super::error::ExtError;
 use super::reconcile::reconcile;
@@ -31,14 +32,21 @@ use crate::registry::{read_cached, resolve};
 
 /// One native extension this verb respawned (or could not), for the boot log. The peer of
 /// [`LoadedExt`](super::LoadedExt) — a symmetric boot log across both tiers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Serialize` because [`ext_start`](super::ext_start) hands this row straight back to an HTTP
+/// caller: the operator starting an extension by hand reads the same `spawned` + `reason` vocabulary
+/// the boot log prints, rather than a second dialect invented for the route.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpawnedExt {
     pub ext: String,
     pub version: String,
     /// `true` → the child process is running again; `false` → skipped, or could not be respawned.
     pub spawned: bool,
     /// Why, for the boot log: `"spawned"` / `"disabled"` / `"already-running"` /
-    /// `"no-cached-artifact"` / `"not-native"` / a spawn error.
+    /// `"no-catalog-entry (…)"` (the install record and the catalog disagree about `(ext, version)`)
+    /// / `"no-cached-bytes"` (the catalog knows it, the cache lost the bytes) / `"not-native"` /
+    /// a spawn error. The two empty-lookup cases are kept apart on purpose — they are different
+    /// faults with different fixes, and one reason for both sent operators to the wrong one.
     pub reason: String,
 }
 
@@ -73,45 +81,59 @@ pub async fn spawn_enabled<L: Launcher>(
             });
             continue;
         }
-
         let install = installs
             .iter()
             .find(|i| i.ext_id == action.ext && i.tier == Tier::Native);
-        let version = install.map(|i| i.version.clone()).unwrap_or_default();
-
-        // Resolve the catalog entry → digest → the cached, previously-verified artifact.
-        let artifact = match resolve(&node.store, ws, &action.ext, &version).await? {
-            Some(entry) => read_cached(&node.store, ws, &entry.digest_hex).await?,
-            None => None,
-        };
-        let Some(artifact) = artifact else {
-            // The install intends to run but its bytes are gone (an evicted/pruned cache). Say so:
-            // the ORIGINAL bug here was silence, and a stopped extension nobody mentioned cost hours.
-            out.push(SpawnedExt {
-                ext: action.ext.clone(),
-                version,
-                spawned: false,
-                reason: "no-cached-artifact".into(),
-            });
-            continue;
-        };
-
-        match respawn(node, launcher, ws, &artifact, install, ts).await {
-            Ok(()) => out.push(SpawnedExt {
-                ext: action.ext.clone(),
-                version,
-                spawned: true,
-                reason: "spawned".into(),
-            }),
-            Err(reason) => out.push(SpawnedExt {
-                ext: action.ext.clone(),
-                version,
-                spawned: false,
-                reason,
-            }),
-        }
+        out.push(spawn_one(node, launcher, ws, &action.ext, install, ts).await?);
     }
     Ok(out)
+}
+
+/// Bring ONE native install online from the durable cache: resolve its catalog entry → digest →
+/// cached bytes → land the binary → `install_native`. Returns the [`SpawnedExt`] row describing what
+/// happened (never an `Err` for a per-extension fault — those are `reason`s, so one extension cannot
+/// abort a boot or a caller's request; only a store failure propagates).
+///
+/// Shared by boot bring-up ([`spawn_enabled`]) and the on-demand [`ext_start`] verb, so the two can
+/// never drift: "start this extension" means exactly what boot does, whoever asks.
+pub(super) async fn spawn_one<L: Launcher>(
+    node: &Node,
+    launcher: &L,
+    ws: &str,
+    ext: &str,
+    install: Option<&lb_assets::Install>,
+    ts: u64,
+) -> Result<SpawnedExt, ExtError> {
+    let version = install.map(|i| i.version.clone()).unwrap_or_default();
+    let row = |spawned: bool, reason: String| SpawnedExt {
+        ext: ext.to_string(),
+        version: version.clone(),
+        spawned,
+        reason,
+    };
+
+    // Resolve the catalog entry → digest → the cached, previously-verified artifact. The two ways
+    // this can come up empty are DIFFERENT faults with different fixes, so they get different
+    // reasons: a missing catalog entry means the install record and the catalog disagree about
+    // `(ext, version)` (publish now rejects that at the door, but a store written before that gate
+    // existed can still carry it) — pointing at an evicted cache would send an operator to the wrong
+    // place entirely. A missing *cached row* is the real eviction case.
+    let Some(entry) = resolve(&node.store, ws, ext, &version).await? else {
+        return Ok(row(
+            false,
+            format!("no-catalog-entry (looked for {ext}@{version})"),
+        ));
+    };
+    let Some(artifact) = read_cached(&node.store, ws, &entry.digest_hex).await? else {
+        return Ok(row(false, "no-cached-bytes".into()));
+    };
+
+    Ok(
+        match respawn(node, launcher, ws, &artifact, install, ts).await {
+            Ok(()) => row(true, "spawned".into()),
+            Err(reason) => row(false, reason),
+        },
+    )
 }
 
 /// Land the cached binary on disk and hand it to `install_native` (records + spawn + supervise +
