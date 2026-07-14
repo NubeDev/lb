@@ -36,6 +36,7 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "description": { "type": "string", "x-lb": { "label": "Description", "description": "Optional one-line subtitle for the page (omit to keep the existing one)" } },
                 "icon": { "type": "string", "x-lb": { "label": "Icon", "description": "Optional icon-lib name for the page, e.g. 'activity' (omit to keep the existing one)" } },
                 "color": { "type": "string", "x-lb": { "label": "Colour", "description": "Optional CSS accent colour for the page icon (omit to keep the existing one)" } },
+                "timezone": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional dashboard timezone — an IANA name like 'Australia/Sydney' or 'browser' (omit to keep the existing one)" } },
                 "toolbar": { "type": "object", "properties": {
                     "dateSelect": { "type": "boolean" },
                     "refreshRate": { "type": "boolean" },
@@ -69,13 +70,13 @@ pub async fn dashboard_save(
     // preserved. The settings dialog is the only writer of icon/colour/subtitle; it calls
     // `dashboard_save_meta` directly.
     dashboard_save_meta(
-        store, principal, ws, id, title, None, None, None, None, cells, variables, now,
+        store, principal, ws, id, title, None, None, None, None, None, cells, variables, now,
     )
     .await
 }
 
 /// `dashboard.save` with the page-presentation fields (dashboard page-settings). `description`/`icon`/
-/// `color` are each `None` = preserve the stored value across the save (the same preserve-on-omit
+/// `color`/`timezone` are each `None` = preserve the stored value across the save (the same preserve-on-omit
 /// discipline `visibility` uses, so a layout/variable save never blanks the page chrome), `Some` = set
 /// it. On create, `None` means empty. This is the full form; [`dashboard_save`] is the presentation-
 /// preserving wrapper every layout/variable caller uses.
@@ -89,6 +90,7 @@ pub async fn dashboard_save_meta(
     description: Option<String>,
     icon: Option<String>,
     color: Option<String>,
+    timezone: Option<String>,
     toolbar: Option<Toolbar>,
     mut cells: Vec<Cell>,
     variables: Vec<Variable>,
@@ -132,7 +134,7 @@ pub async fn dashboard_save_meta(
 
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record
     // is treated as absent — a save with that id resurrects it under the new owner (create).
-    let (owner, visibility, prev_desc, prev_icon, prev_color, prev_toolbar) =
+    let (owner, visibility, prev_desc, prev_icon, prev_color, prev_timezone, prev_toolbar) =
         match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
             Some(existing) => {
                 if existing.owner != principal.owner_sub() {
@@ -144,12 +146,14 @@ pub async fn dashboard_save_meta(
                     existing.description,
                     existing.icon,
                     existing.color,
+                    existing.timezone,
                     existing.toolbar,
                 )
             }
             None => (
                 principal.owner_sub().to_string(),
                 Visibility::Private,
+                String::new(),
                 String::new(),
                 String::new(),
                 String::new(),
@@ -164,6 +168,7 @@ pub async fn dashboard_save_meta(
         description: description.unwrap_or(prev_desc),
         icon: icon.unwrap_or(prev_icon),
         color: color.unwrap_or(prev_color),
+        timezone: timezone.unwrap_or(prev_timezone),
         toolbar: toolbar.unwrap_or(prev_toolbar),
         owner,
         visibility,

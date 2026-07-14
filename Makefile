@@ -400,14 +400,6 @@ publish-ext: pack
 		echo "  NOTE: extension pages load only in the BUILT shell -- use 'make ui-preview', not 'make ui'."; \
 	else echo "-> no ui/dist for $(EXT) -- skipping UI deploy"; fi
 
-# Seed the thecrew (Graphics) demo into a RUNNING node: the AHU-1 scene doc + its bound `ahu1.*`
-# series + a read-only "Graphics Scene" dashboard, all through the REAL host verbs (assets.put_doc /
-# ingest / dashboard.save). Idempotent. Run `make publish-ext EXT=thecrew` first so the extension is
-# installed (its grant carries the assets.* caps); the seed logs in as $(SEED_USER) (a member of $(WS))
-# — NOT `dev` — because a live scene save/load needs the member `assets.*` grant (session findings).
-seed-thecrew:
-	bash $(BE_DIR)/extensions/thecrew/seed-demo.sh $(GW_URL) $(SEED_USER) $(WS)
-
 # The Docker-free Data Studio demo (sqlite-datasource-demo scope): generate the demo building
 # dataset into ONE SQLite file under the node's data dir (lite profile — 1 month @ 15-min, seconds
 # to run) and register it as datasource `demo-buildings` (kind sqlite) in $(WS) via the normal

@@ -88,6 +88,7 @@ pub async fn dashboard_pin(
                     description: String::new(),
                     icon: String::new(),
                     color: String::new(),
+                    timezone: String::new(),
                     toolbar: Default::default(),
                     owner: principal.owner_sub().to_string(),
                     visibility: Visibility::Private,
@@ -375,6 +376,8 @@ pub fn mint_cell_from_envelope(
         panel_ref: String::new(),
         panel_vars: Value::Null,
         panel_missing: false,
+        // A pinned envelope carries no P1 fields (queryOptions/transparent/links) — defaulted.
+        ..Cell::default()
     })
 }
 

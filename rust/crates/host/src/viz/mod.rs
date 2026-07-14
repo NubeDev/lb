@@ -9,6 +9,8 @@
 //!   - `authorize.rs` ([`authorize_viz`]) — the `mcp:viz.query:call` verb gate.
 //!   - `frame.rs` — a tool result `Value` → rows (mirrors the client `useSource.toRows`).
 //!   - `query.rs` ([`viz_query`]) — the resolver: dispatch targets → assemble frames → run `lb-viz`.
+//!   - `time_override.rs` — the panel `timeFrom`/`timeShift` override applied to target args
+//!     (grafana-parity-backend P1; Grafana's `applyPanelTimeOverrides` semantics, pinned there).
 //!   - `tool.rs` ([`call_viz_tool`]) — the MCP bridge over `viz.*`.
 //!   - `error.rs` ([`VizError`]) — opaque-deny error.
 
@@ -16,6 +18,7 @@ mod authorize;
 mod error;
 mod frame;
 mod query;
+mod time_override;
 mod tool;
 
 pub use error::VizError;

@@ -103,6 +103,21 @@ pub fn json_post(uri: &str, body: serde_json::Value) -> Request<Body> {
         .unwrap()
 }
 
+/// Like [`json_post`], but ALSO sets the `Content-Length` header (as a real HTTP client — curl,
+/// the browser — does). The gateway's publish route reads `Content-Length` to reject an oversized
+/// artifact with a descriptive 413 before buffering; `oneshot` requests carry no such header unless
+/// set explicitly, so size-limit tests use this to exercise that path.
+pub fn json_post_sized(uri: &str, body: serde_json::Value) -> Request<Body> {
+    let bytes = serde_json::to_vec(&body).unwrap();
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .header("content-length", bytes.len())
+        .body(Body::from(bytes))
+        .unwrap()
+}
+
 pub async fn json_body<T: serde::de::DeserializeOwned>(resp: axum::response::Response) -> T {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()

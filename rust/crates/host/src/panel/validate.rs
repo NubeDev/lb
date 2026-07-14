@@ -85,5 +85,8 @@ fn stripped_ref(cell: Cell) -> Cell {
         transformations: Vec::new(),
         field_config: serde_json::Value::Null,
         plugin_version: String::new(),
+        // P1 spec-ish fields (queryOptions/transparent/links) are spec, not per-placement
+        // overrides — cleared with the rest of the echoed spec.
+        ..Cell::default()
     }
 }

@@ -46,6 +46,13 @@ use crate::routes::{
 };
 use crate::state::Gateway;
 
+/// The axum `DefaultBodyLimit` on `POST /extensions` is set to the configured upload ceiling PLUS this
+/// margin, so a body that is only just over the *semantic* ceiling still reaches `publish_extension`
+/// and gets a descriptive 413 (size vs limit) instead of the layer's bare "length limit exceeded".
+/// A body past `ceiling + margin` is bounced by the layer — the true-abuse / OOM backstop. 16 MiB
+/// comfortably covers JSON array framing + the odd oversized-but-honest artifact.
+const EXT_UPLOAD_LAYER_MARGIN: u64 = 16 * 1024 * 1024;
+
 /// The gateway router: every browser verb, mirroring the host one-to-one. Each guarded route reads
 /// the session token (the `login` route issues it); the workspace + caps come from the token.
 ///
@@ -57,6 +64,10 @@ use crate::state::Gateway;
 /// Inbox:          `GET /inbox/{channel}`, `POST /inbox/{item}/resolve`
 /// Outbox status:  `GET /outbox`
 pub fn router(gw: Gateway) -> Router {
+    // The `POST /extensions` upload ceiling (extension-upload-limit fix), read here so the route-scoped
+    // `DefaultBodyLimit` below is sized from config, not a hardcoded constant. This is the ONE route
+    // whose body limit is raised — never a global bump (rule 10). See the `/extensions` route comment.
+    let max_ext_upload = gw.max_extension_upload_bytes;
     Router::new()
         .route("/login", post(login))
         // The public inbound webhook endpoint (webhooks scope) — `POST /hooks/{ws}/{id}`. The
@@ -231,13 +242,21 @@ pub fn router(gw: Gateway) -> Router {
         // GET keeps the default body limit; POST (publish) raises it: a NATIVE-tier artifact packs a
         // host-target binary (megabytes) into the signed Artifact's `wasm` field, JSON-encoded as a
         // byte array (~8x the binary), which blows past axum's 2 MiB default → 413. WASM artifacts
-        // (tens–hundreds of KiB) never hit it, so this only surfaced once a native ext published
-        // over the wire. 32 MiB matches the other large-upload routes (export_report, put_asset_bin).
+        // (tens–hundreds of KiB) never hit it, so this only surfaced once a native ext published over
+        // the wire — and a REAL native sidecar artifact (the ems modbus bundle) is ~317 MiB, far past
+        // the old 32 MiB cap. The ceiling is now `BootConfig::max_extension_upload_bytes` (default
+        // 384 MiB), sized to the largest legit sidecar with headroom and bounded so a runaway upload
+        // can't OOM the node. The axum layer carries a small over-the-semantic-limit margin so a
+        // just-oversized body still reaches `publish_extension`, which returns a DESCRIPTIVE 413
+        // (size vs limit) rather than the bare "length limit exceeded"; anything past the margin is
+        // bounced by the layer. This is a ROUTE-scoped limit (rule 10 — never a global bump).
         .route(
             "/extensions",
-            get(list_extensions)
-                .post(publish_extension)
-                .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
+            get(list_extensions).post(publish_extension).layer(
+                axum::extract::DefaultBodyLimit::max(
+                    (max_ext_upload + EXT_UPLOAD_LAYER_MARGIN) as usize,
+                ),
+            ),
         )
         .route("/extensions/{ext}", delete(uninstall_extension))
         .route("/extensions/{ext}/ui/{*path}", get(serve_ext_ui))

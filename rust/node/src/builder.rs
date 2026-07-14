@@ -122,6 +122,10 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
                 CredentialMode::PasswordHash => Arc::new(lb_role_gateway::PasswordHash),
             };
             gw = gw.with_credential_check(check);
+            // Pin the `POST /extensions` upload ceiling from config (extension-upload-limit fix). The
+            // route-scoped body limit is sized from this; the binary fills it via `from_env`
+            // (`LB_MAX_EXTENSION_UPLOAD_BYTES`, default 384 MiB), an embedder sets it directly.
+            gw = gw.with_max_extension_upload_bytes(cfg.max_extension_upload_bytes);
             // Relocate the extension-UI serve dir when the embedder set one (`Some` ⇒ pin it via the
             // builder); `None` leaves the gateway's own `LB_EXT_UI_DIR`/"extensions-ui" default in place,
             // so the standalone binary is untouched (ext-UI-dir embed seam).

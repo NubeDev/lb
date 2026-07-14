@@ -505,6 +505,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   A pure `lb-prql` crate wraps `prqlc`; `query.run` composes the target's existing capability (no
   widening); a rule reuses a saved query via `source("query:<name>")`. No new engine, no second
   authority — PRQL is the authoring layer, SurrealDB stays the one datastore.
+- `viz/` — the **backend half of Grafana parity** (`grafana-parity-backend-scope.md`, audited
+  2026-07-14 vs Grafana 13.2.0-pre): the additive `Cell`/`Dashboard`/`Variable` model fields a
+  Grafana v1 import needs, `lb-viz` transformer tranche 2 + the missing reduce calcs, and the one
+  **import pin** (classic v1/schemaVersion 42 accepted, `__inputs` resolved, v2 kind rejected with
+  notice) consumed by `dashboard.import` and the downstream converter. Backend-only — the typed
+  option shapes/editors/renderers are the downstream consumer's UI scope (rubix-ai
+  `frontend/dashboard/viz/grafana-parity-ui-scope.md`).
 - `sync/` — multi-node sync + authority (S3).
 - `system-map/` — a framework-level **workspace topology + status console**: two admin-gated read
   verbs (`system.overview` status grid · `system.topology` react-flow wiring) that derive a live,

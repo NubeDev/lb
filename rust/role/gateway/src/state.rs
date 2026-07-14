@@ -68,9 +68,26 @@ pub struct Gateway {
     /// handlers so the `GET /events/stream` body and the `POST /events/{sid}/*` control verbs address
     /// the same connections.
     pub events: crate::session::events::EventHub,
+    /// The route-scoped body-size ceiling (bytes) for the `POST /extensions` artifact upload
+    /// (extension-upload-limit fix). A native-tier artifact packs a host-target binary (megabytes)
+    /// into the signed Artifact's JSON-encoded `wasm` field, so a real sidecar upload runs to
+    /// hundreds of MiB — far past axum's 2 MiB `DefaultBodyLimit` default, which used to 413 before the
+    /// body was read. `router` reads this to size the `DefaultBodyLimit` layer on THAT ONE route
+    /// (never a global bump — rule 10) and the handler reports a descriptive over-limit error. Bounded
+    /// (not unlimited) so a runaway upload can't OOM the node. Sourced from `BootConfig`
+    /// (`max_extension_upload_bytes`, default 384 MiB) at the boot seam; the test/`new_live` seams
+    /// default via [`Gateway::DEFAULT_MAX_EXTENSION_UPLOAD_BYTES`].
+    pub max_extension_upload_bytes: u64,
 }
 
 impl Gateway {
+    /// The default `POST /extensions` upload ceiling when no explicit limit is set (test/`new_live`
+    /// seams): 384 MiB — sized to the largest real native sidecar artifact seen (the ems modbus
+    /// bundle ~317 MiB) with headroom, and bounded so a runaway upload can't OOM the node. The
+    /// production boot path overrides this from `BootConfig::max_extension_upload_bytes`
+    /// (`lb_node::DEFAULT_MAX_EXTENSION_UPLOAD_BYTES`, kept numerically equal to this).
+    pub const DEFAULT_MAX_EXTENSION_UPLOAD_BYTES: u64 = 384 * 1024 * 1024;
+
     /// Boot a gateway-role node with the resolved signing key and the real wall clock.
     /// Production entry point (the `node` binary / `serve`).
     pub async fn boot() -> Result<Self, String> {
@@ -146,7 +163,18 @@ impl Gateway {
             // (`with_credential_check(credential_check_from_env())`), which hard-refuses in release.
             credential_check: Arc::new(crate::session::DevTrustAny),
             events: crate::session::events::EventHub::new(),
+            // The `POST /extensions` upload ceiling — the safe default until the boot path pins the
+            // configured value via `with_max_extension_upload_bytes`.
+            max_extension_upload_bytes: Self::DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
         }
+    }
+
+    /// Pin the `POST /extensions` upload ceiling (bytes) the `router` sizes its route-scoped
+    /// `DefaultBodyLimit` from (extension-upload-limit fix). Builder-style; the boot seam passes
+    /// `BootConfig::max_extension_upload_bytes`, tests pin a small value to exercise the reject path.
+    pub fn with_max_extension_upload_bytes(mut self, bytes: u64) -> Self {
+        self.max_extension_upload_bytes = bytes;
+        self
     }
 
     /// Install the credential check `login` runs before minting (login-hardening scope). Production

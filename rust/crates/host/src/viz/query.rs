@@ -23,6 +23,8 @@ use serde_json::{json, Value};
 
 use super::error::VizError;
 use super::frame::{detect_time_field, result_to_rows};
+use super::time_override::apply_time_override;
+use crate::dashboard::QueryOptions;
 use crate::boot::Node;
 use crate::tool_call::call_tool_at_depth;
 
@@ -58,11 +60,19 @@ pub async fn viz_query(
 
     let targets = panel_targets(panel)?;
 
+    // The panel's time override (grafana-parity-backend P1): `timeFrom`/`timeShift` from the cell's
+    // `queryOptions`, applied to each target's args before dispatch (`time_override.rs` pins the
+    // Grafana semantics). Malformed/absent → default (no-op).
+    let query_options: QueryOptions = panel
+        .get("queryOptions")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
     // Dispatch each non-hidden target under the caller's authority; a denied/failed target → an
     // honest EMPTY frame (no bypass, no fabricated rows). Frames keep target order so refIds line up.
     let mut frames: Frames = Vec::with_capacity(targets.len());
     for t in &targets {
-        let rows = dispatch_target(node, caller, ws, t, now, depth).await;
+        let rows = dispatch_target(node, caller, ws, t, &query_options, now, depth).await;
         let rows = cap_rows(rows);
         let time = detect_time_field(&rows);
         frames.push(Frame::from_rows(&t.ref_id, &rows, time.as_deref()));
@@ -197,12 +207,16 @@ async fn dispatch_target(
     caller: &Principal,
     ws: &str,
     t: &ResolvedTarget,
+    query_options: &QueryOptions,
     now: u64,
     depth: u32,
 ) -> Vec<Value> {
     // Thread the caller's logical `now` into the args (a federation/ingest verb reads `ts` from args;
     // a store.query ignores it). Never overwrite a caller-supplied ts.
     let mut args = t.args.clone();
+    // Panel time override FIRST (timeFrom replaces the range, timeShift moves it — by design it may
+    // rewrite a caller-supplied `from`/`to`; that is exactly what a Grafana panel override does).
+    apply_time_override(&mut args, query_options, now);
     if let Value::Object(map) = &mut args {
         map.entry("ts").or_insert(json!(now));
     }

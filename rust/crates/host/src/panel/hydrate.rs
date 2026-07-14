@@ -97,6 +97,10 @@ fn resolved_cell(cell: &Cell, panel: super::model::Panel) -> Cell {
         transformations: s.transformations,
         field_config: s.field_config,
         plugin_version: s.plugin_version,
+        // P1 fields (queryOptions/transparent/links) default: `PanelSpec` does not carry them yet
+        // (grafana-parity-backend scope P1 is the Cell/Dashboard/Variable surface; the panel-spec
+        // mirror is a named follow-up in the session doc).
+        ..Cell::default()
     }
 }
 
@@ -125,5 +129,7 @@ fn placeholder_cell(cell: Cell) -> Cell {
         transformations: Vec::new(),
         field_config: serde_json::Value::Null,
         plugin_version: String::new(),
+        // No spec on a placeholder — the P1 fields default with the rest.
+        ..Cell::default()
     }
 }

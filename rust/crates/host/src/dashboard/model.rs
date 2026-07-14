@@ -101,6 +101,44 @@ pub struct Target {
     pub hide: bool,
 }
 
+/// Panel-level query options (viz grafana-parity-backend scope, P1) — the editor's "Query options"
+/// block plus Grafana's per-panel time override. Typed (not opaque `Value`) because `viz.query`
+/// interprets `timeFrom`/`timeShift` when dispatching targets; the rest ride to the client. All
+/// fields additive/null-defaulted; the whole struct is skip-if-default so a pre-P1 cell round-trips
+/// byte-stable. Regression pin: before P1 the UI sent this as a top-level cell field and the closed
+/// `Cell` struct silently DROPPED it on `dashboard.save`
+/// (`docs/debugging/dashboard/query-options-silently-dropped-on-save.md`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct QueryOptions {
+    /// Cap on returned points per target (0 = unset; the editor's "Max data points").
+    #[serde(default, deserialize_with = "null_default", rename = "maxDataPoints")]
+    pub max_data_points: u64,
+    /// Minimum bucket interval, a duration string (`"10s"`; empty = unset).
+    #[serde(default, deserialize_with = "null_default", rename = "minInterval")]
+    pub min_interval: String,
+    /// The shipped UI's relative-time field (pre-P1 vocabulary, kept verbatim; empty = unset).
+    #[serde(default, deserialize_with = "null_default", rename = "relativeTime")]
+    pub relative_time: String,
+    /// Grafana panel time override: replaces the range with `[now - timeFrom, now]` (`"6h"`).
+    #[serde(default, deserialize_with = "null_default", rename = "timeFrom")]
+    pub time_from: String,
+    /// Grafana panel time shift: moves BOTH range ends earlier by this duration (`"1d"`).
+    #[serde(default, deserialize_with = "null_default", rename = "timeShift")]
+    pub time_shift: String,
+    /// Display-only (Grafana parity): hide the override badge in the panel header. Never affects
+    /// the query.
+    #[serde(default, deserialize_with = "null_default", rename = "hideTimeOverride")]
+    pub hide_time_override: bool,
+}
+
+impl QueryOptions {
+    /// True when every field is unset — the skip-serializing predicate (a pre-P1 cell stays
+    /// byte-stable on the wire and the record).
+    pub fn is_empty(&self) -> bool {
+        *self == QueryOptions::default()
+    }
+}
+
 /// One grid cell: react-grid-layout geometry + the widget it hosts + its data binding (dashboard
 /// scope, "Data").
 ///
@@ -188,6 +226,24 @@ pub struct Cell {
     /// own variable defaults at hydration. Empty on an inline cell or a ref with no overrides.
     #[serde(default, deserialize_with = "null_default", rename = "panelVars")]
     pub panel_vars: Value,
+    /// P1 panel query options (viz grafana-parity-backend scope) — the editor's "Query options"
+    /// block + the Grafana time override. Typed because `viz.query` applies `timeFrom`/`timeShift`
+    /// when dispatching targets; skip-if-empty so a pre-P1 cell round-trips byte-stable.
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        rename = "queryOptions",
+        skip_serializing_if = "QueryOptions::is_empty"
+    )]
+    pub query_options: QueryOptions,
+    /// Transparent panel background (Grafana parity) — renderers honor it UI-side; the host carries
+    /// it. Skip-if-false so a pre-P1 cell round-trips byte-stable.
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "is_false")]
+    pub transparent: bool,
+    /// Panel links (Grafana `DashboardLink[]`) — opaque to the host (the UI renders them); carried
+    /// verbatim for import fidelity. Skip-if-empty (byte-stable pre-P1 records).
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<Value>,
     /// Set by `dashboard.get` hydration when a ref cell's `panel_ref` cannot be resolved (deleted,
     /// unshared, or unreadable by the viewer) — the cell renders an honest "panel not accessible"
     /// placeholder, never a leaked spec (library-panels scope, "Dangling refs"). Never persisted:
@@ -274,6 +330,19 @@ pub struct Variable {
     /// Bar visibility (`dontHide` | `hideLabel` | `hideVariable`).
     #[serde(default, deserialize_with = "null_default")]
     pub hide: String,
+
+    // ── Grafana-parity P1 (viz grafana-parity-backend scope) ────────────────────────────────────────
+    // Additive/defaulted like every field above; host-opaque definition data.
+    /// A human description shown in the variable editor / bar tooltip (Grafana parity).
+    #[serde(default, deserialize_with = "null_default")]
+    pub description: String,
+    /// Opt this variable's selection OUT of the URL (`?var-<name>=`) — selection stays session-local.
+    #[serde(default, rename = "skipUrlSync", deserialize_with = "null_default")]
+    pub skip_url_sync: bool,
+    /// multi/select UX flag (Grafana parity): allow a free-typed value beside the resolved options.
+    /// Carried opaque until the UI ships it.
+    #[serde(default, rename = "allowCustomValue", deserialize_with = "null_default")]
+    pub allow_custom_value: bool,
 }
 
 /// Toolbar-chrome visibility flags (dashboard toolbar-settings). Each names one optional header
@@ -318,6 +387,12 @@ pub struct Dashboard {
     /// pre-toolbar dashboard round-trips with every flag off (all controls hidden). Opaque to the host.
     #[serde(default, deserialize_with = "null_default")]
     pub toolbar: Toolbar,
+    /// Dashboard timezone (Grafana parity, P1) — an IANA name (`"Australia/Sydney"`), `"browser"`,
+    /// or empty (unset). The record CARRIES the import; the render path resolves via user-prefs
+    /// (prefs-wins-at-render — the canonical-in/localized-out doctrine; grafana-parity-backend
+    /// scope, open question resolved in the P1 session doc). Opaque to the host beyond serde.
+    #[serde(default, deserialize_with = "null_default")]
+    pub timezone: String,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
     #[serde(default, deserialize_with = "null_default")]

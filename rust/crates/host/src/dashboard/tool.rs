@@ -62,6 +62,7 @@ pub async fn call_dashboard_tool(
                 opt_str_arg(input, "description"),
                 opt_str_arg(input, "icon"),
                 opt_str_arg(input, "color"),
+                opt_str_arg(input, "timezone"),
                 opt_toolbar_arg(input),
                 cells,
                 variables,

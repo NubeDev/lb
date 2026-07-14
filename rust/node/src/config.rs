@@ -18,6 +18,12 @@ use std::net::SocketAddr;
 
 use lb_auth::SigningKey;
 
+/// The default `POST /extensions` upload ceiling (extension-upload-limit fix): 384 MiB. Sized to the
+/// largest real native sidecar artifact observed (the ems modbus bundle ~317 MiB — a 6.2 MB release
+/// binary is ~50 MB once JSON-encoded, and a 317 MB embedder bundle is the current high-water mark)
+/// with headroom, and deliberately bounded (never unlimited) so a runaway upload can't OOM the node.
+pub const DEFAULT_MAX_EXTENSION_UPLOAD_BYTES: u64 = 384 * 1024 * 1024;
+
 /// Where the gateway (if any) binds / how the embedder takes the served HTTP surface.
 ///
 /// `Off` is the headless posture (store + auth + MCP in-process, no HTTP) — the default an embedder
@@ -162,6 +168,17 @@ pub struct BootConfig {
     /// the gateway is `Off` (no login route).
     pub credential_mode: CredentialMode,
 
+    /// The route-scoped body-size ceiling for the `POST /extensions` artifact upload, in bytes
+    /// (extension-upload-limit fix). A NATIVE-tier artifact packs a host-target binary (megabytes)
+    /// into the signed Artifact's `wasm` field, JSON-encoded as a byte array (~8× the binary), so a
+    /// real native sidecar's upload runs to hundreds of MiB — far past axum's 2 MiB `DefaultBodyLimit`
+    /// default, which used to 413 ("length limit exceeded") before the body was ever read. This raises
+    /// the ceiling ON THAT ONE ROUTE (never a global bump — rule 10), and is deliberately NOT unlimited
+    /// so a runaway upload can't OOM the node. Default 384 MiB fits the largest real sidecar artifact
+    /// seen (the ems modbus bundle at ~317 MiB) with headroom; an embedder with a bigger binary raises
+    /// it. `from_env` reads `LB_MAX_EXTENSION_UPLOAD_BYTES`. Only the `POST /extensions` route reads it.
+    pub max_extension_upload_bytes: u64,
+
     /// An optional password to seed for the dev [`seed_user`](Self::seed_user) at boot, so a node
     /// running [`CredentialMode::PasswordHash`] has a first admin who can actually log in (the
     /// bootstrap-paradox fix: `identity.set_credential` needs an admin token, but no admin can
@@ -198,6 +215,9 @@ impl Default for BootConfig {
             // Back-compat embed default: password-less. An embedder opts into `PasswordHash`
             // explicitly; `from_env()` (below) derives it from `LB_DEV_LOGIN` for the binary.
             credential_mode: CredentialMode::DevTrustAny,
+            // The route-scoped upload ceiling for `POST /extensions` (default 384 MiB). Additive:
+            // a bounded, embedder-overridable limit that fits a real native sidecar artifact.
+            max_extension_upload_bytes: DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
             // No seed password by default — a `DevTrustAny` node needs none, and an embedder fills
             // this only when it boots `PasswordHash` and wants the dev admin to be able to log in.
             seed_credential: None,
@@ -238,6 +258,9 @@ impl BootConfig {
             // password-enforcing, unlike the embed `Default` which stays `DevTrustAny` for
             // back-compat.
             credential_mode: credential_mode_from_env(),
+            // The `POST /extensions` upload ceiling from `LB_MAX_EXTENSION_UPLOAD_BYTES` (bytes);
+            // unset/empty/unparseable ⇒ the 384 MiB default. Read only here, at the binary boundary.
+            max_extension_upload_bytes: max_extension_upload_bytes_from_env(),
             // Optional dev-admin seed password (`LB_SEED_PASSWORD`) — so a `PasswordHash` binary
             // has a first admin who can log in. Absent ⇒ no credential seeded (correct for a
             // `DevTrustAny` binary). Secret-class: read here, hashed at seed time, never logged.
@@ -274,6 +297,23 @@ fn gateway_mode_from_env() -> GatewayMode {
             }
         },
         _ => GatewayMode::Off,
+    }
+}
+
+/// Parse `LB_MAX_EXTENSION_UPLOAD_BYTES` (a plain byte count) into the `POST /extensions` upload
+/// ceiling; unset/empty/unparseable ⇒ [`DEFAULT_MAX_EXTENSION_UPLOAD_BYTES`] (384 MiB). A malformed
+/// value warns and falls back rather than panicking (the "don't panic in boot config" posture). Only
+/// this binary-boundary reader touches the env — the value rides `BootConfig` below the boot seam.
+fn max_extension_upload_bytes_from_env() -> u64 {
+    match std::env::var("LB_MAX_EXTENSION_UPLOAD_BYTES") {
+        Ok(v) if !v.trim().is_empty() => v.trim().parse().unwrap_or_else(|_| {
+            eprintln!(
+                "bad LB_MAX_EXTENSION_UPLOAD_BYTES '{v}': not a byte count — using the {} MiB default",
+                DEFAULT_MAX_EXTENSION_UPLOAD_BYTES / (1024 * 1024)
+            );
+            DEFAULT_MAX_EXTENSION_UPLOAD_BYTES
+        }),
+        _ => DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
     }
 }
 

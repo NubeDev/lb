@@ -144,4 +144,14 @@ fn from_env_defaults_match_the_binary() {
     assert!(cfg.hello_demo, "the binary loads the hello demo");
     assert!(matches!(cfg.gateway, lb_node::GatewayMode::Off));
     assert!(cfg.store_path.is_none(), "no LB_STORE_PATH ⇒ mem store");
+    assert_eq!(
+        cfg.max_extension_upload_bytes,
+        lb_node::DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
+        "no LB_MAX_EXTENSION_UPLOAD_BYTES ⇒ the 384 MiB default"
+    );
+    assert_eq!(
+        cfg.max_extension_upload_bytes,
+        384 * 1024 * 1024,
+        "the default upload ceiling is 384 MiB (fits the ~317 MiB ems sidecar with headroom)"
+    );
 }

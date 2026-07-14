@@ -105,6 +105,25 @@ pub async fn publish_extension(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
+    // Descriptive over-limit reject (extension-upload-limit fix): the route-scoped `DefaultBodyLimit`
+    // carries a small margin above the configured ceiling so a just-oversized artifact reaches here
+    // (rather than the layer's bare "length limit exceeded"). Report the size AND the limit so an
+    // operator sees exactly what to raise. The declared `Content-Length` is what curl/the browser send;
+    // absent (chunked) uploads fall through to the layer's hard cap.
+    if let Some(len) = content_length(&headers) {
+        let limit = gw.max_extension_upload_bytes;
+        if len > limit {
+            return Err((
+                StatusCode::PAYLOAD_TOO_LARGE,
+                format!(
+                    "extension artifact {} exceeds the upload limit {} \
+                     (raise LB_MAX_EXTENSION_UPLOAD_BYTES / BootConfig::max_extension_upload_bytes)",
+                    human_bytes(len),
+                    human_bytes(limit),
+                ),
+            ));
+        }
+    }
     let publish = publish_body(body, &gw.trusted)?;
     lb_host::ext_publish(
         &gw.node,
@@ -195,6 +214,35 @@ fn pack_status(e: impl std::fmt::Display) -> (StatusCode, String) {
 
 fn pack_io(action: &str, e: std::io::Error) -> (StatusCode, String) {
     (StatusCode::UNPROCESSABLE_ENTITY, format!("{action}: {e}"))
+}
+
+/// The declared request body size from the `Content-Length` header, if present and parseable. Used by
+/// the publish route to reject an oversized artifact with a descriptive 413 before buffering it.
+fn content_length(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get(axum::http::header::CONTENT_LENGTH)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+/// Render a byte count as a human-friendly size (e.g. `480.0 MiB`) for the over-limit error message —
+/// an operator reads "480 MiB exceeds 384 MiB", not raw byte counts.
+fn human_bytes(n: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut v = n as f64;
+    let mut u = 0;
+    while v >= 1024.0 && u < UNITS.len() - 1 {
+        v /= 1024.0;
+        u += 1;
+    }
+    if u == 0 {
+        format!("{n} B")
+    } else {
+        format!("{v:.1} {}", UNITS[u])
+    }
 }
 
 fn forbid(e: impl std::fmt::Display) -> (StatusCode, String) {

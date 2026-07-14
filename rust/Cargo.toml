@@ -67,7 +67,7 @@ members = [
     "role/cli",
     "tools/pack",
 ]
-exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge", "extensions/proof-panel", "extensions/echarts-panel", "extensions/thecrew", "extensions/control-engine"]
+exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge", "extensions/proof-panel", "extensions/echarts-panel", "extensions/control-engine"]
 
 [workspace.package]
 version = "0.1.0"
