@@ -23,6 +23,35 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Test baseline (2026-07-14, full-suite triage; uncommitted working tree): the Rust suite is down to
+3 genuinely-red binaries, from 12.** A `cargo test --workspace --no-fail-fast -j 4` sweep (390 test
+binaries) plus triage of every red. What the "known-red list" actually was:
+
+- **5 unexplained failures — all real bugs, all fixed.** A **capability leak** (the `/mcp/call`
+  schema validator ran *before* the cap gate → schema-declaring verbs answered denied callers with
+  `400` instead of an opaque `403`), `store.schema` hiding 5 of 6 `series` columns, two `lb-viz`
+  transform tests asserting an order that only holds in a build that never ships, and the ingest
+  `series.latest` producer-restart bug (a live meter read stale for hours).
+- **4 of the 7 "long-known, out of scope" reds were not real.** Three (`proof_panel_test`,
+  `build_test`, `devkit_e2e_test`) were **one line in the wrong Cargo section** — `lb-sdk` under
+  `[build-dependencies]`, so `DEP_LB_SDK_WIT` was never set. The second copy sat in
+  **`crates/devkit/templates/wasm/Cargo.toml.tmpl`**, meaning *every wasm extension anyone scaffolded
+  was born unbuildable* since the SDK split. `agent_routed_test` was simply stale (3/3 green).
+- **Genuinely red (3):** `agent_persona_catalog_test` 6/8, `agent_persona_coding_test` 2/10,
+  `reminder_test` 1/4. Plus two **pre-existing federation e2e stack overflows** (postgres *and* —
+  newly found — sqlite, which proves the recursion is in the shared plan path, not a driver, and
+  gives a container-free repro).
+- **Not failures at all:** `fleet_monitor_test`/`native_test` needed `cargo build -p fleet-monitor -p
+  echo-sidecar` (binaries wiped with `target/`); `rules_test` hangs *only* under heavy box load
+  (27 concurrent `worker_threads = 1` runtimes starve into a real deadlock — green when quiet).
+
+**The lesson, since it cost weeks:** a known-red list lies in *both* directions — its
+"everything else green" nearly buried a live capability leak, and its own entries hid a one-line fix.
+**Read the failure, not the list**; a test dying on a missing artifact or in a build script is not
+testing the code at all. Full narrative:
+[`sessions/auth-caps/full-suite-triage-session.md`](sessions/auth-caps/full-suite-triage-session.md);
+entries in [`debugging/README.md`](debugging/README.md).
+
 **Just shipped (2026-07-14): viz Grafana-parity Phase 4 — JSON import/export (the interop edge)
 (`docs/scope/frontend/dashboard/viz/import-export-scope.md`; uncommitted working tree).** The user's
 literal ask — *"export a dashboard from Grafana as JSON and import here, and back"* — as two host

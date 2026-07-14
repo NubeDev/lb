@@ -155,14 +155,18 @@ mod tests {
     #[test]
     fn rows_mode_emits_label_value_rows_and_unlabeled_passes_through() {
         let out = apply(labeled(), &json!({ "mode": "rows" }));
-        assert_eq!(
-            out[0].field("label").unwrap().values,
-            vec![json!("dc"), json!("host")]
-        );
-        assert_eq!(
-            out[0].field("value").unwrap().values,
-            vec![json!("west"), json!("a")]
-        );
+        // Each label must stay paired with its own value. Row order is serde_json Map
+        // order, which is alphabetical only while `preserve_order` is off — a workspace
+        // build unifies that feature in and yields insertion order. Compare the pairs.
+        let labels = &out[0].field("label").unwrap().values;
+        let values = &out[0].field("value").unwrap().values;
+        let mut pairs: Vec<(&str, &str)> = labels
+            .iter()
+            .zip(values)
+            .map(|(l, v)| (l.as_str().unwrap(), v.as_str().unwrap()))
+            .collect();
+        pairs.sort_unstable();
+        assert_eq!(pairs, vec![("dc", "west"), ("host", "a")]);
         // No labels → untouched.
         let plain = vec![Frame::new(vec![Field::new("v", vec![json!(1)])])];
         let out = apply(plain, &json!({}));

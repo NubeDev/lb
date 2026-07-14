@@ -1,6 +1,8 @@
 //! Ingest at the host layer: the MCP-surface round-trip + the mandatory deny test. The producer is
-//! stamped from the authenticated principal (un-spoofable), and the durable exactly-once round-trip
-//! is proven end to end through `call_ingest_tool`. The `ingest.write` MCP verb drains staging →
+//! ROOTED at the authenticated principal — `{principal}` when the caller declares no sub-namespace,
+//! `{principal}/{declared}` when it does — so the root is un-spoofable while one principal can still
+//! run many independent `seq` spaces (a caller can only ever carve up its own namespace). The
+//! durable exactly-once round-trip is proven end to end through `call_ingest_tool`. The `ingest.write` MCP verb drains staging →
 //! `series` synchronously (there is no background drain worker; the gateway's `POST /ingest` route
 //! drains for the same reason), so a write is visible to the very next read over the same bridge — the
 //! round-trip the proof-panel page proves. A subsequent explicit `drain_workspace` is then a no-op
@@ -28,9 +30,20 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
     verify(&key, &token, 1).expect("token verifies")
 }
 
+/// A sample declaring NO producer sub-namespace — the back-compatible default, so the host stamps
+/// the bare authenticated principal.
+///
+/// The producer is ROOTED at the principal, not simply discarded: `ingest.write` stamps
+/// `{principal}` when the caller declares nothing and `{principal}/{declared}` when it does (so one
+/// principal can run many independent seq spaces — see `sample_ns` below). An empty declaration is
+/// what selects the bare-principal form.
 fn sample(series: &str, seq: u64, payload: serde_json::Value) -> serde_json::Value {
-    // producer is overwritten by the host with the authenticated principal — value here is ignored.
-    json!({ "series": series, "producer": "ignored", "ts": seq, "seq": seq, "payload": payload, "qos": "best-effort" })
+    json!({ "series": series, "producer": "", "ts": seq, "seq": seq, "payload": payload, "qos": "best-effort" })
+}
+
+/// A sample declaring producer sub-namespace `ns`, which the host roots under the principal.
+fn sample_ns(series: &str, ns: &str, seq: u64, payload: serde_json::Value) -> serde_json::Value {
+    json!({ "series": series, "producer": ns, "ts": seq, "seq": seq, "payload": payload, "qos": "best-effort" })
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -76,7 +89,8 @@ async fn write_drain_read_round_trip_via_mcp() {
     .unwrap();
     let samples = read["samples"].as_array().unwrap();
     assert_eq!(samples.len(), 2);
-    // Producer stamped from the authenticated principal, not the wire value.
+    // Producer is ROOTED at the authenticated principal. These samples declare no sub-namespace, so
+    // the stamp is the bare principal — never the wire value.
     assert_eq!(samples[0]["producer"], "client:pi-7");
 
     let latest = call_ingest_tool(
@@ -89,6 +103,81 @@ async fn write_drain_read_round_trip_via_mcp() {
     .await
     .unwrap();
     assert_eq!(latest["sample"]["seq"], 2);
+}
+
+/// A caller-declared producer is ROOTED under the authenticated principal — never taken verbatim,
+/// and never able to name another principal's namespace.
+///
+/// This is the half the old fixture could not express: it hardcoded `producer: "ignored"` with the
+/// comment "value here is ignored", which was true only while the stamp discarded the wire value
+/// outright. Rooting it means the declared leaf now REACHES the stored id, so the forgery question
+/// ("can a caller shape that leaf to impersonate someone else?") became a real one and needs a real
+/// test.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_declared_producer_is_rooted_under_the_principal_and_cannot_forge_another() {
+    let store = Store::memory().await.unwrap();
+    let p = principal(
+        "client:pi-7",
+        "acme",
+        &["mcp:ingest.write:call", "mcp:series.read:call"],
+    );
+
+    let out = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "ingest.write",
+        &json!({ "samples": [
+            // A plain sub-namespace: rides beneath this principal.
+            sample_ns("cpu", "epoch-2", 1, json!(1)),
+            // A hostile one: tries to break out and pose as another principal's stream. The
+            // separator is the only character the caller must not control.
+            sample_ns("cpu", "../client:other/epoch-9", 2, json!(2)),
+        ] }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["accepted"], 2);
+
+    let read = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "series.read",
+        &json!({ "series": "cpu" }),
+    )
+    .await
+    .unwrap();
+    let producers: Vec<&str> = read["samples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["producer"].as_str().unwrap())
+        .collect();
+
+    // EVERY stored producer begins with this principal's root — that is the isolation property.
+    for got in &producers {
+        assert!(
+            got.starts_with("client:pi-7"),
+            "every producer must be rooted at the authenticated principal, got {got:?}"
+        );
+    }
+    assert!(
+        producers.contains(&"client:pi-7/epoch-2"),
+        "a declared sub-namespace rides beneath the principal, got {producers:?}"
+    );
+    // The hostile leaf keeps its text but loses every separator, so it can only ever be ONE level
+    // beneath this principal — it cannot become `client:other/...`.
+    assert!(
+        !producers.iter().any(|g| g.contains("client:other/")),
+        "a declared producer must never forge another principal's namespace, got {producers:?}"
+    );
+    assert!(
+        producers
+            .iter()
+            .all(|g| g.matches('/').count() <= 1 && g.starts_with("client:pi-7")),
+        "a declared producer must stay exactly one level beneath its own root, got {producers:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

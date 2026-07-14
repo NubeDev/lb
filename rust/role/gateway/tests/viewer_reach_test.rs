@@ -17,6 +17,11 @@
 //! (c) **A viewer keeps view reach** — the same viewer token still `200`s the render/read path
 //!     (`dashboard.list`), so a curated nav renders the pages it WAS given. Restricting reach ≠
 //!     breaking the view.
+//!
+//! (d) **The deny is opaque even for malformed args** — the gate runs before the schema validator,
+//!     so a denied caller cannot use a schema-declaring verb as a shape oracle. This one guards the
+//!     others: while the validator ran first, `dashboard.save` in (b) returned `400` and that row
+//!     silently stopped asserting the deny at all.
 
 mod common;
 
@@ -25,6 +30,91 @@ use common::{bearer, gateway, get_req, json_post};
 use lb_role_gateway::{router, Gateway};
 use serde_json::json;
 use tower::ServiceExt;
+
+/// The cap gate must run BEFORE the schema validator, so a denied caller can never tell a
+/// well-formed call from a malformed one. `dashboard.save` is the probe: it is one of the few verbs
+/// that declares an `input_schema` (`required: [id, title, cells, now]`), so it is exactly the tier
+/// that leaks if the validator runs first. A viewer sending args that violate that schema must still
+/// get the opaque `403` — never the `400` that would confirm the verb exists and grade their args.
+///
+/// Regression: the validator sat ahead of `authorize_tool` in `dispatch_at_depth`, so this returned
+/// `400` and the deny below silently stopped testing the deny (see the `denied` table in (b)).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_denied_caller_gets_an_opaque_403_even_when_the_args_are_malformed() {
+    let (gw, _key) = gateway().await;
+    let viewer = seed_viewer(&gw).await;
+
+    // Missing `now` AND `cells` — a schema violation the validator would reject with 400.
+    let status = mcp_status(&gw, &viewer, "dashboard.save", json!({ "id": "d1" })).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "a denied viewer must get an opaque 403, not a 400 grading the args of a verb it cannot call"
+    );
+
+    // The same call with args that SATISFY the schema is also 403 — the two are indistinguishable,
+    // which is the whole point of the contract.
+    let status = mcp_status(
+        &gw,
+        &viewer,
+        "dashboard.save",
+        json!({ "id": "d1", "title": "d1", "cells": [], "now": 1_000_u64 }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "well-formed args must be denied identically — no shape oracle"
+    );
+}
+
+/// Drive the REAL admin routes to produce a `viewer`-role token for `user:bob`: alice bootstraps as
+/// workspace-admin, adds bob, grants `role:viewer`, revokes `role:member`. Bob re-logs in so his
+/// token carries the viewer floor ∪ his one remaining role. Returns bob's viewer bearer.
+async fn seed_viewer(gw: &Gateway) -> String {
+    let admin = login(gw, "user:alice", "acme").await;
+    let post = |path: &'static str, body: serde_json::Value, tok: String| {
+        let gw = gw.clone();
+        async move {
+            router(gw)
+                .oneshot(bearer(json_post(path, body), &tok))
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    assert_eq!(
+        post(
+            "/admin/members",
+            json!({ "sub": "user:bob" }),
+            admin.clone()
+        )
+        .await,
+        StatusCode::NO_CONTENT,
+        "admin adds bob"
+    );
+    assert_eq!(
+        post(
+            "/admin/grants",
+            json!({ "subject": "user:bob", "cap": "role:viewer" }),
+            admin.clone()
+        )
+        .await,
+        StatusCode::NO_CONTENT,
+        "admin grants bob role:viewer"
+    );
+    assert_eq!(
+        post(
+            "/admin/grants/revoke",
+            json!({ "subject": "user:bob", "cap": "role:member" }),
+            admin
+        )
+        .await,
+        StatusCode::NO_CONTENT,
+        "admin revokes bob role:member"
+    );
+    login(gw, "user:bob", "acme").await
+}
 
 /// Log in over the real `/login` route (password-less dev check) and return the bearer token.
 async fn login(gw: &Gateway, user: &str, ws: &str) -> String {

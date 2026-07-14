@@ -69,21 +69,27 @@ async fn table_columns(
     let info: Option<TableInfo> = resp.take(0).map_err(decode)?;
     let fields = info.map(|i| i.fields).unwrap_or_default();
 
-    if !fields.is_empty() {
-        let mut cols: Vec<SchemaColumn> = fields
-            .into_iter()
-            .map(|(name, define)| SchemaColumn {
-                ty: type_of_define(&define),
-                name,
-            })
-            .collect();
-        cols.sort_by(|a, b| a.name.cmp(&b.name));
-        return Ok(cols);
+    // A `DEFINE FIELD` does NOT imply a SCHEMAFULL table: a schemaless table can carry a typed
+    // field for an index or a migration and still hold undeclared columns. `series` is exactly that
+    // — `ingest/src/schema.rs` defines only `ts` (datetime, for the ts index), while every real
+    // column (`seq`, `payload`, `series`, …) is undeclared. Returning the declared fields ALONE
+    // here reported `series` as the single column `ts` and hid the rest, even though they are
+    // present and selectable (`SELECT seq FROM series` works). So: declared fields (authoritative
+    // types) UNIONed with one sampled row's keys (typed `any`), never one or the other.
+    let mut cols: Vec<SchemaColumn> = fields
+        .into_iter()
+        .map(|(name, define)| SchemaColumn {
+            ty: type_of_define(&define),
+            name,
+        })
+        .collect();
+    for sampled in sample_columns(store, ws, table).await? {
+        if !cols.iter().any(|c| c.name == sampled.name) {
+            cols.push(sampled); // undeclared → keep the declared type when both exist
+        }
     }
-
-    // Schemaless: sample one row and report its keys (typed `any`). Records are stored under a
-    // `{ data: … }` envelope, so unwrap it to surface the author's own columns, not the wrapper.
-    sample_columns(store, ws, table).await
+    cols.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(cols)
 }
 
 /// Columns from one sampled row of a schemaless table — its object keys, in first-seen order, typed

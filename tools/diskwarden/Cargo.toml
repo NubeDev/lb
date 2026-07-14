@@ -1,0 +1,33 @@
+# diskwarden — the standalone disk-reclaim warden.
+#
+# This is a **deliberately separate Cargo workspace** from `rust/`, mirroring the
+# sibling `tools/grafana-conv`. It is a developer-machine utility, not a node: no
+# token, no workspace, no cap, no store, no bus. It never links a core crate and is
+# never built by the main workspace.
+#
+# Layout:
+#   reclaim/ — the pure scan/reclaim core. A `Reclaimer` trait + one file per
+#              reclaimer. Scanning is READ-ONLY; reclaiming is explicit.
+#   app/     — the thin seam: the `diskwarden` binary (scan | clean | tray | serve).
+[workspace]
+resolver = "2"
+members = ["reclaim", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+anyhow = "1"
+thiserror = "2"
+walkdir = "2"
+
+# Debug info is the single biggest contributor to link-step RAM (see .cargo/config.toml).
+# This box has no swap headroom; trimming it keeps `cargo build` from freezing the desktop.
+[profile.dev]
+debug = 0

@@ -357,12 +357,23 @@ async fn dispatch_at_depth(
     // the early, schema-driven gate. A tool without a declared schema passes (additive) — so verbs
     // without a schema (the majority, incl. undo) are unaffected. Skipped for the format/convert
     // tier above (no tenant data, no schema).
-    {
+    //
+    // This runs AFTER each tier's capability gate, never before it: `BadInput` is a `400` and a
+    // deny is an opaque `403`, so validating first would answer "are your args well-formed?" for a
+    // principal not authorized to call the verb at all — an existence/shape oracle that contradicts
+    // the opaque-deny contract, and one only the schema-declaring verbs would leak. Each tier below
+    // calls this immediately after `authorize_tool`.
+    fn validate_declared_args(
+        node: &Arc<Node>,
+        qualified_tool: &str,
+        input_json: &str,
+    ) -> Result<(), ToolError> {
         let input: Value = serde_json::from_str(input_json)
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
         if let Some(schema) = descriptor_schema(node, qualified_tool) {
             crate::tools::validate_args(Some(&schema), &input)?;
         }
+        Ok(())
     }
 
     if is_host_native(qualified_tool) {
@@ -374,6 +385,7 @@ async fn dispatch_at_depth(
         // `gate_tool_for`, shared with the `tools.catalog` visibility gate so the palette can never
         // hide a verb this gate would pass (each aliased verb documents its rationale there).
         authorize_tool(principal, ws, gate_tool_for(qualified_tool))?;
+        validate_declared_args(node, qualified_tool, input_json)?;
         let input: Value = serde_json::from_str(input_json)
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {

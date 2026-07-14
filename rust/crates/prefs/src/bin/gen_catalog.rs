@@ -1,11 +1,15 @@
 //! `gen-prefs-catalog` — emit the built-in en/es MF1 catalogs as a TypeScript module the client
 //! bundle imports (i18n-catalogs scope: "a `gen_catalog` bin (twin of the shipped `gen_ts`) generates
 //! `ui/src/lib/prefs/catalog.generated.ts`"). The client parses the SAME MF1 source strings with
-//! `intl-messageformat`, so host and client can never diverge — a drift test (`tests/
-//! generated_catalog_test.rs`) re-runs this and asserts the on-disk file is byte-identical.
+//! `intl-messageformat`, so host and client render the same messages by construction.
 //!
-//! Run from the workspace root:
-//!   `cargo run -p lb-prefs --bin gen-prefs-catalog > ../ui/src/lib/prefs/catalog.generated.ts`
+//! Run from the workspace root, redirecting into the consuming client's tree, e.g.
+//!   `cargo run -p lb-prefs --bin gen-prefs-catalog > <client>/src/lib/prefs/catalog.generated.ts`
+//!
+//! lb is a library and the client lives out of tree, so nothing here is checked in for this to be
+//! drift-tested against (the in-tree `ui/` went away in `678503f`). A consumer that vendors the
+//! output owns that drift test. What this repo still guards is the source the output is derived
+//! from: `tests/generated_catalog_test.rs` asserts the builtins parse and stay key-aligned.
 
 use lb_prefs::catalog::{parse_builtin, EN_MF, ES_MF};
 

@@ -16,9 +16,11 @@ crate-type = ["cdylib"]
 wit-bindgen = "0.40"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# The authoritative WIT lives in the standalone SDK; a build-time dep only — its `links` build script
-# exposes the WIT path (`DEP_LB_SDK_WIT`) that `build.rs` feeds to `generate!`. Pinned to the same tag
-# lb's host pins, so guest and host generate from one contract.
-[build-dependencies]
+# The authoritative WIT lives in the standalone SDK. A `links` crate: its build script exposes the
+# WIT path (`DEP_LB_SDK_WIT`) that this crate's `build.rs` feeds to `wit_bindgen::generate!`. It must
+# be a NORMAL dep, not a `[build-dependencies]` one: cargo hands `DEP_*` metadata to a build script
+# only for its own package's normal dependencies, so declaring it as a build-dep leaves
+# `DEP_LB_SDK_WIT` unset and `build.rs` panics (this is exactly what kept `proof_panel_ext.wasm`
+# unbuildable — see debugging/extensions/proof-panel-wit-dep-in-wrong-section.md). Mirrors `hello`.
+# Same tag lb's host pins — one contract, no drift.
 lb-sdk = { git = "https://github.com/NubeDev/lb-ext-sdk", tag = "sdk-v0.2.1" }

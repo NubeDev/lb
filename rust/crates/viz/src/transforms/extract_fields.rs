@@ -154,10 +154,19 @@ mod tests {
             seeded(),
             &json!({ "source": "payload", "replace": true, "keepTime": true }),
         );
+        // Time leads; the extracted keys follow. Their relative order is serde_json Map
+        // order, which is alphabetical only while `preserve_order` is off — a workspace
+        // build unifies that feature in and yields insertion order. Assert the invariant
+        // (time first, both keys extracted), not the key order.
         let names: Vec<&str> = out[0].fields.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(names, vec!["ts", "mode", "temp"]); // keys alphabetical (serde_json Map)
+        assert_eq!(names[0], "ts");
+        let mut extracted = names[1..].to_vec();
+        extracted.sort_unstable();
+        assert_eq!(extracted, vec!["mode", "temp"]);
+
         let out = apply(seeded(), &json!({ "source": "payload", "replace": true }));
-        let names: Vec<&str> = out[0].fields.iter().map(|f| f.name.as_str()).collect();
+        let mut names: Vec<&str> = out[0].fields.iter().map(|f| f.name.as_str()).collect();
+        names.sort_unstable();
         assert_eq!(names, vec!["mode", "temp"]);
     }
 

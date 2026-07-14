@@ -35,6 +35,36 @@ recorded in the debugging history. This entry adds `federation_end_to_end_postgr
 watch list. Note it may previously have been silently **skipped** on boxes without docker —
 docker being available here may be why it only surfaced now.
 
+## Update 2026-07-14 — it is NOT postgres- or docker-specific: the SQLite twin overflows too
+
+The full-suite triage run (`cargo test --workspace --no-fail-fast -j 4` on `57684b1` + that session's
+uncommitted fixes) hit the SAME signature in the **sqlite** e2e:
+
+```
+test federation_end_to_end_sqlite has been running for over 60 seconds
+thread 'federation_end_to_end_sqlite' (3824096) has overflowed its stack
+fatal runtime error: stack overflow, aborting
+error: test failed, to rerun pass `-p lb-host --test federation_sqlite_test`
+```
+
+This **kills the docker hypothesis** floated above ("may previously have been silently skipped on
+boxes without docker"). `federation_sqlite_test` needs no docker and no postgres — the DSN is a
+node-local SQLite file at a `127.0.0.1:0` endpoint. Two different datasource kinds overflowing
+identically means the recursion is in the **shared** federation path (plan/pushdown), not in either
+driver. That is a strictly easier bug to chase — reproduce with no containers:
+
+```
+cargo test -p lb-host --test federation_sqlite_test -- --nocapture
+```
+
+Not chased in that session (no federation source was touched by it: the triage diff is a cap-gate
+reorder, a `store.schema` UNION, the ingest producer stamp, and test assertions —
+`git diff --stat -- rust/crates/federation rust/crates/datasources` is empty; a runtime recursion
+cannot come from those).
+
+Note `federation_sqlite_test` compiles the federation sidecar in-test (a full dep tree), so it takes
+~90s before it even reaches the overflow — budget for that when reproducing.
+
 ## Next step (for whoever owns federation)
 
 Run it under a debugger / `RUST_MIN_STACK` bump to find the recursion (sqlparser/polars plan

@@ -3,9 +3,13 @@
 //! unit picker **cannot disagree with the server** about the allowed set (prefs scope: "a generated
 //! constants module … client and server can't disagree on the allowed set").
 //!
-//! Run from the workspace root: `cargo run -p lb-prefs --bin gen-prefs-ts > \
-//!   ../ui/src/lib/prefs/dimensions.generated.ts`. A test (`tests/generated_ts_test.rs`) asserts the
-//! checked-in file matches this output, so a drift fails CI rather than shipping a stale picker.
+//! Run from the workspace root, redirecting into the consuming client's tree, e.g.
+//! `cargo run -p lb-prefs --bin gen-prefs-ts > <client>/src/lib/prefs/dimensions.generated.ts`.
+//!
+//! lb is a library and the client lives out of tree, so nothing here is checked in for this to be
+//! drift-tested against (the in-tree `ui/` went away in `678503f`). A consumer that vendors the
+//! output owns that drift test. What this repo still guards is the source of truth the output is
+//! derived from: `tests/generated_ts_test.rs` asserts the `ALL` arrays stay in step with the enums.
 
 use lb_prefs::axis::{DateStyle, Dimension, FirstDay, NumberFormat, TimeStyle, Unit, UnitSystem};
 
