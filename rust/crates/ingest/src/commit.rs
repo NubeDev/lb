@@ -14,33 +14,84 @@
 //! TWO rows — both survive (the two-producer-collision guarantee). Keying on `(series, seq)` would
 //! have lost one; that weaker key is rejected by design.
 //!
-//! Payload is stored **typed, not opaque**: a scalar stays a number/bool, structured data a native
-//! nested object, binary a record-as-content reference (buckets are unavailable per the store spike).
-//! SurrealDB's `CONTENT` preserves the JSON value's type, so the richest form is what lands.
+//! Since the series schema slice, commit also:
+//!   - ensures the series-plane schema/indexes and stores `ts` as a real `datetime`
+//!     (`time::from::millis` — the wire `ts` is epoch ms);
+//!   - enforces the **series cardinality cap**: a sample naming a NEW series past the per-workspace
+//!     cap is diverted to the dead-letter table (in the same tx), never silently dropped and never
+//!     an unbounded index;
+//!   - registers each series in `series_meta` and converts its wire `labels` to tag edges once
+//!     (`labels::apply_labels`) — so `series.find` actually finds what ingest wrote.
+//!
+//! Payload is stored **typed, not opaque** — SurrealDB's `CONTENT` preserves the JSON value's type.
+
+use std::collections::HashSet;
 
 use lb_store::{Store, StoreError};
 use serde_json::Value;
 
-use crate::staging::{Staged, SERIES_TABLE, STAGING_TABLE};
+use crate::labels::apply_labels;
+use crate::meta::{is_registered, register, series_count, DEFAULT_SERIES_CAP};
+use crate::schema::ensure_series_schema;
+use crate::staging::{Staged, DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
 
-/// Outcome of one commit pass: how many samples were committed exactly-once this batch.
+/// Outcome of one commit pass: how many samples were committed exactly-once this batch, and how
+/// many were diverted to the dead-letter table by the series cardinality cap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommitPass {
     pub committed: usize,
+    pub dead_lettered: usize,
 }
 
-/// Drain up to `batch` staged samples from `ws` and commit them to the series tables in one
-/// transaction. Returns the count committed (0 when staging is empty). Call repeatedly to drain.
+/// Drain up to `batch` staged samples from `ws` and commit them under the default series
+/// cardinality cap. Returns the counts (0/0 when staging is empty). Call repeatedly to drain.
 pub async fn commit_batch(store: &Store, ws: &str, batch: usize) -> Result<CommitPass, StoreError> {
+    commit_batch_capped(store, ws, batch, DEFAULT_SERIES_CAP).await
+}
+
+/// [`commit_batch`] with an explicit per-workspace cap on distinct series names (`0` = unbounded).
+pub async fn commit_batch_capped(
+    store: &Store,
+    ws: &str,
+    batch: usize,
+    series_cap: usize,
+) -> Result<CommitPass, StoreError> {
     let staged = drain(store, ws, batch).await?;
     if staged.is_empty() {
-        return Ok(CommitPass { committed: 0 });
+        return Ok(CommitPass {
+            committed: 0,
+            dead_lettered: 0,
+        });
+    }
+    ensure_series_schema(store, ws).await?;
+
+    // Cardinality gate: decide, per distinct series name in this batch, whether it is admitted.
+    // Existing series always pass; new names are admitted while the registry stays under the cap.
+    let mut admitted_series: HashSet<String> = HashSet::new();
+    let mut rejected_series: HashSet<String> = HashSet::new();
+    let mut count = series_count(store, ws).await?;
+    for s in &staged {
+        let name = &s.sample.series;
+        if admitted_series.contains(name) || rejected_series.contains(name) {
+            continue;
+        }
+        if is_registered(store, ws, name).await? {
+            admitted_series.insert(name.clone());
+        } else if series_cap == 0 || count < series_cap {
+            register(store, ws, name).await?;
+            count += 1;
+            admitted_series.insert(name.clone());
+        } else {
+            rejected_series.insert(name.clone());
+        }
     }
 
-    // Build one BEGIN…COMMIT with an UPSERT-into-series + DELETE-from-staging per sample. All-or-
-    // nothing: a crash before COMMIT rolls every statement back and the batch stays in staging.
+    // Build one BEGIN…COMMIT: admitted samples UPSERT into series; cap-rejected samples divert to
+    // the dead-letter table. Both delete their staged row in the SAME tx (atomic dequeue).
     let mut sql = String::from("BEGIN TRANSACTION;\n");
     let mut bindings: Vec<(String, Value)> = Vec::new();
+    let mut committed = 0;
+    let mut dead_lettered = 0;
 
     for (i, s) in staged.iter().enumerate() {
         let (se, pr, sq, ts, pl) = (
@@ -50,11 +101,24 @@ pub async fn commit_batch(store: &Store, ws: &str, batch: usize) -> Result<Commi
             format!("ts{i}"),
             format!("pl{i}"),
         );
-        // UPSERT keyed on the composite [series, producer, seq] → exactly-once on re-drain.
-        sql.push_str(&format!(
-            "UPSERT type::thing('{SERIES_TABLE}', [${se}, ${pr}, ${sq}]) \
-             CONTENT {{ series: ${se}, producer: ${pr}, seq: ${sq}, ts: ${ts}, payload: ${pl} }};\n"
-        ));
+        if admitted_series.contains(&s.sample.series) {
+            // UPSERT keyed on the composite [series, producer, seq] → exactly-once on re-drain.
+            // `ts` lands as a real datetime (wire ts is epoch ms).
+            sql.push_str(&format!(
+                "UPSERT type::thing('{SERIES_TABLE}', [${se}, ${pr}, ${sq}]) \
+                 CONTENT {{ series: ${se}, producer: ${pr}, seq: ${sq}, \
+                 ts: time::from::millis(${ts}), payload: ${pl} }};\n"
+            ));
+            committed += 1;
+        } else {
+            // Over the series cap: dead-letter, never a silent drop (and never a new index entry).
+            sql.push_str(&format!(
+                "UPSERT type::thing('{DEAD_LETTER_TABLE}', [${se}, ${pr}, ${sq}]) \
+                 CONTENT {{ sample: {{ series: ${se}, producer: ${pr}, seq: ${sq}, ts: ${ts}, \
+                 payload: ${pl} }}, reason: 'series-cap' }};\n"
+            ));
+            dead_lettered += 1;
+        }
         // Delete the staged row in the SAME tx so commit + dequeue are atomic.
         sql.push_str(&format!(
             "DELETE type::thing('{STAGING_TABLE}', [${se}, ${pr}, ${sq}]);\n"
@@ -68,8 +132,18 @@ pub async fn commit_batch(store: &Store, ws: &str, batch: usize) -> Result<Commi
     sql.push_str("COMMIT TRANSACTION;");
 
     store.query_ws(ws, &sql, bindings).await?;
+
+    // Label→tag conversion, once per series (post-tx: edges are derived truth, re-derivable).
+    let mut labeled: HashSet<&str> = HashSet::new();
+    for s in &staged {
+        if admitted_series.contains(&s.sample.series) && labeled.insert(s.sample.series.as_str()) {
+            apply_labels(store, ws, &s.sample).await?;
+        }
+    }
+
     Ok(CommitPass {
-        committed: staged.len(),
+        committed,
+        dead_lettered,
     })
 }
 

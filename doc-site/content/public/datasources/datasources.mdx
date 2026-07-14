@@ -6,6 +6,31 @@ Shipped so far (to be written up here): the native `federation` extension —
 `datasource.*` admin CRUD, read-first `federation.query`, `federation.schema` /
 `federation.sample` introspection, and the inbound `federation.mirror` job.
 
+## Series plane: paging, decimation, retention (shipped 2026-07-14)
+
+The native series plane (`series.read` over the ingest-committed `series` table) is now
+production-shaped (issues #55–#58, one PR):
+
+- **Schema + time semantics** — `ts` is a real SurrealDB `datetime` (idempotent migration for legacy
+  numeric rows); named indexes `series_seq_idx (series, seq)` and `series_ts_idx (series, ts)`;
+  commit converts wire `labels` to tag edges once per series (so `series.find` discovers ingested
+  series); a per-workspace **series cardinality cap** (default 10 000) dead-letters samples naming a
+  new series past the cap. `series.read` accepts wall-clock `{from, to}` (epoch ms, half-open)
+  alongside `from_seq`/`to_seq`.
+- **Keyset paging** (`mode:"rows"`, the default) — `{limit, cursor, direction}` in,
+  `{samples, next_cursor, prev_cursor}` out. Seeks the unique `(seq, producer)` composite (tie-safe);
+  the cursor is an opaque versioned bookmark, re-authorized against `mcp:series.read:call` on every
+  page and useless under another workspace's token. Default/max `limit`: 10 000.
+- **Bucketed decimation** (`mode:"buckets"`) — `{from, to, width_ms | budget}` in,
+  `{buckets: [{t, min, max, avg, last, count}], width_ms}` out (≤ budget, hard cap 2 000; sparse).
+  Spikes survive in `min`/`max`; `last` is exact. Computed server-side as a chunked fold over the
+  indexed window — a month of 1s samples renders as ~1 000 buckets, never millions of rows.
+- **Retention + rollup tiers + GC** — per-prefix policies
+  (`{prefix, raw_for_ms, tiers: [{width_ms, keep_for_ms}]}`) via the admin-capped
+  `series.retention.set / list / delete / gc` verbs. GC rolls raw history into stored tiers
+  (sum+count carried → exact re-aggregation), then evicts; bucketed reads transparently merge the
+  finest tier where raw was evicted. The series table no longer grows forever.
+
 In flight: the **schema designer + write plane**
 (`docs/scope/datasources/schema-designer-scope.md`) — `db_schema` records with a
 visual designer, `federation.migrate` (Ask-gated DDL), `federation.write`

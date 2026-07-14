@@ -18,7 +18,7 @@ pub async fn latest(store: &Store, ws: &str, series: &str) -> Result<Option<Samp
         .query_ws(
             ws,
             &format!(
-                "SELECT series, producer, seq, ts, payload FROM {SERIES_TABLE} \
+                "SELECT series, producer, seq, time::millis(ts) AS ts, payload FROM {SERIES_TABLE} \
                  WHERE series = $series ORDER BY seq DESC LIMIT 1"
             ),
             vec![("series".into(), Value::String(series.to_string()))],

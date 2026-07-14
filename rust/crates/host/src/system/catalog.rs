@@ -639,7 +639,27 @@ const HOST_TOOLS: &[HostTool] = &[
     HostTool {
         tool: "series.read",
         group: "series",
-        description: "read a committed range of a series",
+        description: "read a committed range of a series (keyset-paged rows or decimated buckets)",
+    },
+    HostTool {
+        tool: "series.retention.set",
+        group: "series",
+        description: "set the retention policy (raw horizon + rollup tiers) for a series prefix",
+    },
+    HostTool {
+        tool: "series.retention.list",
+        group: "series",
+        description: "list the workspace's series retention policies",
+    },
+    HostTool {
+        tool: "series.retention.delete",
+        group: "series",
+        description: "delete a series retention policy (revert to keep-forever)",
+    },
+    HostTool {
+        tool: "series.retention.gc",
+        group: "series",
+        description: "run one retention pass: roll up then evict raw samples past the horizon",
     },
     HostTool {
         tool: "ingest.write",

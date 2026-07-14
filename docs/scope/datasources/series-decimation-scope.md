@@ -1,7 +1,17 @@
 # Datasources scope — series decimation (slice C: charts downsample, they don't page raw points)
 
-Status: scope (the ask) — **child slice C** of [`page-chaining-scope.md`](page-chaining-scope.md).
-Promotes to `public/datasources/datasources.md` once shipped.
+Status: **shipped** (2026-07-14, issue #57, `series-plane-readiness`) — **child slice C** of
+[`page-chaining-scope.md`](page-chaining-scope.md). See
+[`../../sessions/ingest/series-plane-readiness-session.md`](../../sessions/ingest/series-plane-readiness-session.md).
+Implementation notes (resolving this doc's open questions): execution is a **chunked fold over the
+keyset pager** rather than a SurrealDB `GROUP BY time_bucket` — SurrealDB 2 has no ordered `last`
+aggregate, and the fold keeps `last` exact, tolerates non-numeric payloads, and stays O(page) memory
+while riding the `(series, ts)` index. Both `width_ms` and `budget` accepted (explicit width wins);
+buckets are **sparse**; hard cap 2 000 buckets; LTTB deferred. Where retention GC (issue #58) has
+evicted raw history, the read merges the stored rollup tier — see
+[`../ingest/series-retention-scope.md`](../ingest/series-retention-scope.md) for why those stored
+tiers don't violate this doc's "no materialized rollups" stance (they are the sole surviving copy
+post-eviction, not a cache).
 
 A million samples do not belong in a 1000px chart. Slice B made `series.read` page **raw rows**
 fast; but a chart that keyset-pages raw points still ships a million rows to draw a thousand pixels —

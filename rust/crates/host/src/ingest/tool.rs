@@ -14,7 +14,7 @@ use lb_store::Store;
 use lb_tags::Facet;
 use serde_json::{json, Value};
 
-use super::{drain_workspace, ingest_write, series_latest_value, series_read_range, IngestError};
+use super::{drain_workspace, ingest_write, series_latest_value, IngestError};
 
 /// Dispatch an ingest/series MCP call. `input` is the verb's JSON arguments; the return is the
 /// verb's JSON result. Each verb authorizes first; denials are opaque (`ToolError::Denied`).
@@ -42,14 +42,40 @@ pub async fn call_ingest_tool(
         }
         "series.read" => {
             let series = str_arg(input, "series")?;
-            // Open bounds when omitted — never a `u64::MAX` sentinel (it coerces to a float and the
-            // comparison mis-evaluates; see debugging/ingest/u64-max-bound-coerces-to-float.md).
-            let from = u64_arg(input, "from_seq");
-            let to = u64_arg(input, "to_seq");
-            let rows = series_read_range(store, principal, ws, series, from, to)
+            match input.get("mode").and_then(|v| v.as_str()).unwrap_or("rows") {
+                "rows" => read_rows(store, principal, ws, series, input).await,
+                "buckets" => read_buckets_mode(store, principal, ws, series, input).await,
+                other => Err(ToolError::BadInput(format!("unknown mode: {other}"))),
+            }
+        }
+        "series.retention.set" => {
+            let policy: lb_ingest::Policy = serde_json::from_value(input.clone())
+                .map_err(|e| ToolError::BadInput(format!("policy: {e}")))?;
+            super::series_retention_set(store, principal, ws, &policy)
                 .await
                 .map_err(ingest_to_tool)?;
-            Ok(json!({ "samples": rows }))
+            Ok(json!({ "ok": true }))
+        }
+        "series.retention.list" => {
+            let policies = super::series_retention_list(store, principal, ws)
+                .await
+                .map_err(ingest_to_tool)?;
+            Ok(json!({ "policies": policies }))
+        }
+        "series.retention.delete" => {
+            let prefix = str_arg(input, "prefix")?;
+            super::series_retention_delete(store, principal, ws, prefix)
+                .await
+                .map_err(ingest_to_tool)?;
+            Ok(json!({ "ok": true }))
+        }
+        "series.retention.gc" => {
+            // `now_ms` is caller-injectable (determinism §3); absent → wall-clock.
+            let now_ms = u64_arg(input, "now_ms").unwrap_or_else(now_wall_ms);
+            let pass = super::series_retention_gc(store, principal, ws, now_ms)
+                .await
+                .map_err(ingest_to_tool)?;
+            Ok(json!(pass))
         }
         "series.latest" => {
             let series = str_arg(input, "series")?;
@@ -75,6 +101,75 @@ pub async fn call_ingest_tool(
         }
         _ => Err(ToolError::NotFound),
     }
+}
+
+/// `series.read {mode:"rows"}` — the keyset page (paging scope, slice B). Legacy `from_seq`/`to_seq`
+/// bounds still apply, joined by wall-clock `from`/`to` (epoch ms); the reply keeps the `samples`
+/// key from the pre-paging wire shape and adds `next_cursor`/`prev_cursor`.
+async fn read_rows(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    series: &str,
+    input: &Value,
+) -> Result<Value, ToolError> {
+    // Open bounds when omitted — never a `u64::MAX` sentinel (it coerces to a float and the
+    // comparison mis-evaluates; see debugging/ingest/u64-max-bound-coerces-to-float.md).
+    let q = lb_ingest::PageQuery {
+        from_seq: u64_arg(input, "from_seq"),
+        to_seq: u64_arg(input, "to_seq"),
+        from_ts: u64_arg(input, "from"),
+        to_ts: u64_arg(input, "to"),
+        limit: u64_arg(input, "limit").map(|n| n as usize),
+        cursor: input
+            .get("cursor")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        direction: match input.get("direction").and_then(|v| v.as_str()) {
+            Some("back") => lb_ingest::Direction::Back,
+            _ => lb_ingest::Direction::Fwd,
+        },
+    };
+    let page = super::series_read_page(store, principal, ws, series, &q)
+        .await
+        .map_err(ingest_to_tool)?;
+    Ok(json!({
+        "samples": page.rows,
+        "next_cursor": page.next_cursor,
+        "prev_cursor": page.prev_cursor,
+    }))
+}
+
+/// `series.read {mode:"buckets"}` — server-side decimation (decimation scope, slice C). Requires a
+/// wall-clock window `{from, to}` (epoch ms) and `width_ms` or `budget`.
+async fn read_buckets_mode(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    series: &str,
+    input: &Value,
+) -> Result<Value, ToolError> {
+    let q = lb_ingest::BucketQuery {
+        from_ts: u64_arg(input, "from")
+            .ok_or_else(|| ToolError::BadInput("buckets mode needs from (epoch ms)".into()))?,
+        to_ts: u64_arg(input, "to")
+            .ok_or_else(|| ToolError::BadInput("buckets mode needs to (epoch ms)".into()))?,
+        width_ms: u64_arg(input, "width_ms"),
+        budget: u64_arg(input, "budget").map(|n| n as usize),
+    };
+    let width = lb_ingest::effective_width(&q).map_err(ToolError::BadInput)?;
+    let buckets = super::series_read_buckets(store, principal, ws, series, &q, width)
+        .await
+        .map_err(ingest_to_tool)?;
+    Ok(json!({ "buckets": buckets, "width_ms": width }))
+}
+
+/// Wall-clock now in epoch ms — ONLY the fallback for an omitted `series.retention.gc now_ms`.
+fn now_wall_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Map the ingest gate's outcome onto the MCP tool error. `Denied` stays `Denied` (no existence
