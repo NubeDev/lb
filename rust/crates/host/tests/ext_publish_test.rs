@@ -221,6 +221,55 @@ async fn a_coherent_artifact_still_publishes() {
     );
 }
 
+/// Re-publishing the **same signed bytes** must not append the artifact payload to the store a
+/// second time. The cache is keyed by content digest, so the row is upserted either way — but the
+/// old code called `cache_artifact` unconditionally, re-appending the full multi-MB wasm payload to
+/// the append-only commit log on every re-publish (the log grew unbounded and boot replayed it).
+/// The `read_cached` guard skips the byte write on a hit. Row-level invariant we can assert here:
+/// after two identical publishes there is exactly **one** `registry_cache` row for that digest, and
+/// the extension is still installed and callable (catalog/install still run — only the payload write
+/// is skipped).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn publishing_identical_bytes_twice_caches_the_artifact_once() {
+    let ws = "pub-idempotent-cache";
+    let node = Node::boot().await.unwrap();
+    let (kid, sk, trusted) = publisher(28);
+    let art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
+    let digest = art.digest_hex.clone();
+
+    let caller = principal(ws, &[PUBLISH]);
+    ext_publish(&node, &caller, ws, art.clone(), &trusted, Visibility::Private, 1)
+        .await
+        .expect("first publish");
+    // Byte-identical re-publish (same signed artifact) — the guard must skip the payload re-write.
+    ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 2)
+        .await
+        .expect("re-publishing the same bytes is a no-op success");
+
+    // Exactly one cached row for the digest — the second publish did not append a duplicate.
+    let rows = lb_store::list(&node.store, ws, "registry_cache", "digest_hex", &digest)
+        .await
+        .expect("list the cache rows for this digest");
+    assert_eq!(
+        rows.len(),
+        1,
+        "identical bytes cache once regardless of how many times they are published, got {rows:?}"
+    );
+
+    // And the extension is still fully present + callable — catalog/install ran on both passes.
+    let rec = installed(&node, ws, "hello")
+        .await
+        .unwrap()
+        .expect("installed after the idempotent re-publish");
+    assert_eq!(rec.version, "0.2.0");
+    let p = principal(ws, &["mcp:hello.echo:call"]);
+    let out = call(&node.registry, &node.bus, &p, ws, "hello.echo", r#"{"msg":"twice"}"#)
+        .await
+        .expect("echo after the second publish");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["echo"], "twice");
+}
+
 /// Boot a node on an explicit on-disk store `path` WITHOUT touching the global `LB_STORE_PATH`
 /// env (which would race the other tests in this shared binary). Same wiring as `Node::boot`, just a
 /// store handle we control — so we can open node1, drop it, and re-open the same bytes as node2: a
