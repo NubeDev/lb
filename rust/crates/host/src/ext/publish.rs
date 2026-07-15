@@ -21,7 +21,7 @@ use super::install_dir::{native_install_dir, write_executable};
 use crate::boot::Node;
 use crate::install::install_extension;
 use crate::native::install_native;
-use crate::registry::{cache_artifact, record_catalog};
+use crate::registry::{cache_artifact, read_cached, record_catalog};
 
 /// Reject an artifact whose `(ext_id, version)` metadata contradicts the manifest it carries.
 ///
@@ -103,7 +103,17 @@ pub async fn ext_publish(
 
     // Persist the VERIFIED bytes through the existing registry cache + catalog seam (no new store).
     // `cache_artifact` accepts only a `VerifiedArtifact`, so the unverified bytes never had a path here.
-    cache_artifact(&node.store, ws, &verified).await?;
+    // Cache-hit guard: the cache is keyed by content digest, so a hit means the store already
+    // holds exactly these bytes — re-writing them would append the FULL multi-MB payload to the
+    // append-only commit log on every re-publish (the log grows unbounded and boot replays it).
+    // `pull` has always had this guard; publish gets the same one. Catalog/install still run —
+    // only the byte payload write is skipped.
+    if read_cached(&node.store, ws, &verified.artifact().digest_hex)
+        .await?
+        .is_none()
+    {
+        cache_artifact(&node.store, ws, &verified).await?;
+    }
     record_catalog(&node.store, ws, verified.artifact(), visibility, ts).await?;
 
     // Bring it online: persist the durable install grant, then load the component into the runtime.

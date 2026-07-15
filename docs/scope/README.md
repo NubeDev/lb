@@ -416,6 +416,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
   emitting an ingest `Sample`, wrapped by a generic flow `webhook` source node; no provider nodes),
+  and `series-sample-cap-scope.md` — a **per-series FIFO sample cap** (`max_samples` on the retention
+  policy, evict-oldest-by-`ts`), the **missing GC driver** (`run_gc` is called only by tests and the
+  on-demand verb — nothing ticks it at boot, so shipped time-based retention never actually runs),
+  and a **safe default bound** (today: no policy = keep forever). Measured ~700 bytes/sample →
+  50 series @ 1/sec ≈ 3GB/day; the existing series *cardinality* cap bounds series COUNT, not samples
+  each. All three needed together or a disc still fills,
   and `drain-backpressure-scope.md` — **shipped 2026-07-15**: `ingest.write` drained the WHOLE
   workspace backlog inside the caller's call (one sample → 18.5s against a 4.6k-row backlog, and
   self-sustaining — a caller that timed out left the rows staged). Root cause was the **missing

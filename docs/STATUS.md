@@ -23,6 +23,39 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**In flight — [#65](https://github.com/NubeDev/lb/issues/65): a series grows until the disc is full.**
+**Code complete on a branch, TESTING INCOMPLETE — not merged, not shipped.**
+[scope](scope/ingest/series-sample-cap-scope.md) ·
+[session](sessions/ingest/series-sample-cap-session.md) ← **read this before picking it up; it lists
+exactly what is unverified.**
+
+Nothing bounds the **committed** series plane on any axis. Retention (#58) shipped a *time* horizon,
+but (1) there is no **count** bound — time doesn't bound bytes, **rate** does, and rate is the
+producer's choice; (2) **`run_gc` has no driver** — called only by tests and the on-demand verb, so
+shipped retention evicts *nothing* at boot (the same missing-driver class as the drain bug below);
+and (3) the default is **keep-forever**. Any one alone fills a disc. Measured **~700 bytes/sample**:
+50 series @ 1/sec ≈ 3GB/day ≈ a 64GB disc in ~3 weeks.
+
+**Built (release 1):** `max_samples` FIFO cap on `Policy` (serde-default `0` = unbounded) +
+`cap.rs` + a cap step in `run_gc` reporting `capped_raw` + `spawn_retention_reactors` wired into node
+boot at 300s + longest-prefix-wins (a latent GC bug: a series matching `fleet.` and `fleet.eu.` was
+processed twice). `DEFAULT_MAX_SAMPLES = 100_000` is **advisory only** — warns, evicts nothing
+without an explicit policy. **Release 2 flips the default, and is part of this slice's definition of
+done** (forgetting it is how gap #3 was born).
+
+**Verified:** `lb-ingest` 16/16, `lb-host --test series_cap_reactor_test` 4/4, and 3 revert-checks
+(a `seq`-ordered cap, a reactor that never calls `run_gc`, and dropped prefix precedence each fail
+their test as they must).
+**NOT verified — required before merge:** the full workspace sweep never completed (killed by
+harness timeouts, never `--workspace`); **the live-node run was never done**; disc-growth plateau
+unmeasured; the 300s cadence is a guess, not a measurement (the scope says measure it).
+**Known hole:** deleting the boot wiring from `node/src/reactors.rs` breaks **no test** — the one
+line that makes the feature real on a node is as untested as it was for the drain bug and for
+retention itself. This bug class is repeating at the meta level; the live run is the only proof.
+
+**Load-bearing:** eviction orders by **`ts`, never `seq`** (`seq` is per-`(series,producer)` —
+ordering by it is exactly what caused #63); `seq` is a tiebreak within an equal `ts` only.
+
 **Shipped 2026-07-15 — `ingest.write` no longer pays for the workspace backlog.** A producer pushing
 ONE sample to a backlogged workspace blocked for tens of seconds and never confirmed: measured live
 at `node-v0.4.5`, one sample against a 4,671-row backlog took **18,569ms**; the same call at backlog

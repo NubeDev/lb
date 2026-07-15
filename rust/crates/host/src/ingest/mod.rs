@@ -27,6 +27,7 @@ mod motion;
 mod read;
 mod rename;
 mod retention;
+mod retention_reactor;
 mod tool;
 mod write;
 
@@ -43,6 +44,7 @@ pub use rename::series_rename;
 pub use retention::{
     series_retention_delete, series_retention_gc, series_retention_list, series_retention_set,
 };
+pub use retention_reactor::{spawn_retention_reactors, RETENTION_PERIOD};
 pub use tool::call_ingest_tool;
 pub use write::{ingest_write, DEFAULT_STAGING_BOUND};
 

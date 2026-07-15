@@ -7,6 +7,12 @@ rust-version.workspace = true
 
 [dependencies]
 surrealdb.workspace = true
+# Direct engine dependency for OPEN-TIME LOG COMPACTION only (see open.rs::compact_log).
+# surrealdb 2.x embeds surrealkv but exposes no path to `Store::compact()`, so a node's
+# append-only commit log grows without bound and boot replays every byte of it. Pinned to
+# the SAME version surrealdb resolves (one copy in the lock); nothing else may use this —
+# every read/write still goes through the `Surreal<Db>` handle.
+surrealkv = "0.9.3"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

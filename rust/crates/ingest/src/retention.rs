@@ -17,12 +17,23 @@ pub struct Tier {
     pub keep_for_ms: u64,
 }
 
-/// A retention policy for every series whose name starts with `prefix`. `raw_for_ms == 0` disables
-/// eviction (the explicit "keep raw forever" default a series has when no policy matches).
+/// A retention policy for every series whose name starts with `prefix`.
+///
+/// Two INDEPENDENT bounds on the same series, either of which evicts a sample:
+///   - `raw_for_ms` — the TIME horizon ("how old is too old"). `0` disables it.
+///   - `max_samples` — the COUNT cap ("how much is too much"), FIFO: the oldest samples over the
+///     bound are evicted first. `0` disables it.
+///
+/// Both default to `0` (unbounded), so a policy row written before either axis existed keeps its
+/// exact meaning. Time does not bound bytes — **rate** does, and rate is the producer's choice, not
+/// the operator's; that is why the count axis exists (issue #65).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Policy {
     pub prefix: String,
     pub raw_for_ms: u64,
+    /// FIFO cap on retained raw samples per series. `0` = unbounded.
+    #[serde(default)]
+    pub max_samples: u64,
     #[serde(default)]
     pub tiers: Vec<Tier>,
 }
@@ -47,7 +58,13 @@ pub async fn list_policies(store: &Store, ws: &str) -> Result<Vec<Policy>, Store
     let mut resp = store
         .query_ws(
             ws,
-            &format!("SELECT prefix, raw_for_ms, tiers FROM {RETENTION_TABLE} ORDER BY prefix ASC"),
+            // Every policy field is projected explicitly — a field added to `Policy` but NOT to this
+            // list reads back as its serde default forever (the closed-struct trap: the row on disc
+            // is correct, the struct in memory silently isn't).
+            &format!(
+                "SELECT prefix, raw_for_ms, max_samples, tiers FROM {RETENTION_TABLE} \
+                 ORDER BY prefix ASC"
+            ),
             vec![],
         )
         .await?;

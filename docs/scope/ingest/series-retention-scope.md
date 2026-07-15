@@ -52,9 +52,26 @@ eviction, idempotent second pass, rollup-backed bucket reads) and
 `rust/crates/host/tests/series_plane_host_test.rs` (MCP round-trip, **capability-deny on every
 verb**, **workspace isolation** for policies and GC).
 
+## Follow-up: the count axis, the driver, and the default
+
+*(Scoped 2026-07-15: [`series-sample-cap-scope.md`](series-sample-cap-scope.md).)* This slice bounds
+a series by **time**; three gaps remain that mean a disc can still fill:
+
+1. **No count bound.** `raw_for_ms` says "how old is too old" — but bytes are set by **rate**, which
+   the producer chooses. 24h is 864k samples at 10Hz and 86.4M at 1000Hz. A `max_samples` FIFO cap
+   adds the axis an operator can actually multiply (measured: ~700 bytes/sample).
+2. **`run_gc` has no driver.** It is called only by tests and the on-demand `series.retention.gc`
+   verb — **nothing ticks it at boot**, so the "on-demand GC, not a background worker" decision below
+   means retention evicts *nothing* on a real node unless someone calls the verb by hand. Same
+   missing-driver class as [`drain-backpressure-scope.md`](drain-backpressure-scope.md). The follow-up
+   ships `spawn_retention_reactors`, which revisits that decision — an embedder has now asked.
+3. **Keep-forever default.** No policy → nothing evicts, ever. A fresh node fills its disc with zero
+   config and zero warning.
+
 ## Open questions
 
-- A scheduled GC (jobs/rules integration) vs the current caller-cadence verb.
+- ~~A scheduled GC (jobs/rules integration) vs the current caller-cadence verb.~~ **Answered:** the
+  caller-cadence verb alone means retention never runs. A reactor is scoped in the follow-up above.
 - Per-tier `last` fidelity across re-tiering (today: `last` of the finest tier wins).
 - Should `series.retention.gc` stream progress for very large workspaces (it is batch-bounded
   internally via the keyset scan, but returns one summary)?
