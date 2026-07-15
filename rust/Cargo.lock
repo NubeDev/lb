@@ -5950,6 +5950,7 @@ dependencies = [
  "serde",
  "serde_json",
  "surrealdb",
+ "surrealkv",
  "thiserror 2.0.18",
  "tokio",
  "ulid",

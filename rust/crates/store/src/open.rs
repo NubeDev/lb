@@ -93,7 +93,15 @@ impl Store {
     /// is the one thing `memory()` cannot do — the foundation of every must-deliver/ingest
     /// guarantee. The engine is SurrealKV; the namespace-per-workspace wall holds identically to
     /// the in-memory engine (all workspaces live in one on-disk store, scoped by `use_ns`).
+    ///
+    /// The commit log is compacted first (see [`compact_log`]) — SurrealKV is append-only and
+    /// replays every byte of the log at open, so a long-running node otherwise pays its whole
+    /// write history on every boot (measured: a 1.5 GB log ≈ 13 s to open, live set ~2% of it).
     pub async fn open(path: &str) -> Result<Self, StoreError> {
+        let owned = path.to_string();
+        // `compact()` is synchronous file I/O over the whole log — keep it off the async
+        // workers. Best-effort by design: a failed compaction only means a slower boot.
+        let _ = tokio::task::spawn_blocking(move || compact_log(&owned)).await;
         let db = Surreal::new::<SurrealKv>(path).await?;
         Ok(Self {
             db,
@@ -138,5 +146,48 @@ impl Store {
             q = q.bind((k, v));
         }
         Ok(q.await?.check()?)
+    }
+}
+
+/// Compact the SurrealKV commit log at `path` before SurrealDB opens it.
+///
+/// The engine is append-only: every write (including each superseded version and every
+/// tombstone) stays in the log forever, and open replays ALL of it to rebuild the in-memory
+/// index — so boot time grows with write history, not with live data. SurrealKV ships
+/// `Store::compact()` (rewrites only the latest live versions, drops tombstoned/superseded
+/// records), but surrealdb 2.x exposes no path to it, so it is invoked here directly, on the
+/// same engine version cargo resolves for surrealdb (one `surrealkv` copy in the lock).
+///
+/// Options mirror surrealdb's own wrapper (`surrealdb-core/src/kvs/surrealkv/mod.rs` — the
+/// unversioned `surrealkv://` scheme lb uses): versions off, disk persistence on, 512 MiB
+/// segments, 64-byte value threshold. SurrealKV persists options in its manifest and merges
+/// on load, so the cache-size knob (runtime-only) is left at its default.
+///
+/// Best-effort by contract: any failure leaves the log exactly as it was and only costs a
+/// slower boot, so errors are reported to stderr and swallowed. A fresh path (no store yet)
+/// is skipped outright.
+fn compact_log(path: &str) {
+    let dir = std::path::Path::new(path);
+    if !dir.exists() {
+        return;
+    }
+    let mut opts = surrealkv::Options::new();
+    opts.dir = dir.to_path_buf();
+    opts.disk_persistence = true;
+    opts.enable_versions = false;
+    opts.max_segment_size = 1 << 29;
+    opts.max_value_threshold = 64;
+    let store = match surrealkv::Store::new(opts) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("store: open-for-compaction failed ({e}) — booting on the uncompacted log");
+            return;
+        }
+    };
+    if let Err(e) = store.compact() {
+        eprintln!("store: log compaction failed ({e}) — booting on the uncompacted log");
+    }
+    if let Err(e) = store.close() {
+        eprintln!("store: closing the compaction handle failed: {e}");
     }
 }
