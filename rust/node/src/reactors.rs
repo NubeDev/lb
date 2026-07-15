@@ -76,6 +76,19 @@ pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
     // samples already commit inline, so nothing here is latency-critical.
     lb_host::spawn_ingest_reactors(node.clone(), vec![ws.to_string()], Duration::from_secs(2));
 
+    // RETENTION GC REACTOR TICK (series-sample-cap scope, issue #65 — previously never booted):
+    // execute the retention policies an admin already wrote. `run_gc` was reachable only from tests
+    // and the on-demand `series.retention.gc` verb, so a correctly-configured horizon evicted
+    // NOTHING on a real node unless someone called the verb by hand — the same missing-driver class
+    // as the ingest drain above. Without this tick the `max_samples` cap is decorative and a series
+    // grows until the disc is full. Slow cadence on purpose: a pass counts rows per series behind
+    // the store's global session mutex, and nothing waits on an eviction.
+    lb_host::spawn_retention_reactors(
+        node.clone(),
+        vec![ws.to_string()],
+        lb_host::RETENTION_PERIOD,
+    );
+
     // INSIGHT DIGEST REACTOR TICK: digest the anti-spam ladder — one message per (sub, window), decay
     // quiet keys, post under each sub's stored principal. 30s cadence (windows are hours/days).
     lb_host::spawn_insight_digest_reactors(

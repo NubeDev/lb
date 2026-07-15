@@ -20,6 +20,7 @@
 //! `memory()`), never a role branch.
 
 mod bucket;
+mod cap;
 mod commit;
 mod cursor;
 mod delete;
@@ -39,6 +40,7 @@ mod staging;
 mod write;
 
 pub use bucket::{effective_width, read_buckets, Bucket, BucketQuery, MAX_BUCKETS};
+pub use cap::{cap_series, over_cap_warning, sample_count, CAP_EVICT_BATCH, DEFAULT_MAX_SAMPLES};
 pub use commit::{commit_batch, commit_batch_capped, CommitPass};
 pub use cursor::Cursor;
 pub use delete::delete_series;

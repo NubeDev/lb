@@ -649,7 +649,8 @@ const HOST_TOOLS: &[HostTool] = &[
     HostTool {
         tool: "series.retention.set",
         group: "series",
-        description: "set the retention policy (raw horizon + rollup tiers) for a series prefix",
+        description: "set the retention policy for a series prefix: raw time horizon (raw_for_ms), \
+                      FIFO sample cap (max_samples, 0 = unbounded), and rollup tiers",
     },
     HostTool {
         tool: "series.retention.list",
@@ -664,7 +665,8 @@ const HOST_TOOLS: &[HostTool] = &[
     HostTool {
         tool: "series.retention.gc",
         group: "series",
-        description: "run one retention pass: roll up then evict raw samples past the horizon",
+        description: "run one retention pass now: roll up then evict raw samples past the time \
+                      horizon or over the sample cap (a reactor also ticks this on a cadence)",
     },
     HostTool {
         tool: "ingest.write",
