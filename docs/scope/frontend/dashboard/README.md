@@ -51,6 +51,13 @@ because existing session docs point at them; new dashboard notes should live her
    dashboard (first new consumer: the `thecrew` graphics-canvas extension). Headless-first + a
    dependency-injected `SourceLoaders` seam so one picker works from both the shell (gateway/Tauri) and an
    extension (its bridge); dashboard migrates first (parity), thecrew second. Zero core additions.
+3f2. [`dashboard-package-scope.md`](dashboard-package-scope.md) — **extract the grid CORE into a
+   reusable `@nube/dashboard` package** (the sixth `packages/*` sibling): the pure cell/geometry
+   model + fieldConfig TYPES + panel-rows math, the react-grid-layout host behind a widget
+   REGISTRY (consumers register view renderers; unknown view → honest placeholder), an opaque
+   generic scope, a package-owned `TimeRange`, and a read-only mobile stack. The package never
+   fetches/persists/knows a workspace; persistence is the consumer's `onLayout`. **Shipped v0.1**
+   (grid core only — no fieldConfig apply, no wizard, no variables; shells not yet migrated).
 3g. [`../../genui/genui-scope.md`](../../genui/genui-scope.md) — the **AI-authored widget**: a
    `view:"genui"` cell whose layout the workspace agent designs from a prompt (streamed live preview
    over the RunEvent SSE; the emission is parsed/normalized **once at accept** and the versioned,
