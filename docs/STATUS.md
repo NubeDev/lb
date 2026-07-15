@@ -75,6 +75,54 @@ section). **Named follow-up — [#69](https://github.com/NubeDev/lb/issues/69):*
 lives outside flows (rules, dashboard, panel, report, nav, brand, render_templates, insight) —
 sweep those onto a shared drain.
 
+**Also shipped 2026-07-15: rules 10x — long-running job-backed runs (pause/resume) + the data stdlib.**
+[scope](scope/rules/long-running-rules-scope.md) ·
+[data-stdlib scope](scope/rules/data-stdlib-scope.md) ·
+[session](sessions/rules/rules-10x-longrun-datastdlib-session.md) ·
+[public](../doc-site/content/public/rules/rules.md) ·
+[skill](skills/rules/SKILL.md)
+
+A rule body was synchronous-only (10s / 5M-op governors) and un-pausable — pause/resume existed for
+flows and agent jobs but not for a rule. Six gated verbs now cover the background form (`rules.run_async`,
+`rules.runs.get`/`.list`/`.suspend`/`.resume`/`.cancel`; one cap each, on the member built-in role +
+the system catalog). A run is a durable `lb-jobs` job (kind `rule-run`) driven by a detached worker on
+its own governor profile (10min / 500M ops / 64 AI calls / 200k tokens / 256 writes).
+
+**Load-bearing decision: resume = REPLAY over checkpoints, never a VM snapshot** (snapshotting a live
+rhai VM is dishonest — it was rejected, not deferred). The body re-runs from the top; `job.step(key, ||…)`
+values persisted in the job transcript short-circuit, and messaging writes replay onto their original
+deterministic ids (pinned `ts` + write ordinal) and upsert ⇒ **exactly-once**. Pause/cancel are
+cooperative via a shared `RunControl` (AtomicU8) the cage's `on_progress` governor observes — it bites
+within one bytecode op with no author cooperation; cancel outranks pause. **No auto-resume of orphans**
+(needs a stored principal — deliberately refused): orphans show `live:false` and resume under the
+RESUMER's caps. The in-cage `job` handle is durable when job-backed and ephemeral in sync `rules.run`,
+so one body works in both modes.
+
+Same slice, the **data stdlib** went from scope-only to real (~180 fns, all in the `rules.help` catalog):
+`time` (39) + `duration` (8) — on the injected logical clock, with rhai's `timestamp()` **disabled** as the
+determinism contract; `json` (24); `stats` + `window` (52, incl. `sample`/`shuffle` requiring a seed);
+`mathx` (12); `job` (8); and `frame` (~60) — polars in the cage (`select/filter/group_agg/join/pivot/rolling/
+f.sql("… FROM self")`). Frame caps (`max_frame_rows` 200k / `max_frame_cells` 2M) are enforced on construct
+**and** on join/vstack/pivot outputs, because the wall-clock governor cannot interrupt a native polars call.
+
+**Tested (rule 9, real store):** `lb-rules` **80 lib + 89 integration** (frames on) · `lb-frame` **53/9 files**
+(incl. `sql_security_test`) · `lb-host` **54** (`rules_longrun_test` 9 — incl. the mandatory cap-deny per verb,
+read≠control, and ws-isolation — `rules_test` 22, `rules_ai_wiring_test` 8, `rules_workflow_convergence_test`
+14, `rules_buildings_examples_test` 1). Headline proofs: `suspend_mid_run_then_resume_finishes_without_respending_steps`
+(pause → durable checkpoints → resume → memoized step does NOT re-run → replayed `channel.post` upserts to ONE
+message) and `suspended_run_resumes_after_a_restart` (a fresh `Node` over the same disc store). Debugging:
+[`rules/pause-token-lost-in-error-display.md`](debugging/rules/pause-token-lost-in-error-display.md) (rhai's
+`ErrorTerminated` Display OMITS the abort token — match the variant + downcast, never the message text) and
+[`jobs/order-by-idiom-must-be-selected.md`](debugging/jobs/order-by-idiom-must-be-selected.md) (SurrealDB
+rejects `ORDER BY data.ts` unless the idiom is projected).
+
+**Pinned:** polars `=0.54.4` is a **SECURITY pin**, not a stability pin — a minor bump can widen the SQL
+namespace with I/O fns. `f.sql` registers ONLY `self`; never register a table provider or a polars scan.
+
+**Deliberate non-goals (not gaps):** no `rules.runs.watch` SSE (poll `runs.get`); no UI for background runs
+(verbs only); the generic `job.*` family ([job-control-scope](scope/jobs/job-control-scope.md)) should route
+kind `rule-run` to these same owner hooks when it lands.
+
 **In flight — [#65](https://github.com/NubeDev/lb/issues/65): a series grows until the disc is full.**
 **Code complete on a branch, TESTING INCOMPLETE — not merged, not shipped.**
 [scope](scope/ingest/series-sample-cap-scope.md) ·

@@ -32,7 +32,7 @@ pub use get::{rules_get, rules_list};
 pub use model::AgentRuleModel;
 pub use record::SavedRule;
 pub use run::{params_to_rhai, rules_run, RunResult};
-pub use runs::{RuleRunMap, RULE_RUN_KIND};
+pub use runs::RuleRunMap;
 pub use save::rules_save;
 pub use seam::{workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam, RuleModel};
 

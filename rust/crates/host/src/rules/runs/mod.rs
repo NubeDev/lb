@@ -21,4 +21,3 @@ pub use registry::RuleRunMap;
 pub use resume::rules_runs_resume;
 pub use start::rules_run_async;
 pub use suspend::rules_runs_suspend;
-pub use worker::RULE_RUN_KIND;
