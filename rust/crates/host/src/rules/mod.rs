@@ -20,6 +20,7 @@ mod get;
 mod model;
 mod record;
 mod run;
+mod runs;
 mod save;
 mod seam;
 
@@ -31,6 +32,7 @@ pub use get::{rules_get, rules_list};
 pub use model::AgentRuleModel;
 pub use record::SavedRule;
 pub use run::{params_to_rhai, rules_run, RunResult};
+pub use runs::{RuleRunMap, RULE_RUN_KIND};
 pub use save::rules_save;
 pub use seam::{workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam, RuleModel};
 
@@ -221,6 +223,25 @@ pub async fn call_rules_tool(
             )
             .await?;
             Ok(serde_json::to_value(result).unwrap_or(Value::Null))
+        }
+        // ---- job-backed runs (long-running-rules-scope): start + observe/control ----
+        "rules.run_async" => Ok(runs::rules_run_async(node, principal, ws, input).await?),
+        "rules.runs.get" => {
+            let run_id = str_arg(input, "run_id")?;
+            Ok(runs::rules_runs_get(node, ws, run_id).await?)
+        }
+        "rules.runs.list" => Ok(runs::rules_runs_list(node, ws, input).await?),
+        "rules.runs.suspend" => {
+            let run_id = str_arg(input, "run_id")?;
+            Ok(runs::rules_runs_suspend(node, ws, run_id).await?)
+        }
+        "rules.runs.resume" => {
+            let run_id = str_arg(input, "run_id")?;
+            Ok(runs::rules_runs_resume(node, principal, ws, run_id).await?)
+        }
+        "rules.runs.cancel" => {
+            let run_id = str_arg(input, "run_id")?;
+            Ok(runs::rules_runs_cancel(node, ws, run_id).await?)
         }
         "rules.save" => {
             let id = str_arg(input, "id").or_else(|_| str_arg(input, "name"))?;

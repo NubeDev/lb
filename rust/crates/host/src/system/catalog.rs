@@ -127,6 +127,17 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "store",
         description: "the store schema (tables + columns) for the visual query builder",
     },
+    // store operational pair (online-compaction scope, issue #67).
+    HostTool {
+        tool: "store.status",
+        group: "store",
+        description: "commit-log size, segment count, and last-compaction outcome (observability)",
+    },
+    HostTool {
+        tool: "store.compact",
+        group: "store",
+        description: "enqueue a commit-log compaction pass as a job (admin; whole-log I/O)",
+    },
     // inbox.* / outbox.* — the durable workflow primitives (inbox-outbox scope).
     HostTool {
         tool: "inbox.list",
@@ -934,6 +945,36 @@ const HOST_TOOLS: &[HostTool] = &[
         tool: "rules.help",
         group: "rules",
         description: "the rule grammar + function reference",
+    },
+    HostTool {
+        tool: "rules.run_async",
+        group: "rules",
+        description: "run a rule as a durable background job (long-running; pausable/resumable)",
+    },
+    HostTool {
+        tool: "rules.runs.get",
+        group: "rules",
+        description: "one background rule run: status, progress, checkpoints, result",
+    },
+    HostTool {
+        tool: "rules.runs.list",
+        group: "rules",
+        description: "list the workspace's background rule runs",
+    },
+    HostTool {
+        tool: "rules.runs.suspend",
+        group: "rules",
+        description: "pause a background rule run (parks at the next operation; resumable)",
+    },
+    HostTool {
+        tool: "rules.runs.resume",
+        group: "rules",
+        description: "resume a paused/orphaned rule run (replays over its checkpoints)",
+    },
+    HostTool {
+        tool: "rules.runs.cancel",
+        group: "rules",
+        description: "cancel a background rule run (terminal; transcript kept)",
     },
     // channel.* — the host's messaging plane (rules-messaging scope).
     HostTool {

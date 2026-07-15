@@ -8,12 +8,13 @@
 //! saved CONFIG). This is the live VALUE. Gated `flows.node_state:call`; workspace-walled (read-first).
 
 use lb_auth::Principal;
-use lb_store::{scan, Store, MAX_SCAN_LIMIT};
+use lb_store::Store;
 use serde_json::{json, Value};
 
 use super::error::FlowsError;
 use super::record::{FLOW_INPUT_TABLE, FLOW_NODE_STATE_TABLE};
 use super::save::{authorize_store_read, flows_get_internal};
+use super::scan_all::scan_all;
 
 /// `flows.node_state {id}` — every node's current persistent value for flow `flow_id`, plus the
 /// flow's armed fields (so one read drives the whole canvas steady-state view).
@@ -28,9 +29,10 @@ pub async fn flows_node_state(
     // ids belong to it (the canvas paints by node id).
     let flow = flows_get_internal(store, ws, flow_id).await?;
 
-    // Scan the per-node last-value records; ids are `{flow}:{node}`. We filter to THIS flow's prefix so
-    // one flow's view never bleeds another's (the records share one table per ws).
-    let page = scan(store, ws, FLOW_NODE_STATE_TABLE, MAX_SCAN_LIMIT, None)
+    // Drain the per-node last-value records (every page — a one-page read drops values once the ws
+    // outgrows it); ids are `{flow}:{node}`. We filter to THIS flow's prefix so one flow's view never
+    // bleeds another's (the records share one table per ws).
+    let rows = scan_all(store, ws, FLOW_NODE_STATE_TABLE)
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?;
     // `lb_store::scan` returns `Row.id` as the full `{table}:{flow}:{node}` string, so strip the table
@@ -39,7 +41,7 @@ pub async fn flows_node_state(
     let prefix = format!("{FLOW_NODE_STATE_TABLE}:{flow_id}:");
 
     let mut nodes = Vec::new();
-    for row in page.rows {
+    for row in rows {
         let Some(node_id) = row.id.strip_prefix(&prefix) else {
             continue;
         };
@@ -52,7 +54,14 @@ pub async fn flows_node_state(
             ),
             other => (other.clone(), Value::Null),
         };
-        nodes.push(json!({ "node": node_id, "value": value, "rev": rev }));
+        // A failed firing stamps `lastError` onto the record (record_outcome) — lift it to the entry
+        // so the canvas can badge the node without digging into the value envelope.
+        let error = value.get("lastError").cloned().unwrap_or(Value::Null);
+        let mut entry = json!({ "node": node_id, "value": value, "rev": rev });
+        if !error.is_null() {
+            entry["error"] = error;
+        }
+        nodes.push(entry);
     }
 
     // A node that has never produced a value has no `flow_node_state` row yet — include it with a null
@@ -68,10 +77,10 @@ pub async fn flows_node_state(
     // (flow-dashboard-binding-ux-scope, Decision: read-back via node_state, no new verb). `input` is
     // the node-level retained `payload`; `inputs` is the per-port map. Records share one table per ws;
     // ids are `{flow}:{node}` (node-level) or `{flow}:{node}:{port}` (per-port).
-    let input_page = scan(store, ws, FLOW_INPUT_TABLE, MAX_SCAN_LIMIT, None)
+    let input_rows = scan_all(store, ws, FLOW_INPUT_TABLE)
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?;
-    for row in input_page.rows {
+    for row in input_rows {
         let body = match &row.data {
             Value::Object(o) => o.get("data").cloned().unwrap_or(Value::Null),
             other => other.clone(),

@@ -238,9 +238,17 @@ async fn publishing_identical_bytes_twice_caches_the_artifact_once() {
     let digest = art.digest_hex.clone();
 
     let caller = principal(ws, &[PUBLISH]);
-    ext_publish(&node, &caller, ws, art.clone(), &trusted, Visibility::Private, 1)
-        .await
-        .expect("first publish");
+    ext_publish(
+        &node,
+        &caller,
+        ws,
+        art.clone(),
+        &trusted,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect("first publish");
     // Byte-identical re-publish (same signed artifact) — the guard must skip the payload re-write.
     ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 2)
         .await
@@ -263,9 +271,16 @@ async fn publishing_identical_bytes_twice_caches_the_artifact_once() {
         .expect("installed after the idempotent re-publish");
     assert_eq!(rec.version, "0.2.0");
     let p = principal(ws, &["mcp:hello.echo:call"]);
-    let out = call(&node.registry, &node.bus, &p, ws, "hello.echo", r#"{"msg":"twice"}"#)
-        .await
-        .expect("echo after the second publish");
+    let out = call(
+        &node.registry,
+        &node.bus,
+        &p,
+        ws,
+        "hello.echo",
+        r#"{"msg":"twice"}"#,
+    )
+    .await
+    .expect("echo after the second publish");
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["echo"], "twice");
 }

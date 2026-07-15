@@ -89,6 +89,17 @@ pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
         lb_host::RETENTION_PERIOD,
     );
 
+    // STORE-COMPACT REACTOR TICK (online-compaction scope, issue #67): drain `store.compact`
+    // jobs off the request path (a pass is whole-log I/O with no upper bound — never inline)
+    // and log the log-size advisory past the threshold. The tick itself is cheap (an indexed
+    // pending scan + one file stat); a pass runs ONLY when an authorized admin enqueued one —
+    // threshold-driven visibility, operator-triggered execution, never compaction-on-a-tick.
+    lb_host::spawn_store_compact_reactors(
+        node.clone(),
+        vec![ws.to_string()],
+        lb_host::STORE_COMPACT_PERIOD,
+    );
+
     // INSIGHT DIGEST REACTOR TICK: digest the anti-spam ladder — one message per (sub, window), decay
     // quiet keys, post under each sub's stored principal. 30s cadence (windows are hours/days).
     lb_host::spawn_insight_digest_reactors(

@@ -41,6 +41,11 @@ pub struct Node {
     /// Runtime-only — the PID is motion; the durable truth is the `Install` + `native_status`
     /// records. Shared (`Arc`) like `registry` so the native service drives it with `&Node`.
     pub sidecars: Arc<SidecarMap>,
+    /// The live **rule-run registry** (long-running-rules-scope) — `(ws, run_id)` → the run's
+    /// cooperative [`RunControl`](lb_rules::RunControl). Runtime-only motion (the durable truth is
+    /// the `job:{id}` record), shared like `sidecars` so the `rules.runs.*` control verbs and the
+    /// worker see one source of truth.
+    pub rule_runs: Arc<crate::rules::RuleRunMap>,
     /// The API-key verification cache (api-keys scope) — a small hash→`Principal` cache the auth
     /// path reads and `revoke`/`rotate` bust. Shared so the gateway auth path and the management
     /// verbs see one cache; a revoke bites on this node's next request (instant local revoke).
@@ -109,6 +114,7 @@ impl Node {
             engine,
             registry: Arc::new(Registry::new()),
             sidecars: Arc::new(SidecarMap::new()),
+            rule_runs: Arc::new(crate::rules::RuleRunMap::default()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
             workspace_models: DashMap::new(),
@@ -133,6 +139,7 @@ impl Node {
             engine,
             registry: Arc::new(Registry::new()),
             sidecars: Arc::new(SidecarMap::new()),
+            rule_runs: Arc::new(crate::rules::RuleRunMap::default()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
             workspace_models: DashMap::new(),
@@ -156,6 +163,7 @@ impl Node {
             engine,
             registry: Arc::new(Registry::new()),
             sidecars: Arc::new(SidecarMap::new()),
+            rule_runs: Arc::new(crate::rules::RuleRunMap::default()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
             workspace_models: DashMap::new(),

@@ -118,6 +118,25 @@ cross-branch settle never matches — and is caught at save (below), not silentl
 - **Retained inputs override the wire** — a `flow_input` overlay wins over the arriving message.
 - **Arrival-order firing** — non-deterministic under concurrency, exactly as Node-RED.
 
+## Value read-back — `flows.node_state`
+
+The steady-state view the canvas and dashboard bindings paint. One read returns every node of a
+flow with its **current last-value** (`flow_node_state:{flow}:{node}`, one record per node,
+overwritten in place on each Ok firing — the Node-RED "each wire shows its current value"), its
+retained inputs, and the per-trigger armed state. Independent of any single run: readable any time.
+
+- **Complete past any table size** (readback-hardening, 2026-07-15): every flows read that filters
+  a shared workspace table drains **all** scan pages (`scan_all`), so values, run steps, live-run
+  guards, and reactor flow lists stay exact no matter how large a deployed workspace grows. (A
+  one-page read previously dropped rows past 200 — values went null and runs stopped finalising on
+  long-lived nodes.)
+- **A failed firing is visible**: an `Err` stamps `lastError` onto the node's record (merged — the
+  last good value stays readable next to it), and each `flows.node_state` entry lifts it as
+  `error`. The next Ok firing clears it. A broken node can no longer sit behind a healthy-looking
+  stale value.
+- **Per-firing detail** lives on the run: an `any`-funnel node firing N times in one run keeps only
+  its last firing here (last-value by design); `flows.runs.get` exposes every `(node, fctx)` slot.
+
 ### The canvas
 
 A port is just a port: the default per-message port renders **no policy glyph** anywhere. Only a

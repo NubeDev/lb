@@ -17,6 +17,7 @@
 //! `alert` routes to inbox/outbox (host-side). **Re-keyed:** `project_id` → `workspace`.
 
 pub mod catalog;
+pub mod control;
 mod engine;
 pub mod grid;
 mod meter;
@@ -26,6 +27,7 @@ pub mod seam;
 mod verbs;
 
 pub use catalog::{FnEntry, CATALOG};
+pub use control::{ControlIntent, RunControl};
 
 // The polars-backed `Frame` surface (data-stdlib-scope). Linked only behind the `frames` cargo
 // feature (default on); Phase 0 wires the dependency so the link resolves + the artifact-size delta
@@ -34,7 +36,7 @@ pub use catalog::{FnEntry, CATALOG};
 #[cfg(feature = "frames")]
 pub use lb_frame as frame;
 
-pub use engine::{AiLimits, RuleEngine};
+pub use engine::{AiLimits, JobBinding, RuleEngine, RunOptions};
 pub use grid::{dynamic_to_json, json_to_dynamic};
 pub use meter::{AiMeter, WriteMeter};
 pub use runtime::{
@@ -43,5 +45,5 @@ pub use runtime::{
 };
 pub use sandbox::RuleLimits;
 pub use seam::{
-    AiCompletion, AiSeam, DataSeam, MessagingSeam, SchemaColumn, SeamError, SourceKind,
+    AiCompletion, AiSeam, DataSeam, JobSeam, MessagingSeam, SchemaColumn, SeamError, SourceKind,
 };

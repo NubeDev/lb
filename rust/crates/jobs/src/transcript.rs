@@ -72,6 +72,14 @@ pub enum TranscriptEvent {
         decision_id: String,
         decision: SuspensionDecision,
     },
+    /// A durable checkpoint a run persisted (long-running-rules-scope: `job.set`/`job.step`).
+    /// `value` is a JSON-encoded string (the `ToolCallProposed.args` precedent). On resume the
+    /// owner folds these — last write per `key` wins — into the run's checkpoint state, so a
+    /// memoized step replays as a lookup, never a re-spend. Additive (`#[non_exhaustive]`).
+    Checkpoint { key: String, value: String },
+    /// An advisory progress beat (long-running-rules-scope: `job.progress`). `pct` is 0–100 when
+    /// given. Observers read the latest beat; replaying one upserts its slot like any event.
+    Progress { pct: Option<u32>, msg: String },
 }
 
 /// How a suspended tool call was settled. Mirrors the `agent_decision` record's decision and the

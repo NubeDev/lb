@@ -264,6 +264,10 @@ No open questions — these are the long-term answers the build follows.
 - `data-stdlib-scope.md` — the data standard library *inside* this cage: the `time`
   handle (logical clock), JSON/SurrealDB-shape helpers, array stats, and the polars-backed `Frame`
   (`lb-frame`) for post-collect compute. Pure verbs, no new authority; extends `verbs::register`.
+- `long-running-rules-scope.md` — job-backed rule runs (`rules.run_async` + `rules.runs.*`):
+  the long-run governor profile, the in-cage `job` handle (checkpoints/progress/should_stop),
+  and suspend/resume/cancel — supersedes this scope's "a long/batch rule belongs in a chain"
+  pointer now that chains are retired to flows.
 - `../jobs/jobs-scope.md`, `../inbox-outbox/outbox-scope.md` — the durable job the chain reuses; the
   inbox/outbox `alert` routes to.
 - `../auth-caps/auth-caps-scope.md` — `caps::check`, the chokepoint every verb runs.

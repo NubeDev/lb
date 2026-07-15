@@ -116,6 +116,9 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     "store.schema",
     "store.write",
     "store.delete",
+    // online-compaction scope: the operational pair — observability read + the compaction job.
+    "store.status",
+    "store.compact",
 ];
 
 pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
@@ -572,6 +575,12 @@ async fn dispatch_at_depth(
             // through the undo auto-capture wrapper like every other store mutation.
             crate::call_store_mutate_tool(&node.store, principal, ws, qualified_tool, &input)
                 .await?
+        } else if qualified_tool == "store.status" || qualified_tool == "store.compact" {
+            // online-compaction scope: the store's operational pair. The outer gate above ran
+            // `mcp:store.<verb>:call`; the verbs re-gate on the store-surface caps inside
+            // (`store:status:read` / `store:compact:run`). compact ENQUEUES a job — the pass
+            // itself runs on the reactor, never on this request path.
+            crate::call_store_admin_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "identity.set_credential" {
             // login-hardening scope: set/rotate a user's password hash. Gated `mcp:identity.manage:call`
             // (the outer gate above ran it); the verb hashes argon2 before any write and returns no hash.

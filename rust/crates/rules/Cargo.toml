@@ -30,6 +30,10 @@ async-trait.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Pure date math for the `time` verb family (data-stdlib-scope): already in the workspace graph via
+# SurrealDB, so no new supply-chain root. Wall-clock constructors (`Utc::now`) are BANNED in this
+# crate — the clock is the run's injected `now`, always (determinism).
+chrono.workspace = true
 # The polars `Frame` surface — optional + feature-gated so `lb-rules` stays "links only rhai + serde"
 # in its doctrine legibility (scope "Placement of polars"). `dep:` keeps the name `lb-frame` even
 # though the feature is also `frames`.

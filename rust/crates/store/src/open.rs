@@ -7,6 +7,7 @@
 //! The persistent engine is **SurrealKV** (pinned by the S9 store spike: pure-Rust, no C++
 //! toolchain, the "builds anywhere / on a Pi" posture; durability across restart and the
 //! LOAD-BEARING feature set verified — see `docs/scope/store/persistent-backend-scope.md`).
+//! Log compaction (boot-time and online) lives in `compact.rs`.
 
 use std::ops::Deref;
 use std::sync::Arc;
@@ -15,6 +16,8 @@ use surrealdb::engine::local::{Db, Mem, SurrealKv};
 use surrealdb::Surreal;
 use thiserror::Error;
 use tokio::sync::{Mutex, OwnedMutexGuard};
+
+use crate::compact::{compact_log, CompactionRecord};
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -48,31 +51,38 @@ impl From<surrealdb::Error> for StoreError {
 /// see debugging/store/concurrent-use-ns-namespace-race.md). The [`session`](Store::session) mutex
 /// makes the `use_ns` + query pair a critical section: only one namespace-scoped operation touches
 /// the shared session at a time, so a query always runs against the namespace *it* selected.
+///
+/// **The mutex CARRIES the handle** (online-compaction scope): the `Surreal<Db>` lives *inside*
+/// the session mutex, so the same critical section that guards `use_ns`+query also guards the
+/// handle swap the online compaction pass performs (drop → compact on disk → reopen → swap back).
+/// Holding the lock means holding the one true handle; there is no window where a query can run
+/// against a half-open engine.
 #[derive(Clone)]
 pub struct Store {
-    db: Surreal<Db>,
-    /// Serializes the "select namespace, then run the statement" window across all clones (they
-    /// share one connection + one session). Held from `use_ws` until the returned guard drops —
-    /// i.e. across the caller's query. See the type-level note above.
-    session: Arc<Mutex<()>>,
+    /// The ONE shared connection, behind the ONE session lock. Held (via [`WsGuard`]) from
+    /// `use_ws` until the caller's query completes. See the type-level note above.
+    session: Arc<Mutex<Surreal<Db>>>,
+    /// The on-disk directory for a persistent store; `None` for `memory()` (which cannot
+    /// compact — there is no log). Used by `compact`/`status`, never by the data verbs.
+    path: Option<Arc<str>>,
+    /// Outcome of the most recent compaction pass (boot or online), served by `status`.
+    /// In-memory only — a restart re-seeds it from the boot pass.
+    last_compaction: Arc<std::sync::Mutex<Option<CompactionRecord>>>,
 }
 
 /// The namespace-scoped session, held for the duration of one store operation. Owning this guard
 /// means the shared connection's session is bound to *this* operation's workspace and cannot be
-/// re-pointed by a concurrent task until the guard drops. Deref to `&Surreal<Db>` so callers run
-/// their query exactly as before — the only change is that the query now runs *while holding* the
-/// lock, closing the `use_ns`↔query race.
-pub(crate) struct WsGuard<'a> {
-    db: &'a Surreal<Db>,
-    // The lifetime of the critical section. Dropped after the caller's query completes; `_guard`
-    // is never read, only held.
-    _guard: OwnedMutexGuard<()>,
+/// re-pointed by a concurrent task until the guard drops — and (since the mutex carries the
+/// handle) that the engine cannot be swapped out from under the query either. Deref to
+/// `&Surreal<Db>` so callers run their query exactly as before.
+pub(crate) struct WsGuard {
+    guard: OwnedMutexGuard<Surreal<Db>>,
 }
 
-impl Deref for WsGuard<'_> {
+impl Deref for WsGuard {
     type Target = Surreal<Db>;
     fn deref(&self) -> &Self::Target {
-        self.db
+        &self.guard
     }
 }
 
@@ -83,8 +93,9 @@ impl Store {
     pub async fn memory() -> Result<Self, StoreError> {
         let db = Surreal::new::<Mem>(()).await?;
         Ok(Self {
-            db,
-            session: Arc::new(Mutex::new(())),
+            session: Arc::new(Mutex::new(db)),
+            path: None,
+            last_compaction: Arc::new(std::sync::Mutex::new(None)),
         })
     }
 
@@ -101,11 +112,14 @@ impl Store {
         let owned = path.to_string();
         // `compact()` is synchronous file I/O over the whole log — keep it off the async
         // workers. Best-effort by design: a failed compaction only means a slower boot.
-        let _ = tokio::task::spawn_blocking(move || compact_log(&owned)).await;
+        let boot_pass = tokio::task::spawn_blocking(move || compact_log(&owned))
+            .await
+            .ok();
         let db = Surreal::new::<SurrealKv>(path).await?;
         Ok(Self {
-            db,
-            session: Arc::new(Mutex::new(())),
+            session: Arc::new(Mutex::new(db)),
+            path: Some(Arc::from(path)),
+            last_compaction: Arc::new(std::sync::Mutex::new(boot_pass)),
         })
     }
 
@@ -115,18 +129,28 @@ impl Store {
     /// namespace — the hard wall, structurally (README §7) — and, because the guard holds the lock
     /// across the query, a concurrent operation for another workspace cannot re-point the shared
     /// session mid-query (see the [`Store`] type note).
-    pub(crate) async fn use_ws(&self, ws: &str) -> Result<WsGuard<'_>, StoreError> {
+    pub(crate) async fn use_ws(&self, ws: &str) -> Result<WsGuard, StoreError> {
         // Acquire the session lock BEFORE selecting the namespace, and hold it (via the returned
-        // guard) across the caller's query. `OwnedMutexGuard` would need `'static`; we borrow the
-        // `Arc` and lock it, then bind that guard's lifetime to `&self` through the plain guard —
-        // but a plain `MutexGuard<'_>` borrows `self.session`, which conflicts with returning
-        // `&self.db`. Cloning the `Arc` and taking an owned guard sidesteps the borrow entirely.
+        // guard) across the caller's query. The guard owns the mutex that carries the handle, so
+        // the borrow-vs-return dance the old plain-field layout needed is gone.
         let guard = Arc::clone(&self.session).lock_owned().await;
-        self.db.use_ns(ws).use_db("main").await?;
-        Ok(WsGuard {
-            db: &self.db,
-            _guard: guard,
-        })
+        guard.use_ns(ws).use_db("main").await?;
+        Ok(WsGuard { guard })
+    }
+
+    /// The session mutex + handle cell, for the online compaction pass only (`compact.rs`).
+    pub(crate) fn session_cell(&self) -> Arc<Mutex<Surreal<Db>>> {
+        Arc::clone(&self.session)
+    }
+
+    /// The on-disk directory (`None` for a memory store).
+    pub(crate) fn dir(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+
+    /// The last-compaction slot (`compact.rs` writes it; `status.rs` reads it).
+    pub(crate) fn last_compaction_slot(&self) -> &std::sync::Mutex<Option<CompactionRecord>> {
+        &self.last_compaction
     }
 
     /// Run a raw SurrealQL statement, returning the response for the caller to extract. The
@@ -146,48 +170,5 @@ impl Store {
             q = q.bind((k, v));
         }
         Ok(q.await?.check()?)
-    }
-}
-
-/// Compact the SurrealKV commit log at `path` before SurrealDB opens it.
-///
-/// The engine is append-only: every write (including each superseded version and every
-/// tombstone) stays in the log forever, and open replays ALL of it to rebuild the in-memory
-/// index — so boot time grows with write history, not with live data. SurrealKV ships
-/// `Store::compact()` (rewrites only the latest live versions, drops tombstoned/superseded
-/// records), but surrealdb 2.x exposes no path to it, so it is invoked here directly, on the
-/// same engine version cargo resolves for surrealdb (one `surrealkv` copy in the lock).
-///
-/// Options mirror surrealdb's own wrapper (`surrealdb-core/src/kvs/surrealkv/mod.rs` — the
-/// unversioned `surrealkv://` scheme lb uses): versions off, disk persistence on, 512 MiB
-/// segments, 64-byte value threshold. SurrealKV persists options in its manifest and merges
-/// on load, so the cache-size knob (runtime-only) is left at its default.
-///
-/// Best-effort by contract: any failure leaves the log exactly as it was and only costs a
-/// slower boot, so errors are reported to stderr and swallowed. A fresh path (no store yet)
-/// is skipped outright.
-fn compact_log(path: &str) {
-    let dir = std::path::Path::new(path);
-    if !dir.exists() {
-        return;
-    }
-    let mut opts = surrealkv::Options::new();
-    opts.dir = dir.to_path_buf();
-    opts.disk_persistence = true;
-    opts.enable_versions = false;
-    opts.max_segment_size = 1 << 29;
-    opts.max_value_threshold = 64;
-    let store = match surrealkv::Store::new(opts) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("store: open-for-compaction failed ({e}) — booting on the uncompacted log");
-            return;
-        }
-    };
-    if let Err(e) = store.compact() {
-        eprintln!("store: log compaction failed ({e}) — booting on the uncompacted log");
-    }
-    if let Err(e) = store.close() {
-        eprintln!("store: closing the compaction handle failed: {e}");
     }
 }

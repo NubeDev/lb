@@ -25,13 +25,16 @@ pub async fn history_list(
     Ok(list(store, ws, actor, surface).await?)
 }
 
-/// The compensating tool a non-undoable step `seq` offers, if any. Gated by the same verb cap.
+/// The compensating tool a non-undoable step `seq` offers, if any. Gated by its OWN verb cap
+/// (`mcp:history.compensations:call`, member tier — undo-exposure scope): no `mcp:*.<verb>:call`
+/// wildcard matches the `.compensations` verb, so this is a concrete member grant, distinct from
+/// the viewer-tier `history.list` read.
 pub async fn history_compensations(
     store: &Store,
     principal: &Principal,
     ws: &str,
     seq: u64,
 ) -> Result<Option<String>, UndoSvcError> {
-    authorize_tool(principal, ws, "history.list").map_err(|_| UndoSvcError::Denied)?;
+    authorize_tool(principal, ws, "history.compensations").map_err(|_| UndoSvcError::Denied)?;
     Ok(compensations(store, ws, seq).await?)
 }

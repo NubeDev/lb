@@ -73,26 +73,8 @@ pub async fn rules_run(
     let _ = declared;
 
     // Build the host seams, closed over the caller's principal + the pinned workspace.
-    let datasources = workspace_datasources(node, ws).await;
-    let queries = workspace_queries(node, ws).await;
-    let handle = tokio::runtime::Handle::current();
-    let data = Arc::new(HostDataSeam::new(
-        node.clone(),
-        principal.clone(),
-        ws.to_string(),
-        handle,
-        datasources,
-        queries,
-    ));
-    let allowed: HashSet<String> = data.allowed_sources();
+    let (data, allowed, messaging) = build_seams(node, principal, ws).await;
     let ai = Arc::new(HostAiSeam::new(model));
-    // The messaging seam — the caller's own authority to the inbox/outbox/channel MCP verbs.
-    let messaging = Arc::new(HostMessagingSeam::new(
-        node.clone(),
-        principal.clone(),
-        ws.to_string(),
-        tokio::runtime::Handle::current(),
-    ));
 
     // `route` is threaded into the cage (not just the post-run alert fan-out below): the `insight`
     // handle honors it — a `route:false` panel repaint no-ops raise/ack/close (rule-raises-insight-scope
@@ -115,7 +97,6 @@ pub async fn rules_run(
 
     // Run on a blocking thread: the rhai eval is CPU-bound and uses the wall-clock governor; the seam
     // methods block_on the host's async surface (so the engine must NOT run on the async worker itself).
-    let allowed = Arc::new(allowed);
     let result = tokio::task::spawn_blocking(move || {
         let mut run = RuleRun::new(rule.workspace.clone(), allowed, params, now);
         let out = engine.run(&rule, &mut run);
@@ -150,9 +131,43 @@ pub async fn rules_run(
     })
 }
 
+/// Build the data + messaging seams for one run, closed over the caller's principal + the pinned
+/// workspace. Shared by the synchronous `rules.run` path and the job-backed worker
+/// (`runs/worker.rs`) so both modes run through identical gates.
+pub(crate) async fn build_seams(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+) -> (
+    Arc<HostDataSeam>,
+    Arc<HashSet<String>>,
+    Arc<HostMessagingSeam>,
+) {
+    let datasources = workspace_datasources(node, ws).await;
+    let queries = workspace_queries(node, ws).await;
+    let handle = tokio::runtime::Handle::current();
+    let data = Arc::new(HostDataSeam::new(
+        node.clone(),
+        principal.clone(),
+        ws.to_string(),
+        handle,
+        datasources,
+        queries,
+    ));
+    let allowed = Arc::new(data.allowed_sources());
+    // The messaging seam — the caller's own authority to the inbox/outbox/channel MCP verbs.
+    let messaging = Arc::new(HostMessagingSeam::new(
+        node.clone(),
+        principal.clone(),
+        ws.to_string(),
+        tokio::runtime::Handle::current(),
+    ));
+    (data, allowed, messaging)
+}
+
 /// Hand each `alert`-marked finding to the inbox (an attention item on the `rules` channel) and route
 /// a must-deliver notification through the outbox. `emit` findings stay in the result only.
-async fn route_alerts(
+pub(crate) async fn route_alerts(
     node: &Arc<Node>,
     principal: &Principal,
     ws: &str,

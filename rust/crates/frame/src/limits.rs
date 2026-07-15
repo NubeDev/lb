@@ -23,6 +23,39 @@ pub struct FrameLimits {
     pub max_string_bytes: usize,
 }
 
+impl FrameLimits {
+    /// Check a frame shape against the row + cell caps — called on EVERY Frame-producing op's
+    /// output (construction, join, vstack, pivot, sql, …), so no author-reachable path yields an
+    /// over-cap frame. The error names the cap and the observed size (a clear author error).
+    pub fn check_frame(&self, rows: usize, cols: usize) -> Result<(), String> {
+        if rows > self.max_frame_rows {
+            return Err(format!(
+                "frame exceeds max_frame_rows ({}): got {rows} rows",
+                self.max_frame_rows
+            ));
+        }
+        let cells = rows.saturating_mul(cols);
+        if cells > self.max_frame_cells {
+            return Err(format!(
+                "frame exceeds max_frame_cells ({}): got {rows} rows x {cols} cols = {cells} cells",
+                self.max_frame_cells
+            ));
+        }
+        Ok(())
+    }
+
+    /// Check an export string against the byte cap (`to_csv_string`/`to_json_string`).
+    pub fn check_string(&self, bytes: usize) -> Result<(), String> {
+        if bytes > self.max_string_bytes {
+            return Err(format!(
+                "frame export exceeds max_string_bytes ({}): got {bytes} bytes",
+                self.max_string_bytes
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl Default for FrameLimits {
     fn default() -> Self {
         Self {

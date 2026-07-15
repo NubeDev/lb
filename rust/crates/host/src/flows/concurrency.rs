@@ -19,6 +19,7 @@ use crate::boot::Node;
 use super::error::FlowsError;
 use super::record::FLOW_RUN_TABLE;
 use super::run_store::set_run_status;
+use super::scan_all::scan_all;
 
 /// The terminal run statuses — a run in one of these is finished and does not count as live.
 const TERMINAL: &[&str] = &["success", "failed", "cancelled", "partialFailure"];
@@ -74,17 +75,11 @@ async fn live_run_ids(
     flow_id: &str,
     exclude: &str,
 ) -> Result<Vec<String>, FlowsError> {
-    let page = lb_store::scan(
-        &node.store,
-        ws,
-        FLOW_RUN_TABLE,
-        lb_store::MAX_SCAN_LIMIT,
-        None,
-    )
-    .await
-    .map_err(|e| FlowsError::Internal(e.to_string()))?;
+    let rows = scan_all(&node.store, ws, FLOW_RUN_TABLE)
+        .await
+        .map_err(|e| FlowsError::Internal(e.to_string()))?;
     let mut live = Vec::new();
-    for row in page.rows {
+    for row in rows {
         let inner = match row.data {
             Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),
             other => other,

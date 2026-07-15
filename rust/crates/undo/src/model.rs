@@ -141,14 +141,21 @@ impl StackState {
 
     /// Record a fresh forward `do`: it becomes the newest undoable step and **truncates the redo
     /// stack** (standard semantics — new work invalidates the redo future).
-    pub fn push_do(&mut self, seq: u64, depth_cap: usize) {
+    ///
+    /// Returns the seqs that fell off the depth cap (oldest first) — the caller MUST delete their
+    /// `undo:{seq}` events + `undo_live:{seq}` companions in the SAME transaction that persists
+    /// this cursor (`persist::save_stack_pruning`), so the journal never grows unbounded and the
+    /// cursor and the events can never disagree (undo-exposure scope: no background sweeper).
+    #[must_use]
+    pub fn push_do(&mut self, seq: u64, depth_cap: usize) -> Vec<u64> {
         self.undoable.push(seq);
         self.redoable.clear();
-        // Bounded depth: drop the oldest undoable beyond the cap (it becomes un-undoable; the
-        // immutable entry is pruned separately).
+        // Bounded depth: drop the oldest undoable beyond the cap.
+        let mut pruned = Vec::new();
         while self.undoable.len() > depth_cap {
-            self.undoable.remove(0);
+            pruned.push(self.undoable.remove(0));
         }
+        pruned
     }
 
     /// The next step an undo would target (newest undoable), without popping.

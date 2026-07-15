@@ -11,6 +11,7 @@ use super::error::FlowsError;
 use super::record::{ClaimState, FLOW_RUN_TABLE};
 use super::run_store::read_run;
 use super::save::authorize_store_read;
+use super::scan_all::scan_all;
 
 /// `flows.runs.get {run_id}` — a snapshot of per-node status + outcomes + the pinned version.
 pub async fn flows_runs_get(
@@ -49,11 +50,11 @@ pub async fn flows_runs_list(
     status: Option<&str>,
 ) -> Result<Value, FlowsError> {
     authorize_store_read(principal, ws)?;
-    let page = lb_store::scan(store, ws, FLOW_RUN_TABLE, lb_store::MAX_SCAN_LIMIT, None)
+    let rows = scan_all(store, ws, FLOW_RUN_TABLE)
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?;
     let mut runs = Vec::new();
-    for row in page.rows {
+    for row in rows {
         let inner = match row.data {
             Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),
             other => other,
@@ -88,17 +89,11 @@ pub async fn flows_runs_list(
 }
 
 async fn node_snapshot(store: &Store, ws: &str, run_id: &str) -> Result<Vec<Value>, FlowsError> {
-    let page = lb_store::scan(
-        store,
-        ws,
-        super::record::FLOW_STEP_TABLE,
-        lb_store::MAX_SCAN_LIMIT,
-        None,
-    )
-    .await
-    .map_err(|e| FlowsError::Internal(e.to_string()))?;
+    let rows = scan_all(store, ws, super::record::FLOW_STEP_TABLE)
+        .await
+        .map_err(|e| FlowsError::Internal(e.to_string()))?;
     let mut steps = Vec::new();
-    for row in page.rows {
+    for row in rows {
         let inner = match row.data {
             Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),
             other => other,

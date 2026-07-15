@@ -180,6 +180,13 @@ pub enum RuleError {
     Seam(String),
     #[error("rule task failed: {0}")]
     Join(String),
+    /// A job-backed run parked on a pause request (long-running-rules-scope). Not a fault: the
+    /// host suspends the job; a resume replays the body over the persisted checkpoints.
+    #[error("rule run paused")]
+    Paused,
+    /// A job-backed run aborted on a cancel request. Terminal; the transcript is kept for audit.
+    #[error("rule run cancelled")]
+    Cancelled,
 }
 
 #[cfg(test)]

@@ -51,11 +51,17 @@ authority — a rule reading a source the caller lacks is denied mid-run, even t
 | List | `GET /rules` | `{"tool":"rules.list","args":{}}` | — |
 | Delete | `DELETE /rules/{id}` | `{"tool":"rules.delete","args":{"id":"…"}}` | `id` |
 | **Catalog** | — | `{"tool":"rules.help","args":{}}` | — |
+| **Run in background** | — | `{"tool":"rules.run_async","args":{…}}` | `body` \| `rule_id`, `params?`, `ts?`, `run_id?` |
+| Run: status | — | `{"tool":"rules.runs.get","args":{"run_id":"…"}}` | `run_id` |
+| Run: list | — | `{"tool":"rules.runs.list","args":{…}}` | `status?`, `limit?` |
+| Run: pause | — | `{"tool":"rules.runs.suspend","args":{"run_id":"…"}}` | `run_id` |
+| Run: resume | — | `{"tool":"rules.runs.resume","args":{"run_id":"…"}}` | `run_id` |
+| Run: cancel | — | `{"tool":"rules.runs.cancel","args":{"run_id":"…"}}` | `run_id` |
 
 - **`rules.run`** takes EITHER an inline `body` (ad-hoc Playground run) OR a saved `rule_id`, plus
   `params` (bound into the script) and `ts` (a logical clock — determinism, no wall-clock). It's the
   hot path: **bounded by the governors, so it's a synchronous call** returning
-  `{output, findings, log, ms, ai}`. Long/batch/resumable work belongs in a **chain** (a job), not a
+  `{output, findings, log, ms, ai}`. Long/batch/resumable work is **`rules.run_async`** (§8), not a
   `rules.run` loop.
 - **`rules.save`** upserts `rule:{ws}:{id}` — `id` is the stable key (defaults to `name`); `body` is
   the Rhai source; `params` is a typed declared-param list. A save does NOT execute the body.
@@ -291,6 +297,90 @@ a dashboard viewed by ten people, refreshing every 30 s, would inflate the insig
 re-fire notifications purely from *viewing*. Dedup collapses the *record* to one, but not the
 count-bump / occurrence append / notify re-fire — so the whole call is skipped, not just deduped. A
 scheduled flow (`rules.eval`, default `route:true`) raises normally: one rule, two consumption modes.
+
+## 8. Long-running runs — jobs, checkpoints, pause/resume (long-running-rules)
+
+A batch-shaped rule (sweep a month of series, classify thousands of rows through `ai.*`) runs as a
+**durable background job**: `rules.run_async {body|rule_id, params, ts?}` → `{run_id}` immediately.
+The run gets its own governor profile (10 min wall-clock / 100× ops by default — `LB_RULES_JOB_*`
+knobs), survives observation, and is **pausable, resumable (even across a node restart), and
+cancellable**:
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{"tool":"rules.run_async","args":{"rule_id":"monthly-sweep"}}'
+# → {"run_id":"01J..."}   then observe / control:
+#   rules.runs.get {run_id}      → {status, live, progress:{pct,msg}, checkpoints, result?, error?, tail}
+#   rules.runs.suspend {run_id}  → parks within one bytecode op (status → suspended)
+#   rules.runs.resume {run_id}   → replays the body over its checkpoints
+#   rules.runs.cancel {run_id}   → terminal from any non-final state; re-cancel is a no-op
+```
+
+Inside the cage, the **`job` handle** (present in every run; ephemeral in a sync `rules.run`, so one
+body works in both modes) is how a long rule reports progress and makes itself resumable:
+
+```rhai
+let days = job.step("plan", || make_day_list(param("month")));   // memoized unit of work
+let mut done = 0;
+for d in days {
+    if job.should_stop() { break; }                  // tidy early return on pause/cancel
+    job.step(`day:${d}`, || scan_one_day(d));        // a resumed run replays this as a LOOKUP
+    done += 1;
+    job.progress(done * 100 / days.len(), `day ${d} done`);
+}
+```
+
+- **Resume = replay over checkpoints, never a VM snapshot.** The body re-runs from the top;
+  `job.step`/`job.set` values persisted to the job transcript short-circuit, and every messaging
+  write replays onto its original deterministic id (the pinned `ts` + write ordinal) — an upsert,
+  never a duplicate. Wrap anything expensive (an `ai.*` call, a big collect) in `job.step` so a
+  resume never re-spends it.
+- **Pause bites without author cooperation** — the per-operation governor observes the control flag;
+  `should_stop()` is just the polite fast path. A native call in flight (a collect, a completion)
+  finishes first; the abort lands at the next op.
+- **Budgets:** 256 durable checkpoints/run (author error past it), 1000 durable progress beats
+  (advisory — dropped past it, the run continues).
+- **Caps:** one per verb (`mcp:rules.run_async:call`, `mcp:rules.runs.get|list|suspend|resume|cancel:call`);
+  read ≠ control, so an observer role holds get/list only. A resumed run executes under the
+  **resumer's** `caller ∩ grant` — orphaned runs (`live:false` after a crash) wait for a caller,
+  never auto-resume under stored authority.
+
+## 9. Working with data — the stdlib (time, json, stats, mathx, frames)
+
+Once rows are in hand, the cage carries a full **data standard library** — pure, deterministic,
+zero-authority compute (`docs/scope/rules/data-stdlib-scope.md`). The authoritative surface is
+`rules.help` (every function, family, signature, description); the map:
+
+- **`time`** — the run's injected logical clock (never a wall-clock; rhai's `timestamp()` is
+  disabled): `time.now()/now_ms()`, `iso`/`date`/`clock`/`format(ts,fmt[,"+10:00"])`, `parse`/
+  `parse_fmt`, components (`year`…`weekday_name`, `iso_week`), boundaries (`start_of_day/week/
+  month/year`, `end_of_day/month`), arithmetic (`add/sub(ts,"7d")`, `floor/ceil(ts,"15m")`,
+  `diff`, `since`/`until`, `ago`). Plus duration helpers: `dur_secs("24h")`, `dur_human(n)`,
+  `seconds(n)`…`weeks(n)`.
+- **`json_*` / shape helpers** — `parse_json`/`to_json[_pretty]`, deep paths (`jget(v,"a.b[0].c"
+  [,default])`/`jset`/`jhas`), `merge` (RFC-7386-ish, `()` deletes), `flatten`/`unflatten`,
+  `pick`/`omit`, `entries`/`from_entries`, row ops (`pluck`, `index_by`, `group_rows`, `where_eq`,
+  `sort_by`, `uniq_by`, `count_by`, `rows_epoch`), and the SurrealDB normalizers (`thing_id`/
+  `thing_tbl`, `epoch` — ISO string | secs | ms → secs).
+- **`stats`** — over plain arrays: mean/median/mode/variance/std_dev/sem, percentile/quantiles/iqr,
+  skewness/kurtosis/histogram, zscores/minmax_scale/rank, corr/spearman/cov/linreg/predict/
+  forecast_linear, cumsum/diffs/pct_changes/shift_arr, dropna/fillna/ffill/bfill/interp_linear,
+  outliers_iqr/outliers_z/is_anomaly, top_k/argmax, sample/shuffle (**seed mandatory** —
+  determinism), rolling_mean/sum/min/max/std + ema. Missing-value policy: `()`/non-numeric/NaN are
+  skipped by aggregations, preserved positionally by windowed fns.
+- **`mathx`** — `round_to`, `trunc_to`, `sign`, `clamp`, `lerp`, `map_range`, `pct`, `pct_change`,
+  `safe_div(a,b,default)`, `log_base`, `hypot`, `approx_eq`.
+- **`Frame`** — polars in the cage: `g.frame()` materializes a Grid (same gated seam as
+  `g.records()`, capped at `max_frame_rows`) and `frame(records)` builds one from row maps; then
+  select/drop/rename/sort/unique/filter_*/fill_null*/group_agg/join/vstack/pivot/melt/rolling_*/
+  ewm_mean/diff/cumsum/zscore/bucket(ts,"15m")… plus **`f.sql("SELECT … FROM self")`** (in-memory
+  only — no file/net table ever registered) and exits `f.records()`, `f.col("v")` (feeds the stats
+  fns), `to_csv_string()`/`to_json_string()`. Join/vstack/pivot OUTPUTS are capped too
+  (`max_frame_cells`) — a cross-join explosion is an author error, not a node stall.
+
+**When to use which:** push down when big (the lazy `Grid` composes SQL at the source), compute
+locally when shaped (a bounded `Frame`/array). Don't materialize a million rows to average them —
+`g.col("v").avg()` pushes the mean down; `g.frame()` is for reshaping the bounded result.
 
 ## Gotchas
 

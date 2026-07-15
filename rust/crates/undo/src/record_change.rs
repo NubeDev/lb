@@ -16,7 +16,8 @@ use serde_json::Value;
 
 use crate::error::UndoError;
 use crate::model::{Class, JournalEntry, Kind, TouchedRecord, DEFAULT_DEPTH_CAP, ENTRY_TABLE};
-use crate::persist::{load_stack, next_seq, save_stack};
+use crate::persist::{load_stack, next_seq};
+use crate::prune::save_stack_pruning;
 
 /// What a caller hands us to record a reversible single-record change.
 pub struct RecordChange<'a> {
@@ -31,6 +32,9 @@ pub struct RecordChange<'a> {
     pub id: &'a str,
     /// The new value, or `None` to delete (record-as-absent — a delete undo restores the before).
     pub new_value: Option<&'a Value>,
+    /// Bounded stack depth: steps that fall past this are pruned (event + live companion deleted)
+    /// in the same transaction as the cursor push. `None` = [`DEFAULT_DEPTH_CAP`].
+    pub depth_cap: Option<usize>,
 }
 
 /// Apply `change.new_value` to `change.table:change.id`, atomically journaling its before-image,
@@ -99,8 +103,8 @@ pub async fn record_change(store: &Store, change: RecordChange<'_>) -> Result<u6
 
     // 5. Push onto the actor's undo stack (truncates redo).
     let mut stack = load_stack(store, change.ws, change.actor, change.surface).await?;
-    stack.push_do(seq, DEFAULT_DEPTH_CAP);
-    save_stack(store, change.ws, &stack).await?;
+    let pruned = stack.push_do(seq, change.depth_cap.unwrap_or(DEFAULT_DEPTH_CAP));
+    save_stack_pruning(store, change.ws, &stack, &pruned).await?;
 
     Ok(seq)
 }

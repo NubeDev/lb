@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use lb_flows::{resolve_bindings, Flow, NodeOutput, FCTX_FIELD};
-use lb_store::{read, scan, write_locked as write, Store};
+use lb_store::{read, write_locked as write, Store};
 use serde_json::{json, Value};
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -17,6 +17,7 @@ use super::record::{
     step_record_id, ClaimState, FlowRunRecord, FlowStepRecord, FLOW_INPUT_TABLE,
     FLOW_NODE_STATE_TABLE, FLOW_RUN_TABLE, FLOW_STEP_TABLE,
 };
+use super::scan_all::scan_all;
 
 /// Per-`(ws,run_id)` lock guarding the create-if-absent seed in [`create_run`], so two concurrent
 /// `start`s of the same run id can't both pass the existence check and double-seed. In-process: a
@@ -219,7 +220,24 @@ pub async fn record_outcome(
         }
         NodeOutcome::Err(e) => {
             state.outcome = "err".into();
-            state.error = Some(e);
+            state.error = Some(e.clone());
+            // Read-back consistency: a failed firing stamps `lastError` onto the node's last-value
+            // record (merging, so the last GOOD envelope stays visible alongside the error) instead
+            // of leaving a stale value that reads as current. The next Ok overwrites the whole
+            // record, clearing it. Distinctly named so it never collides with an envelope's own
+            // `error` field.
+            let key = format!("{flow_id}:{node_id}");
+            let existing = read(store, ws, FLOW_NODE_STATE_TABLE, &key)
+                .await
+                .map_err(|err| err.to_string())?;
+            let mut body = match existing {
+                Some(Value::Object(o)) => o,
+                _ => serde_json::Map::new(),
+            };
+            body.insert("lastError".into(), Value::String(e));
+            write(store, ws, FLOW_NODE_STATE_TABLE, &key, &Value::Object(body))
+                .await
+                .map_err(|err| err.to_string())?;
         }
         NodeOutcome::Skipped => {
             state.outcome = "skipped".into();
@@ -625,11 +643,11 @@ pub async fn scan_run_slots(
     ws: &str,
     run_id: &str,
 ) -> Result<Vec<FlowStepRecord>, String> {
-    let page = lb_store::scan(store, ws, FLOW_STEP_TABLE, lb_store::MAX_SCAN_LIMIT, None)
+    let rows = scan_all(store, ws, FLOW_STEP_TABLE)
         .await
         .map_err(|e| e.to_string())?;
     let mut out = Vec::new();
-    for row in page.rows {
+    for row in rows {
         let inner = match row.data {
             Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),
             other => other,
@@ -844,11 +862,11 @@ async fn overlay_retained_inputs(
     // Per-port retained (`flow_input:{flow}:{node}:{port}`) → that named port; wins over node-level.
     // The records share the table, so we scan and filter by this node's `{flow}:{node}:` prefix on
     // the record id, reading the authoritative `port`/`value` off the stored body.
-    let page = scan(store, ws, FLOW_INPUT_TABLE, lb_store::MAX_SCAN_LIMIT, None)
+    let rows = scan_all(store, ws, FLOW_INPUT_TABLE)
         .await
         .map_err(|e| e.to_string())?;
     let prefix = format!("{FLOW_INPUT_TABLE}:{flow_id}:{node_id}:");
-    for row in page.rows {
+    for row in rows {
         if !row.id.starts_with(&prefix) {
             continue;
         }
@@ -894,11 +912,11 @@ pub async fn merged_params_with_inputs(
     flow_id: &str,
     mut params: serde_json::Map<String, Value>,
 ) -> Result<serde_json::Map<String, Value>, String> {
-    let page = scan(store, ws, FLOW_INPUT_TABLE, lb_store::MAX_SCAN_LIMIT, None)
+    let rows = scan_all(store, ws, FLOW_INPUT_TABLE)
         .await
         .map_err(|e| e.to_string())?;
     let prefix = format!("{flow_id}:");
-    for row in page.rows {
+    for row in rows {
         // flow_input ids are `{flow}:{node}`; pull this flow's retained values into params by node id.
         let inner = match row.data {
             Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),

@@ -29,15 +29,21 @@ pub fn frame_from_json(rows: &[Value]) -> PolarsResult<DataFrame> {
 }
 
 /// Serialize a polars `DataFrame` back to an array of JSON row objects (the inverse — feeds
-/// `channel.post` bodies, `alert` data, and `f.records()`).
+/// `channel.post` bodies, `alert` data, and `f.records()`). Goes cell-by-cell through
+/// [`any_value_to_json`] so the scope's NaN/null policy (`NaN`/`Inf` → `null`) holds at EVERY
+/// export boundary, not just the column pluck (Phase 0 used polars' `JsonWriter`; the per-cell
+/// path is the honest one now that the full surface exports through here).
 pub fn frame_to_json(df: &DataFrame) -> PolarsResult<Vec<Value>> {
-    let mut buf = Vec::new();
-    let mut df_mut = df.clone();
-    JsonWriter::new(&mut buf)
-        .with_json_format(JsonFormat::Json)
-        .finish(&mut df_mut)?;
-    let out: Vec<Value> = serde_json::from_slice(&buf)
-        .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+    let columns: Vec<&Column> = df.columns().iter().collect();
+    let mut out = Vec::with_capacity(df.height());
+    for row in 0..df.height() {
+        let mut obj = serde_json::Map::with_capacity(columns.len());
+        for c in &columns {
+            let v = c.get(row)?;
+            obj.insert(c.name().to_string(), any_value_to_json(&v));
+        }
+        out.push(Value::Object(obj));
+    }
     Ok(out)
 }
 
@@ -57,7 +63,14 @@ pub fn any_value_to_json(v: &AnyValue) -> Value {
         AnyValue::Int64(i) => Value::from(*i),
         AnyValue::Float64(f) => float_value(*f),
         AnyValue::String(s) => Value::String(s.to_string()),
+        AnyValue::StringOwned(s) => Value::String(s.to_string()),
+        AnyValue::Int8(i) => Value::from(*i),
+        AnyValue::Int16(i) => Value::from(*i),
         AnyValue::Int32(i) => Value::from(*i),
+        AnyValue::UInt8(i) => Value::from(*i),
+        AnyValue::UInt16(i) => Value::from(*i),
+        AnyValue::UInt32(i) => Value::from(*i),
+        AnyValue::UInt64(i) => Value::from(*i),
         AnyValue::Float32(f) => float_value(*f as f64),
         other => Value::String(format!("{other}")),
     }
