@@ -80,8 +80,12 @@ consumer wires them, as `@nube/insights`'s `denyClient` test does).
 
 ## Verification of the external pin
 
-Tagged `dashboard-v0.1.0`. Verified from a scratch dir that pnpm's git subdir syntax resolves
-(see the scope doc's "Consuming from outside the monorepo" for the exact result + caveats).
+Tagged `dashboard-v0.1.0` (pushed). Verified from a scratch dir that
+`pnpm add "github:NubeDev/lb#dashboard-v0.1.0&path:/packages/dashboard"` resolves, installs,
+and the CJS entry runs (`DashboardGrid`/`createRegistry`/`mergeLayout` exercised via node).
+Caveat found: a `prepare` script trips pnpm's `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` for git
+deps, so the package ships no `prepare` and commits `dist/` (rebuild dist before every tag).
+Details in the scope doc's "Consuming from outside the monorepo".
 
 ## Not done (later slices)
 

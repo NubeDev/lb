@@ -82,19 +82,21 @@ All green: `pnpm --filter @nube/dashboard test`, `typecheck`, `build` (ESM+CJS+d
 
 ## Consuming from outside the monorepo
 
-Tagged `dashboard-v0.1.0`. **The pnpm git-subdir dep was verified from a scratch dir** against
-a local clone (`file:` protocol; the `github:` form is the same resolver over a remote):
+Tagged `dashboard-v0.1.0`. **The pnpm git-subdir dep was verified from a scratch dir against
+the real remote** (pnpm 11.1.2; `pnpm add` resolved, installed, and the CJS entry ran):
 
 ```jsonc
 // package.json — note "path:" is a URL FRAGMENT joined with &, not a query param:
 "@nube/dashboard": "github:NubeDev/lb#dashboard-v0.1.0&path:/packages/dashboard"
 ```
 
-Caveats found in verification (loudly, per the ask): pnpm **builds the subdir on install** (it
-runs the package's `prepare`/build via its own toolchain), so the tagged commit must carry a
-buildable package — it does; and the consumer's pnpm must be ≥ 8.15 for `path:` fragments. If
-a consumer's install environment can't build (no network for devDeps, CI sandbox), the
-fallback is the mirrored-copy pattern rubix-ai uses today — but prefer the tag.
+Caveats found in verification (loudly, per the ask): a `prepare` script makes pnpm treat the
+git dep as needs-build and **refuse to install** unless the consumer allowlists it in
+`allowBuilds` (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`) — so the package ships **no `prepare`**
+and commits `dist/` instead (the `@nube/insights`/`@nube/panel` pattern; rebuild + commit dist
+before every tag). The consumer's pnpm must also support `path:` fragments (≥ 8.15; verified
+on 11). If a consumer can't use git deps at all, the fallback remains the mirrored-copy
+pattern rubix-ai uses today — but prefer the tag.
 
 ## NOT in v0.1 (deliberately)
 
