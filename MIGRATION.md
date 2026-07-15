@@ -46,23 +46,30 @@ out-of-tree extension repos are:
   platform datastore-federation surface — see
   `docs/scope/extensions/federation-promote-to-core-scope.md`). It stays a supervised Tier-2 sidecar
   (DB drivers never link into the node); the `rust/extensions/*` cleanup must **not** touch it.
-- `ui/` — the in-tree React shell (the reference the product shells are vendored from).
 
-**Do not** point new work at these in-tree copies as the source of truth, and **do not** delete them yet.
+**`ui/` is NO LONGER retained — it was DELETED** (2026-07-15, commit `678503f`). The half of the
+cleanup that covered the shell is **done**. Product shells are vendored out-of-tree and are the only
+copies left. **Never recreate `ui/` in this repo** — see [`CLAUDE.md`](CLAUDE.md) § "Never recreate
+`ui/`". Older docs and session logs still reference `ui/src/...`; those are history, not live paths.
+
+**Do not** point new work at the remaining in-tree copies as the source of truth, and **do not**
+delete `rust/extensions/*` yet.
 
 ## Retention window (when the in-tree copies go)
 
-Keep the retained code **until the downstream migration is proven** — `rubix-ai` (host) +
-`rubix-ai-extensions` (its extensions) running against the published contracts, for **~a few weeks**
-(target: **late July / early August 2026**). Once that bar is met, the migrated-out in-tree
-`rust/extensions/*` and `ui/` are removed in a dedicated cleanup, and **this file
-is deleted**. (`federation` is already out of `rust/extensions/` — promoted to `rust/crates/federation/`,
-so the cleanup does not touch it.) Until then: this repo intentionally contains both the old in-tree code and the new
+**`ui/`: done — deleted 2026-07-15** (commit `678503f`). It is not coming back.
+
+**`rust/extensions/*`: still retained.** Keep it **until the downstream migration is proven** —
+`rubix-ai` (host) + `rubix-ai-extensions` (its extensions) running against the published contracts,
+for **~a few weeks** (target: **late July / early August 2026**). Once that bar is met it is removed
+in a dedicated cleanup and **this file is deleted**. (`federation` is already out of
+`rust/extensions/` — promoted to `rust/crates/federation/`, so the cleanup does not touch it.)
+Until then: this repo intentionally contains both the old in-tree extensions and the new
 library/SDK posture.
 
 ## First downstream proof (already green)
 
 - `NubeIO/rubix-ai` boots an embedded lb node and serves an authenticating gateway (`node-v0.1.11`); its
-  UI is a vendored copy of `ui/`.
+  UI was vendored from the old in-tree `ui/` (since deleted) and is now owned by that repo.
 - `NubeIO/rubix-ai-extensions/extensions/proof-panel` is the first extension migrated to the published
   SDKs — zero lb-repo dependency, proven on a real rubix-ai node.

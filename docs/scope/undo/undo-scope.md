@@ -235,6 +235,16 @@ Mandatory categories from `../testing/testing-scope.md`:
   meanwhile the hub's copy changes; on re-sync the conditional restore is **refused at the hub** (its
   expected `rev` no longer matches), proving the predicate is enforced at the apply point and not only
   locally — no silent LWW clobber.
+  > **Discharged 2026-07-15** (`crates/host/tests/undo_sync_test.rs`, 3 tests: refused-at-hub, the
+  > unmoved-hub control, replay-does-not-restore-twice). Two real nodes, two real stores.
+  > **Caveat the next reader needs:** there is **no journal replication in the product** —
+  > `ChannelSync` (`host/src/sync.rs`) is the only cross-node sync and it mirrors inbox `Item`s only
+  > (no doc replication, no journal replication), so this scenario cannot arise from the shipped path
+  > yet. The test carries the edge's real journal rows to the hub itself (real `scan` + real `write`)
+  > and runs the real `apply_undo` there: the transport is stubbed, the mechanism under test is not.
+  > What is proven is the predicate's node-agnosticism — `restore_all` reads the live `rev` from
+  > whichever store the transaction targets, so it refuses at the apply point by construction. When
+  > replication lands, the refusal behaviour it depends on is already regression-guarded.
 - **Revision predicate (§new):** the store seam stamps a monotonic `rev` on every `write_tx` record;
   a conditional restore succeeds iff every touched record's current `rev` equals the expected `rev`, and
   **refuses all-or-nothing** if any one differs (a multi-record group, one record changed → whole undo

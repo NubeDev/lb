@@ -5853,6 +5853,7 @@ dependencies = [
  "lb-store",
  "lb-supervisor",
  "lb-telemetry",
+ "lb-undo",
  "rand 0.8.6",
  "reqwest",
  "rusqlite",

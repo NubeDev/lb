@@ -8,6 +8,12 @@ import { getJson, postJson } from "./request";
 
 const enc = encodeURIComponent;
 
+/** The `undo`/`redo` body: an optional `surface` stack key, omitted entirely when absent. */
+function surfaceBody(args?: Record<string, unknown>): Record<string, unknown> {
+  const surface = args?.surface;
+  return typeof surface === "string" ? { surface } : {};
+}
+
 /** A bound `invoke` for one gateway. Command names mirror the web shell's (`channel_post`, …). */
 export type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -44,6 +50,20 @@ export function createInvoke(config: GatewayConfig): Invoke {
       case "mcp_call": {
         const { tool, args: toolArgs } = args as { tool: string; args?: unknown };
         return postJson<T>(config, "/mcp/call", { tool, args: toolArgs ?? {} });
+      }
+      // Undo journal (undo-exposure scope). `surface` is the optional finer stack key; the
+      // workspace + actor come from the token, so a session only ever reaches its own stack.
+      // An undo/redo that cannot apply returns `{ok:false, reason}` — data the shell renders,
+      // not an error; only a capability failure throws (`InvokeError.isDenied`).
+      case "undo":
+        return postJson<T>(config, "/undo", surfaceBody(args));
+      case "redo":
+        return postJson<T>(config, "/redo", surfaceBody(args));
+      case "undo_history":
+        return getJson<T>(config, "/undo/history");
+      case "undo_compensations": {
+        const { seq } = args as { seq: number };
+        return getJson<T>(config, `/undo/history/${enc(String(seq))}/compensations`);
       }
       default:
         throw new Error(`unknown command: ${cmd}`);

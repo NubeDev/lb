@@ -12,35 +12,61 @@ flow tool, document store, etc.
 
 ## Current status: S8 shipped, building on a real workspace
 
-The platform is **built and green**, not scaffolding. The Rust workspace
-(`rust/`) and the React/Tauri UI (`ui/`) both compile and are exercised by real
-tests. As of **S8 (data plane)** the following are shipped end to end: identity +
+The platform is **built and green**, not scaffolding. The Rust workspace (`rust/`)
+compiles and is exercised by real tests. As of **S8 (data plane)** the following are shipped end to end: identity +
 signed tokens, the SurrealDB store with workspace isolation, the Zenoh bus, the
 WASM + native (Tier-2) extension runtime with a signed registry, the capability
 system, durable workflow primitives (inbox/outbox/jobs), generic ingest + tagging,
-the AI core (central agent + AI-gateway sidecar), the coding workflow
-(issue → triage → approval → job → PR), and the collaboration UI over a real
-session. `docs/STATUS.md` is the authoritative "where are we" — **read it first**;
-this paragraph is a summary, not the source of truth.
+the AI core (central agent + AI-gateway sidecar), and the coding workflow
+(issue → triage → approval → job → PR). `docs/STATUS.md` is the authoritative
+"where are we" — **read it first**; this paragraph is a summary, not the source of
+truth.
+
+**lb is a LIBRARY, and the UI shell is gone.** Product hosts (e.g. `NubeIO/rubix-ai`)
+embed the core via the `lb-node` crate seam and ship their own binary and their own
+frontend. The old in-tree React/Tauri shell at **`ui/` was DELETED** (commit
+`678503f`) — see "Never recreate `ui/`" below. `MIGRATION.md` is the authoritative
+posture doc.
 
 **Real build/test commands** (no longer "do not invent"):
 - Rust: `cd rust && cargo build --workspace`, `cargo test --workspace`, `cargo fmt`.
-- UI unit: `cd ui && pnpm test`.
-- UI against a **real** spawned gateway node: `cd ui && pnpm test:gateway`
-  (`test_gateway` bin + `vitest.gateway.config.ts` — no `*.fake.ts`, per rule 9).
+- Gateway-facing TS (`app/sdk`, `packages/*`): `pnpm test` / `pnpm test:gateway`
+  from that package — a real spawned gateway node, no `*.fake.ts`, per rule 9.
 - Extensions ship their own `build.sh` (native sidecar + federated UI bundle).
-
-The doc-site (Nextra) and the native desktop window (webkit toolchain) are the
-remaining un-built pieces.
 
 ## Repository layout
 
 - `rust/` — the Rust workspace: core crates + the `node` binary (see `rust/README.md`).
-- `ui/` — the React/TypeScript frontend (see `ui/README.md`).
+- `app/` — the app-side TypeScript: `sdk/` (gateway client) + `shell/` (RN app shell, standalone).
+- `packages/` — reusable frontend libraries consumed by product hosts (dashboard, panel, nav-rail, …).
+- `clients/` — generated gateway clients (go, node-ts, python, rust).
 - `doc-site/` — the Nextra site that publishes the docs (see `doc-site/README.md`).
 - `docker/` — container build + compose assets: one `node` image, role by config (see `docker/README.md`).
 - `docs/` — all authored documentation (the source of truth).
 - `README.md` — the **core stack scope** (the authoritative spec).
+
+**There is no `ui/`.** It was deleted; the product UI shell lives out-of-tree.
+
+## Never recreate `ui/` (or any deleted tree)
+
+The in-tree React/Tauri shell at `ui/` was **deliberately deleted** — lb is a library
+and the shell moved out-of-tree (`MIGRATION.md`). AI sessions have repeatedly
+**re-created `ui/` and mkdir'd new dirs under it**. That is **100% wrong**, every
+time. There is no case where the fix to a task in this repo is a new file under `ui/`.
+
+- **Never `mkdir ui/…`**, never write a file under `ui/`, never "restore" it from an
+  old doc reference or a git history blob.
+- Docs, session logs, and `debugging/` entries written **before** the deletion still
+  say `ui/src/...`. Those are **history, not instructions** — they describe where code
+  lived at the time. A path in an old doc is **not** permission to recreate the tree.
+- A frontend change belongs in `packages/*` (reusable library), `app/` (SDK + app
+  shell), or **the downstream product repo** (`rubix-ai`) — never here.
+- If a task seems to *require* `ui/`, the task is aimed at the wrong repo. **Stop and
+  say so** instead of scaffolding it back.
+
+The same rule generalizes: if a tree is absent from the working copy, its absence is a
+**decision**. Verify against `MIGRATION.md` + `docs/STATUS.md` and ask — do not
+re-materialize it because a doc mentions it.
 
 ## Where docs live
 
@@ -116,8 +142,8 @@ in every doc and (later) every PR:
    `docs/scope/testing/testing-scope.md` §0.
 10. **Core knows no extension.** *Everything else is an extension* (§ "What this is"),
     and the core has **no idea any specific one exists**. No core crate (`rust/crates/*`)
-    and no core UI shell (`ui/src`, outside a feature's own dir) may **branch on an
-    extension id** — no `if ext == "github"`, no `match id { "mqtt" => … }`, no static
+    and no core frontend library (`packages/*`, `app/sdk`, outside a feature's own dir)
+    may **branch on an extension id** — no `if ext == "github"`, no `match id { "mqtt" => … }`, no static
     import of one extension, no hardcoded route/nav/icon/cap for a named ext. An extension
     is reached **only** through the generic mediated seams — MCP tool resolution
     (`<id>.<tool>` split + registry lookup), the capability grammar, the outbox `Target`

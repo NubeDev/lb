@@ -35,7 +35,7 @@ A coding session is **not done** until all of these exist. This is the same chec
 
 | Deliverable | Path | Always? |
 |---|---|---|
-| **Code** | `rust/<crate>/…` or `ui/…`, within FILE-LAYOUT limits | yes |
+| **Code** | `rust/<crate>/…`, `packages/<lib>/…` or `app/…`, within FILE-LAYOUT limits (**never `ui/` — it is deleted, see CLAUDE.md**) | yes |
 | **Tests** | beside the source / `rust/<crate>/tests/` — incl. mandatory categories | yes |
 | **Green output** | pasted into the session doc | yes |
 | **Session doc** | `sessions/<topic>/<name>-session.md` | yes |

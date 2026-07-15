@@ -1,5 +1,5 @@
-import { jsxs as le, jsx as C, Fragment as un } from "react/jsx-runtime";
-import ue, { forwardRef as cn, createElement as It, useState as Bt, useRef as eo, useEffect as to } from "react";
+import { jsxs as ce, jsx as C, Fragment as un } from "react/jsx-runtime";
+import fe, { forwardRef as cn, createElement as It, useState as Bt, useRef as eo, useEffect as to } from "react";
 import ir from "react-dom";
 const ro = 12, fn = 56, no = {
   chart: "timeseries"
@@ -34,12 +34,12 @@ function gs() {
   return { defaults: {}, overrides: [] };
 }
 const ys = 12, ms = 1;
-function ve(t) {
+function we(t) {
   return Je(t) === "row";
 }
 function dn(t) {
   var e;
-  return ve(t) && ((e = t.options) == null ? void 0 : e.collapsed) === !0;
+  return we(t) && ((e = t.options) == null ? void 0 : e.collapsed) === !0;
 }
 function oo(t) {
   const e = t.options ?? {};
@@ -50,18 +50,18 @@ function oo(t) {
   };
 }
 function ar(t) {
-  return t.filter(ve).sort((e, r) => e.y - r.y || e.x - r.x);
+  return t.filter(we).sort((e, r) => e.y - r.y || e.x - r.x);
 }
 function Ve(t, e) {
-  if (!ve(e)) return [];
+  if (!we(e)) return [];
   const r = ar(t), n = r.findIndex((s) => s.i === e.i);
   if (n < 0) return [];
   const o = e.y, i = r[n + 1], a = i ? i.y : Number.POSITIVE_INFINITY;
-  return t.filter((s) => !ve(s) && s.y >= o && s.y < a);
+  return t.filter((s) => !we(s) && s.y >= o && s.y < a);
 }
 function vs(t) {
   const e = ar(t), r = e.length > 0 ? e[0].y : Number.POSITIVE_INFINITY;
-  return t.filter((n) => !ve(n) && n.y < r);
+  return t.filter((n) => !we(n) && n.y < r);
 }
 function pn(t) {
   const e = ar(t).filter(dn);
@@ -74,7 +74,7 @@ function pn(t) {
 function io(t, e) {
   const r = new Map(e.map((o) => [o.i, o])), n = /* @__PURE__ */ new Map();
   for (const o of t) {
-    if (!ve(o)) continue;
+    if (!we(o)) continue;
     const i = r.get(o.i);
     if (!i) continue;
     const a = i.y - o.y;
@@ -116,8 +116,8 @@ function bs(t) {
   return r;
 }
 function hn({ view: t }) {
-  return /* @__PURE__ */ le("div", { className: "lbdg-unknown", role: "note", "aria-label": `unknown view ${t}`, children: [
-    /* @__PURE__ */ le("span", { className: "lbdg-unknown-title", children: [
+  return /* @__PURE__ */ ce("div", { className: "lbdg-unknown", role: "note", "aria-label": `unknown view ${t}`, children: [
+    /* @__PURE__ */ ce("span", { className: "lbdg-unknown-title", children: [
       "No renderer for “",
       t,
       "”"
@@ -154,29 +154,29 @@ var gn = { exports: {} }, Ze = {}, Ft = { exports: {} };
     n(e);
   })(lo, function(r) {
     function n(g) {
-      return function(_, D, h, H, U, ne, X) {
-        return g(_, D, X);
+      return function(S, P, h, q, X, oe, V) {
+        return g(S, P, V);
       };
     }
     function o(g) {
-      return function(_, D, h, H) {
-        if (!_ || !D || typeof _ != "object" || typeof D != "object")
-          return g(_, D, h, H);
-        var U = H.get(_), ne = H.get(D);
-        if (U && ne)
-          return U === D && ne === _;
-        H.set(_, D), H.set(D, _);
-        var X = g(_, D, h, H);
-        return H.delete(_), H.delete(D), X;
+      return function(S, P, h, q) {
+        if (!S || !P || typeof S != "object" || typeof P != "object")
+          return g(S, P, h, q);
+        var X = q.get(S), oe = q.get(P);
+        if (X && oe)
+          return X === P && oe === S;
+        q.set(S, P), q.set(P, S);
+        var V = g(S, P, h, q);
+        return q.delete(S), q.delete(P), V;
       };
     }
     function i(g, b) {
-      var _ = {};
-      for (var D in g)
-        _[D] = g[D];
-      for (var D in b)
-        _[D] = b[D];
-      return _;
+      var S = {};
+      for (var P in g)
+        S[P] = g[P];
+      for (var P in b)
+        S[P] = b[P];
+      return S;
     }
     function a(g) {
       return g.constructor === Object || g.constructor == null;
@@ -187,137 +187,137 @@ var gn = { exports: {} }, Ze = {}, Ft = { exports: {} };
     function l(g, b) {
       return g === b || g !== g && b !== b;
     }
-    var u = "[object Arguments]", c = "[object Boolean]", f = "[object Date]", d = "[object RegExp]", v = "[object Map]", m = "[object Number]", S = "[object Object]", x = "[object Set]", R = "[object String]", W = Object.prototype.toString;
-    function E(g) {
-      var b = g.areArraysEqual, _ = g.areDatesEqual, D = g.areMapsEqual, h = g.areObjectsEqual, H = g.areRegExpsEqual, U = g.areSetsEqual, ne = g.createIsNestedEqual, X = ne(ce);
-      function ce(Y, V, fe) {
-        if (Y === V)
+    var u = "[object Arguments]", c = "[object Boolean]", f = "[object Date]", d = "[object RegExp]", v = "[object Map]", m = "[object Number]", O = "[object Object]", E = "[object Set]", _ = "[object String]", W = Object.prototype.toString;
+    function R(g) {
+      var b = g.areArraysEqual, S = g.areDatesEqual, P = g.areMapsEqual, h = g.areObjectsEqual, q = g.areRegExpsEqual, X = g.areSetsEqual, oe = g.createIsNestedEqual, V = oe(pe);
+      function pe(F, K, he) {
+        if (F === K)
           return !0;
-        if (!Y || !V || typeof Y != "object" || typeof V != "object")
-          return Y !== Y && V !== V;
-        if (a(Y) && a(V))
-          return h(Y, V, X, fe);
-        var Pr = Array.isArray(Y), Dr = Array.isArray(V);
+        if (!F || !K || typeof F != "object" || typeof K != "object")
+          return F !== F && K !== K;
+        if (a(F) && a(K))
+          return h(F, K, V, he);
+        var Pr = Array.isArray(F), Dr = Array.isArray(K);
         if (Pr || Dr)
-          return Pr === Dr && b(Y, V, X, fe);
-        var de = W.call(Y);
-        return de !== W.call(V) ? !1 : de === f ? _(Y, V, X, fe) : de === d ? H(Y, V, X, fe) : de === v ? D(Y, V, X, fe) : de === x ? U(Y, V, X, fe) : de === S || de === u ? s(Y) || s(V) ? !1 : h(Y, V, X, fe) : de === c || de === m || de === R ? l(Y.valueOf(), V.valueOf()) : !1;
+          return Pr === Dr && b(F, K, V, he);
+        var ge = W.call(F);
+        return ge !== W.call(K) ? !1 : ge === f ? S(F, K, V, he) : ge === d ? q(F, K, V, he) : ge === v ? P(F, K, V, he) : ge === E ? X(F, K, V, he) : ge === O || ge === u ? s(F) || s(K) ? !1 : h(F, K, V, he) : ge === c || ge === m || ge === _ ? l(F.valueOf(), K.valueOf()) : !1;
       }
-      return ce;
+      return pe;
     }
-    function w(g, b, _, D) {
+    function D(g, b, S, P) {
       var h = g.length;
       if (b.length !== h)
         return !1;
       for (; h-- > 0; )
-        if (!_(g[h], b[h], h, h, g, b, D))
+        if (!S(g[h], b[h], h, h, g, b, P))
           return !1;
       return !0;
     }
-    var p = o(w);
-    function F(g, b) {
+    var p = o(D);
+    function U(g, b) {
       return l(g.valueOf(), b.valueOf());
     }
-    function Q(g, b, _, D) {
+    function Q(g, b, S, P) {
       var h = g.size === b.size;
       if (!h)
         return !1;
       if (!g.size)
         return !0;
-      var H = {}, U = 0;
-      return g.forEach(function(ne, X) {
+      var q = {}, X = 0;
+      return g.forEach(function(oe, V) {
         if (h) {
-          var ce = !1, Y = 0;
-          b.forEach(function(V, fe) {
-            !ce && !H[Y] && (ce = _(X, fe, U, Y, g, b, D) && _(ne, V, X, fe, g, b, D)) && (H[Y] = !0), Y++;
-          }), U++, h = ce;
+          var pe = !1, F = 0;
+          b.forEach(function(K, he) {
+            !pe && !q[F] && (pe = S(V, he, X, F, g, b, P) && S(oe, K, V, he, g, b, P)) && (q[F] = !0), F++;
+          }), X++, h = pe;
         }
       }), h;
     }
-    var K = o(Q), Te = "_owner", ge = Object.prototype.hasOwnProperty;
-    function Se(g, b, _, D) {
-      var h = Object.keys(g), H = h.length;
-      if (Object.keys(b).length !== H)
+    var j = o(Q), re = "_owner", ie = Object.prototype.hasOwnProperty;
+    function de(g, b, S, P) {
+      var h = Object.keys(g), q = h.length;
+      if (Object.keys(b).length !== q)
         return !1;
-      for (var U; H-- > 0; ) {
-        if (U = h[H], U === Te) {
-          var ne = !!g.$$typeof, X = !!b.$$typeof;
-          if ((ne || X) && ne !== X)
+      for (var X; q-- > 0; ) {
+        if (X = h[q], X === re) {
+          var oe = !!g.$$typeof, V = !!b.$$typeof;
+          if ((oe || V) && oe !== V)
             return !1;
         }
-        if (!ge.call(b, U) || !_(g[U], b[U], U, U, g, b, D))
+        if (!ie.call(b, X) || !S(g[X], b[X], X, X, g, b, P))
           return !1;
       }
       return !0;
     }
-    var Be = o(Se);
-    function Me(g, b) {
+    var Se = o(de);
+    function ke(g, b) {
       return g.source === b.source && g.flags === b.flags;
     }
-    function ye(g, b, _, D) {
+    function ve(g, b, S, P) {
       var h = g.size === b.size;
       if (!h)
         return !1;
       if (!g.size)
         return !0;
-      var H = {};
-      return g.forEach(function(U, ne) {
+      var q = {};
+      return g.forEach(function(X, oe) {
         if (h) {
-          var X = !1, ce = 0;
-          b.forEach(function(Y, V) {
-            !X && !H[ce] && (X = _(U, Y, ne, V, g, b, D)) && (H[ce] = !0), ce++;
-          }), h = X;
+          var V = !1, pe = 0;
+          b.forEach(function(F, K) {
+            !V && !q[pe] && (V = S(X, F, oe, K, g, b, P)) && (q[pe] = !0), pe++;
+          }), h = V;
         }
       }), h;
     }
-    var Ge = o(ye), re = Object.freeze({
-      areArraysEqual: w,
-      areDatesEqual: F,
+    var Ge = o(ve), ne = Object.freeze({
+      areArraysEqual: D,
+      areDatesEqual: U,
       areMapsEqual: Q,
-      areObjectsEqual: Se,
-      areRegExpsEqual: Me,
-      areSetsEqual: ye,
+      areObjectsEqual: de,
+      areRegExpsEqual: ke,
+      areSetsEqual: ve,
       createIsNestedEqual: n
-    }), ie = Object.freeze({
+    }), se = Object.freeze({
       areArraysEqual: p,
-      areDatesEqual: F,
-      areMapsEqual: K,
-      areObjectsEqual: Be,
-      areRegExpsEqual: Me,
+      areDatesEqual: U,
+      areMapsEqual: j,
+      areObjectsEqual: Se,
+      areRegExpsEqual: ke,
       areSetsEqual: Ge,
       createIsNestedEqual: n
-    }), ke = E(re);
+    }), $e = R(ne);
     function Ye(g, b) {
-      return ke(g, b, void 0);
+      return $e(g, b, void 0);
     }
-    var y = E(i(re, { createIsNestedEqual: function() {
+    var y = R(i(ne, { createIsNestedEqual: function() {
       return l;
     } }));
-    function O(g, b) {
+    function w(g, b) {
       return y(g, b, void 0);
     }
-    var N = E(ie);
-    function k(g, b) {
-      return N(g, b, /* @__PURE__ */ new WeakMap());
+    var A = R(se);
+    function $(g, b) {
+      return A(g, b, /* @__PURE__ */ new WeakMap());
     }
-    var z = E(i(ie, {
+    var z = R(i(se, {
       createIsNestedEqual: function() {
         return l;
       }
     }));
-    function A(g, b) {
+    function H(g, b) {
       return z(g, b, /* @__PURE__ */ new WeakMap());
     }
-    function M(g) {
-      return E(i(re, g(re)));
+    function k(g) {
+      return R(i(ne, g(ne)));
     }
-    function $(g) {
-      var b = E(i(ie, g(ie)));
-      return function(_, D, h) {
-        return h === void 0 && (h = /* @__PURE__ */ new WeakMap()), b(_, D, h);
+    function L(g) {
+      var b = R(i(se, g(se)));
+      return function(S, P, h) {
+        return h === void 0 && (h = /* @__PURE__ */ new WeakMap()), b(S, P, h);
       };
     }
-    r.circularDeepEqual = k, r.circularShallowEqual = A, r.createCustomCircularEqual = $, r.createCustomEqual = M, r.deepEqual = Ye, r.sameValueZeroEqual = l, r.shallowEqual = O, Object.defineProperty(r, "__esModule", { value: !0 });
+    r.circularDeepEqual = $, r.circularShallowEqual = H, r.createCustomCircularEqual = L, r.createCustomEqual = k, r.deepEqual = Ye, r.sameValueZeroEqual = l, r.shallowEqual = w, Object.defineProperty(r, "__esModule", { value: !0 });
   });
 })(Ft, Ft.exports);
 var sr = Ft.exports, Ut = { exports: {} };
@@ -335,42 +335,42 @@ function zr() {
   return n;
 }
 Ut.exports = zr, Ut.exports.clsx = zr;
-var ct = Ut.exports, L = {}, fo = function(e, r, n) {
+var ct = Ut.exports, N = {}, fo = function(e, r, n) {
   return e === r ? !0 : e.className === r.className && n(e.style, r.style) && e.width === r.width && e.autoSize === r.autoSize && e.cols === r.cols && e.draggableCancel === r.draggableCancel && e.draggableHandle === r.draggableHandle && n(e.verticalCompact, r.verticalCompact) && n(e.compactType, r.compactType) && n(e.layout, r.layout) && n(e.margin, r.margin) && n(e.containerPadding, r.containerPadding) && e.rowHeight === r.rowHeight && e.maxRows === r.maxRows && e.isBounded === r.isBounded && e.isDraggable === r.isDraggable && e.isResizable === r.isResizable && e.allowOverlap === r.allowOverlap && e.preventCollision === r.preventCollision && e.useCSSTransforms === r.useCSSTransforms && e.transformScale === r.transformScale && e.isDroppable === r.isDroppable && n(e.resizeHandles, r.resizeHandles) && n(e.resizeHandle, r.resizeHandle) && e.onLayoutChange === r.onLayoutChange && e.onDragStart === r.onDragStart && e.onDrag === r.onDrag && e.onDragStop === r.onDragStop && e.onResizeStart === r.onResizeStart && e.onResize === r.onResize && e.onResizeStop === r.onResizeStop && e.onDrop === r.onDrop && n(e.droppingItem, r.droppingItem) && n(e.innerRef, r.innerRef);
 };
-Object.defineProperty(L, "__esModule", {
+Object.defineProperty(N, "__esModule", {
   value: !0
 });
-L.bottom = ft;
-L.childrenEqual = bo;
-L.cloneLayout = mn;
-L.cloneLayoutItem = Ce;
-L.collides = dt;
-L.compact = bn;
-L.compactItem = wn;
-L.compactType = To;
-L.correctBounds = On;
-L.fastPositionEqual = wo;
-L.fastRGLPropsEqual = void 0;
-L.getAllCollisions = Sn;
-L.getFirstCollision = Pe;
-L.getLayoutItem = lr;
-L.getStatics = ur;
-L.modifyLayout = vn;
-L.moveElement = Ue;
-L.moveElementAwayFromCollision = Vt;
-L.noop = void 0;
-L.perc = So;
-L.resizeItemInDirection = Do;
-L.setTopLeft = zo;
-L.setTransform = Co;
-L.sortLayoutItems = gr;
-L.sortLayoutItemsByColRow = Pn;
-L.sortLayoutItemsByRowCol = xn;
-L.synchronizeLayoutWithChildren = jo;
-L.validateLayout = Dn;
-L.withLayoutItem = vo;
-var jr = sr, Fe = po(ue);
+N.bottom = ft;
+N.childrenEqual = bo;
+N.cloneLayout = mn;
+N.cloneLayoutItem = je;
+N.collides = dt;
+N.compact = bn;
+N.compactItem = wn;
+N.compactType = To;
+N.correctBounds = On;
+N.fastPositionEqual = wo;
+N.fastRGLPropsEqual = void 0;
+N.getAllCollisions = Sn;
+N.getFirstCollision = Ce;
+N.getLayoutItem = lr;
+N.getStatics = ur;
+N.modifyLayout = vn;
+N.moveElement = Ue;
+N.moveElementAwayFromCollision = Vt;
+N.noop = void 0;
+N.perc = So;
+N.resizeItemInDirection = Do;
+N.setTopLeft = zo;
+N.setTransform = Co;
+N.sortLayoutItems = gr;
+N.sortLayoutItemsByColRow = Pn;
+N.sortLayoutItemsByRowCol = xn;
+N.synchronizeLayoutWithChildren = jo;
+N.validateLayout = Dn;
+N.withLayoutItem = vo;
+var jr = sr, Fe = po(fe);
 function po(t) {
   return t && t.__esModule ? t : { default: t };
 }
@@ -422,7 +422,7 @@ function ft(t) {
 function mn(t) {
   const e = Array(t.length);
   for (let r = 0, n = t.length; r < n; r++)
-    e[r] = Ce(t[r]);
+    e[r] = je(t[r]);
   return e;
 }
 function vn(t, e) {
@@ -433,9 +433,9 @@ function vn(t, e) {
 }
 function vo(t, e, r) {
   let n = lr(t, e);
-  return n ? (n = r(Ce(n)), t = vn(t, n), [t, n]) : [t, null];
+  return n ? (n = r(je(n)), t = vn(t, n), [t, n]) : [t, null];
 }
-function Ce(t) {
+function je(t) {
   return {
     w: t.w,
     h: t.h,
@@ -458,7 +458,7 @@ function Ce(t) {
 function bo(t, e) {
   return (0, jr.deepEqual)(Fe.default.Children.map(t, (r) => r == null ? void 0 : r.key), Fe.default.Children.map(e, (r) => r == null ? void 0 : r.key)) && (0, jr.deepEqual)(Fe.default.Children.map(t, (r) => r == null ? void 0 : r.props["data-grid"]), Fe.default.Children.map(e, (r) => r == null ? void 0 : r.props["data-grid"]));
 }
-L.fastRGLPropsEqual = fo;
+N.fastRGLPropsEqual = fo;
 function wo(t, e) {
   return t.left === e.left && t.top === e.top && t.width === e.width && t.height === e.height;
 }
@@ -470,7 +470,7 @@ function bn(t, e, r, n) {
   let i = ft(o);
   const a = gr(t, e), s = Array(t.length);
   for (let l = 0, u = a.length; l < u; l++) {
-    let c = Ce(a[l]);
+    let c = je(a[l]);
     c.static || (c = wn(o, c, e, r, a, n, i), i = Math.max(i, c.y + c.h), o.push(c)), s[t.indexOf(a[l])] = c, c.moved = !1;
   }
   return s;
@@ -495,15 +495,15 @@ function Xt(t, e, r, n) {
 function wn(t, e, r, n, o, i, a) {
   const s = r === "vertical", l = r === "horizontal";
   if (s)
-    for (typeof a == "number" ? e.y = Math.min(a, e.y) : e.y = Math.min(ft(t), e.y); e.y > 0 && !Pe(t, e); )
+    for (typeof a == "number" ? e.y = Math.min(a, e.y) : e.y = Math.min(ft(t), e.y); e.y > 0 && !Ce(t, e); )
       e.y--;
   else if (l)
-    for (; e.x > 0 && !Pe(t, e); )
+    for (; e.x > 0 && !Ce(t, e); )
       e.x--;
   let u;
-  for (; (u = Pe(t, e)) && !(r === null && i); )
+  for (; (u = Ce(t, e)) && !(r === null && i); )
     if (l ? Xt(o, e, u.x + u.w, "x") : Xt(o, e, u.y + u.h, "y"), l && e.x + e.w > n)
-      for (e.x = n - e.w, e.y++; e.x > 0 && !Pe(t, e); )
+      for (e.x = n - e.w, e.y++; e.x > 0 && !Ce(t, e); )
         e.x--;
   return e.y = Math.max(e.y, 0), e.x = Math.max(e.x, 0), e;
 }
@@ -513,7 +513,7 @@ function On(t, e) {
     const i = t[n];
     if (i.x + i.w > e.cols && (i.x = e.cols - i.w), i.x < 0 && (i.x = 0, i.w = e.cols), !i.static) r.push(i);
     else
-      for (; Pe(r, i); )
+      for (; Ce(r, i); )
         i.y++;
   }
   return t;
@@ -522,7 +522,7 @@ function lr(t, e) {
   for (let r = 0, n = t.length; r < n; r++)
     if (t[r].i === e) return t[r];
 }
-function Pe(t, e) {
+function Ce(t, e) {
   for (let r = 0, n = t.length; r < n; r++)
     if (dt(t[r], e)) return t[r];
 }
@@ -544,9 +544,9 @@ function Ue(t, e, r, n, o, i, a, s, l) {
     return mn(t);
   if (m && i)
     return "Collision prevented on ".concat(e.i, ", reverting."), e.x = u, e.y = c, e.moved = !1, t;
-  for (let S = 0, x = v.length; S < x; S++) {
-    const R = v[S];
-    "Resolving collision between ".concat(e.i, " at [").concat(e.x, ",").concat(e.y, "] and ").concat(R.i, " at [").concat(R.x, ",").concat(R.y, "]"), !R.moved && (R.static ? t = Vt(t, R, e, o, a) : t = Vt(t, e, R, o, a));
+  for (let O = 0, E = v.length; O < E; O++) {
+    const _ = v[O];
+    "Resolving collision between ".concat(e.i, " at [").concat(e.x, ",").concat(e.y, "] and ").concat(_.i, " at [").concat(_.x, ",").concat(_.y, "]"), !_.moved && (_.static ? t = Vt(t, _, e, o, a) : t = Vt(t, e, _, o, a));
   }
   return t;
 }
@@ -560,7 +560,7 @@ function Vt(t, e, r, n, o, i) {
       w: r.w,
       h: r.h,
       i: "-1"
-    }, d = Pe(t, f), v = d && d.y + d.h > e.y, m = d && e.x + e.w > d.x;
+    }, d = Ce(t, f), v = d && d.y + d.h > e.y, m = d && e.x + e.w > d.x;
     if (d) {
       if (v && s)
         return Ue(t, r, void 0, r.y + 1, n, l, o);
@@ -703,9 +703,9 @@ function jo(t, e, r, n, o) {
   Fe.default.Children.forEach(e, (s) => {
     if ((s == null ? void 0 : s.key) == null) return;
     const l = lr(t, String(s.key)), u = s.props["data-grid"];
-    l && u == null ? i.push(Ce(l)) : u ? (mo || Dn([u], "ReactGridLayout.children"), i.push(Ce(at(at({}, u), {}, {
+    l && u == null ? i.push(je(l)) : u ? (mo || Dn([u], "ReactGridLayout.children"), i.push(je(at(at({}, u), {}, {
       i: s.key
-    })))) : i.push(Ce({
+    })))) : i.push(je({
       w: 1,
       h: 1,
       x: 0,
@@ -742,17 +742,17 @@ function To(t) {
 }
 const Mo = () => {
 };
-L.noop = Mo;
-var he = {};
-Object.defineProperty(he, "__esModule", {
+N.noop = Mo;
+var me = {};
+Object.defineProperty(me, "__esModule", {
   value: !0
 });
-he.calcGridColWidth = pt;
-he.calcGridItemPosition = ko;
-he.calcGridItemWHPx = Kt;
-he.calcWH = Lo;
-he.calcXY = $o;
-he.clamp = De;
+me.calcGridColWidth = pt;
+me.calcGridItemPosition = ko;
+me.calcGridItemWHPx = Kt;
+me.calcWH = Lo;
+me.calcXY = $o;
+me.clamp = ze;
 function pt(t) {
   const {
     margin: e,
@@ -782,7 +782,7 @@ function $o(t, e, r, n, o) {
     maxRows: u
   } = t, c = pt(t);
   let f = Math.round((r - a[0]) / (c + i[0])), d = Math.round((e - a[1]) / (l + i[1]));
-  return f = De(f, 0, s - n), d = De(d, 0, u - o), {
+  return f = ze(f, 0, s - n), d = ze(d, 0, u - o), {
     x: f,
     y: d
   };
@@ -794,16 +794,16 @@ function Lo(t, e, r, n, o, i) {
     cols: l,
     rowHeight: u
   } = t, c = pt(t);
-  let f = Math.round((e + a[0]) / (c + a[0])), d = Math.round((r + a[1]) / (u + a[1])), v = De(f, 0, l - n), m = De(d, 0, s - o);
-  return ["sw", "w", "nw"].indexOf(i) !== -1 && (v = De(f, 0, l)), ["nw", "n", "ne"].indexOf(i) !== -1 && (m = De(d, 0, s)), {
+  let f = Math.round((e + a[0]) / (c + a[0])), d = Math.round((r + a[1]) / (u + a[1])), v = ze(f, 0, l - n), m = ze(d, 0, s - o);
+  return ["sw", "w", "nw"].indexOf(i) !== -1 && (v = ze(f, 0, l)), ["nw", "n", "ne"].indexOf(i) !== -1 && (m = ze(d, 0, s)), {
     w: v,
     h: m
   };
 }
-function De(t, e, r) {
+function ze(t, e, r) {
   return Math.max(Math.min(t, r), e);
 }
-var ht = {}, Jt = { exports: {} }, tt = { exports: {} }, I = {};
+var ht = {}, Jt = { exports: {} }, tt = { exports: {} }, B = {};
 /** @license React v16.13.1
  * react-is.production.min.js
  *
@@ -814,13 +814,13 @@ var ht = {}, Jt = { exports: {} }, tt = { exports: {} }, I = {};
  */
 var Mr;
 function No() {
-  if (Mr) return I;
+  if (Mr) return B;
   Mr = 1;
-  var t = typeof Symbol == "function" && Symbol.for, e = t ? Symbol.for("react.element") : 60103, r = t ? Symbol.for("react.portal") : 60106, n = t ? Symbol.for("react.fragment") : 60107, o = t ? Symbol.for("react.strict_mode") : 60108, i = t ? Symbol.for("react.profiler") : 60114, a = t ? Symbol.for("react.provider") : 60109, s = t ? Symbol.for("react.context") : 60110, l = t ? Symbol.for("react.async_mode") : 60111, u = t ? Symbol.for("react.concurrent_mode") : 60111, c = t ? Symbol.for("react.forward_ref") : 60112, f = t ? Symbol.for("react.suspense") : 60113, d = t ? Symbol.for("react.suspense_list") : 60120, v = t ? Symbol.for("react.memo") : 60115, m = t ? Symbol.for("react.lazy") : 60116, S = t ? Symbol.for("react.block") : 60121, x = t ? Symbol.for("react.fundamental") : 60117, R = t ? Symbol.for("react.responder") : 60118, W = t ? Symbol.for("react.scope") : 60119;
-  function E(p) {
+  var t = typeof Symbol == "function" && Symbol.for, e = t ? Symbol.for("react.element") : 60103, r = t ? Symbol.for("react.portal") : 60106, n = t ? Symbol.for("react.fragment") : 60107, o = t ? Symbol.for("react.strict_mode") : 60108, i = t ? Symbol.for("react.profiler") : 60114, a = t ? Symbol.for("react.provider") : 60109, s = t ? Symbol.for("react.context") : 60110, l = t ? Symbol.for("react.async_mode") : 60111, u = t ? Symbol.for("react.concurrent_mode") : 60111, c = t ? Symbol.for("react.forward_ref") : 60112, f = t ? Symbol.for("react.suspense") : 60113, d = t ? Symbol.for("react.suspense_list") : 60120, v = t ? Symbol.for("react.memo") : 60115, m = t ? Symbol.for("react.lazy") : 60116, O = t ? Symbol.for("react.block") : 60121, E = t ? Symbol.for("react.fundamental") : 60117, _ = t ? Symbol.for("react.responder") : 60118, W = t ? Symbol.for("react.scope") : 60119;
+  function R(p) {
     if (typeof p == "object" && p !== null) {
-      var F = p.$$typeof;
-      switch (F) {
+      var U = p.$$typeof;
+      switch (U) {
         case e:
           switch (p = p.type, p) {
             case l:
@@ -839,46 +839,46 @@ function No() {
                 case a:
                   return p;
                 default:
-                  return F;
+                  return U;
               }
           }
         case r:
-          return F;
+          return U;
       }
     }
   }
-  function w(p) {
-    return E(p) === u;
+  function D(p) {
+    return R(p) === u;
   }
-  return I.AsyncMode = l, I.ConcurrentMode = u, I.ContextConsumer = s, I.ContextProvider = a, I.Element = e, I.ForwardRef = c, I.Fragment = n, I.Lazy = m, I.Memo = v, I.Portal = r, I.Profiler = i, I.StrictMode = o, I.Suspense = f, I.isAsyncMode = function(p) {
-    return w(p) || E(p) === l;
-  }, I.isConcurrentMode = w, I.isContextConsumer = function(p) {
-    return E(p) === s;
-  }, I.isContextProvider = function(p) {
-    return E(p) === a;
-  }, I.isElement = function(p) {
+  return B.AsyncMode = l, B.ConcurrentMode = u, B.ContextConsumer = s, B.ContextProvider = a, B.Element = e, B.ForwardRef = c, B.Fragment = n, B.Lazy = m, B.Memo = v, B.Portal = r, B.Profiler = i, B.StrictMode = o, B.Suspense = f, B.isAsyncMode = function(p) {
+    return D(p) || R(p) === l;
+  }, B.isConcurrentMode = D, B.isContextConsumer = function(p) {
+    return R(p) === s;
+  }, B.isContextProvider = function(p) {
+    return R(p) === a;
+  }, B.isElement = function(p) {
     return typeof p == "object" && p !== null && p.$$typeof === e;
-  }, I.isForwardRef = function(p) {
-    return E(p) === c;
-  }, I.isFragment = function(p) {
-    return E(p) === n;
-  }, I.isLazy = function(p) {
-    return E(p) === m;
-  }, I.isMemo = function(p) {
-    return E(p) === v;
-  }, I.isPortal = function(p) {
-    return E(p) === r;
-  }, I.isProfiler = function(p) {
-    return E(p) === i;
-  }, I.isStrictMode = function(p) {
-    return E(p) === o;
-  }, I.isSuspense = function(p) {
-    return E(p) === f;
-  }, I.isValidElementType = function(p) {
-    return typeof p == "string" || typeof p == "function" || p === n || p === u || p === i || p === o || p === f || p === d || typeof p == "object" && p !== null && (p.$$typeof === m || p.$$typeof === v || p.$$typeof === a || p.$$typeof === s || p.$$typeof === c || p.$$typeof === x || p.$$typeof === R || p.$$typeof === W || p.$$typeof === S);
-  }, I.typeOf = E, I;
+  }, B.isForwardRef = function(p) {
+    return R(p) === c;
+  }, B.isFragment = function(p) {
+    return R(p) === n;
+  }, B.isLazy = function(p) {
+    return R(p) === m;
+  }, B.isMemo = function(p) {
+    return R(p) === v;
+  }, B.isPortal = function(p) {
+    return R(p) === r;
+  }, B.isProfiler = function(p) {
+    return R(p) === i;
+  }, B.isStrictMode = function(p) {
+    return R(p) === o;
+  }, B.isSuspense = function(p) {
+    return R(p) === f;
+  }, B.isValidElementType = function(p) {
+    return typeof p == "string" || typeof p == "function" || p === n || p === u || p === i || p === o || p === f || p === d || typeof p == "object" && p !== null && (p.$$typeof === m || p.$$typeof === v || p.$$typeof === a || p.$$typeof === s || p.$$typeof === c || p.$$typeof === E || p.$$typeof === _ || p.$$typeof === W || p.$$typeof === O);
+  }, B.typeOf = R, B;
 }
-var B = {};
+var G = {};
 /** @license React v16.13.1
  * react-is.development.js
  *
@@ -890,85 +890,85 @@ var B = {};
 var kr;
 function Ao() {
   return kr || (kr = 1, process.env.NODE_ENV !== "production" && function() {
-    var t = typeof Symbol == "function" && Symbol.for, e = t ? Symbol.for("react.element") : 60103, r = t ? Symbol.for("react.portal") : 60106, n = t ? Symbol.for("react.fragment") : 60107, o = t ? Symbol.for("react.strict_mode") : 60108, i = t ? Symbol.for("react.profiler") : 60114, a = t ? Symbol.for("react.provider") : 60109, s = t ? Symbol.for("react.context") : 60110, l = t ? Symbol.for("react.async_mode") : 60111, u = t ? Symbol.for("react.concurrent_mode") : 60111, c = t ? Symbol.for("react.forward_ref") : 60112, f = t ? Symbol.for("react.suspense") : 60113, d = t ? Symbol.for("react.suspense_list") : 60120, v = t ? Symbol.for("react.memo") : 60115, m = t ? Symbol.for("react.lazy") : 60116, S = t ? Symbol.for("react.block") : 60121, x = t ? Symbol.for("react.fundamental") : 60117, R = t ? Symbol.for("react.responder") : 60118, W = t ? Symbol.for("react.scope") : 60119;
-    function E(h) {
+    var t = typeof Symbol == "function" && Symbol.for, e = t ? Symbol.for("react.element") : 60103, r = t ? Symbol.for("react.portal") : 60106, n = t ? Symbol.for("react.fragment") : 60107, o = t ? Symbol.for("react.strict_mode") : 60108, i = t ? Symbol.for("react.profiler") : 60114, a = t ? Symbol.for("react.provider") : 60109, s = t ? Symbol.for("react.context") : 60110, l = t ? Symbol.for("react.async_mode") : 60111, u = t ? Symbol.for("react.concurrent_mode") : 60111, c = t ? Symbol.for("react.forward_ref") : 60112, f = t ? Symbol.for("react.suspense") : 60113, d = t ? Symbol.for("react.suspense_list") : 60120, v = t ? Symbol.for("react.memo") : 60115, m = t ? Symbol.for("react.lazy") : 60116, O = t ? Symbol.for("react.block") : 60121, E = t ? Symbol.for("react.fundamental") : 60117, _ = t ? Symbol.for("react.responder") : 60118, W = t ? Symbol.for("react.scope") : 60119;
+    function R(h) {
       return typeof h == "string" || typeof h == "function" || // Note: its typeof might be other than 'symbol' or 'number' if it's a polyfill.
-      h === n || h === u || h === i || h === o || h === f || h === d || typeof h == "object" && h !== null && (h.$$typeof === m || h.$$typeof === v || h.$$typeof === a || h.$$typeof === s || h.$$typeof === c || h.$$typeof === x || h.$$typeof === R || h.$$typeof === W || h.$$typeof === S);
+      h === n || h === u || h === i || h === o || h === f || h === d || typeof h == "object" && h !== null && (h.$$typeof === m || h.$$typeof === v || h.$$typeof === a || h.$$typeof === s || h.$$typeof === c || h.$$typeof === E || h.$$typeof === _ || h.$$typeof === W || h.$$typeof === O);
     }
-    function w(h) {
+    function D(h) {
       if (typeof h == "object" && h !== null) {
-        var H = h.$$typeof;
-        switch (H) {
+        var q = h.$$typeof;
+        switch (q) {
           case e:
-            var U = h.type;
-            switch (U) {
+            var X = h.type;
+            switch (X) {
               case l:
               case u:
               case n:
               case i:
               case o:
               case f:
-                return U;
+                return X;
               default:
-                var ne = U && U.$$typeof;
-                switch (ne) {
+                var oe = X && X.$$typeof;
+                switch (oe) {
                   case s:
                   case c:
                   case m:
                   case v:
                   case a:
-                    return ne;
+                    return oe;
                   default:
-                    return H;
+                    return q;
                 }
             }
           case r:
-            return H;
+            return q;
         }
       }
     }
-    var p = l, F = u, Q = s, K = a, Te = e, ge = c, Se = n, Be = m, Me = v, ye = r, Ge = i, re = o, ie = f, ke = !1;
+    var p = l, U = u, Q = s, j = a, re = e, ie = c, de = n, Se = m, ke = v, ve = r, Ge = i, ne = o, se = f, $e = !1;
     function Ye(h) {
-      return ke || (ke = !0, console.warn("The ReactIs.isAsyncMode() alias has been deprecated, and will be removed in React 17+. Update your code to use ReactIs.isConcurrentMode() instead. It has the exact same API.")), y(h) || w(h) === l;
+      return $e || ($e = !0, console.warn("The ReactIs.isAsyncMode() alias has been deprecated, and will be removed in React 17+. Update your code to use ReactIs.isConcurrentMode() instead. It has the exact same API.")), y(h) || D(h) === l;
     }
     function y(h) {
-      return w(h) === u;
+      return D(h) === u;
     }
-    function O(h) {
-      return w(h) === s;
+    function w(h) {
+      return D(h) === s;
     }
-    function N(h) {
-      return w(h) === a;
+    function A(h) {
+      return D(h) === a;
     }
-    function k(h) {
+    function $(h) {
       return typeof h == "object" && h !== null && h.$$typeof === e;
     }
     function z(h) {
-      return w(h) === c;
+      return D(h) === c;
     }
-    function A(h) {
-      return w(h) === n;
+    function H(h) {
+      return D(h) === n;
     }
-    function M(h) {
-      return w(h) === m;
+    function k(h) {
+      return D(h) === m;
     }
-    function $(h) {
-      return w(h) === v;
+    function L(h) {
+      return D(h) === v;
     }
     function g(h) {
-      return w(h) === r;
+      return D(h) === r;
     }
     function b(h) {
-      return w(h) === i;
+      return D(h) === i;
     }
-    function _(h) {
-      return w(h) === o;
+    function S(h) {
+      return D(h) === o;
     }
-    function D(h) {
-      return w(h) === f;
+    function P(h) {
+      return D(h) === f;
     }
-    B.AsyncMode = p, B.ConcurrentMode = F, B.ContextConsumer = Q, B.ContextProvider = K, B.Element = Te, B.ForwardRef = ge, B.Fragment = Se, B.Lazy = Be, B.Memo = Me, B.Portal = ye, B.Profiler = Ge, B.StrictMode = re, B.Suspense = ie, B.isAsyncMode = Ye, B.isConcurrentMode = y, B.isContextConsumer = O, B.isContextProvider = N, B.isElement = k, B.isForwardRef = z, B.isFragment = A, B.isLazy = M, B.isMemo = $, B.isPortal = g, B.isProfiler = b, B.isStrictMode = _, B.isSuspense = D, B.isValidElementType = E, B.typeOf = w;
-  }()), B;
+    G.AsyncMode = p, G.ConcurrentMode = U, G.ContextConsumer = Q, G.ContextProvider = j, G.Element = re, G.ForwardRef = ie, G.Fragment = de, G.Lazy = Se, G.Memo = ke, G.Portal = ve, G.Profiler = Ge, G.StrictMode = ne, G.Suspense = se, G.isAsyncMode = Ye, G.isConcurrentMode = y, G.isContextConsumer = w, G.isContextProvider = A, G.isElement = $, G.isForwardRef = z, G.isFragment = H, G.isLazy = k, G.isMemo = L, G.isPortal = g, G.isProfiler = b, G.isStrictMode = S, G.isSuspense = P, G.isValidElementType = R, G.typeOf = D;
+  }()), G;
 }
 var $r;
 function Cn() {
@@ -1105,236 +1105,236 @@ function qo() {
   return Pt = function(s, l) {
     var u = typeof Symbol == "function" && Symbol.iterator, c = "@@iterator";
     function f(y) {
-      var O = y && (u && y[u] || y[c]);
-      if (typeof O == "function")
-        return O;
+      var w = y && (u && y[u] || y[c]);
+      if (typeof w == "function")
+        return w;
     }
     var d = "<<anonymous>>", v = {
-      array: R("array"),
-      bigint: R("bigint"),
-      bool: R("boolean"),
-      func: R("function"),
-      number: R("number"),
-      object: R("object"),
-      string: R("string"),
-      symbol: R("symbol"),
+      array: _("array"),
+      bigint: _("bigint"),
+      bool: _("boolean"),
+      func: _("function"),
+      number: _("number"),
+      object: _("object"),
+      string: _("string"),
+      symbol: _("symbol"),
       any: W(),
-      arrayOf: E,
-      element: w(),
+      arrayOf: R,
+      element: D(),
       elementType: p(),
-      instanceOf: F,
-      node: ge(),
-      objectOf: K,
+      instanceOf: U,
+      node: ie(),
+      objectOf: j,
       oneOf: Q,
-      oneOfType: Te,
-      shape: Be,
-      exact: Me
+      oneOfType: re,
+      shape: Se,
+      exact: ke
     };
-    function m(y, O) {
-      return y === O ? y !== 0 || 1 / y === 1 / O : y !== y && O !== O;
+    function m(y, w) {
+      return y === w ? y !== 0 || 1 / y === 1 / w : y !== y && w !== w;
     }
-    function S(y, O) {
-      this.message = y, this.data = O && typeof O == "object" ? O : {}, this.stack = "";
+    function O(y, w) {
+      this.message = y, this.data = w && typeof w == "object" ? w : {}, this.stack = "";
     }
-    S.prototype = Error.prototype;
-    function x(y) {
+    O.prototype = Error.prototype;
+    function E(y) {
       if (process.env.NODE_ENV !== "production")
-        var O = {}, N = 0;
-      function k(A, M, $, g, b, _, D) {
-        if (g = g || d, _ = _ || $, D !== r) {
+        var w = {}, A = 0;
+      function $(H, k, L, g, b, S, P) {
+        if (g = g || d, S = S || L, P !== r) {
           if (l) {
             var h = new Error(
               "Calling PropTypes validators directly is not supported by the `prop-types` package. Use `PropTypes.checkPropTypes()` to call them. Read more at http://fb.me/use-check-prop-types"
             );
             throw h.name = "Invariant Violation", h;
           } else if (process.env.NODE_ENV !== "production" && typeof console < "u") {
-            var H = g + ":" + $;
-            !O[H] && // Avoid spamming the console because they are often not actionable except for lib authors
-            N < 3 && (i(
-              "You are manually calling a React.PropTypes validation function for the `" + _ + "` prop on `" + g + "`. This is deprecated and will throw in the standalone `prop-types` package. You may be seeing this warning due to a third-party PropTypes library. See https://fb.me/react-warning-dont-call-proptypes for details."
-            ), O[H] = !0, N++);
+            var q = g + ":" + L;
+            !w[q] && // Avoid spamming the console because they are often not actionable except for lib authors
+            A < 3 && (i(
+              "You are manually calling a React.PropTypes validation function for the `" + S + "` prop on `" + g + "`. This is deprecated and will throw in the standalone `prop-types` package. You may be seeing this warning due to a third-party PropTypes library. See https://fb.me/react-warning-dont-call-proptypes for details."
+            ), w[q] = !0, A++);
           }
         }
-        return M[$] == null ? A ? M[$] === null ? new S("The " + b + " `" + _ + "` is marked as required " + ("in `" + g + "`, but its value is `null`.")) : new S("The " + b + " `" + _ + "` is marked as required in " + ("`" + g + "`, but its value is `undefined`.")) : null : y(M, $, g, b, _);
+        return k[L] == null ? H ? k[L] === null ? new O("The " + b + " `" + S + "` is marked as required " + ("in `" + g + "`, but its value is `null`.")) : new O("The " + b + " `" + S + "` is marked as required in " + ("`" + g + "`, but its value is `undefined`.")) : null : y(k, L, g, b, S);
       }
-      var z = k.bind(null, !1);
-      return z.isRequired = k.bind(null, !0), z;
+      var z = $.bind(null, !1);
+      return z.isRequired = $.bind(null, !0), z;
     }
-    function R(y) {
-      function O(N, k, z, A, M, $) {
-        var g = N[k], b = re(g);
+    function _(y) {
+      function w(A, $, z, H, k, L) {
+        var g = A[$], b = ne(g);
         if (b !== y) {
-          var _ = ie(g);
-          return new S(
-            "Invalid " + A + " `" + M + "` of type " + ("`" + _ + "` supplied to `" + z + "`, expected ") + ("`" + y + "`."),
+          var S = se(g);
+          return new O(
+            "Invalid " + H + " `" + k + "` of type " + ("`" + S + "` supplied to `" + z + "`, expected ") + ("`" + y + "`."),
             { expectedType: y }
           );
         }
         return null;
       }
-      return x(O);
+      return E(w);
     }
     function W() {
-      return x(a);
+      return E(a);
     }
-    function E(y) {
-      function O(N, k, z, A, M) {
+    function R(y) {
+      function w(A, $, z, H, k) {
         if (typeof y != "function")
-          return new S("Property `" + M + "` of component `" + z + "` has invalid PropType notation inside arrayOf.");
-        var $ = N[k];
-        if (!Array.isArray($)) {
-          var g = re($);
-          return new S("Invalid " + A + " `" + M + "` of type " + ("`" + g + "` supplied to `" + z + "`, expected an array."));
+          return new O("Property `" + k + "` of component `" + z + "` has invalid PropType notation inside arrayOf.");
+        var L = A[$];
+        if (!Array.isArray(L)) {
+          var g = ne(L);
+          return new O("Invalid " + H + " `" + k + "` of type " + ("`" + g + "` supplied to `" + z + "`, expected an array."));
         }
-        for (var b = 0; b < $.length; b++) {
-          var _ = y($, b, z, A, M + "[" + b + "]", r);
-          if (_ instanceof Error)
-            return _;
+        for (var b = 0; b < L.length; b++) {
+          var S = y(L, b, z, H, k + "[" + b + "]", r);
+          if (S instanceof Error)
+            return S;
         }
         return null;
       }
-      return x(O);
+      return E(w);
     }
-    function w() {
-      function y(O, N, k, z, A) {
-        var M = O[N];
-        if (!s(M)) {
-          var $ = re(M);
-          return new S("Invalid " + z + " `" + A + "` of type " + ("`" + $ + "` supplied to `" + k + "`, expected a single ReactElement."));
+    function D() {
+      function y(w, A, $, z, H) {
+        var k = w[A];
+        if (!s(k)) {
+          var L = ne(k);
+          return new O("Invalid " + z + " `" + H + "` of type " + ("`" + L + "` supplied to `" + $ + "`, expected a single ReactElement."));
         }
         return null;
       }
-      return x(y);
+      return E(y);
     }
     function p() {
-      function y(O, N, k, z, A) {
-        var M = O[N];
-        if (!t.isValidElementType(M)) {
-          var $ = re(M);
-          return new S("Invalid " + z + " `" + A + "` of type " + ("`" + $ + "` supplied to `" + k + "`, expected a single ReactElement type."));
+      function y(w, A, $, z, H) {
+        var k = w[A];
+        if (!t.isValidElementType(k)) {
+          var L = ne(k);
+          return new O("Invalid " + z + " `" + H + "` of type " + ("`" + L + "` supplied to `" + $ + "`, expected a single ReactElement type."));
         }
         return null;
       }
-      return x(y);
+      return E(y);
     }
-    function F(y) {
-      function O(N, k, z, A, M) {
-        if (!(N[k] instanceof y)) {
-          var $ = y.name || d, g = Ye(N[k]);
-          return new S("Invalid " + A + " `" + M + "` of type " + ("`" + g + "` supplied to `" + z + "`, expected ") + ("instance of `" + $ + "`."));
+    function U(y) {
+      function w(A, $, z, H, k) {
+        if (!(A[$] instanceof y)) {
+          var L = y.name || d, g = Ye(A[$]);
+          return new O("Invalid " + H + " `" + k + "` of type " + ("`" + g + "` supplied to `" + z + "`, expected ") + ("instance of `" + L + "`."));
         }
         return null;
       }
-      return x(O);
+      return E(w);
     }
     function Q(y) {
       if (!Array.isArray(y))
         return process.env.NODE_ENV !== "production" && (arguments.length > 1 ? i(
           "Invalid arguments supplied to oneOf, expected an array, got " + arguments.length + " arguments. A common mistake is to write oneOf(x, y, z) instead of oneOf([x, y, z])."
         ) : i("Invalid argument supplied to oneOf, expected an array.")), a;
-      function O(N, k, z, A, M) {
-        for (var $ = N[k], g = 0; g < y.length; g++)
-          if (m($, y[g]))
+      function w(A, $, z, H, k) {
+        for (var L = A[$], g = 0; g < y.length; g++)
+          if (m(L, y[g]))
             return null;
-        var b = JSON.stringify(y, function(D, h) {
-          var H = ie(h);
-          return H === "symbol" ? String(h) : h;
+        var b = JSON.stringify(y, function(P, h) {
+          var q = se(h);
+          return q === "symbol" ? String(h) : h;
         });
-        return new S("Invalid " + A + " `" + M + "` of value `" + String($) + "` " + ("supplied to `" + z + "`, expected one of " + b + "."));
+        return new O("Invalid " + H + " `" + k + "` of value `" + String(L) + "` " + ("supplied to `" + z + "`, expected one of " + b + "."));
       }
-      return x(O);
+      return E(w);
     }
-    function K(y) {
-      function O(N, k, z, A, M) {
+    function j(y) {
+      function w(A, $, z, H, k) {
         if (typeof y != "function")
-          return new S("Property `" + M + "` of component `" + z + "` has invalid PropType notation inside objectOf.");
-        var $ = N[k], g = re($);
+          return new O("Property `" + k + "` of component `" + z + "` has invalid PropType notation inside objectOf.");
+        var L = A[$], g = ne(L);
         if (g !== "object")
-          return new S("Invalid " + A + " `" + M + "` of type " + ("`" + g + "` supplied to `" + z + "`, expected an object."));
-        for (var b in $)
-          if (n($, b)) {
-            var _ = y($, b, z, A, M + "." + b, r);
-            if (_ instanceof Error)
-              return _;
+          return new O("Invalid " + H + " `" + k + "` of type " + ("`" + g + "` supplied to `" + z + "`, expected an object."));
+        for (var b in L)
+          if (n(L, b)) {
+            var S = y(L, b, z, H, k + "." + b, r);
+            if (S instanceof Error)
+              return S;
           }
         return null;
       }
-      return x(O);
+      return E(w);
     }
-    function Te(y) {
+    function re(y) {
       if (!Array.isArray(y))
         return process.env.NODE_ENV !== "production" && i("Invalid argument supplied to oneOfType, expected an instance of array."), a;
-      for (var O = 0; O < y.length; O++) {
-        var N = y[O];
-        if (typeof N != "function")
+      for (var w = 0; w < y.length; w++) {
+        var A = y[w];
+        if (typeof A != "function")
           return i(
-            "Invalid argument supplied to oneOfType. Expected an array of check functions, but received " + ke(N) + " at index " + O + "."
+            "Invalid argument supplied to oneOfType. Expected an array of check functions, but received " + $e(A) + " at index " + w + "."
           ), a;
       }
-      function k(z, A, M, $, g) {
-        for (var b = [], _ = 0; _ < y.length; _++) {
-          var D = y[_], h = D(z, A, M, $, g, r);
+      function $(z, H, k, L, g) {
+        for (var b = [], S = 0; S < y.length; S++) {
+          var P = y[S], h = P(z, H, k, L, g, r);
           if (h == null)
             return null;
           h.data && n(h.data, "expectedType") && b.push(h.data.expectedType);
         }
-        var H = b.length > 0 ? ", expected one of type [" + b.join(", ") + "]" : "";
-        return new S("Invalid " + $ + " `" + g + "` supplied to " + ("`" + M + "`" + H + "."));
+        var q = b.length > 0 ? ", expected one of type [" + b.join(", ") + "]" : "";
+        return new O("Invalid " + L + " `" + g + "` supplied to " + ("`" + k + "`" + q + "."));
       }
-      return x(k);
+      return E($);
     }
-    function ge() {
-      function y(O, N, k, z, A) {
-        return ye(O[N]) ? null : new S("Invalid " + z + " `" + A + "` supplied to " + ("`" + k + "`, expected a ReactNode."));
+    function ie() {
+      function y(w, A, $, z, H) {
+        return ve(w[A]) ? null : new O("Invalid " + z + " `" + H + "` supplied to " + ("`" + $ + "`, expected a ReactNode."));
       }
-      return x(y);
+      return E(y);
     }
-    function Se(y, O, N, k, z) {
-      return new S(
-        (y || "React class") + ": " + O + " type `" + N + "." + k + "` is invalid; it must be a function, usually from the `prop-types` package, but received `" + z + "`."
+    function de(y, w, A, $, z) {
+      return new O(
+        (y || "React class") + ": " + w + " type `" + A + "." + $ + "` is invalid; it must be a function, usually from the `prop-types` package, but received `" + z + "`."
       );
     }
-    function Be(y) {
-      function O(N, k, z, A, M) {
-        var $ = N[k], g = re($);
+    function Se(y) {
+      function w(A, $, z, H, k) {
+        var L = A[$], g = ne(L);
         if (g !== "object")
-          return new S("Invalid " + A + " `" + M + "` of type `" + g + "` " + ("supplied to `" + z + "`, expected `object`."));
+          return new O("Invalid " + H + " `" + k + "` of type `" + g + "` " + ("supplied to `" + z + "`, expected `object`."));
         for (var b in y) {
-          var _ = y[b];
-          if (typeof _ != "function")
-            return Se(z, A, M, b, ie(_));
-          var D = _($, b, z, A, M + "." + b, r);
-          if (D)
-            return D;
+          var S = y[b];
+          if (typeof S != "function")
+            return de(z, H, k, b, se(S));
+          var P = S(L, b, z, H, k + "." + b, r);
+          if (P)
+            return P;
         }
         return null;
       }
-      return x(O);
+      return E(w);
     }
-    function Me(y) {
-      function O(N, k, z, A, M) {
-        var $ = N[k], g = re($);
+    function ke(y) {
+      function w(A, $, z, H, k) {
+        var L = A[$], g = ne(L);
         if (g !== "object")
-          return new S("Invalid " + A + " `" + M + "` of type `" + g + "` " + ("supplied to `" + z + "`, expected `object`."));
-        var b = e({}, N[k], y);
-        for (var _ in b) {
-          var D = y[_];
-          if (n(y, _) && typeof D != "function")
-            return Se(z, A, M, _, ie(D));
-          if (!D)
-            return new S(
-              "Invalid " + A + " `" + M + "` key `" + _ + "` supplied to `" + z + "`.\nBad object: " + JSON.stringify(N[k], null, "  ") + `
+          return new O("Invalid " + H + " `" + k + "` of type `" + g + "` " + ("supplied to `" + z + "`, expected `object`."));
+        var b = e({}, A[$], y);
+        for (var S in b) {
+          var P = y[S];
+          if (n(y, S) && typeof P != "function")
+            return de(z, H, k, S, se(P));
+          if (!P)
+            return new O(
+              "Invalid " + H + " `" + k + "` key `" + S + "` supplied to `" + z + "`.\nBad object: " + JSON.stringify(A[$], null, "  ") + `
 Valid keys: ` + JSON.stringify(Object.keys(y), null, "  ")
             );
-          var h = D($, _, z, A, M + "." + _, r);
+          var h = P(L, S, z, H, k + "." + S, r);
           if (h)
             return h;
         }
         return null;
       }
-      return x(O);
+      return E(w);
     }
-    function ye(y) {
+    function ve(y) {
       switch (typeof y) {
         case "number":
         case "string":
@@ -1344,20 +1344,20 @@ Valid keys: ` + JSON.stringify(Object.keys(y), null, "  ")
           return !y;
         case "object":
           if (Array.isArray(y))
-            return y.every(ye);
+            return y.every(ve);
           if (y === null || s(y))
             return !0;
-          var O = f(y);
-          if (O) {
-            var N = O.call(y), k;
-            if (O !== y.entries) {
-              for (; !(k = N.next()).done; )
-                if (!ye(k.value))
+          var w = f(y);
+          if (w) {
+            var A = w.call(y), $;
+            if (w !== y.entries) {
+              for (; !($ = A.next()).done; )
+                if (!ve($.value))
                   return !1;
             } else
-              for (; !(k = N.next()).done; ) {
-                var z = k.value;
-                if (z && !ye(z[1]))
+              for (; !($ = A.next()).done; ) {
+                var z = $.value;
+                if (z && !ve(z[1]))
                   return !1;
               }
           } else
@@ -1367,37 +1367,37 @@ Valid keys: ` + JSON.stringify(Object.keys(y), null, "  ")
           return !1;
       }
     }
-    function Ge(y, O) {
-      return y === "symbol" ? !0 : O ? O["@@toStringTag"] === "Symbol" || typeof Symbol == "function" && O instanceof Symbol : !1;
+    function Ge(y, w) {
+      return y === "symbol" ? !0 : w ? w["@@toStringTag"] === "Symbol" || typeof Symbol == "function" && w instanceof Symbol : !1;
     }
-    function re(y) {
-      var O = typeof y;
-      return Array.isArray(y) ? "array" : y instanceof RegExp ? "object" : Ge(O, y) ? "symbol" : O;
+    function ne(y) {
+      var w = typeof y;
+      return Array.isArray(y) ? "array" : y instanceof RegExp ? "object" : Ge(w, y) ? "symbol" : w;
     }
-    function ie(y) {
+    function se(y) {
       if (typeof y > "u" || y === null)
         return "" + y;
-      var O = re(y);
-      if (O === "object") {
+      var w = ne(y);
+      if (w === "object") {
         if (y instanceof Date)
           return "date";
         if (y instanceof RegExp)
           return "regexp";
       }
-      return O;
+      return w;
     }
-    function ke(y) {
-      var O = ie(y);
-      switch (O) {
+    function $e(y) {
+      var w = se(y);
+      switch (w) {
         case "array":
         case "object":
-          return "an " + O;
+          return "an " + w;
         case "boolean":
         case "date":
         case "regexp":
-          return "a " + O;
+          return "a " + w;
         default:
-          return O;
+          return w;
       }
     }
     function Ye(y) {
@@ -1459,7 +1459,7 @@ if (process.env.NODE_ENV !== "production") {
   Jt.exports = qo()(Bo.isElement, Go);
 } else
   Jt.exports = Io()();
-var Oe = Jt.exports, gt = { exports: {} }, Yo = Object.create, yt = Object.defineProperty, Fo = Object.getOwnPropertyDescriptor, Uo = Object.getOwnPropertyNames, Xo = Object.getPrototypeOf, Vo = Object.prototype.hasOwnProperty, Ko = (t, e) => {
+var Re = Jt.exports, gt = { exports: {} }, Yo = Object.create, yt = Object.defineProperty, Fo = Object.getOwnPropertyDescriptor, Uo = Object.getOwnPropertyNames, Xo = Object.getPrototypeOf, Vo = Object.prototype.hasOwnProperty, Ko = (t, e) => {
   for (var r in e)
     yt(t, r, { get: e[r], enumerable: !0 });
 }, jn = (t, e, r, n) => {
@@ -1467,7 +1467,7 @@ var Oe = Jt.exports, gt = { exports: {} }, Yo = Object.create, yt = Object.defin
     for (let o of Uo(e))
       !Vo.call(t, o) && o !== r && yt(t, o, { get: () => e[o], enumerable: !(n = Fo(e, o)) || n.enumerable });
   return t;
-}, Ie = (t, e, r) => (r = t != null ? Yo(Xo(t)) : {}, jn(
+}, Be = (t, e, r) => (r = t != null ? Yo(Xo(t)) : {}, jn(
   // If the importer is in node compatibility mode or this is not an ESM
   // file that has been converted to a CommonJS file using a Babel-
   // compatible transform (i.e. "__esModule" has not been set), then set
@@ -1476,10 +1476,10 @@ var Oe = Jt.exports, gt = { exports: {} }, Yo = Object.create, yt = Object.defin
   t
 )), Jo = (t) => jn(yt({}, "__esModule", { value: !0 }), t), Tn = {};
 Ko(Tn, {
-  DraggableCore: () => ze,
+  DraggableCore: () => Te,
   default: () => mt
 });
-var Zo = Jo(Tn), rt = Ie(ue), G = Ie(Oe), Qo = Ie(ir), ei = ct;
+var Zo = Jo(Tn), rt = Be(fe), Y = Be(Re), Qo = Be(ir), ei = ct;
 function Zt(t, e) {
   for (let r = 0, n = t.length; r < n; r++)
     if (e.apply(e, [t[r], r, t])) return t[r];
@@ -1493,7 +1493,7 @@ function Xe(t) {
 function te(t) {
   return parseInt(t, 10);
 }
-function He(t, e, r) {
+function We(t, e, r) {
   if (t[e])
     return new Error(`Invalid prop ${e} passed to ${r} - do not set this, set it on the child.`);
 }
@@ -1545,7 +1545,7 @@ function jt(t, e, r, n) {
   const o = { capture: !0, ...n }, i = r;
   t.addEventListener ? t.addEventListener(e, i, o) : t.attachEvent ? t.attachEvent("on" + e, i) : t["on" + e] = i;
 }
-function _e(t, e, r, n) {
+function Ee(t, e, r, n) {
   if (!t) return;
   const o = { capture: !0, ...n }, i = r;
   t.removeEventListener ? t.removeEventListener(e, i, o) : t.detachEvent ? t.detachEvent("on" + e, i) : t["on" + e] = null;
@@ -1720,11 +1720,11 @@ function mr(t) {
     throw new Error("<DraggableCore>: Unmounted during event!");
   return e;
 }
-var $t = Ie(ue), ee = Ie(Oe), Si = Ie(ir);
-function pe(...t) {
+var $t = Be(fe), ee = Be(Re), Si = Be(ir);
+function ye(...t) {
   process.env.DRAGGABLE_DEBUG && console.log(...t);
 }
-var ae = {
+var le = {
   touch: {
     start: "touchstart",
     move: "touchmove",
@@ -1735,7 +1735,7 @@ var ae = {
     move: "mousemove",
     stop: "mouseup"
   }
-}, we = ae.mouse, ze = class extends $t.Component {
+}, _e = le.mouse, Te = class extends $t.Component {
   constructor() {
     super(...arguments), this.dragging = !1, this.lastX = NaN, this.lastY = NaN, this.touchIdentifier = null, this.mounted = !1, this.handleDragStart = (e) => {
       if (this.props.onMouseDown(e), !this.props.allowAnyClick && (typeof e.button == "number" && e.button !== 0 || e.ctrlKey)) return !1;
@@ -1751,7 +1751,7 @@ var ae = {
       const i = Tt(e, o, this);
       if (i == null) return;
       const { x: a, y: s } = i, l = Mt(this, a, s);
-      pe("DraggableCore: handleDragStart: %j", l), pe("calling", this.props.onStart), !(this.props.onStart(e, l) === !1 || this.mounted === !1) && (this.props.enableUserSelectHack && gi(n, this.props.nonce), this.dragging = !0, this.lastX = a, this.lastY = s, jt(n, we.move, this.handleDrag), jt(n, we.stop, this.handleDragStop));
+      ye("DraggableCore: handleDragStart: %j", l), ye("calling", this.props.onStart), !(this.props.onStart(e, l) === !1 || this.mounted === !1) && (this.props.enableUserSelectHack && gi(n, this.props.nonce), this.dragging = !0, this.lastX = a, this.lastY = s, jt(n, _e.move, this.handleDrag), jt(n, _e.stop, this.handleDragStop));
     }, this.handleDrag = (e) => {
       const r = Tt(e, this.touchIdentifier, this);
       if (r == null) return;
@@ -1762,7 +1762,7 @@ var ae = {
         n = this.lastX + s, o = this.lastY + l;
       }
       const i = Mt(this, n, o);
-      if (pe("DraggableCore: handleDrag: %j", i), this.props.onDrag(e, i) === !1 || this.mounted === !1) {
+      if (ye("DraggableCore: handleDrag: %j", i), this.props.onDrag(e, i) === !1 || this.mounted === !1) {
         try {
           this.handleDragStop(new MouseEvent("mouseup"));
         } catch {
@@ -1784,20 +1784,20 @@ var ae = {
       const i = Mt(this, n, o);
       if (this.props.onStop(e, i) === !1 || this.mounted === !1) return !1;
       const s = this.findDOMNode();
-      s && this.props.enableUserSelectHack && Gr(s.ownerDocument), pe("DraggableCore: handleDragStop: %j", i), this.dragging = !1, this.lastX = NaN, this.lastY = NaN, s && (pe("DraggableCore: Removing handlers"), _e(s.ownerDocument, we.move, this.handleDrag), _e(s.ownerDocument, we.stop, this.handleDragStop));
-    }, this.onMouseDown = (e) => (we = ae.mouse, this.handleDragStart(e)), this.onMouseUp = (e) => (we = ae.mouse, this.handleDragStop(e)), this.onTouchStart = (e) => (we = ae.touch, this.handleDragStart(e)), this.onTouchEnd = (e) => (we = ae.touch, this.handleDragStop(e));
+      s && this.props.enableUserSelectHack && Gr(s.ownerDocument), ye("DraggableCore: handleDragStop: %j", i), this.dragging = !1, this.lastX = NaN, this.lastY = NaN, s && (ye("DraggableCore: Removing handlers"), Ee(s.ownerDocument, _e.move, this.handleDrag), Ee(s.ownerDocument, _e.stop, this.handleDragStop));
+    }, this.onMouseDown = (e) => (_e = le.mouse, this.handleDragStart(e)), this.onMouseUp = (e) => (_e = le.mouse, this.handleDragStop(e)), this.onTouchStart = (e) => (_e = le.touch, this.handleDragStart(e)), this.onTouchEnd = (e) => (_e = le.touch, this.handleDragStop(e));
   }
   componentDidMount() {
     this.mounted = !0;
     const e = this.findDOMNode();
-    e && jt(e, ae.touch.start, this.onTouchStart, { passive: !1 });
+    e && jt(e, le.touch.start, this.onTouchStart, { passive: !1 });
   }
   componentWillUnmount() {
     this.mounted = !1;
     const e = this.findDOMNode();
     if (e) {
       const { ownerDocument: r } = e;
-      _e(r, ae.mouse.move, this.handleDrag), _e(r, ae.touch.move, this.handleDrag), _e(r, ae.mouse.stop, this.handleDragStop), _e(r, ae.touch.stop, this.handleDragStop), _e(e, ae.touch.start, this.onTouchStart, { passive: !1 }), this.props.enableUserSelectHack && Gr(r);
+      Ee(r, le.mouse.move, this.handleDrag), Ee(r, le.touch.move, this.handleDrag), Ee(r, le.mouse.stop, this.handleDragStop), Ee(r, le.touch.stop, this.handleDragStop), Ee(e, le.touch.start, this.onTouchStart, { passive: !1 }), this.props.enableUserSelectHack && Gr(r);
     }
   }
   // React 19 removed ReactDOM.findDOMNode, so nodeRef is now required.
@@ -1807,7 +1807,7 @@ var ae = {
     if ((e = this.props) != null && e.nodeRef)
       return this.props.nodeRef.current;
     const r = Si.default;
-    return typeof r.findDOMNode == "function" ? r.findDOMNode(this) : (pe(
+    return typeof r.findDOMNode == "function" ? r.findDOMNode(this) : (ye(
       "react-draggable: ReactDOM.findDOMNode is not available in React 19+. You must provide a nodeRef prop. See: https://github.com/react-grid-layout/react-draggable#noderef"
     ), null);
   }
@@ -1824,8 +1824,8 @@ var ae = {
     });
   }
 };
-ze.displayName = "DraggableCore";
-ze.propTypes = {
+Te.displayName = "DraggableCore";
+Te.propTypes = {
   /**
    * `allowAnyClick` allows dragging using any mouse button.
    * By default, we only accept the left button.
@@ -1959,11 +1959,11 @@ ze.propTypes = {
   /**
    * These properties should be defined on the child, not here.
    */
-  className: He,
-  style: He,
-  transform: He
+  className: We,
+  style: We,
+  transform: We
 };
-ze.defaultProps = {
+Te.defaultProps = {
   allowAnyClick: !1,
   // by default only accept left click
   allowMobileScroll: !1,
@@ -1982,11 +1982,11 @@ ze.defaultProps = {
 var mt = class extends rt.Component {
   constructor(e) {
     super(e), this.onDragStart = (r, n) => {
-      if (pe("Draggable: onDragStart: %j", n), this.props.onStart(r, kt(this, n)) === !1) return !1;
+      if (ye("Draggable: onDragStart: %j", n), this.props.onStart(r, kt(this, n)) === !1) return !1;
       this.setState({ dragging: !0, dragged: !0 });
     }, this.onDrag = (r, n) => {
       if (!this.state.dragging) return !1;
-      pe("Draggable: onDrag: %j", n);
+      ye("Draggable: onDrag: %j", n);
       const o = kt(this, n), i = {
         x: o.x,
         y: o.y,
@@ -2003,7 +2003,7 @@ var mt = class extends rt.Component {
       this.setState(i);
     }, this.onDragStop = (r, n) => {
       if (!this.state.dragging || this.props.onStop(r, kt(this, n)) === !1) return !1;
-      pe("Draggable: onDragStop: %j", n);
+      ye("Draggable: onDragStop: %j", n);
       const i = {
         dragging: !1,
         slackX: 0,
@@ -2033,7 +2033,7 @@ var mt = class extends rt.Component {
   // React 16.3+
   // Arity (props, state)
   static getDerivedStateFromProps({ position: e }, { prevPropsPosition: r }) {
-    return e && (!r || e.x !== r.x || e.y !== r.y) ? (pe("Draggable: getDerivedStateFromProps %j", { position: e, prevPropsPosition: r }), {
+    return e && (!r || e.x !== r.x || e.y !== r.y) ? (ye("Draggable: getDerivedStateFromProps %j", { position: e, prevPropsPosition: r }), {
       x: e.x,
       y: e.y,
       prevPropsPosition: { ...e }
@@ -2069,19 +2069,19 @@ var mt = class extends rt.Component {
       ...f
     } = this.props;
     let d = {}, v = null;
-    const S = !!!l || this.state.dragging, x = l || o, R = {
+    const O = !!!l || this.state.dragging, E = l || o, _ = {
       // Set left if horizontal drag is enabled
-      x: bi(this) && S ? this.state.x : x.x,
+      x: bi(this) && O ? this.state.x : E.x,
       // Set top if vertical drag is enabled
-      y: wi(this) && S ? this.state.y : x.y
+      y: wi(this) && O ? this.state.y : E.y
     };
-    this.state.isElementSVG ? v = fi(R, u) : d = ci(R, u);
-    const W = rt.Children.only(n), E = (0, ei.clsx)(W.props.className || "", i, {
+    this.state.isElementSVG ? v = fi(_, u) : d = ci(_, u);
+    const W = rt.Children.only(n), R = (0, ei.clsx)(W.props.className || "", i, {
       [a]: this.state.dragging,
       [s]: this.state.dragged
     });
-    return /* @__PURE__ */ rt.createElement(ze, { ...f, onStart: this.onDragStart, onDrag: this.onDrag, onStop: this.onDragStop }, rt.cloneElement(W, {
-      className: E,
+    return /* @__PURE__ */ rt.createElement(Te, { ...f, onStart: this.onDragStart, onDrag: this.onDrag, onStop: this.onDragStop }, rt.cloneElement(W, {
+      className: R,
       style: { ...W.props.style, ...d },
       transform: v
     }));
@@ -2090,7 +2090,7 @@ var mt = class extends rt.Component {
 mt.displayName = "Draggable";
 mt.propTypes = {
   // Accepts all props <DraggableCore> accepts.
-  ...ze.propTypes,
+  ...Te.propTypes,
   /**
    * `axis` determines which axis the draggable can move.
    *
@@ -2104,7 +2104,7 @@ mt.propTypes = {
    *
    * Defaults to 'both'.
    */
-  axis: G.default.oneOf(["both", "x", "y", "none"]),
+  axis: Y.default.oneOf(["both", "x", "y", "none"]),
   /**
    * `bounds` determines the range of movement available to the element.
    * Available values are:
@@ -2131,19 +2131,19 @@ mt.propTypes = {
    *   });
    * ```
    */
-  bounds: G.default.oneOfType([
-    G.default.shape({
-      left: G.default.number,
-      right: G.default.number,
-      top: G.default.number,
-      bottom: G.default.number
+  bounds: Y.default.oneOfType([
+    Y.default.shape({
+      left: Y.default.number,
+      right: Y.default.number,
+      top: Y.default.number,
+      bottom: Y.default.number
     }),
-    G.default.string,
-    G.default.oneOf([!1])
+    Y.default.string,
+    Y.default.oneOf([!1])
   ]),
-  defaultClassName: G.default.string,
-  defaultClassNameDragging: G.default.string,
-  defaultClassNameDragged: G.default.string,
+  defaultClassName: Y.default.string,
+  defaultClassNameDragging: Y.default.string,
+  defaultClassNameDragged: Y.default.string,
   /**
    * `defaultPosition` specifies the x and y that the dragged item should start at
    *
@@ -2161,13 +2161,13 @@ mt.propTypes = {
    *      });
    * ```
    */
-  defaultPosition: G.default.shape({
-    x: G.default.number,
-    y: G.default.number
+  defaultPosition: Y.default.shape({
+    x: Y.default.number,
+    y: Y.default.number
   }),
-  positionOffset: G.default.shape({
-    x: G.default.oneOfType([G.default.number, G.default.string]),
-    y: G.default.oneOfType([G.default.number, G.default.string])
+  positionOffset: Y.default.shape({
+    x: Y.default.oneOfType([Y.default.number, Y.default.string]),
+    y: Y.default.oneOfType([Y.default.number, Y.default.string])
   }),
   /**
    * `position`, if present, defines the current position of the element.
@@ -2189,19 +2189,19 @@ mt.propTypes = {
    *      });
    * ```
    */
-  position: G.default.shape({
-    x: G.default.number,
-    y: G.default.number
+  position: Y.default.shape({
+    x: Y.default.number,
+    y: Y.default.number
   }),
   /**
    * These properties should be defined on the child, not here.
    */
-  className: He,
-  style: He,
-  transform: He
+  className: We,
+  style: We,
+  transform: We
 };
 mt.defaultProps = {
-  ...ze.defaultProps,
+  ...Te.defaultProps,
   axis: "both",
   bounds: !1,
   defaultClassName: "react-draggable",
@@ -2217,7 +2217,7 @@ gt.exports.DraggableCore = _i;
 var Ln = gt.exports, vt = { exports: {} }, Qe = {}, vr = {};
 vr.__esModule = !0;
 vr.cloneElement = Ci;
-var Ri = Ei(ue);
+var Ri = Ei(fe);
 function Ei(t) {
   return t && t.__esModule ? t : { default: t };
 }
@@ -2265,7 +2265,7 @@ function Ci(t, e) {
 var et = {};
 et.__esModule = !0;
 et.resizableProps = void 0;
-var j = zi(Oe);
+var T = zi(Re);
 function zi(t) {
   return t && t.__esModule ? t : { default: t };
 }
@@ -2277,31 +2277,31 @@ et.resizableProps = {
   * 'y' - only allows the height to be changed
   * 'none' - disables resizing altogether
   * */
-  axis: j.default.oneOf(["both", "x", "y", "none"]),
-  className: j.default.string,
+  axis: T.default.oneOf(["both", "x", "y", "none"]),
+  className: T.default.string,
   /*
   * Require that one and only one child be present.
   * */
-  children: j.default.element.isRequired,
+  children: T.default.element.isRequired,
   /*
   * These will be passed wholesale to react-draggable's DraggableCore
   * */
-  draggableOpts: j.default.shape({
-    allowAnyClick: j.default.bool,
-    cancel: j.default.string,
-    children: j.default.node,
-    disabled: j.default.bool,
-    enableUserSelectHack: j.default.bool,
+  draggableOpts: T.default.shape({
+    allowAnyClick: T.default.bool,
+    cancel: T.default.string,
+    children: T.default.node,
+    disabled: T.default.bool,
+    enableUserSelectHack: T.default.bool,
     // #251: Check for Element to support SSR environments where DOM globals don't exist
-    offsetParent: typeof Element < "u" ? j.default.instanceOf(Element) : j.default.any,
-    grid: j.default.arrayOf(j.default.number),
-    handle: j.default.string,
-    nodeRef: j.default.object,
-    onStart: j.default.func,
-    onDrag: j.default.func,
-    onStop: j.default.func,
-    onMouseDown: j.default.func,
-    scale: j.default.number
+    offsetParent: typeof Element < "u" ? T.default.instanceOf(Element) : T.default.any,
+    grid: T.default.arrayOf(T.default.number),
+    handle: T.default.string,
+    nodeRef: T.default.object,
+    onStart: T.default.func,
+    onDrag: T.default.func,
+    onStop: T.default.func,
+    onMouseDown: T.default.func,
+    scale: T.default.number
   }),
   /*
   * Initial height
@@ -2310,37 +2310,37 @@ et.resizableProps = {
     for (var t = arguments.length, e = new Array(t), r = 0; r < t; r++)
       e[r] = arguments[r];
     const n = e[0];
-    return n.axis === "both" || n.axis === "y" ? j.default.number.isRequired(...e) : j.default.number(...e);
+    return n.axis === "both" || n.axis === "y" ? T.default.number.isRequired(...e) : T.default.number(...e);
   },
   /*
   * Customize cursor resize handle
   * */
-  handle: j.default.oneOfType([j.default.node, j.default.func]),
+  handle: T.default.oneOfType([T.default.node, T.default.func]),
   /*
   * If you change this, be sure to update your css
   * */
-  handleSize: j.default.arrayOf(j.default.number),
-  lockAspectRatio: j.default.bool,
+  handleSize: T.default.arrayOf(T.default.number),
+  lockAspectRatio: T.default.bool,
   /*
   * Max X & Y measure
   * */
-  maxConstraints: j.default.arrayOf(j.default.number),
+  maxConstraints: T.default.arrayOf(T.default.number),
   /*
   * Min X & Y measure
   * */
-  minConstraints: j.default.arrayOf(j.default.number),
+  minConstraints: T.default.arrayOf(T.default.number),
   /*
   * Called on stop resize event
   * */
-  onResizeStop: j.default.func,
+  onResizeStop: T.default.func,
   /*
   * Called on start resize event
   * */
-  onResizeStart: j.default.func,
+  onResizeStart: T.default.func,
   /*
   * Called on resize event
   * */
-  onResize: j.default.func,
+  onResize: T.default.func,
   /*
   * Defines which resize handles should be rendered (default: 'se')
   * 's' - South handle (bottom-center)
@@ -2352,11 +2352,11 @@ et.resizableProps = {
   * 'se' - Southeast handle (bottom-right)
   * 'ne' - Northeast handle (top-center)
   * */
-  resizeHandles: j.default.arrayOf(j.default.oneOf(["s", "w", "e", "n", "sw", "nw", "se", "ne"])),
+  resizeHandles: T.default.arrayOf(T.default.oneOf(["s", "w", "e", "n", "sw", "nw", "se", "ne"])),
   /*
   * If `transform: scale(n)` is set on the parent, this should be set to `n`.
   * */
-  transformScale: j.default.number,
+  transformScale: T.default.number,
   /*
    * Initial width
    */
@@ -2364,12 +2364,12 @@ et.resizableProps = {
     for (var t = arguments.length, e = new Array(t), r = 0; r < t; r++)
       e[r] = arguments[r];
     const n = e[0];
-    return n.axis === "both" || n.axis === "x" ? j.default.number.isRequired(...e) : j.default.number(...e);
+    return n.axis === "both" || n.axis === "x" ? T.default.number.isRequired(...e) : T.default.number(...e);
   }
 };
 Qe.__esModule = !0;
 Qe.default = void 0;
-var $e = Nn(ue), ji = Ln, Ti = vr, Mi = et;
+var Le = Nn(fe), ji = Ln, Ti = vr, Mi = et;
 const ki = ["children", "className", "draggableOpts", "width", "height", "handle", "handleSize", "lockAspectRatio", "axis", "minConstraints", "maxConstraints", "onResize", "onResizeStop", "onResizeStart", "resizeHandles", "transformScale"];
 function Nn(t, e) {
   if (typeof WeakMap == "function") var r = /* @__PURE__ */ new WeakMap(), n = /* @__PURE__ */ new WeakMap();
@@ -2441,7 +2441,7 @@ function Ai(t, e) {
   }
   return (e === "string" ? String : Number)(t);
 }
-class br extends $e.Component {
+class br extends Le.Component {
   constructor() {
     super(...arguments), this.handleRefs = {}, this.lastHandleRect = null, this.slack = null, this.lastSize = null;
   }
@@ -2476,36 +2476,36 @@ class br extends $e.Component {
       e === "onResizeStart" && this.resetData();
       const d = (this.props.axis === "both" || this.props.axis === "x") && r !== "n" && r !== "s", v = (this.props.axis === "both" || this.props.axis === "y") && r !== "e" && r !== "w";
       if (!d && !v) return;
-      const m = r[0], S = r[r.length - 1], x = u.getBoundingClientRect();
+      const m = r[0], O = r[r.length - 1], E = u.getBoundingClientRect();
       if (this.lastHandleRect != null) {
-        if (S === "w") {
-          const ge = x.left - this.lastHandleRect.left;
-          c += ge;
+        if (O === "w") {
+          const ie = E.left - this.lastHandleRect.left;
+          c += ie;
         }
         if (m === "n") {
-          const ge = x.top - this.lastHandleRect.top;
-          f += ge;
+          const ie = E.top - this.lastHandleRect.top;
+          f += ie;
         }
       }
-      this.lastHandleRect = x, S === "w" && (c = -c), m === "n" && (f = -f);
-      const R = (i = (a = this.lastSize) == null ? void 0 : a.width) != null ? i : this.props.width, W = (s = (l = this.lastSize) == null ? void 0 : l.height) != null ? s : this.props.height;
-      let E = R + (d ? c / this.props.transformScale : 0), w = W + (v ? f / this.props.transformScale : 0);
-      var p = this.runConstraints(E, w);
-      if (E = p[0], w = p[1], e === "onResizeStop" && this.lastSize) {
-        var F = this.lastSize;
-        E = F.width, w = F.height;
+      this.lastHandleRect = E, O === "w" && (c = -c), m === "n" && (f = -f);
+      const _ = (i = (a = this.lastSize) == null ? void 0 : a.width) != null ? i : this.props.width, W = (s = (l = this.lastSize) == null ? void 0 : l.height) != null ? s : this.props.height;
+      let R = _ + (d ? c / this.props.transformScale : 0), D = W + (v ? f / this.props.transformScale : 0);
+      var p = this.runConstraints(R, D);
+      if (R = p[0], D = p[1], e === "onResizeStop" && this.lastSize) {
+        var U = this.lastSize;
+        R = U.width, D = U.height;
       }
-      const Q = E !== R || w !== W;
+      const Q = R !== _ || D !== W;
       e !== "onResizeStop" && (this.lastSize = {
-        width: E,
-        height: w
+        width: R,
+        height: D
       });
-      const K = typeof this.props[e] == "function" ? this.props[e] : null;
-      K && !(e === "onResize" && !Q) && (n.persist == null || n.persist(), K(n, {
+      const j = typeof this.props[e] == "function" ? this.props[e] : null;
+      j && !(e === "onResize" && !Q) && (n.persist == null || n.persist(), j(n, {
         node: u,
         size: {
-          width: E,
-          height: w
+          width: R,
+          height: D
         },
         handle: r
       })), e === "onResizeStop" && this.resetData();
@@ -2516,7 +2516,7 @@ class br extends $e.Component {
   renderResizeHandle(e, r) {
     const n = this.props.handle;
     if (!n)
-      return /* @__PURE__ */ $e.createElement("span", {
+      return /* @__PURE__ */ Le.createElement("span", {
         className: "react-resizable-handle react-resizable-handle-" + e,
         ref: r
       });
@@ -2527,7 +2527,7 @@ class br extends $e.Component {
     }, o ? {} : {
       handleAxis: e
     });
-    return /* @__PURE__ */ $e.cloneElement(n, i);
+    return /* @__PURE__ */ Le.cloneElement(n, i);
   }
   render() {
     const e = this.props, r = e.children, n = e.className, o = e.draggableOpts;
@@ -2537,10 +2537,10 @@ class br extends $e.Component {
     const a = $i(e, ki);
     return (0, Ti.cloneElement)(r, Lt(Lt({}, a), {}, {
       className: (n ? n + " " : "") + "react-resizable",
-      children: [...$e.Children.toArray(r.props.children), ...i.map((s) => {
+      children: [...Le.Children.toArray(r.props.children), ...i.map((s) => {
         var l;
-        const u = (l = this.handleRefs[s]) != null ? l : this.handleRefs[s] = /* @__PURE__ */ $e.createRef();
-        return /* @__PURE__ */ $e.createElement(ji.DraggableCore, er({}, o, {
+        const u = (l = this.handleRefs[s]) != null ? l : this.handleRefs[s] = /* @__PURE__ */ Le.createRef();
+        return /* @__PURE__ */ Le.createElement(ji.DraggableCore, er({}, o, {
           nodeRef: u,
           key: "resizableHandle-" + s,
           onStop: this.resizeHandler("onResizeStop", s),
@@ -2565,7 +2565,7 @@ br.defaultProps = {
 var bt = {};
 bt.__esModule = !0;
 bt.default = void 0;
-var Nt = Hn(ue), Hi = An(Oe), Wi = An(Qe), qi = et;
+var Nt = Hn(fe), Hi = An(Re), Wi = An(Qe), qi = et;
 const Ii = ["handle", "handleSize", "onResize", "onResizeStart", "onResizeStop", "draggableOpts", "minConstraints", "maxConstraints", "lockAspectRatio", "axis", "width", "height", "resizeHandles", "style", "transformScale"];
 function An(t) {
   return t && t.__esModule ? t : { default: t };
@@ -2698,34 +2698,34 @@ vt.exports = function() {
 };
 vt.exports.Resizable = Qe.default;
 vt.exports.ResizableBox = bt.default;
-var Ui = vt.exports, me = {};
-Object.defineProperty(me, "__esModule", {
+var Ui = vt.exports, be = {};
+Object.defineProperty(be, "__esModule", {
   value: !0
 });
-me.resizeHandleType = me.resizeHandleAxesType = me.default = void 0;
-var T = qn(Oe), Xi = qn(ue);
+be.resizeHandleType = be.resizeHandleAxesType = be.default = void 0;
+var M = qn(Re), Xi = qn(fe);
 function qn(t) {
   return t && t.__esModule ? t : { default: t };
 }
-const Vi = me.resizeHandleAxesType = T.default.arrayOf(T.default.oneOf(["s", "w", "e", "n", "sw", "nw", "se", "ne"])), Ki = me.resizeHandleType = T.default.oneOfType([T.default.node, T.default.func]);
-me.default = {
+const Vi = be.resizeHandleAxesType = M.default.arrayOf(M.default.oneOf(["s", "w", "e", "n", "sw", "nw", "se", "ne"])), Ki = be.resizeHandleType = M.default.oneOfType([M.default.node, M.default.func]);
+be.default = {
   //
   // Basic props
   //
-  className: T.default.string,
-  style: T.default.object,
+  className: M.default.string,
+  style: M.default.object,
   // This can be set explicitly. If it is not set, it will automatically
   // be set to the container width. Note that resizes will *not* cause this to adjust.
   // If you need that behavior, use WidthProvider.
-  width: T.default.number,
+  width: M.default.number,
   // If true, the container height swells and contracts to fit contents
-  autoSize: T.default.bool,
+  autoSize: M.default.bool,
   // # of cols.
-  cols: T.default.number,
+  cols: M.default.number,
   // A selector that will not be draggable.
-  draggableCancel: T.default.string,
+  draggableCancel: M.default.string,
   // A selector for the draggable handler
-  draggableHandle: T.default.string,
+  draggableHandle: M.default.string,
   // Deprecated
   verticalCompact: function(t) {
     t.verticalCompact === !1 && process.env.NODE_ENV !== "production" && console.warn(
@@ -2734,44 +2734,44 @@ me.default = {
     );
   },
   // Choose vertical or hotizontal compaction
-  compactType: T.default.oneOf(["vertical", "horizontal"]),
+  compactType: M.default.oneOf(["vertical", "horizontal"]),
   // layout is an array of object with the format:
   // {x: Number, y: Number, w: Number, h: Number, i: String}
   layout: function(t) {
     var e = t.layout;
-    e !== void 0 && L.validateLayout(e, "layout");
+    e !== void 0 && N.validateLayout(e, "layout");
   },
   //
   // Grid Dimensions
   //
   // Margin between items [x, y] in px
-  margin: T.default.arrayOf(T.default.number),
+  margin: M.default.arrayOf(M.default.number),
   // Padding inside the container [x, y] in px
-  containerPadding: T.default.arrayOf(T.default.number),
+  containerPadding: M.default.arrayOf(M.default.number),
   // Rows have a static height, but you can change this based on breakpoints if you like
-  rowHeight: T.default.number,
+  rowHeight: M.default.number,
   // Default Infinity, but you can specify a max here if you like.
   // Note that this isn't fully fleshed out and won't error if you specify a layout that
   // extends beyond the row capacity. It will, however, not allow users to drag/resize
   // an item past the barrier. They can push items beyond the barrier, though.
   // Intentionally not documented for this reason.
-  maxRows: T.default.number,
+  maxRows: M.default.number,
   //
   // Flags
   //
-  isBounded: T.default.bool,
-  isDraggable: T.default.bool,
-  isResizable: T.default.bool,
+  isBounded: M.default.bool,
+  isDraggable: M.default.bool,
+  isResizable: M.default.bool,
   // If true, grid can be placed one over the other.
-  allowOverlap: T.default.bool,
+  allowOverlap: M.default.bool,
   // If true, grid items won't change position when being dragged over.
-  preventCollision: T.default.bool,
+  preventCollision: M.default.bool,
   // Use CSS transforms instead of top/left
-  useCSSTransforms: T.default.bool,
+  useCSSTransforms: M.default.bool,
   // parent layout transform scale
-  transformScale: T.default.number,
+  transformScale: M.default.number,
   // If true, an external element can trigger onDrop callback with a specific grid position as a parameter
-  isDroppable: T.default.bool,
+  isDroppable: M.default.bool,
   // Resize handle options
   resizeHandles: Vi,
   resizeHandle: Ki,
@@ -2779,29 +2779,29 @@ me.default = {
   // Callbacks
   //
   // Callback so you can save the layout. Calls after each drag & resize stops.
-  onLayoutChange: T.default.func,
+  onLayoutChange: M.default.func,
   // Calls when drag starts. Callback is of the signature (layout, oldItem, newItem, placeholder, e, ?node).
   // All callbacks below have the same signature. 'start' and 'stop' callbacks omit the 'placeholder'.
-  onDragStart: T.default.func,
+  onDragStart: M.default.func,
   // Calls on each drag movement.
-  onDrag: T.default.func,
+  onDrag: M.default.func,
   // Calls when drag is complete.
-  onDragStop: T.default.func,
+  onDragStop: M.default.func,
   //Calls when resize starts.
-  onResizeStart: T.default.func,
+  onResizeStart: M.default.func,
   // Calls when resize movement happens.
-  onResize: T.default.func,
+  onResize: M.default.func,
   // Calls when resize is complete.
-  onResizeStop: T.default.func,
+  onResizeStop: M.default.func,
   // Calls when some element is dropped.
-  onDrop: T.default.func,
+  onDrop: M.default.func,
   //
   // Other validations
   //
-  droppingItem: T.default.shape({
-    i: T.default.string.isRequired,
-    w: T.default.number.isRequired,
-    h: T.default.number.isRequired
+  droppingItem: M.default.shape({
+    i: M.default.string.isRequired,
+    w: M.default.number.isRequired,
+    h: M.default.number.isRequired
   }),
   // Children must not have duplicate keys.
   children: function(t, e) {
@@ -2815,13 +2815,13 @@ me.default = {
     });
   },
   // Optional ref for getting a reference for the wrapping div.
-  innerRef: T.default.any
+  innerRef: M.default.any
 };
 Object.defineProperty(ht, "__esModule", {
   value: !0
 });
 ht.default = void 0;
-var Le = wr(ue), Jr = ir, q = wr(Oe), Ji = Ln, Zi = Ui, Ne = L, J = he, Zr = me, Qi = wr(ct);
+var Ne = wr(fe), Jr = ir, I = wr(Re), Ji = Ln, Zi = Ui, Ae = N, J = me, Zr = be, Qi = wr(ct);
 function wr(t) {
   return t && t.__esModule ? t : { default: t };
 }
@@ -2839,14 +2839,14 @@ function At(t) {
   for (var e = 1; e < arguments.length; e++) {
     var r = arguments[e] != null ? arguments[e] : {};
     e % 2 ? Qr(Object(r), !0).forEach(function(n) {
-      se(t, n, r[n]);
+      ue(t, n, r[n]);
     }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(t, Object.getOwnPropertyDescriptors(r)) : Qr(Object(r)).forEach(function(n) {
       Object.defineProperty(t, n, Object.getOwnPropertyDescriptor(r, n));
     });
   }
   return t;
 }
-function se(t, e, r) {
+function ue(t, e, r) {
   return (e = ea(e)) in t ? Object.defineProperty(t, e, { value: r, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = r, t;
 }
 function ea(t) {
@@ -2863,13 +2863,13 @@ function ta(t, e) {
   }
   return (e === "string" ? String : Number)(t);
 }
-class Or extends Le.default.Component {
+class Or extends Ne.default.Component {
   constructor() {
-    super(...arguments), se(this, "state", {
+    super(...arguments), ue(this, "state", {
       resizing: null,
       dragging: null,
       className: ""
-    }), se(this, "elementRef", /* @__PURE__ */ Le.default.createRef()), se(this, "onDragStart", (e, r) => {
+    }), ue(this, "elementRef", /* @__PURE__ */ Ne.default.createRef()), ue(this, "onDragStart", (e, r) => {
       let {
         node: n
       } = r;
@@ -2891,14 +2891,14 @@ class Or extends Le.default.Component {
       });
       const {
         x: m,
-        y: S
+        y: O
       } = (0, J.calcXY)(this.getPositionParams(), a.top, a.left, this.props.w, this.props.h);
-      return o.call(this, this.props.i, m, S, {
+      return o.call(this, this.props.i, m, O, {
         e,
         node: n,
         newPosition: a
       });
-    }), se(this, "onDrag", (e, r, n) => {
+    }), ue(this, "onDrag", (e, r, n) => {
       let {
         node: o,
         deltaX: i,
@@ -2917,42 +2917,42 @@ class Or extends Le.default.Component {
         w: d,
         h: v,
         containerWidth: m
-      } = this.props, S = this.getPositionParams();
+      } = this.props, O = this.getPositionParams();
       if (c) {
         const {
-          offsetParent: E
+          offsetParent: R
         } = o;
-        if (E) {
+        if (R) {
           const {
-            margin: w,
+            margin: D,
             rowHeight: p
-          } = this.props, F = E.clientHeight - (0, J.calcGridItemWHPx)(v, p, w[1]);
-          l = (0, J.clamp)(l, 0, F);
-          const Q = (0, J.calcGridColWidth)(S), K = m - (0, J.calcGridItemWHPx)(d, Q, w[0]);
-          u = (0, J.clamp)(u, 0, K);
+          } = this.props, U = R.clientHeight - (0, J.calcGridItemWHPx)(v, p, D[1]);
+          l = (0, J.clamp)(l, 0, U);
+          const Q = (0, J.calcGridColWidth)(O), j = m - (0, J.calcGridItemWHPx)(d, Q, D[0]);
+          u = (0, J.clamp)(u, 0, j);
         }
       }
-      const x = {
+      const E = {
         top: l,
         left: u
       };
       n ? this.setState({
-        dragging: x
+        dragging: E
       }) : (0, Jr.flushSync)(() => {
         this.setState({
-          dragging: x
+          dragging: E
         });
       });
       const {
-        x: R,
+        x: _,
         y: W
-      } = (0, J.calcXY)(S, l, u, d, v);
-      return s.call(this, f, R, W, {
+      } = (0, J.calcXY)(O, l, u, d, v);
+      return s.call(this, f, _, W, {
         e,
         node: o,
-        newPosition: x
+        newPosition: E
       });
-    }), se(this, "onDragStop", (e, r) => {
+    }), ue(this, "onDragStop", (e, r) => {
       let {
         node: n
       } = r;
@@ -2985,12 +2985,12 @@ class Or extends Le.default.Component {
         node: n,
         newPosition: c
       });
-    }), se(this, "onResizeStop", (e, r, n) => this.onResizeHandler(e, r, n, "onResizeStop")), se(this, "onResizeStart", (e, r, n) => this.onResizeHandler(e, r, n, "onResizeStart")), se(this, "onResize", (e, r, n) => this.onResizeHandler(e, r, n, "onResize"));
+    }), ue(this, "onResizeStop", (e, r, n) => this.onResizeHandler(e, r, n, "onResizeStop")), ue(this, "onResizeStart", (e, r, n) => this.onResizeHandler(e, r, n, "onResizeStart")), ue(this, "onResize", (e, r, n) => this.onResizeHandler(e, r, n, "onResize"));
   }
   shouldComponentUpdate(e, r) {
     if (this.props.children !== e.children || this.props.droppingPosition !== e.droppingPosition) return !0;
     const n = (0, J.calcGridItemPosition)(this.getPositionParams(this.props), this.props.x, this.props.y, this.props.w, this.props.h, this.state), o = (0, J.calcGridItemPosition)(this.getPositionParams(e), e.x, e.y, e.w, e.h, r);
-    return !(0, Ne.fastPositionEqual)(n, o) || this.props.useCSSTransforms !== e.useCSSTransforms;
+    return !(0, Ae.fastPositionEqual)(n, o) || this.props.useCSSTransforms !== e.useCSSTransforms;
   }
   componentDidMount() {
     this.moveDroppingItem({});
@@ -3061,7 +3061,7 @@ class Or extends Le.default.Component {
       useCSSTransforms: o
     } = this.props;
     let i;
-    return o ? i = (0, Ne.setTransform)(e) : (i = (0, Ne.setTopLeft)(e), r && (i.left = (0, Ne.perc)(e.left / n), i.width = (0, Ne.perc)(e.width / n))), i;
+    return o ? i = (0, Ae.setTransform)(e) : (i = (0, Ae.setTopLeft)(e), r && (i.left = (0, Ae.perc)(e.left / n), i.width = (0, Ae.perc)(e.width / n))), i;
   }
   /**
    * Mix a Draggable instance into a child.
@@ -3069,7 +3069,7 @@ class Or extends Le.default.Component {
    * @return {Element}          Child wrapped in Draggable.
    */
   mixinDraggable(e, r) {
-    return /* @__PURE__ */ Le.default.createElement(Ji.DraggableCore, {
+    return /* @__PURE__ */ Ne.default.createElement(Ji.DraggableCore, {
       disabled: !r,
       onStart: this.onDragStart,
       onDrag: this.onDrag,
@@ -3106,8 +3106,8 @@ class Or extends Le.default.Component {
       transformScale: u,
       resizeHandles: c,
       resizeHandle: f
-    } = this.props, d = this.getPositionParams(), v = (0, J.calcGridItemPosition)(d, 0, 0, o, 0).width, m = (0, J.calcGridItemPosition)(d, 0, 0, i, a), S = (0, J.calcGridItemPosition)(d, 0, 0, s, l), x = [m.width, m.height], R = [Math.min(S.width, v), Math.min(S.height, 1 / 0)];
-    return /* @__PURE__ */ Le.default.createElement(
+    } = this.props, d = this.getPositionParams(), v = (0, J.calcGridItemPosition)(d, 0, 0, o, 0).width, m = (0, J.calcGridItemPosition)(d, 0, 0, i, a), O = (0, J.calcGridItemPosition)(d, 0, 0, s, l), E = [m.width, m.height], _ = [Math.min(O.width, v), Math.min(O.height, 1 / 0)];
+    return /* @__PURE__ */ Ne.default.createElement(
       Zi.Resizable,
       {
         draggableOpts: {
@@ -3116,8 +3116,8 @@ class Or extends Le.default.Component {
         className: n ? void 0 : "react-resizable-hide",
         width: r.width,
         height: r.height,
-        minConstraints: x,
-        maxConstraints: R,
+        minConstraints: E,
+        maxConstraints: _,
         onResizeStop: this.curryResizeHandler(r, this.onResizeStop),
         onResizeStart: this.curryResizeHandler(r, this.onResizeStart),
         onResize: this.curryResizeHandler(r, this.onResize),
@@ -3147,23 +3147,23 @@ class Or extends Le.default.Component {
       minH: v,
       containerWidth: m
     } = this.props, {
-      minW: S,
-      maxW: x
+      minW: O,
+      maxW: E
     } = this.props;
-    let R = a;
-    i && (R = (0, Ne.resizeItemInDirection)(s, n, a, m), (0, Jr.flushSync)(() => {
+    let _ = a;
+    i && (_ = (0, Ae.resizeItemInDirection)(s, n, a, m), (0, Jr.flushSync)(() => {
       this.setState({
-        resizing: o === "onResizeStop" ? null : R
+        resizing: o === "onResizeStop" ? null : _
       });
     }));
     let {
       w: W,
-      h: E
-    } = (0, J.calcWH)(this.getPositionParams(), R.width, R.height, u, c, s);
-    W = (0, J.clamp)(W, Math.max(S, 1), x), E = (0, J.clamp)(E, v, d), l.call(this, f, W, E, {
+      h: R
+    } = (0, J.calcWH)(this.getPositionParams(), _.width, _.height, u, c, s);
+    W = (0, J.clamp)(W, Math.max(O, 1), E), R = (0, J.clamp)(R, v, d), l.call(this, f, W, R, {
       e,
       node: i,
-      size: R,
+      size: _,
       handle: s
     });
   }
@@ -3177,8 +3177,8 @@ class Or extends Le.default.Component {
       isResizable: a,
       droppingPosition: s,
       useCSSTransforms: l
-    } = this.props, u = (0, J.calcGridItemPosition)(this.getPositionParams(), e, r, n, o, this.state), c = Le.default.Children.only(this.props.children);
-    let f = /* @__PURE__ */ Le.default.cloneElement(c, {
+    } = this.props, u = (0, J.calcGridItemPosition)(this.getPositionParams(), e, r, n, o, this.state), c = Ne.default.Children.only(this.props.children);
+    let f = /* @__PURE__ */ Ne.default.cloneElement(c, {
       ref: this.elementRef,
       className: (0, Qi.default)("react-grid-item", c.props.className, this.props.className, {
         static: this.props.static,
@@ -3195,21 +3195,21 @@ class Or extends Le.default.Component {
   }
 }
 ht.default = Or;
-se(Or, "propTypes", {
+ue(Or, "propTypes", {
   // Children must be only a single element
-  children: q.default.element,
+  children: I.default.element,
   // General grid attributes
-  cols: q.default.number.isRequired,
-  containerWidth: q.default.number.isRequired,
-  rowHeight: q.default.number.isRequired,
-  margin: q.default.array.isRequired,
-  maxRows: q.default.number.isRequired,
-  containerPadding: q.default.array.isRequired,
+  cols: I.default.number.isRequired,
+  containerWidth: I.default.number.isRequired,
+  rowHeight: I.default.number.isRequired,
+  margin: I.default.array.isRequired,
+  maxRows: I.default.number.isRequired,
+  containerPadding: I.default.array.isRequired,
   // These are all in grid units
-  x: q.default.number.isRequired,
-  y: q.default.number.isRequired,
-  w: q.default.number.isRequired,
-  h: q.default.number.isRequired,
+  x: I.default.number.isRequired,
+  y: I.default.number.isRequired,
+  w: I.default.number.isRequired,
+  h: I.default.number.isRequired,
   // All optional
   minW: function(t, e) {
     const r = t[e];
@@ -3232,39 +3232,39 @@ se(Or, "propTypes", {
     if (r < t.h || r < t.minH) return new Error("maxHeight smaller than item height/minHeight");
   },
   // ID is nice to have for callbacks
-  i: q.default.string.isRequired,
+  i: I.default.string.isRequired,
   // Resize handle options
   resizeHandles: Zr.resizeHandleAxesType,
   resizeHandle: Zr.resizeHandleType,
   // Functions
-  onDragStop: q.default.func,
-  onDragStart: q.default.func,
-  onDrag: q.default.func,
-  onResizeStop: q.default.func,
-  onResizeStart: q.default.func,
-  onResize: q.default.func,
+  onDragStop: I.default.func,
+  onDragStart: I.default.func,
+  onDrag: I.default.func,
+  onResizeStop: I.default.func,
+  onResizeStart: I.default.func,
+  onResize: I.default.func,
   // Flags
-  isDraggable: q.default.bool.isRequired,
-  isResizable: q.default.bool.isRequired,
-  isBounded: q.default.bool.isRequired,
-  static: q.default.bool,
+  isDraggable: I.default.bool.isRequired,
+  isResizable: I.default.bool.isRequired,
+  isBounded: I.default.bool.isRequired,
+  static: I.default.bool,
   // Use CSS transforms instead of top/left
-  useCSSTransforms: q.default.bool.isRequired,
-  transformScale: q.default.number,
+  useCSSTransforms: I.default.bool.isRequired,
+  transformScale: I.default.number,
   // Others
-  className: q.default.string,
+  className: I.default.string,
   // Selector for draggable handle
-  handle: q.default.string,
+  handle: I.default.string,
   // Selector for draggable cancel (see react-draggable)
-  cancel: q.default.string,
+  cancel: I.default.string,
   // Current position of a dropping element
-  droppingPosition: q.default.shape({
-    e: q.default.object.isRequired,
-    left: q.default.number.isRequired,
-    top: q.default.number.isRequired
+  droppingPosition: I.default.shape({
+    e: I.default.object.isRequired,
+    left: I.default.number.isRequired,
+    top: I.default.number.isRequired
   })
 });
-se(Or, "defaultProps", {
+ue(Or, "defaultProps", {
   className: "",
   cancel: "",
   handle: "",
@@ -3278,7 +3278,7 @@ Object.defineProperty(Ze, "__esModule", {
   value: !0
 });
 Ze.default = void 0;
-var Re = In(ue), Ht = sr, ra = Sr(ct), P = L, na = he, en = Sr(ht), oa = Sr(me);
+var xe = In(fe), Ht = sr, ra = Sr(ct), x = N, na = me, en = Sr(ht), oa = Sr(be);
 function Sr(t) {
   return t && t.__esModule ? t : { default: t };
 }
@@ -3306,7 +3306,7 @@ function tn(t, e) {
   }
   return r;
 }
-function Ee(t) {
+function Pe(t) {
   for (var e = 1; e < arguments.length; e++) {
     var r = arguments[e] != null ? arguments[e] : {};
     e % 2 ? tn(Object(r), !0).forEach(function(n) {
@@ -3340,16 +3340,16 @@ try {
   Bn = /firefox/i.test(navigator.userAgent);
 } catch {
 }
-class wt extends Re.Component {
+class wt extends xe.Component {
   constructor() {
     super(...arguments), Z(this, "state", {
       activeDrag: null,
-      layout: (0, P.synchronizeLayoutWithChildren)(
+      layout: (0, x.synchronizeLayoutWithChildren)(
         this.props.layout,
         this.props.children,
         this.props.cols,
         // Legacy support for verticalCompact: false
-        (0, P.compactType)(this.props),
+        (0, x.compactType)(this.props),
         this.props.allowOverlap
       ),
       mounted: !1,
@@ -3366,7 +3366,7 @@ class wt extends Re.Component {
       } = o;
       const {
         layout: s
-      } = this.state, l = (0, P.getLayoutItem)(s, e);
+      } = this.state, l = (0, x.getLayoutItem)(s, e);
       if (!l) return;
       const u = {
         w: l.w,
@@ -3377,7 +3377,7 @@ class wt extends Re.Component {
         i: e
       };
       return this.setState({
-        oldDragItem: (0, P.cloneLayoutItem)(l),
+        oldDragItem: (0, x.cloneLayoutItem)(l),
         oldLayout: s,
         activeDrag: u
       }), this.props.onDragStart(s, l, l, null, i, a);
@@ -3396,7 +3396,7 @@ class wt extends Re.Component {
         cols: u,
         allowOverlap: c,
         preventCollision: f
-      } = this.props, d = (0, P.getLayoutItem)(l, e);
+      } = this.props, d = (0, x.getLayoutItem)(l, e);
       if (!d) return;
       const v = {
         w: d.w,
@@ -3406,8 +3406,8 @@ class wt extends Re.Component {
         placeholder: !0,
         i: e
       };
-      l = (0, P.moveElement)(l, d, r, n, !0, f, (0, P.compactType)(this.props), u, c), this.props.onDrag(l, s, d, v, i, a), this.setState({
-        layout: c ? l : (0, P.compact)(l, (0, P.compactType)(this.props), u),
+      l = (0, x.moveElement)(l, d, r, n, !0, f, (0, x.compactType)(this.props), u, c), this.props.onDrag(l, s, d, v, i, a), this.setState({
+        layout: c ? l : (0, x.compact)(l, (0, x.compactType)(this.props), u),
         activeDrag: v
       });
     }), Z(this, "onDragStop", (e, r, n, o) => {
@@ -3426,20 +3426,20 @@ class wt extends Re.Component {
         cols: u,
         preventCollision: c,
         allowOverlap: f
-      } = this.props, d = (0, P.getLayoutItem)(l, e);
+      } = this.props, d = (0, x.getLayoutItem)(l, e);
       if (!d) return;
-      l = (0, P.moveElement)(l, d, r, n, !0, c, (0, P.compactType)(this.props), u, f);
-      const m = f ? l : (0, P.compact)(l, (0, P.compactType)(this.props), u);
+      l = (0, x.moveElement)(l, d, r, n, !0, c, (0, x.compactType)(this.props), u, f);
+      const m = f ? l : (0, x.compact)(l, (0, x.compactType)(this.props), u);
       this.props.onDragStop(m, s, d, null, i, a);
       const {
-        oldLayout: S
+        oldLayout: O
       } = this.state;
       this.setState({
         activeDrag: null,
         layout: m,
         oldDragItem: null,
         oldLayout: null
-      }), this.onLayoutMaybeChanged(m, S);
+      }), this.onLayoutMaybeChanged(m, O);
     }), Z(this, "onResizeStart", (e, r, n, o) => {
       let {
         e: i,
@@ -3447,9 +3447,9 @@ class wt extends Re.Component {
       } = o;
       const {
         layout: s
-      } = this.state, l = (0, P.getLayoutItem)(s, e);
+      } = this.state, l = (0, x.getLayoutItem)(s, e);
       l && (this.setState({
-        oldResizeItem: (0, P.cloneLayoutItem)(l),
+        oldResizeItem: (0, x.cloneLayoutItem)(l),
         oldLayout: this.state.layout,
         resizing: !0
       }), this.props.onResizeStart(s, l, l, null, i, a));
@@ -3469,29 +3469,29 @@ class wt extends Re.Component {
         preventCollision: d,
         allowOverlap: v
       } = this.props;
-      let m = !1, S, x, R;
-      const [W, E] = (0, P.withLayoutItem)(c, e, (p) => {
-        let F;
-        return x = p.x, R = p.y, ["sw", "w", "nw", "n", "ne"].indexOf(l) !== -1 && (["sw", "nw", "w"].indexOf(l) !== -1 && (x = p.x + (p.w - r), r = p.x !== x && x < 0 ? p.w : r, x = x < 0 ? 0 : x), ["ne", "n", "nw"].indexOf(l) !== -1 && (R = p.y + (p.h - n), n = p.y !== R && R < 0 ? p.h : n, R = R < 0 ? 0 : R), m = !0), d && !v && (F = (0, P.getAllCollisions)(c, Ee(Ee({}, p), {}, {
+      let m = !1, O, E, _;
+      const [W, R] = (0, x.withLayoutItem)(c, e, (p) => {
+        let U;
+        return E = p.x, _ = p.y, ["sw", "w", "nw", "n", "ne"].indexOf(l) !== -1 && (["sw", "nw", "w"].indexOf(l) !== -1 && (E = p.x + (p.w - r), r = p.x !== E && E < 0 ? p.w : r, E = E < 0 ? 0 : E), ["ne", "n", "nw"].indexOf(l) !== -1 && (_ = p.y + (p.h - n), n = p.y !== _ && _ < 0 ? p.h : n, _ = _ < 0 ? 0 : _), m = !0), d && !v && (U = (0, x.getAllCollisions)(c, Pe(Pe({}, p), {}, {
           w: r,
           h: n,
-          x,
-          y: R
-        })).filter((K) => K.i !== p.i).length > 0, F && (R = p.y, n = p.h, x = p.x, r = p.w, m = !1)), p.w = r, p.h = n, p;
+          x: E,
+          y: _
+        })).filter((j) => j.i !== p.i).length > 0, U && (_ = p.y, n = p.h, E = p.x, r = p.w, m = !1)), p.w = r, p.h = n, p;
       });
-      if (!E) return;
-      S = W, m && (S = (0, P.moveElement)(W, E, x, R, !0, this.props.preventCollision, (0, P.compactType)(this.props), f, v));
-      const w = {
-        w: E.w,
-        h: E.h,
-        x: E.x,
-        y: E.y,
+      if (!R) return;
+      O = W, m && (O = (0, x.moveElement)(W, R, E, _, !0, this.props.preventCollision, (0, x.compactType)(this.props), f, v));
+      const D = {
+        w: R.w,
+        h: R.h,
+        x: R.x,
+        y: R.y,
         static: !0,
         i: e
       };
-      this.props.onResize(S, u, E, w, i, a), this.setState({
-        layout: v ? S : (0, P.compact)(S, (0, P.compactType)(this.props), f),
-        activeDrag: w
+      this.props.onResize(O, u, R, D, i, a), this.setState({
+        layout: v ? O : (0, x.compact)(O, (0, x.compactType)(this.props), f),
+        activeDrag: D
       });
     }), Z(this, "onResizeStop", (e, r, n, o) => {
       let {
@@ -3504,7 +3504,7 @@ class wt extends Re.Component {
       } = this.state, {
         cols: u,
         allowOverlap: c
-      } = this.props, f = (0, P.getLayoutItem)(s, e), d = c ? s : (0, P.compact)(s, (0, P.compactType)(this.props), u);
+      } = this.props, f = (0, x.getLayoutItem)(s, e), d = c ? s : (0, x.compact)(s, (0, x.compactType)(this.props), u);
       this.props.onResizeStop(d, l, f, null, i, a);
       const {
         oldLayout: v
@@ -3534,40 +3534,40 @@ class wt extends Re.Component {
       } = this.props, d = o == null ? void 0 : o(e);
       if (d === !1)
         return this.state.droppingDOMNode && this.removeDroppingPlaceholder(), !1;
-      const v = Ee(Ee({}, n), d), {
+      const v = Pe(Pe({}, n), d), {
         layout: m
-      } = this.state, S = e.currentTarget.getBoundingClientRect(), x = e.clientX - S.left, R = e.clientY - S.top, W = {
-        left: x / f,
-        top: R / f,
+      } = this.state, O = e.currentTarget.getBoundingClientRect(), E = e.clientX - O.left, _ = e.clientY - O.top, W = {
+        left: E / f,
+        top: _ / f,
         e
       };
       if (this.state.droppingDOMNode) {
         if (this.state.droppingPosition) {
           const {
-            left: E,
-            top: w
+            left: R,
+            top: D
           } = this.state.droppingPosition;
-          (E != x || w != R) && this.setState({
+          (R != E || D != _) && this.setState({
             droppingPosition: W
           });
         }
       } else {
-        const E = {
+        const R = {
           cols: a,
           margin: i,
           maxRows: l,
           rowHeight: s,
           containerWidth: u,
           containerPadding: c || i
-        }, w = (0, na.calcXY)(E, R, x, v.w, v.h);
+        }, D = (0, na.calcXY)(R, _, E, v.w, v.h);
         this.setState({
-          droppingDOMNode: /* @__PURE__ */ Re.createElement("div", {
+          droppingDOMNode: /* @__PURE__ */ xe.createElement("div", {
             key: v.i
           }),
           droppingPosition: W,
-          layout: [...m, Ee(Ee({}, v), {}, {
-            x: w.x,
-            y: w.y,
+          layout: [...m, Pe(Pe({}, v), {}, {
+            x: D.x,
+            y: D.y,
             static: !1,
             isDraggable: !0
           })]
@@ -3579,7 +3579,7 @@ class wt extends Re.Component {
         cols: r
       } = this.props, {
         layout: n
-      } = this.state, o = (0, P.compact)(n.filter((i) => i.i !== e.i), (0, P.compactType)(this.props), r, this.props.allowOverlap);
+      } = this.state, o = (0, x.compact)(n.filter((i) => i.i !== e.i), (0, x.compactType)(this.props), r, this.props.allowOverlap);
       this.setState({
         layout: o,
         droppingDOMNode: null,
@@ -3607,8 +3607,8 @@ class wt extends Re.Component {
   }
   static getDerivedStateFromProps(e, r) {
     let n;
-    return r.activeDrag ? null : (!(0, Ht.deepEqual)(e.layout, r.propsLayout) || e.compactType !== r.compactType ? n = e.layout : (0, P.childrenEqual)(e.children, r.children) || (n = r.layout), n ? {
-      layout: (0, P.synchronizeLayoutWithChildren)(n, e.children, e.cols, (0, P.compactType)(e), e.allowOverlap),
+    return r.activeDrag ? null : (!(0, Ht.deepEqual)(e.layout, r.propsLayout) || e.compactType !== r.compactType ? n = e.layout : (0, x.childrenEqual)(e.children, r.children) || (n = r.layout), n ? {
+      layout: (0, x.synchronizeLayoutWithChildren)(n, e.children, e.cols, (0, x.compactType)(e), e.allowOverlap),
       // We need to save these props to state for using
       // getDerivedStateFromProps instead of componentDidMount (in which we would get extra rerender)
       compactType: e.compactType,
@@ -3621,7 +3621,7 @@ class wt extends Re.Component {
       // NOTE: this is almost always unequal. Therefore the only way to get better performance
       // from SCU is if the user intentionally memoizes children. If they do, and they can
       // handle changes properly, performance will increase.
-      this.props.children !== e.children || !(0, P.fastRGLPropsEqual)(this.props, e, Ht.deepEqual) || this.state.activeDrag !== r.activeDrag || this.state.mounted !== r.mounted || this.state.droppingPosition !== r.droppingPosition
+      this.props.children !== e.children || !(0, x.fastRGLPropsEqual)(this.props, e, Ht.deepEqual) || this.state.activeDrag !== r.activeDrag || this.state.mounted !== r.mounted || this.state.droppingPosition !== r.droppingPosition
     );
   }
   componentDidUpdate(e, r) {
@@ -3636,7 +3636,7 @@ class wt extends Re.Component {
    */
   containerHeight() {
     if (!this.props.autoSize) return;
-    const e = (0, P.bottom)(this.state.layout), r = this.props.containerPadding ? this.props.containerPadding[1] : this.props.margin[1];
+    const e = (0, x.bottom)(this.state.layout), r = this.props.containerPadding ? this.props.containerPadding[1] : this.props.margin[1];
     return e * this.props.rowHeight + (e - 1) * this.props.margin[1] + r * 2 + "px";
   }
   onLayoutMaybeChanged(e, r) {
@@ -3661,7 +3661,7 @@ class wt extends Re.Component {
       useCSSTransforms: l,
       transformScale: u
     } = this.props;
-    return /* @__PURE__ */ Re.createElement(en.default, {
+    return /* @__PURE__ */ xe.createElement(en.default, {
       w: e.w,
       h: e.h,
       x: e.x,
@@ -3679,7 +3679,7 @@ class wt extends Re.Component {
       isBounded: !1,
       useCSSTransforms: l,
       transformScale: u
-    }, /* @__PURE__ */ Re.createElement("div", null));
+    }, /* @__PURE__ */ xe.createElement("div", null));
   }
   /**
    * Given a grid item, set its style attributes & surround in a <Draggable>.
@@ -3688,7 +3688,7 @@ class wt extends Re.Component {
    */
   processGridItem(e, r) {
     if (!e || !e.key) return;
-    const n = (0, P.getLayoutItem)(this.state.layout, String(e.key));
+    const n = (0, x.getLayoutItem)(this.state.layout, String(e.key));
     if (!n) return null;
     const {
       width: o,
@@ -3702,23 +3702,23 @@ class wt extends Re.Component {
       isBounded: d,
       useCSSTransforms: v,
       transformScale: m,
-      draggableCancel: S,
-      draggableHandle: x,
-      resizeHandles: R,
+      draggableCancel: O,
+      draggableHandle: E,
+      resizeHandles: _,
       resizeHandle: W
     } = this.props, {
-      mounted: E,
-      droppingPosition: w
-    } = this.state, p = typeof n.isDraggable == "boolean" ? n.isDraggable : !n.static && c, F = typeof n.isResizable == "boolean" ? n.isResizable : !n.static && f, Q = n.resizeHandles || R, K = p && d && n.isBounded !== !1;
-    return /* @__PURE__ */ Re.createElement(en.default, {
+      mounted: R,
+      droppingPosition: D
+    } = this.state, p = typeof n.isDraggable == "boolean" ? n.isDraggable : !n.static && c, U = typeof n.isResizable == "boolean" ? n.isResizable : !n.static && f, Q = n.resizeHandles || _, j = p && d && n.isBounded !== !1;
+    return /* @__PURE__ */ xe.createElement(en.default, {
       containerWidth: o,
       cols: i,
       margin: a,
       containerPadding: s || a,
       maxRows: u,
       rowHeight: l,
-      cancel: S,
-      handle: x,
+      cancel: O,
+      handle: E,
       onDragStop: this.onDragStop,
       onDragStart: this.onDragStart,
       onDrag: this.onDrag,
@@ -3726,10 +3726,10 @@ class wt extends Re.Component {
       onResize: this.onResize,
       onResizeStop: this.onResizeStop,
       isDraggable: p,
-      isResizable: F,
-      isBounded: K,
-      useCSSTransforms: v && E,
-      usePercentages: !E,
+      isResizable: U,
+      isBounded: j,
+      useCSSTransforms: v && R,
+      usePercentages: !R,
       transformScale: m,
       w: n.w,
       h: n.h,
@@ -3741,7 +3741,7 @@ class wt extends Re.Component {
       maxH: n.maxH,
       maxW: n.maxW,
       static: n.static,
-      droppingPosition: r ? w : void 0,
+      droppingPosition: r ? D : void 0,
       resizeHandles: Q,
       resizeHandle: W
     }, e);
@@ -3752,18 +3752,18 @@ class wt extends Re.Component {
       style: r,
       isDroppable: n,
       innerRef: o
-    } = this.props, i = (0, ra.default)(rn, e), a = Ee({
+    } = this.props, i = (0, ra.default)(rn, e), a = Pe({
       height: this.containerHeight()
     }, r);
-    return /* @__PURE__ */ Re.createElement("div", {
+    return /* @__PURE__ */ xe.createElement("div", {
       ref: o,
       className: i,
       style: a,
-      onDrop: n ? this.onDrop : P.noop,
-      onDragLeave: n ? this.onDragLeave : P.noop,
-      onDragEnter: n ? this.onDragEnter : P.noop,
-      onDragOver: n ? this.onDragOver : P.noop
-    }, Re.Children.map(this.props.children, (s) => this.processGridItem(s)), n && this.state.droppingDOMNode && this.processGridItem(this.state.droppingDOMNode, !0), this.placeholder());
+      onDrop: n ? this.onDrop : x.noop,
+      onDragLeave: n ? this.onDragLeave : x.noop,
+      onDragEnter: n ? this.onDragEnter : x.noop,
+      onDragOver: n ? this.onDragOver : x.noop
+    }, xe.Children.map(this.props.children, (s) => this.processGridItem(s)), n && this.state.droppingDOMNode && this.processGridItem(this.state.droppingDOMNode, !0), this.placeholder());
   }
 }
 Ze.default = wt;
@@ -3798,25 +3798,25 @@ Z(wt, "defaultProps", {
     w: 1
   },
   resizeHandles: ["se"],
-  onLayoutChange: P.noop,
-  onDragStart: P.noop,
-  onDrag: P.noop,
-  onDragStop: P.noop,
-  onResizeStart: P.noop,
-  onResize: P.noop,
-  onResizeStop: P.noop,
-  onDrop: P.noop,
-  onDropDragOver: P.noop
+  onLayoutChange: x.noop,
+  onDragStart: x.noop,
+  onDrag: x.noop,
+  onDragStop: x.noop,
+  onResizeStart: x.noop,
+  onResize: x.noop,
+  onResizeStop: x.noop,
+  onDrop: x.noop,
+  onDropDragOver: x.noop
 });
-var Ot = {}, je = {};
-Object.defineProperty(je, "__esModule", {
+var Ot = {}, Me = {};
+Object.defineProperty(Me, "__esModule", {
   value: !0
 });
-je.findOrGenerateResponsiveLayout = ua;
-je.getBreakpointFromWidth = sa;
-je.getColsFromBreakpoint = la;
-je.sortBreakpoints = _r;
-var nt = L;
+Me.findOrGenerateResponsiveLayout = ua;
+Me.getBreakpointFromWidth = sa;
+Me.getColsFromBreakpoint = la;
+Me.sortBreakpoints = _r;
+var nt = N;
 function sa(t, e) {
   const r = _r(t);
   let n = r[0];
@@ -3855,7 +3855,7 @@ Object.defineProperty(Ot, "__esModule", {
   value: !0
 });
 Ot.default = void 0;
-var nn = Yn(ue), oe = Gn(Oe), Wt = sr, We = L, xe = je, ca = Gn(Ze);
+var nn = Yn(fe), ae = Gn(Re), Wt = sr, qe = N, De = Me, ca = Gn(Ze);
 const fa = ["breakpoint", "breakpoints", "cols", "layouts", "margin", "containerPadding", "onBreakpointChange", "onLayoutChange", "onWidthChange"];
 function Gn(t) {
   return t && t.__esModule ? t : { default: t };
@@ -3957,9 +3957,9 @@ class Rr extends nn.Component {
       breakpoints: r,
       layouts: n,
       cols: o
-    } = this.props, i = (0, xe.getBreakpointFromWidth)(r, e), a = (0, xe.getColsFromBreakpoint)(i, o), s = this.props.verticalCompact === !1 ? null : this.props.compactType;
+    } = this.props, i = (0, De.getBreakpointFromWidth)(r, e), a = (0, De.getColsFromBreakpoint)(i, o), s = this.props.verticalCompact === !1 ? null : this.props.compactType;
     return {
-      layout: (0, xe.findOrGenerateResponsiveLayout)(n, r, i, i, a, s),
+      layout: (0, De.findOrGenerateResponsiveLayout)(n, r, i, i, a, s),
       breakpoint: i,
       cols: a
     };
@@ -3971,7 +3971,7 @@ class Rr extends nn.Component {
         cols: o
       } = r;
       return {
-        layout: (0, xe.findOrGenerateResponsiveLayout)(e.layouts, e.breakpoints, n, n, o, e.compactType),
+        layout: (0, De.findOrGenerateResponsiveLayout)(e.layouts, e.breakpoints, n, n, o, e.compactType),
         layouts: e.layouts
       };
     }
@@ -3990,11 +3990,11 @@ class Rr extends nn.Component {
       cols: n,
       layouts: o,
       compactType: i
-    } = this.props, a = this.props.breakpoint || (0, xe.getBreakpointFromWidth)(this.props.breakpoints, this.props.width), s = this.state.breakpoint, l = (0, xe.getColsFromBreakpoint)(a, n), u = qt({}, o);
+    } = this.props, a = this.props.breakpoint || (0, De.getBreakpointFromWidth)(this.props.breakpoints, this.props.width), s = this.state.breakpoint, l = (0, De.getColsFromBreakpoint)(a, n), u = qt({}, o);
     if (s !== a || e.breakpoints !== r || e.cols !== n) {
-      s in u || (u[s] = (0, We.cloneLayout)(this.state.layout));
-      let d = (0, xe.findOrGenerateResponsiveLayout)(u, r, a, s, l, i);
-      d = (0, We.synchronizeLayoutWithChildren)(d, this.props.children, l, i, this.props.allowOverlap), u[a] = d, this.props.onBreakpointChange(a, l), this.props.onLayoutChange(d, u), this.setState({
+      s in u || (u[s] = (0, qe.cloneLayout)(this.state.layout));
+      let d = (0, De.findOrGenerateResponsiveLayout)(u, r, a, s, l, i);
+      d = (0, qe.synchronizeLayoutWithChildren)(d, this.props.children, l, i, this.props.allowOverlap), u[a] = d, this.props.onBreakpointChange(a, l), this.props.onLayoutChange(d, u), this.setState({
         breakpoint: a,
         layout: d,
         cols: l
@@ -4032,22 +4032,22 @@ Ke(Rr, "propTypes", {
   //
   // Optional, but if you are managing width yourself you may want to set the breakpoint
   // yourself as well.
-  breakpoint: oe.default.string,
+  breakpoint: ae.default.string,
   // {name: pxVal}, e.g. {lg: 1200, md: 996, sm: 768, xs: 480}
-  breakpoints: oe.default.object,
-  allowOverlap: oe.default.bool,
+  breakpoints: ae.default.object,
+  allowOverlap: ae.default.bool,
   // # of cols. This is a breakpoint -> cols map
-  cols: oe.default.object,
+  cols: ae.default.object,
   // # of margin. This is a breakpoint -> margin map
   // e.g. { lg: [5, 5], md: [10, 10], sm: [15, 15] }
   // Margin between items [x, y] in px
   // e.g. [10, 10]
-  margin: oe.default.oneOfType([oe.default.array, oe.default.object]),
+  margin: ae.default.oneOfType([ae.default.array, ae.default.object]),
   // # of containerPadding. This is a breakpoint -> containerPadding map
   // e.g. { lg: [5, 5], md: [10, 10], sm: [15, 15] }
   // Padding inside the container [x, y] in px
   // e.g. [10, 10]
-  containerPadding: oe.default.oneOfType([oe.default.array, oe.default.object]),
+  containerPadding: ae.default.oneOfType([ae.default.array, ae.default.object]),
   // layouts is an object mapping breakpoints to layouts.
   // e.g. {lg: Layout, md: Layout, ...}
   layouts(t, e) {
@@ -4056,22 +4056,22 @@ Ke(Rr, "propTypes", {
     Object.keys(t[e]).forEach((r) => {
       if (!(r in t.breakpoints))
         throw new Error("Each key in layouts must align with a key in breakpoints.");
-      (0, We.validateLayout)(t.layouts[r], "layouts." + r);
+      (0, qe.validateLayout)(t.layouts[r], "layouts." + r);
     });
   },
   // The width of this component.
   // Required in this propTypes stanza because generateInitialState() will fail without it.
-  width: oe.default.number.isRequired,
+  width: ae.default.number.isRequired,
   //
   // Callbacks
   //
   // Calls back with breakpoint and new # cols
-  onBreakpointChange: oe.default.func,
+  onBreakpointChange: ae.default.func,
   // Callback so you can save the layout.
   // Calls back with (currentLayout, allLayouts). allLayouts are keyed by breakpoint.
-  onLayoutChange: oe.default.func,
+  onLayoutChange: ae.default.func,
   // Calls back with (containerWidth, margin, cols, containerPadding)
-  onWidthChange: oe.default.func
+  onWidthChange: ae.default.func
 });
 Ke(Rr, "defaultProps", {
   breakpoints: {
@@ -4098,9 +4098,9 @@ Ke(Rr, "defaultProps", {
   layouts: {},
   margin: [10, 10],
   allowOverlap: !1,
-  onBreakpointChange: We.noop,
-  onLayoutChange: We.noop,
-  onWidthChange: We.noop
+  onBreakpointChange: qe.noop,
+  onLayoutChange: qe.noop,
+  onWidthChange: qe.noop
 });
 var Er = {}, Fn = function() {
   if (typeof Map < "u")
@@ -4227,7 +4227,7 @@ var ba = 20, wa = ["top", "right", "bottom", "left", "width", "height", "size", 
     });
   }
   return t;
-}, qe = function(t) {
+}, Ie = function(t) {
   var e = t && t.ownerDocument && t.ownerDocument.defaultView;
   return e || lt;
 }, Xn = St(0, 0, 0, 0);
@@ -4257,7 +4257,7 @@ function Ea(t) {
   var e = t.clientWidth, r = t.clientHeight;
   if (!e && !r)
     return Xn;
-  var n = qe(t).getComputedStyle(t), o = _a(n), i = o.left + o.right, a = o.top + o.bottom, s = ut(n.width), l = ut(n.height);
+  var n = Ie(t).getComputedStyle(t), o = _a(n), i = o.left + o.right, a = o.top + o.bottom, s = ut(n.width), l = ut(n.height);
   if (n.boxSizing === "border-box" && (Math.round(s + i) !== e && (s -= sn(n, "left", "right") + i), Math.round(l + a) !== r && (l -= sn(n, "top", "bottom") + a)), !Pa(t)) {
     var u = Math.round(s + i) - e, c = Math.round(l + a) - r;
     Math.abs(u) !== 1 && (s -= u), Math.abs(c) !== 1 && (l -= c);
@@ -4266,13 +4266,13 @@ function Ea(t) {
 }
 var xa = /* @__PURE__ */ function() {
   return typeof SVGGraphicsElement < "u" ? function(t) {
-    return t instanceof qe(t).SVGGraphicsElement;
+    return t instanceof Ie(t).SVGGraphicsElement;
   } : function(t) {
-    return t instanceof qe(t).SVGElement && typeof t.getBBox == "function";
+    return t instanceof Ie(t).SVGElement && typeof t.getBBox == "function";
   };
 }();
 function Pa(t) {
-  return t === qe(t).document.documentElement;
+  return t === Ie(t).document.documentElement;
 }
 function Da(t) {
   return nr ? xa(t) ? Ra(t) : Ea(t) : Xn;
@@ -4328,7 +4328,7 @@ var za = (
       if (!arguments.length)
         throw new TypeError("1 argument required, but only 0 present.");
       if (!(typeof Element > "u" || !(Element instanceof Object))) {
-        if (!(e instanceof qe(e).Element))
+        if (!(e instanceof Ie(e).Element))
           throw new TypeError('parameter 1 is not of type "Element".');
         var r = this.observations_;
         r.has(e) || (r.set(e, new za(e)), this.controller_.addObserver(this), this.controller_.refresh());
@@ -4337,7 +4337,7 @@ var za = (
       if (!arguments.length)
         throw new TypeError("1 argument required, but only 0 present.");
       if (!(typeof Element > "u" || !(Element instanceof Object))) {
-        if (!(e instanceof qe(e).Element))
+        if (!(e instanceof Ie(e).Element))
           throw new TypeError('parameter 1 is not of type "Element".');
         var r = this.observations_;
         r.has(e) && (r.delete(e), r.size || this.controller_.removeObserver(this));
@@ -4397,7 +4397,7 @@ Object.defineProperty(Er, "__esModule", {
   value: !0
 });
 Er.default = Ya;
-var it = Jn(ue), La = xr(Oe), Na = xr($a), Aa = xr(ct);
+var it = Jn(fe), La = xr(Re), Na = xr($a), Aa = xr(ct);
 const Ha = ["measureBeforeMount"];
 function xr(t) {
   return t && t.__esModule ? t : { default: t };
@@ -4443,7 +4443,7 @@ function qa(t, e) {
   }
   return r;
 }
-function Ae(t, e, r) {
+function He(t, e, r) {
   return (e = Ia(e)) in t ? Object.defineProperty(t, e, { value: r, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = r, t;
 }
 function Ia(t) {
@@ -4465,9 +4465,9 @@ function Ya(t) {
   var e;
   return e = class extends it.Component {
     constructor() {
-      super(...arguments), Ae(this, "state", {
+      super(...arguments), He(this, "state", {
         width: 1280
-      }), Ae(this, "elementRef", /* @__PURE__ */ it.createRef()), Ae(this, "mounted", !1), Ae(this, "resizeObserver", void 0);
+      }), He(this, "elementRef", /* @__PURE__ */ it.createRef()), He(this, "mounted", !1), He(this, "resizeObserver", void 0);
     }
     componentDidMount() {
       this.mounted = !0, this.resizeObserver = new Na.default((o) => {
@@ -4498,16 +4498,16 @@ function Ya(t) {
         innerRef: this.elementRef
       }, i, this.state));
     }
-  }, Ae(e, "defaultProps", {
+  }, He(e, "defaultProps", {
     measureBeforeMount: !1
-  }), Ae(e, "propTypes", {
+  }), He(e, "propTypes", {
     // If true, will not render children until mounted. Useful for getting the exact width before
     // rendering, to prevent any unsightly resizing.
     measureBeforeMount: La.default.bool
   }), e;
 }
 (function(t) {
-  t.exports = Ze.default, t.exports.utils = L, t.exports.calculateUtils = he, t.exports.Responsive = Ot.default, t.exports.Responsive.utils = je, t.exports.WidthProvider = Er.default;
+  t.exports = Ze.default, t.exports.utils = N, t.exports.calculateUtils = me, t.exports.Responsive = Ot.default, t.exports.Responsive.utils = Me, t.exports.WidthProvider = Er.default;
 })(gn);
 var Fa = gn.exports;
 const Ua = /* @__PURE__ */ uo(Fa);
@@ -4575,7 +4575,7 @@ const Ka = cn(
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const be = (t, e) => {
+const Oe = (t, e) => {
   const r = cn(
     ({ className: n, ...o }, i) => It(Ka, {
       ref: i,
@@ -4592,7 +4592,7 @@ const be = (t, e) => {
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const ln = be("ChevronDown", [
+const ln = Oe("ChevronDown", [
   ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
 ]);
 /**
@@ -4601,7 +4601,7 @@ const ln = be("ChevronDown", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const Ja = be("ChevronRight", [
+const Ja = Oe("ChevronRight", [
   ["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]
 ]);
 /**
@@ -4610,7 +4610,7 @@ const Ja = be("ChevronRight", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const Za = be("Copy", [
+const Za = Oe("Copy", [
   ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
   ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
 ]);
@@ -4620,7 +4620,7 @@ const Za = be("Copy", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const Qa = be("Download", [
+const Qa = Oe("Download", [
   ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
   ["polyline", { points: "7 10 12 15 17 10", key: "2ggqvy" }],
   ["line", { x1: "12", x2: "12", y1: "15", y2: "3", key: "1vk2je" }]
@@ -4631,7 +4631,7 @@ const Qa = be("Download", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const es = be("GripHorizontal", [
+const es = Oe("GripHorizontal", [
   ["circle", { cx: "12", cy: "9", r: "1", key: "124mty" }],
   ["circle", { cx: "19", cy: "9", r: "1", key: "1ruzo2" }],
   ["circle", { cx: "5", cy: "9", r: "1", key: "1a8b28" }],
@@ -4645,7 +4645,7 @@ const es = be("GripHorizontal", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const ts = be("GripVertical", [
+const ts = Oe("GripVertical", [
   ["circle", { cx: "9", cy: "12", r: "1", key: "1vctgf" }],
   ["circle", { cx: "9", cy: "5", r: "1", key: "hp0tcf" }],
   ["circle", { cx: "9", cy: "19", r: "1", key: "fkjjf6" }],
@@ -4659,7 +4659,7 @@ const ts = be("GripVertical", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const rs = be("Link", [
+const rs = Oe("Link", [
   ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", key: "1cjeqo" }],
   ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71", key: "19qd67" }]
 ]);
@@ -4669,7 +4669,7 @@ const rs = be("Link", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const ns = be("Pencil", [
+const ns = Oe("Pencil", [
   [
     "path",
     {
@@ -4685,7 +4685,7 @@ const ns = be("Pencil", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const Qn = be("X", [
+const Qn = Oe("X", [
   ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
   ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
 ]);
@@ -4701,7 +4701,7 @@ function os({
     const m = c.trim();
     m && m !== d && (o == null || o(t.i, m)), u(!1);
   };
-  return /* @__PURE__ */ le(
+  return /* @__PURE__ */ ce(
     "div",
     {
       "data-row-header": "",
@@ -4717,7 +4717,7 @@ function os({
             children: /* @__PURE__ */ C(ts, { size: 13 })
           }
         ),
-        l && r ? /* @__PURE__ */ le(un, { children: [
+        l && r ? /* @__PURE__ */ ce(un, { children: [
           /* @__PURE__ */ C("span", { className: "lbdg-row-chevron", children: /* @__PURE__ */ C(ln, { size: 16 }) }),
           /* @__PURE__ */ C(
             "input",
@@ -4733,7 +4733,7 @@ function os({
               }
             }
           )
-        ] }) : /* @__PURE__ */ le(
+        ] }) : /* @__PURE__ */ ce(
           "button",
           {
             type: "button",
@@ -4748,7 +4748,7 @@ function os({
             children: [
               /* @__PURE__ */ C("span", { className: "lbdg-row-chevron", children: a ? /* @__PURE__ */ C(Ja, { size: 16 }) : /* @__PURE__ */ C(ln, { size: 16 }) }),
               /* @__PURE__ */ C("span", { className: "lbdg-row-title", children: d }),
-              s.showCount && e > 0 && /* @__PURE__ */ le("span", { className: "lbdg-row-count", children: [
+              s.showCount && e > 0 && /* @__PURE__ */ ce("span", { className: "lbdg-row-count", children: [
                 "· ",
                 e,
                 " panel",
@@ -4781,9 +4781,9 @@ function is({
 }) {
   const i = [...pn(t)].sort((a, s) => a.y - s.y || a.x - s.x);
   return /* @__PURE__ */ C("div", { className: "lbdg-stack", "aria-label": "dashboard stack", children: i.map(
-    (a) => ve(a) ? /* @__PURE__ */ le("div", { className: "lbdg-stack-row", "aria-label": `row ${Yt(a)}`, children: [
+    (a) => we(a) ? /* @__PURE__ */ ce("div", { className: "lbdg-stack-row", "aria-label": `row ${Yt(a)}`, children: [
       /* @__PURE__ */ C("span", { className: "lbdg-row-title", children: Yt(a) }),
-      Ve(t, a).length > 0 && /* @__PURE__ */ le("span", { className: "lbdg-row-count", children: [
+      Ve(t, a).length > 0 && /* @__PURE__ */ ce("span", { className: "lbdg-row-count", children: [
         "· ",
         Ve(t, a).length
       ] })
@@ -4817,87 +4817,107 @@ function _s({
   onRenameRow: c,
   onEditPanel: f,
   onExportCell: d,
-  stackBelow: v = 768
+  stackBelow: v = 768,
+  droppable: m,
+  droppingItem: O,
+  onDrop: E
 }) {
-  const m = eo(null), [S, x] = Bt(as);
+  const _ = eo(null), [W, R] = Bt(as);
   to(() => {
-    const w = () => {
-      var K;
-      const Q = ((K = m.current) == null ? void 0 : K.offsetWidth) ?? 0;
-      Q > 0 && x(Q);
+    const j = () => {
+      var Se;
+      const de = ((Se = _.current) == null ? void 0 : Se.offsetWidth) ?? 0;
+      de > 0 && R(de);
     };
-    w();
-    const p = m.current;
-    if (!p || typeof ResizeObserver > "u")
-      return window.addEventListener("resize", w), () => window.removeEventListener("resize", w);
-    const F = new ResizeObserver(w);
-    return F.observe(p), () => F.disconnect();
+    j();
+    const re = _.current;
+    if (!re || typeof ResizeObserver > "u")
+      return window.addEventListener("resize", j), () => window.removeEventListener("resize", j);
+    const ie = new ResizeObserver(j);
+    return ie.observe(re), () => ie.disconnect();
   }, []);
-  const R = pn(t), W = R.map((w) => ({
-    i: w.i,
-    x: w.x,
-    y: w.y,
-    w: w.w,
-    h: w.h,
+  const D = pn(t), p = D.map((j) => ({
+    i: j.i,
+    x: j.x,
+    y: j.y,
+    w: j.w,
+    h: j.h,
     // A row header is a fixed-height full-width bar — it may move but never resize.
-    ...ve(w) ? { isResizable: !1 } : {}
-  })), E = (w) => a(io(t, w));
-  return v > 0 && S < v ? /* @__PURE__ */ C("div", { ref: m, className: "lbdg-root", "aria-label": "dashboard grid", children: /* @__PURE__ */ C(is, { cells: t, registry: r, range: n, scope: o, refreshKey: i }) }) : /* @__PURE__ */ C("div", { ref: m, className: "lbdg-root lbdg-canvas", "aria-label": "dashboard grid", children: /* @__PURE__ */ C(
-    Ua,
+    ...we(j) ? { isResizable: !1 } : {}
+  })), U = (j) => a(io(t, j));
+  if (v > 0 && W < v)
+    return /* @__PURE__ */ C("div", { ref: _, className: "lbdg-root", "aria-label": "dashboard grid", children: /* @__PURE__ */ C(is, { cells: t, registry: r, range: n, scope: o, refreshKey: i }) });
+  const Q = !!(m && e && E);
+  return /* @__PURE__ */ C(
+    "div",
     {
-      className: "layout",
-      layout: W,
-      cols: ro,
-      rowHeight: fn,
-      width: S,
-      isDraggable: e,
-      isResizable: e,
-      onDragStop: E,
-      onResizeStop: E,
-      draggableHandle: ".lbdg-drag-handle",
-      draggableCancel: ".lbdg-no-drag",
-      children: R.map(
-        (w) => ve(w) ? (
-          // A row header: a full-width, flat, full-bleed section bar — NOT a widget frame. The
-          // bar owns its own chrome (drag handle + rename + collapse + remove) inline.
-          /* @__PURE__ */ C("div", { "data-row": "", className: "lbdg-row-item", "aria-label": `row cell ${w.i}`, children: /* @__PURE__ */ C(
-            os,
-            {
-              cell: w,
-              memberCount: Ve(t, w).length,
-              editable: e,
-              onToggleCollapse: u,
-              onRename: c,
-              onRemove: s
-            }
-          ) }, w.i)
-        ) : /* @__PURE__ */ C(
-          "div",
-          {
-            className: w.transparent ? "lbdg-cell lbdg-cell--transparent" : "lbdg-cell lbdg-cell--framed",
-            "data-transparent": w.transparent ? "true" : void 0,
-            "aria-label": `cell ${w.i}`,
-            children: /* @__PURE__ */ C(
-              ss,
-              {
-                cell: w,
-                editable: e,
-                registry: r,
-                range: n,
-                scope: o,
-                refreshKey: i,
-                onRemove: s,
-                onDuplicate: l,
-                onEditPanel: f,
-                onExportCell: d
-              }
-            )
+      ref: _,
+      className: "lbdg-root lbdg-canvas",
+      "aria-label": "dashboard grid",
+      "data-droppable": Q ? "true" : void 0,
+      children: /* @__PURE__ */ C(
+        Ua,
+        {
+          className: "layout",
+          layout: p,
+          cols: ro,
+          rowHeight: fn,
+          width: W,
+          isDraggable: e,
+          isResizable: e,
+          onDragStop: U,
+          onResizeStop: U,
+          draggableHandle: ".lbdg-drag-handle",
+          draggableCancel: ".lbdg-no-drag",
+          isDroppable: Q,
+          droppingItem: O,
+          onDrop: (j, re, ie) => {
+            re && E && E({ x: re.x, y: re.y, w: re.w, h: re.h }, ie);
           },
-          w.i
-        )
+          children: D.map(
+            (j) => we(j) ? (
+              // A row header: a full-width, flat, full-bleed section bar — NOT a widget frame. The
+              // bar owns its own chrome (drag handle + rename + collapse + remove) inline.
+              /* @__PURE__ */ C("div", { "data-row": "", className: "lbdg-row-item", "aria-label": `row cell ${j.i}`, children: /* @__PURE__ */ C(
+                os,
+                {
+                  cell: j,
+                  memberCount: Ve(t, j).length,
+                  editable: e,
+                  onToggleCollapse: u,
+                  onRename: c,
+                  onRemove: s
+                }
+              ) }, j.i)
+            ) : /* @__PURE__ */ C(
+              "div",
+              {
+                className: j.transparent ? "lbdg-cell lbdg-cell--transparent" : "lbdg-cell lbdg-cell--framed",
+                "data-transparent": j.transparent ? "true" : void 0,
+                "aria-label": `cell ${j.i}`,
+                children: /* @__PURE__ */ C(
+                  ss,
+                  {
+                    cell: j,
+                    editable: e,
+                    registry: r,
+                    range: n,
+                    scope: o,
+                    refreshKey: i,
+                    onRemove: s,
+                    onDuplicate: l,
+                    onEditPanel: f,
+                    onExportCell: d
+                  }
+                )
+              },
+              j.i
+            )
+          )
+        }
       )
     }
-  ) });
+  );
 }
 function ss({
   cell: t,
@@ -4912,9 +4932,9 @@ function ss({
   onExportCell: u
 }) {
   const c = ao(t.queryOptions), f = t.links ?? [], d = Je(t), v = r.resolveCell(t);
-  return /* @__PURE__ */ le(un, { children: [
+  return /* @__PURE__ */ ce(un, { children: [
     c && /* @__PURE__ */ C("div", { className: "lbdg-badge", "aria-label": `time override for cell ${t.i}`, children: c }),
-    f.length > 0 && /* @__PURE__ */ C("div", { className: "lbdg-no-drag lbdg-links", children: f.map((m, S) => /* @__PURE__ */ le(
+    f.length > 0 && /* @__PURE__ */ C("div", { className: "lbdg-no-drag lbdg-links", children: f.map((m, O) => /* @__PURE__ */ ce(
       "a",
       {
         href: m.url,
@@ -4927,7 +4947,7 @@ function ss({
           /* @__PURE__ */ C("span", { className: "lbdg-link-title", children: m.title || m.url })
         ]
       },
-      `${m.url}-${S}`
+      `${m.url}-${O}`
     )) }),
     e && /* @__PURE__ */ C(
       "button",
@@ -4939,7 +4959,7 @@ function ss({
         children: /* @__PURE__ */ C(es, { size: 13 })
       }
     ),
-    e && (l || s || u || a) && /* @__PURE__ */ le("div", { className: "lbdg-no-drag lbdg-chrome", children: [
+    e && (l || s || u || a) && /* @__PURE__ */ ce("div", { className: "lbdg-no-drag lbdg-chrome", children: [
       l && /* @__PURE__ */ C(
         "button",
         {
@@ -5010,7 +5030,7 @@ export {
   bs as createRegistry,
   gs as emptyFieldConfig,
   dn as isCollapsed,
-  ve as isRow,
+  we as isRow,
   io as mergeLayout,
   Ve as rowMembers,
   oo as rowOptions,

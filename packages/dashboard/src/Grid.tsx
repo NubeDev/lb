@@ -54,6 +54,15 @@ export interface DashboardGridProps<S = unknown> {
   /** Below this measured width (px) the board renders as the read-only mobile stack. Default
    *  768 ("below md"); pass 0 to always render the grid. */
   stackBelow?: number;
+  /** Accept EXTERNAL drags (react-grid-layout's drop seam): the consumer marks its palette item
+   *  `draggable` and sets a `dataTransfer` payload; the grid previews `droppingItem` while the
+   *  drag hovers and calls `onDrop` with the landed slot. Only honored while `editable`. */
+  droppable?: boolean;
+  /** The placeholder geometry previewed while an external drag hovers the grid. */
+  droppingItem?: { i: string; w: number; h: number };
+  /** An external draggable landed: the grid slot it occupies + the native drag event (the
+   *  consumer reads its own payload off `event.dataTransfer`). */
+  onDrop?: (slot: { x: number; y: number; w: number; h: number }, event: DragEvent) => void;
 }
 
 export function DashboardGrid<S = unknown>({
@@ -71,6 +80,9 @@ export function DashboardGrid<S = unknown>({
   onEditPanel,
   onExportCell,
   stackBelow = 768,
+  droppable,
+  droppingItem,
+  onDrop,
 }: DashboardGridProps<S>) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(FALLBACK_WIDTH);
@@ -119,8 +131,17 @@ export function DashboardGrid<S = unknown>({
     );
   }
 
+  const isDroppable = Boolean(droppable && editable && onDrop);
+
   return (
-    <div ref={ref} className="lbdg-root lbdg-canvas" aria-label="dashboard grid">
+    <div
+      ref={ref}
+      className="lbdg-root lbdg-canvas"
+      aria-label="dashboard grid"
+      // Lets the stylesheet give an EMPTY droppable grid a landing area (RGL's inline
+      // height is 0 with no rows, which would make the first drop impossible).
+      data-droppable={isDroppable ? "true" : undefined}
+    >
       <GridLayout
         className="layout"
         layout={layout}
@@ -133,6 +154,11 @@ export function DashboardGrid<S = unknown>({
         onResizeStop={apply}
         draggableHandle=".lbdg-drag-handle"
         draggableCancel=".lbdg-no-drag"
+        isDroppable={isDroppable}
+        droppingItem={droppingItem}
+        onDrop={(_next, item, e) => {
+          if (item && onDrop) onDrop({ x: item.x, y: item.y, w: item.w, h: item.h }, e as unknown as DragEvent);
+        }}
       >
         {shown.map((c) =>
           isRow(c) ? (

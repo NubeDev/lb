@@ -80,6 +80,9 @@ lb-jobs.workspace = true
 lb-mcp-shim.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true
+# The undo route tests seed REAL journal steps through the real record verbs (the host's capture
+# path is internal), so undo/redo/history are exercised against a true stack — no fake journal.
+lb-undo.workspace = true
 lb-supervisor.workspace = true
 # The native-sidecar → host MCP callback transport under test: the callback test drives THIS client
 # against the REAL gateway over real HTTP (native-callback-transport scope), proving the child→host

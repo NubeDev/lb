@@ -4,7 +4,7 @@
 // the render tests pin the chrome/mode behavior).
 
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 
 // jsdom never lays out, so `offsetParent` is always null — which makes react-grid-layout's
 // onDragStart bail before the drag begins. Shim it to the parent element (an ENVIRONMENT gap
@@ -145,6 +145,93 @@ describe("DashboardGrid", () => {
     expect(rY).toBeLessThan(4); // the row actually moved up
     expect(payload.find((c) => c.i === "m")!.y).toBe(5 + (rY - 4)); // hidden member carried by Δy
     expect(payload.find((c) => c.i === "free")).toMatchObject({ view: "stat", w: 12, h: 4 }); // non-geometry kept
+  });
+
+  it("an EMPTY droppable grid is still a drop target (data-droppable marks it)", () => {
+    // Regression: RGL sets an inline height from the row count, so a board with no cells is
+    // 0px tall and `dragover` never reaches it — the FIRST drop onto a fresh page was
+    // impossible. The stylesheet gives `[data-droppable]` a min-height; pin the attribute.
+    const { container } = render(
+      <DashboardGrid
+        cells={[]}
+        editable
+        registry={reg}
+        onLayout={() => {}}
+        stackBelow={0}
+        droppable
+        droppingItem={{ i: "__drop__", w: 4, h: 3 }}
+        onDrop={() => {}}
+      />,
+    );
+    expect(container.querySelector(".lbdg-root")!.getAttribute("data-droppable")).toBe("true");
+  });
+
+  it("a read-only grid is NOT marked droppable", () => {
+    const { container } = render(
+      <DashboardGrid
+        cells={[]}
+        editable={false}
+        registry={reg}
+        onLayout={() => {}}
+        stackBelow={0}
+        droppable
+        droppingItem={{ i: "__drop__", w: 4, h: 3 }}
+        onDrop={() => {}}
+      />,
+    );
+    expect(container.querySelector(".lbdg-root")!.getAttribute("data-droppable")).toBeNull();
+  });
+
+  it("droppable: an external drag-over + drop lands the slot on onDrop", () => {
+    // Drive react-grid-layout's REAL external-drop path: a dragover on the grid creates the
+    // dropping placeholder from `droppingItem`, the drop hands its landed slot to `onDrop`.
+    // jsdom synthesizes dragover without clientX/clientY, so pin them on the native event (gap
+    // fill, same spirit as the offsetParent shim above).
+    const onDrop = vi.fn();
+    const { container } = render(
+      <DashboardGrid
+        cells={[]}
+        editable
+        registry={reg}
+        onLayout={() => {}}
+        stackBelow={0}
+        droppable
+        droppingItem={{ i: "__drop__", w: 4, h: 3 }}
+        onDrop={onDrop}
+      />,
+    );
+    const grid = container.querySelector(".react-grid-layout")!;
+    const over = createEvent.dragOver(grid);
+    Object.defineProperty(over, "clientX", { value: 10 });
+    Object.defineProperty(over, "clientY", { value: 10 });
+    fireEvent(grid, over);
+    fireEvent(grid, createEvent.drop(grid));
+    expect(onDrop).toHaveBeenCalledTimes(1);
+    const [slot] = onDrop.mock.calls[0];
+    expect(slot).toMatchObject({ x: 0, y: 0, w: 4, h: 3 });
+  });
+
+  it("droppable is inert while read-only (no drop seam for viewers)", () => {
+    const onDrop = vi.fn();
+    const { container } = render(
+      <DashboardGrid
+        cells={[]}
+        editable={false}
+        registry={reg}
+        onLayout={() => {}}
+        stackBelow={0}
+        droppable
+        droppingItem={{ i: "__drop__", w: 4, h: 3 }}
+        onDrop={onDrop}
+      />,
+    );
+    const grid = container.querySelector(".react-grid-layout")!;
+    const over = createEvent.dragOver(grid);
+    Object.defineProperty(over, "clientX", { value: 10 });
+    Object.defineProperty(over, "clientY", { value: 10 });
+    fireEvent(grid, over);
+    fireEvent(grid, createEvent.drop(grid));
+    expect(onDrop).not.toHaveBeenCalled();
   });
 
   it("degrades to the read-only stack below the breakpoint", () => {

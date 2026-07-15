@@ -113,7 +113,7 @@ export declare interface Dashboard {
     deleted?: boolean;
 }
 
-export declare function DashboardGrid<S = unknown>({ cells, editable, registry, range, scope, refreshKey, onLayout, onRemove, onDuplicate, onToggleRow, onRenameRow, onEditPanel, onExportCell, stackBelow, }: DashboardGridProps<S>): JSX_2.Element;
+export declare function DashboardGrid<S = unknown>({ cells, editable, registry, range, scope, refreshKey, onLayout, onRemove, onDuplicate, onToggleRow, onRenameRow, onEditPanel, onExportCell, stackBelow, droppable, droppingItem, onDrop, }: DashboardGridProps<S>): JSX_2.Element;
 
 export declare interface DashboardGridProps<S = unknown> {
     cells: Cell[];
@@ -144,6 +144,24 @@ export declare interface DashboardGridProps<S = unknown> {
     /** Below this measured width (px) the board renders as the read-only mobile stack. Default
      *  768 ("below md"); pass 0 to always render the grid. */
     stackBelow?: number;
+    /** Accept EXTERNAL drags (react-grid-layout's drop seam): the consumer marks its palette item
+     *  `draggable` and sets a `dataTransfer` payload; the grid previews `droppingItem` while the
+     *  drag hovers and calls `onDrop` with the landed slot. Only honored while `editable`. */
+    droppable?: boolean;
+    /** The placeholder geometry previewed while an external drag hovers the grid. */
+    droppingItem?: {
+        i: string;
+        w: number;
+        h: number;
+    };
+    /** An external draggable landed: the grid slot it occupies + the native drag event (the
+     *  consumer reads its own payload off `event.dataTransfer`). */
+    onDrop?: (slot: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+    }, event: DragEvent) => void;
 }
 
 export declare function DashboardStack<S = unknown>({ cells, registry, range, scope, refreshKey, }: DashboardStackProps<S>): JSX_2.Element;

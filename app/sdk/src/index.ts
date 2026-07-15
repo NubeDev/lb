@@ -36,5 +36,12 @@ export type { Session, StoredSessions } from "./session/session.types";
 // Domain types + nav derivation.
 export type { Item, ChannelRecord } from "./channel/channel.types";
 export type { ExtRow, ExtUi } from "./ext/ext.types";
+export type {
+  UndoRefusal,
+  UndoOutcome,
+  UndoHistoryItem,
+  UndoHistory,
+  UndoCompensations,
+} from "./undo/undo.types";
 export { extNavEntries, holdsToolCap } from "./ext/nav";
 export type { ExtNavEntry } from "./ext/nav";

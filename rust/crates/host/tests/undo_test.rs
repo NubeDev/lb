@@ -49,6 +49,7 @@ async fn seed_rename(node: &Node, ws: &str, actor: &str) {
             table: "doc",
             id: "d1",
             new_value: Some(&json!({"title": "v1"})),
+            depth_cap: None,
         },
     )
     .await

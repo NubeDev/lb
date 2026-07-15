@@ -2,8 +2,9 @@
 
 > ⚠️ **lb is a LIBRARY now.** It is the platform **core**, consumed by product hosts (e.g.
 > `NubeIO/rubix-ai`) via the `lb-node` embed seam — not "the app you run." The extension SDKs, product
-> extensions, and product UI shell have **moved out of this repo**; the in-tree `rust/extensions/*` and
-> `ui/` are **retained temporarily** as a reference/fallback during migration, **not** authoritative.
+> extensions, and product UI shell have **moved out of this repo**; the in-tree `rust/extensions/*` is
+> **retained temporarily** as a reference/fallback during migration, **not** authoritative.
+> **`ui/` was DELETED** (2026-07-15) — never recreate it (see [`CLAUDE.md`](CLAUDE.md)).
 > See **[`MIGRATION.md`](MIGRATION.md)** before treating anything here as the source of truth.
 
 
@@ -342,7 +343,7 @@ One Cargo workspace.
 - **SDK crate (extension authors depend on this):** WIT bindings, capability traits, host-function interface. This is the public API surface — version it deliberately; breaking it breaks every extension.
 - **Role-only crates:** `gateway` (SSE/HTTP, cloud), `ai-gateway` (cloud model/provider gateway), `registry-host` (cloud), `bootstrap-ui` (cloud).
 - **`node` binary:** wires the crates together and reads config to select roles.
-- **Frontend workspace:** the React/Tauri app (separate from the Rust workspace).
+- **Frontend workspace:** reusable React/TS libraries (`packages/*`) + app-side TS (`app/`), separate from the Rust workspace. The product's own React/Tauri shell lives **out-of-tree** in the product repo — the in-tree `ui/` shell was deleted.
 - **Extensions:** shipped as separate WASM/native artifacts — never dynamically-linked Rust (Rust has no stable ABI; the WASM component boundary is the stable plugin ABI).
 
 ---

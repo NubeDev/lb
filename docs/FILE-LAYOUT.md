@@ -200,8 +200,13 @@ scenario (`tests/user/create_validation_test.rs`,
 
 ### Frontend (React / TypeScript)
 
-The same philosophy maps directly to the React app and extension UIs.
+The same philosophy maps directly to React/TS code and extension UIs.
 **One component per file; folder-of-components over file-of-many.**
+
+> In this repo that means `packages/*` (reusable frontend libraries) and `app/`
+> (SDK + app shell). **It does not mean `ui/` — that tree is deleted; never
+> recreate it** (see `CLAUDE.md` § "Never recreate `ui/`"). The paths below are
+> shapes, not a live location.
 
 ```
 src/features/user/

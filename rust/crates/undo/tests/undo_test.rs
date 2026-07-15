@@ -35,6 +35,22 @@ fn change<'a>(
         table: DOC,
         id,
         new_value: Some(val),
+        depth_cap: None,
+    }
+}
+
+/// A `change` with an explicit depth cap, so the prune floor is provable in 3 writes, not 101.
+fn capped<'a>(
+    ws: &'a str,
+    actor: &'a str,
+    tool: &'a str,
+    id: &'a str,
+    val: &'a serde_json::Value,
+    cap: usize,
+) -> RecordChange<'a> {
+    RecordChange {
+        depth_cap: Some(cap),
+        ..change(ws, actor, tool, id, val)
     }
 }
 
@@ -201,6 +217,7 @@ async fn an_irreversible_step_is_refused() {
             ts: 1,
             class: Class::Irreversible,
             group: None,
+            depth_cap: None,
         },
     )
     .await
@@ -234,6 +251,7 @@ async fn a_compensable_step_surfaces_its_compensation() {
                 compensation_tool: "workflow.close_pr".into(),
             },
             group: None,
+            depth_cap: None,
         },
     )
     .await
@@ -338,4 +356,60 @@ fn classification_is_max_over_parts() {
         compensation_tool: "c".into(),
     };
     assert_eq!(Class::Reversible.combine(comp.clone()), comp);
+}
+
+/// The prune floor: pushing past the depth cap must DELETE the fallen-off journal events (and their
+/// live companions) in the same transaction as the cursor push — the journal is bounded, with no
+/// background sweeper. Proven by reading the `undo` table DIRECTLY: `list` only reports what the
+/// cursor reaches, so it would look identical if the events were merely orphaned instead of deleted
+/// (the unbounded-growth bug this guards).
+#[tokio::test]
+async fn pushing_past_the_depth_cap_deletes_the_fallen_off_events() {
+    let store = Store::memory().await.unwrap();
+    let ws = "undo-prune";
+
+    // Cap of 2: the third write must evict the first.
+    let mut seqs = Vec::new();
+    for i in 1..=3 {
+        let val = json!({ "title": format!("v{i}") });
+        let seq = record_change(&store, capped(ws, "alice", "doc.rename", "d1", &val, 2))
+            .await
+            .unwrap();
+        seqs.push(seq);
+    }
+
+    // The cursor kept only the newest two.
+    let history = list(&store, ws, "alice", "").await.unwrap();
+    assert_eq!(history.len(), 2, "the stack is bounded at the depth cap");
+    let kept: Vec<u64> = history.iter().map(|h| h.seq).collect();
+    assert_eq!(kept, vec![seqs[2], seqs[1]], "newest-first, oldest evicted");
+
+    // The evicted event is GONE from the store, not just unreferenced by the cursor.
+    let evicted = seqs[0].to_string();
+    let entry: Option<serde_json::Value> = read(&store, ws, "undo", &evicted).await.unwrap();
+    assert!(
+        entry.is_none(),
+        "the pruned journal event must be deleted, not orphaned (unbounded growth)"
+    );
+    let live: Option<serde_json::Value> = read(&store, ws, "undo_live", &evicted).await.unwrap();
+    assert!(
+        live.is_none(),
+        "the pruned event's live companion must be deleted too"
+    );
+
+    // The surviving steps are intact and still undoable — pruning is not a corruption.
+    let survivor: Option<serde_json::Value> = read(&store, ws, "undo", &seqs[1].to_string())
+        .await
+        .unwrap();
+    assert!(
+        survivor.is_some(),
+        "a step within the cap survives the prune"
+    );
+    apply_undo(&store, ws, "alice", "").await.unwrap();
+    let doc: Option<serde_json::Value> = read(&store, ws, DOC, "d1").await.unwrap();
+    assert_eq!(
+        doc.unwrap()["title"],
+        "v2",
+        "undo after a prune restores the surviving before-image"
+    );
 }
