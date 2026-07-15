@@ -7,77 +7,153 @@ mod ai;
 pub(crate) mod channel;
 mod chart;
 mod data;
-mod duration;
+pub(crate) mod duration;
 mod emit;
+#[cfg(feature = "frames")]
+pub(crate) mod frame;
 pub(crate) mod inbox;
 pub(crate) mod insight;
+pub(crate) mod job;
+pub(crate) mod json;
+pub(crate) mod mathx;
 pub(crate) mod outbox;
+pub(crate) mod stats;
+pub(crate) mod time;
 mod timeseries;
+pub(crate) mod window;
 
 pub use ai::AiHandle;
 pub use channel::ChannelHandle;
 pub use emit::Collectors;
 pub use inbox::InboxHandle;
 pub use insight::InsightHandle;
+pub use job::JobHandle;
 pub use outbox::OutboxHandle;
+pub use time::TimeHandle;
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use rhai::Engine;
 
+use crate::control::RunControl;
 use crate::grid::{Col, Grid, GridCtx, GroupedGrid, Span};
 use crate::meter::{AiMeter, WriteMeter};
-use crate::seam::{AiSeam, DataSeam, MessagingSeam};
+use crate::sandbox::RuleLimits;
+use crate::seam::{AiSeam, DataSeam, JobSeam, MessagingSeam};
 
-/// The five scope handles a run pushes as top-level variables: `ai`, `inbox`, `outbox`, `channel`,
-/// `insight`. Returned so the engine can push them after registering the verbs.
+/// The scope handles a run pushes as top-level variables: `ai`, `inbox`, `outbox`, `channel`,
+/// `insight`, `time`, `job`. Returned so the engine can push them after registering the verbs.
 pub struct RunHandles {
     pub ai: AiHandle,
     pub inbox: InboxHandle,
     pub outbox: OutboxHandle,
     pub channel: ChannelHandle,
     pub insight: InsightHandle,
+    pub time: TimeHandle,
+    pub job: JobHandle,
 }
 
-/// Register the grid value types + every verb family into `engine`. Returns the scope handles to push
-/// (`ai`/`inbox`/`outbox`/`channel`/`insight`). `route` is the run's read-only flag (false = a panel
-/// repaint: the `insight` handle no-ops); `origin_ref` is the rule id/name stamped into a raise's
-/// default `Origin.ref`.
-#[allow(clippy::too_many_arguments)]
-pub fn register(
-    engine: &mut Engine,
-    ctx: Arc<GridCtx>,
-    data: Arc<dyn DataSeam>,
-    allow: Arc<HashSet<String>>,
-    inputs: Arc<rhai::Map>,
-    collectors: Arc<Collectors>,
-    ai_seam: Arc<dyn AiSeam>,
-    meter: Arc<AiMeter>,
-    context_rows: usize,
-    messaging: Arc<dyn MessagingSeam>,
-    write_meter: Arc<WriteMeter>,
-    now: u64,
-    route: bool,
-    origin_ref: String,
-) -> RunHandles {
+/// Everything one run's verb library closes over — the pinned seams, meters, and flags. Grouped as
+/// a struct (the arg list outgrew positional form when the data stdlib + job handle landed).
+pub struct RunWiring {
+    pub ctx: Arc<GridCtx>,
+    pub data: Arc<dyn DataSeam>,
+    pub allow: Arc<HashSet<String>>,
+    pub inputs: Arc<rhai::Map>,
+    pub collectors: Arc<Collectors>,
+    pub ai_seam: Arc<dyn AiSeam>,
+    pub meter: Arc<AiMeter>,
+    pub context_rows: usize,
+    pub messaging: Arc<dyn MessagingSeam>,
+    pub write_meter: Arc<WriteMeter>,
+    /// The run's pinned logical clock (milliseconds — what messaging ids stamp).
+    pub now: u64,
+    pub route: bool,
+    pub origin_ref: String,
+    /// The cage limits (the frame verbs read `max_frame_rows`/`max_frame_cells`).
+    pub limits: RuleLimits,
+    /// Job-backed runs only: the durable checkpoint seam + the persisted state folded from the
+    /// transcript + the shared control. `None` → the `job` handle is ephemeral (sync `rules.run`).
+    pub job: Option<JobWiring>,
+}
+
+/// The durable half of a job-backed run (long-running-rules-scope).
+pub struct JobWiring {
+    pub id: String,
+    pub seam: Arc<dyn JobSeam>,
+    pub state: rhai::Map,
+    pub control: Arc<RunControl>,
+}
+
+/// Register the grid value types + every verb family into `engine`. Returns the scope handles to
+/// push (`ai`/`inbox`/`outbox`/`channel`/`insight`/`time`/`job`).
+pub fn register(engine: &mut Engine, wiring: RunWiring) -> RunHandles {
     register_types(engine);
     register_grid_methods(engine);
-    data::register(engine, ctx.clone(), allow.clone(), inputs);
+    data::register(
+        engine,
+        wiring.ctx.clone(),
+        wiring.allow.clone(),
+        wiring.inputs,
+    );
     timeseries::register(engine);
     chart::register(engine);
-    emit::register(engine, collectors.clone());
+    emit::register(engine, wiring.collectors.clone());
     ai::register(engine);
     inbox::register(engine);
     outbox::register(engine);
     channel::register(engine);
     insight::register(engine);
+    // The data stdlib (data-stdlib-scope): pure compute, no seam, no cap.
+    time::register(engine);
+    json::register(engine);
+    stats::register(engine);
+    window::register(engine);
+    mathx::register(engine);
+    duration::register(engine);
+    #[cfg(feature = "frames")]
+    frame::register(engine, wiring.ctx.clone(), &wiring.limits);
+    job::register(engine);
+
+    let job = match wiring.job {
+        Some(j) => JobHandle::durable(j.id, j.seam, j.state, j.control),
+        None => JobHandle::ephemeral(),
+    };
     RunHandles {
-        ai: AiHandle::new(ai_seam, ctx, data, allow, meter, context_rows),
-        inbox: InboxHandle::new(messaging.clone(), write_meter.clone(), now),
-        outbox: OutboxHandle::new(messaging.clone(), write_meter.clone(), now),
-        channel: ChannelHandle::new(messaging.clone(), write_meter.clone(), now),
-        insight: InsightHandle::new(messaging, write_meter, now, route, origin_ref, collectors),
+        ai: AiHandle::new(
+            wiring.ai_seam,
+            wiring.ctx,
+            wiring.data,
+            wiring.allow,
+            wiring.meter,
+            wiring.context_rows,
+        ),
+        inbox: InboxHandle::new(
+            wiring.messaging.clone(),
+            wiring.write_meter.clone(),
+            wiring.now,
+        ),
+        outbox: OutboxHandle::new(
+            wiring.messaging.clone(),
+            wiring.write_meter.clone(),
+            wiring.now,
+        ),
+        channel: ChannelHandle::new(
+            wiring.messaging.clone(),
+            wiring.write_meter.clone(),
+            wiring.now,
+        ),
+        insight: InsightHandle::new(
+            wiring.messaging,
+            wiring.write_meter,
+            wiring.now,
+            wiring.route,
+            wiring.origin_ref,
+            wiring.collectors,
+        ),
+        time: TimeHandle { now_ms: wiring.now },
+        job,
     }
 }
 

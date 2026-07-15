@@ -8,12 +8,33 @@
 
 use std::sync::Arc;
 
+use crate::control::{RunControl, ABORT_CANCELLED, ABORT_PAUSED};
 use crate::grid::GridCtx;
 use crate::meter::{AiMeter, WriteMeter};
 use crate::runtime::{AiBudget, GridJson, Rule, RuleError, RuleOutput, RuleRun};
-use crate::sandbox::{build_engine, RuleLimits};
-use crate::seam::{AiSeam, DataSeam, MessagingSeam};
-use crate::verbs::{register, Collectors};
+use crate::sandbox::{build_engine_with_control, RuleLimits};
+use crate::seam::{AiSeam, DataSeam, JobSeam, MessagingSeam};
+use crate::verbs::{register, Collectors, JobWiring, RunWiring};
+
+/// Per-run options beyond the constructor's seams (long-running-rules-scope). A synchronous
+/// `rules.run` uses `RunOptions::default()`; a job-backed run passes the shared control + the
+/// durable job binding.
+#[derive(Default)]
+pub struct RunOptions {
+    /// The cooperative pause/cancel intent, shared with the host's control verbs. Observed by the
+    /// per-operation governor — no author cooperation needed.
+    pub control: Option<Arc<RunControl>>,
+    /// The durable checkpoint binding: job id + seam + the persisted state folded from the
+    /// transcript (a resume's memoized `job.step` lookups).
+    pub job: Option<JobBinding>,
+}
+
+/// The durable half of [`RunOptions`] for a job-backed run.
+pub struct JobBinding {
+    pub id: String,
+    pub seam: Arc<dyn JobSeam>,
+    pub state: rhai::Map,
+}
 
 /// The AI budget knobs for a run (mirrors rubix-cube's `env::rules::AI_*`).
 #[derive(Debug, Clone, Copy)]
@@ -83,7 +104,18 @@ impl RuleEngine {
     /// `run.ai_spend` are filled from the collectors. Runs synchronously (callers spawn it on a
     /// blocking thread when inside async — the body is CPU-bound and uses the wall-clock governor).
     pub fn run(&self, rule: &Rule, run: &mut RuleRun) -> Result<RuleOutput, RuleError> {
-        let mut engine = build_engine(&self.limits);
+        self.run_with(rule, run, RunOptions::default())
+    }
+
+    /// [`RuleEngine::run`] with per-run options: a shared [`RunControl`] (cooperative pause/cancel)
+    /// and/or a durable [`JobBinding`] (checkpoints + resume state) for a job-backed run.
+    pub fn run_with(
+        &self,
+        rule: &Rule,
+        run: &mut RuleRun,
+        opts: RunOptions,
+    ) -> Result<RuleOutput, RuleError> {
+        let mut engine = build_engine_with_control(&self.limits, opts.control.clone());
 
         let ctx = Arc::new(GridCtx {
             data: self.data.clone(),
@@ -97,30 +129,45 @@ impl RuleEngine {
         ));
         let write_meter = Arc::new(WriteMeter::new(self.max_writes));
 
+        let job = opts.job.map(|j| JobWiring {
+            id: j.id,
+            seam: j.seam,
+            state: j.state,
+            // The handle's `should_stop()` reads the same control the governor observes; a run
+            // without one gets a fresh never-stopping default inside the handle.
+            control: opts.control.clone().unwrap_or_default(),
+        });
+
         let handles = register(
             &mut engine,
-            ctx,
-            self.data.clone(),
-            allow,
-            inputs.clone(),
-            collectors.clone(),
-            self.ai.clone(),
-            meter.clone(),
-            self.ai_limits.context_rows,
-            self.messaging.clone(),
-            write_meter,
-            run.now,
-            self.route,
-            rule.name.clone(),
+            RunWiring {
+                ctx,
+                data: self.data.clone(),
+                allow,
+                inputs: inputs.clone(),
+                collectors: collectors.clone(),
+                ai_seam: self.ai.clone(),
+                meter: meter.clone(),
+                context_rows: self.ai_limits.context_rows,
+                messaging: self.messaging.clone(),
+                write_meter,
+                now: run.now,
+                route: self.route,
+                origin_ref: rule.name.clone(),
+                limits: self.limits.clone(),
+                job,
+            },
         );
 
-        // Build the scope: the `ai`/`inbox`/`outbox`/`channel`/`insight` handles + each bound param.
+        // Build the scope: the handles + each bound param.
         let mut scope = rhai::Scope::new();
         scope.push("ai", handles.ai);
         scope.push("inbox", handles.inbox);
         scope.push("outbox", handles.outbox);
         scope.push("channel", handles.channel);
         scope.push("insight", handles.insight);
+        scope.push("time", handles.time);
+        scope.push("job", handles.job);
         for (name, value) in inputs.iter() {
             scope.push_dynamic(name.as_str(), value.clone());
         }
@@ -172,6 +219,16 @@ fn grid_to_json(grid: &crate::grid::Grid) -> Result<GridJson, RuleError> {
 /// Map a rhai eval error onto a `RuleError`. A seam error surfaced via our `source not allowed` /
 /// `seam error` text is classified so the MCP layer can keep the deny opaque.
 fn map_eval_error(e: rhai::EvalAltResult) -> RuleError {
+    // The cooperative-control aborts (long-running-rules-scope) — typed so the host can park
+    // (suspend) or finalize (cancel) the job instead of recording an author error. The token rides
+    // the `ErrorTerminated` payload (its Display omits it), so match the variant, not the text.
+    if let rhai::EvalAltResult::ErrorTerminated(token, _) = &e {
+        match token.clone().into_string().as_deref() {
+            Ok(ABORT_PAUSED) => return RuleError::Paused,
+            Ok(ABORT_CANCELLED) => return RuleError::Cancelled,
+            _ => {} // the deadline token stays an Eval (author feedback, unchanged)
+        }
+    }
     let msg = e.to_string();
     if msg.contains("source not allowed") {
         // strip our prefix for the typed error

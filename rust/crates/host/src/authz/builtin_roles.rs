@@ -362,6 +362,14 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:rules.delete:call",
     "store:rule:read",
     "store:rule:write",
+    // job-backed rule runs (long-running-rules-scope) — start + observe + control of the member's
+    // own workspace runs; every data/ai/messaging verb inside a run still re-checks caller ∩ grant.
+    "mcp:rules.run_async:call",
+    "mcp:rules.runs.get:call",
+    "mcp:rules.runs.list:call",
+    "mcp:rules.runs.suspend:call",
+    "mcp:rules.runs.resume:call",
+    "mcp:rules.runs.cancel:call",
     // saved queries — a member AUTHORS/RUNS their own (query.run COMPOSES the target cap, no widening).
     "mcp:query.save:call",
     "mcp:query.run:call",
@@ -394,6 +402,16 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:agent.memory.delete:call",
     // reminders run-now (re-checks the ACTION's own cap under the stored principal).
     "mcp:reminder.fire:call",
+    // undo-exposure scope: a member undoes/redoes their OWN steps. Undo is a mutation (author
+    // tier), and the host's no-escalation check (the original tool's cap) means undo can never
+    // reach beyond the caps the caller already holds. The DOTLESS verb names match none of the
+    // `mcp:*.<verb>:call` wildcards (the wildcard segment is a `<tool>.<verb>` split), so they
+    // must be named concretely here. `history.list` rides the viewer `mcp:*.list:call` read
+    // wildcard; `history.compensations` is its own concrete verb (no wildcard matches it).
+    // `mcp:undo.any:call` (another actor's stack) is ADMIN-only, below.
+    "mcp:undo:call",
+    "mcp:redo:call",
+    "mcp:history.compensations:call",
     // media scope: a member uploads/reads/deletes their own media.
     "mcp:media.upload:call",
     "mcp:media.get:call",
@@ -457,6 +475,13 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:store.tables:call",
     "mcp:store.scan:call",
     "mcp:store.graph:call",
+    // store operational pair (online-compaction scope): node-level maintenance is workspace-data
+    // administration. status re-gates `store:status:read` inside (covered by the inherited
+    // `store:*:read`); compact re-gates the DISTINCT `store:compact:run` — a `run`, not a
+    // `write`, precisely so the author `store:*:write` wildcard can never pause the node.
+    "mcp:store.status:call",
+    "mcp:store.compact:call",
+    "store:compact:run",
     // system map — reads across every subsystem of the workspace.
     "mcp:system.overview:call",
     "mcp:system.topology:call",
@@ -508,6 +533,9 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // invites scope: admin mints/list/revokes/resends invite tokens (accept is pre-auth).
     "mcp:invite.create:call",
     "mcp:invite.list:call",
+    // undo-exposure scope: undoing ANOTHER actor's step touches another principal's work — the
+    // definition of an admin-only cap. Always prominently audited by the host verb.
+    "mcp:undo.any:call",
 ];
 
 /// Does this cap set carry workspace-admin authority? True iff it holds ANY [`ADMIN_ONLY_CAPS`]
@@ -581,6 +609,36 @@ mod tests {
         // The single canonical marker is enough on its own.
         assert!(caps_hold_admin(&["mcp:members.manage:call".to_string()]));
         assert!(!caps_hold_admin(&[]), "an empty cap set is never admin");
+    }
+
+    /// Undo-exposure grants (undo-exposure scope): a member holds the DOTLESS undo verbs (no
+    /// `mcp:*.<verb>:call` wildcard matches them) + `history.compensations`; `undo.any` (another
+    /// actor's stack) is admin-only; a viewer holds none of the mutating three but keeps
+    /// `history.list` via the read wildcard (seeing history you cannot act on is correct).
+    #[test]
+    fn undo_exposure_grants_land_at_the_right_tiers() {
+        let member = member_role_caps();
+        let viewer = viewer_role_caps();
+        for c in [
+            "mcp:undo:call",
+            "mcp:redo:call",
+            "mcp:history.compensations:call",
+        ] {
+            assert!(member.contains(&c.to_string()), "member must hold {c}");
+            assert!(!viewer.contains(&c.to_string()), "viewer must NOT hold {c}");
+        }
+        assert!(
+            admin_only_caps().contains(&"mcp:undo.any:call".to_string()),
+            "undo.any must be admin-only"
+        );
+        assert!(
+            !member.contains(&"mcp:undo.any:call".to_string()),
+            "member must NOT hold undo.any (cross-actor undo is admin authority)"
+        );
+        assert!(
+            viewer.contains(&"mcp:*.list:call".to_string()),
+            "viewer keeps the read wildcard that carries history.list"
+        );
     }
 
     /// A member keeps the LOAD-BEARING caps the `mcp:*.<verb>:call` wildcards miss (`.catalog`/

@@ -58,6 +58,7 @@ pub(crate) mod stream;
 mod surface;
 mod system;
 mod telemetry_stream;
+mod undo;
 mod webhook;
 mod workspace;
 
@@ -160,5 +161,6 @@ pub use stream::channel_stream;
 pub use surface::surface_reach;
 pub use system::{system_acp, system_overview, system_subsystem, system_tools, system_topology};
 pub use telemetry_stream::telemetry_stream;
+pub use undo::{get_undo_compensations, get_undo_history, post_redo, post_undo};
 pub use webhook::post_webhook;
 pub use workspace::{create_workspace, list_workspaces};

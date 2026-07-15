@@ -56,6 +56,10 @@ polars = { version = "=0.54.4", default-features = false, features = [
     "pct_change",
     "ewma",
     "zip_with",
+    # semi_anti_join — Phase 2 addition: `f.join(other, on, "anti")` is in the scope's Frame
+    # catalog and JoinType::Anti is feature-gated. Audited like the rest: it adds join kernels
+    # only (polars-lazy/-ops/-sql), no I/O surface (the sql_security_test probe still passes).
+    "semi_anti_join",
 ] }
 rhai = { version = "1.20", features = ["sync", "serde"] }
 serde.workspace = true

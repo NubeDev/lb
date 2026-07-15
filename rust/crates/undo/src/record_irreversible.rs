@@ -11,7 +11,8 @@ use lb_store::Store;
 
 use crate::error::UndoError;
 use crate::model::{Class, JournalEntry, Kind, DEFAULT_DEPTH_CAP};
-use crate::persist::{load_stack, next_seq, save_entry, save_stack};
+use crate::persist::{load_stack, next_seq, save_entry};
+use crate::prune::save_stack_pruning;
 
 /// What a caller hands us to record an irreversible/compensable step.
 pub struct RecordIrreversible<'a> {
@@ -27,6 +28,9 @@ pub struct RecordIrreversible<'a> {
     pub class: Class,
     /// Optional group id (for a multi-step action). Defaults to the step's own seq.
     pub group: Option<String>,
+    /// Bounded stack depth: steps that fall past this are pruned (event + live companion deleted)
+    /// in the same transaction as the cursor push. `None` = [`DEFAULT_DEPTH_CAP`].
+    pub depth_cap: Option<usize>,
 }
 
 /// Record the not-undoable step and push it onto the actor's stack. Returns the step `seq`.
@@ -53,8 +57,8 @@ pub async fn record_irreversible(
     save_entry(store, rec.ws, &entry).await?;
 
     let mut stack = load_stack(store, rec.ws, rec.actor, rec.surface).await?;
-    stack.push_do(seq, DEFAULT_DEPTH_CAP);
-    save_stack(store, rec.ws, &stack).await?;
+    let pruned = stack.push_do(seq, rec.depth_cap.unwrap_or(DEFAULT_DEPTH_CAP));
+    save_stack_pruning(store, rec.ws, &stack, &pruned).await?;
 
     Ok(seq)
 }

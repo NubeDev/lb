@@ -10,12 +10,13 @@
 use lb_auth::Principal;
 use lb_caps::{check, Action, Decision, Request, Surface};
 use lb_flows::{validate_flow, Flow, FlowSummary, MAX_FLOW_NODES};
-use lb_store::{read, scan, write, Store};
+use lb_store::{read, write, Store};
 use serde_json::Value;
 
 use super::error::FlowsError;
 use super::nodes::merged_registry_internal;
 use super::record::FLOW_TABLE;
+use super::scan_all::scan_all;
 
 /// Persist a flow after validating its DAG + every node config against its descriptor's schema.
 /// Editing an existing flow bumps its `version` (Decision 1). Returns the id.
@@ -275,11 +276,11 @@ pub async fn flows_list(
 /// Internal list (no auth gate) returning full `Flow`s — for the reactors (cron scan, reconciler)
 /// that hold their own authority. Workspace-scoped by `scan`; never another workspace's flows.
 pub async fn flows_list_internal(store: &Store, ws: &str) -> Result<Vec<Flow>, FlowsError> {
-    let page = scan(store, ws, FLOW_TABLE, lb_store::MAX_SCAN_LIMIT, None)
+    let rows = scan_all(store, ws, FLOW_TABLE)
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?;
     let mut out = Vec::new();
-    for row in page.rows {
+    for row in rows {
         let inner = match row.data {
             Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),
             other => other,

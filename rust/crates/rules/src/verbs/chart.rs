@@ -141,7 +141,7 @@ fn trim_to(map: &mut Map, cols: &[String]) {
 /// an ISO-8601 string, epoch-seconds, or epoch-ms. Heuristic for the int case: a value below ~1e12 is
 /// treated as seconds (year ~33658 in ms is the crossover; every realistic epoch-secs value is below
 /// it and every realistic epoch-ms value is above). Floats are truncated. `None` if unparseable.
-fn to_epoch_ms(d: &Dynamic) -> Option<i64> {
+pub(crate) fn to_epoch_ms(d: &Dynamic) -> Option<i64> {
     if let Ok(i) = d.as_int() {
         return Some(normalize_epoch(i));
     }

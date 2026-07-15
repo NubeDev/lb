@@ -58,6 +58,7 @@ mod role;
 mod rules;
 mod run_events;
 mod serve;
+mod store_admin;
 mod store_mutate;
 mod store_query;
 mod sync;
@@ -349,6 +350,12 @@ pub use run_events::{
     RunWatch, AGENT_CONTROL_TOOL,
 };
 pub use serve::{serve_ext, ToolServer};
+pub use store_admin::{
+    authorize_store_compact, authorize_store_status, call_store_admin_tool, drain_compact_jobs,
+    over_threshold_advisory, spawn_store_compact_reactors, store_compact_enqueue, store_status_run,
+    StoreAdminError, StoreStatusReport, LOG_ADVISORY_BYTES, STORE_COMPACT_JOB_KIND,
+    STORE_COMPACT_PERIOD,
+};
 pub use store_mutate::{
     authorize_store_mutate, call_store_mutate_tool, store_delete_run, store_write_run,
     StoreMutateError,

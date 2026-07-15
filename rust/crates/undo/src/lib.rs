@@ -29,6 +29,7 @@ mod history;
 mod model;
 mod peek;
 mod persist;
+mod prune;
 mod record_captured;
 mod record_change;
 mod record_irreversible;

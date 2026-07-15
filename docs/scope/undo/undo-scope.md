@@ -330,4 +330,7 @@ These are decided for v1, not open. Each names the rejected alternative so the *
   orchestrator is a jobs-adjacent follow-up.
 - `key-stack.md` — the `undo` / reversible-command-journal row (row 44; before-image + store-managed
   `rev` over the `write_tx` seam).
+- `undo-exposure-scope.md` — the follow-on slice: role grants + typed gateway routes + the shell
+  affordance (plus pre-exposure hardening and the §2.3 sync proof) that take this mechanism from
+  host-internal to product-reachable.
 </content>

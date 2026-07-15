@@ -23,6 +23,7 @@ use lb_undo::{
 };
 use serde_json::Value;
 
+use super::decide::{decide, BeforeRead, Decision};
 use super::plan::{plan_capture, CapturePlan};
 
 /// Run `call` (the real dispatch future) under a taint scope and auto-journal it. `out` is returned
@@ -46,12 +47,17 @@ where
     let plan = plan_capture(qualified_tool, input);
 
     // Snapshot the before-image FIRST for a capturable reversible plan (we cannot read it after the
-    // tool has overwritten the record). For other plans there is nothing to snapshot up front.
+    // tool has overwritten the record). A read ERROR is kept distinct from a successful absent read
+    // — `decide` maps it to not-undoable, never to a journaled "absent" (which a later undo would
+    // restore by deleting real data; see `decide.rs`).
     let before = match &plan {
         CapturePlan::Reversible { table, id } => Some((
             table.clone(),
             id.clone(),
-            read_versioned(store, ws, table, id).await.ok(),
+            match read_versioned(store, ws, table, id).await {
+                Ok(v) => BeforeRead::Read(v),
+                Err(_) => BeforeRead::Failed,
+            },
         )),
         _ => None,
     };
@@ -90,7 +96,7 @@ async fn journal(
     group: Option<String>,
     declared_compensation: Option<&str>,
     plan: CapturePlan,
-    before: Option<(String, String, Option<lb_store::Versioned>)>,
+    before: Option<(String, String, BeforeRead)>,
     verdict: TaintVerdict,
 ) {
     let actor = principal.sub();
@@ -99,35 +105,41 @@ async fn journal(
     let ts = 0;
     let trace_id = "";
 
-    // Taint wins over the static plan: anything that reached the outbox is not-undoable, classified
-    // from the taint (the max-composition rule — derived, never trusted from a manifest).
-    if verdict.reached_outbox {
-        let class = classify(true, declared_compensation);
-        let _ = record_irreversible(
-            store,
-            RecordIrreversible {
-                ws,
-                actor,
-                surface: "",
-                tool,
-                trace_id,
-                ts,
-                class,
-                group,
-            },
-        )
-        .await;
-        return;
-    }
+    // Split the snapshot into the target (table, id) and the read outcome the decision consumes.
+    let (target, before_read) = match before {
+        Some((table, id, read)) => (Some((table, id)), Some(read)),
+        None => (None, None),
+    };
 
-    match plan {
-        // A capturable single-record reversible mutation → an undoable before-image entry.
-        CapturePlan::Reversible { .. } => {
-            if let Some((table, id, before_v)) = before {
-                let (before_val, before_rev) = match before_v {
-                    Some(v) => (v.value, v.rev),
-                    None => (None, 0),
-                };
+    // The whole outcome table lives in `decide` (pure, unit-tested): taint wins; a read ERROR is
+    // not-undoable, never "absent"; a non-generic mutation gets a marker; a pure read journals
+    // nothing.
+    match decide(
+        &plan,
+        before_read,
+        verdict.reached_outbox,
+        verdict.wrote_store,
+    ) {
+        Decision::Tainted => {
+            let class = classify(true, declared_compensation);
+            let _ = record_irreversible(
+                store,
+                RecordIrreversible {
+                    ws,
+                    actor,
+                    surface: "",
+                    tool,
+                    trace_id,
+                    ts,
+                    class,
+                    group,
+                    depth_cap: None,
+                },
+            )
+            .await;
+        }
+        Decision::Undoable { before, before_rev } => {
+            if let Some((table, id)) = target {
                 let _ = record_captured(
                     store,
                     RecordCaptured {
@@ -139,18 +151,18 @@ async fn journal(
                         ts,
                         table: &table,
                         id: &id,
-                        before: before_val,
+                        before,
                         before_rev,
                         group,
+                        depth_cap: None,
                     },
                 )
                 .await;
             }
         }
-        // Mutated the store but we cannot generically name what it touched → not-undoable marker.
-        // (Untainted, so `classify` yields Reversible; we OVERRIDE to Irreversible because the
-        // record is real but not safely restorable — the honest "non-generic" floor.)
-        CapturePlan::NonGeneric if verdict.wrote_store => {
+        // A real mutation with no safe before-image (non-generic, or the before read FAILED): a
+        // not-undoable marker, so undo refuses honestly instead of restoring an unobserved state.
+        Decision::NotUndoable => {
             let _ = record_irreversible(
                 store,
                 RecordIrreversible {
@@ -162,12 +174,11 @@ async fn journal(
                     ts,
                     class: Class::Irreversible,
                     group,
+                    depth_cap: None,
                 },
             )
             .await;
         }
-        // Non-generic but wrote nothing (a pure read extension tool), or a known read verb: nothing
-        // to journal.
-        CapturePlan::NonGeneric | CapturePlan::NotMutating => {}
+        Decision::Nothing => {}
     }
 }

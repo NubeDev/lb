@@ -42,7 +42,8 @@ use crate::routes::{
     set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
     set_nav_hidden, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
     share_report, start_extension, surface_reach, system_acp, system_overview, system_subsystem,
-    system_tools, system_topology, telemetry_stream, test_active_def, test_datasource, test_def,
+    get_undo_compensations, get_undo_history, post_redo, post_undo, system_tools, system_topology,
+    telemetry_stream, test_active_def, test_datasource, test_def,
     uninstall_extension, unshare_nav, update_def, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
@@ -442,6 +443,16 @@ pub fn router(gw: Gateway) -> Router {
         // missing; the bus subject is ws-walled so a ws-B session never observes ws-A. There is NO
         // telemetry.write route — writes come from the SurrealCappedLayer only.
         .route("/telemetry/stream", get(telemetry_stream))
+        // undo (undo-exposure scope) — the shell's platform undo/redo affordance. Each route
+        // re-checks its `mcp:<verb>:call` server-side; ws + principal from the token; the typed
+        // `ok:false` refusal shapes (stale | not_undoable | empty) pass through as data.
+        .route("/undo", post(post_undo))
+        .route("/redo", post(post_redo))
+        .route("/undo/history", get(get_undo_history))
+        .route(
+            "/undo/history/{seq}/compensations",
+            get(get_undo_compensations),
+        )
         // bus (widget-config-vars "Platform fix") — generic workspace-walled pub/sub. `POST /bus/publish`
         // is the fire-and-forget motion sink; `GET /bus/{subject}/stream?token=` is the live subscribe
         // (the motion analog of the series stream, for non-series subjects). Subject walled from the token.

@@ -25,7 +25,8 @@ use serde_json::Value;
 
 use crate::error::UndoError;
 use crate::model::{Class, JournalEntry, Kind, TouchedRecord, DEFAULT_DEPTH_CAP};
-use crate::persist::{load_stack, next_seq, save_entry, save_stack};
+use crate::persist::{load_stack, next_seq, save_entry};
+use crate::prune::save_stack_pruning;
 
 /// What a caller hands us to journal an already-applied reversible single-record change.
 pub struct RecordCaptured<'a> {
@@ -45,6 +46,9 @@ pub struct RecordCaptured<'a> {
     /// Group id for a multi-step action (a job/batch). `None` = a standalone step (group = its own
     /// seq). Threaded through so grouped undo can reverse a whole group all-or-nothing later.
     pub group: Option<String>,
+    /// Bounded stack depth: steps that fall past this are pruned (event + live companion deleted)
+    /// in the same transaction as the cursor push. `None` = [`DEFAULT_DEPTH_CAP`].
+    pub depth_cap: Option<usize>,
 }
 
 /// Journal a `Do` entry for an already-applied reversible change, reading its after-image + `rev`
@@ -79,8 +83,8 @@ pub async fn record_captured(store: &Store, rec: RecordCaptured<'_>) -> Result<u
     save_entry(store, rec.ws, &entry).await?;
 
     let mut stack = load_stack(store, rec.ws, rec.actor, rec.surface).await?;
-    stack.push_do(seq, DEFAULT_DEPTH_CAP);
-    save_stack(store, rec.ws, &stack).await?;
+    let pruned = stack.push_do(seq, rec.depth_cap.unwrap_or(DEFAULT_DEPTH_CAP));
+    save_stack_pruning(store, rec.ws, &stack, &pruned).await?;
 
     Ok(seq)
 }

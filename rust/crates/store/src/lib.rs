@@ -8,6 +8,7 @@
 //! State only (§3.3): the store holds state; motion is the bus's job. No pub/sub here.
 
 mod capped;
+mod compact;
 mod create;
 mod delete;
 mod graph;
@@ -18,6 +19,7 @@ mod read;
 mod read_versioned;
 mod record;
 mod scan;
+mod status;
 mod tables;
 mod taint;
 mod write;
@@ -27,6 +29,7 @@ mod write_locked;
 mod write_tx;
 
 pub use capped::{capped_insert, new_ulid};
+pub use compact::{compact, CompactionRecord};
 pub use create::create;
 pub use delete::delete;
 pub use graph::{graph, Edge as GraphEdge, Graph, Node as GraphNode, MAX_FANOUT, MAX_SEED};
@@ -37,6 +40,7 @@ pub use read::read;
 pub use read_versioned::read_versioned;
 pub use record::{Versioned, FIRST_REV};
 pub use scan::{scan, Page, Row, MAX_SCAN_LIMIT};
+pub use status::{status, StoreStatus};
 pub use tables::{tables, TableCount};
 pub use taint::{
     mark_outbox_reached, mark_store_written, outbox_was_reached, store_was_written, taint_scope,

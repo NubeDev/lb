@@ -89,6 +89,19 @@ pub trait MessagingSeam: Send + Sync {
     fn call(&self, tool: &str, input: serde_json::Value) -> Result<serde_json::Value, SeamError>;
 }
 
+/// The durable checkpoint/progress boundary for a **job-backed** run (long-running-rules-scope).
+/// Implemented host-side over the `lb-jobs` transcript (append-addressed → idempotent under
+/// replay): `job.set`/`job.step` persist through `checkpoint`, `job.progress` through `progress`.
+/// A synchronous `rules.run` has no seam — the `job` handle degrades to ephemeral in-memory state,
+/// so the same body runs in both modes.
+pub trait JobSeam: Send + Sync {
+    /// Durably record checkpoint `key` = `value` (JSON) for this run. Replay-idempotent.
+    fn checkpoint(&self, key: &str, value: &serde_json::Value) -> Result<(), SeamError>;
+    /// Durably record a progress beat (`pct` 0–100 when given). Best-effort ordering; bounded by
+    /// the handle's progress cap so a loop cannot flood the store.
+    fn progress(&self, pct: Option<u32>, msg: &str) -> Result<(), SeamError>;
+}
+
 /// The outcome of a denied-or-failed [`MessagingSeam::call`]. `Denied` stays opaque at the handle (a
 /// rule cannot tell a capability deny from "empty"); `Failed` is author feedback surfaced verbatim.
 #[derive(Debug, Clone)]

@@ -35,6 +35,7 @@ pub mod run_debug;
 pub mod run_store;
 pub mod runs;
 pub mod save;
+pub mod scan_all;
 pub mod source;
 pub mod trigger_store;
 pub mod triggers;

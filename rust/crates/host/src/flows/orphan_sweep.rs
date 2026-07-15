@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_store::{scan, Store, MAX_SCAN_LIMIT};
+use lb_store::Store;
 use serde_json::Value;
 
 use crate::boot::Node;
@@ -22,6 +22,7 @@ use crate::boot::Node;
 use super::error::FlowsError;
 use super::record::FLOW_NODE_STATE_TABLE;
 use super::save::flows_list_internal;
+use super::scan_all::scan_all;
 use super::source::disarm_source;
 
 /// One armed-source marker: the `{flow, node}` it belongs to. An armed marker is a `flow_node_state`
@@ -72,12 +73,12 @@ pub async fn sweep_orphan_sources(
 /// under the store envelope's `data`. A row is a marker iff its body has `armed == true` AND a
 /// `series` string (a last-value record has neither).
 async fn armed_markers(store: &Store, ws: &str) -> Result<Vec<ArmedMarker>, FlowsError> {
-    let page = scan(store, ws, FLOW_NODE_STATE_TABLE, MAX_SCAN_LIMIT, None)
+    let rows = scan_all(store, ws, FLOW_NODE_STATE_TABLE)
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?;
     let prefix = format!("{FLOW_NODE_STATE_TABLE}:");
     let mut out = Vec::new();
-    for row in page.rows {
+    for row in rows {
         let body = match &row.data {
             Value::Object(o) => o.get("data").cloned().unwrap_or(Value::Null),
             other => other.clone(),

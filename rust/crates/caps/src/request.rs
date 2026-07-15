@@ -66,6 +66,10 @@ pub enum Action {
     Connect,
     /// Open (reach) a core surface (the `reach` surface): `reach:rules:view` (nav-reach scope).
     View,
+    /// Trigger a maintenance pass (the `store` surface): `store:compact:run` (online-compaction
+    /// scope). Distinct from `Write` — running a pass rewrites the engine's log bytes but never
+    /// mutates a record, so a broad `store:*:write` author grant must NOT imply it.
+    Run,
     Any,
 }
 
@@ -81,6 +85,7 @@ impl Action {
             Action::Get => "get",
             Action::Connect => "connect",
             Action::View => "view",
+            Action::Run => "run",
             Action::Any => "*",
         }
     }
@@ -96,6 +101,7 @@ impl Action {
             "get" => Some(Action::Get),
             "connect" => Some(Action::Connect),
             "view" => Some(Action::View),
+            "run" => Some(Action::Run),
             "*" => Some(Action::Any),
             _ => None,
         }

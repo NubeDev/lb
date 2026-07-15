@@ -114,7 +114,9 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   reads the `audit/` ledger lane — the self-contained, no-external-Grafana-required view), `audit/` (an
   immutable, hash-chained, workspace-walled ledger of every allow/deny — generalizes
   §6.14's model-call audit), and `undo/` (a reversible-command journal whose hard line is *reverse
-  state, compensate motion*). See "The shared seam" in `observability/observability-scope.md`.
+  state, compensate motion* — `undo-scope.md` is the shipped mechanism; `undo-exposure-scope.md` is
+  the follow-on slice that makes it product-reachable: role grants + typed gateway routes + the
+  shell affordance). See "The shared seam" in `observability/observability-scope.md`.
 - `auth-caps/` — the capability grammar, token, and grant delegation; plus `edge-trust-scope.md` (node
   enrollment/cert + mTLS + token-on-the-bus), `authz-grants-scope.md` (durable roles/grants/teams —
   restricted user/team access), `admin-crud-scope.md` (the destructive half — workspace/user/team/
@@ -242,7 +244,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   mutex that serializes every query node-wide: measured, 18 concurrent writers each in their OWN
   workspace take 7.0ms = 18 × 0.4ms (zero parallelism). Deliberate — it makes `use_ns` + query one
   critical section and removing it reintroduces a cross-workspace leak — and cheap enough today
-  (0.4ms/op) that the recommendation is spike-before-coding, not fix. `core/` also holds
+  (0.4ms/op) that the recommendation is spike-before-coding, not fix. `store/` also holds
+  `online-compaction-scope.md` — bound a **long-running** node's SurrealKV commit log: boot-time
+  compaction and the retention-GC reactor shipped, but on an append-only engine runtime evictions
+  only append tombstones, so bytes (and next-boot replay) grow until restart (measured: ~65× bloat,
+  13–14s boot). Ships `store.status` observability first; the compaction pass itself is a
+  spike-decided handle-swap job behind the session mutex, with supervised restart-to-compact as the
+  honest fallback. `core/` also holds
   `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
   + a runnable `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs
   all speak one grammar the palette and `lb` CLI render mechanically; renames the outliers
