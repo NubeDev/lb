@@ -149,22 +149,49 @@ pub async fn resolve_subject_caps_with(
     for cap in grant_list(store, ws, subject).await? {
         match cap.strip_prefix("role:") {
             Some(role) => {
-                // A role contributes BOTH its defined record caps (`role_define`) AND any caps granted
-                // directly to the role subject (`grant_assign(Subject::Role(name), cap)`). The latter
-                // is how an installed extension's page tools reach every holder of the role without
-                // touching a built-in role's (immutable) record — an ordinary grant, per authz-grants
-                // scope. Recurse through `resolve_subject_caps_with` so a role granted another `role:`
-                // also expands (bounded: role→role cycles just re-insert into the dedup set).
-                for rc in role_caps(store, ws, role).await? {
-                    caps.insert(rc);
-                }
-                // BUILTIN-ROLE FRESHNESS: a built-in role's authoritative cap set is the LIVE bundle
-                // (host `*_role_caps()`), not the stale stored row. Union it on top so a newly-added
-                // built-in cap reaches already-seeded workspaces. Custom roles (no live bundle) and
-                // direct role-subject grants below are unaffected.
-                if let Some(live) = builtins.live_caps(role) {
-                    for rc in live {
-                        caps.insert(rc);
+                // A role contributes BOTH its record caps AND any caps granted directly to the role
+                // subject (`grant_assign(Subject::Role(name), cap)`). The latter is how an installed
+                // extension's page tools reach every holder of the role without touching a built-in
+                // role's (immutable) record — an ordinary grant, per authz-grants scope. It is
+                // resolved by the `role_subject` recursion BELOW, not here.
+                //
+                // BUILTIN-ROLE FRESHNESS: for a BUILT-IN name the live bundle (host `*_role_caps()`)
+                // is authoritative and REPLACES the stored record — the row is not consulted at all.
+                // For a custom role (`live_caps` → `None`) the stored record is authoritative, exactly
+                // as before.
+                //
+                // This was a UNION until 2026-07-16, which made the live bundle a *floor* — it could
+                // add a cap to a stale workspace but never remove one. That is fine while bundles only
+                // ever grow; it is a security hole the moment one shrinks. When the broad `mcp:*.list`
+                // / `mcp:*.delete` wildcards were removed from the member bundle (they authorized ten
+                // admin-only caps — see `debugging/auth/member-wildcard-satisfies-admin-cap.md`), every
+                // workspace seeded by the older binary kept them: `ensure_one` is create-only, so the
+                // stale row survives the upgrade and the union folded its wildcards straight back into
+                // every member's token. The fix was inert on exactly the deployments that had the bug.
+                //
+                // Replace loses nothing the union bought: the `Subject::Role` grant path that motivated
+                // it is the recursion BELOW, not the record, so an extension's
+                // `grant_assign(Subject::Role("member"), cap)` still reaches every member.
+                //
+                // It DOES mean a `roles.define("member", ...)` no longer affects what a member
+                // resolves (`roles.define` has no built-in guard today — only `roles.delete` does).
+                // That is the intended posture, not a casualty: a built-in bundle is lb's policy, and
+                // an admin redefining `member` to widen it is precisely the escalation this module
+                // exists to prevent. No-widening already stops them adding a cap they lack, and an
+                // admin who wants to grant caps to every member has the supported path —
+                // `grant_assign(Subject::Role("member"), cap)` — which still works. Custom roles are
+                // entirely unaffected. `live_builtin_caps_replace_the_stale_role_row` pins both
+                // directions.
+                match builtins.live_caps(role) {
+                    Some(live) => {
+                        for rc in live {
+                            caps.insert(rc);
+                        }
+                    }
+                    None => {
+                        for rc in role_caps(store, ws, role).await? {
+                            caps.insert(rc);
+                        }
                     }
                 }
                 let role_subject = Subject::Role(role.to_string());

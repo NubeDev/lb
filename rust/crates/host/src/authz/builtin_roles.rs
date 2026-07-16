@@ -40,9 +40,27 @@
 //! authenticated principal holds — and member/admin caps ride their ROLE grant through `resolve_caps`,
 //! so a `viewer`-role token is never silently re-widened to a member (the leak that let bob reach Rules).
 //!
-//! Load-bearing (do NOT re-classify): the `.catalog`/`.pin` render caps the `mcp:*.<verb>:call`
-//! wildcards miss (see `credentials.rs` history) live in the VIEWER set — guarded by the unit tests
-//! here (`viewer_bundle_keeps_render_path`) and by `credentials.rs`'s tests over the viewer floor.
+//! **No broad `mcp:*.<verb>:call` wildcard in the viewer/member bundles.** These bundles name their
+//! verbs concretely, and `no_member_or_viewer_wildcard_may_span_an_admin_only_cap` enforces it against
+//! the real matcher. The reason is the 2026-07-16 regression: the bundles once carried
+//! `mcp:*.get|list:call` (viewer) and `mcp:*.write|create|update|delete|post:call` (author) as a
+//! shorthand for "all the CRUD". But a bundle's reach is not what it LITERALLY lists — it is what
+//! [`holds_cap`] authorizes, and that is wildcard-aware. The `*` segment is the `<tool>` half of
+//! `<tool>.<verb>`, so `mcp:*.list:call` spanned `teams.list` / `roles.list` / `grants.list` /
+//! `invite.list`, and `mcp:*.delete:call` spanned `workspace.delete` — TEN admin-only caps authorized
+//! for every plain member, five for every viewer, live (`GET /admin/teams` and `roles.list` both
+//! returned 200 to `user:bob`, a plain member). Every literal `!bundle.contains(admin_cap)` test in
+//! this file passed throughout: the wildcard is invisible to a membership check.
+//!
+//! This is the SAME `user:bob` escalation described above, returning through the grammar instead of
+//! the grant. The lesson is that a role bundle is a POLICY statement and must be exhaustive-by-name;
+//! a wildcard in a bundle is an open-ended promise about verbs that do not exist yet. When you add an
+//! author verb, name it. If that feels tedious, that tedium is the feature — it is what makes the
+//! blast radius of a new admin verb reviewable.
+//!
+//! Load-bearing (do NOT re-classify): the `.catalog`/`.pin` render caps live in the VIEWER set —
+//! guarded by the unit tests here (`viewer_bundle_keeps_render_path`) and by `credentials.rs`'s tests
+//! over the viewer floor.
 //! The datasource-REGISTRATION chain (`datasource.add`/`native.call`/`secret:federation/*:write`) is
 //! AUTHOR-tier — a viewer reads sources (`federation.query`) but does not register them.
 
@@ -261,10 +279,25 @@ const VIEWER_CAPS: &[&str] = &[
     // shared-asset doc/skill store READS (gate-3/ownership owns which specific asset). Writes are author.
     "store:doc/*:read",
     "store:skill/**:read",
-    // generic per-workspace store READ + the verb-READ wildcards (list/get). WRITE wildcards are author.
+    // The reads the retired `mcp:*.get:call` / `mcp:*.list:call` wildcards used to supply, now named.
+    // Each is a viewer-tier read whose target is gate-3/ownership-scoped (you see only your own rows).
+    // NOT restored, deliberately: `secret.get` / `secret.list` — a viewer must not enumerate the
+    // secret plane even by name. They were reachable ONLY through the retired wildcard, never named
+    // by any bundle, and their own inner gate already denies (verified live: `secret.list` → 403), so
+    // naming them here would have widened the floor to match a bug.
+    "mcp:channel.list:call",
+    "mcp:dbschema.get:call",
+    "mcp:dbschema.list:call",
+    "mcp:device.list:call",
+    "mcp:history.list:call",
+    "mcp:media.list:call",
+    "mcp:nav.hidden.get:call",
+    "mcp:nav.pref.get:call",
+    // generic per-workspace store READ. The verb-READ wildcards that used to live here
+    // (`mcp:*.get:call` / `mcp:*.list:call`) are GONE — see the module note on the wildcard span:
+    // their span silently covered the admin-only `teams.list` / `roles.list` / `grants.list` /
+    // `invite.list` / `series.retention.list`, which is not a viewer's to see.
     "store:*:read",
-    "mcp:*.get:call",
-    "mcp:*.list:call",
 ];
 
 /// **Author delta** — the caps a `member` holds over a `viewer`: the build/run surface a member
@@ -421,15 +454,26 @@ const AUTHOR_CAPS: &[&str] = &[
     // shared-asset doc/skill store WRITES (gate-3/ownership owns which specific asset).
     "store:doc/*:write",
     "store:skill/**:write",
-    // generic per-workspace store WRITE + the verb-CRUD WRITE wildcards (the bulk of member authoring).
-    // These broad wildcards are what make `member` an author — a `viewer` deliberately lacks them so a
-    // one-page nav truly restricts reach (a wildcard `mcp:*.delete:call` would re-open every editor).
+    // The author verbs the retired `mcp:*.write|create|update|delete|post:call` wildcards supplied,
+    // now named. Each is a member's own authoring reach; gate-3/ownership still owns WHICH record.
+    // NOT restored, deliberately: `secret.delete` (the secret plane is not an author's to mutate) and
+    // `teams.create` / `roles.delete` (admin verbs — their tools dispatch on `teams.manage` /
+    // `roles.manage`, so the retired wildcard never actually reached them, but naming them here would
+    // grant by the back door what `ADMIN_ONLY_CAPS` denies by the front).
+    "mcp:channel.create:call",
+    "mcp:channel.delete:call",
+    "mcp:channel.post:call",
+    "mcp:reminder.create:call",
+    "mcp:reminder.update:call",
+    "mcp:reminder.delete:call",
+    "mcp:store.write:call",
+    "mcp:store.delete:call",
+    // generic per-workspace store WRITE. The verb-CRUD WRITE wildcards that used to live here are
+    // GONE — see the module note on the wildcard span. They were what made `member` an author, but
+    // their span also silently covered the admin-only `invite.create` / `nav.delete` (and reached
+    // `workspace.create` / `workspace.delete` / `series.delete` / `ext.list` through the same hole),
+    // which is the `user:bob` escalation this module exists to prevent, returning by wildcard.
     "store:*:write",
-    "mcp:*.write:call",
-    "mcp:*.create:call",
-    "mcp:*.update:call",
-    "mcp:*.delete:call",
-    "mcp:*.post:call",
 ];
 
 /// Admin-only caps — the delta a `workspace-admin` holds over a `member`. These MANAGE other
@@ -441,9 +485,15 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:members.manage:call",
     "mcp:teams.manage:call",
     "mcp:teams.list:call",
+    // `teams.create` / `roles.delete` name the same authority as `teams.manage` / `roles.manage`
+    // (their tools dispatch on those, so these names are not independently reachable today). Listed
+    // anyway: the wildcard-span test is only as good as this list, and an unlisted admin verb is
+    // exactly how a future `mcp:*.create:call` would re-open the hole undetected.
+    "mcp:teams.create:call",
     "mcp:roles.define:call",
     "mcp:roles.list:call",
     "mcp:roles.manage:call",
+    "mcp:roles.delete:call",
     "mcp:grants.assign:call",
     "mcp:grants.list:call",
     "mcp:user.manage:call",
@@ -555,6 +605,8 @@ pub fn caps_hold_admin(caps: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::authz::holds_cap;
+    use lb_auth::Principal;
 
     /// The escalation regression, at the cap-bundle layer: a member's bundle holds NONE of the
     /// admin-only caps the live `user:bob` abused (members.add / teams.manage / grants.assign /
@@ -635,9 +687,14 @@ mod tests {
             !member.contains(&"mcp:undo.any:call".to_string()),
             "member must NOT hold undo.any (cross-actor undo is admin authority)"
         );
+        // A viewer still REACHES `history.list` — asserted through the matcher, not by naming the
+        // mechanism. This once read `viewer.contains("mcp:*.list:call")`, which pinned the very
+        // wildcard that leaked `teams.list`/`roles.list`; the reach is the contract, the wildcard was
+        // only ever one way to supply it (now: named concretely in VIEWER_CAPS).
+        let v = Principal::routed("user:probe", "acme", viewer.clone());
         assert!(
-            viewer.contains(&"mcp:*.list:call".to_string()),
-            "viewer keeps the read wildcard that carries history.list"
+            holds_cap(&v, "acme", "mcp:history.list:call"),
+            "viewer must still reach history.list"
         );
     }
 
@@ -684,6 +741,52 @@ mod tests {
             assert!(
                 !member.contains(&c),
                 "member must hold NO admin-only cap: {c}"
+            );
+        }
+    }
+
+    /// **The wildcard-span invariant** — the one that actually binds, and the gap every other test in
+    /// this module missed. The checks above ask `bundle.contains(cap)`: a LITERAL membership test. But
+    /// the wall does not enforce literal membership — it enforces [`holds_cap`], which is wildcard-aware
+    /// by design ("would this pass Gate 2?"). So a bundle can hold NO admin cap literally while its
+    /// broad author wildcards AUTHORIZE a dozen of them. That is precisely what happened: `AUTHOR_CAPS`
+    /// granted `mcp:*.list:call` / `mcp:*.delete:call` / `mcp:*.create:call`, whose span silently
+    /// covered `teams.list`, `roles.list`, `grants.list`, `invite.list`/`create`, `ext.list`,
+    /// `series.delete`, `nav.delete`, and `workspace.create`/`delete` — ten admin-only caps, live, for
+    /// every plain member (observed 2026-07-16: `GET /admin/teams` and `roles.list` both 200 as
+    /// `user:bob`). This is the `user:bob` escalation this module was WRITTEN to prevent, returning
+    /// through the wildcard path the literal tests cannot see.
+    ///
+    /// The rule this pins: **a broad wildcard must never span an admin-only cap.** It is asserted
+    /// through the real matcher against the real bundles, so any future wildcard added to `AUTHOR_CAPS`
+    /// or `VIEWER_CAPS` that reaches an admin verb fails HERE — at the bundle it was added to — rather
+    /// than leaking into production behind whichever caller probes it next. Adding an admin-only cap
+    /// whose verb collides with an existing author wildcard fails here too, which is the other half of
+    /// the class.
+    #[test]
+    fn no_builtin_bundle_may_span_an_admin_only_cap() {
+        for (role, caps) in [
+            ("member", member_role_caps()),
+            ("viewer", viewer_role_caps()),
+            // The API-key data-plane bundles had the identical hole, one layer down: they reasoned
+            // that action-naming (`*.list` not `*.*`) kept a data key out of `apikey.manage`, which
+            // was true and insufficient — `*.list` still spanned `teams.list`/`roles.list`. They are
+            // asserted HERE because `lb-apikey` sits below `lb-host` and cannot see this list.
+            ("apikey-read", lb_apikey::apikey_read_caps()),
+            ("apikey-write", lb_apikey::apikey_write_caps()),
+        ] {
+            let principal = Principal::routed("user:probe", "acme", caps);
+            let spanned: Vec<String> = admin_only_caps()
+                .into_iter()
+                .filter(|cap| holds_cap(&principal, "acme", cap))
+                .collect();
+            assert!(
+                spanned.is_empty(),
+                "the {role} bundle must not AUTHORIZE any admin-only cap, but its wildcards span \
+                 {}: {spanned:#?}\nA broad `mcp:*.<verb>:call` in the {role} bundle reaches these \
+                 admin verbs through the caps grammar. Name the concrete author verbs instead of \
+                 widening the wildcard — see the module doc.",
+                spanned.len()
             );
         }
     }

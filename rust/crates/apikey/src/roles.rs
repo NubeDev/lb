@@ -4,42 +4,88 @@
 //! the existing chokepoint. These roles ship the common case in one click; finer custom caps are an
 //! ordinary grant on `key:{id}`.
 //!
-//! The write role deliberately grants **action-named** tool-call wildcards (`*.write`, `*.create`,
-//! …), NOT `mcp:*.*:call`: a blanket `*.*` would match the management resource `apikey.manage` and
-//! empower a data key to mint/revoke other keys. The action-named set covers the data-plane write
-//! verbs a read-write appliance needs, without crossing into key administration.
+//! The write role once granted **action-named** tool-call wildcards (`*.write`, `*.create`, …)
+//! rather than a blanket `mcp:*.*:call`, reasoning that `*.*` would match the management resource
+//! `apikey.manage` and let a data key mint/revoke other keys.
+//!
+//! **That reasoning was right about the mechanism and wrong about the blast radius** (fixed
+//! 2026-07-16). Action-naming stops `apikey.manage`, but `*` still spans the `<tool>` half of every
+//! `<tool>.<verb>` — so `mcp:*.list:call` reached the admin-only `teams.list` / `roles.list` /
+//! `grants.list` / `invite.list`, and `mcp:*.delete:call` reached `workspace.delete`. A "read-only"
+//! data key could enumerate the workspace's people, roles and grants; a read-write key could delete
+//! the workspace. `apikey.manage` was never the only management resource — it was the one we thought
+//! of, and a wildcard grants against the verbs that exist tomorrow, not the ones we enumerated today.
+//!
+//! So these bundles now NAME their data-plane verbs. The capability grammar is purely additive (there
+//! is no deny form — see `lb-caps`), which means a bundle cannot subtract; the only way to bound a
+//! bundle is to not over-grant it in the first place. `lb_host::authz` owns the admin-only list and
+//! pins these bundles with `no_builtin_bundle_may_span_an_admin_only_cap` — the assertion cannot live
+//! here, since `lb-apikey` sits below `lb-host` and must not depend on it.
 
 /// The built-in read-only role name.
 pub const ROLE_APIKEY_READ: &str = "apikey-read";
 /// The built-in read-write role name.
 pub const ROLE_APIKEY_WRITE: &str = "apikey-write";
 
-/// The caps the `apikey-read` role bundles: read any store table, plus call any read-shaped tool
-/// (`*.get` / `*.list`). Read-only is then enforced for free — `caps::check` denies any write/call
-/// this set does not hold.
+/// The DATA-PLANE read verbs an `apikey-read` key bundles. Named concretely, never `mcp:*.get:call`
+/// / `mcp:*.list:call` — those spanned the admin-only `teams.list` / `roles.list` / `grants.list`
+/// (see the module note). `store:*:read` stays: it is a store-surface grant whose resource segment is
+/// a table, so it cannot reach an `mcp:` management verb.
+const APIKEY_READ_CAPS: &[&str] = &[
+    "store:*:read",
+    // series reads — the appliance polls its own data.
+    "mcp:series.list:call",
+    "mcp:series.read:call",
+    "mcp:series.latest:call",
+    "mcp:series.find:call",
+    // dashboards / panels / reports the key renders (a LENS; sources re-check per call).
+    "mcp:dashboard.get:call",
+    "mcp:dashboard.list:call",
+    "mcp:panel.get:call",
+    "mcp:panel.list:call",
+    "mcp:report.get:call",
+    "mcp:report.list:call",
+    // channels / media / insights the appliance reads.
+    "mcp:channel.list:call",
+    "mcp:media.list:call",
+    "mcp:media.get:call",
+    "mcp:insight.list:call",
+    "mcp:insight.get:call",
+    // saved queries + their compiled reads (query.run composes the target cap — no widening).
+    "mcp:query.get:call",
+    "mcp:query.list:call",
+    "mcp:query.run:call",
+];
+
+/// The DATA-PLANE write verbs an `apikey-write` key adds. Named concretely, never
+/// `mcp:*.write|create|update|delete|post:call` — those spanned the admin-only `invite.create` /
+/// `nav.delete` and reached `workspace.delete` (see the module note).
+const APIKEY_WRITE_CAPS: &[&str] = &[
+    "store:*:write",
+    // the appliance's reason to exist: push series data in. (`ingest.write` IS the series-append
+    // path — there is no `series.append` verb; series writes ride ingest.)
+    "mcp:ingest.write:call",
+    // channel produce.
+    "mcp:channel.post:call",
+    "mcp:bus.publish:call",
+    // media upload — a REST-surface cap (no MCP tool of that name), same as in the member bundle.
+    "mcp:media.upload:call",
+    // insight raise (an appliance reports conditions).
+    "mcp:insight.raise:call",
+];
+
+/// The caps the `apikey-read` role bundles: read any store table, plus the named data-plane read
+/// verbs. Read-only is then enforced for free — `caps::check` denies any write/call this set does
+/// not hold.
 pub fn apikey_read_caps() -> Vec<String> {
-    ["store:*:read", "mcp:*.get:call", "mcp:*.list:call"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    APIKEY_READ_CAPS.iter().map(|s| s.to_string()).collect()
 }
 
-/// The caps the `apikey-write` role bundles: `apikey-read` plus store writes and the write-shaped
-/// tool-call actions. Action-named (not `*.*`) so a data key can never reach `apikey.manage`.
+/// The caps the `apikey-write` role bundles: `apikey-read` plus the named data-plane write verbs.
+/// Neither bundle reaches key administration or any other admin-only cap.
 pub fn apikey_write_caps() -> Vec<String> {
     let mut caps = apikey_read_caps();
-    caps.extend(
-        [
-            "store:*:write",
-            "mcp:*.write:call",
-            "mcp:*.create:call",
-            "mcp:*.update:call",
-            "mcp:*.delete:call",
-            "mcp:*.post:call",
-        ]
-        .iter()
-        .map(|s| s.to_string()),
-    );
+    caps.extend(APIKEY_WRITE_CAPS.iter().map(|s| s.to_string()));
     caps
 }
 
