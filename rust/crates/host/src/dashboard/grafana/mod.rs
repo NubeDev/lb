@@ -2,10 +2,12 @@
 //! Grafana dashboard JSON into our native [`Cell`/`Dashboard`](super::model) record and back. One
 //! bidirectional mapper (one responsibility per file), consumed by two host verbs:
 //!
-//! - [`dashboard_import`] — a 3-stage pipeline: **migrate** (the P3 `grafana-map` pin: detect v1/v2,
+//! - [`dashboard_import`] — a 4-stage pipeline: **migrate** (the P3 `grafana-map` pin: detect v1/v2,
 //!   normalize `schemaVersion`, resolve `__inputs`) → **map** (`grafana→cell`, panel-by-panel) →
-//!   **report** (datasource-remap prompts + a degraded list). Two phases: a preview (no `mappings` →
-//!   report only, no write) and a commit (`mappings` → UPSERT via `dashboard.save`).
+//!   **bind** (commit only: a remapped target → an EXECUTABLE one — the `tool` + arg names our verbs
+//!   read; without it a panel imports clean and renders blank) → **report** (datasource-remap prompts
+//!   + a degraded list). Two phases: a preview (no `mappings` → report only, no write) and a commit
+//!   (`mappings` → UPSERT via `dashboard.save`).
 //! - [`dashboard_export`] — the inverse `cell→grafana` map, re-emitting each cell's bounded `_grafana`
 //!   passthrough so unknown Grafana fields survive a round-trip.
 //!
@@ -13,6 +15,7 @@
 //! record stays ours. Tenancy: the workspace is the caller's token, never the JSON; every referenced
 //! datasource is remapped strictly within the caller's workspace (the hard wall).
 
+mod bind;
 mod datasources;
 mod export;
 mod import;

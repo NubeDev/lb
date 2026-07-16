@@ -23,6 +23,7 @@ use super::super::model::{Cell, Dashboard, Variable};
 use super::super::save::dashboard_save_meta;
 use crate::boot::Node;
 
+use super::bind;
 use super::datasources;
 use super::to_cell::panel_to_cell;
 use super::{DatasourceRemap, ImportReport};
@@ -106,6 +107,18 @@ pub async fn dashboard_import(
 
     // Rewrite the datasource refs in the cells' target args by the verified mappings.
     apply_mappings_to_cells(&mut cells, &mappings, &mut report);
+
+    // Bind the remapped targets into EXECUTABLE ones (`tool` + the arg names our verbs read). Only the
+    // names just VERIFIED above are bindable, so this can never widen the workspace wall. Without this
+    // stage a panel saves as "mapped" and then renders blank forever — `viz.query` skips a target whose
+    // `tool` is empty (`docs/debugging/dashboard/imported-grafana-panels-render-empty.md`).
+    let bound: Vec<String> = mappings
+        .iter()
+        .filter(|m| !m.mapped_to.is_empty())
+        .map(|m| m.mapped_to.clone())
+        .collect();
+    report.degraded.extend(bind::bind_cells(&mut cells, &bound));
+
     // Echo the chosen mappings into the report.
     report.datasources = mappings;
 
