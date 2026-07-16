@@ -92,6 +92,14 @@ pub struct Gateway {
     /// (`max_extension_upload_bytes`, default 384 MiB) at the boot seam; the test/`new_live` seams
     /// default via [`Gateway::DEFAULT_MAX_EXTENSION_UPLOAD_BYTES`].
     pub max_extension_upload_bytes: u64,
+    /// The in-memory health cell `GET /health` reads (issue #72). One `AtomicBool` per subsystem
+    /// the fleet health contract names (`store`, `gateway`); load-only reads so the probe never
+    /// blocks on a dependency. Both default to serving — see `routes/health` for why that is the
+    /// honest answer today (the store handle is alive once `Node::boot` opened it; the gateway is
+    /// handling the request). The per-subsystem setters are the seam a future in-process monitor
+    /// (a store-down detector, a drain-on-shutdown handoff) flips without the route shape changing;
+    /// no caller flips them yet. Shared behind `Arc` so axum clones the state cheaply per request.
+    pub health: crate::routes::SharedHealthGate,
 }
 
 impl Gateway {
@@ -189,6 +197,10 @@ impl Gateway {
             // The `POST /extensions` upload ceiling — the safe default until the boot path pins the
             // configured value via `with_max_extension_upload_bytes`.
             max_extension_upload_bytes: Self::DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
+            // The `GET /health` gate — both subsystems serving. See `routes::health` for why this is
+            // the honest default (the store handle is alive once the node booted it; a future monitor
+            // flips a subsystem via the `HealthGate` setters).
+            health: Arc::new(crate::routes::HealthGate::new()),
         }
     }
 

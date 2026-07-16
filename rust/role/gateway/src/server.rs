@@ -25,7 +25,7 @@ use crate::routes::{
     get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity,
     get_insight, get_layout, get_media, get_nav, get_nav_hidden, get_nav_pref, get_outbox_status,
     get_panel, get_prefs, get_report, get_rule, get_undo_compensations, get_undo_history,
-    get_webhook, grant_skill, identity_workspaces_route, import_dashboard, inject_flow,
+    get_webhook, grant_skill, health, identity_workspaces_route, import_dashboard, inject_flow,
     insight_events, latest_sample, lifecycle_flow, link_doc, list_apikeys, list_brands,
     list_channels, list_dashboards, list_datasources, list_defs, list_docs, list_extensions,
     list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
@@ -72,6 +72,16 @@ pub fn router(gw: Gateway) -> Router {
     // whose body limit is raised — never a global bump (rule 10). See the `/extensions` route comment.
     let max_ext_upload = gw.max_extension_upload_bytes;
     let router = Router::new()
+        // The fleet health probe (issue #72) — `GET /health`, UNAUTHENTICATED, on the gateway port.
+        // The one route an LB/orchestrator probes to ask "is this node up?" without a session token,
+        // outside the auth wall (an LB has no bearer) — the same posture as `POST /login` below. One
+        // route, never `/healthz`; the liveness/readiness split is the status code (200 serving /
+        // 503 alive-but-not-serving / connection-refused = dead). Reads in-memory state only — no
+        // store query, no disk I/O, no network call — so it can never block on a dependency. The
+        // contract is decided fleet-wide in `docs/scope/deploy/containerize-scope.md` §"The health
+        // contract". Registered FIRST so it is reachable at a stable path with zero auth machinery
+        // in front of it; always on when `GatewayMode::Addr`.
+        .route("/health", get(health))
         .route("/login", post(login))
         // email-login scope — the Slack-style human front door. `/auth/login` (email+password) and
         // `/auth/select` (select-token) are UNAUTHENTICATED-by-session (they ISSUE the token), like

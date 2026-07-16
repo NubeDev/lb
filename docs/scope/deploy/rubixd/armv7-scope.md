@@ -6,12 +6,20 @@ it constrains every slice); parent:
 [`../containerize-scope.md`](../containerize-scope.md) (which **excludes** armv7 from
 images — this scope is why that exclusion is safe).
 
-`rubixd` must run on **32-bit ARM hard-float** boxes (Raspberry Pi class) — the parent
-scope's whole premise is an agent that "must stay tiny on armv7 boxes and is the thing that
-installs lb hosts", so armv7 is not an afterthought target, it is the *hardest* target and
-the one that justifies rubixd being lb-free at all. `make cross` and `rust-toolchain.toml`
-already **name** `armv7-unknown-linux-gnueabihf`. This scope makes it **true**: today that
-target does not build, for three stacked reasons, all of which are now solved and verified.
+`rubixd` must run on **32-bit ARM hard-float** boxes (Raspberry Pi class). The parent
+scope's premise is an agent that "must stay tiny on armv7 boxes and is the thing that
+installs lb hosts" — so armv7 is not an afterthought target, it is the *hardest* one and
+the reason rubixd is lb-free at all.
+
+**Read "tiny" as architectural, not as bytes.** It means *not a full lb node* — no
+SurrealDB-plus-Zenoh-plus-wasmtime stack on a box rubixd must itself bootstrap (the
+umbrella's rejected "rubixd-also-on-lb" alternative). It does **not** mean a byte budget:
+the target boxes have **~8 GB**, and the binary is ~26 MB (~0.3%). Size is measured and
+recorded here as a fact, never as a constraint to design against.
+
+`make cross` and `rust-toolchain.toml` already **name** `armv7-unknown-linux-gnueabihf`.
+This scope makes it **true**: today that target does not build, for three stacked reasons,
+all now solved and verified.
 
 ## Goals
 
@@ -26,8 +34,9 @@ target does not build, for three stacked reasons, all of which are now solved an
 - **Runtime verification on real hardware or an emulating runner** — the cross-build proves
   the ELF, not the behaviour. This scope is explicit that a compiled armv7 binary is
   **not** a passed test.
-- **The armv7 deployment contract documented** — the `libstdc++` runtime dep, the ~26 MB
-  size, and what a Pi actually needs installed. See `rubix-fleet:docs/DEPLOY.md`.
+- **The armv7 deployment contract documented** — the `libstdc++` runtime dep, the glibc
+  floor, and what a Pi actually needs installed. See `rubix-fleet:docs/DEPLOY.md`. (Binary
+  size is recorded there as a fact, not a constraint: the boxes have ~8 GB.)
 
 ## Non-goals
 
@@ -147,7 +156,7 @@ code**: it is toolchain + build inputs + docs. What applies:
 
 ## Testing plan
 
-Per [`../testing/testing-scope.md`](../testing/testing-scope.md) — no mocks. This scope
+Per [`../../testing/testing-scope.md`](../../testing/testing-scope.md) — no mocks. This scope
 ships build inputs, so the tests prove **the artifact is real and works on the arch**:
 
 - **Cross-build gate (CI, every PR).** All three targets build in the image. armv7 is the
@@ -187,12 +196,13 @@ smoke is a real gap — not a formality.
   armv7 gate is the canary; it fails loudly on the next bump. Worth an upstream issue —
   detecting a 64-bit-host feature while cross-compiling to 32-bit is a genuine bug, not our
   special case.
-- **The binary is big, and RocksDB is why.** ~26 MB armv7 (`.text` alone is **22 MB**),
-  ~28 MB aarch64, ~33 MB x86_64 — *after* `strip = true`, `lto = "thin"`,
-  `codegen-units = 1`, `panic = "abort"`. The release profile's comment says "small
-  binaries for edge boxes (armv7)"; that intent is real but RocksDB's C++ dwarfs it. It is
-  fine for a Pi's SD card and honest to state; it is **not** fine to keep claiming "tiny".
-  Mitigation: document the number (`docs/DEPLOY.md`); revisit only if a real box complains.
+- **Binary size — measured, and a non-issue.** ~26 MB armv7 (`.text` alone is **22 MB** of
+  RocksDB C++), ~28 MB aarch64, ~33 MB x86_64 — *after* `strip = true`, `lto = "thin"`,
+  `codegen-units = 1`, `panic = "abort"`. **The target boxes have ~8 GB**, so this is ~0.3%
+  of storage: smaller is nice, not required. Recorded because it is a surprising number
+  against the release profile's "small binaries" comment — **not** because it constrains
+  anything. Do not trade durability, debuggability, or build simplicity to shrink it. The
+  size facts stay documented (`docs/DEPLOY.md`) so nobody re-litigates this from surprise.
 - **`libstdc++.so.6` is a runtime dependency** (verified via `objdump -p`: `libstdc++.so.6`,
   `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, `ld-linux-armhf.so.3`). Raspberry Pi OS ships
   it; a minimal/distroless-style rootfs might not. This is the practical consequence of
@@ -221,10 +231,12 @@ smoke is a real gap — not a formality.
   `CXXFLAGS_armv7_unknown_linux_gnueabihf` env, baked into the image, armv7 only.** Not
   bare `CXXFLAGS` (would pessimise the 64-bit targets). *Reopen if*: upstream fixes the
   host-vs-target detection — then delete it and let the CI gate prove it.
-- **Store — decided: `kv-rocksdb` stays on armv7.** The ~22 MB `.text` and the `libstdc++`
-  dep are **accepted costs**, documented, not designed around. `kv-mem` is a test posture,
-  not a deployment. *Reopen if*: a real armv7 box hits a hard size/RAM wall — the answer
-  then is a different store for *all* arches, not an arch-specific one (rule 1).
+- **Store — decided: `kv-rocksdb` stays on armv7, and size is not an argument against it.**
+  The target boxes have ~8 GB; a 26 MB binary is ~0.3% of that. The `libstdc++` dep is the
+  only real consequence, and it is an install-time note, not a cost. `kv-mem` is a test
+  posture, not a deployment. *Reopen if*: a real armv7 box hits a hard **RAM** wall (RocksDB's
+  working set, not the binary) — and the answer then is a different store for *all* arches,
+  not an arch-specific one (rule 1).
 - **Linking — decided: dynamic (glibc + libstdc++), not musl/static.** Pi OS ships both;
   static-linking RocksDB's C++ is a fight with no current caller. *Reopen if*: a target
   rootfs lacks libstdc++, or the glibc floor bites a real box.

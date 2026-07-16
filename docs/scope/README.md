@@ -728,6 +728,34 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   toolchain + committed `Cargo.lock`. Lands in **three waves** (prereqs now → rartifacts
   image with its slice 1 → rubixd image after rubixd slice 5, severable). Assets:
   `rubix-fleet:deploy/`.
+  `deploy/rubixd/armv7-scope.md` (the ask): make the **armv7 (Raspberry-Pi-class) target
+  real**. `make cross` + `rust-toolchain.toml` have advertised `armv7-unknown-linux-gnueabihf`
+  since day one, but it **did not build** — three stacked failures: no C cross-toolchain
+  (dies in `psm`), then no **libclang** for RocksDB's bindgen, then RocksDB autodetecting
+  `__uint128_t` on the **64-bit host** and compiling for a **32-bit target** where it does
+  not exist (`rocksdb/util/fastrange.h`). Fix: build in a container extending lb's
+  `docker/build/` cross image (real Debian GCC cross-toolchains — never zig, never the
+  `cross` tool) + libclang + `-UHAVE_UINT128_EXTENSION` scoped **armv7-only** via cc-rs's
+  per-target `CXXFLAGS_<triple>` (bare `CXXFLAGS` would pessimise the correct 64-bit
+  targets). Verified: real `ELF 32-bit … ARM, EABI5` in ~3 min; aarch64/x86_64 unaffected.
+  The **CI armv7 gate is load-bearing** — the only 32-bit target is the only one that
+  breaks, and it breaks silently while the 64-bit ones stay green. Accepted and documented
+  costs: ~26 MB (22 MB of `.text` is RocksDB's C++, post-strip) and a `libstdc++.so.6`
+  runtime dep. No `cfg(target_arch)` anywhere — the arch difference lives in build inputs
+  only (rule 1). This is also what makes containerize's "armv7 images: never" honest.
+  Assets: `rubix-fleet:deploy/common/Dockerfile.cross`, `docs/DEPLOY.md`,
+  `.github/workflows/ci.yml`, `Makefile` `cross-*`.
+  `deploy/health-route-scope.md` (the ask, issue #72): the **gateway `/health` route** every
+  embedder (`rubix-ai`, `ems-node`, `rartifacts`) inherits — one unauthenticated `GET /health` on
+  the gateway port (outside the auth wall, like `/login`), implementing the fleet contract
+  `containerize-scope.md` already ratified (`200 {"status":"ok","version":…,"detail":…}` serving /
+  `503 {"status":"degraded",…}` alive-but-not-serving; `/health` never `/healthz`; one route, no
+  `/livez`/`/readyz`). Reads **in-memory state only** — no store query, no disk I/O, no network call
+  (a health check that can block is one that lies); the 503 path is an honest `HealthGate` seam a
+  FUTURE in-process monitor flips, not a faked store-down detection. Always on when
+  `GatewayMode::Addr`; no `BootConfig` field. Closes the recorded `fly-deploy`/`containerize`
+  concession (probing `GET /` instead) and lets product-host bundles flip `tcp:` → `http:` in their
+  own repos with no fleet-plane change.
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.

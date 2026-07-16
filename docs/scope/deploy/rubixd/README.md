@@ -72,6 +72,17 @@ HTTP), write `docs/sessions/deploy/rubixd-<slice>-session.md`, log any breakage 
 Renumber nothing: later slices (fleet control plane, Windows service backend, rubixd
 self-update hardening) get new scope files here when asked for.
 
+**Cross-cutting**: [`armv7-scope.md`](armv7-scope.md) — making the **armv7
+(Raspberry-Pi-class) target real**. Not a numbered slice: it constrains every slice, since
+armv7 is the arch the parent scope's "must stay tiny on armv7 boxes" premise rests on.
+`make cross` and `rust-toolchain.toml` have listed `armv7-unknown-linux-gnueabihf` since
+day one, but it **did not build** — three stacked failures (no C cross-toolchain → no
+libclang for RocksDB's bindgen → RocksDB autodetecting `__uint128_t` on the 64-bit *host*
+then compiling for a 32-bit *target*). All three are fixed and verified: a real
+`ELF 32-bit … ARM, EABI5` binary in ~3 min via a container-driven `make cross`. The CI
+armv7 gate is the load-bearing part — it is the only 32-bit target, so it is the only one
+that breaks, and it breaks silently.
+
 **Cross-cutting**: [`../containerize-scope.md`](../containerize-scope.md) — the container
 images for both fleet services. It does not add a slice here, but it touches this track in
 three places: slice 1 owns `packaging/rubixd.service` (the **default** posture — the image

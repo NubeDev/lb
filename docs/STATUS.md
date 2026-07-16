@@ -30,6 +30,47 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Shipped 2026-07-16 — [#72](https://github.com/NubeDev/lb/issues/72): the gateway has a `/health` route.**
+[scope](scope/deploy/health-route-scope.md) ·
+[session](sessions/deploy/health-route-session.md)
+
+The gateway served no health route, so nothing an LB/orchestrator could probe answered "is this node
+up?" without a session token — `fly-deploy` and `containerize` both had to probe `GET /` instead and
+recorded it as a known concession, and `rubixd`'s rollback-health gate could only fall back to
+`tcp:<port>` against a product host (a socket accepting is not a node working). Verified against a
+live `rubix-ai` node: `/health`, `/healthz`, `/api/health` all 404. **Now:** one unauthenticated
+`GET /health` on the gateway port, implementing the fleet contract `containerize-scope.md` already
+ratified — `200 {"status":"ok","version":…,"detail":{"store":"ok","gateway":"ok"}}` serving /
+`503 {"status":"degraded",…}` alive-but-not-serving; `/health`, **never `/healthz`**; one route, no
+`/livez`/`/readyz`. Registered first, outside the auth wall (an LB has no bearer — same posture as
+`/login`); always on when `GatewayMode::Addr`; no `BootConfig` field.
+
+**The two load-bearing calls.** (1) **No store ping in the handler** — the contract's sharpest rule
+is "a health check that can hang is a health check that lies", and `store.query` would both hang-risk
+and contend for the global session mutex. The handler reads two `AtomicBool`s, nothing else. (2)
+**The 503 path is a real seam, not faked** — `HealthGate` (one atomic per subsystem the contract
+names: `store`, `gateway`) defaults both to serving, which is the *honest* answer at this layer (the
+store handle is alive once `Node::boot` opened it; `system-map-scope.md` already says "the handle
+exists" is not real liveness, and this route does not pretend otherwise). `set_store`/`set_gateway`
+are the attachment point a FUTURE in-process monitor (store-down detection, drain-on-shutdown) flips;
+no caller flips them today, and the scope doc says so plainly rather than dressing always-200 as
+detection. **Version** = `env!("CARGO_PKG_VERSION")` of the gateway crate (the lb-gateway build an
+embedder shipped — what an LB pins a matcher on).
+
+**Tested (rule 9, real gateway/node):** `health_route_test` **6/6** — 200 shape + version + detail on
+a bare GET with no Authorization header; leaks-nothing body (exactly `{status,version,detail}` +
+`detail` exactly `{store,gateway}`, values `"ok"|"degraded"` only); a garbage `Bearer` header returns
+the same 200 (never reaches the auth wall); `/healthz`/`/livez`/`/readyz`/`/startupz`/`/api/health`
+all 404; `set_store(false)`/`set_gateway(false)` ⇒ 503 with the right subsystem degraded; recovery
+back to 200 after a clear. The mandatory cap-deny/ws-isolation categories do not apply (unauthenticated
++ workspace-agnostic by design). **No regressions:** `gateway_test`/`gateway_routes_test`/
+`login_hardening_test` green after the new `Gateway.health` field; `cargo build`/`fmt`/`clippy --lib`
+clean on the new files. **Follow-ups (named, not done):** flip `fly.toml`'s check to `GET /health`
+matcher 200; drive `HealthGate` when a real monitor exists; `rubix-ai`/`ems-node` bundle specs flip
+`tcp:` → `http:` in those repos once they bump the lb tag.
+
+---
+
 **Shipped 2026-07-15 — [#67](https://github.com/NubeDev/lb/issues/67): the commit log stays bounded on a RUNNING node (online compaction + observability).**
 [scope](scope/store/online-compaction-scope.md) ·
 [session](sessions/store/online-compaction-session.md) ·

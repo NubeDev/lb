@@ -459,6 +459,12 @@ Per `testing-scope.md` — no mocks, no fake backends:
   services** (rartifacts as an **AWS** workload; rubixd for docker-only hosts, where the
   systemd backend typed-degrades and the native unit stays the default for mixed hosts).
   Cross-cutting, lands per-slice; adds no product code.
+- [`rubixd/armv7-scope.md`](rubixd/armv7-scope.md) — making the **armv7 target real**, which
+  this scope's "must stay tiny on armv7 boxes" premise (§Intent) assumes but which did not
+  actually build. Fixes the cross-toolchain, RocksDB's bindgen/libclang need, and RocksDB's
+  host-vs-target `__uint128_t` autodetect; adds the CI gate that keeps it building. The
+  other half of this scope's arch-honesty guard (§Risks — advertise the arch, re-check the
+  ELF): rubixd must *be* installable on the arch it claims.
 - `deploy/fly-deploy-scope.md` — the single-container cloud deploy this complements.
 - `docker/build/` — the cross-compile toolchain that produces the artifacts.
 - `rust/crates/registry/` (`Artifact` v2, `digest.rs`, `verify_artifact`) and

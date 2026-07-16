@@ -536,8 +536,12 @@ one without is a deferral wearing a costume.
 - **armv7 images — decided: never.** Not "later". The bare-binary path serves armv7 and is
   the posture those boxes want; `rust-toolchain.toml` keeps the target for exactly that.
   Building RocksDB under buildx emulation for a host class that does not want containers is
-  cost with no caller. *Reopen if*: a real armv7 site asks for the docker posture — and the
-  first question back is why that box runs containers at all.
+  cost with no caller. [`rubixd/armv7-scope.md`](rubixd/armv7-scope.md) is what makes this
+  decision **honest** — it makes the armv7 *bare binary* real (it did not build until then:
+  RocksDB autodetects `__uint128_t` on the 64-bit host, then compiles for a 32-bit target).
+  Excluding an arch from images is defensible; excluding it from images while it also does
+  not build would just be dropping it. *Reopen if*: a real armv7 site asks for the docker
+  posture — and the first question back is why that box runs containers at all.
 
 - **Multi-arch mechanism — decided: `docker buildx` manifest lists**, `linux/amd64` +
   `linux/arm64`, native runners where CI has them and emulation where it does not. The CI
