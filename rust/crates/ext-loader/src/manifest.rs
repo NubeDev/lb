@@ -22,6 +22,52 @@ pub enum ManifestError {
     /// node that cannot execute is a load-time reject — the manifest is incoherent.
     #[error("invalid [[node]] block: {0}")]
     InvalidNodeBlock(String),
+    /// A `[[widget]]` declares two options (or two widgets) sharing one id/slug — the view key
+    /// `ext:<id>/<widget-id>` (and per-widget option paths) must be unique per manifest, so a
+    /// collision is a load-time reject (ext-widget-panel-options scope). Also raised for a malformed
+    /// `options` def (empty id/label/path, or an empty `control`).
+    #[error("invalid [[widget]] block: {0}")]
+    InvalidWidgetBlock(String),
+}
+
+/// Slugify a display label into a stable id — lowercased, runs of non-alphanumerics collapsed to a
+/// single `-`, trimmed. The default `[[widget]]` id and the fallback view-key segment; the UI's
+/// `widgetIdOf` (source-picker) computes the SAME slug so picker, renderer, and host agree on one key.
+pub fn slug(label: &str) -> String {
+    let mut out = String::with_capacity(label.len());
+    let mut prev_dash = false;
+    for ch in label.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.extend(ch.to_lowercase());
+            prev_dash = false;
+        } else if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// One declarative panel option a `[[widget]]` understands (ext-widget-panel-options scope). The host
+/// is a **relay, not an interpreter**: it shape-validates these at parse and passes them through
+/// (`ExtUi`/`ExtRow`/`ExtWidget`) verbatim — no host code branches on an option's meaning. The shape
+/// mirrors `widget_catalog.json`'s built-in option-def shape so one vocabulary drives every host's
+/// editor. `choices`/`default` are opaque JSON the editor renders; `control` is the host's control
+/// vocabulary (`text`/`number`/`toggle`/`select`/`unit`/`thresholds`/…) — an unknown value is NOT
+/// rejected here (an older host degrades it to a labeled raw row), only an EMPTY control is.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct WidgetOption {
+    pub id: String,
+    pub label: String,
+    /// `"options"` (per-viz `options.<path>`) | `"fieldConfig"` (`fieldConfig.defaults.<path>`) — the
+    /// two cell roots. Not enum-validated (kept a forward-compatible string; the editor interprets it).
+    pub scope: String,
+    pub path: String,
+    pub control: String,
+    #[serde(default)]
+    pub choices: Option<serde_json::Value>,
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -98,7 +144,7 @@ pub struct UiPage {
 /// (array-of-tables, `widgets: Vec<Widget>`), each its own palette tile. A widget is read-only on
 /// series and far more constrained than a page; the `scope` here is a subset of the four series read
 /// verbs.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Default)]
 pub struct Widget {
     /// The ESM bundle entry exposing `mount(el, ctx, bridge)` (in-process) / iframe doc (sandboxed).
     pub entry: String,
@@ -117,6 +163,26 @@ pub struct Widget {
     /// Additive + serde-defaulted: a manifest written before this field parses as `false`.
     #[serde(default)]
     pub data: bool,
+    /// Stable widget id (ext-widget-panel-options scope). The view key is `ext:<ext>/<id>`; `id`
+    /// defaults to `slug(label)` at parse (via [`Widget::widget_id`]) so every existing manifest keeps
+    /// its label-slug key. An author who SETS an `id` differing from the old slug renames that widget's
+    /// existing cells — documented as a breaking rename. Additive + serde-defaulted.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// The declarative panel options this widget understands (ext-widget-panel-options scope). Opaque
+    /// per-widget data the host relays verbatim to the editor — the host never interprets a def. Empty
+    /// (the default) means the editor offers only the standard field set (iff `data = true`). Additive
+    /// + serde-defaulted.
+    #[serde(default)]
+    pub options: Vec<WidgetOption>,
+}
+
+impl Widget {
+    /// The resolved widget id — the explicit `id`, else `slug(label)`. The view-key segment
+    /// (`ext:<ext>/<widget_id>`) and the manifest-uniqueness key.
+    pub fn widget_id(&self) -> String {
+        self.id.clone().unwrap_or_else(|| slug(&self.label))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -220,6 +286,51 @@ impl Manifest {
         for block in &raw.node {
             lb_flows::validate_node_block(block, &raw.extension.id, &tool_names)
                 .map_err(|e| ManifestError::InvalidNodeBlock(e.to_string()))?;
+        }
+
+        // Validate the `[[widget]]` blocks (ext-widget-panel-options scope): each declared option def is
+        // shape-checked (non-empty id/label/path/control), option ids are unique WITHIN a widget, and
+        // resolved widget ids (`id` or `slug(label)`) are unique ACROSS the manifest — the view key
+        // `ext:<ext>/<widget-id>` must be unambiguous. The host validates SHAPE + UNIQUENESS only; it
+        // never interprets an option's meaning (relay, not interpreter — rule 10). A widget with no
+        // entry is dropped below (mirrors `[ui]`), so validate only the tiles that survive.
+        let mut seen_widget_ids: Vec<String> = Vec::new();
+        for w in raw.widget.iter().filter(|w| !w.entry.is_empty()) {
+            let wid = w.widget_id();
+            if wid.is_empty() {
+                return Err(ManifestError::InvalidWidgetBlock(format!(
+                    "widget '{}' has no usable id (empty label and no id)",
+                    w.label
+                )));
+            }
+            if seen_widget_ids.contains(&wid) {
+                return Err(ManifestError::InvalidWidgetBlock(format!(
+                    "duplicate widget id '{wid}' — each tile's view key must be unique"
+                )));
+            }
+            seen_widget_ids.push(wid.clone());
+
+            let mut seen_opt_ids: Vec<&str> = Vec::new();
+            for opt in &w.options {
+                if opt.id.is_empty() || opt.label.is_empty() || opt.path.is_empty() {
+                    return Err(ManifestError::InvalidWidgetBlock(format!(
+                        "widget '{wid}' option has an empty id/label/path"
+                    )));
+                }
+                if opt.control.is_empty() {
+                    return Err(ManifestError::InvalidWidgetBlock(format!(
+                        "widget '{wid}' option '{}' has an empty control",
+                        opt.id
+                    )));
+                }
+                if seen_opt_ids.contains(&opt.id.as_str()) {
+                    return Err(ManifestError::InvalidWidgetBlock(format!(
+                        "widget '{wid}' declares duplicate option id '{}'",
+                        opt.id
+                    )));
+                }
+                seen_opt_ids.push(&opt.id);
+            }
         }
 
         Ok(Manifest {
@@ -452,5 +563,107 @@ properties.broker = { type = "string" }
     fn no_nodes_by_default() {
         let m = Manifest::parse(&with_runtime("wasm", "")).expect("parses");
         assert!(m.nodes.is_empty());
+    }
+
+    // --- ext-widget-panel-options scope: widget id + declarative options ---
+
+    #[test]
+    fn slug_matches_ui_widget_id_of() {
+        // Must agree with the UI's `widgetIdOf` (source-picker): lowercased, non-alnum runs → single
+        // `-`, trimmed. Picker, renderer, and host all key on this one slug.
+        assert_eq!(slug("Zone Comfort"), "zone-comfort");
+        assert_eq!(slug("AHU Status"), "ahu-status");
+        assert_eq!(slug("  Host CPU + Mem  "), "host-cpu-mem");
+        assert_eq!(slug("already-slug"), "already-slug");
+    }
+
+    #[test]
+    fn widget_id_defaults_to_label_slug() {
+        // Legacy manifest (no `id`) — the additive guarantee: today's exact label-slug key, no options.
+        let toml = with_runtime(
+            "wasm",
+            "[[widget]]\nentry = \"w.mjs\"\nlabel = \"Zone Comfort\"",
+        );
+        let m = Manifest::parse(&toml).expect("parses");
+        assert_eq!(m.widgets[0].widget_id(), "zone-comfort");
+        assert!(m.widgets[0].id.is_none());
+        assert!(m.widgets[0].options.is_empty());
+    }
+
+    #[test]
+    fn parses_explicit_id_and_options() {
+        let toml = with_runtime(
+            "wasm",
+            r#"
+[[widget]]
+entry = "w.mjs"
+label = "Zone Comfort"
+id = "zone-comfort"
+data = true
+options = [
+  { id = "setpointField", label = "Setpoint field", scope = "options", path = "setpointField", control = "field-name" },
+  { id = "band", label = "Comfort band", scope = "options", path = "band", control = "number", default = 1.5 },
+]
+"#,
+        );
+        let m = Manifest::parse(&toml).expect("parses");
+        let w = &m.widgets[0];
+        assert_eq!(w.widget_id(), "zone-comfort");
+        assert_eq!(w.options.len(), 2);
+        assert_eq!(w.options[0].id, "setpointField");
+        assert_eq!(w.options[0].control, "field-name");
+        assert_eq!(w.options[1].default, Some(serde_json::json!(1.5)));
+    }
+
+    #[test]
+    fn rejects_duplicate_widget_ids() {
+        // Two tiles that resolve to the same view key — ambiguous, a load-time reject.
+        let toml = with_runtime(
+            "wasm",
+            "[[widget]]\nentry = \"a.mjs\"\nlabel = \"Zone Comfort\"\n[[widget]]\nentry = \"b.mjs\"\nlabel = \"Zone   Comfort\"",
+        );
+        let err = Manifest::parse(&toml).unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidWidgetBlock(_)), "{err:?}");
+    }
+
+    #[test]
+    fn rejects_duplicate_option_ids_within_a_widget() {
+        let toml = with_runtime(
+            "wasm",
+            r#"
+[[widget]]
+entry = "w.mjs"
+label = "W"
+options = [
+  { id = "band", label = "A", scope = "options", path = "a", control = "number" },
+  { id = "band", label = "B", scope = "options", path = "b", control = "number" },
+]
+"#,
+        );
+        let err = Manifest::parse(&toml).unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidWidgetBlock(_)), "{err:?}");
+    }
+
+    #[test]
+    fn rejects_malformed_option_def() {
+        // Empty control → reject loudly at publish (the scope's "malformed def rejected loudly").
+        let toml = with_runtime(
+            "wasm",
+            "[[widget]]\nentry = \"w.mjs\"\nlabel = \"W\"\noptions = [ { id = \"x\", label = \"X\", scope = \"options\", path = \"x\", control = \"\" } ]",
+        );
+        let err = Manifest::parse(&toml).unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidWidgetBlock(_)), "{err:?}");
+    }
+
+    #[test]
+    fn unknown_control_is_allowed_at_parse() {
+        // An unknown control is NOT a parse error — an older host degrades it to a raw row. Only an
+        // EMPTY control is rejected.
+        let toml = with_runtime(
+            "wasm",
+            "[[widget]]\nentry = \"w.mjs\"\nlabel = \"W\"\noptions = [ { id = \"x\", label = \"X\", scope = \"options\", path = \"x\", control = \"spinner\" } ]",
+        );
+        let m = Manifest::parse(&toml).expect("unknown control parses");
+        assert_eq!(m.widgets[0].options[0].control, "spinner");
     }
 }

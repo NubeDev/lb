@@ -8,7 +8,8 @@ use lb_assets::{ExtUi, Install, Tier};
 use serde::{Deserialize, Serialize};
 
 /// A single installed extension as the admin console sees it — durable intent joined with live state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// No `Eq` — carries `ExtUi`, whose option defs hold non-`Eq` `serde_json::Value`. `PartialEq` only.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtRow {
     pub ext: String,
     pub version: String,

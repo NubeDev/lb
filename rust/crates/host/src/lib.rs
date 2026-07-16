@@ -30,6 +30,7 @@ mod federation;
 mod flows;
 mod host_tools;
 mod identity;
+mod identity_credential;
 mod inbox;
 mod ingest;
 mod insight;
@@ -223,8 +224,12 @@ pub use host_tools::{
     HOST_NET_REACH_DEFAULT_TIMEOUT_MS, HOST_NET_REACH_MAX_TIMEOUT_MS,
 };
 pub use identity::{
-    call_identity_tool, identity_create, identity_get, identity_list, identity_workspaces,
-    IdentityError, IdentityView, IdentityWorkspace,
+    call_identity_tool, identity_by_email, identity_create, identity_get, identity_list,
+    identity_set_email, identity_workspaces, IdentityError, IdentityView, IdentityWorkspace,
+};
+pub use identity_credential::{
+    call_identity_credential_tool, global_credential_verify, identity_change_password,
+    identity_set_password, GlobalCredentialCheck, IdentityCredentialError,
 };
 pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{

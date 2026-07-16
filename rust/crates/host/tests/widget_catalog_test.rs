@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use lb_assets::{record_install, ExtUi, Install};
+use lb_assets::{record_install, ExtUi, ExtUiOption, Install};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{call_tool, dashboard_get, dashboard_save, Cell, DashboardError, Node};
 use lb_mcp::ToolError;
@@ -90,6 +90,18 @@ async fn seed_widget_ext(node: &Arc<Node>, ws: &str, ext_id: &str, tile_label: &
         icon: "gauge".into(),
         scope: vec!["series.latest".into()],
         data: true,
+        // The resolved stable id (as `project_widget` would write it) + one declarative option, so the
+        // catalog relay can be asserted verbatim (ext-widget-panel-options scope, the "Relay" test).
+        id: Some("proof-tile".into()),
+        options: vec![ExtUiOption {
+            id: "band".into(),
+            label: "Comfort band".into(),
+            scope: "options".into(),
+            path: "band".into(),
+            control: "number".into(),
+            choices: None,
+            default: Some(json!(1.5)),
+        }],
     };
     let install = Install::new(ext_id, "0.1.0", vec![], 1).with_ui(None, vec![widget]);
     record_install(&node.store, ws, &install)
@@ -153,6 +165,15 @@ async fn catalog_ext_tiles_are_workspace_isolated() {
     assert_eq!(a_tiles.len(), 1, "ws-A lists its own installed tile");
     assert_eq!(a_tiles[0]["ext"], "proof-panel");
     assert_eq!(a_tiles[0]["label"], "Proof Tile");
+    // The view-key segment uses the stable `id`, NOT the label (ext-widget-panel-options scope) — this
+    // is what an author composes into `ext:<ext>/<widget>`, and it matches the UI's `widgetIdOf` slug.
+    assert_eq!(a_tiles[0]["widget"], "proof-tile", "the widget key is the stable id");
+    // The declarative options relay verbatim (the host is a relay, not an interpreter).
+    let opts = a_tiles[0]["options"].as_array().expect("options relayed");
+    assert_eq!(opts.len(), 1);
+    assert_eq!(opts[0]["id"], "band");
+    assert_eq!(opts[0]["control"], "number");
+    assert_eq!(opts[0]["default"], json!(1.5));
     assert!(
         b["extWidgets"].as_array().unwrap().is_empty(),
         "ws-B must not see ws-A's tile"

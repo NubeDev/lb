@@ -48,6 +48,14 @@ pub async fn install_extension(
         .await
         .map_err(store_to_load)?;
 
+    // Make the page/widget tool surface reachable by workspace admins — grant each `[ui]`/`[[widget]]`
+    // scope tool (∩ granted) to `role:workspace-admin`, so an admin's next login expands the role and
+    // the page's/tile's `bridge.call`s pass the host gate. This is symmetric with the NATIVE install
+    // path (`native/install.rs`), which already does it; a wasm ext whose page calls its OWN tool (e.g.
+    // `hvac.comfort`) would otherwise 403 forever because the tool is in no login role. Best-effort
+    // (never fails the install), same as native. (Symmetric-tiers doctrine: tier is not a privilege.)
+    crate::authz::grant_ui_scope_to_admin(&node.store, ws, &manifest, &granted).await;
+
     // Then bring the component online with exactly that approved set.
     load_extension(node, manifest_toml, wasm_bytes, admin_approved).await
 }

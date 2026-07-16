@@ -20,6 +20,12 @@ mod verify;
 
 pub use error::CredentialError;
 pub use hash::hash_secret;
+// The argon2 verify half, shared with the GLOBAL credential service (`identity_credential`) so both
+// the per-ws and the global credential compare against the same vetted constant-time primitive.
+pub(crate) use hash::verify_secret;
 pub use set::identity_set_credential;
+// The `user:<name>` canonicalization, shared with the global credential service so a password set
+// for `ada` and a login as `user:ada` resolve to the same record on both credential paths.
+pub(crate) use set::normalize_sub;
 pub use tool::call_credential_tool;
 pub use verify::{credential_verify, CredentialCheck};

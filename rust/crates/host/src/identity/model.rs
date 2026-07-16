@@ -5,12 +5,17 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A global identity as the admin UI / resolver sees it — secret-free.
+/// A global identity as the admin UI / resolver sees it — secret-free. Carries the `email` login
+/// handle (email-login scope) for the admin console; the credential (hash) is NEVER in this view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentityView {
     pub sub: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// The globally-unique email login handle (lower-cased), if set. Non-secret — safe to list to an
+    /// admin. `None` for a machine/agent identity or one provisioned before an email was set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     pub created_ts: u64,
 }
 
@@ -19,6 +24,7 @@ impl From<lb_authz::Identity> for IdentityView {
         Self {
             sub: i.sub,
             display_name: i.display_name,
+            email: i.email,
             created_ts: i.created_ts,
         }
     }

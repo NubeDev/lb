@@ -77,3 +77,13 @@ a real rartifacts.
    (last-seen, revoke), access (publisher keys + api-keys). **Exit gate**: browser
    smoke — claim → browse → upload → promote → register agent → revoke it — against
    a live node; every action is a gateway call a curl could make.
+
+**Cross-cutting**: [`../containerize-scope.md`](../containerize-scope.md) — the container
+image for this server (the **AWS** workload, and the primary reason that scope exists).
+It adds no slice here and needs no code change: slice 1's env-driven `BootConfig` already
+defaults `RARTIFACTS_GATEWAY_ADDR` to `0.0.0.0:9410`, and its "release images bake the
+pre-published extension artifact" rule (§Risks — boot self-publish stays dev-only) is the
+line that keeps a Rust toolchain out of the runtime image. The image lands **with slice
+1** — the first point there is a `/health` and a store worth persisting. Its one hard
+requirement: the store *and* the blob dir must sit on the same durable volume (`/data`),
+never an ephemeral task filesystem.

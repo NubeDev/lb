@@ -15,7 +15,7 @@ mod record;
 
 pub use delete::delete_install;
 pub use list::list_installs;
-pub use model::{ExtUi, Install, Tier};
+pub use model::{ExtUi, ExtUiOption, Install, Tier};
 pub use read::read_install;
 pub use record::record_install;
 

@@ -13,6 +13,17 @@ packages + instances as desired state (e.g. `timescaledb` + `rubix-ai` + extensi
 failed update **rolls back automatically**; the same package can be installed **more than
 once** on one machine as named instances.
 
+**rartifacts is optional — rubixd is fully standalone.** A rubixd can also be **published
+to directly**: it exposes the *same* `POST /packages` REST contract locally, so an
+operator (or CI, or a `rubixd publish` CLI) can push a signed package straight onto one
+machine with **no rartifacts server in the loop at all**. rubixd verifies and caches it
+in its own content-addressed blob store, records it in a **local package index**, and a
+bundle resolves against that index exactly as it would against a remote. So rubixd works
+in three postures with one code path: **fleet-fed** (polls one or more rartifacts),
+**standalone** (only ever pushed to locally), or **both** (local packages plus remotes).
+rartifacts remains the answer for *fleets* — one publish fanned out to N machines — but a
+single box never depends on it.
+
 Both are **new and out-of-tree**, but their postures differ **on purpose**:
 
 - **rartifacts is an lb product host** (exactly the `ems`/`rubix-ai` pattern): a thin
@@ -78,6 +89,16 @@ against a real rartifacts.
   ([`rartifacts/web-ui-scope.md`](rartifacts/web-ui-scope.md)). On rartifacts the
   claim reveals the boot-seeded **admin api-key**; **publisher** and **agent**
   identities are lb api-key principals minted under it.
+- **Standalone local publish (rartifacts-optional).** rubixd exposes `POST /packages`
+  on its own local REST surface (Bearer-gated by the admin/agent token, the same
+  `fleet-auth` path as every other route) — a streaming multipart publish identical to
+  rartifacts' contract. It verifies the artifact (SHA-256 + Ed25519 against
+  `trusted_pubkeys`) before it touches disk, stores the blob in the local
+  content-addressed cache, and registers a row in a **local package index** (the
+  embedded ledger). A `rubixd publish <metadata.toml> <blob>` CLI wraps the same route
+  for hand/CI pushes. A locally-published package resolves through the ledger with **no
+  network**; a bundle references it exactly like a remote one (implicitly, or pinned
+  `remote: local`). This is what makes a single machine 100% independent of any server.
 - **Unlimited remotes.** One rubixd can connect to **any number of rartifacts servers**
   (`[[remote]]` entries in its config: name, URL, optional agent token). A bundle
   package may pin `remote: <name>`; otherwise remotes are searched in declared order,
@@ -194,6 +215,21 @@ version, backend, release path/image id, health, last N versions for rollback, a
 bad-version marks. A reconcile loop (also `rubixd reconcile` one-shot) diffs the two and
 executes transitions; an update poller re-resolves channel/range pins against rartifacts
 on an interval.
+
+**Local package index + standalone publish.** rubixd owns a content-addressed blob cache
+(`/var/lib/rubixd/blobs/<sha256>`, keyed by digest — shared by the poller's downloads and
+by local uploads, so an artifact present either way is stored once) and a **local package
+index** in the ledger (`pkg_local`: one row per (name, version, arch), pointing at its
+blob + parsed metadata). `POST /packages` (multipart: metadata TOML + blob stream) and its
+`rubixd publish` CLI wrapper stream the blob to a temp file, verify SHA-256 + Ed25519
+against `trusted_pubkeys` (**verify-before-store** — a bad blob never lands in the cache),
+move it to `blobs/<sha256>` via the atomic temp+rename `install_dir.rs` pattern, and upsert
+the index row. Re-publishing an identical digest is idempotent. **Resolution order**: the
+local index is consulted **first** (a pinned/matching local version wins deterministically
+and needs no network), then configured remotes in declared order — so a standalone box with
+zero remotes resolves entirely from what was pushed to it, and a fleet box can still pin a
+one-off local build over the channel. `remote: local` in a bundle forces the local index
+and errors if the package is absent (no silent fall-through to a remote).
 
 **systemd layout** (multi-instance falls out of it):
 
@@ -343,8 +379,16 @@ Per `testing-scope.md` — no mocks, no fake backends:
 - **Multi-instance**: two instances of one package; colliding `per_instance` key
   rejected at `apply`; instances update independently (one can be rolled back while the
   other commits).
+- **Standalone (rartifacts-optional)**: a rubixd configured with **zero remotes** —
+  `rubixd publish` (and a raw `POST /packages`) of a signed tiny binary lands in the local
+  index; a bundle referencing it installs to `active` with no network reachable at all;
+  re-publishing the same digest is idempotent; a tampered/unsigned/foreign-key blob to
+  `POST /packages` is refused (422) and **never enters the blob cache**; an unauthenticated
+  publish is 401. Resolution-order test: a local version and a remote version present, the
+  local one wins (and `remote: local` errors when the package is absent locally).
 - **E2E**: rartifacts + rubixd + a real seeded package (a tiny real binary with an HTTP
-  health endpoint) — the full example flow above, both backends.
+  health endpoint) — the full example flow above, both backends — **plus** the same flow
+  with rartifacts torn down and the package pushed straight to rubixd.
 - The only permitted fake: none identified — systemd (user scope), docker, and HTTP are
   all runnable locally. If a CI runner lacks dockerd, the docker suite is *skipped and
   reported*, not faked.
@@ -391,11 +435,22 @@ Per `testing-scope.md` — no mocks, no fake backends:
   `extensions:` list), and the lb-host posture makes the first-class list the likely
   winner.
 - Channel semantics: per-package channels only, or bundle-level "release trains"?
+- Standalone publish: should a locally-pushed package still **require** a valid signature
+  against `trusted_pubkeys` (recommended default — the trust wall holds even off-fleet),
+  or is there an opt-in `allow_unsigned_local = true` config knob for dev boxes? Lean
+  toward always-verify; the knob is a follow-up if friction is real.
+- Should a standalone rubixd be able to **promote channels locally** (`stable → 0.4.6`
+  against its own index) so channel-pinned bundles work with no remote, or do local
+  publishes only support exact/range pins in v1?
 - Windows service backend (rubix-ai cross-builds for windows-x86_64) — later slice;
   `service-manager` already abstracts it, so the door stays open.
 
 ## Related
 
+- [`containerize-scope.md`](containerize-scope.md) — official **container images for both
+  services** (rartifacts as an **AWS** workload; rubixd for docker-only hosts, where the
+  systemd backend typed-degrades and the native unit stays the default for mixed hosts).
+  Cross-cutting, lands per-slice; adds no product code.
 - `deploy/fly-deploy-scope.md` — the single-container cloud deploy this complements.
 - `docker/build/` — the cross-compile toolchain that produces the artifacts.
 - `rust/crates/registry/` (`Artifact` v2, `digest.rs`, `verify_artifact`) and

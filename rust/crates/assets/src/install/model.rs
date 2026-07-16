@@ -21,7 +21,9 @@ pub enum Tier {
 /// (`widget`), as declared in the manifest's `[ui]`/`[widget]` block and persisted on the install so
 /// `ext.list` can tell the shell what to mount without re-reading the manifest (ui-federation +
 /// dashboard-widgets scopes). Structurally identical for both surfaces; one shape, two install fields.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+// NOTE: no `Eq` — `ExtUiOption::{choices,default}` are `serde_json::Value`, which is not `Eq`. The
+// struct keeps `PartialEq` (all `assert_eq!` / comparison sites use that; no `HashSet<ExtUi>` exists).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ExtUi {
     /// The ESM bundle entry (relative to the extension's served UI dir) exposing `mount(el, ctx,
     /// bridge)` in-process, or the iframe document for the sandboxed tier.
@@ -41,6 +43,34 @@ pub struct ExtUi {
     /// `false`.
     #[serde(default)]
     pub data: bool,
+    /// The stable widget id (ext-widget-panel-options scope) — the `ext:<ext>/<id>` view-key segment.
+    /// Persisted so `dashboard.catalog`/`ext.list` key on it without re-reading the manifest. `None`
+    /// for a page and for installs written before this field. Serde-defaulted.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// The widget's declarative panel options (ext-widget-panel-options scope) — relayed verbatim from
+    /// the manifest to the editor; the host never interprets a def. Empty for a page and for installs
+    /// written before this field. Serde-defaulted.
+    #[serde(default)]
+    pub options: Vec<ExtUiOption>,
+}
+
+/// A persisted mirror of a manifest `WidgetOption` (ext-widget-panel-options scope). Carried on the
+/// install so the editor can render the widget's option surface from `ext.list`/`dashboard.catalog`
+/// without re-reading the manifest. Opaque relay data — the host stores and forwards it, never
+/// branches on `control`/`scope`. Same shape as `widget_catalog.json`'s built-in option-def so one
+/// vocabulary drives every host's editor.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ExtUiOption {
+    pub id: String,
+    pub label: String,
+    pub scope: String,
+    pub path: String,
+    pub control: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choices: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<serde_json::Value>,
 }
 
 /// The constant `kind` discriminant so `list_installs` can equality-filter every install row in a
@@ -50,7 +80,8 @@ pub(crate) const KIND: &str = "install";
 /// A persisted extension install: the approved-and-granted capability set for `ext_id` in a
 /// workspace, plus the durable lifecycle intent. Addressed by `ext_id` (one install per extension
 /// per workspace).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// No `Eq` — carries `ExtUi` (whose option defs hold non-`Eq` `serde_json::Value`). `PartialEq` only.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Install {
     pub ext_id: String,
     pub version: String,

@@ -10,4 +10,6 @@ mod grant;
 mod manifest;
 
 pub use grant::grant;
-pub use manifest::{Manifest, ManifestError, Native, Tool, UiPage, Visibility, Widget};
+pub use manifest::{
+    slug, Manifest, ManifestError, Native, Tool, UiPage, Visibility, Widget, WidgetOption,
+};

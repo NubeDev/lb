@@ -701,9 +701,23 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   connections. Both services bootstrap via a **boot-generated, one-time-UI-claimable
   admin token** (shared `fleet-auth`) that doubles as the REST bearer. The umbrella
   decomposes into per-slice scopes + AI coding-session roadmaps in `deploy/rubixd/`
-  (7 slices: core, token-auth, systemd, rollback-health, docker, bundles, UI) and
-  `deploy/rartifacts/` (5 slices: host+ext core, identity/claim, publish, resolve,
-  federated UI).
+  (8 slices: core, token-auth, systemd, rollback-health, docker, bundles, UI,
+  local-publish) and `deploy/rartifacts/` (5 slices: host+ext core, identity/claim,
+  publish, resolve, federated UI).
+  `containerize-scope.md` (the ask): official **container images for both fleet
+  services**, so rartifacts runs as an ordinary cloud workload (**AWS** ECS/EC2) and
+  rubixd can run on **docker-only** hosts. Reuses `fly-deploy-scope.md`'s one-image/
+  many-drivers mechanism (`rubix-fleet:deploy/common/` + the repo-root `.dockerignore`
+  finding) in the `rubix-fleet` repo. The load-bearing decision is **posture**:
+  rartifacts containerizes cleanly (env-driven, `0.0.0.0:9410` already its default, one
+  `/data` volume for store + blobs), but rubixd's job is driving the **host** — so the
+  image mounts `/var/run/docker.sock` (slice-5 docker backend fully live) and the
+  **systemd backend degrades to a typed `BackendUnavailable`**, with the systemd unit
+  staying the blessed path for mixed hosts. Posture is **probed, never branched** (rule 1:
+  no `if container {}`). Adds no MCP verb/cap/route/table and no product code — one env
+  seam (`RUBIXD_BIND_ADDR`), assets, and docs. Images are `amd64`+`arm64` (armv7 stays
+  bare-binary only); lands **per-slice** (rartifacts image with its slice 1, rubixd image
+  after rubixd slice 5). Assets: `rubix-fleet:deploy/`.
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.

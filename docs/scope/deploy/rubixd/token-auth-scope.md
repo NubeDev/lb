@@ -26,6 +26,17 @@ verbatim — write once here, consume there.
 - **REST auth**: every route except `POST /api/claim` and `GET /health` requires
   `Authorization: Bearer` matching the stored hash; failure → `401` with no body detail.
   The same token drives the UI (stored client-side after claim) and any curl/script.
+- **`GET /health`** (open — the fleet health contract, decided in
+  [`../containerize-scope.md`](../containerize-scope.md) §The health contract): `200
+  {"status":"ok","version":…,"detail":{…}}` when the ledger is open; `503
+  {"status":"degraded",…}` when it is not. **`/health`, never `/healthz`.** It reads
+  **in-memory state only** — no store query, no disk I/O, no network call, and it must
+  **never block on a dependency** (a health check that can hang is one that lies).
+  `detail` carries `{"ledger":…,"backends":{"docker":…,"systemd":…}}` — the same
+  backend-availability facts `status` prints, machine-readable for a probe. **A backend
+  being unavailable is NOT degraded** — a docker-only box is correctly configured and
+  returns 200; degraded means "cannot do the job at all". `detail` names *which* subsystem
+  is down, never a path or key.
 - **Recovery**: `rubixd --reset-token` (CLI, requires local root) regenerates and
   re-opens the claim window — lost tokens are recovered at the box, never over HTTP.
 - REST surface gated by it (this slice ships the server + these read verbs; later
@@ -80,6 +91,10 @@ Real axum server, real embedded store (no mocks):
 - restart *before* claim → old plaintext invalid, new claim works.
 - 401 on missing/garbage/truncated bearer for every registered route; `GET /health`
   and `POST /api/claim` reachable unauthenticated (deny + allow both asserted).
+- `GET /health`: 200 + `{"status":"ok","version":…}` against a real open ledger; **503 +
+  `{"status":"degraded"}` when the ledger cannot open** (the liveness/readiness split —
+  the process still *answers*, which is what proves it is alive rather than restart-worthy);
+  `detail.backends` reflects a real probe; **no key/path material in any body**.
 - non-local bind: claim without code 400, wrong code 401, third wrong 423, correct
   code + claim works.
 - `--reset-token`: old bearer 401s, new claim succeeds.

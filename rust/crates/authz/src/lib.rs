@@ -29,6 +29,7 @@
 mod check_scoped;
 mod grant;
 mod identity;
+mod identity_credential;
 mod invite;
 mod membership;
 mod resolve;
@@ -47,8 +48,13 @@ pub use grant::{
     grant_revoke_scoped, granted, Grant, GRANT_TABLE,
 };
 pub use identity::{
-    identity_create, identity_get, identity_list, Identity, IDENTITY_KIND, IDENTITY_NS,
+    fold_email, identity_by_email, identity_create, identity_create_with_email, identity_get,
+    identity_list, identity_set_email, Identity, IDENTITY_EMAIL_TABLE, IDENTITY_KIND, IDENTITY_NS,
     IDENTITY_TABLE,
+};
+pub use identity_credential::{
+    identity_credential_phc, identity_credential_set, IdentityCredential,
+    IDENTITY_CREDENTIAL_KIND, IDENTITY_CREDENTIAL_TABLE,
 };
 pub use invite::{
     invite_create_raw, invite_get_raw, invite_list_raw, invite_mark_accepted_raw,

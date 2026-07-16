@@ -51,6 +51,11 @@ pub struct ExtWidget {
     pub data: bool,
     /// The read-only MCP tool scope the tile may call through the host bridge (already ∩ install-grant).
     pub scope: Vec<String>,
+    /// The tile's declarative panel options (ext-widget-panel-options scope) — relayed verbatim from
+    /// the manifest so a host editor can render the widget's option surface. Empty for a tile that
+    /// declared none. Serialized as the same `{id,label,scope,path,control,choices?,default?}` shape a
+    /// built-in view's `options[]` uses, so one vocabulary drives the editor.
+    pub options: Vec<lb_assets::ExtUiOption>,
 }
 
 /// The `dashboard.catalog` response — the merged authoring vocabulary for `ws`.
@@ -100,11 +105,20 @@ pub async fn dashboard_catalog(
                 let ext = row.ext;
                 row.widgets.into_iter().map(move |w| ExtWidget {
                     ext: ext.clone(),
-                    widget: w.label.clone(),
+                    // The view-key segment is the tile's stable id (ext-widget-panel-options scope) —
+                    // the resolved `ExtUi::id` (populated at install as `id` or `slug(label)`), falling
+                    // back to slugging the label for any legacy install written before the id field.
+                    // This is what an author composes into `view:"ext:<ext>/<widget>"`, and it MUST
+                    // match the UI's `widgetIdOf` slug so picker, renderer, and catalog agree.
+                    widget: w
+                        .id
+                        .clone()
+                        .unwrap_or_else(|| lb_ext_loader::slug(&w.label)),
                     label: w.label,
                     icon: w.icon,
                     data: w.data,
                     scope: w.scope,
+                    options: w.options,
                 })
             })
             .collect(),

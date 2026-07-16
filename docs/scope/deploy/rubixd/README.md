@@ -22,6 +22,7 @@ conventions being reused are lb's; sessions/debugging entries follow the lb rule
 | 5 | [`docker-backend-scope.md`](docker-backend-scope.md) | `bollard` driver: pull/load, labeled containers, recreate-with-keep, volume safety |
 | 6 | [`bundles-scope.md`](bundles-scope.md) | Bundle YAML apply/validate, multi-instance, `needs` ordering, `${secret:...}` resolution, rartifacts poller |
 | 7 | [`embedded-ui-scope.md`](embedded-ui-scope.md) | Small Bootstrap UI (rust-embed, no build step): claim page, status, instance detail, rollback button |
+| 8 | [`local-publish-scope.md`](local-publish-scope.md) | Standalone (rartifacts-optional): local blob cache + package index, `POST /packages` + `rubixd publish`, local-first resolution |
 
 ## Coding-session roadmap (long-running AI sessions)
 
@@ -60,6 +61,26 @@ HTTP), write `docs/sessions/deploy/rubixd-<slice>-session.md`, log any breakage 
 7. **Session 7 — embedded UI.** Bootstrap pages over the existing REST surface only.
    **Exit gate**: claim → dashboard → instance rollback all work in a browser against
    a live rubixd; no new server verbs added for the UI.
+8. **Session 8 — standalone local publish.** The content-addressed blob cache + local
+   package index, `POST /packages` (streaming multipart, verify-before-store) on the
+   slice-2 server, the `rubixd publish` CLI, and **local-first resolution** so a box
+   with zero remotes installs from what was pushed to it. **Exit gate**: a rubixd with
+   no reachable rartifacts accepts a signed package over REST, a bundle referencing it
+   installs to `active`, an idempotent re-publish is a no-op, and a tampered/unsigned/
+   unauthenticated publish is refused with nothing written to the cache.
 
 Renumber nothing: later slices (fleet control plane, Windows service backend, rubixd
 self-update hardening) get new scope files here when asked for.
+
+**Cross-cutting**: [`../containerize-scope.md`](../containerize-scope.md) — the container
+images for both fleet services. It does not add a slice here, but it touches this track in
+three places: slice 1 owns `packaging/rubixd.service` (the **default** posture — the image
+is only for docker-only hosts) and the `Backend` trait seam the posture probe rides; slice
+2 owns the REST server whose `bind_addr` gets a `RUBIXD_BIND_ADDR` env override (and should
+add the `GET /health` route the container contract assumes); slice 5's docker backend is
+what makes a containerized rubixd useful at all — the image lands **after** it, since
+before then a container has zero live backends.
+
+Note: slice 8 depends on slice 2 (REST auth) and reuses the blob cache introduced by
+slice 6's poller; it can be built any time after slice 2 but the exit-gate bundle install
+needs a backend (slice 3 or 5) to reach `active`.

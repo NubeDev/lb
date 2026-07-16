@@ -5,6 +5,7 @@
 //! **denies an ungranted tool** — a page is a gated caller, never a trusted decider.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
+use lb_authz::{grant_list, Subject};
 use lb_host::{call_tool, ext_list, install_extension, Node};
 
 fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
@@ -126,6 +127,34 @@ async fn ui_scope_is_narrowed_to_the_grant() {
         ui.scope,
         vec!["series.latest".to_string()],
         "find dropped — not granted"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn wasm_install_grants_ui_scope_to_the_admin_role() {
+    // Regression (symmetric-tiers): the WASM install path must grant the `[ui]`/`[[widget]]` scope
+    // tools (∩ granted) to `role:workspace-admin`, exactly as the NATIVE path does — else a wasm ext
+    // whose page calls its OWN tool 403s forever (the `hvac.comfort` symptom). Assert the grant lands
+    // for BOTH the page scope and a widget scope; a non-granted tool is not granted.
+    let node = Node::boot().await.unwrap();
+    let ws = "acme";
+    let approved = vec![
+        "mcp:series.find:call".to_string(),
+        "mcp:series.latest:call".to_string(),
+    ];
+    install_extension(&node, ws, UI_MANIFEST, &hello_wasm(), &approved, 1)
+        .await
+        .expect("install");
+
+    let admin = Subject::Role("workspace-admin".to_string());
+    let caps = grant_list(&node.store, ws, &admin).await.expect("grant list");
+    assert!(
+        caps.iter().any(|c| c == "mcp:series.latest:call"),
+        "the page/widget scope tool series.latest is granted to role:workspace-admin"
+    );
+    assert!(
+        caps.iter().any(|c| c == "mcp:series.find:call"),
+        "the page scope tool series.find is granted to role:workspace-admin"
     );
 }
 
