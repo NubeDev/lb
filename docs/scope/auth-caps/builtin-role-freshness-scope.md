@@ -67,11 +67,33 @@ still diverge — that's fine; the union closes the gap).
 
 ## Invariant going forward
 
-**Adding a cap to `VIEWER_CAPS` / `AUTHOR_CAPS` / `ADMIN_ONLY_CAPS` is the only change needed.** It
-reaches every workspace (seeded or not) on the next token mint. No re-seed step, no version bump, no
-release note about "refresh your dev store." The regression test
-`crates/authz/tests/builtin_role_freshness_test.rs` pins both halves (stale row → missing without the
-union; live bundle → present with it).
+**Editing `VIEWER_CAPS` / `AUTHOR_CAPS` / `ADMIN_ONLY_CAPS` is the only change needed** — adding a cap
+**or removing one**. It reaches every workspace (seeded or not) on the next token mint. No re-seed
+step, no version bump, no release note about "refresh your dev store." The regression test
+`crates/authz/tests/builtin_role_freshness_test.rs` pins both directions.
+
+> **Amended 2026-07-16 — union → replace.** As first shipped this said *adding* a cap was the only
+> change needed, and it was union-based: the live bundle was a **floor** over the stored row. That
+> silently made the invariant false for **removal** — a cap deleted from a built-in bundle kept
+> resolving from every stale row, forever, because `ensure_one` is create-only and nothing ever
+> rewrites the row. Nobody had needed to remove one, so nothing caught it until a *security* fix had to
+> (the member bundle's `mcp:*.list:call` authorized ten admin-only caps — see
+> `debugging/auth/member-wildcard-satisfies-admin-cap.md`). The removal would have been inert on
+> precisely the deployments that had the bug.
+>
+> For a **built-in** name the live bundle is now authoritative and the stored record is not read at
+> all. This keeps everything the union was for: a direct `grant_assign(Subject::Role("member"), cap)` —
+> the extension-install path the union was chosen to protect — resolves through the role-subject
+> **recursion**, not the role's record, so it is unaffected. The two were conflated;
+> `live_builtin_caps_keep_direct_role_subject_grants` proves they are separable. Custom roles still
+> resolve from their stored record exactly as before. The cost: a `roles.define("member", …)` no longer
+> changes what a member resolves — the intended posture, since a built-in bundle is lb's policy and an
+> admin widening `member` is the escalation this model exists to prevent (the supported path,
+> `grant_assign(Subject::Role("member"), cap)`, still works).
+>
+> The lesson generalizes: **a "freshness" mechanism that can only add is a half-mechanism.** If the live
+> definition is authoritative, it must be authoritative in both directions — otherwise the stored row
+> stays load-bearing for exactly the changes that matter most: the ones that take power away.
 
 ## Related
 

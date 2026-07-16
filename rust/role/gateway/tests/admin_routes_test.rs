@@ -6,7 +6,7 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{bearer, delete_req, gateway, json_post, post_empty, token};
+use common::{bearer, delete_req, gateway, get_req, json_post, post_empty, token};
 use lb_role_gateway::router;
 use serde_json::json;
 use tower::ServiceExt;
@@ -39,6 +39,63 @@ async fn forged_admin_call_by_non_admin_is_denied_server_side() {
             resp.status(),
             StatusCode::FORBIDDEN,
             "forged admin call must be 403 server-side"
+        );
+    }
+}
+
+/// **The REAL member bundle cannot reach an admin route** (the 2026-07-16 wildcard leak).
+///
+/// `forged_admin_call_by_non_admin_is_denied_server_side` above mints a hand-picked cap set
+/// (`bus:chan/*:pub`) — a principal no `/auth/login` ever issues. That is why it stayed green while
+/// the wall was open: it never exercised what a real member actually holds. This test mints the
+/// bundle `resolve_caps` really folds into a `role:member` token, so it tests the deployed grant.
+///
+/// The bug: `member_role_caps()` carried the broad author wildcards `mcp:*.list:call` /
+/// `mcp:*.delete:call` / `mcp:*.create:call`, and the `*` spans the `<tool>` half of `<tool>.<verb>`
+/// — so a plain member's caps SATISFIED `mcp:teams.list:call` at the wall. `GET /admin/teams`
+/// returned 200 with the full team roster to `user:bob`, a plain member, on a live node. Nine other
+/// admin-only caps (`roles.list`, `grants.list`, `invite.list`/`create`, `ext.list`,
+/// `workspace.create`/`delete`, `series.delete`, `nav.delete`) were satisfied the same way.
+///
+/// `/admin/teams` is the canary. The invariant behind it — no member/viewer wildcard may span an
+/// admin-only cap — is pinned exhaustively at the bundle in
+/// `lb-host`'s `authz::builtin_roles::no_builtin_bundle_may_span_an_admin_only_cap`. This test is the
+/// end-to-end half: it proves the wall itself, over the real router, for the real bundle.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_real_member_bundle_cannot_reach_an_admin_route() {
+    let (gw, key) = gateway().await;
+    let bundle = lb_host::member_role_caps();
+    let member: Vec<&str> = bundle.iter().map(String::as_str).collect();
+    let tok = token(&key, "user:bob", "acme", &member);
+
+    // Reads: a member must not enumerate the workspace's people, teams, roles or grants.
+    for uri in ["/admin/teams", "/admin/identities", "/admin/members"] {
+        let resp = router(gw.clone())
+            .oneshot(bearer(get_req(uri), &tok))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "a plain member must NOT read {uri} — `GET /admin/teams` returned 200 with the full \
+             roster to user:bob on a live node because his `mcp:*.list:call` satisfied \
+             `mcp:teams.list:call`"
+        );
+    }
+
+    // Writes: the destructive admin surface, driven by the real member bundle rather than a
+    // hand-picked cap list.
+    for req in [
+        delete_req("/admin/users/bob"),
+        post_empty("/admin/users/bob/disable"),
+        delete_req("/admin/teams/facilities"),
+        post_empty("/admin/workspaces/acme/archive"),
+    ] {
+        let resp = router(gw.clone()).oneshot(bearer(req, &tok)).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "the real member bundle must not reach a destructive admin route"
         );
     }
 }

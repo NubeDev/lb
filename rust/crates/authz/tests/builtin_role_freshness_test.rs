@@ -5,11 +5,22 @@
 //! only that stored record, so the new cap never reached the subject's token until someone manually
 //! deleted + re-seeded the role row (the throwaway `reseed_roles.rs` the reports demo needed).
 //!
-//! The fix is the `BuiltinRoleCaps` callback: `resolve_caps_with` UNIONS the live bundle on top of
-//! the stored record for a granted built-in role, so a new built-in cap takes effect the moment code
-//! ships. This test pins BOTH halves:
+//! The fix is the `BuiltinRoleCaps` callback: for a granted BUILT-IN role, `resolve_caps_with` takes
+//! the live bundle as authoritative and does not consult the stored record at all, so a built-in cap
+//! change takes effect the moment code ships. This test pins BOTH halves:
 //!   - `resolve_caps` (no builtins) reads the stale row → the new cap is MISSING (the pre-fix bug).
-//!   - `resolve_caps_with` (+ live builtins) unions the live bundle → the new cap IS present (the fix).
+//!   - `resolve_caps_with` (+ live builtins) → the live bundle is what resolves (the fix).
+//!
+//! **This was a UNION until 2026-07-16 and is now a REPLACE.** A union made the live bundle a *floor*:
+//! it could add a cap to a stale workspace but never remove one — fine while bundles only grow, a
+//! security hole the moment one shrinks. When the broad `mcp:*.list:call` / `mcp:*.delete:call`
+//! wildcards were removed from the member bundle (they authorized ten admin-only caps —
+//! `debugging/auth/member-wildcard-satisfies-admin-cap.md`), every workspace seeded by the older binary
+//! kept them: the seed is create-only, so the stale row survives the upgrade and the union folded its
+//! wildcards straight back into every member's token. The removal was inert on exactly the deployments
+//! that had the bug. Replace keeps what the union was FOR — a direct
+//! `grant_assign(Subject::Role("member"), cap)` resolves through the role-subject recursion, not the
+//! record (pinned by `live_builtin_caps_keep_direct_role_subject_grants`).
 //!
 //! Real store, seeded via the real write path (`role_define` + `grant_assign`); no mocks.
 
@@ -40,9 +51,9 @@ impl BuiltinRoleCaps for LiveMemberCaps {
 
 /// The regression: a STALE stored `member` row (seeded BEFORE `mcp:report.save:call` existed) +
 /// `resolve_caps_with` (+ live builtins) → the new cap IS resolved. And `resolve_caps` (no builtins)
-/// → it is NOT (proving the union is what closes the gap, not the stored row).
+/// → it is NOT (proving the live bundle is what closes the gap, not the stored row).
 #[tokio::test]
-async fn live_builtin_caps_union_closes_the_frozen_role_row() -> Result<(), StoreError> {
+async fn live_builtin_caps_close_the_frozen_role_row() -> Result<(), StoreError> {
     let store = Store::memory().await?;
 
     // Seed the `member` role with a STALE cap set — what an already-seeded workspace holds: the OLD
@@ -63,8 +74,8 @@ async fn live_builtin_caps_union_closes_the_frozen_role_row() -> Result<(), Stor
         "the stored row's existing cap is still read"
     );
 
-    // Fixed fold (+ live built-ins): UNIONS the live member bundle → report.save IS resolved, even
-    // though the stored row never had it.
+    // Fixed fold (+ live built-ins): the live member bundle is authoritative → report.save IS
+    // resolved, even though the stored row never had it.
     let live = LiveMemberCaps {
         member: vec![
             "mcp:dashboard.save:call".into(),
@@ -78,7 +89,58 @@ async fn live_builtin_caps_union_closes_the_frozen_role_row() -> Result<(), Stor
     );
     assert!(
         fixed.contains(&"mcp:dashboard.save:call".to_string()),
-        "union keeps the stored row's existing cap too"
+        "a cap in BOTH the row and the live bundle is still resolved"
+    );
+
+    Ok(())
+}
+
+/// **The other direction — a cap REMOVED from a built-in bundle must disappear from a stale
+/// workspace.** This is the half a union could never do, and the reason it became a replace
+/// (2026-07-16).
+///
+/// The stored `member` row here is what an older binary seeded: it carries `mcp:*.list:call`, the
+/// broad wildcard that authorized `teams.list` / `roles.list` / `grants.list` / `invite.list` and
+/// eight more admin-only caps. The live bundle no longer has it. Under the old UNION the wildcard
+/// folded back in from the row and every member kept the leak forever — the seed is create-only, so
+/// no upgrade path ever rewrote the row. Under REPLACE the live bundle is the whole answer for a
+/// built-in name and the cap is gone the moment the fixed binary boots, with no re-seed and no
+/// migration.
+#[tokio::test]
+async fn live_builtin_caps_replace_the_stale_role_row() -> Result<(), StoreError> {
+    let store = Store::memory().await?;
+
+    // A workspace seeded by the OLD binary: the member row carries the leaky wildcard.
+    role_define(
+        &store,
+        WS,
+        "member",
+        &["mcp:dashboard.save:call".into(), "mcp:*.list:call".into()],
+    )
+    .await?;
+    let bob = Subject::User("bob".into());
+    grant_assign(&store, WS, &bob, "role:member").await?;
+
+    // The stored row still has it — nothing rewrote it (create-only seed).
+    let stale = resolve_caps(&store, WS, "bob").await?;
+    assert!(
+        stale.contains(&"mcp:*.list:call".to_string()),
+        "precondition: the stale stored row carries the wildcard the upgrade is meant to remove"
+    );
+
+    // The upgraded binary's live bundle: the wildcard is gone.
+    let live = LiveMemberCaps {
+        member: vec!["mcp:dashboard.save:call".into()],
+    };
+    let fixed = resolve_caps_with(&store, WS, "bob", &live).await?;
+    assert!(
+        !fixed.contains(&"mcp:*.list:call".to_string()),
+        "a cap REMOVED from the live built-in bundle must NOT resolve from the stale stored row — \
+         under the old union it did, so the wildcard fix was inert on every existing deployment"
+    );
+    assert!(
+        fixed.contains(&"mcp:dashboard.save:call".to_string()),
+        "the live bundle's own caps still resolve"
     );
 
     Ok(())
@@ -121,12 +183,13 @@ async fn custom_role_unaffected_by_builtin_union() -> Result<(), StoreError> {
     Ok(())
 }
 
-/// Belt-and-braces: the live union is a FLOOR for built-in names — an admin grant on top of the
-/// built-in role subject is still honoured (union, not replace). This is how an installed
-/// extension's `grant_assign(Subject::Role("member"), cap)` reaches every member without editing the
-/// built-in record.
+/// **What the replace must NOT break.** A direct grant on the built-in role SUBJECT — how an
+/// installed extension's page tools reach every member without editing the built-in record — is still
+/// honoured. This was the stated reason the live caps were unioned rather than replaced; it survives
+/// the replace because that grant resolves through the role-subject RECURSION, not through the role's
+/// stored record. The two were conflated; this test is the proof they are separable.
 #[tokio::test]
-async fn live_union_keeps_direct_role_subject_grants() -> Result<(), StoreError> {
+async fn live_builtin_caps_keep_direct_role_subject_grants() -> Result<(), StoreError> {
     let store = Store::memory().await?;
     role_define(&store, WS, "member", &["mcp:dashboard.save:call".into()]).await?;
     let bob = Subject::User("bob".into());
@@ -149,11 +212,12 @@ async fn live_union_keeps_direct_role_subject_grants() -> Result<(), StoreError>
     let caps = resolve_caps_with(&store, WS, "bob", &live).await?;
     assert!(
         caps.contains(&"mcp:report.save:call".to_string()),
-        "live union"
+        "the live built-in bundle resolves"
     );
     assert!(
         caps.contains(&"mcp:ext.custom_tool:call".to_string()),
-        "direct role-subject grant still honoured (union, not replace)"
+        "a direct role-subject grant must survive the replace — it is the extension-install path, \
+         and it resolves through the role-subject recursion rather than the stored record"
     );
     Ok(())
 }
