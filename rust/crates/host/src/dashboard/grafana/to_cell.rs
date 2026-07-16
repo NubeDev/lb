@@ -143,8 +143,9 @@ fn grid_pos(obj: &Map<String, Value>) -> (u32, u32, u32, u32) {
 
 /// `targets[]` → `sources[]`. Each Grafana target is one query; we carry `refId`, the (migrated)
 /// `datasource` ref, and the whole target as `args` (opaque — `viz.query` re-checks per call). `tool`
-/// is left empty: the datasource-binding step (post-remap, UI/verb) resolves the concrete MCP tool
-/// from the bound datasource kind. `hide` maps to our `hide`.
+/// is left empty HERE because the concrete MCP tool is only knowable once the caller BINDS the target's
+/// datasource: [`super::bind`] fills it (plus the arg names that tool reads) on commit, right after
+/// `datasources::apply`. A preview never binds — it writes nothing. `hide` maps to our `hide`.
 fn targets_to_sources(obj: &Map<String, Value>) -> Vec<Target> {
     let panel_ds = obj.get("datasource").cloned().unwrap_or(Value::Null);
     obj.get("targets")
