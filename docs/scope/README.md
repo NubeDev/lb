@@ -680,6 +680,30 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   *references* them. Adds **no** MCP verb/cap/route/table and touches no core crate —
   toolchain + config + docs only. Adapts `/home/user/code/rust/dev-pulse/FLY.md`, dropping
   its bundled-PG and OAuth steps. Assets: `deploy/common/`, `deploy/fly/`.
+  `rubixd-rartifacts-scope.md` (the ask): the **fleet package plane** — `rartifacts`, a
+  REST artifact server (signed multi-arch binaries, docker image archives, bundle
+  manifests; semver + channels, content-addressed blobs), and `rubixd`, a per-machine
+  agent that reconciles **bundle YAMLs** (packages + named instances, `needs` ordering,
+  `${secret:...}` refs) through two backends — systemd (`service-manager`, versioned
+  release dirs + `current` symlink) and Docker (`bollard`, labeled containers) — with
+  health-gated **automatic rollback** and multi-instance installs. Both are new
+  out-of-tree binaries (a `rubix-fleet` repo); they reuse lb's Ed25519/SHA-256 artifact
+  envelope and atomic-install conventions but touch no lb crate. Installs product hosts
+  (`rubix-ai`, `ems`) and companions (TimescaleDB); extensions still publish through the
+  running node's gated API. **rartifacts is itself built ON lb** — a product host
+  embedding `lb-node` with all package logic in a native (Tier-2) `rartifacts`
+  extension (`pkg.*` MCP tools, ext-owned content-addressed blob dir) and its console
+  as the extension's **federated shadcn/Tailwind UI** on the minimal shell; agents/
+  publishers are **api-key principals** (revoke an agent = revoke its key, instant),
+  packages are `public` (anonymous download, no token) or `private`, and rubixd —
+  which stays a **standalone lb-free daemon** with a small embedded Bootstrap UI —
+  speaks only plain host-mounted REST, with **unlimited `[[remote]]`** rartifacts
+  connections. Both services bootstrap via a **boot-generated, one-time-UI-claimable
+  admin token** (shared `fleet-auth`) that doubles as the REST bearer. The umbrella
+  decomposes into per-slice scopes + AI coding-session roadmaps in `deploy/rubixd/`
+  (7 slices: core, token-auth, systemd, rollback-health, docker, bundles, UI) and
+  `deploy/rartifacts/` (5 slices: host+ext core, identity/claim, publish, resolve,
+  federated UI).
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.
