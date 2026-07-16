@@ -59,7 +59,9 @@ stays small. A store-level prefix scan is the named follow-up if one profiles ho
 
 A paged API used as if it were a full read is invisible until production data outgrows one page —
 tests must seed **past the page boundary** when the code filters a shared table in memory. The same
-single-page pattern still exists outside flows (`rules/get.rs`, `dashboard/store.rs`,
-`panel/store.rs`, `report/store.rs`, `nav/store.rs`, `brand/store.rs`, `render_templates/store.rs`,
-`insight/notify.rs`) — those use intentional caps but are still silently clamped to 200 by `scan`;
-sweep them the same way (tracked as an open follow-up in the session doc).
+single-page pattern existed outside flows (`rules/get.rs`, `dashboard/store.rs`, `panel/store.rs`,
+`report/store.rs`, `nav/store.rs`, `brand/store.rs`, `render_templates/store.rs`, `insight/notify.rs`)
+— swept the same way in the follow-up
+([#69](https://github.com/NubeDev/lb/issues/69), resolved 2026-07-15): those sites (and the flows
+drain) now share one canonical `lb_store::scan_all`. See
+[../store/single-scan-page-drops-rows-past-200-non-flows.md](../store/single-scan-page-drops-rows-past-200-non-flows.md).

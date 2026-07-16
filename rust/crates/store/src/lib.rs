@@ -19,6 +19,7 @@ mod read;
 mod read_versioned;
 mod record;
 mod scan;
+mod scan_all;
 mod status;
 mod tables;
 mod taint;
@@ -40,6 +41,7 @@ pub use read::read;
 pub use read_versioned::read_versioned;
 pub use record::{Versioned, FIRST_REV};
 pub use scan::{scan, Page, Row, MAX_SCAN_LIMIT};
+pub use scan_all::scan_all;
 pub use status::{status, StoreStatus};
 pub use tables::{tables, TableCount};
 pub use taint::{

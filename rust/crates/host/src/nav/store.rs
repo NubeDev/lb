@@ -3,13 +3,9 @@
 //! in one file so the table names + the envelope shape have a single owner (FILE-LAYOUT). No
 //! authorization here — the verbs gate first.
 
-use lb_store::{read, scan, write, Store, StoreError};
+use lb_store::{read, scan_all, write, Store, StoreError};
 
 use super::model::{Nav, NavHidden, NavPref, DEFAULT_TABLE, HIDDEN_TABLE, PREF_TABLE, TABLE};
-
-/// The largest roster a single `nav.list` returns (one scan page). A workspace with more navs than
-/// this is a named follow-up (paged roster) — stated, not silently truncated.
-pub const MAX_NAVS: usize = lb_store::MAX_SCAN_LIMIT;
 
 /// The `nav_pref` / `workspace_nav_default` composite id from a `[ws, key]` pair. `lb_store` already
 /// namespaces every key by workspace, so the record id only needs the second axis (the user, or a
@@ -43,12 +39,12 @@ pub async fn write_nav(store: &Store, ws: &str, n: &Nav) -> Result<(), StoreErro
     write(store, ws, TABLE, &n.id, &value).await
 }
 
-/// Scan up to [`MAX_NAVS`] navs in `ws` (one page, id-ordered). The roster read — the caller then
-/// filters by gate-3 visibility and drops tombstones.
+/// Scan every nav in `ws` (id-ordered, drained past the one-page cap). The roster read — the caller
+/// then filters by gate-3 visibility and drops tombstones.
 pub async fn scan_navs(store: &Store, ws: &str) -> Result<Vec<Nav>, StoreError> {
-    let page = scan(store, ws, TABLE, MAX_NAVS, None).await?;
-    let mut out = Vec::with_capacity(page.rows.len());
-    for row in page.rows {
+    let rows = scan_all(store, ws, TABLE).await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
         // `lb_store::write` wraps records in a `{ data: ... }` envelope; `scan` returns the whole
         // record, so unwrap the envelope to get the nav (same shape `scan_dashboards` unwraps).
         let inner = match row.data {

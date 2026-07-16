@@ -3,13 +3,9 @@
 //! shape have a single owner (FILE-LAYOUT), mirroring `dashboard::store`. No authorization here — the
 //! verbs gate first.
 
-use lb_store::{read, scan, write, Store, StoreError};
+use lb_store::{read, scan_all, write, Store, StoreError};
 
 use super::model::{Panel, TABLE};
-
-/// The largest roster a single `panel.list` returns (one scan page). A workspace with more panels than
-/// this is a named follow-up (paged roster) — stated, not silently truncated.
-pub const MAX_PANELS: usize = lb_store::MAX_SCAN_LIMIT;
 
 /// Read `panel:{id}` in `ws`. `None` if absent in this namespace (the hard wall). A tombstoned record
 /// still deserializes (callers treat `deleted` as absent).
@@ -30,12 +26,12 @@ pub async fn write_panel(store: &Store, ws: &str, p: &Panel) -> Result<(), Store
     write(store, ws, TABLE, &p.id, &value).await
 }
 
-/// Scan up to [`MAX_PANELS`] panels in `ws` (one page, id-ordered). The roster read — the caller then
-/// filters by gate-3 visibility and drops tombstones.
+/// Scan every panel in `ws` (id-ordered, drained past the one-page cap). The roster read — the caller
+/// then filters by gate-3 visibility and drops tombstones.
 pub async fn scan_panels(store: &Store, ws: &str) -> Result<Vec<Panel>, StoreError> {
-    let page = scan(store, ws, TABLE, MAX_PANELS, None).await?;
-    let mut out = Vec::with_capacity(page.rows.len());
-    for row in page.rows {
+    let rows = scan_all(store, ws, TABLE).await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
         // Records written via `lb_store::write` carry a `{ data: ... }` envelope; `scan` returns the
         // whole record, so unwrap the envelope to get the panel (mirrors `dashboard::scan_dashboards`).
         let inner = match row.data {

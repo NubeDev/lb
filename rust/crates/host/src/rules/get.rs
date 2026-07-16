@@ -30,18 +30,18 @@ pub async fn rules_get(
 }
 
 /// List saved rules in the workspace (all; an optional name filter is applied by the caller). The
-/// scan stays namespace-walled.
+/// scan drains every page — a roster must not silently lose rules past one 200-row page.
 pub async fn rules_list(
     store: &Store,
     principal: &Principal,
     ws: &str,
 ) -> Result<Vec<SavedRule>, RulesError> {
     authorize_store_read(principal, ws)?;
-    let page = lb_store::scan(store, ws, RULE_TABLE, lb_store::MAX_SCAN_LIMIT, None)
+    let page = lb_store::scan_all(store, ws, RULE_TABLE)
         .await
         .map_err(|e| RulesError::Internal(e.to_string()))?;
     let mut out = Vec::new();
-    for row in page.rows {
+    for row in page {
         // Records written via `lb_store::write` carry a `{ data: ... }` envelope (the same one `read`
         // unwraps for `rules_get`); `scan` returns the whole record, so unwrap it before decoding —
         // otherwise every row silently fails deser and the roster is always empty (mirrors the

@@ -78,9 +78,33 @@ concurrent rules session). Debugging:
 [`three-run-e2e-sequence overflow`](debugging/flows/three-run-e2e-sequence-overflows-default-test-stack.md)).
 Session [`flows-readback-hardening-session.md`](sessions/flows/flows-readback-hardening-session.md);
 public [`public/flows/flows.md`](../doc-site/content/public/flows/flows.md) (new "Value read-back"
-section). **Named follow-up — [#69](https://github.com/NubeDev/lb/issues/69):** the same single-page pattern
-lives outside flows (rules, dashboard, panel, report, nav, brand, render_templates, insight) —
-sweep those onto a shared drain.
+section). **Named follow-up — [#69](https://github.com/NubeDev/lb/issues/69) (resolved 2026-07-15):** the same
+single-page pattern lived outside flows (rules, dashboard, panel, report, nav, brand,
+render_templates, insight) — swept onto one shared `lb_store::scan_all` drain; see the roster
+block below.
+
+**Also shipped 2026-07-15: [#69](https://github.com/NubeDev/lb/issues/69) — roster lists no longer
+silently drop rows past 200 (the single-page sweep outside flows).** The flows read-back fix found
+the same single-`lb_store::scan`-page pattern in every host roster read: `rules.list` +
+`dashboard`/`panel`/`report`/`nav`/`brand`/`render_templates` `scan_*` each did ONE 200-row page
+and filtered in code; `insight/notify::load_subs` was the one listed site already draining. Green
+under 200 rows/table, partial past it — a workspace with >200 of any config listed only the first
+200, no error. The `MAX_DASHBOARDS`/`MAX_PANELS`/… "caps" were literally `= MAX_SCAN_LIMIT` (200)
+and `scan` clamps every request to 200 server-side — a cap above 200 is silently 200. Fix:
+promoted the cursor loop to ONE canonical cross-crate seam — `lb_store::scan_all`
+(`store/src/scan_all.rs`) — moved all seven host roster sites + `insight/notify` onto it, and made
+`host/flows/scan_all.rs` a thin re-export so flows and rosters share the one implementation;
+removed the misleading `MAX_*` aliases (no external consumers; none a genuine product cap — every
+caller treats the result as the full set). Full-drain-then-filter with NO silent backstop (a
+partial return just relocates the bug to a larger N); the scan cursor is the `⟨⟩`-bracketed
+`<string>id` whose ordering disagrees with the display id, so a prefix early-exit is unsound.
+`insights/table_scan.rs` keeps its own bounded `MAX_ROWS` variant by design (out of scope).
+**Tested:** new `roster_scan_paging_test` (3 — the canonical drain at 250 rows; `dashboard.list`
+strict-decode + visibility filter past 240 tombstoned fillers; `rules.list` loose-decode/authz past
+240 junk fillers) + all affected suites green (dashboard 12, flows_scan_paging 4, insights 22, nav
+30, panel 10, render_templates 6, report 9, rules 22). Debugging:
+[`store/single-scan-page-drops-rows-past-200-non-flows.md`](debugging/store/single-scan-page-drops-rows-past-200-non-flows.md);
+session [`roster-scan-paging-session.md`](sessions/store/roster-scan-paging-session.md).
 
 **Also shipped 2026-07-15: rules 10x — long-running job-backed runs (pause/resume) + the data stdlib.**
 [scope](scope/rules/long-running-rules-scope.md) ·
