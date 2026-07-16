@@ -15,33 +15,18 @@ use lb_store::{write, Store};
 use crate::boot::Node;
 
 /// Load every subscription in the workspace (the matcher + reactor both need the full set — the
-/// 1000/ws cap keeps this bounded, subscriptions scope). `scan` returns each `write`-based row as a
-/// `{ data: {...}, rev }` envelope, so unwrap the inner `data` before decoding the `Subscription`.
+/// 1000/ws cap keeps this bounded, subscriptions scope). Drains every scan page via
+/// `lb_store::scan_all`; `scan` returns each `write`-based row as a `{ data: {...}, rev }` envelope,
+/// so unwrap the inner `data` before decoding the `Subscription`. Best-effort: a store error returns
+/// whatever was read so far (the reactor never fails a pass on a read hiccup).
 pub async fn load_subs(store: &Store, ws: &str) -> Vec<Subscription> {
-    let mut subs = Vec::new();
-    let mut after: Option<String> = None;
-    loop {
-        match lb_store::scan(
-            store,
-            ws,
-            SUB_TABLE,
-            lb_store::MAX_SCAN_LIMIT,
-            after.as_deref(),
-        )
+    let rows = lb_store::scan_all(store, ws, SUB_TABLE)
         .await
-        {
-            Ok(page) => {
-                for row in page.rows {
-                    if let Some(sub) = decode_row::<Subscription>(row.data) {
-                        subs.push(sub);
-                    }
-                }
-                match page.next {
-                    Some(cursor) => after = Some(cursor),
-                    None => break,
-                }
-            }
-            Err(_) => break,
+        .unwrap_or_default();
+    let mut subs = Vec::with_capacity(rows.len());
+    for row in rows {
+        if let Some(sub) = decode_row::<Subscription>(row.data) {
+            subs.push(sub);
         }
     }
     subs

@@ -2,12 +2,9 @@
 //! the typed model and the generic `lb_store` `data`-envelope (FILE-LAYOUT; mirrors the dashboard
 //! store seam). No authorization here — the verbs gate first.
 
-use lb_store::{read, scan, write, Store, StoreError};
+use lb_store::{read, scan_all, write, Store, StoreError};
 
 use super::model::{RenderTemplate, TABLE};
-
-/// The largest roster a single `template.list` returns (one scan page).
-pub const MAX_TEMPLATES: usize = lb_store::MAX_SCAN_LIMIT;
 
 /// Read `render_template:{id}` in `ws`. `None` if absent in this namespace (the hard wall) — a
 /// tombstoned record still deserializes (callers treat `deleted` as absent).
@@ -32,12 +29,12 @@ pub async fn write_template(store: &Store, ws: &str, t: &RenderTemplate) -> Resu
     write(store, ws, TABLE, &t.id, &value).await
 }
 
-/// Scan up to [`MAX_TEMPLATES`] templates in `ws` (one page, id-ordered). The roster read — the
+/// Scan every template in `ws` (id-ordered, drained past the one-page cap). The roster read — the
 /// caller drops tombstones.
 pub async fn scan_templates(store: &Store, ws: &str) -> Result<Vec<RenderTemplate>, StoreError> {
-    let page = scan(store, ws, TABLE, MAX_TEMPLATES, None).await?;
-    let mut out = Vec::with_capacity(page.rows.len());
-    for row in page.rows {
+    let rows = scan_all(store, ws, TABLE).await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
         // `lb_store::write` wraps the value in a `{ data: ... }` envelope; `scan` returns the whole
         // record, so unwrap the envelope (same idiom the dashboard store seam uses).
         let inner = match row.data {
