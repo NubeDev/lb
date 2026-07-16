@@ -15,6 +15,11 @@ mod agent_defs;
 mod agent_invoke;
 mod assets;
 mod assets_bin;
+mod auth_login;
+mod auth_password;
+mod auth_reply;
+mod auth_select;
+mod auth_switch;
 mod brand;
 mod bus;
 mod catalog;
@@ -85,6 +90,10 @@ pub use assets::{
     get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,
 };
 pub use assets_bin::{get_asset_bin, put_asset as put_asset_bin};
+pub use auth_login::auth_login;
+pub use auth_password::auth_password;
+pub use auth_select::auth_select;
+pub use auth_switch::auth_switch;
 pub use brand::{delete_brand, get_brand, list_brands, save_brand};
 pub use bus::{bus_stream, publish_message};
 pub use catalog::{get_catalog, render_message as render_catalog_message, set_catalog};
@@ -109,7 +118,7 @@ pub use flows::{
 pub use history::get_history;
 pub use identity::{
     create_identity, get_identity, identity_workspaces as identity_workspaces_route,
-    list_identities,
+    list_identities, set_identity_email, set_identity_password,
 };
 pub use inbox::{list_inbox, resolve_inbox};
 pub use ingest::{

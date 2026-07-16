@@ -40,6 +40,15 @@ rubixd's wire contract rides.
   `GET /packages`, `GET /packages/{name}` (and `GET /health`, open). Thin
   projections: parse → `lb_mcp::call("pkg.…")` under the caller's principal → JSON.
   No logic in the route layer, ever — the tool is the single implementation.
+- **`GET /health`** (open — the fleet health contract, decided in
+  [`../containerize-scope.md`](../containerize-scope.md) §The health contract): `200
+  {"status":"ok","version":…,"detail":{"store":…,"blobs":…,"ext":…}}` when the store is
+  open, the blob dir is writable, and the extension is published; `503
+  {"status":"degraded",…}` otherwise. **`/health`, never `/healthz`** — one route, no
+  `/livez`/`/readyz` (503-vs-refused *is* the liveness/readiness split). Reads **in-memory
+  state only** — no store query, no disk I/O — and **never blocks on a dependency**. This
+  is the ALB target-group health check and the container probe; `detail` names which
+  subsystem is down, never a path, DSN, or key.
 
 ## Non-goals
 
@@ -89,6 +98,10 @@ A real spawned rartifacts node (embedded lb, mem or on-disk store — the lb
   mismatch refused with temp cleaned; record-after-blob ordering under a kill hook;
   startup integrity report.
 - keyset pagination on `pkg.list`; unknown name → typed 404; restart persistence.
+- `GET /health`: 200 + `{"status":"ok"}` on a booted node, unauthenticated; **503 +
+  `{"status":"degraded"}` when the blob dir is unwritable** (chmod it in the test — the
+  process still answers, which is what distinguishes "de-register me" from "restart me");
+  no path/DSN/key material in any body.
 
 ## Risks & hard problems
 
@@ -101,14 +114,25 @@ A real spawned rartifacts node (embedded lb, mem or on-disk store — the lb
   streams).
 - lb tag pin churn (the rubix-ai cadence) — accepted in the parent scope.
 
-## Open questions
+## Decisions (no open questions)
 
-- `pkg_event` vs lb's audit ledger (`audit/` scope, unshipped): keep `pkg_event` now,
-  fold into the platform ledger when it ships? Recommendation: yes, keep + fold later.
+- **`pkg_event` vs lb's audit ledger — decided: keep `pkg_event` now, fold later.** The
+  `audit/` scope is unshipped; blocking the artifact plane's audit trail on it would trade
+  a working append-only table for a dependency with no date. `pkg_event` is small and
+  purpose-shaped, and folding it into the platform ledger when that ships is a migration,
+  not a redesign. *Reopen when*: `audit/` ships — at which point `pkg_event` becomes a
+  view over it rather than a table.
+- **Boot self-publish of the extension — decided: dev-mode only, release images bake the
+  published artifact** (already stated in §Risks; recorded here as the decision it is).
+  This is the rule that keeps a Rust toolchain and a signing key out of the runtime image —
+  see [`../containerize-scope.md`](../containerize-scope.md), which depends on it.
 
 ## Related
 
 [`token-auth-scope.md`](token-auth-scope.md) (next) · parent scope (posture + what lb
-buys) · `ems` (`rust/node/src/{boot.rs,ems_mount.rs}` — the pattern) · lb
+buys) · [`../containerize-scope.md`](../containerize-scope.md) (this server's container
+image — the `/health` body contract above, the `/data` volume for `store/` + `blobs/`, and
+the AWS topology; it lands **with this slice**) · `ems`
+(`rust/node/src/{boot.rs,ems_mount.rs}` — the pattern) · lb
 `docs/scope/extensions/reference-extensions-scope.md` (native-tier doctrine) · lb
 `docs/scope/datasources/page-chaining-scope.md` (cursor convention).

@@ -105,13 +105,24 @@ Real axum server, real embedded store (no mocks):
   must ship zero third-party JS beyond bundled Bootstrap, and this is re-reviewed there.
 - Plaintext lives in RAM until claimed — `zeroize` on claim; accepted residue risk.
 
-## Open questions
+## Decisions (no open questions)
 
-- Should claim require the 6-digit code even on localhost (uniform flow) at the cost
-  of one journal read? Recommendation: no — keep localhost one-click.
+- **6-digit claim code on localhost — decided: no.** Keep localhost one-click; require the
+  code only on a non-local bind (§Intent). A localhost claim already implies local access,
+  which is the threat the code defends against — charging every fresh install a journal
+  read to defend against nothing is friction that teaches operators to script around the
+  claim flow. *Reopen if*: the container posture makes non-local binds the common case in
+  practice (see below) — uniformity would then be worth the one read.
+- **Container posture interaction — decided: the code is required in-container.** A
+  containerized rubixd sets `RUBIXD_BIND_ADDR=0.0.0.0:9420`
+  ([`../containerize-scope.md`](../containerize-scope.md)), which **is** a non-local bind —
+  so the 6-digit code path is automatically active there, by the rule above and with no
+  container-specific branch. This is the rule working as designed, not an exception to it.
 
 ## Related
 
 [`embedded-ui-scope.md`](embedded-ui-scope.md) (the claim page) ·
 [`../rartifacts/token-auth-scope.md`](../rartifacts/token-auth-scope.md) (the other
-`fleet-auth` consumer — build this slice first).
+`fleet-auth` consumer — build this slice first) ·
+[`../containerize-scope.md`](../containerize-scope.md) (the `/health` body contract this
+slice implements; `RUBIXD_BIND_ADDR`, which makes the claim-code path active in-container).

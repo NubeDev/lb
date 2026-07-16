@@ -26,7 +26,11 @@ pub(crate) fn project(manifest: &Manifest, granted: &[String]) -> (Option<ExtUi>
         id: None,
         options: Vec::new(),
     });
-    let widgets = manifest.widgets.iter().map(|w| project_widget(w, granted)).collect();
+    let widgets = manifest
+        .widgets
+        .iter()
+        .map(|w| project_widget(w, granted))
+        .collect();
     (page, widgets)
 }
 
@@ -138,16 +142,26 @@ class = "private"
         // ext-widget-panel-options scope: the resolved id (slug of the label when absent) + the
         // declarative options are relayed verbatim onto the durable ExtUi; a page carries neither.
         let m = Manifest::parse(TOML).unwrap();
-        let granted = vec!["mcp:series.latest:call".to_string(), "mcp:series.read:call".to_string()];
+        let granted = vec![
+            "mcp:series.latest:call".to_string(),
+            "mcp:series.read:call".to_string(),
+        ];
         let (page, widgets) = project(&m, &granted);
         let page = page.unwrap();
         assert_eq!(page.id, None, "a page has no widget id");
         assert!(page.options.is_empty(), "a page carries no options");
-        assert_eq!(widgets[0].id.as_deref(), Some("a"), "id defaults to slug(label)");
+        assert_eq!(
+            widgets[0].id.as_deref(),
+            Some("a"),
+            "id defaults to slug(label)"
+        );
         assert_eq!(widgets[0].options.len(), 1);
         assert_eq!(widgets[0].options[0].id, "band");
         assert_eq!(widgets[0].options[0].default, Some(serde_json::json!(1.5)));
-        assert!(widgets[1].options.is_empty(), "widget B declared no options");
+        assert!(
+            widgets[1].options.is_empty(),
+            "widget B declared no options"
+        );
     }
 
     #[test]

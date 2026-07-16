@@ -73,6 +73,21 @@ impl FixedWindowLimiter {
         *count += 1;
         *count <= self.max_per_window
     }
+
+    /// Whether `key` is still under the ceiling WITHOUT recording a hit — the read-only counterpart to
+    /// [`allow`](Self::allow). Used where the count is driven separately (the `/auth/login` failure
+    /// limiter records only on a failed attempt, but checks the ceiling on every attempt). Rolls the
+    /// window like `allow` so a stale window reads as fresh (allowed).
+    pub fn peek(&self, key: &str, now: u64) -> bool {
+        let window = now / self.window_secs.max(1);
+        let mut state = self.state.lock().expect("rate-limit state poisoned");
+        if state.window != window {
+            state.window = window;
+            state.counts.clear();
+            return true;
+        }
+        state.counts.get(key).copied().unwrap_or(0) < self.max_per_window
+    }
 }
 
 /// The one process-wide limiter for the public invite route.
@@ -111,6 +126,42 @@ pub async fn invite_accept_rate_limit(req: Request, next: Next) -> Response {
     next.run(req).await
 }
 
+// ---------------------------------------------------------------------------------------------
+// The `/auth/login` per-email login limiter (email-login scope, resolved open question: 10 failures
+// / 15 min per email, per-email only, v1). Unlike the invite limiter this is NOT middleware — it
+// keys on the EMAIL in the request body and counts only FAILED attempts, so the login handler drives
+// it directly: `auth_login_allowed(email, now)` before verifying, `auth_login_record_failure(email,
+// now)` on a `401`. A successful login records nothing (a legit user is never locked out by their own
+// success). In-memory per-node, exactly like the invite limiter — a distributed limiter is over-scope.
+
+/// Max FAILED `/auth/login` attempts per email per window before the email is locked out.
+pub const AUTH_LOGIN_MAX_FAILURES: u32 = 10;
+
+/// The `/auth/login` failure window, seconds — 15 minutes (resolved open question).
+pub const AUTH_LOGIN_WINDOW_SECS: u64 = 15 * 60;
+
+/// The one process-wide per-email login-failure limiter.
+fn auth_login_limiter() -> &'static FixedWindowLimiter {
+    static LIMITER: OnceLock<FixedWindowLimiter> = OnceLock::new();
+    // `max_per_window + 1` because `allow` counts the hit it is asked about: we want the (max+1)-th
+    // FAILURE to be the one that trips, so the limiter's own ceiling sits one above the failure count.
+    LIMITER.get_or_init(|| FixedWindowLimiter::new(AUTH_LOGIN_MAX_FAILURES, AUTH_LOGIN_WINDOW_SECS))
+}
+
+/// Is a `/auth/login` attempt for `email` still allowed (i.e. under the failure ceiling this window)?
+/// Read-only — does NOT count the attempt. Call before verifying; a `false` return means the email is
+/// locked out (respond `429`). `email` is folded (trimmed + lower-cased) by the caller so the bucket
+/// matches the lookup.
+pub fn auth_login_allowed(folded_email: &str, now: u64) -> bool {
+    auth_login_limiter().peek(folded_email, now)
+}
+
+/// Record a FAILED `/auth/login` for `email` (wrong password / unknown email). Counts one hit toward
+/// the window; the (max+1)-th failure trips [`auth_login_allowed`] to `false`. Call only on a `401`.
+pub fn auth_login_record_failure(folded_email: &str, now: u64) {
+    let _ = auth_login_limiter().allow(folded_email, now);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,5 +190,24 @@ mod tests {
         assert!(l.allow("a", 59));
         assert!(!l.allow("a", 59));
         assert!(l.allow("a", 60), "the next window starts fresh");
+    }
+
+    #[test]
+    fn peek_reports_the_ceiling_without_counting() {
+        // The `/auth/login` failure limiter checks on every attempt but counts only failures.
+        let l = FixedWindowLimiter::new(2, 60);
+        // peek never records — a thousand peeks still leave the email allowed.
+        assert!(l.peek("ada@x.com", 10));
+        assert!(l.peek("ada@x.com", 10));
+        assert!(l.peek("ada@x.com", 10), "peek does not increment");
+        // Record two failures → the third attempt is now over the ceiling.
+        assert!(l.allow("ada@x.com", 10));
+        assert!(l.allow("ada@x.com", 10));
+        assert!(
+            !l.peek("ada@x.com", 10),
+            "after max failures, peek reports locked out"
+        );
+        // A different email is unaffected.
+        assert!(l.peek("bob@x.com", 10));
     }
 }

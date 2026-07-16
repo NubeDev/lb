@@ -7,7 +7,10 @@ use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::{json, Value};
 
-use super::{identity_create, identity_get, identity_list, identity_workspaces, IdentityError};
+use super::{
+    identity_create, identity_get, identity_list, identity_set_email, identity_workspaces,
+    IdentityError,
+};
 
 /// Dispatch an `identity.*` MCP call. `input` is the verb's JSON arguments. `ts` is caller-injected
 /// for `create` (no wall-clock — testing §3).
@@ -25,7 +28,19 @@ pub async fn call_identity_tool(
                 principal,
                 str_arg(input, "sub")?,
                 opt_str(input, "display_name"),
+                opt_str(input, "email"),
                 u64_arg(input, "ts"),
+            )
+            .await
+            .map_err(identity_to_tool)?;
+            Ok(json!({ "identity": view }))
+        }
+        "identity.set_email" => {
+            let view = identity_set_email(
+                store,
+                principal,
+                str_arg(input, "sub")?,
+                str_arg(input, "email")?,
             )
             .await
             .map_err(identity_to_tool)?;
@@ -56,6 +71,7 @@ pub async fn call_identity_tool(
 fn identity_to_tool(e: IdentityError) -> ToolError {
     match e {
         IdentityError::Denied => ToolError::Denied,
+        IdentityError::EmailTaken => ToolError::BadInput("email already in use".into()),
         IdentityError::Store(s) => ToolError::Extension(s.to_string()),
     }
 }

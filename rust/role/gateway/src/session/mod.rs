@@ -11,7 +11,10 @@ mod authenticate;
 mod credential;
 mod credentials;
 pub mod events;
+mod global_credential;
+mod mint_session;
 mod reach;
+mod select_token;
 mod trusted;
 
 pub use authenticate::{authenticate, verify_token, AuthRejection};
@@ -20,5 +23,10 @@ pub use credential::{
     DEV_LOGIN_ENV,
 };
 pub use credentials::dev_claims;
+pub use global_credential::{
+    global_credential_check_from_env, GlobalCredentialCheck, GlobalDevTrustAny, GlobalPasswordHash,
+};
+pub use mint_session::{mint_full_session, MintedSession, SESSION_TTL_SECS};
 pub use reach::require_reach;
+pub use select_token::{is_select_token, mint_select_token, SELECT_TTL_SECS, WS_SELECT_CONSTRAINT};
 pub use trusted::trusted_from_env;

@@ -182,9 +182,19 @@ pub async fn identity_set_email(
 /// is the uniqueness enforcement), treating a conflict WE already own as idempotent success. `Err`
 /// (`Conflict`) iff a DIFFERENT identity owns the email.
 async fn claim_email(store: &Store, sub: &str, folded: &str) -> Result<(), StoreError> {
-    let index_value = serde_json::to_value(EmailIndex { sub: sub.to_string() })
-        .map_err(|e| StoreError::Decode(e.to_string()))?;
-    match lb_store::create(store, IDENTITY_NS, IDENTITY_EMAIL_TABLE, folded, &index_value).await {
+    let index_value = serde_json::to_value(EmailIndex {
+        sub: sub.to_string(),
+    })
+    .map_err(|e| StoreError::Decode(e.to_string()))?;
+    match lb_store::create(
+        store,
+        IDENTITY_NS,
+        IDENTITY_EMAIL_TABLE,
+        folded,
+        &index_value,
+    )
+    .await
+    {
         Ok(()) => Ok(()),
         Err(StoreError::Conflict) => match email_owner(store, folded).await? {
             Some(owner) if owner == sub => Ok(()), // idempotent re-claim by the same identity

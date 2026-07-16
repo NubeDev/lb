@@ -26,15 +26,18 @@ pub async fn list_identities(
     Ok(Json(identities))
 }
 
-/// The `POST /admin/identities` body.
+/// The `POST /admin/identities` body. `email` is the optional login handle (email-login scope) —
+/// claimed globally-unique when present.
 #[derive(Debug, Deserialize)]
 pub struct CreateIdentity {
     pub sub: String,
     #[serde(default)]
     pub display_name: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
 }
 
-/// `POST /admin/identities` — provision a global identity (in NO workspace).
+/// `POST /admin/identities` — provision a global identity (in NO workspace), optionally with an email.
 pub async fn create_identity(
     State(gw): State<Gateway>,
     headers: HeaderMap,
@@ -48,11 +51,62 @@ pub async fn create_identity(
         &p,
         &body.sub,
         body.display_name.as_deref(),
+        body.email.as_deref(),
         gw.now(),
     )
     .await
-    .map_err(forbid)?;
+    .map_err(identity_err)?;
     Ok(Json(view))
+}
+
+/// The `POST /admin/identities/{sub}/email` body.
+#[derive(Debug, Deserialize)]
+pub struct SetEmail {
+    pub email: String,
+}
+
+/// `POST /admin/identities/{sub}/email` — set/change an identity's email login handle (email-login
+/// scope). Gated `mcp:identity.manage:call`. A duplicate email is `409`.
+pub async fn set_identity_email(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(sub): Path<String>,
+    Json(body): Json<SetEmail>,
+) -> Result<Json<IdentityView>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let view = lb_host::identity_set_email(&gw.node.store, &p, &sub, &body.email)
+        .await
+        .map_err(identity_err)?;
+    Ok(Json(view))
+}
+
+/// The `POST /admin/identities/{sub}/password` body. The secret is never logged/echoed.
+#[derive(Debug, Deserialize)]
+pub struct SetPassword {
+    pub secret: String,
+}
+
+/// `POST /admin/identities/{sub}/password` — admin-set a person's GLOBAL password (email-login
+/// scope). Gated `mcp:identity.manage:call`. Returns `{ ok: true }`; never the hash.
+pub async fn set_identity_password(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(sub): Path<String>,
+    Json(body): Json<SetPassword>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    lb_host::identity_set_password(&gw.node.store, &p, &sub, &body.secret, gw.now())
+        .await
+        .map_err(|e| match e {
+            lb_host::IdentityCredentialError::Denied => (StatusCode::FORBIDDEN, "denied".into()),
+            lb_host::IdentityCredentialError::BadInput(m) => (StatusCode::BAD_REQUEST, m),
+            other => (StatusCode::INTERNAL_SERVER_ERROR, other.to_string()),
+        })?;
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 /// `GET /admin/identities/{sub}` — read one identity.
@@ -87,4 +141,14 @@ pub async fn identity_workspaces(
 
 fn forbid(e: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::FORBIDDEN, e.to_string())
+}
+
+/// Map an identity-service error to HTTP: an email clash is `409 Conflict`, a denial `403`, a store
+/// failure `500`. Keeps the email-uniqueness signal distinct from an authorization denial.
+fn identity_err(e: lb_host::IdentityError) -> (StatusCode, String) {
+    match e {
+        lb_host::IdentityError::Denied => (StatusCode::FORBIDDEN, "denied".into()),
+        lb_host::IdentityError::EmailTaken => (StatusCode::CONFLICT, "email already in use".into()),
+        lb_host::IdentityError::Store(s) => (StatusCode::INTERNAL_SERVER_ERROR, s.to_string()),
+    }
 }

@@ -714,10 +714,20 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   image mounts `/var/run/docker.sock` (slice-5 docker backend fully live) and the
   **systemd backend degrades to a typed `BackendUnavailable`**, with the systemd unit
   staying the blessed path for mixed hosts. Posture is **probed, never branched** (rule 1:
-  no `if container {}`). Adds no MCP verb/cap/route/table and no product code — one env
-  seam (`RUBIXD_BIND_ADDR`), assets, and docs. Images are `amd64`+`arm64` (armv7 stays
-  bare-binary only); lands **per-slice** (rartifacts image with its slice 1, rubixd image
-  after rubixd slice 5). Assets: `rubix-fleet:deploy/`.
+  no `if container {}`). Also ratifies the **fleet-wide health contract**: one open
+  `GET /health` per service — **never `/healthz`**, no `/livez`/`/readyz` — returning
+  `200 {"status":"ok",…}` / `503 {"status":"degraded",…}` (the readiness split is the
+  status code; connection-refused is the liveness signal), reading in-memory state only and
+  **never blocking on a dependency**; a *backend* being unavailable is **not** degraded.
+  Product hosts (`rubix-ai`/`ems-node`) have no health route today, so bundles gate on
+  `tcp:` until they adopt it — no fleet-plane change when they do. Adds no MCP
+  verb/cap/route/table and no product code — one env seam (`RUBIXD_BIND_ADDR`), assets, and
+  docs. **All questions decided** (§Decisions, each with a reopen trigger): `debian:
+  bookworm-slim`, GHCR + build-only CI, EC2+EBS (not Fargate/EFS — an embedded store wants
+  a block device), `amd64`+`arm64` only (**armv7 never** — bare binaries serve it), pinned
+  toolchain + committed `Cargo.lock`. Lands in **three waves** (prereqs now → rartifacts
+  image with its slice 1 → rubixd image after rubixd slice 5, severable). Assets:
+  `rubix-fleet:deploy/`.
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.

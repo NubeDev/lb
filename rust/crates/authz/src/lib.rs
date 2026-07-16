@@ -53,8 +53,8 @@ pub use identity::{
     IDENTITY_TABLE,
 };
 pub use identity_credential::{
-    identity_credential_phc, identity_credential_set, IdentityCredential,
-    IDENTITY_CREDENTIAL_KIND, IDENTITY_CREDENTIAL_TABLE,
+    identity_credential_phc, identity_credential_set, IdentityCredential, IDENTITY_CREDENTIAL_KIND,
+    IDENTITY_CREDENTIAL_TABLE,
 };
 pub use invite::{
     invite_create_raw, invite_get_raw, invite_list_raw, invite_mark_accepted_raw,

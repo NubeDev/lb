@@ -167,7 +167,10 @@ async fn catalog_ext_tiles_are_workspace_isolated() {
     assert_eq!(a_tiles[0]["label"], "Proof Tile");
     // The view-key segment uses the stable `id`, NOT the label (ext-widget-panel-options scope) — this
     // is what an author composes into `ext:<ext>/<widget>`, and it matches the UI's `widgetIdOf` slug.
-    assert_eq!(a_tiles[0]["widget"], "proof-tile", "the widget key is the stable id");
+    assert_eq!(
+        a_tiles[0]["widget"], "proof-tile",
+        "the widget key is the stable id"
+    );
     // The declarative options relay verbatim (the host is a relay, not an interpreter).
     let opts = a_tiles[0]["options"].as_array().expect("options relayed");
     assert_eq!(opts.len(), 1);

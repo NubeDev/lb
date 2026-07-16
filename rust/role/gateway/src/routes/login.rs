@@ -13,10 +13,9 @@
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
-use lb_auth::mint;
 use serde::{Deserialize, Serialize};
 
-use crate::session::dev_claims;
+use crate::session::mint_full_session;
 use crate::state::Gateway;
 
 /// The login request: who, into which workspace, and the credential proving it (login-hardening
@@ -47,10 +46,6 @@ pub struct LoginReply {
     /// avoids dead buttons; a forged call is still denied at the route.
     pub caps: Vec<String>,
 }
-
-/// The dev session lifetime — long enough for a working session, short enough that a leaked token
-/// expires. Config in a real deployment.
-const SESSION_TTL_SECS: u64 = 60 * 60 * 12;
 
 /// Mint a session token for the login request. Always `200` for the dev-login (any user); a real
 /// credential check would `401` on bad credentials here.
@@ -108,77 +103,14 @@ pub async fn login(
                 "invalid or missing credential".into(),
             )
         })?;
-    let mut claims = dev_claims(&principal, &req.workspace, gw.now(), SESSION_TTL_SECS);
-    // Fold the DURABLE grant store into the token (authz-grants scope: the token is a cached
-    // projection of `resolve_caps`). This is what lets an INSTALLED extension's tools reach a user
-    // WITHOUT editing this login: install grants the ext's `mcp:<ext>.<tool>:call` caps to the
-    // `workspace-admin` role, and any admin resolves them here. The `dev_claims` wildcard set stays
-    // as the base (back-compat); resolved grants are unioned on top. Best-effort — a store hiccup
-    // never fails the login (the base caps still mint a working dev session).
-    // Grants are stored under the BARE user name (the seed + first-member bootstrap both
-    // `grant_assign(Subject::User(sub.strip_prefix("user:")), …)`), so resolve with the bare name —
-    // `resolve_caps` re-wraps it as `Subject::User`. Passing the `user:`-prefixed form would build
-    // `Subject::User("user:ada")` and match zero grant rows (the bug that made an admin resolve to no
-    // caps → every installed-extension page 403'd).
-    let bare_user = principal.strip_prefix("user:").unwrap_or(&principal);
-    // resolve_caps_live (not the raw resolve_caps) UNIONES the live built-in role bundles on top of
-    // the stored records — so a new built-in cap (e.g. `mcp:report.save:call`) reaches an
-    // already-seeded workspace's tokens without a re-seed (builtin-role-freshness scope).
-    if let Ok(resolved) =
-        lb_host::resolve_caps_live(&gw.node.store, &req.workspace, bare_user).await
-    {
-        claims.caps.extend(resolved);
-        claims.caps.sort();
-        claims.caps.dedup();
-    }
-
-    // nav-reach scope: fold the subject's NAV-DERIVED reach caps (`reach:<surface>:view`) into the
-    // token. Reach is now gated by caps like everything else — the surface entry routes require the
-    // matching `reach:<surface>:view` (or the fallback wildcard) to OPEN a page. A subject given a
-    // curated one-page nav reaches ONLY that page; a subject with no nav (fallback) gets `reach:*:view`
-    // and reaches all (so a default member/admin is never locked out). This runs AFTER the grant fold
-    // so the resolver strips items against the caller's FULL caps — reach can only ever name a surface
-    // the caller could already reach (no-widening). Best-effort: a resolve hiccup falls back to the
-    // permissive wildcard rather than locking the user out of their own session.
-    let reach_principal = lb_auth::Principal::routed(
-        principal.clone(),
-        req.workspace.clone(),
-        claims.caps.clone(),
-    );
-    let reach = match lb_host::nav_resolve(&gw.node, &reach_principal, &req.workspace).await {
-        Ok(resolved) => lb_host::reach_caps(&resolved),
-        // Never fail login on a nav-resolve error — degrade OPEN (reach all), same posture as the
-        // grant fold above (a store hiccup never narrows a session below its floor).
-        Err(_) => vec![lb_host::REACH_ALL.to_string()],
-    };
-    claims.caps.extend(reach);
-    claims.caps.sort();
-    claims.caps.dedup();
-
-    let caps = claims.caps.clone();
-    let token = mint(&gw.key, &claims);
-
-    // Best-effort: make this workspace listable in the switcher. Never fails the login.
-    let _ = lb_host::workspace_create(
-        &gw.node.store,
-        &verify_self(&gw, &token),
-        &req.workspace,
-        &req.workspace,
-        gw.now(),
-    )
-    .await;
+    // Mint through the ONE shared role-correct path (email-login scope) — the same issuance the
+    // `/auth/*` routes use: viewer floor ∪ resolved grants ∪ nav-reach, best-effort directory register.
+    let minted = mint_full_session(&gw.node, &gw.key, &principal, &req.workspace, gw.now()).await;
 
     Ok(Json(LoginReply {
-        token,
+        token: minted.token,
         principal,
         workspace: req.workspace,
-        caps,
+        caps: minted.caps,
     }))
-}
-
-/// Verify the just-minted token back into a principal (so the directory write runs under the real
-/// session principal, with its `workspace.create` grant). The token was just signed by this key, so
-/// this never fails — but going through `verify` keeps the principal construction in one place.
-fn verify_self(gw: &Gateway, token: &str) -> lb_auth::Principal {
-    lb_auth::verify(&gw.key, token, gw.now()).expect("self-minted token verifies")
 }

@@ -12,36 +12,37 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::routes::{
     accept_invite, ack_insight, add_datasource, add_member, add_team_member, agent_invoke,
-    archive_workspace, assign_grant, bus_stream, channel_stream, convert_unit, create_apikey,
-    create_channel, create_def, create_identity, create_team, create_user, create_webhook,
-    create_workspace, define_role, delete_brand, delete_dashboard, delete_def, delete_flow,
-    delete_insight, delete_message, delete_nav, delete_occurrence, delete_panel, delete_report,
-    delete_role, delete_rule, delete_series_route, delete_team, delete_user, disable_extension,
-    disable_user, edit_message, enable_extension, enable_flow, enable_user, events_stream,
-    events_subscribe, events_unsubscribe, export_dashboard, export_report, find_series,
-    flow_debug_stream, flow_node_state, flow_run_stream, format_datetime, format_number,
-    format_quantity, get_agent_config_route, get_apikey, get_asset_bin, get_brand, get_catalog,
-    get_dashboard, get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history,
-    get_identity, get_insight, get_layout, get_media, get_nav, get_nav_hidden, get_nav_pref,
-    get_outbox_status, get_panel, get_prefs, get_report, get_rule, get_undo_compensations,
-    get_undo_history, get_webhook, grant_skill, identity_workspaces_route, import_dashboard,
-    inject_flow, insight_events, latest_sample, lifecycle_flow, link_doc, list_apikeys,
-    list_brands, list_channels, list_dashboards, list_datasources, list_defs, list_docs,
-    list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities,
-    list_inbox, list_insights, list_members, list_navs, list_occurrences, list_panels,
-    list_reports, list_roles, list_rules, list_series, list_shares_nav, list_tables,
-    list_team_members, list_teams, list_users, list_webhooks, list_workspaces, load_skill, login,
-    mcp_call, mcp_catalog, native_call, panel_usage, patch_flow_run, pin_dashboards, post_message,
-    post_redo, post_undo, post_webhook, publish_extension, publish_message, purge_workspace,
-    put_asset_bin, put_doc, put_media_chunk, put_skill, read_graph, read_samples, read_schema,
-    refresh_run_token, remove_datasource, remove_member, remove_team_member, rename_series_route,
-    rename_team, rename_workspace, render_catalog_message, reset_extension, resolve_caps,
-    resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant,
-    revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control, run_flow,
-    run_query, run_rule, run_stream, save_brand, save_dashboard, save_flow, save_nav, save_panel,
-    save_report, save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route,
-    set_catalog, set_default_nav, set_default_prefs, set_layout, set_nav_hidden, set_nav_pref,
-    set_prefs, share_dashboard, share_doc, share_nav, share_panel, share_report, start_extension,
+    archive_workspace, assign_grant, auth_login, auth_password, auth_select, auth_switch,
+    bus_stream, channel_stream, convert_unit, create_apikey, create_channel, create_def,
+    create_identity, create_team, create_user, create_webhook, create_workspace, define_role,
+    delete_brand, delete_dashboard, delete_def, delete_flow, delete_insight, delete_message,
+    delete_nav, delete_occurrence, delete_panel, delete_report, delete_role, delete_rule,
+    delete_series_route, delete_team, delete_user, disable_extension, disable_user, edit_message,
+    enable_extension, enable_flow, enable_user, events_stream, events_subscribe,
+    events_unsubscribe, export_dashboard, export_report, find_series, flow_debug_stream,
+    flow_node_state, flow_run_stream, format_datetime, format_number, format_quantity,
+    get_agent_config_route, get_apikey, get_asset_bin, get_brand, get_catalog, get_dashboard,
+    get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity,
+    get_insight, get_layout, get_media, get_nav, get_nav_hidden, get_nav_pref, get_outbox_status,
+    get_panel, get_prefs, get_report, get_rule, get_undo_compensations, get_undo_history,
+    get_webhook, grant_skill, identity_workspaces_route, import_dashboard, inject_flow,
+    insight_events, latest_sample, lifecycle_flow, link_doc, list_apikeys, list_brands,
+    list_channels, list_dashboards, list_datasources, list_defs, list_docs, list_extensions,
+    list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
+    list_insights, list_members, list_navs, list_occurrences, list_panels, list_reports,
+    list_roles, list_rules, list_series, list_shares_nav, list_tables, list_team_members,
+    list_teams, list_users, list_webhooks, list_workspaces, load_skill, login, mcp_call,
+    mcp_catalog, native_call, panel_usage, patch_flow_run, pin_dashboards, post_message, post_redo,
+    post_undo, post_webhook, publish_extension, publish_message, purge_workspace, put_asset_bin,
+    put_doc, put_media_chunk, put_skill, read_graph, read_samples, read_schema, refresh_run_token,
+    remove_datasource, remove_member, remove_team_member, rename_series_route, rename_team,
+    rename_workspace, render_catalog_message, reset_extension, resolve_caps, resolve_inbox,
+    resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant, revoke_tokens_route,
+    revoke_webhook, rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule,
+    run_stream, save_brand, save_dashboard, save_flow, save_nav, save_panel, save_report,
+    save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog,
+    set_default_nav, set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs,
+    share_dashboard, share_doc, share_nav, share_panel, share_report, start_extension,
     surface_reach, system_acp, system_overview, system_subsystem, system_tools, system_topology,
     telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav,
     update_def, update_flow_node, write_samples,
@@ -72,6 +73,15 @@ pub fn router(gw: Gateway) -> Router {
     let max_ext_upload = gw.max_extension_upload_bytes;
     let router = Router::new()
         .route("/login", post(login))
+        // email-login scope — the Slack-style human front door. `/auth/login` (email+password) and
+        // `/auth/select` (select-token) are UNAUTHENTICATED-by-session (they ISSUE the token), like
+        // `/login`. `/auth/switch` (password-less re-mint) and `/auth/password` (self-service change)
+        // require a valid full token, verified inside the handler. `/auth/login` rate-limits per email
+        // inside the handler (only failures count), so no middleware layer here.
+        .route("/auth/login", post(auth_login))
+        .route("/auth/select", post(auth_select))
+        .route("/auth/switch", post(auth_switch))
+        .route("/auth/password", post(auth_password))
         // The public inbound webhook endpoint (webhooks scope) — `POST /hooks/{ws}/{id}`. The
         // ONLY unauthenticated-by-session route in the gateway: a third-party service calls it
         // from outside, presenting the webhook's own credential (a `lbk_…` bearer or an HMAC
@@ -218,6 +228,16 @@ pub fn router(gw: Gateway) -> Router {
         .route(
             "/admin/identities/{sub}/workspaces",
             get(identity_workspaces_route),
+        )
+        // email-login scope: admin-set an identity's email login handle + global password. Both gated
+        // `mcp:identity.manage:call` server-side; the password route returns `{ok:true}`, never a hash.
+        .route(
+            "/admin/identities/{sub}/email",
+            post(crate::routes::set_identity_email),
+        )
+        .route(
+            "/admin/identities/{sub}/password",
+            post(crate::routes::set_identity_password),
         )
         .route("/admin/members", get(list_members).post(add_member))
         .route("/admin/members/{sub}", delete(remove_member))

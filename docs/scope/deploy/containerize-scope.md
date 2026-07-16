@@ -60,8 +60,10 @@ between them (an agent in a container driving the host's daemon) is the hard pro
   cleanly on ECS/EC2 and documents the contract it needs (volume, env, ports, health);
   choosing and codifying the AWS topology is a follow-up once there's a real account and a
   real region. Naming it here is the boundary, not a promise.
-- **No Kubernetes, no Helm, no ECR push automation.** Registry choice and the release
-  pipeline are the open question §Open questions carries; v1 CI builds and discards.
+- **No Kubernetes, no Helm, no push automation in v1.** Registry is **decided — GHCR**
+  (§Decisions); CI **builds and discards** until there is a staging environment to receive
+  a push. No `/livez`/`/readyz` either: one `/health` per service, 200/503 (§The health
+  contract).
 - **No container-first rubixd on mixed hosts.** Reaching host systemd from a container
   (host PID namespace + `/run/systemd/private` or dbus mounts) was **considered and
   rejected** — see §Intent. Mixed hosts run the native unit.

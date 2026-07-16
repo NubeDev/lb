@@ -9,19 +9,25 @@
 //! membership WRITES are hub-only (decision #8) — the gateway (hub) serves them; an edge-role node
 //! does not mount them. The MCP bridge ([`call_identity_tool`]) exposes them under the one contract.
 
+mod by_email;
 mod create;
 mod error;
 mod get;
 mod list;
+mod login_workspaces;
 mod model;
+mod set_email;
 mod tool;
 mod workspaces;
 
+pub use by_email::identity_by_email;
 pub use create::identity_create;
 pub use error::IdentityError;
 pub use get::identity_get;
 pub use list::identity_list;
+pub use login_workspaces::login_workspaces;
 pub use model::{IdentityView, IdentityWorkspace};
+pub use set_email::identity_set_email;
 pub use tool::call_identity_tool;
 pub use workspaces::identity_workspaces;
 

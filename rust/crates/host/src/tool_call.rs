@@ -151,10 +151,14 @@ pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
 pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
     if qualified_tool == "federation.schema" || qualified_tool == "federation.sample" {
         "federation.query"
-    } else if qualified_tool == "identity.set_credential" {
-        // login-hardening scope: setting a user's password is the SAME admin authority as managing
-        // identities — it rides the existing `mcp:identity.manage:call` grant (the scope's MCP §6.1
-        // decision), not a new per-verb cap. The verb re-checks `identity.manage` inside.
+    } else if qualified_tool == "identity.set_credential"
+        || qualified_tool == "identity.set_email"
+        || qualified_tool == "identity.set_password"
+    {
+        // login-hardening + email-login scopes: setting a user's (per-ws) credential, GLOBAL password,
+        // or email is the SAME admin authority as managing identities — all ride the existing
+        // `mcp:identity.manage:call` grant (the scope's MCP §6.1 decision), not a new per-verb cap.
+        // Each verb re-checks `identity.manage` inside.
         "identity.manage"
     } else if qualified_tool == "outbox.enqueue_held" {
         "outbox.enqueue"
@@ -585,6 +589,12 @@ async fn dispatch_at_depth(
             // login-hardening scope: set/rotate a user's password hash. Gated `mcp:identity.manage:call`
             // (the outer gate above ran it); the verb hashes argon2 before any write and returns no hash.
             crate::call_credential_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool == "identity.set_password" {
+            // email-login scope: set/rotate a person's GLOBAL password (all workspaces). Gated
+            // `mcp:identity.manage:call` (the outer gate ran it); argon2-hashed before write, no hash
+            // returned. Distinct from `identity.set_credential` (the per-ws legacy credential).
+            crate::call_identity_credential_tool(&node.store, principal, ws, qualified_tool, &input)
+                .await?
         } else if qualified_tool.starts_with("identity.") {
             // The other identity directory verbs (create/get/list/workspaces), reachable over the same
             // bridge as their dedicated admin REST routes. Each re-checks `mcp:identity.manage:call`.

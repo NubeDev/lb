@@ -147,7 +147,9 @@ async fn wasm_install_grants_ui_scope_to_the_admin_role() {
         .expect("install");
 
     let admin = Subject::Role("workspace-admin".to_string());
-    let caps = grant_list(&node.store, ws, &admin).await.expect("grant list");
+    let caps = grant_list(&node.store, ws, &admin)
+        .await
+        .expect("grant list");
     assert!(
         caps.iter().any(|c| c == "mcp:series.latest:call"),
         "the page/widget scope tool series.latest is granted to role:workspace-admin"

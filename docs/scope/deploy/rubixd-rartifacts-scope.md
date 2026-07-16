@@ -421,8 +421,16 @@ Per `testing-scope.md` — no mocks, no fake backends:
 ## Open questions
 
 - Repo naming/home: `rubix-fleet` with three crates is the recommendation — confirm.
-- Does `rubix-ai` (and `ems-node`) grow a real `/health` endpoint, or does v1 gate on
-  gateway TCP-connect only?
+- ~~Does `rubix-ai` (and `ems-node`) grow a real `/health` endpoint~~ **decided (v1 gates
+  on TCP-connect; `/health` is the ratified convention when they adopt it).** Neither host
+  has one today, and the fleet plane does not need them to: bundle health specs already
+  support `tcp:<port>` alongside `http:<path>`, so v1 gates on gateway TCP-connect —
+  weaker, honest, shipping. [`containerize-scope.md`](containerize-scope.md) §The health
+  contract ratifies **`GET /health` → 200 `{"status":"ok",…}` / 503
+  `{"status":"degraded",…}`, never `/healthz`, never blocking on a dependency** as the
+  fleet-wide convention; `rubixd` and `rartifacts` implement it in their slices, and when
+  the product hosts adopt it their bundles switch `tcp:` → `http:` with **no fleet-plane
+  change**. Adopting it is those repos' work, not this plane's blocker.
 - ~~Auth issuance~~ **decided**: boot-generated admin token with one-time UI claim on
   both services; rartifacts registers agents (revocable per-instance tokens) and mints publisher tokens under it (the
   `token-auth-scope.md` pair). Device enrollment *automation* (vs. hand-placing the

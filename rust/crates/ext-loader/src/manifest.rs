@@ -623,7 +623,10 @@ options = [
             "[[widget]]\nentry = \"a.mjs\"\nlabel = \"Zone Comfort\"\n[[widget]]\nentry = \"b.mjs\"\nlabel = \"Zone   Comfort\"",
         );
         let err = Manifest::parse(&toml).unwrap_err();
-        assert!(matches!(err, ManifestError::InvalidWidgetBlock(_)), "{err:?}");
+        assert!(
+            matches!(err, ManifestError::InvalidWidgetBlock(_)),
+            "{err:?}"
+        );
     }
 
     #[test]
@@ -641,7 +644,10 @@ options = [
 "#,
         );
         let err = Manifest::parse(&toml).unwrap_err();
-        assert!(matches!(err, ManifestError::InvalidWidgetBlock(_)), "{err:?}");
+        assert!(
+            matches!(err, ManifestError::InvalidWidgetBlock(_)),
+            "{err:?}"
+        );
     }
 
     #[test]
@@ -652,7 +658,10 @@ options = [
             "[[widget]]\nentry = \"w.mjs\"\nlabel = \"W\"\noptions = [ { id = \"x\", label = \"X\", scope = \"options\", path = \"x\", control = \"\" } ]",
         );
         let err = Manifest::parse(&toml).unwrap_err();
-        assert!(matches!(err, ManifestError::InvalidWidgetBlock(_)), "{err:?}");
+        assert!(
+            matches!(err, ManifestError::InvalidWidgetBlock(_)),
+            "{err:?}"
+        );
     }
 
     #[test]

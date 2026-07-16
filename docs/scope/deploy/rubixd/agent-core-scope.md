@@ -88,9 +88,25 @@ responsibility per file enforced from day one.
 
 ## Open questions
 
-- `rubixd run` as the systemd-managed daemon: unit file authored here or in slice 3
-  (which owns unit generation)? Recommendation: here, hand-written, as
-  `packaging/rubixd.service`.
+- ~~`rubixd run` as the systemd-managed daemon: unit file authored here or in
+  slice 3 (which owns unit generation)?~~ **Decided (slice 1)**: hand-authored
+  here as `packaging/rubixd.service`. Slice 3's `backend/systemd/` owns the
+  *generated* units for installed packages (`rubix-<pkg>-<instance>.service`);
+  the unit that manages rubixd itself stays hand-authored so bootstrap is
+  one-step (a fresh machine can install + start the agent without first
+  booting an agent to generate its own unit). The shipped unit sets
+ `ExecStart=/usr/local/bin/rubixd run` (the loop lands slice 2; until then
+  the binary starts + exits, which `Restart=on-failure` covers), `User=root`,
+  hardening (`ProtectSystem=strict`, `PrivateTmp`, etc.), and
+  `ReadWritePaths=/var/lib/rubixd /etc/rubixd/bundles.d /opt/rubix`.
+- **Surfaced during build (non-blocking)**: SurrealDB 2.6 holds the RocksDB
+  file lock on an async router task that only drains when the runtime yields.
+  A same-process `drop(ledger); Ledger::open(same_path)` loop hits the lock
+  unless the caller interleaves `tokio::task::yield_now()` between drop and
+  reopen. This is a real-infra quirk, not a rubixd bug; tests work around it
+  with a `reopen_after_shutdown` helper. In production, rubixd is a single
+  long-lived process and never re-opens; the only place this matters is
+  tests. See `docs/sessions/deploy/agent-core-session.md` Decisions.
 
 ## Related
 

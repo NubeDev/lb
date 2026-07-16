@@ -69,6 +69,13 @@ pub struct Gateway {
     /// `DevTrustAny` so existing password-less test logins keep working (the security gate lives in
     /// the env-driven production `boot` path). Behind `Arc<dyn>` so axum clones it cheaply.
     pub credential_check: Arc<dyn crate::session::CredentialCheck>,
+    /// The GLOBAL credential check `/auth/login` runs before minting a token (email-login scope) —
+    /// the Slack-model analogue of `credential_check`. Verifies the person's ONE global password
+    /// (`identity_credential`) after the email→sub lookup. Selected by the SAME `LB_DEV_LOGIN` env in
+    /// production ([`boot`]): set → `GlobalDevTrustAny` (dev/CI, password-less); unset →
+    /// `GlobalPasswordHash` (argon2). Tests override via [`Gateway::with_global_credential_check`]; the
+    /// `new`/`new_live` seams default to `GlobalDevTrustAny`. Behind `Arc<dyn>` for cheap axum clones.
+    pub global_credential_check: Arc<dyn crate::session::GlobalCredentialCheck>,
     /// The unified-event-stream hub (unified-event-stream scope): the process-wide, ephemeral registry
     /// of the browser's one multiplexed SSE connection per session and its live subject subscriptions.
     /// No durable state — a dropped connection drops its subscriptions. Shared (`Clone`d cheaply) across
@@ -115,7 +122,8 @@ impl Gateway {
         Ok(
             Self::new_live(Arc::new(node), crate::signing_key::resolve())
                 .with_pepper_from_env()
-                .with_credential_check(crate::session::credential_check_from_env()),
+                .with_credential_check(crate::session::credential_check_from_env())
+                .with_global_credential_check(crate::session::global_credential_check_from_env()),
         )
     }
 
@@ -172,6 +180,11 @@ impl Gateway {
             // password-less test logins keep working. Production `boot` overrides via env
             // (`with_credential_check(credential_check_from_env())`), which hard-refuses in release.
             credential_check: Arc::new(crate::session::DevTrustAny),
+            // The GLOBAL credential check `/auth/login` runs before minting (email-login scope).
+            // Same default posture as `credential_check`: password-less on the test seams, env-driven
+            // in production `boot`. A test uses `with_global_credential_check` to exercise the real
+            // `GlobalPasswordHash` (`401` on bad/absent global secret) path against a seeded credential.
+            global_credential_check: Arc::new(crate::session::GlobalDevTrustAny),
             events: crate::session::events::EventHub::new(),
             // The `POST /extensions` upload ceiling — the safe default until the boot path pins the
             // configured value via `with_max_extension_upload_bytes`.
@@ -195,6 +208,17 @@ impl Gateway {
         check: Arc<dyn crate::session::CredentialCheck>,
     ) -> Self {
         self.credential_check = check;
+        self
+    }
+
+    /// Install the GLOBAL credential check `/auth/login` runs before minting (email-login scope).
+    /// Production `boot` selects it from `LB_DEV_LOGIN`; a test uses this to exercise the real
+    /// `GlobalPasswordHash` (`401` on bad/absent global secret) against a seeded credential.
+    pub fn with_global_credential_check(
+        mut self,
+        check: Arc<dyn crate::session::GlobalCredentialCheck>,
+    ) -> Self {
+        self.global_credential_check = check;
         self
     }
 

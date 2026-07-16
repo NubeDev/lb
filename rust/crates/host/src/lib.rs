@@ -225,12 +225,15 @@ pub use host_tools::{
 };
 pub use identity::{
     call_identity_tool, identity_by_email, identity_create, identity_get, identity_list,
-    identity_set_email, identity_workspaces, IdentityError, IdentityView, IdentityWorkspace,
+    identity_set_email, identity_workspaces, login_workspaces, IdentityError, IdentityView,
+    IdentityWorkspace,
 };
 pub use identity_credential::{
     call_identity_credential_tool, global_credential_verify, identity_change_password,
     identity_set_password, GlobalCredentialCheck, IdentityCredentialError,
 };
+// The email-fold (trim + lower-case) used at the login front door — re-exported so the gateway can
+// key its rate limiter + email lookup on the SAME canonical form the store index uses.
 pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, drain_workspace_bounded, ingest_write,
@@ -259,6 +262,7 @@ pub use invites::{
 pub use layout::{
     call_layout_tool, layout_get, layout_set, LayoutError, UiLayout, MAX_LAYOUT_BYTES,
 };
+pub use lb_authz::fold_email;
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use media::{
