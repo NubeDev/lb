@@ -118,6 +118,30 @@ Real axum server, real embedded store (no mocks):
   ([`../containerize-scope.md`](../containerize-scope.md)), which **is** a non-local bind —
   so the 6-digit code path is automatically active there, by the rule above and with no
   container-specific branch. This is the rule working as designed, not an exception to it.
+- **Realized in slice 2 (session
+  [`rubix-fleet/docs/sessions/deploy/token-auth-session.md`](../../../../rubix-fleet/docs/sessions/deploy/token-auth-session.md)):**
+  - **`reset-token` notation — shipped as the `rubixd reset-token` subcommand**
+    (not the `rubixd --reset-token` flag form this doc used), for verb-per-file
+    consistency with the slice-1 CLI table. Identical semantics; same recovery
+    path (local root, regenerates the hash, flips `claimed=false`, never over
+    HTTP). Recorded in the session + skill doc.
+  - **423 Locked fires BEFORE the Authorization header is parsed.** An unclaimed
+    box returns 423 on a gated route regardless of what the caller sent — a
+    missing header on an unclaimed box is still "the claim flow has not run",
+    not "401 unauthenticated". Caught by a deny-test during integration; fix +
+    regression test in
+    [`rubix-fleet/docs/debugging/deploy/unclaimed-box-returns-401-not-423.md`](../../../../rubix-fleet/docs/debugging/deploy/unclaimed-box-returns-401-not-423.md).
+  - **`/health` 503 "degraded" deferred to slice 4.** The server fails fast at
+    boot if the ledger cannot open, so once the process answers it is alive by
+    construction; the 503 path is for mid-flight store loss, which arrives with
+    the slice-4 transaction engine's health-gate work. Slice 2 ships the 200
+    `{"status":"ok","version":…,"detail":{"ledger":"open"}}` shape and the
+    `detail` schema (backends slots added by slices 3/5).
+  - **Claim-time durable write is best-effort.** `try_claim` flips the in-memory
+    `claimed` flag + returns the plaintext even if `store.set_claimed(true)`
+    fails; the live process is authoritative for `verify`, the store is the
+    restart-recovery backup. A failed local embedded-store write means the disk
+    is gone — panicking in a daemon is worse. Tested paths never fail the write.
 
 ## Related
 
