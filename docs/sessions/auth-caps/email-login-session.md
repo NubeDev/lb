@@ -102,6 +102,28 @@ Regression (the `login.rs` refactor + identity signature change must not move an
 
 Command output pasted at the bottom of this doc.
 
+## Follow-up (same session): boot-seed a first admin for `/auth/login`
+
+A freshly seeded node could not use `/auth/login` — `login_workspaces` scans the workspace
+**directory**, which was only populated lazily on the first legacy `/login`, so a seeded member with
+no directory row got `403 "not a member of any workspace"`. Fixed at the provisioning seam:
+
+- New un-gated `lb_host::workspace_register(store, ws, name, ts)` (`crates/host/src/workspaces/register.rs`)
+  — the raw directory write `workspace_create` does, minus the capability gate + first-member
+  bootstrap. Respects the purge tombstone; idempotent.
+- `seed_dev_identity` (node) now: (1) registers the workspace in the directory up front; (2) takes an
+  `email` arg and, when set, seeds the identity's **global email** (`identity_set_email`) AND — when a
+  password is also given — the **global credential** (`identity_credential_set`), so the new front door
+  has a first admin on a fresh store. The same seed password backs both the legacy per-ws `/login`
+  credential and the global one.
+- `BootConfig` gains `seed_email` (`LB_SEED_EMAIL`); `from_env` reads it.
+- **The embed builder now wires the GLOBAL check too.** `builder.rs`'s `GatewayMode::Addr` arm selected
+  only the legacy `with_credential_check` from `credential_mode` — so an embedded node's `/auth/login`
+  stayed password-less even under `PasswordHash`. It now also `with_global_credential_check`s from the
+  same mode (gateway re-exports `GlobalPasswordHash`/`GlobalDevTrustAny`). Verified end to end on a
+  running embedded node: `PasswordHash` mode → wrong password 401, correct seeded password 200;
+  `DevTrustAny` mode → password-less, seeded email resolves.
+
 ## Non-goals / deferred
 
 - The `/login` removal sweep (see Sequencing) — next slice.

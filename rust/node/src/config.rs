@@ -198,6 +198,16 @@ pub struct BootConfig {
     /// an embedder that provisions credentials its own way. Secret-class: filled at the binary
     /// boundary, hashed before write, never logged (mirrors `signing_key`'s custody).
     pub seed_credential: Option<String>,
+
+    /// An optional GLOBAL email login handle to seed for the dev [`seed_user`](Self::seed_user) at
+    /// boot (email-login scope), so the new `POST /auth/login {email, password}` front door has a
+    /// first admin who can sign in on a fresh store. `Some(non-empty)` ⇒ the seed sets the identity's
+    /// globally-unique email AND — when [`seed_credential`](Self::seed_credential) is also set — the
+    /// global password (the same plaintext backs both the legacy per-ws `/login` credential and the
+    /// global one, so one seeded password works on both doors while they coexist). `None` (the
+    /// default) seeds no global email — the dev user still logs in via the legacy `/login` or the dev
+    /// form. `from_env` reads `LB_SEED_EMAIL`. Filled at the binary boundary; the email is non-secret.
+    pub seed_email: Option<String>,
 }
 
 impl Default for BootConfig {
@@ -234,6 +244,9 @@ impl Default for BootConfig {
             // No seed password by default — a `DevTrustAny` node needs none, and an embedder fills
             // this only when it boots `PasswordHash` and wants the dev admin to be able to log in.
             seed_credential: None,
+            // No global email seeded by default — an embedder fills this to give the new `/auth/login`
+            // front door a first admin. `None` ⇒ the dev user logs in via the legacy `/login`/dev form.
+            seed_email: None,
         }
     }
 }
@@ -286,6 +299,11 @@ impl BootConfig {
             seed_credential: std::env::var("LB_SEED_PASSWORD")
                 .ok()
                 .filter(|s| !s.is_empty()),
+            // Optional dev-admin GLOBAL email (`LB_SEED_EMAIL`) — so the new `/auth/login` front door
+            // has a first admin. Absent ⇒ no global email seeded. Read here at the binary boundary.
+            seed_email: std::env::var("LB_SEED_EMAIL")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
         }
     }
 }

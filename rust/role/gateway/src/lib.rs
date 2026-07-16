@@ -25,4 +25,9 @@ pub use session::{authenticate, dev_claims, verify_token, AuthRejection};
 // (via `lb-node`'s builder, embedder-credential-mode scope) can name the two impls without
 // reaching into `session::credential`.
 pub use session::{credential_check_from_env, CredentialCheck, DevTrustAny, PasswordHash};
+// The GLOBAL credential-check seam (email-login) — the `/auth/login` analogue, likewise re-exported so
+// an embedder selects the same mode for both the legacy `/login` and the new email front door.
+pub use session::{
+    global_credential_check_from_env, GlobalCredentialCheck, GlobalDevTrustAny, GlobalPasswordHash,
+};
 pub use state::Gateway;

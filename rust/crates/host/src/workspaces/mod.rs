@@ -18,6 +18,7 @@ mod delete;
 mod error;
 mod list;
 mod model;
+mod register;
 mod rename;
 mod tool;
 
@@ -29,5 +30,6 @@ pub use delete::{workspace_delete, workspace_purge};
 pub use error::WorkspacesError;
 pub use list::workspace_list;
 pub use model::{WorkspaceRecord, WorkspaceStatus, KIND, TABLE, WORKSPACES_NS};
+pub use register::workspace_register;
 pub use rename::workspace_rename;
 pub use tool::call_workspaces_tool;

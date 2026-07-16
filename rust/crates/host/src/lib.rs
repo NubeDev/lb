@@ -415,8 +415,8 @@ pub use webhook::{
 };
 pub use workspaces::{
     call_workspaces_tool, grant_default_core_skills, resolve_default_core_skills, workspace_create,
-    workspace_delete, workspace_list, workspace_purge, workspace_rename, WorkspaceRecord,
-    WorkspaceStatus, WorkspacesError, DEFAULT_CORE_SKILLS,
+    workspace_delete, workspace_list, workspace_purge, workspace_register, workspace_rename,
+    WorkspaceRecord, WorkspaceStatus, WorkspacesError, DEFAULT_CORE_SKILLS,
 };
 // The **reactor directory** — the durable workspace set the node's background reactors service
 // (relocated from the retired workflow driver; rules-workflow-convergence scope). The register/

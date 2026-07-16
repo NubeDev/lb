@@ -169,6 +169,17 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
                 CredentialMode::PasswordHash => Arc::new(lb_role_gateway::PasswordHash),
             };
             gw = gw.with_credential_check(check);
+            // Select the GLOBAL credential check `POST /auth/login` runs (email-login scope), from the
+            // SAME `credential_mode` so both human doors agree: `DevTrustAny` ⇒ password-less dev/CI,
+            // `PasswordHash` ⇒ real argon2 against the global credential (wrong/absent secret 401s).
+            // `new_live` hardwired `GlobalDevTrustAny`; without this the embedded `/auth/login` would
+            // stay password-less even under `PasswordHash`.
+            let global_check: Arc<dyn lb_role_gateway::GlobalCredentialCheck> =
+                match cfg.credential_mode {
+                    CredentialMode::DevTrustAny => Arc::new(lb_role_gateway::GlobalDevTrustAny),
+                    CredentialMode::PasswordHash => Arc::new(lb_role_gateway::GlobalPasswordHash),
+                };
+            gw = gw.with_global_credential_check(global_check);
             // Pin the `POST /extensions` upload ceiling from config (extension-upload-limit fix). The
             // route-scoped body limit is sized from this; the binary fills it via `from_env`
             // (`LB_MAX_EXTENSION_UPLOAD_BYTES`, default 384 MiB), an embedder sets it directly.
