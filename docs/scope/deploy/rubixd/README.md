@@ -24,6 +24,8 @@ conventions being reused are lb's; sessions/debugging entries follow the lb rule
 | 7 | [`embedded-ui-scope.md`](embedded-ui-scope.md) | Small Bootstrap UI (rust-embed, no build step): claim page, status, instance detail, rollback button |
 | 8 | [`local-publish-scope.md`](local-publish-scope.md) | Standalone (rartifacts-optional): local blob cache + package index, `POST /packages` + `rubixd publish`, local-first resolution |
 | 9 | [`ui-local-publish-scope.md`](ui-local-publish-scope.md) | Browser upload of a signed package over slice 8's `POST /packages`: Upload + Packages pages, signed-only (no unsigned bypass), no new server verbs |
+| 10 | [`self-update-scope.md`](self-update-scope.md) | rubixd updates itself: signed `rubixd` artifact, `rubixd-guard` external gate (health + **UI probe**), auto-rollback, file-journal recovery |
+| 11 | [`rescue-desk-scope.md`](rescue-desk-scope.md) | Tauri operator desk (REST when healthy) + emergency SSH lane: ForceCommand-locked rescue user, self-rollback/reinstall-from-cache, factory reset — nothing else |
 
 ## Coding-session roadmap (long-running AI sessions)
 
@@ -77,8 +79,19 @@ HTTP), write `docs/sessions/deploy/rubixd-<slice>-session.md`, log any breakage 
    refused **from the browser** with nothing written to the cache or index; no new server
    verbs added for the UI.
 
-Renumber nothing: later slices (fleet control plane, Windows service backend, rubixd
-self-update hardening) get new scope files here when asked for.
+10. **Session 10 — self-update.** The `rubixd-guard` crate + `self_update/` verbs; the
+   gate is health **and** the embedded UI answering. **Exit gate**: a rubixd with a
+   deliberately broken UI build auto-rolls-back to the previous rubixd (real
+   `systemd --user`, real binaries); a guard killed mid-swap resumes from the journal
+   to a terminal state; bad-marked self versions are refused.
+11. **Session 11 — rescue desk.** The `rubixd-rescue` protocol crate + sshd
+   provisioning first, the Tauri app second. **Exit gate**: over a real sshd, the
+   rescue user can self-rollback and factory-reset and can do *nothing else*
+   (shell/forwarding/sftp/pty all refused, adversarial tests green); the desk drives
+   upload → update → rollback over REST and recovery over SSH against a live node.
+
+Renumber nothing: later slices (fleet control plane, Windows service backend) get new
+scope files here when asked for.
 
 **Cross-cutting**: [`armv7-scope.md`](armv7-scope.md) — making the **armv7
 (Raspberry-Pi-class) target real**. Not a numbered slice: it constrains every slice, since

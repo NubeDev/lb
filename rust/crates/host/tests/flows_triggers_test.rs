@@ -149,6 +149,126 @@ async fn inject_fire_starts_one_run() {
     assert_eq!(r["fired_run"], true); // fire → one run started
 }
 
+/// A fire is an EVENT, not state: it starts the run but leaves NO retained record. The firing run
+/// gets the value as an explicit run param, so the record buys the fire nothing — and costs the
+/// flow correctness (see `fire_inject_does_not_replay_into_a_later_run`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn inject_fire_writes_no_retained_record() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let n = Node {
+        id: "go".into(),
+        node_type: "trigger".into(),
+        needs: vec![],
+        with: Default::default(),
+        config: json!({"mode":"inject","inject_mode":"fire"}),
+        inputs: Vec::new(),
+        position: None,
+    };
+    let mut f = rhai_flow("firenorec");
+    f.nodes = vec![n];
+    save(&node, &p, "ws", &f).await;
+    let req = json!({ "id": "firenorec", "node": "go", "value": 99, "ts": 1 }).to_string();
+    let out = call_tool(&node, &p, "ws", "flows.inject", &req)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&out).unwrap()["fired_run"],
+        true
+    );
+    // The headline: a momentary poke persists nothing.
+    assert!(
+        store_read(&node.store, "ws", "flow_input", "firenorec:go")
+            .await
+            .unwrap()
+            .is_none(),
+        "a fire-mode inject must leave no node-level flow_input record"
+    );
+    // ...on the per-port slot either.
+    let req = json!({ "id": "firenorec", "node": "go", "value": 99, "port": "payload", "ts": 2 })
+        .to_string();
+    call_tool(&node, &p, "ws", "flows.inject", &req)
+        .await
+        .unwrap();
+    assert!(
+        store_read(&node.store, "ws", "flow_input", "firenorec:go:payload")
+            .await
+            .unwrap()
+            .is_none(),
+        "a fire-mode inject must leave no per-port flow_input record"
+    );
+}
+
+/// The bug the retention fix actually closes, asserted through the public read seam. A run merges
+/// every retained `flow_input` row into its params by node id (`merged_params_with_inputs`), with
+/// no fire/retain filter — so a fire-mode record, if one were written, would silently replay that
+/// one-shot poke as the trigger's payload on every LATER run. `flows.node_state` reports exactly
+/// the retained state a later run would inherit, so "no retained input after a fire" is the
+/// observable form of "no replay".
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn fire_inject_leaves_no_retained_input_for_a_later_run() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let fire = Node {
+        id: "go".into(),
+        node_type: "trigger".into(),
+        needs: vec![],
+        with: Default::default(),
+        config: json!({"mode":"inject","inject_mode":"fire"}),
+        inputs: Vec::new(),
+        position: None,
+    };
+    let retain = Node {
+        id: "held".into(),
+        node_type: "trigger".into(),
+        needs: vec![],
+        with: Default::default(),
+        config: json!({"mode":"inject","inject_mode":"retain"}),
+        inputs: Vec::new(),
+        position: None,
+    };
+    let mut f = rhai_flow("replay");
+    f.nodes = vec![fire, retain];
+    save(&node, &p, "ws", &f).await;
+
+    // One momentary poke, and one retained set — same verb, same shape, different node posture.
+    for (n, v, ts) in [("go", 99, 1u64), ("held", 4, 2)] {
+        let req = json!({ "id": "replay", "node": n, "value": v, "ts": ts }).to_string();
+        call_tool(&node, &p, "ws", "flows.inject", &req)
+            .await
+            .unwrap();
+    }
+
+    let out = call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.node_state",
+        &json!({ "id": "replay" }).to_string(),
+    )
+    .await
+    .unwrap();
+    let st = serde_json::from_str::<Value>(&out).unwrap();
+    let of = |id: &str| -> Value {
+        st["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["node"] == id)
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
+    // The fired node carries no retained input for a later run to inherit...
+    assert!(
+        of("go").get("input").is_none(),
+        "a fired poke must leave no retained input; got {:?}",
+        of("go")
+    );
+    // ...while the retained node on the same flow still holds its value (the contrast that proves
+    // the fix is scoped to firing targets, not a blanket "inject stopped persisting").
+    assert_eq!(of("held")["input"], 4);
+}
+
 /// A flow authored as the CANVAS authors it: a `mode:"cron"` trigger node carrying the schedule in
 /// `config.cron`, feeding `a`. The reactor scans the trigger NODE (per-node cursor), not a flow-level
 /// `flow.cron`.

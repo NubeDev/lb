@@ -86,9 +86,77 @@ Real local dockerd via bollard (suite **skips and reports** when absent — neve
 
 ## Open questions
 
-- Private registry credentials: config-file creds per registry in
+- ~~Private registry credentials: config-file creds per registry in
   `/etc/rubixd/config.toml`, or force everything private through rartifacts archives?
-  Recommendation: archives-only v1 (one trust model), creds later.
+  Recommendation: archives-only v1 (one trust model), creds later.~~
+  **RESOLVED (slice 5): archives-only v1, as recommended.** Slice 5 does
+  anonymous pulls only (`pull.rs` → `bollard::create_image`, no auth config).
+  Creds deferred; revisit if a fleet needs a private registry that rartifacts
+  archives can't cover.
+
+### Answered in slice 5
+
+- **Rootless docker: works, no special handling needed.** `dockerd::ensure` uses
+  `bollard::Docker::connect_with_defaults`, which honours `$DOCKER_HOST` — the
+  same posture as the systemd sandbox honouring `XDG_RUNTIME_DIR`. Verified
+  against dockerd 29.5.3 at `/var/run/docker.sock`; a rootless socket is reached
+  by exporting `$DOCKER_HOST` with no rubixd-side change.
+
+### Raised and resolved in slice 5
+
+- **Full image hygiene / GC — DONE.** `prune` now implements the
+  `Backend::prune` contract against image tags exactly as systemd implements it
+  against release dirs: sort descending, keep the top `keep_n`, always keep
+  `instance.version` ∪ `instance.kept_previous`, return the removed versions so
+  `commit` can splice them out of `kept_previous`. The host-wide
+  reference-count that made this look hard is a `list_containers(all: true)`
+  sweep: anything a container references — rubixd's or not, running or not — is
+  retained regardless of `keep_n`, and the engine's 409 backstops the race.
+  Tags are removed, never image ids, so a shared id keeps its layers until its
+  last reference goes. Tests:
+  `docker_prune_test.rs::prune_removes_unreferenced_tags_and_protects_retained`,
+  `::prune_protects_kept_previous_outside_keep_window`,
+  `::prune_spares_images_referenced_by_foreign_containers`.
+
+- **Operator rollback to a pruned version — DONE.** `rollback` now recreates
+  from the retained `rubixd/<pkg>:<v>` tag when `.prev` is absent or names a
+  different version, so every version `kept_previous` advertises is reachable —
+  the same guarantee systemd gives by flipping the `current` symlink to any
+  retained release dir. `.prev` is still preferred when it IS the target (a
+  rename is cheaper and keeps the container's identity). Retaining `.prev`
+  *containers* per `keep_n` was considered and rejected: the retained tag is the
+  durable handle, and holding N stopped containers per instance costs far more
+  than N tags. Tests:
+  `docker_operator_rollback_test.rs::rollback_recreates_from_retained_tag_when_prev_is_pruned`,
+  `::rollback_from_tag_keeps_named_volume_data`.
+
+- **Streaming-from-file import — DONE.** `import_archive` feeds
+  `bollard::import_image_stream` a `ReaderStream` over a `tokio::fs::File`, so a
+  multi-GB tarball never lands in RAM; resident cost is one chunk regardless of
+  size. This did not need to wait for slice 6's fetcher — the buffering was in
+  the backend, so the fix belonged here.
+
+- **`Backend::rollback` gained a `previous_version` param.** The trait passed
+  only `previous_release`, a backend-specific location: systemd's is a
+  release-dir path whose tail IS the version, docker's is a container name that
+  cannot name one. Docker could not learn its target. Every caller already
+  computed `previous_version` and stopped at the transaction layer, so the fix
+  was to pass it through; each backend now uses the handle it can actually use
+  and ignores the other. (Reading the target from `current.kept_previous`
+  instead was tried and is WRONG — on the auto-rollback path the runner has not
+  committed yet, so it is empty and every gate-failure reports Failed. The
+  trait doc records this.)
+
+### Raised by slice 5 (open)
+
+- **Engine wiring for `docker-image`.** `resolve_version` skips non-`Exact`
+  specs, so a bundle's `image:` Channel-pin never reaches `backend.install`
+  through the transaction engine — docker-image instances are unreachable via
+  the reconcile loop today. This is the engine's channel/range resolution, not a
+  docker gap: it is slice 6's poller by design, and building a resolver now
+  would front-run that design and be rewritten when the remote half lands. Slice
+  5 exercises the path at the backend seam directly (`docker_image_test.rs`);
+  the seam is proven, only the wiring is missing.
 
 ## Related
 
