@@ -29,6 +29,11 @@ with the same bearer token can do (that is the slice-2 contract).
     rendering validation errors verbatim.
 - Auth handling in `app.js`: every fetch sends `Authorization: Bearer` from
   `localStorage`; 401 → redirect to login box; no cookies, no sessions.
+  > **Still true here.** lb's gateway now has an *opt-in* `/api/*` cookie session seam
+  > (`docs/scope/frontend/browser-session-scope.md`, shipped) for hosts whose **app shell** lb
+  > serves via `static_root`. rubixd's embedded UI is a different surface — its own localhost-bound
+  > fleet-agent console — and does not opt in, so this line stands unchanged. The seam is `None` by
+  > default; a node that does not ask for it has no `/api/*` route and sets no cookie.
 - Read-only auto-refresh (poll `GET /api/status` every 5 s while visible) — no SSE/WS
   machinery for v1.
 

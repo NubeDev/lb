@@ -163,6 +163,18 @@ pub struct BootConfig {
     /// [`ext_ui_dir`](Self::ext_ui_dir)'s posture exactly.
     pub static_root: Option<String>,
 
+    /// Terminate a cookie-backed **browser session** at `/api/*` (browser-session scope). `Some(cfg)`
+    /// ⇒ the gateway mints an `HttpOnly` session cookie at `/api/auth/login`, keeps the JWT
+    /// server-side in the store, and resolves `ANY /api/{*rest}` to the bearer before dispatching
+    /// internally to the same route a CLI would hit — so a host whose shell lb serves
+    /// ([`static_root`](Self::static_root)) gets a working browser login without hand-rolling a
+    /// security boundary, and the fat (~4–9KB, over the cookie limit) token never reaches JS.
+    /// `None` (the default) ⇒ today's unchanged behaviour: bearer-only, no `/api/*` route, no cookie
+    /// anywhere — rubixd, rubix-ai, and every existing embedder are untouched. Additive and
+    /// embedder-agnostic: no library code below the seam reads this from env, and the gateway never
+    /// learns whose shell it is (rule 10). Typically set alongside `static_root`.
+    pub browser_session: Option<lb_role_gateway::BrowserSessionConfig>,
+
     /// The outbox delivery providers (email/push) the relay reactor delivers through (release
     /// scope, gap 1). Additive: `Default` (both `None`) keeps prior behaviour safe — the relay
     /// spawns with logging no-op providers, so effects drain and boot never crashes for lack of
@@ -234,6 +246,9 @@ impl Default for BootConfig {
             // `None` ⇒ no static-root fallback (unmatched paths 404, today's behaviour); an embedder
             // sets a dir to serve a self-contained web app at `/`.
             static_root: None,
+            // `None` ⇒ bearer-only, no `/api/*` seam, no cookies (today's behaviour). An embedder
+            // whose shell lb serves opts in (browser-session scope).
+            browser_session: None,
             outbox_providers: OutboxProviders::default(),
             // Back-compat embed default: password-less. An embedder opts into `PasswordHash`
             // explicitly; `from_env()` (below) derives it from `LB_DEV_LOGIN` for the binary.
@@ -281,6 +296,25 @@ impl BootConfig {
             static_root: std::env::var("LB_STATIC_ROOT")
                 .ok()
                 .filter(|p| !p.is_empty()),
+            // The `/api/*` browser-session seam, off unless asked for (browser-session scope). Same
+            // posture as `static_root`: a new seam with no gateway-internal env read, so the
+            // standalone binary honours `LB_BROWSER_SESSION` here. Set it (any non-empty value) to
+            // terminate cookie sessions for a served shell; unset ⇒ `None` ⇒ bearer-only, unchanged.
+            // `LB_BROWSER_SESSION_SECURE` marks the cookie `Secure` (TLS deploys) — off by default so
+            // the plain-http LAN/Pi deploys this seam exists for are not silently broken by a cookie
+            // the browser drops.
+            browser_session: std::env::var("LB_BROWSER_SESSION")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .map(|_| {
+                    // `default()`-then-mutate: `BrowserSessionConfig` is `#[non_exhaustive]`, so a
+                    // cross-crate struct literal is (deliberately) forbidden — that is what keeps a
+                    // future field additive for every embedder.
+                    let mut c = lb_role_gateway::BrowserSessionConfig::default();
+                    c.secure_cookie =
+                        std::env::var("LB_BROWSER_SESSION_SECURE").is_ok_and(|v| !v.is_empty());
+                    c
+                }),
             // The binary configures no real delivery providers today — the relay drains through
             // the logging no-ops. Real adapters come from an embedder filling the struct.
             outbox_providers: OutboxProviders::default(),

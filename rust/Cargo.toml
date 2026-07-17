@@ -234,6 +234,11 @@ argon2 = "0.5"
 # `ServeDir` (the `fs` feature) for the optional gateway static-root fallback (static-root scope).
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors", "fs"] }
+# The gateway's SPA method-mismatch fallback drives `ServeFile` as a one-shot `Service` (so the shell
+# is served by the SAME code path as the static fallback — one mime/ETag/range implementation, not a
+# hand-rolled second file reader). Already compiled in as an axum transitive dep; declaring it here
+# adds no build cost.
+tower = { version = "0.5", features = ["util"] }
 futures = "0.3"
 
 # The registry-host client (`HttpSource`) — the first outbound HTTP *client* in the tree (previously

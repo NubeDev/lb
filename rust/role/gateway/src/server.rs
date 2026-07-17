@@ -5,7 +5,7 @@
 //! CORS is permissive here for the dev UI (the Vite browser app on a different origin). A real
 //! deployment tightens this to the served origin — config, not code.
 
-use axum::routing::{delete, get, patch, post, put};
+use axum::routing::{any, delete, get, patch, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
@@ -503,15 +503,79 @@ pub fn router(gw: Gateway) -> Router {
     // resolve to files under the dir (`ServeDir` maps `/` → `index.html`), and a client-router deep link
     // (a path with no matching file) falls back to `index.html` so the SPA boots and routes in-browser.
     // Unset ⇒ no fallback, unmatched paths 404 exactly as before (rule 10: generic, no ext knowledge).
+    // A path that matched NO route falls back to the static tree (above). A path that matched a route
+    // but not for its METHOD never reaches that fallback — axum 405s first — which silently made every
+    // SPA route colliding with an lb route of another method unreachable (`GET /login` vs lb's
+    // `POST /login`: the shell served fine and could not render a login page). `spa_or_405` closes
+    // that hole by content negotiation: a browser navigation (GET/HEAD + Accept explicitly prefers
+    // text/html) gets `index.html`; every API client still gets the 405 with its `Allow` intact.
+    // Mounted only alongside a static root, so a node with no shell keeps today's routing exactly
+    // (spa-static-hosting scope).
     let router = match gw.static_root.as_ref() {
         Some(dir) => {
             let serve = ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")));
-            router.fallback_service(serve)
+            router
+                .method_not_allowed_fallback(crate::spa_fallback::spa_or_405)
+                .fallback_service(serve)
         }
         None => router,
     };
 
-    router.layer(CorsLayer::permissive()).with_state(gw)
+    // Everything above is the bearer-only API surface, and it keeps the permissive CORS it has always
+    // had (the dev UI talks to it cross-origin; a real deployment tightens this by config).
+    let api = router.layer(CorsLayer::permissive()).with_state(gw.clone());
+
+    // The browser-session seam (`/api/*`, browser-session scope), opt-in and mounted LAST.
+    //
+    // `None` (the default) ⇒ return `api` untouched: no `/api/*` route exists, no cookie is ever set,
+    // and rubixd / rubix-ai / every bearer-only node keeps today's router byte-for-byte.
+    //
+    // **Why it is mounted out here, after `.layer(CorsLayer::permissive())`.** The moment a cookie
+    // authenticates a request, permissive CORS becomes a cross-origin read primitive: any site could
+    // fetch `/api/*` with the victim's cookie riding along AND read the reply. So the session routes
+    // must NOT inherit that layer — they are built separately, carry no permissive CORS at all
+    // (same-origin is the only supported caller), and enforce `csrf::is_allowed` on every unsafe
+    // method themselves. This ordering is the whole CSRF posture; `browser_session_csrf_test.rs`
+    // pins it.
+    match gw.browser_session.as_ref() {
+        None => api,
+        Some(_) => {
+            let state = crate::browser_session::ApiState {
+                gw: gw.clone(),
+                // The router `/api/{*rest}` dispatches into — already stateful, cloned per request.
+                inner: api.clone(),
+            };
+            let session_routes = Router::new()
+                // The auth verbs terminate here (they mint/clear the cookie); they are NOT forwarded.
+                .route("/api/auth/login", post(crate::browser_session::auth::login))
+                .route(
+                    "/api/auth/select",
+                    post(crate::browser_session::auth::select),
+                )
+                .route(
+                    "/api/auth/switch",
+                    post(crate::browser_session::auth::switch),
+                )
+                .route(
+                    "/api/auth/logout",
+                    post(crate::browser_session::auth::logout),
+                )
+                .route(
+                    "/api/auth/session",
+                    get(crate::browser_session::auth::session),
+                )
+                // Everything else under `/api` is a mediated forward to THIS router (never a proxy to
+                // an arbitrary upstream — scope → Risks).
+                .route(
+                    "/api/{*rest}",
+                    any(crate::browser_session::forward::forward),
+                )
+                .with_state(state);
+            // `merge` (not `nest`): the session routes are absolute paths on the same router, so the
+            // static-root fallback registered above still answers everything else.
+            api.merge(session_routes)
+        }
+    }
 }
 
 /// Serve the gateway on `addr` (e.g. `127.0.0.1:8080`) until the process ends. The browser app's

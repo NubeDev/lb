@@ -44,6 +44,7 @@ lb-flows = { workspace = true, optional = true }
 lb-telemetry = { workspace = true, optional = true }
 axum.workspace = true
 tower-http.workspace = true
+tower.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -94,7 +95,7 @@ ed25519-dalek.workspace = true
 # `bundled` compiles its own SQLite C (links via zigcc here) so no system sqlite/toolchain is needed.
 rusqlite = { version = "0.37", features = ["bundled"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
-tower = { version = "0.5", features = ["util"] }
+tower.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 http-body-util = "0.1"
 # The webhooks integration test signs HMAC-SHA256 deliveries independently (so the verifier is

@@ -93,6 +93,10 @@ pub use assets::{
 pub use assets_bin::{get_asset_bin, put_asset as put_asset_bin};
 pub use auth_login::auth_login;
 pub use auth_password::auth_password;
+// The `/auth/*` wire shapes — exported so the browser-session seam can call these handlers
+// in-process and re-shape their reply (keeping the token server-side) rather than re-implementing
+// the credential rules (browser-session scope).
+pub use auth_reply::{AuthReply, WorkspaceRow};
 pub use auth_select::auth_select;
 pub use auth_switch::auth_switch;
 pub use brand::{delete_brand, get_brand, list_brands, save_brand};

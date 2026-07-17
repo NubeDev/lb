@@ -59,27 +59,36 @@ pub async fn flows_inject(
     now: u64,
 ) -> Result<bool, FlowsError> {
     let flow = flows_get_internal(&node.store, ws, flow_id).await?;
-    // Persist the retained input — the read-side every run consults. The record id is node-level
-    // (`{flow}:{node}`) or per-port (`{flow}:{node}:{port}`); `port` is stashed on the body so the
-    // node_state read-back and the resolver can recover which slot it drives.
-    let (record_id, rec) = match port {
-        Some(p) => (
-            format!("{flow_id}:{node_id}:{p}"),
-            serde_json::json!({ "flow": flow_id, "node": node_id, "port": p, "value": value }),
-        ),
-        None => (
-            format!("{flow_id}:{node_id}"),
-            serde_json::json!({ "flow": flow_id, "node": node_id, "value": value }),
-        ),
-    };
-    lb_store::write(&node.store, ws, FLOW_INPUT_TABLE, &record_id, &rec)
-        .await
-        .map_err(|e| FlowsError::Internal(e.to_string()))?;
 
     // Decision 9: fire a run only for a FIRING trigger node. A trigger node's config carries
     // `inject_mode: "fire" | "retain"`; non-trigger nodes are retained (no run). An inject into a
     // retain node updates state and starts nothing.
     let firing = is_firing_trigger(&flow, node_id);
+
+    // A fire is an EVENT, not state: it must leave no retained record behind. The firing run below
+    // carries the value as an explicit run param, so skipping the write costs the fire nothing —
+    // whereas keeping it corrupts every LATER run, because `merged_params_with_inputs` re-merges
+    // every retained row into params by node id and would replay the stale poke as this trigger's
+    // payload on each subsequent cron/event/boot run.
+    if !firing {
+        // Persist the retained input — the read-side every run consults. The record id is node-level
+        // (`{flow}:{node}`) or per-port (`{flow}:{node}:{port}`); `port` is stashed on the body so the
+        // node_state read-back and the resolver can recover which slot it drives.
+        let (record_id, rec) = match port {
+            Some(p) => (
+                format!("{flow_id}:{node_id}:{p}"),
+                serde_json::json!({ "flow": flow_id, "node": node_id, "port": p, "value": value }),
+            ),
+            None => (
+                format!("{flow_id}:{node_id}"),
+                serde_json::json!({ "flow": flow_id, "node": node_id, "value": value }),
+            ),
+        };
+        lb_store::write(&node.store, ws, FLOW_INPUT_TABLE, &record_id, &rec)
+            .await
+            .map_err(|e| FlowsError::Internal(e.to_string()))?;
+    }
+
     if firing && flow.enabled {
         let run_id = super::run::default_run_id(&format!("{flow_id}-inject-{node_id}"), now);
         // The injected value is the trigger payload: stash it as a run param the trigger node emits.
@@ -106,6 +115,11 @@ pub async fn flows_inject(
 /// Whether `node_id` is a firing inject-trigger (its config `inject_mode` is `fire`, or it is a
 /// trigger node without an explicit retain). Non-trigger nodes are retained (the control-loop read-
 /// side), so an inject into them never fires.
+///
+/// This also decides RETENTION, not just firing: a firing target persists nothing (an event has no
+/// state), a retained target persists and starts no run. A fire at a disabled flow is therefore a
+/// dropped event — it writes no record and starts no run — which is the intended reading; a
+/// momentary poke is not queued as state to replay when the flow is re-enabled.
 fn is_firing_trigger(flow: &lb_flows::Flow, node_id: &str) -> bool {
     let Some(n) = flow.node(node_id) else {
         return false;

@@ -9,6 +9,10 @@
 //! session principal, so the browser is gated exactly like the desktop shell and the routed-MCP
 //! caller. One verb per route file (FILE-LAYOUT §4).
 
+/// The browser-session seam (browser-session scope): the opt-in `/api/*` cookie session a host that
+/// serves a shell (`static_root`) needs, so a browser never holds the bearer token. `pub` so an
+/// embedder can name [`BrowserSessionConfig`] and a test can reach the cookie/CSRF primitives.
+pub mod browser_session;
 mod routes;
 mod server;
 /// The session seam (login-hardening scope): the credential check trait + impls (`DevTrustAny` /
@@ -16,6 +20,7 @@ mod server;
 /// the real `PasswordHash` check (the production posture) instead of the password-less dev default.
 pub mod session;
 mod signing_key;
+mod spa_fallback;
 mod state;
 
 pub use routes::{INVITE_ACCEPT_MAX_PER_WINDOW, INVITE_ACCEPT_WINDOW_SECS};
@@ -30,4 +35,7 @@ pub use session::{credential_check_from_env, CredentialCheck, DevTrustAny, Passw
 pub use session::{
     global_credential_check_from_env, GlobalCredentialCheck, GlobalDevTrustAny, GlobalPasswordHash,
 };
+// The browser-session opt-in (browser-session scope) — re-exported at the crate root so an embedder
+// (via `lb-node`'s builder) names the config without reaching into the module.
+pub use browser_session::{BrowserSessionConfig, DEFAULT_SESSION_TTL_SECS};
 pub use state::Gateway;
