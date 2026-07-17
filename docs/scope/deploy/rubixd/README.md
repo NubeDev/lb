@@ -23,6 +23,7 @@ conventions being reused are lb's; sessions/debugging entries follow the lb rule
 | 6 | [`bundles-scope.md`](bundles-scope.md) | Bundle YAML apply/validate, multi-instance, `needs` ordering, `${secret:...}` resolution, rartifacts poller |
 | 7 | [`embedded-ui-scope.md`](embedded-ui-scope.md) | Small Bootstrap UI (rust-embed, no build step): claim page, status, instance detail, rollback button |
 | 8 | [`local-publish-scope.md`](local-publish-scope.md) | Standalone (rartifacts-optional): local blob cache + package index, `POST /packages` + `rubixd publish`, local-first resolution |
+| 9 | [`ui-local-publish-scope.md`](ui-local-publish-scope.md) | Browser upload of a signed package over slice 8's `POST /packages`: Upload + Packages pages, signed-only (no unsigned bypass), no new server verbs |
 
 ## Coding-session roadmap (long-running AI sessions)
 
@@ -68,6 +69,13 @@ HTTP), write `docs/sessions/deploy/rubixd-<slice>-session.md`, log any breakage 
    no reachable rartifacts accepts a signed package over REST, a bundle referencing it
    installs to `active`, an idempotent re-publish is a no-op, and a tampered/unsigned/
    unauthenticated publish is refused with nothing written to the cache.
+9. **Session 9 — UI local publish.** The Upload + Packages pages over slice 8's
+   `POST /packages` (streaming multipart from the browser, progress, verbatim errors).
+   Signed-only: no unsigned path, no key material in the browser. **Exit gate**: the same
+   (metadata, blob) pair published from the browser and from `rubixd publish` produces an
+   identical `pkg_local` row + blob digest; a tampered/unsigned/wrong-key upload is
+   refused **from the browser** with nothing written to the cache or index; no new server
+   verbs added for the UI.
 
 Renumber nothing: later slices (fleet control plane, Windows service backend, rubixd
 self-update hardening) get new scope files here when asked for.
