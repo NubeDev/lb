@@ -159,14 +159,16 @@ pub use dashboard::{
     builtin_view_ids, call_dashboard_grafana_tool, call_dashboard_tool, catalog_descriptor,
     check_view_cells, dashboard_access_check, dashboard_catalog, dashboard_delete,
     dashboard_export, dashboard_get, dashboard_import, dashboard_list, dashboard_pin,
-    dashboard_save, dashboard_save_meta, dashboard_share, export_descriptor, import_descriptor,
-    mint_cell_from_envelope, pin_descriptor, seed_iot_demo, AccessReport, Action, Cell, Dashboard,
-    DashboardError, DashboardSummary, DatasourceRemap as GrafanaDatasourceRemap,
-    DegradedItem as GrafanaDegradedItem, DepKind, DepVerdict, ExtWidget as DashboardExtWidget,
-    ImportReport as GrafanaImportReport, SeedReport, Source as CellSource, Target as CellTarget,
-    Toolbar as DashboardToolbar, Variable as DashboardVariable, Visibility as DashboardVisibility,
-    WidgetCatalog, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
-    MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
+    dashboard_save, dashboard_save_meta, dashboard_share, dashboard_share_closure,
+    export_descriptor, import_descriptor, mint_cell_from_envelope, pin_descriptor, seed_iot_demo,
+    share_closure_descriptor, AccessReport, Action, Cell, Dashboard, DashboardError,
+    DashboardSummary, DatasourceRemap as GrafanaDatasourceRemap,
+    DegradedItem as GrafanaDegradedItem, DepKind, DepVerdict,
+    Disposition as ShareClosureDisposition, ExtWidget as DashboardExtWidget,
+    ImportReport as GrafanaImportReport, SeedReport, ShareClosureItem, ShareClosureReport,
+    Source as CellSource, Target as CellTarget, Toolbar as DashboardToolbar,
+    Variable as DashboardVariable, Visibility as DashboardVisibility, WidgetCatalog,
+    MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES, MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,
@@ -297,9 +299,9 @@ pub use notify::{
     RecordingPushProvider, PUSH_TARGET,
 };
 pub use panel::{
-    call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
-    panel_usage, validate_and_strip_refs, Panel, PanelError, PanelSpec, PanelSummary,
-    PanelUsageRow, Visibility as PanelVisibility,
+    call_panel_tool, hydrate_cells, may_read_panel, panel_delete, panel_get, panel_list,
+    panel_save, panel_share, panel_usage, read_panel, validate_and_strip_refs, Panel, PanelError,
+    PanelSpec, PanelSummary, PanelUsageRow, Visibility as PanelVisibility,
 };
 pub use report::{
     call_report_tool, report_delete, report_export, report_get, report_list, report_save,

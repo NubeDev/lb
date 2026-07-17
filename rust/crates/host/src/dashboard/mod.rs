@@ -10,6 +10,9 @@
 //!   - `dashboard.save` ([`dashboard_save`]) — idempotent UPSERT for create+update (owner-only update).
 //!   - `dashboard.delete` ([`dashboard_delete`]) — idempotent tombstone (owner-only).
 //!   - `dashboard.share` ([`dashboard_share`]) — set visibility / write the S4 `share` edge.
+//!   - `dashboard.share_closure` ([`dashboard_share_closure`]) — share the page's embedded library
+//!     panels to a team (the remediation dual of `access_check`; owner-gated per panel, never a grant
+//!     path). Shares the [`closure`] enumeration with `access_check` so the two cannot drift.
 //!   - `dashboard.pin` ([`dashboard_pin`]) — mint a persisted cell from an `x-lb-render` envelope
 //!     (widget-platform scope, Slice B). Generic over the tool id; reuses the Slice A validation chain.
 //!   - the MCP bridge ([`call_dashboard_tool`]) — the one MCP contract over all of the above.
@@ -19,6 +22,7 @@ mod access_check;
 mod authorize;
 mod bounds;
 mod catalog;
+mod closure;
 mod delete;
 mod error;
 pub(crate) mod genui;
@@ -30,6 +34,7 @@ mod pin;
 mod save;
 mod seed;
 mod share;
+mod share_closure;
 mod store;
 mod tool;
 mod views;
@@ -54,6 +59,10 @@ pub use pin::{dashboard_pin, mint_cell_from_envelope, pin_descriptor};
 pub use save::{dashboard_save, dashboard_save_meta, save_descriptor};
 pub use seed::{seed_iot_demo, SeedReport};
 pub use share::{dashboard_share, share_descriptor};
+pub use share_closure::{
+    dashboard_share_closure, share_closure_descriptor, Disposition, ShareClosureItem,
+    ShareClosureReport,
+};
 pub use store::scan_dashboards;
 pub use tool::call_dashboard_tool;
 pub use views::{builtin_view_ids, check_view_cells};

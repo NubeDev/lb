@@ -139,7 +139,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   that walks a dashboard's transitive **dependency closure** — panels, datasources, query verb +
   `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
   a live session found bob assigned a page whose cells still 403'd on a private panel + a missing
-  datasource), and `entity-scoped-grants-scope.md` (**row-level reach inside a workspace** — an
+  datasource), and `share-closure-scope.md` (**BUILT** — the *remediation* dual of that preflight:
+  `dashboard.share_closure` shares a page's embedded library panels to a team, but **only** the ones
+  the caller owns; a not-owned panel is reported as a gap for its owner, never force-shared, because
+  auto-sharing on embed would silently widen a panel's audience by reference. `dry_run` defaults true;
+  its dual-consistency test with `access_check` found a shipped false-red in the team-subject preflight
+  path — `debugging/auth/access-check-team-subject-false-red.md`), and `entity-scoped-grants-scope.md`
+  (**row-level reach inside a workspace** — an
   additive `scope` selector on the grant record + `check_scoped`/`scope_filter` at the wall and via
   SDK host-callback, so "a member reaches only *their* records" — a guardian's children, a
   technician's sites — is platform-enforced data instead of N hand-rolled ext filters; first

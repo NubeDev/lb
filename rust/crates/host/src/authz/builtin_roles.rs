@@ -366,6 +366,13 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:dashboard.save:call",
     "mcp:dashboard.delete:call",
     "mcp:dashboard.share:call",
+    // share-closure scope: share the page's embedded library panels to a team. AUTHOR-tier, not
+    // admin: it is an authoring action a member takes on their OWN panels — each panel is shared only
+    // through `panel.share`, which re-checks the owner rule, so this cap can never widen a member's
+    // reach beyond the panels they already own. A viewer holds neither this nor `panel.share` (the
+    // verb would be a no-op for them). NOT a wildcard: `share_closure` is named concretely here, per
+    // the module doc's exhaustive-by-name rule.
+    "mcp:dashboard.share_closure:call",
     // viz import-export scope: import is a WRITE (creates a dashboard) — an author cap; it also
     // requires `mcp:dashboard.save:call` above (the two-gate write). export is a viewer read.
     "mcp:dashboard.import:call",
@@ -743,6 +750,59 @@ mod tests {
                 "member must hold NO admin-only cap: {c}"
             );
         }
+    }
+
+    /// **The `share_closure` cap tier** (share-closure scope). `mcp:dashboard.share_closure:call` is an
+    /// AUTHOR cap: a member shares the library panels they OWN on a page with a team. It must NOT be
+    /// admin-only (that would make "share the widgets too" an admin errand for every member's own
+    /// panel) and must NOT be a viewer cap (a viewer holds no `panel.share`, so the verb could only
+    /// ever no-op for them). It must be named CONCRETELY — the module doc's exhaustive-by-name rule.
+    ///
+    /// Pinned here so a future re-classification fails at the bundle rather than in production. The
+    /// wildcard-span invariant below covers the other half (that no bundle's wildcards reach an
+    /// admin-only cap); this asserts the placement the span test cannot see.
+    #[test]
+    fn share_closure_cap_is_an_author_cap_not_admin_or_viewer() {
+        let cap = "mcp:dashboard.share_closure:call".to_string();
+        assert!(
+            author_caps().contains(&cap),
+            "share_closure must be an AUTHOR cap (a member shares their OWN panels)"
+        );
+        assert!(
+            member_role_caps().contains(&cap),
+            "the member bundle must hold share_closure by name"
+        );
+        assert!(
+            !viewer_role_caps().contains(&cap),
+            "a viewer must NOT hold share_closure (it holds no panel.share to act with)"
+        );
+        assert!(
+            !admin_only_caps().contains(&cap),
+            "share_closure must NOT be admin-only — it is a member's own authoring action"
+        );
+        // It travels with the cap that does the actual work: sharing a panel. A bundle holding
+        // share_closure without panel.share could only ever report `no_share_cap` for every row.
+        assert!(
+            member_role_caps().contains(&"mcp:panel.share:call".to_string()),
+            "share_closure is useless without panel.share — they belong to the same tier"
+        );
+    }
+
+    /// The `share_closure` cap REACHES through the real matcher for a member and does NOT for a
+    /// viewer — asserted through `holds_cap` (the wall), not literal membership, because the reach is
+    /// the contract and the bundle listing is only one way to supply it.
+    #[test]
+    fn share_closure_cap_reaches_for_a_member_only() {
+        let member = Principal::routed("user:m", "acme", member_role_caps());
+        let viewer = Principal::routed("user:v", "acme", viewer_role_caps());
+        assert!(
+            holds_cap(&member, "acme", "mcp:dashboard.share_closure:call"),
+            "a member must reach share_closure"
+        );
+        assert!(
+            !holds_cap(&viewer, "acme", "mcp:dashboard.share_closure:call"),
+            "a viewer must NOT reach share_closure"
+        );
     }
 
     /// **The wildcard-span invariant** — the one that actually binds, and the gap every other test in

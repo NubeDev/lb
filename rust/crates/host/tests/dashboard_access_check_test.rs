@@ -340,3 +340,122 @@ async fn workspace_isolated_and_grants_nothing() {
     );
     let _ = resolve_caps(&store, "acme", "ada").await.unwrap();
 }
+
+/// **The team-subject false-red regression.** Preflighting for a `team:` subject over an asset shared
+/// to THAT team must be GREEN — it is the headline of the access-model scope ("will this page work for
+/// the ops team?").
+///
+/// It was red. Gate 3 (`may_read_panel`/`may_read_dashboard`) resolves "is this principal a `member`
+/// of a team the asset is `share`d to?" by walking `team -[member]-> user` edges for the principal's
+/// `owner_sub()`. The preflight built its synthetic principal with `sub = "team:ops"`, so gate 3 asked
+/// whether **`team:ops` is a member of `team:ops`** — never true, a team is not a member of itself. So
+/// a correctly-shared panel reported "not shared to the subject" for the very team it was shared to.
+///
+/// It shipped untested: every other test here preflights a `user:` subject, for which the identity is
+/// already correct. Caught by `dashboard.share_closure`'s dual-consistency test (the remediation said
+/// "already shared", the detection said "red" — they cannot both be right about one share edge).
+///
+/// The fix asks gate 3 as a **representative member** of the team, keeping ONE gate-3 predicate rather
+/// than teaching the visibility fns about teams (no parallel predicate — the cardinal sin).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_team_subject_resolves_assets_shared_to_that_team() {
+    let store = Store::memory().await.unwrap();
+    let ws = "acme";
+    let admin = principal("user:ada", ws, ADMIN);
+
+    add_member(&store, &admin, ws, "team:ops", "user:bob")
+        .await
+        .unwrap();
+
+    // A panel shared to team:ops, on a dashboard shared to team:ops.
+    panel_save(
+        &store,
+        &admin,
+        ws,
+        "shared",
+        "Shared",
+        lb_host::PanelSpec {
+            v: 3,
+            view: "chart".into(),
+            ..Default::default()
+        },
+        1,
+    )
+    .await
+    .unwrap();
+    lb_host::panel_share(
+        &store,
+        &admin,
+        ws,
+        "shared",
+        lb_host::PanelVisibility::Team,
+        Some("team:ops"),
+        2,
+    )
+    .await
+    .unwrap();
+    dashboard_save(
+        &store,
+        &admin,
+        ws,
+        "page",
+        "Page",
+        vec![panel_ref_cell("c1", "panel:shared")],
+        vec![],
+        3,
+    )
+    .await
+    .unwrap();
+    dashboard_share(
+        &store,
+        &admin,
+        ws,
+        "page",
+        DashboardVisibility::Team,
+        Some("team:ops"),
+        4,
+    )
+    .await
+    .unwrap();
+
+    // The TEAM subject — the case that was false-red.
+    let report = dashboard_access_check(&store, &admin, ws, "page", &Subject::Team("ops".into()))
+        .await
+        .unwrap();
+    let panel_v = find(&report.dependencies, "panel:shared").unwrap();
+    assert!(
+        panel_v.ok,
+        "a panel shared to team:ops must be GREEN for the team:ops subject, got: {}",
+        panel_v.reason
+    );
+    let dash_v = find(&report.dependencies, "dashboard:page").unwrap();
+    assert!(
+        dash_v.ok,
+        "a dashboard shared to team:ops must be GREEN for the team:ops subject, got: {}",
+        dash_v.reason
+    );
+
+    // ...and the team subject's verdict MATCHES a real member's — the two must never disagree about
+    // the same share edge (that divergence is what made this a bug rather than a quirk).
+    let bob = dashboard_access_check(&store, &admin, ws, "page", &Subject::User("bob".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        find(&bob.dependencies, "panel:shared").unwrap().ok,
+        panel_v.ok,
+        "the team subject and a member of that team must agree about the panel"
+    );
+
+    // The wall still holds: a team the panel is NOT shared to stays red (the fix must not blanket-green
+    // every team subject).
+    add_member(&store, &admin, ws, "team:other", "user:mallory")
+        .await
+        .unwrap();
+    let other = dashboard_access_check(&store, &admin, ws, "page", &Subject::Team("other".into()))
+        .await
+        .unwrap();
+    assert!(
+        !find(&other.dependencies, "panel:shared").unwrap().ok,
+        "a team the panel is NOT shared to must stay red — the fix greens only the real share"
+    );
+}

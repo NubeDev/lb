@@ -18,7 +18,7 @@ use lb_authz::Subject;
 use super::model::{Cell, Toolbar, Visibility};
 use super::{
     dashboard_access_check, dashboard_delete, dashboard_get, dashboard_list, dashboard_pin,
-    dashboard_save_meta, dashboard_share, DashboardError,
+    dashboard_save_meta, dashboard_share, dashboard_share_closure, DashboardError,
 };
 
 /// Dispatch a `dashboard.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the
@@ -109,6 +109,29 @@ pub async fn call_dashboard_tool(
             let report = dashboard_access_check(store, principal, ws, dashboard_id, &subject)
                 .await
                 .map_err(to_tool)?;
+            Ok(serde_json::to_value(report).unwrap_or(Value::Null))
+        }
+        "dashboard.share_closure" => {
+            // share-closure scope: the remediation dual of `access_check`. `dashboard` is the id,
+            // `team` the share target. `dry_run` DEFAULTS TO TRUE — a plan-only call is safe and the
+            // mutation is opt-in (the `federation.migrate` posture), so an omitted, null, or
+            // non-boolean `dry_run` previews rather than writes. Only an explicit `false` mutates.
+            let dashboard_id = str_arg(input, "dashboard").or_else(|_| str_arg(input, "id"))?;
+            let dry_run = input
+                .get("dry_run")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let report = dashboard_share_closure(
+                store,
+                principal,
+                ws,
+                dashboard_id,
+                str_arg(input, "team")?,
+                dry_run,
+                u64_arg(input, "now")?,
+            )
+            .await
+            .map_err(to_tool)?;
             Ok(serde_json::to_value(report).unwrap_or(Value::Null))
         }
         "dashboard.delete" => {
