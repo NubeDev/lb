@@ -197,6 +197,47 @@ real headless browser (the repo's verify skill already drives Chrome over CDP).
   slice 8's session) — this page's error message is useless if the command it names does
   not exist.
 
+## Decisions resolved in implementation
+
+These resolve the open questions above and the three unstated seams the scope left for
+the implementing session. All three keep the trust wall intact and the page a lens.
+
+- **The signed metadata envelope format** (the unstated seam behind "pick both parts of
+  the signed envelope"). Slice 8's `POST /packages` takes **five** multipart fields
+  (`metadata`, `blob`, `digest_hex`, `publisher_key_id`, `signature`); the page must send
+  all five but the operator only drops **two** files (the TOML and the blob), and the page
+  refuses to sign in the browser (rejected alternative, above). Resolution: the TOML the
+  operator drops is a **signed metadata envelope** — the package metadata plus a trailing
+  `[publish]` table carrying `digest_hex`, `publisher_key_id`, `signature`. The digest is
+  computed over the metadata **without** the `[publish]` block (the block carries the
+  signature, so including it would be circular), and the browser strips the block
+  client-side before sending (simple text split on the `[publish]` header — TOML reserves
+  table headers, so it cannot collide with package metadata). The server sees byte-for-byte
+  what `rubixd publish` would have sent; the parity test asserts it.
+- **`rubixd sign <metadata.toml> <blob> --signing-key <key> --key-id <id> --out <envelope.toml>`**
+  (the `rubix-sign` open question). Slice 9 ships a `sign` CLI verb (sibling to `publish`)
+  that produces the envelope file above using slice 8's existing `fleet_spec::signing::sign`
+  — no new crypto, no POST. The page's "you forgot the .toml" refusal names `rubixd sign`
+  verbatim (not the un-implemented `rubix-sign`). `publish` keeps its sign-and-POST shape;
+  `sign` is the file-emitting twin for the browser path.
+- **`GET /api/packages`** (the one necessary deviation from the slice-7 "no new server
+  verbs" exit gate). The packages page mirrors `rubixd packages`, but slice 8 shipped only
+  the `POST /packages` write — no read endpoint exists, and the page cannot render without
+  one. Resolution: slice 9 adds `GET /api/packages` as a Bearer-gated, read-only JSON route
+  returning the local index (the same rows `rubixd packages` prints). It is **generic** —
+  not UI-specific — so any client (curl, monitoring) can read it; `/packages` (the HTML
+  page) and `/api/packages` (the data) follow the existing `/status` + `/api/status`
+  shape. This is the smallest read that satisfies the page, recorded here as a deliberate,
+  documented exception to the slice-7 gate (the alternative — no packages page — violates
+  a hard scope requirement). `/upload` and `/packages` themselves stay static-asset routes
+  (OPEN) per the slice-7 contract; only `/api/packages` is gated.
+- **Arch mismatch: N/A.** `fleet_spec::package::Package` carries no `arch` field; the
+  server stamps `std::env::consts::ARCH` at publish time. There is nothing in the TOML to
+  mismatch against, so the warn/refuse question dissolves. The page surfaces the server's
+  `arch` in the published-outcome card (the server's own stamp, not a client claim).
+- **`/packages` columns: yes, include size + published-at** (the second open question).
+  Cheap, and "which one is newest" is the page's job.
+
 ## Related
 
 [`README.md`](README.md) roadmap · [`local-publish-scope.md`](local-publish-scope.md)
