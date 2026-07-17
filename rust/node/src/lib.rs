@@ -40,3 +40,8 @@ pub use config::{
 // back for in-process host-verb calls.
 pub use lb_auth::SigningKey;
 pub use lb_host::Node;
+// `BrowserSessionConfig` fills `BootConfig::browser_session`. It lives in `lb-role-gateway`, but an
+// embedder must be able to NAME it with only the `lb-node` dep — same reason `SigningKey` and `Node`
+// are re-exported above. Without this, opting into the `/api/*` seam forces a direct dep on an
+// internal role crate purely to spell one field's type, which is the leak this block exists to close.
+pub use lb_role_gateway::BrowserSessionConfig;
