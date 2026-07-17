@@ -466,3 +466,44 @@ async fn the_seam_is_absent_unless_configured() {
         "no cookie exists anywhere"
     );
 }
+
+/// The roster survives a page reload.
+///
+/// `SessionFacts::workspaces` is documented as present in BOTH branches so the client always learns
+/// the switcher list (`routes/auth_reply.rs:34`), and `/api/auth/login` fills it. `/api/auth/session`
+/// — the branch a RELOAD takes — returned `Vec::new()`, so the switcher populated on login and
+/// emptied on F5. That is a bug you cannot see in a login test.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn session_carries_the_workspace_roster_like_login_does() {
+    let (gw, _node, _key) = session_gateway().await;
+    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
+    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
+
+    let (sid, login_body, _) = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let login_roster = login_body["workspaces"].as_array().unwrap().clone();
+    assert!(
+        !login_roster.is_empty(),
+        "precondition: login reports the roster"
+    );
+
+    let resp = router(gw.clone())
+        .oneshot(with_cookie(
+            Request::builder()
+                .method("GET")
+                .uri("/api/auth/session")
+                .header("host", HOST)
+                .body(Body::empty())
+                .unwrap(),
+            &sid,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = json_body(resp).await;
+
+    assert_eq!(
+        body["workspaces"].as_array().unwrap(),
+        &login_roster,
+        "a reload must see the same switcher list login did"
+    );
+}

@@ -222,11 +222,20 @@ pub async fn session(State(st): State<ApiState>, headers: HeaderMap) -> Response
                 // The row outlived its token: report no session rather than serve stale authority.
                 Err(_) => return (StatusCode::UNAUTHORIZED, "no session").into_response(),
             };
+            // The roster, same as `/api/auth/login` — `SessionFacts::workspaces` is documented as
+            // "present in BOTH so the client always learns the switcher list" (`auth_reply.rs:34`),
+            // and this is the branch a page RELOAD takes. Returning an empty roster here emptied the
+            // switcher on every refresh while login populated it, i.e. it worked until you hit F5.
+            // `login_workspaces` is the same un-gated (pre-principal) enumeration `auth_login` uses.
+            let workspaces = lb_host::login_workspaces(&st.gw.node.store, &row.principal)
+                .await
+                .map(|r| r.into_iter().map(WorkspaceRow::from).collect())
+                .unwrap_or_default();
             Json(SessionFacts {
                 principal: row.principal,
                 workspace: row.ws,
                 caps,
-                workspaces: Vec::new(),
+                workspaces,
             })
             .into_response()
         }
