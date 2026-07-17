@@ -53,6 +53,12 @@ verbatim — write once here, consume there.
   is an explicit config choice documented with a "put TLS/a tunnel in front" warning.
 - No sessions/cookies — the bearer token is the whole story; the UI keeps it in
   `localStorage` (localhost-bound risk accepted, recorded below).
+  > **Still true here, and deliberately so.** lb's gateway has since gained an *opt-in* cookie
+  > session seam (`docs/scope/frontend/browser-session-scope.md`, shipped) for hosts whose
+  > **app shell** lb serves via `static_root` — ems, cc-app. That is a different surface: this is
+  > rubixd's own localhost-bound fleet-agent UI, where the bearer-only posture remains the right
+  > call and the seam is off (it is `None` by default, so nothing here changes). Read that scope as
+  > additive, not as a reversal of this line.
 
 ## Intent / approach
 

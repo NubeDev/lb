@@ -30,6 +30,40 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**In flight 2026-07-17 — [#75](https://github.com/NubeDev/lb/issues/75) + [#76](https://github.com/NubeDev/lb/issues/76):
+an lb-hosted browser shell can log in.** (branch `scope/browser-shell-hosting`, code + tests green,
+not yet merged)
+[#75 scope](scope/frontend/spa-static-hosting-scope.md) ·
+[#76 scope](scope/frontend/browser-session-scope.md) ·
+[session](sessions/frontend/browser-shell-hosting-session.md) ·
+[public](../doc-site/content/public/frontend/browser-shell-hosting.md)
+
+A host that hands lb its shell via `static_root` could serve the whole UI and **not log in** — two
+independent bugs, both invisible on a dev box because Vite fills in the missing halves, both found on
+ems's armv7 CM4 target ([`NubeIO/ems#8`](https://github.com/NubeIO/ems/issues/8)). **#75:** `GET /login`
+405'd, because lb registers `POST /login` and axum's `fallback_service` fires only when *no* route
+matched — so the login *page* never rendered. Now the gateway content-negotiates on the
+method-mismatch path (GET/HEAD + `Accept` explicitly prefers `text/html` → `index.html`, else the 405
+with `Allow` intact); `Accept: */*` deliberately does **not** count, so `curl -X GET /mcp/call` still
+405s. **#76:** nothing terminated `/api/*` in production — the seam existed only as dev-only Vite
+middleware in ems *and* cc-app — so the *credential* never posted. Now an opt-in
+`BootConfig::browser_session` mounts a store-backed cookie session: `/api/auth/{login,select,switch,
+logout,session}` + a mediated `ANY /api/{*rest}` that resolves the sid to its JWT and dispatches
+**internally** into the same router a CLI hits. The token never reaches the browser; `/api/*` is
+excluded from permissive CORS and gated on `Sec-Fetch-Site`/`Origin`.
+
+Both are **off unless configured** — `static_root`/`browser_session` unset ⇒ today's router
+byte-for-byte, so rubixd and rubix-ai are untouched (their "no cookies" scopes are annotated, not
+reversed). 26 integration + 18 unit tests green, including the scope's own merge gate (a cross-origin
+POST with a valid cookie is rejected) and the mandatory capability-deny + workspace-isolation pair
+driven through `/api/*`.
+
+**Next:** one tag carrying these + the pending `seed_email` + `/auth/*` work (master is 21 commits
+ahead of `node-v0.4.6`); ems#8 step 2 follows it. ems must **not** unblock with a `[patch]` — that
+regresses the tags-only property the ARM/Pi build rests on.
+
+---
+
 **Shipped 2026-07-16 — [#72](https://github.com/NubeDev/lb/issues/72): the gateway has a `/health` route.**
 [scope](scope/deploy/health-route-scope.md) ·
 [session](sessions/deploy/health-route-session.md)

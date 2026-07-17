@@ -57,6 +57,14 @@ pub struct Gateway {
     /// as `ext_ui_dir`. Generic — the gateway never learns whose app it is (rule 10). Behind `Arc` so
     /// axum clones the state cheaply per request.
     pub static_root: Arc<Option<std::path::PathBuf>>,
+    /// The browser-session (`/api/*`) seam, opt-in (browser-session scope). `Some(cfg)` ⇒ the gateway
+    /// terminates a cookie session for a host that serves a shell: `/api/auth/*` mints/clears it and
+    /// `ANY /api/{*rest}` resolves the sid to its stored bearer and dispatches internally to the same
+    /// route a CLI would hit. `None` (the default) ⇒ today's bearer-only router, byte-for-byte: no
+    /// `/api/*` route exists and no cookie is ever set (rubixd, rubix-ai, every existing node). Role is
+    /// config, never a code branch (rule 2) — the gateway learns only "a shell is served and sessions
+    /// are cookies", never whose. Behind `Arc` so axum clones the state cheaply per request.
+    pub browser_session: Arc<Option<crate::browser_session::BrowserSessionConfig>>,
     /// The API-key hash pepper (`HMAC-SHA256(pepper, secret_field)`), api-keys scope. A node secret
     /// from `LB_APIKEY_PEPPER` (never the DB, never committed); the dev default is a per-process
     /// random pepper so API keys work locally without a configured one. Held behind `Arc` so axum
@@ -182,6 +190,10 @@ impl Gateway {
             // No static-root fallback by default (unmatched paths 404, unchanged). An embedder pins one
             // via `with_static_root`; the boot seam fills it from `BootConfig::static_root`.
             static_root: Arc::new(None),
+            // No browser-session seam by default: the router stays bearer-only exactly as today. An
+            // embedder opts in via `with_browser_session`; the boot seam fills it from
+            // `BootConfig::browser_session` (browser-session scope).
+            browser_session: Arc::new(None),
             // Dev default: a per-process random pepper (no committed constant). Tests override.
             pepper: Arc::from(random_pepper().as_slice()),
             // Default to the password-less dev check on the `new`/`new_live` seams so existing
@@ -245,6 +257,17 @@ impl Gateway {
     /// style. Unset (the default) leaves the router with no fallback (unmatched paths 404).
     pub fn with_static_root(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
         self.static_root = Arc::new(Some(dir.into()));
+        self
+    }
+
+    /// Terminate a cookie-backed browser session at `/api/*` (browser-session scope) — builder-style.
+    /// An embedder whose shell lb serves (`with_static_root`) opts in here; unset (the default) leaves
+    /// the router bearer-only, with no `/api/*` routes and no cookies anywhere.
+    pub fn with_browser_session(
+        mut self,
+        cfg: crate::browser_session::BrowserSessionConfig,
+    ) -> Self {
+        self.browser_session = Arc::new(Some(cfg));
         self
     }
 

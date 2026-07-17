@@ -195,6 +195,12 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             if let Some(dir) = cfg.static_root.as_deref().filter(|d| !d.is_empty()) {
                 gw = gw.with_static_root(dir);
             }
+            // Terminate a cookie-backed browser session at `/api/*` when the embedder opted in
+            // (browser-session scope). `None` leaves the router bearer-only, byte-for-byte as today —
+            // no `/api/*` route, no cookies (rubixd, rubix-ai, every existing node).
+            if let Some(bs) = cfg.browser_session.clone() {
+                gw = gw.with_browser_session(bs);
+            }
             // BIND NOW — before any native sidecar spawns below.
             //
             // A boot-spawned child loads its config through a host callback to THIS gateway. Binding

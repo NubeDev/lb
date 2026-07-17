@@ -103,11 +103,16 @@ cover a method mismatch — that gap is precisely why this shipped broken):
 
 ## Risks & hard problems
 
-- **Reconstructing `Allow`.** axum's `method_not_allowed_fallback` does not pass the allowed-method
-  set to the handler, so a naive implementation returns a 405 with no `Allow` header — a silent
-  regression against today's behaviour, which ems's own diagnosis relied on to find this bug. Options:
-  derive it from the `MethodRouter`, or thread it via a request extension. **This must be verified by
-  test, not assumed** — the `Allow: POST` assertion above is not decorative.
+- ~~**Reconstructing `Allow`.**~~ **RESOLVED — this risk was inverted, and it is the reason this was
+  scoped rather than one-lined.** axum's `method_not_allowed_fallback` does not pass the allowed-method
+  set *into* the handler, but it does not need to: `set_allow_header` runs in `RouteFuture::poll` on the
+  way **out** (`axum-0.8.9/src/routing/route.rs:164`), wrapping whatever the fallback returned, and it
+  skips only when the response *already* carries `Allow`. Verified against real axum 0.8.9 before
+  implementing (`GET /login` → custom fallback fired, `allow=Some("POST")` attached automatically). So
+  the handler returns a **bare 405** and gets the correct `Allow` for free; **hand-setting `Allow` in the
+  handler would SUPPRESS axum's real value** — that is the actual trap. The `Allow: POST` assertion is
+  still not decorative (`method_mismatch_405_keeps_its_allow_header` pins it), because a future refactor
+  that starts setting the header itself would silently regress it.
 - **The `GET /mcp/call` case is the real tension.** A browser hitting a POST-only API route by hand
   will now get HTML instead of 405. That is the deliberate cost of content negotiation, and it is the
   right trade: API clients never send `Accept: text/html`, and an SPA's navigations always do. Worth
@@ -118,9 +123,14 @@ cover a method mismatch — that gap is precisely why this shipped broken):
 
 ## Open questions
 
-None. The rule (method-mismatch + GET/HEAD + explicitly prefers `text/html` → `index.html`, else the
-405 unchanged) is decided; the `Allow`-reconstruction mechanism is an implementation detail to be
-settled by the test above.
+None. **Shipped** — see `docs/sessions/frontend/browser-shell-hosting-session.md`.
+
+The rule (method-mismatch + GET/HEAD + explicitly prefers `text/html` → `index.html`, else the 405
+unchanged) was decided here and built as stated. The one open mechanism — `Allow` reconstruction —
+turned out not to need reconstructing at all (see Risks, resolved): axum re-attaches it to the
+fallback's response, so the handler returns a bare 405. Built in `rust/role/gateway/src/spa_fallback.rs`;
+covered by `rust/role/gateway/tests/static_root_method_mismatch_test.rs` (10 tests, including the
+`static_root: None` byte-for-byte guard and both traps).
 
 ## Related
 

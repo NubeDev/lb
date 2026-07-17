@@ -154,8 +154,24 @@ Real gateway, real store (`mem://`), real routes — no mocks (rule 9).
 
 ## Open questions
 
-None blocking. Decided: lb owns it; opt-in via `BootConfig`; store-backed sessions; internal dispatch
-rather than a loopback hop; strict CORS on `/api/*`; hosts keep their own cap→role folding.
+None blocking. **Shipped** — see `docs/sessions/frontend/browser-shell-hosting-session.md`.
+
+Decided and built as stated: lb owns it; opt-in via `BootConfig::browser_session`; store-backed
+sessions; internal dispatch rather than a loopback hop; strict CORS on `/api/*`; hosts keep their own
+cap→role folding. The cross-origin-POST-with-valid-cookie rejection test passes
+(`browser_session_csrf_test.rs`), which was this scope's stated gate on shipping at all.
+
+Two placement details differed from the text above, both recorded in the session doc:
+
+- **The module is `rust/role/gateway/src/browser_session/`, not `session/`.** `session/` already
+  exists (committed `d2b22a9e`) — it is the auth/credential/token-mint module. Adding cookie/CSRF/
+  forward files there would have collided two charters, which is the same reason this scope gives for
+  not squatting in `bootstrap-ui`. A sibling module keeps one responsibility per directory.
+- **The 0/1/N branch had to be carried through.** The route table above lists `POST /api/auth/login`
+  as if login always yields a session; lb's `/auth/login` actually answers three ways (0 ⇒ 403, 1 ⇒
+  token, N>1 ⇒ select-token + roster). The seam therefore also mounts `/api/auth/select` and
+  `/api/auth/switch` — a seam handling only the 1-workspace case would silently break every
+  multi-workspace human. Both rotate the sid, per the fixation risk below.
 
 ## Related
 
