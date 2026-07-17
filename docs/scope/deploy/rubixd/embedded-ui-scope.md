@@ -91,5 +91,8 @@ responsibility per file applies to `ui/` too (one JS module per page).
 ## Related
 
 [`token-auth-scope.md`](token-auth-scope.md) (claim + bearer contract) ·
+[`ui-local-publish-scope.md`](ui-local-publish-scope.md) (slice 9 — the Upload +
+Packages pages, added to this UI once slice 8 ships `POST /packages`; it keeps this
+scope's "zero new server verbs" contract) ·
 [`../rartifacts/web-ui-scope.md`](../rartifacts/web-ui-scope.md) (the rich-UI sibling
 and the deliberate contrast).

@@ -136,5 +136,7 @@ Per `testing-scope.md` — no mocks; real embedded store, real HTTP server, real
 [`README.md`](README.md) roadmap · parent scope (the "Standalone local publish" goal +
 "Local package index" design) · [`token-auth-scope.md`](token-auth-scope.md) (the reused
 Bearer path) · [`bundles-scope.md`](bundles-scope.md) (slice 6 — the resolver + blob cache
-this extends) · `../rartifacts/publish-scope.md` (the mirror-image server path) · lb
+this extends) · [`ui-local-publish-scope.md`](ui-local-publish-scope.md) (slice 9 — the
+browser surface over this slice's `POST /packages`; it adds no verbs and no unsigned path)
+· `../rartifacts/publish-scope.md` (the mirror-image server path) · lb
 `registry/src/digest.rs` + `host/src/ext/install_dir.rs` (the reused conventions).
