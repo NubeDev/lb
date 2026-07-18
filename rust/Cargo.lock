@@ -5562,6 +5562,7 @@ dependencies = [
  "lb-jobs",
  "lb-mcp",
  "lb-outbox",
+ "lb-packs",
  "lb-prefs",
  "lb-prql",
  "lb-registry",
@@ -5708,6 +5709,16 @@ dependencies = [
  "lb-registry",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "lb-packs"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
 ]
 
 [[package]]

@@ -1,0 +1,62 @@
+# The BAS pack — Building Automation, ported from the shipped FDD demo (the proving pack,
+# domain-packs-scope). Blank workspace + `make pack-apply PACK=bas` = a working FDD product: the
+# demo-buildings datasource (schema + a compact deterministic seed that raises the flatline +
+# energy-intensity insights), the seven fdd-* Rhai rules, the plant-overview dashboard
+# (insight-trend + fdd-matrix cells, wire-aliased), the critical-faults channel, and the agent's
+# domain context.
+pack: bas
+title: Building Automation
+version: 1
+
+entities:
+  # ⚠ UNSTABLE until Phase 3 gives this block a runtime consumer — not a compatibility promise yet.
+  site:
+    label: Site
+  equip:
+    label: Equipment
+    parent: site
+    kinds: [ahu, chiller, meter]
+  point:
+    label: Point
+    parent: equip
+    kinds: [zone-temp, energy, flow, compressor, fan]
+    units:
+      zone-temp: degC
+      energy: kWh
+      flow: L/min
+
+insights:
+  keys:
+    - pattern: "fdd:{issue}:{equip}"
+      severity: [warning, critical]
+    - pattern: "energy-intensity-high:{building}"
+      severity: [warning, critical]
+
+datasource:
+  # The rules query this source BY NAME (`query("demo-buildings", …)`), so the pack registers it
+  # under that name — the ported FDD rules run verbatim.
+  name: demo-buildings
+  engine: sqlite
+  schema: schema.sql
+  seed: seed.sql
+
+rules:
+  - rules/fdd-sensor-flatline.rhai
+  - rules/fdd-cooling-failure.rhai
+  - rules/fdd-short-cycling.rhai
+  - rules/fdd-after-hours.rhai
+  - rules/fdd-night-water.rhai
+  - rules/fdd-energy-drift.rhai
+  - rules/fdd-energy-intensity.rhai
+
+dashboards:
+  - dashboards/plant-overview.json
+
+channels:
+  - name: critical-faults
+    description: "Critical FDD raises land here for triage."
+
+agent:
+  context: agent-context.md
+
+extensions: []

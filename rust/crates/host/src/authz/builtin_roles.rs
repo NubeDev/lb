@@ -208,6 +208,16 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:channel.history:call",
     // tag graph FIND (a viewer resolves dashboard-var Query sources; tags.add is author).
     "mcp:tags.find:call",
+    // packs (packs scope) — a receipt is OPERATOR DOCUMENTATION: it is how someone learns what
+    // turned this workspace into this product (the vocabulary, the insight grammar, the applied
+    // objects). Hiding it from viewers would hide the teaching surface from the people it teaches,
+    // so list/get are viewer reads — consistent with insights being viewer-visible. `pack.validate`
+    // joins them: it is a pure dry run that touches no object and writes nothing, and a pack author
+    // must be able to run it in CI without an admin token. APPLYING is the write, and it is
+    // admin-only (below) — plus every object it drives re-checks its own cap.
+    "mcp:pack.list:call",
+    "mcp:pack.get:call",
+    "mcp:pack.validate:call",
     // dashboards — a viewer READS the pages they were given (save/delete/share are author).
     "mcp:dashboard.get:call",
     "mcp:dashboard.list:call",
@@ -506,6 +516,13 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:user.manage:call",
     "mcp:user.disable:call",
     "mcp:identity.manage:call",
+    // packs (packs scope): APPLYING a pack writes through every object family at once — a
+    // datasource, saved rules that then RUN, dashboards, channels, and the workspace-shared agent
+    // context. That is the admin authority, so the surface cap is admin-only. It is a gate, not a
+    // grant: each object is driven through the same internal seam its public verb uses, and every
+    // one of those re-checks its own capability under the caller — a pack cannot smuggle in a write
+    // its caller could not perform directly. (validate/list/get are viewer reads, above.)
+    "mcp:pack.apply:call",
     // destructive / creating workspace ops.
     "mcp:workspace.create:call",
     "mcp:workspace.delete:call",

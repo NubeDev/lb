@@ -1,0 +1,59 @@
+{
+  "id": "bas-plant-overview",
+  "title": "Plant Overview",
+  "variables": [],
+  "cells": [
+    {
+      "i": "faults",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "h": 8,
+      "v": 3,
+      "view": "insights",
+      "title": "FDD faults — equips × trailing days",
+      "sources": [],
+      "options": {
+        "fddMatrix": {
+          "filter": { "dedupPrefix": "fdd:" }
+        }
+      }
+    },
+    {
+      "i": "flatline-trend",
+      "x": 0,
+      "y": 8,
+      "w": 6,
+      "h": 6,
+      "v": 3,
+      "view": "timeseries",
+      "title": "Zone-temp flatline trend",
+      "sources": [
+        {
+          "refId": "A",
+          "tool": "store.query",
+          "args": { "sql": "SELECT 1" }
+        }
+      ],
+      "options": {
+        "insightTrend": {
+          "filter": { "dedupPrefix": "fdd:sensor-flatline:" }
+        }
+      }
+    },
+    {
+      "i": "energy-league",
+      "x": 6,
+      "y": 8,
+      "w": 6,
+      "h": 6,
+      "v": 3,
+      "view": "insights",
+      "title": "Energy intensity league",
+      "sources": [],
+      "options": {
+        "insights": { "filter": { "dedupPrefix": "energy-intensity-high:" } }
+      }
+    }
+  ]
+}

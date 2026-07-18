@@ -31,6 +31,15 @@ lb-viz.workspace = true
 grafana-map.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
+# The pure half of the domain-pack engine (packs scope): manifest shape, object plan, checksums,
+# the refusal matrix. I/O-free, so the matrix is unit-tested without a node; the `pack/` verb module
+# here owns the I/O.
+lb-packs.workspace = true
+# `pack.apply` materializes a pack's sqlite datasource in-process (see `pack/sqlite.rs` for the
+# tradeoff this encodes) — the same bundled rusqlite the federation e2e fixtures use. Running the
+# authored schema/seed through a library, not a shelled-out `sqlite3`, is what lets a pack stand a
+# source up without a CLI on PATH.
+rusqlite = { version = "0.37", features = ["bundled"] }
 lb-prql.workspace = true
 lb-registry.workspace = true
 lb-reminders.workspace = true
@@ -102,6 +111,5 @@ lb-role-ai-gateway.workspace = true
 # (gateway → host normally, host → gateway for tests) is permitted by Cargo and keeps the test's cap
 # source honest instead of a hand-copied list that drifts. The host never build-depends on it.
 lb-role-gateway.workspace = true
-# The sqlite federation e2e test seeds a REAL on-disk `.db` fixture (testing §0's one sanctioned
-# external, no Docker needed) — same bundled rusqlite the gateway's query test uses.
-rusqlite = { version = "0.37", features = ["bundled"] }
+# (`rusqlite` is a REAL dependency now — `pack.apply` materializes a pack's sqlite source with it.
+# The federation/schema-designer e2e fixtures that seed an on-disk `.db` keep using it from there.)

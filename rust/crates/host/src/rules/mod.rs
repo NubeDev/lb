@@ -20,6 +20,7 @@ mod get;
 mod model;
 mod record;
 mod run;
+mod run_by_id;
 mod runs;
 mod save;
 mod seam;
@@ -34,6 +35,10 @@ pub use record::SavedRule;
 pub use run::{params_to_rhai, rules_run, RunResult};
 pub use runs::RuleRunMap;
 pub use save::rules_save;
+// The saved-rule run seam. Host-internal (not a verb): `rules.run` and `pack.apply`'s
+// run-on-first-apply both go through it, so model resolution and the routing default cannot drift
+// between "a human ran the rule" and "a pack ran it".
+pub use run_by_id::rules_run_by_id;
 pub use seam::{workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam, RuleModel};
 
 use std::sync::Arc;

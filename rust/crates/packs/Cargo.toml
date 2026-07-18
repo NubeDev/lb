@@ -1,0 +1,28 @@
+# lb-packs — the PURE half of the domain-pack engine (pack-core-scope).
+#
+# Everything here is I/O-free and deterministic: the `pack.yaml` serde shape, the ordered object
+# plan + checksums, the dry-run linter, and the refusal matrix. The `pack.*` verb handlers in
+# `lb-host` own all the I/O (bundle intake, the internal seams they drive, the receipt store) and
+# call into this crate for every decision they make.
+#
+# Splitting it this way is what makes the refusal matrix and the plan unit-testable without a node —
+# the property the downstream prototype proved and this port preserves (its 14 unit tests live here).
+#
+# Rule 10: nothing in this crate knows a pack by name. A pack is data.
+[package]
+name = "lb-packs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Pure domain-pack logic for lb: manifest shape, object plan, checksums, refusal matrix."
+
+[dependencies]
+# The manifest is YAML; `serde_yaml` gives line-numbered parse errors — the reason a pack author
+# gets a usable message out of `pack.validate` instead of "invalid input".
+serde.workspace = true
+serde_yaml.workspace = true
+# Dashboard cells are JSON, and the receipt round-trips as JSON.
+serde_json.workspace = true
+# The manifest + per-object checksums (the drift signal the refusal matrix keys off).
+sha2.workspace = true

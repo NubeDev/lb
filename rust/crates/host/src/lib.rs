@@ -46,6 +46,7 @@ mod native;
 mod nav;
 mod notify;
 mod outbox;
+mod pack;
 mod panel;
 mod prefs;
 mod query;
@@ -297,6 +298,13 @@ pub use notify::{
     Device as NotifyDevice, LoggingPushProvider, NotifyCatalogRef, NotifyError,
     Platform as DevicePlatform, PushError, PushPayload, PushProvider, PushTarget, RecordedPush,
     RecordingPushProvider, PUSH_TARGET,
+};
+// packs scope: the domain-pack verb family. `pack_apply`/`pack_validate` are exported so an
+// embedder (and the integration suite) can drive them through the lib API, not only over MCP.
+pub use pack::{
+    call_pack_tool, pack_apply, pack_get, pack_list, pack_validate,
+    read_receipt as read_pack_receipt, scan_receipts as scan_pack_receipts, PackError,
+    PACK_RECEIPT_TABLE,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, may_read_panel, panel_delete, panel_get, panel_list,

@@ -70,6 +70,9 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "device.",
     "notify.",
     "dashboard.",
+    // packs scope: the domain-pack verb family (validate/apply/list/get). Core owns the mechanism
+    // and knows no pack by name (rule 10).
+    "pack.",
     "nav.",
     "layout.",
     "panel.",
@@ -450,6 +453,12 @@ async fn dispatch_at_depth(
             crate::call_dashboard_grafana_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("dashboard.") {
             crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("pack.") {
+            // packs scope: `pack.apply` drives rules/dashboards/datasources/channels/agent memory
+            // through their internal seams, so the family takes the full `&Arc<Node>` (like the
+            // `rules.` bridge). Each seam re-checks its OWN capability under this principal — the
+            // pack surface grants nothing downstream.
+            crate::call_pack_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("nav.") {
             // nav scope: the user-/team-authored menu asset. `resolve` + `pref.*` need the `&Node`
             // (ext discovery for `ext` items); the bridge takes it for all verbs.

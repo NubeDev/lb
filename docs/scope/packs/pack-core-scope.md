@@ -1,6 +1,13 @@
 # Packs scope — domain packs in core (the `pack.*` verb family: one declaration turns a blank workspace into a product)
 
-Status: **scope (the ask)** — 2026-07-18. Owning repo: **lb (core)**. Origin: proven
+Status: **SHIPPED** — 2026-07-18 (`crates/packs` + `crates/host/src/pack/`, the `pack.*` verb
+family; session: `docs/sessions/packs/pack-core-session.md`; issue NubeDev/lb#79). Live-verified:
+blank workspace → one `pack.apply` → a real FDD insight raises. The downstream prototype is deleted
+(NubeIO/rubix-ai#13) — the engine has exactly one home. Implementation decisions the PR made and
+documented: bundle encoding + an 8 MiB cap, the `lb-packs` crate name, `pack.apply` admin-only with
+validate/list/get at viewer, and a **sqlite-only, in-process materializer** for a pack's datasource
+(the one place an apply touches the node filesystem — the tradeoff and the follow-up federation
+`exec_sql` question are recorded in the session doc). Owning repo: **lb (core)**. Origin: proven
 end-to-end downstream first — rubix-ai built and live-verified a full applier over public
 verbs (`NubeIO/rubix-ai` `crates/pack-apply`, issue NubeIO/rubix-ai#13); this scope moves
 that proven engine INTO core so every embedder gets it, and the downstream prototype is

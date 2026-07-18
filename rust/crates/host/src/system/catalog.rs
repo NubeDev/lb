@@ -387,6 +387,28 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "notify",
         description: "enqueue a push notification to an audience (outbox-delivered)",
     },
+    // pack.* — the domain-pack verb family (packs scope): one declaration turns a blank workspace
+    // into a product. Core knows no pack by name (rule 10).
+    HostTool {
+        tool: "pack.validate",
+        group: "pack",
+        description: "parse a pack bundle and return its object plan, checksums, and lint findings",
+    },
+    HostTool {
+        tool: "pack.apply",
+        group: "pack",
+        description: "apply a pack bundle to this workspace (idempotent; writes a receipt)",
+    },
+    HostTool {
+        tool: "pack.list",
+        group: "pack",
+        description: "list the packs applied in this workspace",
+    },
+    HostTool {
+        tool: "pack.get",
+        group: "pack",
+        description: "read one pack's apply receipt (manifest as applied + per-object outcomes)",
+    },
     // dashboard.* — the grid-of-widgets surface verbs (dashboard scope).
     HostTool {
         tool: "dashboard.get",
