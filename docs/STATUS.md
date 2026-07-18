@@ -333,7 +333,44 @@ testing the code at all. Full narrative:
 [`sessions/auth-caps/full-suite-triage-session.md`](sessions/auth-caps/full-suite-triage-session.md);
 entries in [`debugging/README.md`](debugging/README.md).
 
-**Just shipped (2026-07-14): viz Grafana-parity Phase 4 — JSON import/export (the interop edge)
+**Just shipped (2026-07-18): domain packs in core — the `pack.*` verb family
+([`scope/packs/pack-core-scope.md`](scope/packs/pack-core-scope.md), issue #79; committed `master`
+`0f4ac1bd`, NOT pushed/tagged).** A blank workspace + one call = a working product, for **every**
+embedder rather than the one host that proved it. rubix-ai's live-verified applier
+(NubeIO/rubix-ai#13) ported INTO core and the downstream copy **deleted** in the same session — the
+engine has exactly one home. **`crates/packs`** is the pure half, zero I/O: manifest shape
+(`deny_unknown_fields`, line-numbered errors), bundle→`Pack`, the ordered plan + checksums, the
+linter, the refusal matrix, the receipt record — **22 unit tests** (the prototype's 14 verbatim).
+**`crates/host/src/pack/`** owns the I/O, one responsibility per file, exposing `pack.validate` /
+`pack.apply` / `pack.list` / `pack.get` on the one MCP dispatch. Semantics ported verbatim: refusal
+matrix (incl. the partial-recovery row), loud clobber, run-rules-once, stable object ids, dialect
+lint as warning-not-gate. **Authority:** `mcp:pack.apply:call` (admin) opens the orchestration and
+nothing more — every object goes through the same internal fn its public verb calls (`rules_save`,
+`dashboard_save_meta`, `datasource_add`, `channel_create`, `memory_set`), each re-checking its OWN
+cap under the caller, so a caller who couldn't `rules.save` cannot smuggle a rule in via a pack
+(proven by the partial→grant→re-apply recovery test). validate/list/get are **viewer** reads: a
+receipt is operator documentation, and an author must be able to validate in CI. **Receipts are
+first-class + internal** (`pack_receipt`, via the store API, never the public `store.*`) — retiring
+the prototype's hand-written `SELECT data FROM pack_receipts` and the envelope quirks that shaped
+it. New `rules_run_by_id` seam so `rules.run` and a pack's run-on-first-apply share ONE
+model-resolution/routing path. **Decisions this PR made** (the scope left them open): bundle
+`{manifest, files}` with the manifest kept RAW (the checksum folds those exact bytes), an 8 MiB cap,
+the `lb-packs` name, and — the one real tension — a **sqlite-only, in-process materializer** for a
+pack's datasource, because federation's `Source` trait deliberately refuses caller SQL yet the demo
+oracle requires standing a source UP; scoped as narrowly as it goes (node-local, path-sanitized like
+`ext/install_dir.rs`), leaving the general per-source `exec_sql` question to federation scope. Cost
+stated plainly: the datasource is the ONE object kind that is not pure bundle-over-the-wire. **Bug
+caught by the roster test:** `scan` returns the `{data, rev}` envelope where `read` unwraps it, so
+every `pack.list` decode failed and an `if let Ok` swallowed it — a silent, total, permanent empty
+roster behind a working `pack.get`; fixed, and the `Err` arm is now LOUD. Tests: `lb-packs` 22,
+`lb-host --lib` 273, `pack_test` 9 + 1 `#[ignore]`d demo oracle (real `Node::boot()`, `mem://`, no
+mocks — cap-deny, the matrix end-to-end, partial-recovery, the workspace wall, loud clobber).
+**Live-verified**: blank workspace → `make pack-apply PACK=bas` → 11× APPLIED →
+`fdd:sensor-flatline:meter-020-zt` raises → second run is the idempotent no-op. Rule 10 holds: core
+knows no pack by name; every branch is on an object KIND, and the `bas` fixture is test data.
+[session](sessions/packs/pack-core-session.md).
+
+**Previously shipped (2026-07-14): viz Grafana-parity Phase 4 — JSON import/export (the interop edge)
 (`docs/scope/frontend/dashboard/viz/import-export-scope.md`; uncommitted working tree).** The user's
 literal ask — *"export a dashboard from Grafana as JSON and import here, and back"* — as two host
 verbs + one bidirectional mapper consuming the P3 `grafana-map` pin. New module
