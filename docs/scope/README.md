@@ -544,6 +544,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   notice) consumed by `dashboard.import` and the downstream converter. Backend-only — the typed
   option shapes/editors/renderers are the downstream consumer's UI scope (rubix-ai
   `frontend/dashboard/viz/grafana-parity-ui-scope.md`).
+- `packs/` — **domain packs in core** (`pack-core-scope.md`, the ask): the generic `pack.*` verb
+  family (`validate`/`apply`/`list`/`get`) — one declarative, versioned manifest (schema+seed,
+  entity vocabulary, insight-key grammar, rules, dashboards, channels, agent context) applied to
+  ONE workspace turns a blank node into a product (BAS/EMS/PM). Bundle-over-the-wire, first-class
+  receipts, the live-proven refusal matrix/clobber/run-once semantics ported from the rubix-ai
+  prototype (NubeIO/rubix-ai#13), which deletes its downstream applier on the shipping tag. Core
+  owns the mechanism and knows no pack by name (rule 10); packs are embedder data. Unrelated to
+  `lb-pack`, the extension artifact packager.
 - `sync/` — multi-node sync + authority (S3).
 - `system-map/` — a framework-level **workspace topology + status console**: two admin-gated read
   verbs (`system.overview` status grid · `system.topology` react-flow wiring) that derive a live,
