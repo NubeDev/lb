@@ -135,6 +135,88 @@ Real sshd, real systemd, no mocks:
 - Should `factory-reset` also be a slice-10 journal state so a reset that dies midway
   resumes? Recommendation: yes — reuse the journal file, same recovery discipline.
 
+## Decisions resolved in implementation
+
+Slice 11 was built on master 2026-07-18. The scope left several seams to the
+session; each is recorded here (the slice-9 pattern).
+
+- **SSH client — russh, confirmed.** The open question is resolved as
+  recommended: the desk bundles `russh` (static, pure-Rust) rather than shelling
+  to the system `ssh`. It is behind a `russh-lane` cargo feature (on by default
+  for the desktop build) so the desk's core-logic tests (framing, keychain, REST
+  routing, the whole factory-reset orchestration against an in-memory
+  `FakeLane`) run WITHOUT the SSH stack. The transport is abstracted behind a
+  `RescueLane` trait, so the protocol sequencing is tested with no network.
+
+- **The factory-reset nonce is same-session by CONSTRUCTION, not a journal
+  state.** The scope's second open question (make factory-reset a slice-10
+  journal state so a mid-death reset resumes) was reconsidered and NOT taken:
+  both legs of the challenge run inside ONE `rubixd-rescue` process (one SSH
+  session — one stdio connection), so the nonce lives in that process's memory
+  and dies with the connection. "Signed by the SAME SSH session within 60 s" is
+  then enforced by the fact that a new session is a new process with no issued
+  nonce — leg 2 without a matching leg 1 in the same process is always
+  `factory-reset-nonce-invalid`. A journal-backed nonce would have to be
+  compared against a session identifier and could be replayed from a *different*
+  session; the in-memory nonce cannot. Resumability of the WIPE itself is
+  handled by the wipe being idempotent (each half re-runs cleanly), not by
+  journaling the nonce.
+
+- **The factory-reset work is SPLIT by privilege, along the crate seam.** The
+  `rubixd-rescue` crate is blocking-std (no tokio, no surrealDB) like
+  `rubixd-guard`, so it cannot itself open the ledger or drive the backend. It
+  does the plain-filesystem half of a reset (`state/`, `blobs/`, `bundles.d/`)
+  directly, and shells out to TWO new HIDDEN rubixd verbs for the rest:
+  `rubixd rescue-wipe` (enumerate owned instances from the ledger, tear each
+  down through `backend::remove` — so the `ForeignUnit` ownership wall is the
+  SAME one slices 3/5 wrote, never a second copy — and rotate the admin token)
+  and `rubixd rescue-restage <version>` (re-stage from the LOCAL blob cache via
+  the slice-8 `resolve_local` trust wall, never the network). This keeps the
+  single most dangerous rule ("never touch what we don't own, never touch data")
+  enforced in exactly one place.
+
+- **The privileged split IS the sudoers answer.** The scope's hairiest review
+  item — rescue verbs need root — is resolved with two binaries: `rubixd-rescue`
+  (the unprivileged ForceCommand front) re-execs `sudo -n rubixd-rescue-exec`
+  over a SINGLE sudoers line (`rubixd-rescue ALL=(root) NOPASSWD:
+  /usr/bin/rubixd-rescue-exec`), and the privileged half re-checks the five-verb
+  table before doing anything. The whole session runs in the one privileged
+  process, which is also what keeps the factory-reset nonce same-session.
+
+- **`rescue enable` renders the sudoers line but does not write it.** Enable
+  writes the sshd drop-in + restricted authorized_keys (validate-before-reload),
+  and PRINTS the single sudoers line for the operator to install with `visudo
+  -c`. A bad sudoers file is its own lockout class; the desk/CLI does not drop
+  it into `/etc/sudoers.d` without an explicit human step.
+
+- **The `rescue enable/disable/rotate-key/status` REST verbs are the ONE
+  documented server-verb addition** (parallel to slice 9's `GET /api/packages`).
+  They are PROVISIONING verbs, not data verbs — the desk arms the lane while the
+  box is still healthy, which by definition must happen over the normal REST
+  surface. The rescue PROTOCOL verbs add nothing to the server; they live
+  entirely on the SSH lane.
+
+- **The newline-injection wall on public keys** is a security boundary, not a
+  nicety: `validate_pubkey` refuses any control character, because a "key"
+  containing a newline could smuggle a second, `restrict`-LESS authorized_keys
+  line — an unrestricted backdoor. Asserted over the real REST wire, not just in
+  a unit test.
+
+- **Testing vs the environment.** The protocol + deny path are tested against
+  the REAL compiled `rubixd-rescue-exec` binary over a pipe (the identical code
+  path an `ssh` one-liner drives), including the `ssh … bash gets the protocol
+  not a shell` / unknown-verb / malformed / bad-arity / nonce-leg-one adversarial
+  set. The sshd-LEVEL walls (forwarding/scp/sftp/PTY refused, second pubkey
+  refused) and the full enable→`sshd -t`→reload→real-ssh round trip need a real
+  `sshd`, which the CI image lacks; they live in the manual runbook
+  (`rubix-fleet/docs/testing/rescue-desk-runbook.md`) with real output pasted,
+  per the runbook rule. `generated_config_passes_sshd_t` skips-and-reports where
+  `sshd` is absent (the docker-suite posture). The Tauri desk itself needs a
+  GTK/webkit toolchain to compile, absent here; its Rust CORE logic is
+  unit-tested (keychain fallback, node parsing, REST reachability distinction,
+  the whole recovery orchestration against `FakeLane`), and the UI is runbook-
+  driven — the scope's "desk UI driven by a manual runbook" plan.
+
 ## Related
 
 [`self-update-scope.md`](self-update-scope.md) (the `Failed` state this rescues) ·
