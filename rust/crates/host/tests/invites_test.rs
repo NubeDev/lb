@@ -102,6 +102,62 @@ async fn accept_invite_onboards_new_member() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn accept_provisions_the_global_email_front_door() {
+    // Regression: accept used to set ONLY the per-ws `credential`, never the global email index +
+    // `identity_credential`. So an onboarded member could log in via the legacy `/login {user,
+    // secret}` door but 401'd at the email front door (`/auth/login {email, password}` →
+    // `identity_by_email` → None), i.e. the onboarding produced an account its own email door could
+    // not authenticate. Assert the two seams `auth_login` uses now resolve.
+    let store = Store::memory().await.unwrap();
+    let key = SigningKey::generate();
+    let admin = principal("user:alice", "acme", ADMIN);
+
+    let token = invite_create(
+        &store,
+        &admin,
+        "acme",
+        "sam@example.com",
+        "member",
+        "",
+        None,
+        None,
+        0,
+        100,
+    )
+    .await
+    .unwrap();
+
+    invite_accept(&store, &key, "acme", &token, "password123", None, 200)
+        .await
+        .unwrap();
+
+    // 1. The global email index resolves the (folded) email to the accepted sub — exactly the first
+    //    step `auth_login` runs. Before the fix this returned `None` and login 401'd as "unknown email".
+    let sub = lb_host::identity_by_email(&store, "sam@example.com")
+        .await
+        .expect("email lookup ok")
+        .expect("accept must claim the global email index so /auth/login can resolve the email");
+    assert_eq!(sub, "user:sam@example.com");
+
+    // 2. The global credential (keyed by that resolved sub) verifies the accepted password — the
+    //    login path's credential check. Before the fix no global credential existed → `Absent` → 401.
+    let ok = lb_host::global_credential_verify(&store, &sub, "password123")
+        .await
+        .expect("credential check ok");
+    assert_eq!(
+        ok,
+        lb_host::GlobalCredentialCheck::Ok,
+        "the accepted password must satisfy the GLOBAL credential the email front door checks"
+    );
+
+    // 3. A wrong password is a clean BadSecret, not a false Ok (no bypass introduced).
+    let bad = lb_host::global_credential_verify(&store, &sub, "nope")
+        .await
+        .expect("credential check ok");
+    assert_eq!(bad, lb_host::GlobalCredentialCheck::BadSecret);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn double_redeem_is_rejected() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();

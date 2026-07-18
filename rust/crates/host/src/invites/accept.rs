@@ -168,7 +168,15 @@ async fn onboard(
         raw::identity_create(store, sub, Some(&invite.email), now).await?;
     }
 
-    // Set the credential (hash + write). Stored in the workspace namespace (the hard wall).
+    // Set the credential (hash + write). Written to BOTH doors from the SAME plaintext hash so an
+    // onboarded member can sign in on either while they coexist:
+    //   • the per-ws `credential` (workspace namespace, the hard wall) — the legacy `/login {user,
+    //     secret}` door, and the takeover-protection read above (`credential_verify`);
+    //   • the GLOBAL `identity_credential` (`_lb_identity`) + the reverse email index — the email
+    //     front door (`/auth/login {email, password}` → `global_credential_verify`).
+    // Before this, accept set only the per-ws credential and never claimed the email index, so every
+    // invited member 401'd at `/auth/login` (`identity_by_email` → None) even though `/login` worked —
+    // the onboarding produced an account its own email door could not authenticate.
     let phc = hash_secret(secret).map_err(InviteError::Store)?;
     let cred = serde_json::json!({
         "sub": sub,
@@ -177,6 +185,15 @@ async fn onboard(
         "set_ts": now,
     });
     lb_store::write(store, ws, "credential", sub, &cred).await?;
+    // Claim the global email index (race-safe, idempotent when already owned by `sub`) and set the
+    // global password. `identity_set_email` folds the email the same way `auth_login`'s lookup does,
+    // so the reverse index resolves. Both are the exact raw seams `seed_dev_identity` uses at boot.
+    raw::identity_set_email(store, sub, &invite.email)
+        .await
+        .map_err(|e| InviteError::Store(e.to_string()))?;
+    raw::identity_credential_set(store, sub, &phc, now)
+        .await
+        .map_err(|e| InviteError::Store(e.to_string()))?;
 
     // Ensure built-in roles exist, then join the workspace (membership + role:member grant).
     ensure_builtin_authz_roles(store, ws).await?;
