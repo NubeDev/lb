@@ -136,3 +136,120 @@ the AWS topology; it lands **with this slice**) · `ems`
 (`rust/node/src/{boot.rs,ems_mount.rs}` — the pattern) · lb
 `docs/scope/extensions/reference-extensions-scope.md` (native-tier doctrine) · lb
 `docs/scope/datasources/page-chaining-scope.md` (cursor convention).
+
+## Decisions resolved in implementation (2026-07-19)
+
+Slice 1 shipped in `rubix-fleet`. Session doc:
+`docs/sessions/deploy/rartifacts-server-core-session.md`; manual runbook:
+`docs/testing/rartifacts-slice1-runbook.md`. These resolve the seams this scope left
+open, and correct four places where the scope described something the platform does not
+actually do. Everything below was found by running against a real booted node, not read
+off documentation.
+
+### Corrections to this scope
+
+- **Tools cannot be named `pkg.*` — the wire names are `rartifacts.list` /
+  `rartifacts.get`.** lb resolves a qualified tool by splitting on the FIRST `.`: the
+  prefix is the extension id. `pkg.list` makes the host look for an extension called
+  `pkg`, which does not exist, so every call fails "no such tool" regardless of the
+  manifest or the grants. The `pkg.*` spelling above is the conceptual verb set; the
+  routing name is `<ext_id>.<verb>`. **This changes the capability strings the later
+  slices must grant**: `mcp:rartifacts.list:call`, never `mcp:pkg.list:call`.
+- **`GET /rartifacts/health`, not `GET /health`.** lb's gateway already registers an
+  unauthenticated `/health` at `node-v0.4.7`, and axum panics at startup on a duplicate
+  path. The package-plane probe is mounted alongside it rather than shadowing it; the two
+  answer different questions ("is the node up?" vs "is the package plane serving?"), and
+  an ALB target group can point at either. Folding them into one route needs an lb-side
+  seam to extend `/health`'s `detail`, which does not exist at this tag. *Reopen when*:
+  lb ships that seam.
+- **The health probe does one `stat`; it is not pure in-memory state.** The scope says
+  "reads in-memory state only — no disk I/O". Store and extension status genuinely are
+  in-memory flags, but the blob answer is one local `access(2)`-class check — which is
+  precisely what makes "the volume went read-only", the condition this scope wants a 503
+  for, detectable at all. A local stat cannot block on a network dependency (the property
+  the rule exists to protect), but it IS disk I/O, so the code's doc states the narrower
+  claim rather than this scope's phrasing. Consequence worth knowing: a FULL disk is not
+  detected — permissions are writable, so the probe reports healthy and the failure
+  surfaces on the publish path instead.
+- **No boot self-publish; `install_native` directly.** The scope wants build→sign→publish
+  at boot for the dev loop. The implementation uses `install_native` + `OsLauncher` (the
+  ems `ems_mount.rs` pattern), the same path lb's own role mounts use. It needs no signing
+  key in the process and no build step at boot, which makes the §Risks concern ("keep it
+  dev-mode only") moot rather than merely managed. The "release images bake the published
+  artifact" decision is unaffected.
+
+### Seams the scope left open
+
+- **The `pkg_artifact` record id is `package|version|arch`, `|`-separated.** The id must
+  be injective or one release silently overwrites another. Semver permits `.`, `-` and
+  `+`; package names permit `-` and `_`; so each of those admits a collision. `|` is in
+  none of the three alphabets. The assumption is ENFORCED rather than trusted
+  (`record::is_valid_component`): a `|` inside a component would let a publisher forge
+  another release's id, which is a record-overwrite primitive.
+- **A channel names a VERSION, not an artifact triple.** Promotion is a statement about a
+  release, and a release spans architectures — an arch-keyed channel would make promotion
+  a per-arch action and let a fleet split-brain across architectures after a partial
+  promotion.
+- **`pkg.list` filters AFTER paging, so a page may be short or empty while more pages
+  remain — `next_cursor` is the only end-of-list signal.** Filtering before paging would
+  require the visibility rule to live inside a SQL string built next to caller-supplied
+  values; keeping it in one unit-tested Rust function is worth the client-side awkwardness.
+  The cursor advances on EVERY row fetched, including hidden and unparseable ones, using
+  the store's record id rather than anything read out of the record body — otherwise a
+  fully-hidden page never advances (infinite loop) and a corrupt row wedges pagination
+  permanently.
+- **Its own cargo workspace, not a root member.** The lb git deps pull ~1000 crates;
+  making them a root member would put a multi-minute build on the critical path of every
+  `cargo test --workspace` the rubixd track runs, and would force one dependency
+  resolution across two worlds that pin `surrealdb` differently. Cost, recorded as debt:
+  CI must run `cd rartifacts && cargo test` explicitly.
+
+### Platform behaviours the next slices will hit
+
+Documented because each cost real debugging time and none is discoverable from the docs:
+
+1. **The host does NOT strip the `<ext>.` prefix** before dispatching to a native child,
+   though the SDK's `Tools::call` doc says it does. The child receives the qualified name
+   at `node-v0.4.7`; the dispatcher accepts both spellings, stripping only its own prefix.
+2. **`SELECT *` fails on any NON-EMPTY table.** SurrealDB's `id` serializes as a tagged
+   enum and the `store.query` bridge rejects that shape — so reads 502 against a populated
+   table while an empty one works perfectly. Every query must
+   `SELECT *, meta::id(id) AS rid OMIT id FROM …`. The omission must be in the QUERY (the
+   failure is host-side while decoding); the alias must be `rid`, because
+   `SELECT * OMIT id, … AS id` does not parse — `OMIT` follows the field list.
+3. **`store.write` wraps records in `{ data, rev }`.** Reads must unwrap it, or the verb
+   layer reports "missing field `name`" for a record whose name is present.
+4. **lb pulls zenoh, which rejects tokio's current-thread scheduler** — integration tests
+   need `#[tokio::test(flavor = "multi_thread")]`, and a server spawned inside a test's
+   runtime dies with it (making failures order-dependent), so a shared fixture must own a
+   dedicated thread and runtime.
+
+### Claims deliberately NOT made in the code's docs
+
+Per the slice-11 lesson that a doc asserting a property the code lacks IS the
+vulnerability:
+
+- **`pkg_event` is append-only by construction, NOT tamper-proof.** No verb updates or
+  deletes an event, but the table sits behind the same `store:pkg_event:write` capability
+  as everything else, so a holder could overwrite a row by id. Real tamper-evidence needs
+  a hash-chain or a create-but-not-update action; lb's store surface offers neither. This
+  strengthens rather than changes the scope's "fold into the platform ledger later"
+  decision.
+- **Visibility is not yet per-principal.** Slice 1 enforces exactly two things: private
+  packages are invisible to the ANONYMOUS tier, and a hidden package is indistinguishable
+  from a nonexistent one (same variant, same message, same HTTP body). It does NOT narrow
+  what one authenticated principal sees relative to another — that is meaningless until
+  slice 2's principals exist.
+- **The anonymous principal is a host-side `Principal::for_key`, not a store-backed
+  identity.** Not revocable, no api-key record, no audit presence. Acceptable only because
+  it holds exactly `mcp:rartifacts.list:call` + `mcp:rartifacts.get:call`. **Slice 2 must
+  replace it** with the boot-minted anonymous principal this track's token-auth scope
+  specifies.
+- **Blob crash-durability is narrower than "survives power loss".** Data is fsynced and
+  the rename is atomic, so a blob cannot have the right name and truncated content. The
+  parent DIRECTORY is not fsynced, so power loss just after a rename can lose the rename —
+  the safe direction (the integrity pass reports it; the record was never written). A
+  deliberate durability/throughput trade, not an oversight.
+- **The startup integrity pass REPORTS, never deletes.** At boot the server cannot
+  distinguish "orphan from last week's crash" from "blob committed 30ms ago whose record
+  write is in flight"; deleting on that ambiguity would destroy a live publish.
