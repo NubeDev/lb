@@ -10,6 +10,10 @@ rules/flows/attention planes. Start with the umbrella; the rest compose onto it.
   types, `raise`/dedup, occurrence append) the host verbs ride.
 - [`insight-occurrences-scope.md`](insight-occurrences-scope.md) — the per-insight transaction
   ring: every raise appends one size-capped occurrence row (last N).
+- [`insight-evidence-scope.md`](insight-evidence-scope.md) — **the finding states its own data**: an
+  optional `evidence` on raise (datasource + the plottable series + threshold/window), persisted and
+  echoed by `insight.get`, so a trend viewer binds from the record instead of guessing a series out
+  of `body`. Decides dedup-refresh (evidence is a binding, not history) and the get-vs-list boundary.
 - [`insight-subscriptions-scope.md`](insight-subscriptions-scope.md) — subscribe a channel to
   all / one rule / one identity / a tag facet / a severity floor; matched at raise time.
 - [`insight-notify-scope.md`](insight-notify-scope.md) — the anti-spam digest ladder

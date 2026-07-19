@@ -33,6 +33,17 @@ for r in rows {
                stuck_at_degc: r.stuck_at, spread_24h_degc: r.spread_degc,
                samples: r.samples,
                note: "control loops using this sensor are flying blind" },
+      // The data that proves it (insight-evidence-scope.md). A SINGLE-POINT rule is the easy
+      // case: the series it judged is the series you plot, so `series` and `query` describe the
+      // same underlying readings and the flatline is visible on the chart.
+      // No `threshold` — the rule judges a SPREAD (max-min < 0.1 degC), which is not a value on
+      // the temperature series. Drawing 0.1 degC across a zone-temp chart would be nonsense; the
+      // field is "the threshold crossed, in the series' own units" and this one isn't.
+      evidence: #{
+        source: "demo-buildings",
+        series: [#{ sql: "SELECT time, value FROM point_reading WHERE point_id = '" + r.point_id + "' ORDER BY time",
+                    label: r.point_name, unit: "degC" }],
+      },
       tags: #{ area: "fdd", issue: "sensor-flatline", equip: r.equip },
     });
     emit(#{ level: "critical",

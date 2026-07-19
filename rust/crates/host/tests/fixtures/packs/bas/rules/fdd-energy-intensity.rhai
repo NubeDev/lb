@@ -24,6 +24,27 @@ for r in rows {
       severity: if intensity > 2.0 { "critical" } else { "warning" },
       title: building + " energy intensity high",
       body: #{ building: building, kwh_per_m2: intensity, budget: 1.0 },
+      // The data that proves it (insight-evidence-scope.md). This is the case the field exists
+      // for: the query ABOVE is a GROUP BY aggregate — one scalar per building, no time axis — so
+      // plotting it shows nothing. The trend an operator wants is DAILY intensity for this one
+      // building, a different query only the rule can write. `series` is what you draw; `query`
+      // records what was actually judged.
+      // No `threshold`: the budget of 1.0 is a whole-period intensity while the series is per-day,
+      // so a 1.0 line across a daily chart would compare two different quantities.
+      evidence: #{
+        source: "demo-buildings",
+        series: [#{ sql: "SELECT substr(pr.time,1,10) AS time, " +
+                         "ROUND(SUM(pr.value) / CAST(REPLACE(a.val,' m2','') AS DOUBLE), 3) AS value " +
+                         "FROM point_reading pr " +
+                         "JOIN point p ON p.id = pr.point_id " +
+                         "JOIN meter m ON m.id = p.meter_id " +
+                         "JOIN site  s ON s.id = m.site_id " +
+                         "JOIN site_tag a ON a.site_id = s.id AND a.tag = 'area' " +
+                         "WHERE p.name = 'Energy kWh' AND s.name = '" + building + "' " +
+                         "GROUP BY substr(pr.time,1,10), a.val ORDER BY time",
+                    label: building + " daily intensity", unit: "kWh/m2" }],
+        query: "SELECT s.name, SUM(pr.value) / area AS kwh_per_m2 FROM point_reading GROUP BY s.id",
+      },
       tags: #{ area: "energy", building: building },
     });
   }

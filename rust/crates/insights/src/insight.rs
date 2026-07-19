@@ -13,6 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::evidence::Evidence;
 use crate::origin::Origin;
 use crate::severity::Severity;
 use crate::status::Status;
@@ -23,7 +24,10 @@ pub const OCC_TABLE: &str = "insight";
 
 /// A durable insight record. Stable on `(ws, dedup_key)` — re-raising the same key bumps
 /// `count`/`last_ts` (or re-opens if `resolved`), never a duplicate row.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Not `Eq`: `evidence.threshold` is an `f64` (a threshold is a real quantity in the series' own
+/// units, so the float is the honest type). Compare with `PartialEq`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Insight {
     /// Stable id (ULID), unique within the workspace. Host-assigned at first raise.
     pub id: String,
@@ -38,6 +42,17 @@ pub struct Insight {
     /// Opaque JSON detail — evidence rows, scores, links. Free-form; producers own the shape.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub body: serde_json::Value,
+    /// The data that proves this finding — datasource + the plottable series + the threshold and
+    /// window judged (`insight-evidence-scope.md`). Optional: absent on every record written before
+    /// the field landed and on every producer that states none, and a reader that ignores it is
+    /// unaffected. **Refreshed on every raise that supplies one** — unlike `title`/`body`, which are
+    /// first-raise-wins; see the note at the dedup arm in `raise.rs`.
+    ///
+    /// Echoed by `insight.get`; **omitted by `insight.list`** (it would bloat every page of a
+    /// many-record roster for a field only the detail view uses, and the SQL it carries is schema
+    /// disclosure the narrower read already implies).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<Evidence>,
     /// Producer provenance — what raised it, from which run.
     pub origin: Origin,
     /// The lifecycle status.

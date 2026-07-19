@@ -17,6 +17,7 @@
 use lb_store::{new_ulid, write, Store};
 
 use crate::error::InsightsError;
+use crate::evidence::{validate_evidence_size, Evidence};
 use crate::insight::{Insight, OCC_TABLE};
 use crate::insight_id::{dedup_lookup, record_id};
 use crate::intent::IntentKind;
@@ -39,15 +40,21 @@ pub struct RaiseOccurrence {
 }
 
 /// The caller-supplied raise input. `dedup_key`/`severity`/`title`/`origin` are required; `body`,
-/// `tags`, `occurrence` are optional. `tags` rides the shipped tag graph (applied by the host
-/// layer after the record write — this crate is tag-graph-agnostic).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// `tags`, `occurrence`, `evidence` are optional. `tags` rides the shipped tag graph (applied by
+/// the host layer after the record write — this crate is tag-graph-agnostic).
+///
+/// Not `Eq` for the same reason [`crate::Insight`] isn't — `evidence.threshold` is an `f64`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RaiseInput {
     pub dedup_key: String,
     pub severity: Severity,
     pub title: String,
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub body: serde_json::Value,
+    /// The data that proves the finding (`insight-evidence-scope.md`). Optional; when present it
+    /// **overwrites** any stored evidence, and when absent the stored value is left alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<Evidence>,
     pub origin: Origin,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub tags: std::collections::BTreeMap<String, String>,
@@ -114,6 +121,10 @@ pub async fn raise(
         data: occ.data.clone(),
     };
     validate_occurrence_size(&firing)?;
+    // Same contract for the evidence descriptor — reject before any write, never a partial raise.
+    if let Some(ev) = &input.evidence {
+        validate_evidence_size(ev)?;
+    }
 
     let existing = dedup_lookup(store, ws, &input.dedup_key).await?;
     let (insight, created, kind) = match existing {
@@ -123,6 +134,16 @@ pub async fn raise(
             prior.count += 1;
             prior.last_ts = input.ts;
             prior.severity = input.severity;
+            // Evidence REFRESHES on re-raise — deliberately unlike `title`/`body`/`origin`, which
+            // stay first-raise-wins just below. Evidence is a *binding*, not a historical fact: a
+            // rule edited to query a renamed table would otherwise leave every existing insight
+            // bound to a query that no longer runs, permanently, with no way to heal short of
+            // deleting the record. A raise that omits evidence leaves the stored value alone, so a
+            // producer can stop sending it without blanking the binding.
+            // SCOPE: docs/scope/insights/insight-evidence-scope.md §"How it fits" (Dedup)
+            if input.evidence.is_some() {
+                prior.evidence = input.evidence.clone();
+            }
             let reopened = prior.status == Status::Resolved;
             if reopened {
                 // A resolved insight firing again re-opens (count continues). Status → open; the
@@ -150,6 +171,7 @@ pub async fn raise(
                 severity: input.severity,
                 title: input.title.clone(),
                 body: input.body.clone(),
+                evidence: input.evidence.clone(),
                 origin: input.origin.clone(),
                 status: Status::Open,
                 status_by: None,

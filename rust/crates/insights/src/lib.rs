@@ -24,6 +24,7 @@
 mod ack;
 mod delete;
 mod error;
+mod evidence;
 mod get;
 mod intent;
 mod ladder;
@@ -60,6 +61,10 @@ mod insight_id;
 pub use ack::ack;
 pub use delete::delete;
 pub use error::InsightsError;
+pub use evidence::{
+    validate_evidence_size, Evidence, EvidenceSeries, EvidenceWindow,
+    DEFAULT_TOOL as EVIDENCE_DEFAULT_TOOL, MAX_EVIDENCE_BYTES,
+};
 pub use get::get;
 pub use intent::{Intent, IntentKind};
 pub use ladder::{ladder_step, Delivery, DeliveryReason, LadderInput, Level, WindowAccumulator};

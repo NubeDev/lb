@@ -63,7 +63,9 @@ fn default_limit() -> usize {
 }
 
 /// One newest-first page of insights + the cursor for the next page (`None` ⇒ last page).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+///
+/// Not `Eq` — [`Insight`] isn't, since `evidence.threshold` is an `f64`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ListPage {
     pub items: Vec<Insight>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -124,5 +126,16 @@ pub async fn list(
     } else {
         None
     };
+
+    // Strip `evidence` from every listed record — it is echoed by `insight.get` only. Two reasons:
+    // a roster page is many-record and the descriptor would bloat every one of them for a field
+    // only the detail view reads; and the SQL it carries is schema disclosure, which the narrower
+    // per-finding read already implies but a broad list does not. Stripped AFTER truncation so the
+    // cost is bounded by the page, not the scan.
+    // SCOPE: docs/scope/insights/insight-evidence-scope.md §"How it fits" (Capabilities)
+    for i in &mut items {
+        i.evidence = None;
+    }
+
     Ok(ListPage { items, next })
 }

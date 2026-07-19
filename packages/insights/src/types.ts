@@ -20,6 +20,35 @@ export interface Origin {
   run?: string;
 }
 
+/** One plottable series the finding sits on. Mirrors `lb_insights::EvidenceSeries`. */
+export interface EvidenceSeries {
+  /** A query yielding `(time, value)` rows. Dialect is the datasource's business. */
+  sql: string;
+  label?: string;
+  unit?: string;
+}
+
+/** The data that proves a finding — the producer's own binding. Mirrors `lb_insights::Evidence`
+ *  (`docs/scope/insights/insight-evidence-scope.md`).
+ *
+ *  `series` is NOT the rule's judgment query: a rule that judges with a `GROUP BY` aggregate has no
+ *  time axis to plot, so it states the underlying per-entity series separately. Draw `series`; treat
+ *  `query` as provenance only. A reader turns each series into one panel target —
+ *  `{tool: evidence.tool ?? "federation.query", args: {source, sql}}`. */
+export interface Evidence {
+  /** Datasource id the series resolve against, resolved by the reader per-workspace. */
+  source: string;
+  series?: EvidenceSeries[];
+  /** The judgment query — provenance/"open evidence" only, frequently not plottable. */
+  query?: string;
+  /** The window judged, epoch-ms — lets a viewer open pre-ranged. */
+  window?: { from: number; to: number };
+  /** The threshold crossed, in the series' own units — draw as a threshold line. */
+  threshold?: number;
+  /** Data-plane verb the series dispatch through; absent ⇒ `"federation.query"`. */
+  tool?: string;
+}
+
 /** One durable insight record. Mirrors `lb_insights::Insight`. */
 export interface Insight {
   id: string;
@@ -27,6 +56,10 @@ export interface Insight {
   severity: Severity;
   title: string;
   body?: Record<string, unknown> | unknown[];
+  /** The data that proves this finding. Echoed by `insight.get`; **absent on `insight.list` rows**
+   *  (the roster omits it — page bloat + schema disclosure), so a list-driven view must `get` the
+   *  record before it can bind a trend. Also absent on any record whose producer stated none. */
+  evidence?: Evidence;
   origin: Origin;
   status: Status;
   status_by?: string;

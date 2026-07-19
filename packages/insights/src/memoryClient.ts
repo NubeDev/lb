@@ -38,7 +38,11 @@ export function memoryClient(seed: Insight[]): InsightsClient {
         items.length > limit
           ? { ts: page[page.length - 1].last_ts, id: page[page.length - 1].id }
           : undefined;
-      return { items: page, next };
+      // Strip `evidence` exactly as the node's `insight.list` does — it is echoed by `get` only.
+      // This client is the real boundary, not a mock of it, so a consumer that (wrongly) binds a
+      // trend straight from a list row must fail here the same way it fails against a live node.
+      const stripped = page.map(({ evidence: _evidence, ...rest }) => rest as Insight);
+      return { items: stripped, next };
     },
     async get(id: string): Promise<Insight | null> {
       return rows.find((i) => i.id === id) ?? null;

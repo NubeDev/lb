@@ -57,6 +57,8 @@ export type {
   Status,
   OriginKind,
   Origin,
+  Evidence,
+  EvidenceSeries,
   Insight,
   Occurrence,
   InsightEvent,
