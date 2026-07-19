@@ -217,6 +217,129 @@ session; each is recorded here (the slice-9 pattern).
   the whole recovery orchestration against `FakeLane`), and the UI is runbook-
   driven — the scope's "desk UI driven by a manual runbook" plan.
 
+## Post-merge security review (2026-07-19)
+
+An adversarial review of the shipped slice-11 code found two CRITICAL flaws in
+the emergency SSH lane, plus one HIGH and four MEDIUM. All are fixed on master;
+the lane was NOT provisioned on any real box before the fixes landed. Both
+criticals shared one root cause: **argv was treated as trusted input on the
+privileged side.**
+
+- **CRITICAL — `rubixd rescue-wipe` was an unauthenticated local auth-bypass.**
+  `hide = true` in clap is help text, not a capability: clap still parsed and
+  dispatched the verb for any local caller, with no token, root, or caller
+  check. Because the verb ROTATES THE ADMIN TOKEN, running it minted a fresh
+  *unclaimed* token and re-opened the claim window — so any user who could
+  execute the rubixd binary could rotate the desk's credential away and then
+  claim the new one, converting local execute access into full admin-API
+  control. **Fixed**: both hidden verbs (`rescue-wipe`, `rescue-restage`) are
+  gated on `geteuid()==0` in a new `rescue::privilege` module, with an audit
+  line to stderr. We deliberately did NOT add a "caller must be
+  rubixd-rescue-exec" check — parent-PID inspection is racy and forgeable, and
+  a check that looks like identity verification but is not is worse than an
+  honest euid check.
+
+- **CRITICAL — the sudoers line permitted arbitrary arguments, making
+  `--data-root` root code execution.** A sudoers command spec with no argument
+  list permits ANY argv; the rendered line had none, and the comment beside it
+  claimed "the verb table is the argument wall". That was a misreading of sudo
+  semantics — the verb table constrains WHICH VERB and never sees argv.
+  `exec.rs` read `--data-root` off argv *before and independently of* the verb
+  table, and `resolve_rubixd_bin` then executed `<data_root>/self/current/rubixd`
+  AS ROOT. Planting a binary under an attacker-chosen root and passing
+  `--data-root` yielded a root shell; a second, exec-free variant pointed
+  `reset::wipe_filesystem`'s `remove_dir_all` at any directory on the box.
+  **Fixed in three independent layers**, any one of which closes it:
+  1. the sudoers grant is now `... NOPASSWD: /usr/bin/rubixd-rescue-exec ""`
+     (the empty argument list — the only syntax that forbids arguments);
+  2. `exec.rs` refuses ANY argv outright and derives its config on the
+     privileged side (new `rubixd_rescue::config` module, so the logic is
+     library-testable rather than reachable only by spawning a binary);
+  3. `vet_rubixd_bin` requires the candidate to be under the trusted root,
+     root-owned, and not group/other-writable before it is exec'd.
+
+- **`SetEnv RUBIXD_DATA_ROOT` in the sshd drop-in is explicitly REJECTED.** The
+  scope floated it as a way to support non-default data roots. It would punch a
+  hole straight through sudo's `env_reset`, which is what stops the SSH user
+  influencing the privileged side's paths. Non-default roots are instead read
+  from the root-owned `/etc/rubixd/config.toml` on the trusted side. The one
+  env var that remains (`RUBIXD_RESCUE_TEST_DATA_ROOT`) is honoured ONLY when
+  the process is not root, so it is dead in production by construction.
+
+- **HIGH — the factory-reset nonce was fully predictable.** It was FNV-1a over
+  `(now_secs, subsec_nanos, pid, salt)`: no secret, brute-forceable offline in
+  under a second, while the code compared it in constant time and the docs
+  called it a guard against replay. The real wall is structural (a process that
+  never issued a challenge refuses every echoed value), so impact was low — but
+  a value the code calls a nonce must actually be unpredictable, or the next
+  reader builds on a property that is not there. **Fixed**: 128 bits from the OS
+  CSPRNG via `getrandom` (a leaf crate — the minimal-dependency posture holds).
+  A CSPRNG failure now REFUSES to issue a challenge rather than falling back.
+
+- **MEDIUM — `enable()` had a live-unvalidated-config window and an incomplete
+  rollback.** The drop-in was written to its LIVE path and only removed after
+  `sshd -t` failed, so a concurrent reload from any source could observe a
+  broken config; and the rollback removed the drop-in but LEFT the
+  authorized_keys, i.e. exactly the single-copy state `drop_in.rs` says it does
+  not trust. **Fixed**: write to a `.staging` path (which the distro `*.conf`
+  glob does not match), validate, then promote by atomic rename; restore the
+  previous authorized_keys on every failure path; `status()` now reports
+  `half_state` and `staged_leftover` so the two walls disagreeing is visible
+  rather than looking like "disabled".
+
+- **MEDIUM — `rotate_key()` could leave the lane accepting NEITHER key.** It
+  delegates to `enable()`, which overwrote authorized_keys before validating
+  with no backup. A rotation whose `sshd -t` or reload failed destroyed the old
+  key and removed the drop-in — the worst outcome for a fire escape, reached by
+  a routine rotation. **Fixed** by the snapshot/restore above; the scope's
+  "no window where the lane accepts both or neither" claim is now true on the
+  failure path too, not just the success path.
+
+- **MEDIUM — `sshd -t` could pass without ever parsing our drop-in.** The check
+  pointed at the main config, which only validates our fragment if that config
+  `Include`s the drop-in directory. Debian-family does; RHEL-family and hardened
+  configs often do not — there, validation returned 0 having never read our
+  file and the reload pushed it live unvalidated. **Fixed**: a new
+  `rescue::sshd_config` module asserts the include chain covers the drop-in dir
+  and refuses (`RescueError::NotIncluded`, HTTP 409) when it cannot prove it,
+  naming the exact `Include` line to add. Validation now runs against a probe
+  config that includes the staged candidate and excludes the live copy. The docs
+  no longer overstate `sshd -t`: it is syntax-only and does not evaluate `Match`
+  blocks.
+
+- **MEDIUM — execution failures were reported as `denied: malformed`.** This
+  contradicted the `Effects` trait doc directly above the code (which promised a
+  distinct error line) — and that promise was unimplementable, because
+  `wire.rs`'s `Response` had only `Ok` and `Denied`. It was actively dangerous
+  for factory-reset: leg 2 consumes the nonce and runs `rescue-wipe` (token
+  ALREADY rotated), so a later failure told the operator `denied: malformed` —
+  reasonably read as "refused, nothing happened" — while the box was half-wiped
+  and the desk locked out. **Fixed**: a third `Response::Error { ok, error }`
+  variant; `DenyReason::Malformed` now means ONLY "I could not parse your line".
+  The factory-reset failure message states explicitly that the reset was
+  authorised and started and the token may already be rotated.
+
+- **LOW** — `wipe.rs` swallowed the ledger-delete error (now logged), and
+  `foreign_skipped` was silently dropped by serde because the CONSUMING
+  `WipeResult` in `effects.rs` omitted the field. The producer's promise that
+  the ownership wall's action is "surfaced so the operator sees the wall held,
+  not silence" was dead code; the field now reaches `ResetReport` and the wire,
+  with tests asserting it survives both hops.
+
+**Walls that were verified as genuinely holding** (reviewed, not changed):
+`validate_pubkey`'s newline-injection refusal before any write; no path from a
+denied verb to an effect; nonce single-use / consume-before-effect; and
+ForeignUnit + data preservation in both backends (systemd re-reads the marker
+and leaves `data_dir` intact, docker re-inspects labels with `RemoveVolumes`
+false, and `wipe.rs` correctly skips the `self` row).
+
+**File-layout**: the fixes pushed four files over the 400-line hard ceiling, so
+they were split as part of the same work (`rescue::files`, `rescue::sshd_config`,
+`rubixd_rescue::config`, plus sibling test files). `fetch/client.rs` — the one
+remaining `make check-layout` failure, carried red through slices 6/9/11 — was
+split into `fetch/client/{error,resolve,download,fetch,encode}.rs`.
+`check-file-size.sh` is now GREEN for the first time.
+
 ## Related
 
 [`self-update-scope.md`](self-update-scope.md) (the `Failed` state this rescues) ·
