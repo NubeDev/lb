@@ -400,7 +400,10 @@ pub use telemetry::{
     telemetry_seed, telemetry_tail, telemetry_trace, QueryFilter, QueryPage, TailSnapshot, TailSub,
     TelemetryRow, TelemetrySvcError, TELEMETRY_TABLE,
 };
-pub use tool_call::call_tool;
+pub use tool_call::{call_tool, call_tool_on_node};
+// Re-exported so a caller of `call_tool_on_node` (the `POST /mcp/call` bridge) can name a target
+// node without taking its own `lb-bus` dependency — the node id is part of this crate's signature.
+pub use lb_bus::{NodeId, NodeIdError};
 pub use tools::{call_tools_tool, tools_catalog, ToolsCatalog};
 pub use undo::{history_compensations, history_list, redo, undo, UndoSvcError};
 pub use users::{

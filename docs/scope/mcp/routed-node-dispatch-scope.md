@@ -9,6 +9,13 @@ Public docs: [`doc-site/content/public/mcp/routed-node-dispatch.md`](../../../do
 explicit wiring — the ext-hosting announce that would feed it from live liveliness is
 fleet-presence's, as is the `targeted_dispatch` flag that `NodeTooOld` needs. Both are named in
 Findings A/B below. The guard is *armed before the hazard is reachable*, which was the point.
+
+**Not reachable from an HTTP/sidecar caller yet:** the targeted entry `call_on_node` has **no
+non-test caller** — the `POST /mcp/call` bridge, `lb_host::call_tool`, and `SidecarClient` all
+carry only `{tool, args}`, so a native sidecar can *receive* an `Ambiguous` error but cannot
+*answer* by naming a node. Threading the target node through those three seams is
+[`routed-dispatch-sidecar-bridge-scope.md`](routed-dispatch-sidecar-bridge-scope.md) — the
+caller-facing half, and the hard blocker for ems's gateways slice 2.
 Closes the open question already standing in [`mcp-scope.md`](mcp-scope.md) §"What shipped in S3"
 (line 96: *"Routing tie-breaks when two nodes host the same extension — still open"*) and unblocks
 [lb#81](https://github.com/NubeDev/lb/issues/81).

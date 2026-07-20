@@ -164,6 +164,15 @@ pub struct Cell {
     pub y: u32,
     pub w: u32,
     pub h: u32,
+    /// Resize floor (grid units) — react-grid-layout clamps a widget's resize handle to these so a
+    /// widget can't shrink below a legible size. Geometry only, opaque to the host (the client grid
+    /// enforces them). Additive/serde-defaulted like every v-specific field, and camelCase on the
+    /// wire (`minW`/`minH`) like react-grid-layout's own keys: a cell authored before minimums
+    /// existed carries `0`, which the client reads as "no floor" and re-derives its per-view default.
+    #[serde(default, deserialize_with = "null_default", rename = "minW")]
+    pub min_w: u32,
+    #[serde(default, deserialize_with = "null_default", rename = "minH")]
+    pub min_h: u32,
     /// Contract version. Absent/`0`/`1` = a v1 series cell; `2` = a v2 tool-bound cell.
     #[serde(default, deserialize_with = "null_default")]
     pub v: u32,

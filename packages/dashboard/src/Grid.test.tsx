@@ -234,6 +234,58 @@ describe("DashboardGrid", () => {
     expect(onDrop).not.toHaveBeenCalled();
   });
 
+  it("editable: renders a resize grip on every corner + edge by default", () => {
+    const { container } = render(
+      <DashboardGrid cells={[cell("a", 0)]} editable registry={reg} onLayout={() => {}} stackBelow={0} />,
+    );
+    // react-grid-layout renders one `.react-resizable-handle-<axis>` span per enabled handle.
+    for (const axis of ["s", "w", "e", "n", "sw", "nw", "se", "ne"]) {
+      expect(container.querySelector(`.react-resizable-handle-${axis}`)).toBeTruthy();
+    }
+  });
+
+  it("resizeHandles narrows the grips (SE-corner-only classic behaviour)", () => {
+    const { container } = render(
+      <DashboardGrid
+        cells={[cell("a", 0)]}
+        editable
+        registry={reg}
+        onLayout={() => {}}
+        stackBelow={0}
+        resizeHandles={["se"]}
+      />,
+    );
+    expect(container.querySelector(".react-resizable-handle-se")).toBeTruthy();
+    expect(container.querySelector(".react-resizable-handle-nw")).toBeNull();
+    expect(container.querySelector(".react-resizable-handle-e")).toBeNull();
+  });
+
+  it("read-only: no resize grips at all", () => {
+    const { container } = render(
+      <DashboardGrid cells={[cell("a", 0)]} editable={false} registry={reg} onLayout={() => {}} stackBelow={0} />,
+    );
+    expect(container.querySelector(".react-resizable-handle")).toBeNull();
+  });
+
+  it("a cell's minW/minH clamp its grid item; a row stays non-resizable", () => {
+    const { container } = render(
+      <DashboardGrid
+        cells={[cell("a", 0, { minW: 3, minH: 2 }), row("r", 1)]}
+        editable
+        registry={reg}
+        onLayout={() => {}}
+        onRemove={() => {}}
+        stackBelow={0}
+      />,
+    );
+    // The widget cell carries resize grips (its min extent is enforced by RGL from the layout item).
+    const widget = container.querySelector('[aria-label="cell a"]')!.closest(".react-grid-item")!;
+    expect(widget.querySelector(".react-resizable-handle")).toBeTruthy();
+    // The row header remains a fixed-height bar — no resize grip despite an editable board.
+    const rowItem = container.querySelector('[aria-label="row cell r"]')!.closest(".react-grid-item")!;
+    expect(rowItem.querySelector(".react-resizable-handle")).toBeNull();
+  });
+
   it("degrades to the read-only stack below the breakpoint", () => {
     // jsdom offsetWidth is 0 → the measured width stays at the 1200 fallback; force the stack
     // by setting the breakpoint above it.

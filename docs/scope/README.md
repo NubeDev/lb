@@ -165,7 +165,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   Puts the target node on the bus key as ordinary call data, turns the multi-host untargeted case
   into a structured `Ambiguous` error instead of a coin flip, and changes no capability grammar.
   Prerequisite: fleet-presence's `NodeId`, which does not exist in code yet. Answers issue #81 and
-  the open tie-break question in `mcp-scope.md`; blocks ems's gateways slice 2). Also see
+  the open tie-break question in `mcp-scope.md`; blocks ems's gateways slice 2). The engine BUILT
+  but is **unreachable from any HTTP/sidecar caller** — `mcp/routed-dispatch-sidecar-bridge-scope.md`
+  is the caller-facing half (threads the target node through the `POST /mcp/call` bridge,
+  `lb_host::call_tool`, and `SidecarClient` — `call_on_node` has zero non-test callers today), and
+  is the true unblocker for ems gateways slice 2. Also see
   `invites-scope.md` (**token onboarding for people
   who don't exist yet** — a durable single-use `invite` record carrying role/team intent + an
   opaque caller payload, delivered via an outbox email target, redeemed on the one pre-auth accept

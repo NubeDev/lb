@@ -37,6 +37,11 @@ export declare interface Cell {
     y: number;
     w: number;
     h: number;
+    /** Minimum resize extent (grid units). The grid clamps react-grid-layout's resize handle to
+     *  these so a widget can't be crushed below a legible size. Absent ⇒ react-grid-layout's own
+     *  default (1×1). Ride along on the record so a re-render re-applies them. */
+    minW?: number;
+    minH?: number;
     /** Contract version. Absent/0/1 = a v1 series cell; 2 = a v2 tool-bound cell. */
     v?: number;
     widget_type: WidgetType;
@@ -113,7 +118,7 @@ export declare interface Dashboard {
     deleted?: boolean;
 }
 
-export declare function DashboardGrid<S = unknown>({ cells, editable, registry, range, scope, refreshKey, onLayout, onRemove, onDuplicate, onToggleRow, onRenameRow, onEditPanel, onExportCell, stackBelow, droppable, droppingItem, onDrop, }: DashboardGridProps<S>): JSX_2.Element;
+export declare function DashboardGrid<S = unknown>({ cells, editable, registry, range, scope, refreshKey, onLayout, onRemove, onDuplicate, onToggleRow, onRenameRow, onEditPanel, onExportCell, stackBelow, resizeHandles, droppable, droppingItem, onDrop, }: DashboardGridProps<S>): JSX_2.Element;
 
 export declare interface DashboardGridProps<S = unknown> {
     cells: Cell[];
@@ -144,6 +149,10 @@ export declare interface DashboardGridProps<S = unknown> {
     /** Below this measured width (px) the board renders as the read-only mobile stack. Default
      *  768 ("below md"); pass 0 to always render the grid. */
     stackBelow?: number;
+    /** Which resize grips an editable widget offers. Default {@link DEFAULT_RESIZE_HANDLES}
+     *  (every corner + edge); pass `["se"]` for the SE-corner-only classic behaviour. Ignored
+     *  when the board is read-only (`editable` false) and on row-header cells (never resizable). */
+    resizeHandles?: ResizeHandle[];
     /** Accept EXTERNAL drags (react-grid-layout's drop seam): the consumer marks its palette item
      *  `draggable` and sets a `dataTransfer` payload; the grid previews `droppingItem` while the
      *  drag hovers and calls `onDrop` with the landed slot. Only honored while `editable`. */
@@ -198,6 +207,11 @@ export declare interface DataSourceRef {
     type: "surreal" | "series" | "federation" | string;
     uid?: string;
 }
+
+/** The resize grips an editable widget offers by default — all four corners plus all four edges,
+ *  so a widget resizes from whichever side the user grabs (react-grid-layout's own default is the
+ *  SE corner alone). Rows never resize (see the per-cell override in the layout map). */
+export declare const DEFAULT_RESIZE_HANDLES: ResizeHandle[];
 
 /** A fresh, empty field-config (defaults only). */
 export declare function emptyFieldConfig(): FieldConfig;
@@ -326,6 +340,10 @@ export declare interface QueryOptions {
     /** Display-only: hide the override badge in the panel header. Never affects the query. */
     hideTimeOverride?: boolean;
 }
+
+/** react-grid-layout's resize-handle axes. Mirrors RGL's own `ResizeHandle` union, which its
+ *  types declare but do not export from the module root — so we spell it here rather than import. */
+export declare type ResizeHandle = "s" | "w" | "e" | "n" | "sw" | "nw" | "se" | "ne";
 
 /** A row header's height in grid units — a short bar, not a widget frame. */
 export declare const ROW_H = 1;

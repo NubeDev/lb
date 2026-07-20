@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use lb_assets::read_install;
 use lb_auth::Principal;
+use lb_bus::NodeId;
 use lb_inbox::Decision;
 use lb_mcp::{authorize_tool, ToolError};
 use lb_runtime::{CallContext, Caller};
@@ -212,6 +213,29 @@ pub async fn call_tool(
     qualified_tool: &str,
     input_json: &str,
 ) -> Result<String, ToolError> {
+    call_tool_on_node(node, principal, ws, qualified_tool, input_json, None).await
+}
+
+/// [`call_tool`] with an explicit **target node** (routed-dispatch-sidecar-bridge scope). `None` is
+/// byte-for-byte [`call_tool`]'s behaviour; `Some(n)` funnels into [`lb_mcp::call_on_node`] so the
+/// call runs on `n` or fails — **never** falling back to another host of the same extension (that
+/// fallback is the misprovisioning bug routed-node-dispatch exists to kill).
+///
+/// **Addressing is not authorization.** The capability checked is the same `mcp:<ext>.<tool>:call`
+/// regardless of the target, and it is checked BEFORE the node is looked at — so a capless caller
+/// is `Denied` identically whether or not the node it named exists (no fleet-enumeration oracle).
+///
+/// Additive on purpose: `call_tool` has a wide fan-out (agent loop, gateway routes, reach path) and
+/// threading a required param through all of it invites the worst outcome — a `Some(node)` silently
+/// degrading to `None` mid-chain, so a targeted call runs untargeted and reports success.
+pub async fn call_tool_on_node(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    input_json: &str,
+    target_node: Option<&NodeId>,
+) -> Result<String, ToolError> {
     // Observability/audit/undo share this one chokepoint (the "shared seam"). The telemetry emission
     // (observability scope) records the redacted dispatch decision here: outcome = allow/deny/error,
     // params as a DIGEST (never raw), a per-call trace_id. Emitted at the OUTERMOST entry only (depth
@@ -221,7 +245,16 @@ pub async fn call_tool(
     let source = qualified_tool.split('.').next().unwrap_or("host");
     let ts = now_ts();
     let input: Value = serde_json::from_str(input_json).unwrap_or(Value::Null);
-    let result = call_tool_at_depth(node, principal, ws, qualified_tool, input_json, 0).await;
+    let result = call_tool_at_depth_on_node(
+        node,
+        principal,
+        ws,
+        qualified_tool,
+        input_json,
+        0,
+        target_node,
+    )
+    .await;
     emit_dispatch_decision(
         &result,
         principal,
@@ -305,6 +338,22 @@ pub async fn call_tool_at_depth(
     input_json: &str,
     depth: u32,
 ) -> Result<String, ToolError> {
+    call_tool_at_depth_on_node(node, principal, ws, qualified_tool, input_json, depth, None).await
+}
+
+/// [`call_tool_at_depth`] carrying the optional routed target. The re-entrant guest callback path
+/// keeps `None` by construction: a local wasm guest's callback identity is node-local, so routing
+/// its re-entrant call is a separate scope (routed-dispatch-sidecar-bridge §Non-goals).
+#[allow(clippy::too_many_arguments)]
+pub async fn call_tool_at_depth_on_node(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    input_json: &str,
+    depth: u32,
+    target_node: Option<&NodeId>,
+) -> Result<String, ToolError> {
     // Auto-capture-on-dispatch (undo scope): at the OUTERMOST entry (depth 0), wrap the dispatch in
     // a runtime taint scope and journal the call into the undo journal — reversible mutations get an
     // undoable before-image, anything that reaches the outbox is journaled not-undoable (derived
@@ -332,15 +381,33 @@ pub async fn call_tool_at_depth(
             &input,
             group,
             None, // declared compensation: a manifest field is a deferred additive ABI change
-            dispatch_at_depth(node, principal, ws, qualified_tool, input_json, depth),
+            dispatch_at_depth(
+                node,
+                principal,
+                ws,
+                qualified_tool,
+                input_json,
+                depth,
+                target_node,
+            ),
         )
         .await;
     }
-    dispatch_at_depth(node, principal, ws, qualified_tool, input_json, depth).await
+    dispatch_at_depth(
+        node,
+        principal,
+        ws,
+        qualified_tool,
+        input_json,
+        depth,
+        target_node,
+    )
+    .await
 }
 
 /// The raw dispatch (no undo capture) — host-native verbs over the store, or `<ext>.<tool>` routed
 /// through the runtime registry / bus. Wrapped by [`call_tool_at_depth`] at depth 0 for auto-capture.
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_at_depth(
     node: &Arc<Node>,
     principal: &Principal,
@@ -348,6 +415,7 @@ async fn dispatch_at_depth(
     qualified_tool: &str,
     input_json: &str,
     depth: u32,
+    target_node: Option<&NodeId>,
 ) -> Result<String, ToolError> {
     // The grant-free utility tier (prefs scope): `format.*` / `convert.unit` are pure CLDR/unit math
     // over NO tenant data, so they carry NO capability and are dispatched WITHOUT the authorize gate
@@ -384,6 +452,26 @@ async fn dispatch_at_depth(
             crate::tools::validate_args(Some(&schema), &input)?;
         }
         Ok(())
+    }
+
+    // A host-native verb is NODE-LOCAL by construction: it runs against THIS node's store, and the
+    // routed path below only ever addresses an `<ext>.<tool>` queryable. So a `node` on one of these
+    // must be REFUSED, not ignored (routed-dispatch-sidecar-bridge scope). Ignoring it is the silent-
+    // fallback failure mode this whole scope exists to kill, in its worst form: the caller asks for
+    // `store.write` on gw-01, it executes HERE, and the reply is a plain `200` — indistinguishable
+    // from success. `BadInput` (→ 400) says the call's SHAPE is wrong, which is exactly true, and is
+    // deliberately not `403` (nothing was denied) nor `503` (no node was unreachable).
+    //
+    // Checked BEFORE the authorize gate below only in the sense of this branch's ordering; note it
+    // reveals nothing privileged — which verbs are host-native is a static, public fact about the
+    // build, carrying no signal about the fleet or the caller's grants.
+    if let Some(target) = target_node {
+        if is_host_native(qualified_tool) {
+            return Err(ToolError::BadInput(format!(
+                "`{qualified_tool}` is a host-native verb and runs on the local node; it cannot be \
+                 targeted at `{target}`. The `node` axis applies only to `<ext>.<tool>` calls."
+            )));
+        }
     }
 
     if is_host_native(qualified_tool) {
@@ -636,6 +724,23 @@ async fn dispatch_at_depth(
     // An `<ext>.<tool>` target: build the guest's host-callback context so its backend can call
     // host tools under its DELEGATED, INTERSECTED authority (host-callback scope).
     let ctx = build_call_context(node, principal, ws, qualified_tool, depth).await;
+
+    // A targeted call (routed-dispatch-sidecar-bridge scope) funnels into `call_on_node`, which runs
+    // on the named node or refuses — no fallback to another host of the same ext. It carries no
+    // callback ctx by construction: a routed guest's callback identity would have to ride the wire
+    // (a separate scope), which is exactly what `call_on_node` already assumes.
+    if let Some(target) = target_node {
+        return lb_mcp::call_on_node(
+            &node.registry,
+            &node.bus,
+            principal,
+            ws,
+            qualified_tool,
+            input_json,
+            target,
+        )
+        .await;
+    }
 
     // depth > 0 means this call ORIGINATED from a guest's host-callback (re-entrant): dispatch must
     // not block on the instance lock (it may be the in-flight guest's own) — fail fast instead.

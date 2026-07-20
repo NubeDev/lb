@@ -9,13 +9,44 @@
 //! with a per-part `*` wildcard. This is dot-safe — the generic caps grammar splits a resource on
 //! `.` too (for `ext.tool`), which would shred an IP/hostname; net matching must not.
 
-use lb_assets::read_install;
+use lb_assets::{read_install, record_install};
 use lb_store::Store;
 
 use super::error::FederationError;
 
 /// The federation extension id — its install grant carries the admin-approved `net:*` set.
 pub const FEDERATION_EXT: &str = "federation";
+
+/// Ensure the federation install grant in `ws` permits a TLS connect to `endpoint` (`host:port`),
+/// appending `net:tls:{host}:{port}:connect` if no existing grant already covers it. This is what
+/// makes UI registration self-approving: `datasource.add` calls it so a source added from the app
+/// connects with no boot env var / restart — the (already admin-gated) add IS the approval. A no-op
+/// when a grant (incl. a wildcard) already permits the endpoint. Requires the federation extension to
+/// be installed (it is, whenever the sidecar is mounted); absent install → `EndpointRefused`.
+pub async fn grant_endpoint(
+    store: &Store,
+    ws: &str,
+    endpoint: &str,
+) -> Result<(), FederationError> {
+    let (host, port) = split_endpoint(endpoint)?;
+    let mut install = read_install(store, ws, FEDERATION_EXT)
+        .await?
+        .ok_or(FederationError::EndpointRefused)?;
+
+    if install
+        .granted
+        .iter()
+        .any(|g| net_grant_permits(g, host, port))
+    {
+        return Ok(()); // already permitted (specific or wildcard grant) — nothing to write.
+    }
+
+    install
+        .granted
+        .push(format!("net:tls:{host}:{port}:connect"));
+    record_install(store, ws, &install).await?;
+    Ok(())
+}
 
 /// Refuse unless `endpoint` (`host:port`) is permitted by the federation install's `net:*` grant in
 /// `ws`. No install / no grant → refused (opaque).

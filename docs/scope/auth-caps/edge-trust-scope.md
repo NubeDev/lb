@@ -77,6 +77,20 @@ and peer-authenticated. Selected by **deployment config** (endpoints + cert path
 5. Edge stores the cert and uses it for mTLS thereafter; rotation re-runs steps 2–4 with the *existing*
    cert as the credential.
 
+**Credential delivery is a transport, not a new layer — and a scannable one is embedder-reusable.** The
+bootstrap credential in step 1 has to physically reach the box, and typing a one-time token into a
+headless CM4 in a switchboard is exactly the error-prone field moment an embedder wants to remove. So the
+enrollment token (its `node-id` + secret + hub endpoint, an opaque signed blob) is **renderable as a QR /
+scannable code**, and `enroll(bootstrap, csr)` accepts a scanned payload identically to a typed one — the
+CA verifies the *same* one-time token either way. This is a **generic lb affordance, owned here, consumed
+by every embedder**: ems scans it to claim a gateway into a site, rubix-ai / cc-app to claim any
+appliance. Two honest bounds keep it from over-reaching: (a) **scanning is delivery, never trust** — a QR
+token is precisely as strong as the one-time-short-lived-single-workspace token inside it (see the
+bootstrap-trust risk); it removes typing, not the provisioning-process problem. (b) **the payload grammar
+lives in lb, not in any embedder** — an embedder consumes a resolved credential/`node-id`, it does not
+mint or parse the enrollment blob. Manual entry stays a first-class path for a cracked lens or a
+no-camera host.
+
 **Layer 3 — token-on-the-bus.** Today `register_remote_extension` routes a call over the bus and the hub
 **co-trusts** the caller. Change: the routed envelope **carries the caller's signed token**; the
 receiving node `lb_auth::verify`s it (sig + `now < exp`) and derives the `Principal`, then runs the
@@ -163,7 +177,10 @@ Plus this slice's cases:
 - **Bootstrap trust (the root problem).** Enrollment is only as strong as how the bootstrap credential is
   delivered — a leaked enrollment token enrolls a rogue node. Mitigate: one-time, short-lived, admin-
   issued, single-workspace tokens; optionally a provisioning secret for manufactured fleets. This is the
-  #1 risk and can't be fully solved in software (it's a provisioning-process concern).
+  #1 risk and can't be fully solved in software (it's a provisioning-process concern). **A scannable QR
+  token does not change this calculus** — it changes *how the same token is typed*, not what the token is;
+  a QR sticker photographed off a discarded box is the same leaked-token threat, so the QR carries the
+  same one-time / short-TTL / single-workspace constraints and is treated as secret in transit and at rest.
 - **CA key protection.** The CA signing key compromises *everything* if leaked. Treat as the top secret;
   flag HSM / at-rest encryption / restricted-role access. Out of scope to *implement* HSM, in scope to
   *name* the requirement.
@@ -183,6 +200,13 @@ Plus this slice's cases:
 
 - **Enrollment transport:** a gateway **REST** route (a node has HTTP even without a browser) vs a Zenoh
   **`enroll` queryable**. Lean: REST for enrollment (simple, pre-session), Zenoh for everything after.
+- **Scannable-credential payload + who prints it:** the QR encodes the one-time enrollment token +
+  `node-id` + hub endpoint — but is it minted-and-printed **at manufacture** (a provisioning-line sticker,
+  fleet-friendly, but the token must then be long-lived-until-first-use) or **at admin-issue time**
+  (short-TTL, printed/displayed when the admin creates the enrollment, scanned during the same visit)?
+  Lean: admin-issue-time for short-TTL safety; note manufacture-time as the fleet-scale variant. Either
+  way the payload grammar is lb's, so an embedder's scan UI (e.g. ems gateway commissioning) is a thin
+  consumer that never parses the blob.
 - **TTL length + revocation immediacy on the *online* path:** the offline path is settled (short TTL,
   revocation-by-expiry — see Risks). For online callers, how short a TTL, and CRL vs OCSP-style vs short-
   TTL-only for the router's handshake revocation check? Lean: short-TTL certs + an explicit `revoke` the
@@ -213,5 +237,9 @@ choice).
 - `scope/node-roles/` — the CA / enrollment role (a stub today).
 - `scope/node-roles/node-connection-scope.md` — **consumes** this scope's node credential as the
   **appliance API token** and wires it into the edge→hub connect (config + bus + sync).
+- ems `docs/scope/field-install/scan-to-add-meter-scope.md` + `docs/scope/gateways/gateways-scope.md`
+  (downstream embedder) — the **first consumer** of the scannable enrollment credential: a technician
+  scans a gateway's QR to claim it into a site (`gateway.add`'s `node_id`), reusing this affordance rather
+  than inventing an ems-side one. ems owns no QR grammar; it consumes a resolved `node-id`.
 - README **§6.2** (Zenoh — the link mTLS rides), **§6.6** (identity/auth; offline verify), **§6.8** (sync),
   **§7** (tenancy / the workspace wall), **§13** (the token forever-decision).

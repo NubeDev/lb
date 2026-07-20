@@ -25,6 +25,15 @@ import { timeOverrideBadge } from "./timeOverrideBadge";
 /** The deterministic width used before the container has been measured (and in jsdom tests). */
 export const FALLBACK_WIDTH = 1200;
 
+/** react-grid-layout's resize-handle axes. Mirrors RGL's own `ResizeHandle` union, which its
+ *  types declare but do not export from the module root — so we spell it here rather than import. */
+export type ResizeHandle = "s" | "w" | "e" | "n" | "sw" | "nw" | "se" | "ne";
+
+/** The resize grips an editable widget offers by default — all four corners plus all four edges,
+ *  so a widget resizes from whichever side the user grabs (react-grid-layout's own default is the
+ *  SE corner alone). Rows never resize (see the per-cell override in the layout map). */
+export const DEFAULT_RESIZE_HANDLES: ResizeHandle[] = ["s", "w", "e", "n", "sw", "nw", "se", "ne"];
+
 export interface DashboardGridProps<S = unknown> {
   cells: Cell[];
   editable: boolean;
@@ -54,6 +63,10 @@ export interface DashboardGridProps<S = unknown> {
   /** Below this measured width (px) the board renders as the read-only mobile stack. Default
    *  768 ("below md"); pass 0 to always render the grid. */
   stackBelow?: number;
+  /** Which resize grips an editable widget offers. Default {@link DEFAULT_RESIZE_HANDLES}
+   *  (every corner + edge); pass `["se"]` for the SE-corner-only classic behaviour. Ignored
+   *  when the board is read-only (`editable` false) and on row-header cells (never resizable). */
+  resizeHandles?: ResizeHandle[];
   /** Accept EXTERNAL drags (react-grid-layout's drop seam): the consumer marks its palette item
    *  `draggable` and sets a `dataTransfer` payload; the grid previews `droppingItem` while the
    *  drag hovers and calls `onDrop` with the landed slot. Only honored while `editable`. */
@@ -80,6 +93,7 @@ export function DashboardGrid<S = unknown>({
   onEditPanel,
   onExportCell,
   stackBelow = 768,
+  resizeHandles = DEFAULT_RESIZE_HANDLES,
   droppable,
   droppingItem,
   onDrop,
@@ -116,8 +130,19 @@ export function DashboardGrid<S = unknown>({
     y: c.y,
     w: c.w,
     h: c.h,
-    // A row header is a fixed-height full-width bar — it may move but never resize.
-    ...(isRow(c) ? { isResizable: false } : {}),
+    // A row header is a fixed-height full-width bar — it may move but never resize. Widget cells
+    // clamp resizing to their per-cell minimums (absent ⇒ react-grid-layout's 1×1 default), so a
+    // chart can't be dragged down to an unreadable sliver, and carry the grip set PER ITEM: RGL
+    // renders a handle span for every axis in a grid-level `resizeHandles` even where the item is
+    // non-resizable, so a read-only board or a row would sprout dead grips — set them here where
+    // `editable`/`isRow` already gate the rest of the item's behaviour.
+    ...(isRow(c)
+      ? { isResizable: false, resizeHandles: [] as ResizeHandle[] }
+      : {
+          resizeHandles: editable ? resizeHandles : ([] as ResizeHandle[]),
+          ...(c.minW !== undefined ? { minW: c.minW } : {}),
+          ...(c.minH !== undefined ? { minH: c.minH } : {}),
+        }),
   }));
 
   const apply = (next: Layout[]) => onLayout(mergeLayout(cells, next));

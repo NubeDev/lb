@@ -147,6 +147,11 @@ export interface Cell {
   y: number;
   w: number;
   h: number;
+  /** Minimum resize extent (grid units). The grid clamps react-grid-layout's resize handle to
+   *  these so a widget can't be crushed below a legible size. Absent ⇒ react-grid-layout's own
+   *  default (1×1). Ride along on the record so a re-render re-applies them. */
+  minW?: number;
+  minH?: number;
   /** Contract version. Absent/0/1 = a v1 series cell; 2 = a v2 tool-bound cell. */
   v?: number;
   widget_type: WidgetType;

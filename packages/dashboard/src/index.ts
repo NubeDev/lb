@@ -83,8 +83,8 @@ export type { WidgetRegistry, WidgetRenderer, WidgetRenderProps } from "./regist
 
 // The hosts — the editable/read-only grid (degrades to the stack below `stackBelow`) and the
 // standalone read-only mobile stack.
-export { DashboardGrid, FALLBACK_WIDTH } from "./Grid";
-export type { DashboardGridProps } from "./Grid";
+export { DashboardGrid, FALLBACK_WIDTH, DEFAULT_RESIZE_HANDLES } from "./Grid";
+export type { DashboardGridProps, ResizeHandle } from "./Grid";
 export { DashboardStack } from "./Stack";
 export type { DashboardStackProps } from "./Stack";
 export { RowHeader } from "./RowHeader";

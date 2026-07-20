@@ -10,6 +10,7 @@ use lb_auth::Principal;
 
 use super::authorize::authorize;
 use super::error::FederationError;
+use super::net::grant_endpoint;
 use super::record::{put, Datasource};
 use super::secret::store_dsn;
 use crate::boot::Node;
@@ -44,6 +45,13 @@ pub async fn datasource_add(
     if let Some(dsn) = dsn {
         store_dsn(node, ws, &secret_ref, dsn).await?;
     }
+
+    // Self-approve the endpoint: append `net:tls:{host}:{port}:connect` to the federation install
+    // grant so a source added from the UI connects with NO boot env var / node restart. Registration
+    // (already admin-gated above) IS the endpoint approval — the `net:*` wall stays enforced pre-connect
+    // (`net.rs::enforce_endpoint`), this just records what the admin approved by adding the source.
+    // Idempotent (a no-op when a grant already covers the endpoint).
+    grant_endpoint(&node.store, ws, endpoint).await?;
 
     let ds = Datasource::new(name, kind, endpoint, secret_ref, ts);
     put(&node.store, ws, &ds).await?;

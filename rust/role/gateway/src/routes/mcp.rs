@@ -14,8 +14,15 @@
 //! produced at the dispatch chokepoint instead of the model-proposal layer (the bridge has no
 //! host-side loop to intercept at).
 //!
-//! The workspace comes from the token (§7), never the body; the body carries only the tool name and its
-//! JSON args. An ungranted tool → `403` with no existence signal (the MCP deny contract).
+//! The workspace comes from the token (§7), never the body; the body carries only the tool name, its
+//! JSON args, and an optional target `node`. An ungranted tool → `403` with no existence signal (the
+//! MCP deny contract).
+//!
+//! **Routed dispatch (routed-dispatch-sidecar-bridge scope):** an optional `node` field routes the
+//! call to a named node via `lb_host::call_tool_on_node`, which runs it there or refuses — never
+//! falling back to another host of the same ext. Addressing is **not** authorization: the same
+//! `mcp:<tool>:call` gates a targeted call, checked before the node is looked at, so a capless
+//! caller's `403` is identical whether or not the node it named exists.
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -26,13 +33,23 @@ use serde_json::Value;
 use crate::session::authenticate;
 use crate::state::Gateway;
 
-/// The bridge request: a qualified MCP tool name + its JSON args. No token, no workspace — both come
-/// from the verified session, not the page.
+/// The bridge request: a qualified MCP tool name + its JSON args, plus an OPTIONAL target node. No
+/// token, no workspace — both come from the verified session, not the page.
+///
+/// `node` (routed-dispatch-sidecar-bridge scope) is the routed-dispatch addressing axis, and it rides
+/// **beside `args` as ordinary request data** — deliberately not a header (addressing would then live
+/// in two places, and proxies drop/rewrite headers more readily than a body field) and deliberately
+/// not encoded into the tool name (`modbus@gw-01.device.add`), which routed-node-dispatch rejected
+/// because grants would multiply by fleet size. The node is call data, never part of tool identity —
+/// and naming one is **not** permission to use it (the same `mcp:<tool>:call` gates either way).
 #[derive(Debug, Deserialize)]
 pub struct McpCall {
     pub tool: String,
     #[serde(default)]
     pub args: Value,
+    /// Optional target node id (`node:gw-01`). Absent → today's untargeted resolve, unchanged.
+    #[serde(default)]
+    pub node: Option<String>,
 }
 
 /// The run-payload mirror — the gateway's view of `lb_role_external_agent::RunPayload` without a dep
@@ -80,9 +97,28 @@ pub async fn mcp_call(
     } else {
         body.args.to_string()
     };
-    let out = lb_host::call_tool(&gw.node, &principal, principal.ws(), &body.tool, &input)
-        .await
-        .map_err(tool_error_status)?;
+    // Routed dispatch (routed-dispatch-sidecar-bridge scope): an optional target node. A malformed
+    // id is `400 BadInput` — author feedback about the call's shape, the same class as a bad arg —
+    // and must NOT collapse to `403`, which reads as a capability denial and hides the typo. Parsing
+    // here (before dispatch) keeps the bad-id error off the authorization path entirely.
+    let target = match body.node.as_deref() {
+        Some(id) => Some(
+            lb_host::NodeId::new(id)
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("bad node id: {e}")))?,
+        ),
+        None => None,
+    };
+
+    let out = lb_host::call_tool_on_node(
+        &gw.node,
+        &principal,
+        principal.ws(),
+        &body.tool,
+        &input,
+        target.as_ref(),
+    )
+    .await
+    .map_err(tool_error_status)?;
     let value: Value = serde_json::from_str(&out).unwrap_or(Value::String(out));
     Ok(Json(value))
 }

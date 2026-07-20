@@ -258,3 +258,85 @@ async fn list_never_leaks_the_dsn() {
         "DSN must never appear in list output: {json}"
     );
 }
+
+/// The endpoint self-approval (UI-add-just-works): registering a source at an endpoint the federation
+/// install grant does NOT yet cover appends `net:tls:{host}:{port}:connect` to that grant — so a source
+/// added from the UI connects with no boot `LB_FEDERATION_ENDPOINTS` / node restart. Proven end to end
+/// through the public `datasource_add` verb against the real embedded store.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn add_self_approves_a_new_endpoint() {
+    use lb_assets::read_install;
+
+    let node = Arc::new(Node::boot().await.unwrap());
+    let ws = "acme";
+
+    // Install with ONLY the sqlite convention endpoint approved — the real "fresh node" boot state.
+    let install = Install::new(
+        FED,
+        "0.1.0",
+        vec![
+            "net:tls:127.0.0.1:0:connect".into(),
+            "secret:federation/*:get".into(),
+        ],
+        1,
+    );
+    record_install(&node.store, ws, &install).await.unwrap();
+
+    let ada = admin_named("user:ada", ws);
+    let new_grant = "net:tls:db.example.com:5432:connect";
+
+    // Precondition: the new endpoint is NOT yet permitted.
+    let before = read_install(&node.store, ws, FED).await.unwrap().unwrap();
+    assert!(
+        !before.granted.iter().any(|g| g == new_grant),
+        "endpoint must not be pre-approved"
+    );
+
+    // Add a source at that endpoint — the UI path.
+    datasource_add(
+        &node,
+        &ada,
+        ws,
+        "warehouse",
+        "postgres",
+        "db.example.com:5432",
+        None,
+        Some("host=db.example.com port=5432 user=me password=x dbname=d"),
+        2,
+    )
+    .await
+    .expect("add must succeed and self-approve the endpoint");
+
+    // Postcondition: the grant now permits it, and the original grant is retained.
+    let after = read_install(&node.store, ws, FED).await.unwrap().unwrap();
+    assert!(
+        after.granted.iter().any(|g| g == new_grant),
+        "add must append the endpoint grant: {:?}",
+        after.granted
+    );
+    assert!(
+        after
+            .granted
+            .iter()
+            .any(|g| g == "net:tls:127.0.0.1:0:connect"),
+        "existing grants must be retained"
+    );
+
+    // Idempotent: re-adding the same endpoint does not duplicate the grant.
+    datasource_add(
+        &node,
+        &ada,
+        ws,
+        "warehouse2",
+        "postgres",
+        "db.example.com:5432",
+        None,
+        Some("host=db.example.com port=5432 user=me password=x dbname=d2"),
+        3,
+    )
+    .await
+    .unwrap();
+    let again = read_install(&node.store, ws, FED).await.unwrap().unwrap();
+    let count = again.granted.iter().filter(|g| *g == new_grant).count();
+    assert_eq!(count, 1, "endpoint grant must not be duplicated: {:?}", again.granted);
+}
