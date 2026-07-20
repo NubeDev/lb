@@ -107,14 +107,7 @@ fn host_whoami(node: &Node, ext: &str, label: &str) {
 async fn two_hosts_one_ext(
     ext: &str,
     workspaces: &[&str],
-) -> (
-    Node,
-    NodeId,
-    NodeId,
-    Vec<ToolServer>,
-    &'static Node,
-    &'static Node,
-) {
+) -> (Node, NodeId, NodeId, Vec<ToolServer>, Node, Node) {
     let (label_a, label_b) = ("node-a", "node-b");
     // Node ids are namespaced by the caller's (unique-per-test) ext id, for the SAME reason each
     // test uses a unique workspace: in-process Zenoh peers share a keyspace
@@ -172,19 +165,48 @@ async fn two_hosts_one_ext(
     register_remote_extension(&caller, ext, id_a.clone(), &["whoami".to_string()]);
     register_remote_extension(&caller, ext, id_b.clone(), &["whoami".to_string()]);
 
-    // Keep the hub nodes alive for the duration by leaking them into the returned servers'
-    // lifetime: the ToolServer holds the task, but the Node owns the registry it dispatches
-    // against. Box::leak is deliberate and test-only — dropping the hubs mid-test would retract
-    // their queryables and make the run meaningless.
-    let hub_a: &'static Node = Box::leak(Box::new(hub_a));
-    let hub_b: &'static Node = Box::leak(Box::new(hub_b));
-
+    // The hubs are RETURNED (not leaked) so each test owns them and they shut down when it ends.
+    //
+    // This used to `Box::leak` them, on the reasoning that dropping a hub mid-test would retract
+    // its queryable. True — but returning them keeps them alive just as well, and leaking made
+    // every hub outlive its test: with 7 tests × 3 peers, ~21 Zenoh peers stayed live and
+    // gossiping for the whole binary. That exhausted the substrate near the end of a run and
+    // produced BOTH failure modes seen here — a reachability timeout in
+    // `a_targeted_call_lands_on_the_named_node`, and a hang in whichever test ran last
+    // (alphabetically `untargeted_call_…`) — reproducibly, and *even under
+    // `--test-threads=1`*, which is what ruled out cross-test port/id collisions and pointed at
+    // accumulated peers instead. See debugging/mcp/leaked-zenoh-peers-exhaust-the-test-binary.md.
     (caller, id_a, id_b, vec![server_a, server_b], hub_a, hub_b)
 }
 
+/// A loopback port no other test in this binary will be handed.
+///
+/// **Why not just bind `:0` and read the port back.** That is a TOCTOU race: the probe socket is
+/// dropped before Zenoh binds, so the OS is free to hand the same ephemeral port to a *concurrently
+/// running* test in the moment between. When it does, two hubs from different tests fight over one
+/// port — one loses its listener, its queryable never becomes reachable, and the victim fails with
+/// "queryable not yet reachable" after burning its full retry deadline. That reproduced here as a
+/// ~1-in-2 failure of `a_targeted_call_lands_on_the_named_node` once a third port-consuming test
+/// joined the file, and it is the *same class* as the duplicate-node-id flake recorded in
+/// debugging/mcp/duplicate-node-ids-across-concurrent-tests.md: a per-test resource that is only
+/// unique by luck.
+///
+/// Instead each caller takes a **disjoint slice of the port space** via a process-wide counter, so
+/// no two tests can ever be handed the same number — no probe socket, no window, no luck involved.
+/// The base is high enough to sit above the usual ephemeral range, and the probe below only skips
+/// a port that is genuinely occupied (by something outside this binary).
 fn free_port() -> u16 {
-    let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("grab a free loopback port");
-    probe.local_addr().expect("probe addr").port()
+    use std::sync::atomic::{AtomicU16, Ordering};
+    static NEXT: AtomicU16 = AtomicU16::new(41_000);
+    loop {
+        let port = NEXT.fetch_add(1, Ordering::Relaxed);
+        assert!(port < 60_000, "ran out of test ports");
+        // Bind-and-drop is fine HERE because the counter — not the OS — guarantees uniqueness
+        // within this binary; this only skips a port some *other* process already holds.
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return port;
+        }
+    }
 }
 
 /// Poll a TARGETED routed call until the addressed node's queryable is reachable, returning the
@@ -231,7 +253,7 @@ async fn ask_node(caller: &Node, p: &Principal, ws: &str, ext: &str, node: &Node
 async fn untargeted_call_to_a_multiply_hosted_ext_is_ambiguous() {
     let ws = "ambig-guard";
     let ext = "fleet-guard";
-    let (caller, id_a, id_b, _servers, ..) = two_hosts_one_ext(ext, &[ws]).await;
+    let (caller, id_a, id_b, _servers, _hub_a, _hub_b) = two_hosts_one_ext(ext, &[ws]).await;
     let p = principal(ws, &[&format!("mcp:{ext}.whoami:call")]);
 
     let err = call(
@@ -265,7 +287,7 @@ async fn untargeted_call_to_a_multiply_hosted_ext_is_ambiguous() {
 async fn a_targeted_call_lands_on_the_named_node() {
     let ws = "ambig-target";
     let ext = "fleet-target";
-    let (caller, id_a, id_b, _servers, ..) = two_hosts_one_ext(ext, &[ws]).await;
+    let (caller, id_a, id_b, _servers, _hub_a, _hub_b) = two_hosts_one_ext(ext, &[ws]).await;
     let p = principal(ws, &[&format!("mcp:{ext}.whoami:call")]);
 
     // Each target is asked repeatedly: one correct answer could be luck, ten cannot.
@@ -289,7 +311,7 @@ async fn a_targeted_call_lands_on_the_named_node() {
 async fn an_unknown_target_is_refused_and_never_falls_back() {
     let ws = "ambig-unreachable";
     let ext = "fleet-unreach";
-    let (caller, _id_a, _id_b, _servers, ..) = two_hosts_one_ext(ext, &[ws]).await;
+    let (caller, _id_a, _id_b, _servers, _hub_a, _hub_b) = two_hosts_one_ext(ext, &[ws]).await;
     let p = principal(ws, &[&format!("mcp:{ext}.whoami:call")]);
     let ghost = NodeId::new("node:gw-99-never-existed").unwrap();
 
@@ -326,7 +348,7 @@ async fn an_unknown_target_is_refused_and_never_falls_back() {
 async fn a_capless_targeted_call_is_denied_indistinguishably_for_real_and_fake_nodes() {
     let ws = "ambig-deny";
     let ext = "fleet-deny";
-    let (caller, id_a, _id_b, _servers, ..) = two_hosts_one_ext(ext, &[ws]).await;
+    let (caller, id_a, _id_b, _servers, _hub_a, _hub_b) = two_hosts_one_ext(ext, &[ws]).await;
     let capless = principal(ws, &[]); // no caps at all
     let ghost = NodeId::new("node:gw-99-never-existed").unwrap();
 
@@ -373,7 +395,7 @@ async fn a_capless_targeted_call_is_denied_indistinguishably_for_real_and_fake_n
 async fn authorize_precedes_resolve_so_ambiguity_never_leaks_to_the_unauthorized() {
     let ws = "ambig-order";
     let ext = "fleet-order";
-    let (caller, _id_a, _id_b, _servers, ..) = two_hosts_one_ext(ext, &[ws]).await;
+    let (caller, _id_a, _id_b, _servers, _hub_a, _hub_b) = two_hosts_one_ext(ext, &[ws]).await;
     let capless = principal(ws, &[]);
 
     let err = call(
@@ -412,7 +434,7 @@ async fn a_ws_b_caller_cannot_reach_a_node_that_serves_only_ws_a() {
     let ws_b = "ambig-iso-b";
     let ext = "fleet-iso";
     // The hubs declare their node key for ws_a ONLY.
-    let (caller, id_a, _id_b, _servers, ..) = two_hosts_one_ext(ext, &[ws_a]).await;
+    let (caller, id_a, _id_b, _servers, _hub_a, _hub_b) = two_hosts_one_ext(ext, &[ws_a]).await;
 
     // A principal legitimately scoped to ws_b, with a real capability IN ws_b — so this is not a
     // capability deny, it is the workspace wall.

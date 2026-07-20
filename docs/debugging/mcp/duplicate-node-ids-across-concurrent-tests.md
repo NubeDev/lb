@@ -67,6 +67,37 @@ sharing a node id, so a future test that hardcodes one will flake the same way. 
 at the construction site is the load-bearing part — a unique workspace is **not** sufficient
 on this path, and that is not obvious.
 
+## Follow-up (same session): the id fix was necessary but NOT sufficient
+
+After the id fix the suite still failed ~1 in 5, and the honest diagnosis took three wrong turns
+worth recording, because each looked convincing:
+
+1. **Blamed a TOCTOU port race.** `free_port()` bound `:0`, read the port, and dropped the socket
+   before Zenoh bound it — a real race, and it was fixed (a process-wide counter hands out disjoint
+   ports). But the flake survived, so it was not the cause. A real bug found while hunting a
+   different one is still not *the* bug.
+2. **Blamed leaked peers, and made it worse.** `two_hosts_one_ext` used `Box::leak` on both hubs, so
+   ~21 Zenoh peers stayed live for the whole binary. Returning them by value instead looked
+   obviously right — and turned an intermittent failure into a **deterministic** one, because six
+   call sites destructured the result with `..`, which then *dropped the hubs immediately* and
+   retracted their queryables before the test made a call. Binding them (`_hub_a, _hub_b`) fixed
+   that. Lesson: when a "cleanup" change makes things worse, the change usually revealed a second
+   defect rather than causing one — and `..` silently dropping an RAII guard is invisible at the
+   call site.
+3. **The dominant cost was never the routing.** Timing each test alone: `forgetting_a_host_…`
+   touches only the in-memory registry — *no bus calls at all* — and still takes **10.67s**.
+   `a_node_targeting_itself` (no bus hop) takes 10.64s. Three-peer tests take ~31s. That is
+   **~10.6s per `Node::boot()`**, i.e. Zenoh peer startup on this box, entirely independent of what
+   the test does. Confirmed pre-existing: the untouched `cross_node_routing_test` (3 tests) takes
+   21.8s for the same reason.
+
+**Current state, stated plainly:** with ids, ports and hub lifetimes all fixed, the suite passes
+12/12 and completes in ~31s, but **still hangs roughly 1 run in 6** under a 240s timeout. The
+remaining hang is *not* a routing defect — every completed run is green, and the failures observed
+before the lifetime fix are gone. It is the same Zenoh peer boot/teardown cost above, occasionally
+crossing whatever bound is applied. It is **not fully root-caused**, and it should not be described
+as fixed.
+
 ## Lesson
 
 Two ideas worth carrying:
