@@ -38,7 +38,8 @@ use std::time::Duration;
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_bus::{Bus, NodeId};
 use lb_host::{
-    forget_remote_extension, register_remote_extension, serve_ext, Node, Role as NodeRole, ToolServer,
+    forget_remote_extension, register_remote_extension, serve_ext, Node, Role as NodeRole,
+    ToolServer,
 };
 use lb_mcp::{call, call_on_node, ToolDescriptor, ToolError};
 use lb_runtime::{CallContext, LocalDispatch, RuntimeError};
@@ -106,7 +107,14 @@ fn host_whoami(node: &Node, ext: &str, label: &str) {
 async fn two_hosts_one_ext(
     ext: &str,
     workspaces: &[&str],
-) -> (Node, NodeId, NodeId, Vec<ToolServer>, &'static Node, &'static Node) {
+) -> (
+    Node,
+    NodeId,
+    NodeId,
+    Vec<ToolServer>,
+    &'static Node,
+    &'static Node,
+) {
     let (label_a, label_b) = ("node-a", "node-b");
     // Node ids are namespaced by the caller's (unique-per-test) ext id, for the SAME reason each
     // test uses a unique workspace: in-process Zenoh peers share a keyspace
@@ -178,7 +186,6 @@ fn free_port() -> u16 {
     let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("grab a free loopback port");
     probe.local_addr().expect("probe addr").port()
 }
-
 
 /// Poll a TARGETED routed call until the addressed node's queryable is reachable, returning the
 /// label of whoever answered. Mirrors `cross_node_routing_test::route_until_reachable`'s rationale:
@@ -646,4 +653,90 @@ async fn a_reload_keeps_the_node_addressable_and_targeting_recovers() {
 
     // And the OTHER host is untouched by A's reload — a reload is per-node, not fleet-wide.
     assert_eq!(ask_node(&caller, &p, ws, ext, &id_b).await, "node-b");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// MANDATORY: offline / sync
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/// MANDATORY offline: a node that was LIVE and then DROPS becomes a prompt `NodeUnreachable`, and
+/// nothing is executed anywhere.
+///
+/// Deliberately distinct from `an_unknown_target_is_refused_and_never_falls_back`, which targets a
+/// node that never existed. That case never had a queryable; this one exercises **retraction of a
+/// real, previously-answering one** — the actual production shape (a gateway loses its WAN link),
+/// and the only version that can catch a caller caching reachability from a successful call.
+///
+/// The hub is owned by this test rather than leaked, so dropping it really does retract the
+/// queryable — the drop IS the disconnection, nothing is simulated.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_live_node_that_drops_becomes_unreachable_promptly_and_runs_nothing() {
+    let ws = "ambig-offline";
+    let ext = "fleet-offline";
+    let id = NodeId::new("node:fleet-offline-gw").unwrap();
+    let port = free_port();
+    let ep = format!("tcp/127.0.0.1:{port}");
+
+    let caller_bus = Bus::peer_with(&[], &[ep.clone()]).await.unwrap();
+    let caller = Node::boot_on_bus(caller_bus, NodeRole::Edge).await.unwrap();
+    register_remote_extension(&caller, ext, id.clone(), &["whoami".to_string()]);
+    let p = principal(ws, &[&format!("mcp:{ext}.whoami:call")]);
+
+    // Phase 1 — the hub is LIVE and answering. Scoped so the drop is explicit.
+    {
+        let hub_bus = Bus::peer_with(&[ep], &[]).await.unwrap();
+        let hub = Node::boot_on_bus(hub_bus, NodeRole::Hub).await.unwrap();
+        hub.install_node_id(id.clone());
+        host_whoami(&hub, ext, "the-gateway");
+        let _server = serve_ext(&hub.bus, hub.registry.clone(), ext, &id, &[ws])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            ask_node(&caller, &p, ws, ext, &id).await,
+            "the-gateway",
+            "precondition: the node is genuinely live and answering before it drops"
+        );
+        // hub + _server drop here → Zenoh retracts the queryable. This is a real disconnection.
+    }
+
+    // Phase 2 — the same target, now gone. Must refuse PROMPTLY (a bounded wait, not the query's
+    // default ~10s timeout), and must never fall back to anything else.
+    let started = std::time::Instant::now();
+    let mut last = None;
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let err = loop {
+        match call_on_node(
+            &caller.registry,
+            &caller.bus,
+            &p,
+            ws,
+            &format!("{ext}.whoami"),
+            "{}",
+            &id,
+        )
+        .await
+        {
+            Err(ToolError::NodeUnreachable { node }) => break node,
+            // Retraction propagates a beat after the drop; a lingering success is the stale-route
+            // window, not a wrong answer. Retry until it settles or the deadline fails us loudly.
+            other => {
+                last = Some(format!("{other:?}"));
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "a dropped node must become NodeUnreachable; last was {last:?}"
+                );
+            }
+        }
+    };
+
+    assert_eq!(err, id.to_string(), "names the node the caller asked for");
+    // "Promptly" made concrete: once retraction has propagated, a zero-queryable `get` completes
+    // fast rather than running to the query timeout. Generous bound — it guards the *class*
+    // (fast-fail, not timeout), not a tight number, so it can't flake on a loaded box.
+    assert!(
+        started.elapsed() < Duration::from_secs(15),
+        "refusal must not wait out the full query timeout; took {:?}",
+        started.elapsed()
+    );
 }

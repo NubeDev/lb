@@ -78,9 +78,15 @@ async fn node_with_ask_policy(ws: &str) -> Arc<Node> {
     load_extension(&node, MANIFEST, &hello_wasm(), &[])
         .await
         .unwrap();
-    let _server = serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
-        .await
-        .unwrap();
+    let _server = serve_ext(
+        &node.bus,
+        node.registry.clone(),
+        "hello",
+        &node.node_id(),
+        &[ws],
+    )
+    .await
+    .unwrap();
     // Keep the server alive for the test's lifetime by leaking it (the node owns the bus).
     std::mem::forget(_server);
     save_policy(

@@ -110,9 +110,11 @@ impl Transport for Local {
             // names the candidate nodes (`Ambiguous`) or the node that could not be reached — so it
             // is surfaced verbatim rather than flattened into a generic message. `Ambiguous` in
             // particular tells a CLI user exactly what to do next: name a target node.
-            Err(e @ (ToolError::Ambiguous { .. }
-            | ToolError::NodeUnreachable { .. }
-            | ToolError::NodeTooOld { .. })) => Err(CliError::Other(e.to_string())),
+            Err(
+                e @ (ToolError::Ambiguous { .. }
+                | ToolError::NodeUnreachable { .. }
+                | ToolError::NodeTooOld { .. }),
+            ) => Err(CliError::Other(e.to_string())),
         }
     }
 }

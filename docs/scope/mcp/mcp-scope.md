@@ -93,12 +93,19 @@ These three are exactly the S1 exit gate (STAGES.md S1).
 - Tool input/output schema format: raw JSON; adopt JSON-Schema snapshots as the **contract test**
   once there's a second tool. Golden-file location TBD with the WIT snapshots.
 - Streaming tool results (for AI/gateway, §6.14) — out of scope until S5; a deliberate WIT bump.
-- Routing tie-breaks when **two nodes host the same extension** — **now scoped in
-  [`routed-node-dispatch-scope.md`](routed-node-dispatch-scope.md)** (issue #81). Note the severity
-  is worse than a missing tie-break: every host answers the same key and `lb_bus::query` keeps the
-  first reply, so today's behaviour is a *silent nondeterministic wrong node*, not an error. That
-  scope puts the target node on the bus key and makes the untargeted multi-host case an explicit
-  `Ambiguous` refusal. Prerequisite: fleet-presence's `NodeId` (unbuilt).
+- ~~Routing tie-breaks when **two nodes host the same extension**~~ — **RESOLVED 2026-07-20, built**
+  ([`routed-node-dispatch-scope.md`](routed-node-dispatch-scope.md), issue #81). The target node now
+  rides the bus key (`mcp/{ext}/{node}/call`, declared per workspace) and an untargeted call to a
+  multiply-hosted ext is refused with `ToolError::Ambiguous { ext, candidates }` instead of
+  coin-flipping. `lb_bus::query` additionally *enforces* "exactly one responder" rather than
+  assuming it. The nondeterminism was measured before the fix (a 25/15 split over 40 identical
+  calls across two real nodes) — see
+  [`../../sessions/mcp/routed-node-dispatch-session.md`](../../sessions/mcp/routed-node-dispatch-session.md).
+  The `NodeId` prerequisite was minted in that build, in `lb-bus`, **owned by fleet-presence**.
+  Still open downstream: `NodeTooOld` is defined but never returned until fleet-presence publishes
+  the `targeted_dispatch` presence flag, and the ext-hosting announce that would populate remote
+  registration in production is likewise fleet-presence's — so the guard is armed but not yet
+  load-bearing in production.
 - **Serve-side authorization** when a hub-hosted extension touches *hub-authoritative* data —
   would need the principal/grant on the wire (token-on-the-bus). Sufficient today because routed
   tools (hello) touch no hub-owned data and the workspace wall holds on the queryable key.

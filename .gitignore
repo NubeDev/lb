@@ -99,3 +99,4 @@ rust/extensions/ds-pick-*/
 rust/extensions/ds-hidden-*/
 
 .zcode/
+rust/.logs/sweep.log

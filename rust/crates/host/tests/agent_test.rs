@@ -89,9 +89,15 @@ async fn an_edge_user_invokes_the_agent_which_calls_the_gateway_and_a_granted_to
     load_extension(&node, MANIFEST, &hello_wasm(), &[])
         .await
         .unwrap();
-    let _server = serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
-        .await
-        .unwrap();
+    let _server = serve_ext(
+        &node.bus,
+        node.registry.clone(),
+        "hello",
+        &node.node_id(),
+        &[ws],
+    )
+    .await
+    .unwrap();
 
     // The caller can invoke the agent, call echo, and read/write the substrate.
     let caller = principal(
@@ -213,9 +219,15 @@ async fn a_tool_the_caller_cannot_use_is_denied_inside_the_loop_even_if_the_agen
     load_extension(&node, MANIFEST, &hello_wasm(), &[])
         .await
         .unwrap();
-    let _server = serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
-        .await
-        .unwrap();
+    let _server = serve_ext(
+        &node.bus,
+        node.registry.clone(),
+        "hello",
+        &node.node_id(),
+        &[ws],
+    )
+    .await
+    .unwrap();
 
     // Caller can invoke the agent but CANNOT call echo.
     let caller = principal("user:ada", ws, &[INVOKE]);

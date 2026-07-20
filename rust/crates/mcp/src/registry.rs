@@ -343,7 +343,11 @@ fn dedup_descriptors(targets: &[Target]) -> Vec<ToolDescriptor> {
     targets
         .iter()
         .filter(|t| matches!(t, Target::Local(_)))
-        .chain(targets.iter().filter(|t| matches!(t, Target::Remote { .. })))
+        .chain(
+            targets
+                .iter()
+                .filter(|t| matches!(t, Target::Remote { .. })),
+        )
         .flat_map(|t| t.descriptors().to_vec())
         .filter(|d| seen.insert(d.name.clone()))
         .collect()

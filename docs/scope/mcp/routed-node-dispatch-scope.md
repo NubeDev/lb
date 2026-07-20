@@ -1,6 +1,14 @@
 # MCP scope — routed dispatch to a NAMED node
 
-Status: scope (the ask). Promotes to `doc-site/content/public/mcp/` once shipped.
+Status: **BUILT 2026-07-20** (all eight open questions resolved below; the `NodeId` prerequisite was
+minted in this build, owned by fleet-presence). Session:
+[`../../sessions/mcp/routed-node-dispatch-session.md`](../../sessions/mcp/routed-node-dispatch-session.md).
+Public docs: [`doc-site/content/public/mcp/routed-node-dispatch.md`](../../../doc-site/content/public/mcp/routed-node-dispatch.md).
+
+**Not yet load-bearing in production:** the guard's candidate set is still populated only by
+explicit wiring — the ext-hosting announce that would feed it from live liveliness is
+fleet-presence's, as is the `targeted_dispatch` flag that `NodeTooOld` needs. Both are named in
+Findings A/B below. The guard is *armed before the hazard is reachable*, which was the point.
 Closes the open question already standing in [`mcp-scope.md`](mcp-scope.md) §"What shipped in S3"
 (line 96: *"Routing tie-breaks when two nodes host the same extension — still open"*) and unblocks
 [lb#81](https://github.com/NubeDev/lb/issues/81).

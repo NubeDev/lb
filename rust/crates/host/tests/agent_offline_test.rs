@@ -71,9 +71,15 @@ async fn hub_with_hello(ws_caps: &[&str], ws: &str) -> (Arc<Node>, Principal) {
     // it complicates the signature; instead the caller holds the node and we serve here, dropping
     // the handle is fine because the queryable task holds its own Arc<Registry>.
     std::mem::forget(
-        serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
-            .await
-            .unwrap(),
+        serve_ext(
+            &node.bus,
+            node.registry.clone(),
+            "hello",
+            &node.node_id(),
+            &[ws],
+        )
+        .await
+        .unwrap(),
     );
     (node.clone(), principal(ws, ws_caps))
 }
