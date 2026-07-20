@@ -1,6 +1,6 @@
 {
   "name": "@nube/dashboard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The reusable Nube dashboard grid core — a 12-column react-grid-layout host over a persisted cells[] record, with a widget registry (consumers register view renderers), panel-rows section math, an editable/read-only mode, a drag/resize → onLayout persistence seam, and a mobile single-column stack. Pure model + grid host only: the package never fetches, persists, or knows a workspace exists. Self-themed via scoped --lbdg-* tokens, host-overridable.",
   "license": "UNLICENSED",
   "type": "module",
@@ -43,6 +43,7 @@
     "jsdom": "^25.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "typescript": "^5.9.3",
     "vite": "^5.0.0",
     "vite-plugin-dts": "^4.0.0",
     "vitest": "^2.0.0"

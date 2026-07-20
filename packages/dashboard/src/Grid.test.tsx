@@ -234,6 +234,33 @@ describe("DashboardGrid", () => {
     expect(onDrop).not.toHaveBeenCalled();
   });
 
+  it("measures the CONTENT-box width — the canvas padding never overflows the grid", () => {
+    // A 1000px box with 16px padding each side must yield a 968px grid width; measuring
+    // offsetWidth (the old bug) made the grid wider than the padded box by exactly the
+    // padding, showing a permanent horizontal scrollbar on every board.
+    const cw = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1000);
+    const gcs = vi
+      .spyOn(window, "getComputedStyle")
+      .mockReturnValue({ paddingLeft: "16px", paddingRight: "16px" } as CSSStyleDeclaration);
+    try {
+      const { container } = render(
+        <DashboardGrid
+          cells={[cell("a", 0, { w: 12 })]}
+          editable={false}
+          registry={reg}
+          onLayout={() => {}}
+          stackBelow={0}
+        />,
+      );
+      const item = container.querySelector(".react-grid-item") as HTMLElement;
+      // Full-width cell at 968px: 968 − 2×10 RGL container padding = 948px.
+      expect(item.style.width).toBe("948px");
+    } finally {
+      cw.mockRestore();
+      gcs.mockRestore();
+    }
+  });
+
   it("degrades to the read-only stack below the breakpoint", () => {
     // jsdom offsetWidth is 0 → the measured width stays at the 1200 fallback; force the stack
     // by setting the breakpoint above it.
