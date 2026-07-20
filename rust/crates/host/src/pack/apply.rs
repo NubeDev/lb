@@ -3,10 +3,11 @@
 //!
 //! **Authority.** Holding `mcp:pack.apply:call` gets you into this function and nothing more. Each
 //! object below calls the very function `rules.save` / `dashboard.save` / `datasource.add` /
-//! `channel.create` / `agent.memory.set` call, and each of those re-runs its own capability check
-//! under the caller's principal. A caller who cannot `rules.save` gets `denied` on the rule objects
-//! and an honest partial receipt — there is no privileged path through a pack (pack-core-scope
-//! §Caps: "a caller who couldn't `rules.save` can't smuggle a rule in via a pack").
+//! `channel.create` / `agent.memory.set` / `nav.hidden.set` call, and each of those re-runs its own
+//! capability check under the caller's principal. A caller who cannot `rules.save` gets `denied` on
+//! the rule objects and an honest partial receipt — there is no privileged path through a pack
+//! (pack-core-scope §Caps: "a caller who couldn't `rules.save` can't smuggle a rule in via a pack";
+//! likewise a caller who cannot `nav.save` cannot hide a surface via a pack's `sidebar` block).
 //!
 //! **Not a transaction.** Partial failure is a first-class outcome recorded in the receipt, not an
 //! abort-and-rollback. The documented recovery is "grant the cap, re-run", which the refusal matrix
@@ -108,6 +109,7 @@ async fn apply_object(
         Kind::Dashboard => apply_dashboard(node, principal, ws, pack, &obj.id, ts).await,
         Kind::Channel => apply_channel(node, principal, ws, &obj.id, ts).await,
         Kind::Agent => apply_agent(node, principal, ws, pack, ts).await,
+        Kind::Sidebar => apply_sidebar(node, principal, ws, pack, ts).await,
     }
 }
 
@@ -305,6 +307,29 @@ async fn apply_agent(
     {
         Ok(_) => APPLIED.to_string(),
         Err(lb_mcp::ToolError::Denied) => DENIED.to_string(),
+        Err(_) => FAILED.to_string(),
+    }
+}
+
+async fn apply_sidebar(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    pack: &Pack,
+    ts: u64,
+) -> String {
+    let Some(sidebar) = &pack.manifest.sidebar else {
+        return FAILED.to_string();
+    };
+    // The workspace hidden-set is full-set LWW: the pack's declared refs REPLACE whatever is set,
+    // so a re-apply clobbers loudly (the object is listed in the run's clobber section — the same
+    // contract as the dashboard/agent objects). The refs are opaque data passed straight through;
+    // `nav_hidden_set` re-checks `nav.save` under the caller's principal, so a caller who cannot
+    // shape the workspace's menus by hand cannot hide via a pack either — no privileged path
+    // (pack-core-scope §Caps). Declutter, never authz: hiding blocks no route.
+    match crate::nav::nav_hidden_set(&node.store, principal, ws, sidebar.hidden.clone(), ts).await {
+        Ok(_) => APPLIED.to_string(),
+        Err(crate::nav::NavError::Denied) => DENIED.to_string(),
         Err(_) => FAILED.to_string(),
     }
 }

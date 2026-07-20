@@ -315,19 +315,39 @@ mod tests {
     }
 
     #[test]
-    fn the_plan_orders_datasource_first_and_agent_last() {
+    fn the_plan_orders_datasource_first_and_sidebar_last() {
         let p = resolve(
             "pack: p\ntitle: P\nversion: 1\n\
              datasource:\n  name: d\n  engine: sqlite\n\
              rules: [rules/a.rhai]\n\
              channels:\n  - name: c\n\
-             agent:\n  context: ctx.md\n",
+             agent:\n  context: ctx.md\n\
+             sidebar:\n  hidden: [channels]\n",
             &[("rules/a.rhai", "let x = 1;"), ("ctx.md", "# context")],
         );
         let pl = plan(&p);
         let kinds: Vec<_> = pl.iter().map(|o| o.kind.as_str()).collect();
-        assert_eq!(kinds, vec!["datasource", "rule", "channel", "agent"]);
+        assert_eq!(
+            kinds,
+            vec!["datasource", "rule", "channel", "agent", "sidebar"]
+        );
         // Unused import guard for BTreeMap in this module's test helper path.
         let _: BTreeMap<String, String> = BTreeMap::new();
+    }
+
+    #[test]
+    fn a_changed_hidden_set_is_drift_at_the_same_version() {
+        // Same pack version, a different hidden-set → a different content checksum, so the refusal
+        // matrix re-applies (full-set LWW clobbers) rather than treating it as an idempotent no-op.
+        use crate::plan::content_checksum;
+        let a = resolve(
+            "pack: p\ntitle: P\nversion: 1\nsidebar:\n  hidden: [channels]\n",
+            &[],
+        );
+        let b = resolve(
+            "pack: p\ntitle: P\nversion: 1\nsidebar:\n  hidden: [channels, datasources]\n",
+            &[],
+        );
+        assert_ne!(content_checksum(&a), content_checksum(&b));
     }
 }

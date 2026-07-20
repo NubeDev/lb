@@ -629,6 +629,232 @@ async fn a_reapply_lists_every_object_it_clobbered() {
     );
 }
 
+// ----- 8b. the sidebar seed (Kind::Sidebar) -------------------------------------------------------------
+//
+// The first workspace-seed kind. A `sidebar:` block applies the workspace hidden-set through the
+// SAME `nav.hidden.set` a hand-editing admin calls — so the arm proves (a) the set lands verbatim,
+// (b) a second apply of the same set is the idempotent no-op, (c) a changed set clobbers loudly, and
+// (d) a caller who lacks `nav.save` is DENIED at the arm, never silently skipped. No mocks: the set
+// is read back through the real `nav_hidden_get`.
+
+use lb_host::{nav_hidden_get, NavHidden};
+
+/// A pack whose only object is a sidebar hidden-set. `version` and the ref set vary so the tests can
+/// drive idempotence (same set, same version → no-op).
+fn sidebar_bundle(version: u32, hidden: &[&str]) -> Value {
+    let refs = hidden
+        .iter()
+        .map(|r| format!("    - {r}\n"))
+        .collect::<String>();
+    let manifest =
+        format!("pack: seed\ntitle: Seed Pack\nversion: {version}\nsidebar:\n  hidden:\n{refs}");
+    json!({"manifest": manifest, "files": {}})
+}
+
+/// A sidebar block PLUS a channel — two objects, so the clobber test can drive the real re-apply
+/// path: the refusal matrix only re-applies (and clobbers) at the SAME version when the prior receipt
+/// was PARTIAL (a same-version+changed-content bump is refused, "bump the version"; a higher version
+/// is refused, "upgrade not built"). So a first apply with the channel cap withheld leaves sidebar
+/// applied + channel denied — a partial — and the recovery re-apply clobbers the already-applied
+/// sidebar, listing it loudly. That is the shipped clobber contract, exercised honestly.
+fn sidebar_and_channel_bundle(hidden: &[&str]) -> Value {
+    let refs = hidden
+        .iter()
+        .map(|r| format!("    - {r}\n"))
+        .collect::<String>();
+    let manifest = format!(
+        "pack: seed\ntitle: Seed Pack\nversion: 1\n\
+         channels:\n  - name: seed-alerts\n\
+         sidebar:\n  hidden:\n{refs}"
+    );
+    json!({"manifest": manifest, "files": {}})
+}
+
+/// The pack surface + `nav.save` (the write the arm rides) + `nav.resolve` (so the test can read the
+/// set back). This is the full grant a sidebar apply needs — and nothing downstream of it.
+fn sidebar_full(ws: &str) -> Principal {
+    let mut caps: Vec<&str> = PACK_SURFACE.to_vec();
+    caps.extend_from_slice(&["mcp:nav.save:call", "mcp:nav.resolve:call"]);
+    principal(ws, &caps)
+}
+
+/// The pack surface + `nav.resolve` (to read back) but NOT `nav.save`. A caller who cannot shape the
+/// workspace's menus by hand must not be able to hide a surface via a pack either — the arm denies.
+fn sidebar_missing_nav_save(ws: &str) -> Principal {
+    let mut caps: Vec<&str> = PACK_SURFACE.to_vec();
+    caps.push("mcp:nav.resolve:call");
+    principal(ws, &caps)
+}
+
+/// Read the workspace hidden-set back through the real read verb, as a plain `Vec<String>`.
+async fn read_hidden(node: &Arc<Node>, p: &Principal, ws: &str) -> Vec<String> {
+    let NavHidden { hidden, .. } = nav_hidden_get(&node.store, p, ws)
+        .await
+        .expect("nav_hidden_get");
+    hidden
+}
+
+/// The headline: a `sidebar:` block on a blank workspace lands the hidden-set EXACTLY as declared,
+/// through `nav.hidden.set` — nothing in the arm interprets a ref.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_sidebar_block_applies_the_hidden_set_exactly() {
+    let ws = "seed-sidebar";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = sidebar_full(ws);
+
+    // Blank workspace → nothing hidden.
+    assert!(
+        read_hidden(&node, &p, ws).await.is_empty(),
+        "a blank workspace hides nothing to start"
+    );
+
+    let resp = apply(
+        &node,
+        &p,
+        ws,
+        sidebar_bundle(1, &["channels", "datasources"]),
+        10,
+    )
+    .await
+    .expect("apply");
+    assert_eq!(resp["outcome"], "applied", "{resp}");
+    assert_eq!(
+        object_outcome(&resp, "sidebar"),
+        "applied",
+        "the sidebar object applied: {resp}"
+    );
+
+    assert_eq!(
+        read_hidden(&node, &p, ws).await,
+        vec!["channels", "datasources"],
+        "the hidden-set landed exactly as declared"
+    );
+}
+
+/// A second apply of the SAME set at the same version is the idempotent no-op — the refusal matrix
+/// short-circuits before the arm runs, and the set is unchanged.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn re_applying_the_same_sidebar_set_is_a_no_op() {
+    let ws = "seed-sidebar-noop";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = sidebar_full(ws);
+
+    apply(&node, &p, ws, sidebar_bundle(1, &["channels"]), 10)
+        .await
+        .expect("first apply");
+    let again = apply(&node, &p, ws, sidebar_bundle(1, &["channels"]), 11)
+        .await
+        .expect("second apply");
+    assert_eq!(again["outcome"], "noop", "same set, same version: {again}");
+    assert_eq!(read_hidden(&node, &p, ws).await, vec!["channels"]);
+}
+
+/// A re-apply CLOBBERS the pack-owned sidebar object loudly (`sidebar:seed` in the run's clobber
+/// list), and the full-set LWW re-writes the hidden-set. This drives the ONLY same-version re-apply
+/// the matrix allows: a partial-recovery. The first apply withholds the channel cap, so sidebar
+/// applies but the channel is denied — a partial; the recovery re-apply (channel cap granted) clobbers
+/// the already-applied sidebar. Same contract as the agent/dashboard clobber, exercised honestly.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_reapply_clobbers_the_sidebar_object_loudly() {
+    let ws = "seed-sidebar-clobber";
+    let node = Arc::new(Node::boot().await.unwrap());
+
+    // sidebar caps but NOT the channel `pub`/`sub` gate → sidebar applies, channel denied → partial.
+    let partial_p = {
+        let mut caps: Vec<&str> = PACK_SURFACE.to_vec();
+        caps.extend_from_slice(&["mcp:nav.save:call", "mcp:nav.resolve:call"]);
+        principal(ws, &caps)
+    };
+    // Everything the pack needs → the recovery re-apply completes, clobbering the applied sidebar.
+    let full_p = {
+        let mut caps: Vec<&str> = PACK_SURFACE.to_vec();
+        caps.extend_from_slice(&[
+            "mcp:nav.save:call",
+            "mcp:nav.resolve:call",
+            "bus:chan/*:pub",
+            "bus:chan/*:sub",
+        ]);
+        principal(ws, &caps)
+    };
+
+    let first = apply(
+        &node,
+        &partial_p,
+        ws,
+        sidebar_and_channel_bundle(&["channels"]),
+        10,
+    )
+    .await
+    .expect("first apply");
+    assert_eq!(
+        first["outcome"], "partial",
+        "channel denied → partial: {first}"
+    );
+    assert_eq!(object_outcome(&first, "sidebar"), "applied", "{first}");
+    assert_eq!(object_outcome(&first, "channel"), "denied", "{first}");
+    assert_eq!(
+        first["clobbered"].as_array().unwrap().len(),
+        0,
+        "a first apply overwrites nothing: {first}"
+    );
+
+    // The recovery re-apply (same version + same content, prior partial) re-runs the plan and
+    // clobbers the objects that were already applied — the sidebar among them, named loudly.
+    let again = apply(
+        &node,
+        &full_p,
+        ws,
+        sidebar_and_channel_bundle(&["channels"]),
+        11,
+    )
+    .await
+    .expect("recovery re-apply");
+    assert_eq!(again["outcome"], "applied", "recovery completes: {again}");
+    let clobbered: Vec<&str> = again["clobbered"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(
+        clobbered.contains(&"sidebar:seed"),
+        "the sidebar overwrite is listed loudly: {again}"
+    );
+    assert_eq!(
+        read_hidden(&node, &full_p, ws).await,
+        vec!["channels"],
+        "full-set LWW re-wrote the hidden-set"
+    );
+}
+
+/// The caps wall: a caller WITHOUT `nav.save` is denied at the arm — the sidebar object is `denied`
+/// in the receipt (a partial), never silently skipped, and the workspace stays un-hidden. Proves a
+/// pack grants no privileged path past the same gate the hand path hits.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_caller_without_nav_save_is_denied_the_sidebar_arm() {
+    let ws = "seed-sidebar-deny";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let short = sidebar_missing_nav_save(ws);
+
+    let resp = apply(&node, &short, ws, sidebar_bundle(1, &["channels"]), 10)
+        .await
+        .expect("apply returns (a partial, not an error)");
+    assert_eq!(
+        resp["outcome"], "partial",
+        "one grant short is a partial, not a success: {resp}"
+    );
+    assert_eq!(
+        object_outcome(&resp, "sidebar"),
+        "denied",
+        "the sidebar object is denied at the arm: {resp}"
+    );
+    // And the workspace is untouched — a denied hide leaves the rail as it was.
+    assert!(
+        read_hidden(&node, &short, ws).await.is_empty(),
+        "a denied apply hid nothing: the wall held"
+    );
+}
+
 // ----- 9. the read shapes ---------------------------------------------------------------------------------
 
 /// `pack.list` and `pack.get` are the first-class receipt reads that replace a `store.query` on a

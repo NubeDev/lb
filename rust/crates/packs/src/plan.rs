@@ -22,6 +22,7 @@ pub enum Kind {
     Dashboard,
     Channel,
     Agent,
+    Sidebar,
 }
 
 impl Kind {
@@ -32,6 +33,7 @@ impl Kind {
             Kind::Dashboard => "dashboard",
             Kind::Channel => "channel",
             Kind::Agent => "agent",
+            Kind::Sidebar => "sidebar",
         }
     }
 }
@@ -98,6 +100,17 @@ pub fn plan(pack: &Pack) -> Vec<PlannedObject> {
             kind: Kind::Agent,
             id: pack.manifest.pack.clone(),
             checksum: checksum(ctx),
+        });
+    }
+
+    if let Some(sidebar) = &pack.manifest.sidebar {
+        // Like the agent context, the workspace hidden-set has no natural id — the pack name keys
+        // the one object per workspace. The checksum folds the ordered ref set, so a changed set is
+        // drift and re-applies (full-set LWW clobbers), even at the same pack version.
+        out.push(PlannedObject {
+            kind: Kind::Sidebar,
+            id: pack.manifest.pack.clone(),
+            checksum: checksum(&sidebar.hidden.join("\n")),
         });
     }
 
