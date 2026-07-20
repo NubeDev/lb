@@ -15,7 +15,7 @@
 
 use serde_json::{json, Value};
 
-use crate::source::connect;
+use crate::pool::cached_connect;
 use crate::source::dialect::{self, DdlStatement, DesignSchema, DestructiveRefusal, LiveCatalog};
 
 /// Plan + (optionally) apply a migrate of `schema` against the `kind` source at `dsn`. Returns
@@ -27,7 +27,7 @@ pub async fn run_migrate(
     schema: &DesignSchema,
     dry_run: bool,
 ) -> Result<Value, String> {
-    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
+    let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
 
     // Read the live catalog: for each desired table, probe its columns directly. `list_columns_
     // with_types` returns an EMPTY vec for a table that does not exist (PRAGMA/information_schema
@@ -111,6 +111,8 @@ mod tests {
     //!   5. a destructive change (dropped column) is refused with the what-to-do copy.
 
     use super::*;
+    // The uncached constructor: these tests read the live catalog to VERIFY what apply did, so they
+    // must see the real current schema rather than share the pool the code under test warmed.
     use crate::source::connect;
     use crate::source::dialect::{DesignColumn, DesignFk, DesignTable};
 

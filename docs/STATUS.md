@@ -30,6 +30,44 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-20 — the native (Tier-2) control line is MULTIPLEXED: a 13-query dashboard
+went 12.68 s → 1.85 s (6.9×).** Every tool call to a native extension was serialized behind one mutex
+per `(ws, ext_id)`, with the lock held across the whole round-trip — so concurrency to a native child
+was effectively **1, node-wide**. A dashboard issuing 13 `federation.query` calls did not run 13
+queries; it ran one, thirteen times, and every caller was billed for the whole queue.
+
+**Both ends changed together**, because fixing only the host provably moves nothing (the child awaited
+each handler before reading the next frame, so requests would just queue in the pipe instead of on the
+mutex). Host: a new `Conn` per **channel generation** — reader task + pending-reply map routing by
+`id`, a call holds the write lock for exactly one frame; `Sidecar`'s call path became `&self` and the
+host detaches an `Arc<Conn>` so its mutex is never held across a round-trip. Child: the serve loop
+moved **into `lb-supervisor`** (so every native ext inherits it rather than copy-pasting a reactor) —
+spawn per frame without awaiting, one writer task owning stdout, explicit 8-slot in-flight semaphore,
+`health` answered inline. Plus a **45 s host-side per-call timeout** (the host previously waited
+forever) and `worker_threads` 2 → 4.
+
+**Step 0 mattered:** the scope's step-shaped baseline **did not reproduce** when re-measured first —
+it came back a clean linear serial staircase (N=2 at 1.88 s, not ~4.4 s), which retired the
+"`worker_threads = 2` is a co-ceiling" hypothesis *and* Risk 8. The old numbers predated the pool
+cache. Exit gate: 0.89 / 0.93 / 0.94 / 0.94 / 1.85 s at N = 1/2/4/8/13; browser-capped (6
+connections) 2.60 s vs 1.81 s unthrottled — the browser ceiling is real and separate (Risk 9).
+
+⚠️ **Cross-repo gap found — the child-side win is lb-only so far.** There are **two** child serve
+loops, not one: the new `lb_supervisor::serve` (used by `federation`, concurrent) and
+`lb-ext-sdk`'s `lb_ext_native::serve` (used by every out-of-tree native ext, **still serial**). The
+host-side fix helps everyone (the mutex is gone regardless, and it is the larger term); the
+child-side fix currently helps only federation. Porting it is a **breaking trait change** —
+`Tools::call` takes `&mut self` and must become `&self` — so it belongs in `lb-ext-sdk`
+(standalone-authoritative) as a 0.4.0 → 0.5.0 bump with a migration note, not a silent edit here.
+
+10 new tests (incl. mandatory capability-deny + workspace-isolation **under concurrency**, per-caller
+reply *identity*, and a deliberately-constructed restart generation boundary), **every one
+revert-checked red**. One vacuous test caught and fixed —
+[`leak-test-passes-against-leaking-restart`](debugging/extensions/leak-test-passes-against-leaking-restart.md).
+[scope](scope/extensions/native-call-concurrency-scope.md) ·
+[session](sessions/extensions/native-call-concurrency-session.md) ·
+[public](../doc-site/content/public/extensions/extensions.md)
+
 **In flight 2026-07-17 — [#75](https://github.com/NubeDev/lb/issues/75) + [#76](https://github.com/NubeDev/lb/issues/76):
 an lb-hosted browser shell can log in.** (branch `scope/browser-shell-hosting`, code + tests green,
 not yet merged)

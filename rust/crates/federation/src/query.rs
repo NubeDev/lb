@@ -26,8 +26,17 @@ use datafusion::prelude::SessionContext;
 use datafusion::sql::TableReference;
 use serde_json::Value;
 
+use crate::event::{query_event, Cache, Outcome};
+use crate::pool::{cached_connect, evict, is_warm};
 use crate::source::{connect, ColumnMeta, Source, SourceError, TableMeta};
 use crate::validate::{validate_select, ROW_CAP};
+
+/// How long a single federated query may run before it is abandoned and its pool evicted
+/// (federation-pool-cache scope). There was previously NO bound on any query path — one unbounded
+/// remote query hung for >2 minutes and starved every other source in the child, including local
+/// SQLite, until a restart. 30 s is sized to "slow remote that is still working"; a dashboard tile
+/// would rather fail sooner, so callers may pass a shorter bound per call.
+pub const DEFAULT_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// A fresh `SessionContext` with the federation optimizer rule + query planner installed
 /// (federation-pushdown scope). One per call — federation decisions are made per-plan from the
@@ -46,16 +55,89 @@ pub struct QueryResult {
 
 /// Run `sql` against the `kind` source at `dsn`. Validates SELECT-only first, registers only the
 /// tables the query references, and caps the result. The DSN lives only inside the pool.
+///
+/// The connected source comes from the warm-pool cache, so the connect cost is paid once per source
+/// per child lifetime instead of once per query. The whole thing is bounded by
+/// [`DEFAULT_QUERY_TIMEOUT`]; on elapse the pool is evicted (it is suspect) and a typed error is
+/// returned, so one hung remote cannot occupy the child.
 pub async fn run_query(kind: &str, dsn: &str, sql: &str) -> Result<QueryResult, String> {
+    run_query_with(kind, dsn, sql, None, DEFAULT_QUERY_TIMEOUT).await
+}
+
+/// [`run_query`] with an explicit bound and the host-side datasource `source` name for events.
+/// `source` is an opaque label, never a DSN.
+pub async fn run_query_with(
+    kind: &str,
+    dsn: &str,
+    sql: &str,
+    source_name: Option<&str>,
+    timeout: std::time::Duration,
+) -> Result<QueryResult, String> {
     let validated = validate_select(sql).map_err(|e| e.to_string())?;
-    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
-    register_and_run(source.as_ref(), &validated, sql).await
+
+    // Sampled BEFORE the connect, so the event reports what this call actually did rather than the
+    // state it leaves behind (which is always "warm").
+    let cache = if is_warm(kind, dsn) {
+        Cache::Hit
+    } else {
+        Cache::Miss
+    };
+    let started = std::time::Instant::now();
+
+    let bounded = tokio::time::timeout(timeout, async {
+        let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
+        register_and_run(source.as_ref(), &validated, sql).await
+    })
+    .await;
+
+    let elapsed = started.elapsed().as_millis();
+    match bounded {
+        Ok(Ok(result)) => {
+            let rows = result.rows.len();
+            query_event(source_name, kind, cache, sql, elapsed, &Outcome::Ok(rows));
+            Ok(result)
+        }
+        Ok(Err(e)) => {
+            query_event(
+                source_name,
+                kind,
+                cache,
+                sql,
+                elapsed,
+                &Outcome::Error(e.clone()),
+            );
+            Err(e)
+        }
+        Err(_elapsed) => {
+            // Scope Risk 3: a pool that hung is suspect. Without this eviction a poisoned entry
+            // would serve failures for the child's lifetime, where per-call connect self-healed —
+            // i.e. caching would be strictly WORSE than the behaviour it replaced.
+            evict(kind, dsn);
+            query_event(source_name, kind, cache, sql, elapsed, &Outcome::Timeout);
+            Err(format!(
+                "query exceeded the {}s bound and was cancelled; the connection was dropped",
+                timeout.as_secs()
+            ))
+        }
+    }
 }
 
 /// A real connectivity probe for the `kind` source at `dsn` — `Ok(())` is green.
+///
+/// Deliberately BYPASSES the warm-pool cache and uses a fresh `connect`: a probe that reused a
+/// cached pool would no longer prove that a new connection can be established, which is the entire
+/// question `datasource.test` is asked. It also evicts on failure, so a probe doubles as the manual
+/// "this source is broken, drop what you're holding" lever.
 pub async fn probe(kind: &str, dsn: &str) -> Result<(), String> {
-    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
-    source.probe().await.map_err(|e| e.to_string())
+    let result = async {
+        let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
+        source.probe().await.map_err(|e| e.to_string())
+    }
+    .await;
+    if result.is_err() {
+        evict(kind, dsn);
+    }
+    result
 }
 
 /// Register each referenced table into a fresh `SessionContext` (plus any synthesized
@@ -184,14 +266,14 @@ fn rows_as_objects(batches: Vec<RecordBatch>) -> Result<Vec<Value>, String> {
 /// Discover the user tables in the source via its own catalog. The list SQL + bindings are
 /// per-source-kind; the orchestration is shared.
 pub async fn discover_tables(kind: &str, dsn: &str) -> Result<Vec<TableMeta>, String> {
-    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
+    let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
     source.list_tables().await.map_err(|e| e.to_string())
 }
 
 /// Discover one table's columns by reading its `TableProvider` Arrow schema — engine-agnostic (works
 /// for Postgres and SQLite alike; the provider pushes down and reports the real remote schema).
 pub async fn describe_table(kind: &str, dsn: &str, table: &str) -> Result<Vec<ColumnMeta>, String> {
-    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
+    let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
     let provider = source
         .table_provider(&TableReference::bare(table))
         .await
@@ -319,7 +401,7 @@ mod tests {
         path.to_string_lossy().into_owned()
     }
 
-    async fn demo_source(row_count: usize) -> (String, Box<dyn Source>) {
+    async fn demo_source(row_count: usize) -> (String, std::sync::Arc<dyn Source>) {
         let dsn = seed_demo_db(row_count);
         let source = connect("sqlite", &dsn).await.expect("connect sqlite");
         (dsn, source)

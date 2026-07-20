@@ -25,6 +25,11 @@ lb-supervisor = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = "0.1"
+# Hashing only: the warm-pool cache keys on a SHA-256 of the DSN (never the DSN itself), and query
+# events carry a SQL digest rather than the SQL text (federation-pool-cache scope). NOT
+# `lb-telemetry::params_digest`, which is the same discipline but drags `lb-store` (SurrealDB) +
+# `lb-bus` (Zenoh) into a supervised sidecar that must link neither.
+sha2 = { workspace = true }
 
 # The embedded query engine (datasources scope: embed the crate, never the Spice/Cube product). The
 # `Source` trait fronts it; each source owns a pool behind that trait. Pinned to the major
@@ -72,7 +77,9 @@ tokio-postgres = { version = "0.7", optional = true, features = ["with-serde_jso
 rusqlite = { version = "0.37", features = ["bundled"] }
 
 # Own tokio: the child reads/writes its OWN stdio (io-std) + runs the async engine (rt-multi-thread).
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std"] }
+# `sync` for the pool cache's per-key `OnceCell` (one connect per key, awaited outside the map
+# lock); `time` for the query timeout — both federation-pool-cache scope.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std", "sync", "time"] }
 
 [features]
 default = []

@@ -12,7 +12,7 @@
 //! Two independent gates hold: the capability gate here, and (when the binary came from the signed
 //! registry) the signature gate in `pull` — installing a native extension does not bypass either.
 
-use lb_assets::{record_install, Install};
+use lb_assets::{read_install, record_install, Install};
 use lb_ext_loader::{grant, Manifest};
 use lb_mcp::ToolDescriptor;
 use lb_supervisor::{Launcher, Sidecar};
@@ -56,7 +56,24 @@ pub async fn install_native<L: Launcher>(
     let native = native_of(&manifest)
         .ok_or_else(|| NativeServiceError::NotNative(format!("{} is not native", manifest.id)))?;
 
-    let granted = grant(&manifest, admin_approved);
+    // A re-install RECOMPUTES `requested ∩ admin_approved` from the manifest + the binary's approved
+    // set — which alone would DROP any endpoint approved at runtime (an admin registering a source
+    // from the UI self-approves its `net:*` via `federation::net::grant_endpoint`, appending to this
+    // record). Boot re-installs on every start, so without this carry-forward every UI-registered
+    // endpoint dies at the next restart and its `test`/`query` is refused opaquely pre-connect.
+    // Carry forward the prior record's runtime-added `net:*` grants so the two writers compose.
+    //
+    // This is NOT a widening of the wall: each carried grant was already written through an
+    // admin-gated verb (the add is `mcp:datasource.add:call`), and the wall (`enforce_endpoint`)
+    // still reads exactly this persisted set. Nothing here names an extension (§10) — it preserves
+    // the `net:*` surface generically for any native tier extension that self-approves an endpoint.
+    let granted = carry_runtime_net_grants(
+        grant(&manifest, admin_approved),
+        read_install(&node.store, ws, &manifest.id)
+            .await
+            .ok()
+            .flatten(),
+    );
     let tools = tool_names(&manifest);
 
     // STATE first: the durable approved-grant record (the same S4 verb, now for native tier). A
@@ -155,6 +172,75 @@ pub async fn install_native<L: Launcher>(
         tools,
         version: manifest.version,
     })
+}
+
+/// Fold the prior install's runtime-added `net:*` grants into a freshly recomputed `granted` set.
+///
+/// The manifest-∩-approved recompute is authoritative for every OTHER surface (a cap the admin
+/// un-approves genuinely disappears on re-install — that revocation must keep working). Only `net:*`
+/// is carried, because it is the one surface a runtime verb appends to AFTER install: an admin-gated
+/// endpoint self-approval. Duplicates are skipped so a repeated boot cannot grow the record.
+fn carry_runtime_net_grants(mut granted: Vec<String>, prior: Option<Install>) -> Vec<String> {
+    let Some(prior) = prior else {
+        return granted;
+    };
+    for g in prior.granted {
+        if g.starts_with("net:") && !granted.contains(&g) {
+            granted.push(g);
+        }
+    }
+    granted
+}
+
+#[cfg(test)]
+mod carry_grant_tests {
+    use super::*;
+
+    fn prior(granted: &[&str]) -> Option<Install> {
+        Some(Install::new(
+            "x",
+            "1",
+            granted.iter().map(|s| s.to_string()).collect(),
+            0,
+        ))
+    }
+
+    /// The regression: an endpoint self-approved from the UI must survive the boot recompute.
+    #[test]
+    fn carries_runtime_net_grant_absent_from_recompute() {
+        let out = carry_runtime_net_grants(
+            vec!["net:tls:127.0.0.1:5433:connect".into()],
+            prior(&[
+                "net:tls:127.0.0.1:5433:connect",
+                "net:tls:tsdb.acme.com:5434:connect",
+            ]),
+        );
+        assert!(out.contains(&"net:tls:tsdb.acme.com:5434:connect".to_string()));
+    }
+
+    /// Revocation of a NON-net cap must still take effect — the recompute stays authoritative.
+    #[test]
+    fn does_not_carry_non_net_grants() {
+        let out = carry_runtime_net_grants(vec![], prior(&["mcp:federation.query:call"]));
+        assert!(out.is_empty());
+    }
+
+    /// A repeated boot must not grow the record.
+    #[test]
+    fn is_idempotent_across_boots() {
+        let approved = vec!["net:tls:127.0.0.1:5433:connect".to_string()];
+        let once = carry_runtime_net_grants(approved.clone(), prior(&["net:tls:h:1:connect"]));
+        let twice = carry_runtime_net_grants(approved, prior(&["net:tls:h:1:connect"]));
+        assert_eq!(once, twice);
+        assert_eq!(once.len(), 2);
+    }
+
+    /// A first install (no prior record) is unchanged.
+    #[test]
+    fn no_prior_install_is_a_passthrough() {
+        let out = carry_runtime_net_grants(vec!["net:tls:h:1:connect".into()], None);
+        assert_eq!(out, vec!["net:tls:h:1:connect".to_string()]);
+    }
 }
 
 /// Stop a running sidecar for `(ws, ext_id)` if present (a cooperative shutdown). Used by a

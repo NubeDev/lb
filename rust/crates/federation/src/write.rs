@@ -11,7 +11,7 @@
 //! The DSN is mediated by the host (handed in the call input, never logged/returned). Reuses the
 //! SAME `connect` path as `federation.query`; the write goes through `Source::write_rows`.
 
-use crate::source::connect;
+use crate::pool::cached_connect;
 use serde_json::Value;
 /// The hard cap on rows a single `federation.write` accepts. Past this the caller must use
 /// `federation.export` (a durable job) — a synchronous tool handler never blocks on an unbounded
@@ -70,7 +70,7 @@ pub async fn run_write(
         typed_rows.push(arr.clone());
     }
 
-    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
+    let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
     let affected = source
         .write_rows(table, columns, &typed_rows, key)
         .await

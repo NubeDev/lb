@@ -246,6 +246,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (dry-run-default DDL diff), written per-message by a bounded upsert `federation.write` (the
   flow `tool`-node target), and backfilled by `federation.export` — a checkpointed `lb-jobs`
   batch, the outbound dual of `federation.mirror`. External DBs become sinks, never authority.
+  **`federation-result-cache-scope.md`** adds the third and final dashboard-latency layer: a
+  TTL-bounded, byte-capped **query-result cache in the federation child** (sibling to `pool.rs`,
+  keyed `(kind, dsn_hash, sha256(args))`, single-flight per key) so a page's repeat queries within a
+  caller-declared `cache: {ttl_s}` window are served from memory — the page refresh interval *is*
+  the TTL; **default off**, per-call opt-in, env kill-switch; evicted by `federation.write`/
+  `federation.migrate`/failed probe. DuckDB (second engine, wrong term — the cost is the remote
+  round-trip), SurrealDB-persisted results (durable staleness), and a host-level generic MCP cache
+  (can't know purity; stampedes past single-flight) all rejected; `federation.mirror` remains the
+  durable "make it local" answer.
 - `control-engine/` — the native (Tier-2) **`control-engine` extension** (scope co-located with the
   extension at `rust/extensions/control-engine/docs/control-engine-scope.md` — it is **100% an
   extension**, so its docs live with it; the core stays CE-ignorant, CI-enforced):
@@ -306,7 +315,21 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   extensions**: an extension marks a `[[tools]] kind="watch"` and the host relays it as SSE over a
   host-allocated workspace subject — closing the asymmetry where only core tools could stream; the WIT
   ABI stays frozen, streaming rides the bus, and the routed cross-node relay is free; `control-engine`'s
-  `ce.watch` is its first tenant). The **`extensions/ui/`** subtopic (`ui/README.md` index) owns the two
+  `ce.watch` is its first tenant), and `native-call-concurrency-scope.md` (**every call to a native
+  sidecar is serialized** — the host holds one `AsyncMutex<Sidecar>` per `(ws, ext_id)` across the whole
+  round-trip *and* the child awaits each handler before reading the next frame, so a 13-query dashboard
+  measured 11.65 s with all thirteen finishing at the same instant; multiplex the control line by
+  correlating replies on the `id` the protocol already carries, at BOTH ends — fixing only the host
+  moves nothing — with a per-sidecar pending map so a misrouted reply can never cross a workspace;
+  note `restart`/`rearm` reset `next_id` to 0, so the map must be generation-tagged or post-restart
+  ids collide with live waiters. **SHIPPED 2026-07-20: 12.68 s → 1.85 s (6.9×), flat to N=8.** The
+  step-shaped curve **did not reproduce** on re-measure — it predated the pool cache, so
+  `worker_threads = 2` was never a co-ceiling (set to 4 anyway) and the baseline was a clean linear
+  serial staircase. Reply routing is scoped per **channel generation**, which is what makes the
+  `next_id = 0` reset safe. Caveat found while building: there are **two** child serve loops —
+  lb's new `lb_supervisor::serve` (federation, concurrent) and `lb-ext-sdk`'s `lb_ext_native::serve`
+  (every out-of-tree ext, **still serial**); porting it is a breaking `&mut self` → `&self` change on
+  `Tools::call`, owed to that repo). The **`extensions/ui/`** subtopic (`ui/README.md` index) owns the two
   extension-UI contracts the theme customizer forces: `theme-inheritance-scope.md` (an extension page/
   widget **re-themes live** with the host when the user changes theme — CSS-var cascade for in-process
   DOM, injected+refreshed vars for the iframe tier, and resolved token values in `ctx.theme` so a JS/

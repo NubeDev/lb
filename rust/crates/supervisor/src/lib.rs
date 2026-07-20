@@ -16,20 +16,26 @@
 //!   - `frame`    — `Content-Length` JSON-RPC framing over the child's stdio.
 //!   - `launcher` — the [`Launcher`] seam + [`Channel`]/[`Kill`] (spawn behind a trait, testable).
 //!   - `os`       — the real OS launcher ([`OsLauncher`], the one process-boundary file).
+//!   - `conn`     — one channel generation's multiplexer: reader task + pending-reply map.
+//!   - `serve`    — the CHILD-side concurrent serve loop every native extension runs.
 //!   - `sidecar`  — the live [`Sidecar`]: handshake · call · health · shutdown · restart.
 
+mod conn;
 mod error;
 mod frame;
 mod launcher;
 mod os;
 mod rpc;
+mod serve;
 mod sidecar;
 mod spec;
 
+pub use conn::Conn;
 pub use error::SupervisorError;
 pub use frame::{read_frame, write_frame, MAX_FRAME};
 pub use launcher::{Channel, ChildRead, ChildWrite, Kill, Launcher};
 pub use os::OsLauncher;
 pub use rpc::{CallParams, Caller, Method, Reply, Request};
+pub use serve::{serve, serve_with, DEFAULT_MAX_IN_FLIGHT};
 pub use sidecar::Sidecar;
 pub use spec::{Backoff, RestartPolicy, Spec};

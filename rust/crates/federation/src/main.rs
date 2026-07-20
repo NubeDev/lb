@@ -3,9 +3,18 @@
 //! (`init`/`health`/`call`/`shutdown`) over `Content-Length`-framed stdio using the SAME
 //! `lb-supervisor` wire types the host uses — so the child↔host ABI cannot drift.
 //!
-//! It is stateless (§3.4): it holds nothing durable. The DSN for a source is handed to it by the
+//! It is stateless (§3.4): it holds nothing **durable**. The DSN for a source is handed to it by the
 //! HOST in each `call` input (host secret-mediation: the host pulls `secret:federation/{source}` and
 //! passes it child-ward — never logged, never returned in a result). A kill + respawn loses nothing.
+//!
+//! **Durable state vs. a warm pool** (federation-pool-cache scope). `pool.rs` keeps connected
+//! `Source`s alive across calls, which IS process-local state — so read §3.4 precisely rather than
+//! filing this as a violation. §3.4 forbids *durable* state: anything a kill + respawn would lose
+//! that a caller depends on. A warm connection pool is not that. Every entry is reconstructible from
+//! the next call's own input (the host re-sends the DSN every time), it never appears in a result,
+//! and losing it costs exactly one slow query. It is a cache, not a source of truth, and the child
+//! stays restart-transparent. It exists because building the pool per query cost ~2,500 ms of a
+//! ~2,530 ms remote read — 98% of wall time, paid again for every tile on a dashboard.
 //!
 //! Tools served (the rest of the federation surface — `datasource.add`/`remove`/`list`/`mirror` —
 //! is HOST-side, this child only executes the engine-bound verbs):
@@ -15,62 +24,51 @@
 //! Attribution: the embedded-DataFusion + SQL-validator pattern is adapted from `rubix-cube`
 //! (its `spice_engine` wrapper over the `datafusion` crate + its SQL validator), MIT/Apache-2.0.
 
+mod event;
 mod info_schema;
 mod migrate;
+mod pool;
 mod query;
 mod sample;
 mod source;
 mod validate;
 mod write;
 
-use lb_supervisor::{read_frame, write_frame, CallParams, Method, Reply, Request};
+use lb_supervisor::{CallParams, Reply, Request};
 use serde_json::{json, Value};
 use tokio::io::{stdin, stdout};
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
+/// Worker threads for the child's runtime.
+///
+/// Was 2, as a leftover default rather than a decision. The scope flagged it as a suspected third
+/// ceiling behind the transport; the step-shaped measurement that raised that suspicion was
+/// **re-measured and did not reproduce** — with the pool warm the curve is a clean linear serial
+/// staircase (0.93 s at N=1 → 12.7 s at N=13, N=2 at 1.88 s), which is transport serialization alone.
+/// So 2 was never the binding constraint.
+///
+/// Raised to 4 anyway, deliberately and with a number behind it: query work here is await-bound (a
+/// remote read is mostly waiting on a socket), but each of `DEFAULT_MAX_IN_FLIGHT` = 8 concurrent
+/// handlers does real CPU work on both ends of that wait — Arrow decode and JSON serialization of up
+/// to a row-capped result set. 4 gives that burst somewhere to land without oversubscribing a node
+/// that is also running the host, the store, and the bus. Not 8: the runtime is not the bottleneck,
+/// and threads that idle on a socket cost memory for nothing.
+/// (`tokio::main` requires a literal, so the 4 below is the value this documents.)
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
     let ext_id = std::env::var("LB_EXT_ID").unwrap_or_default();
 
-    let mut input = stdin();
-    let mut output = stdout();
-
-    loop {
-        let body = match read_frame(&mut input).await {
-            Ok(b) => b,
-            Err(_) => break, // host closed the line — exit cleanly
-        };
-        let req: Request = match serde_json::from_slice(&body) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-
-        let reply = match req.method {
-            Method::Init => Reply::ok(req.id, format!(r#"{{"ready":true,"ext":"{ext_id}"}}"#)),
-            Method::Health => Reply::ok(req.id, "ok"),
-            Method::Shutdown => {
-                let bytes = serde_json::to_vec(&Reply::ok(req.id, "bye")).unwrap();
-                let _ = write_frame(&mut output, &bytes).await;
-                break;
-            }
-            // Fenced in its own task so a PANIC deep in an engine/connector (live: a failed remote
-            // execute took the whole child down, the supervisor burned its 5 restarts, and
-            // federation went dark for the session) unwinds THAT task only — the caller gets an
-            // error reply and the child keeps serving. An error `Reply` was always non-fatal; this
-            // makes a panic equally non-fatal.
-            Method::Call => {
-                let id = req.id;
-                match tokio::spawn(async move { handle_call(&req).await }).await {
-                    Ok(reply) => reply,
-                    Err(e) => Reply::err(id, format!("tool call panicked: {e}")),
-                }
-            }
-        };
-
-        let bytes = serde_json::to_vec(&reply).unwrap();
-        if write_frame(&mut output, &bytes).await.is_err() {
-            break;
-        }
-    }
+    // The concurrent serve loop is the SDK's (`lb_supervisor::serve`), not this extension's: read a
+    // frame, spawn the handler without awaiting it, and funnel every reply through one writer task
+    // (native-call-concurrency scope). It used to be inline here and awaited each call to completion,
+    // which capped the whole native transport at concurrency 1 regardless of the host.
+    //
+    // `handle_call` is therefore invoked CONCURRENTLY now. It is safe: it owns no mutable process
+    // state — every path derives everything from its own `Request`, and the only shared state is
+    // `pool.rs`'s cache, which is internally synchronized and built for concurrent racers on one key.
+    lb_supervisor::serve(stdin(), stdout(), ext_id, |req: Request| async move {
+        handle_call(&req).await
+    })
+    .await;
 }
 
 /// Handle a `call`: parse the tool + input and dispatch to the engine. The input carries the
@@ -106,7 +104,10 @@ async fn federation_query(id: u64, input: &Value) -> Reply {
         (Some(k), Some(d), Some(s)) => (k, d, s),
         _ => return Reply::err(id, "missing kind/dsn/sql"),
     };
-    match query::run_query(kind, dsn, sql).await {
+    // `source` is the host-side datasource NAME — an opaque label used only to make the emitted
+    // query event readable. Optional: older callers omit it, and it is never a DSN.
+    let source_name = str_of(input, "source");
+    match query::run_query_with(kind, dsn, sql, source_name, query::DEFAULT_QUERY_TIMEOUT).await {
         Ok(r) => {
             let out = json!({ "columns": r.columns, "rows": r.rows });
             Reply::ok(id, out.to_string())
