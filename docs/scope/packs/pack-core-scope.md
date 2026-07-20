@@ -51,7 +51,8 @@ crate; nothing here touches the extension toolchain.
   (vocabulary: label/parent/kinds/units; explicitly unstable until a runtime consumer),
   `insights.keys` (dedup-key grammar), `datasource` (schema/seed SQL), `rules` (Rhai),
   `dashboards` (cell JSON), `channels`, `agent.context` (markdown → workspace agent memory),
-  `extensions` (requirements checked against `ext.list`, never installed).
+  `extensions` (requirements checked against `ext.list`, never installed), `sidebar.hidden`
+  (workspace hidden-set → `nav.hidden.set`, the first **workspace-seed** block — below).
 - **Bundle-over-the-wire**: `pack.apply`/`pack.validate` take the manifest + referenced
   files as one checksummed bundle in the call (size-capped). No node-filesystem coupling —
   a third party can apply a pack over MCP with nothing but a session and caps, which keeps
@@ -98,6 +99,41 @@ Live-verified downstream and carried over verbatim:
   channel name, datasource name), never display names — drift detection depends on it.
 - **Dialect lint**: the DataFusion∩SQLite poison list (CTEs, `datetime()`, scalar
   subqueries) is a WARNING in `pack.validate`, not a gate — the real oracle is the apply.
+
+## Workspace-seed kinds (the closed-`Kind` extension path)
+
+`pack.apply` dispatches on a **closed `Kind` enum** (`crates/packs/src/plan.rs`) — there is no
+plugin seam. A new `pack.yaml` block is a new object kind, and adding one is a fixed four-step
+recipe, all on data (rule 10 holds — every arm branches on the KIND, never on a named pack):
+
+1. a `Kind` variant + its stable `as_str()` string (the receipt's `kind`, a reader's discriminator);
+2. a **plan arm** (`plan()`): the id + a checksum over the block's bytes, so a changed block is drift;
+3. a **dispatch arm** (`apply.rs`): deserialize the block and call the SAME internal function the
+   equivalent public verb calls — which **re-checks its own capability** under the caller's principal;
+4. the **manifest serde** for the block (`deny_unknown_fields`, line-numbered errors).
+
+Nothing else changes: `apply_plan`/the receipt/the refusal matrix are generic over the plan. The
+per-object caps wall, clobber listing, and partial-recovery all apply for free.
+
+**Shipped: `Kind::Sidebar`** (`node-v*`, first of the workspace-seed family). Block:
+
+```yaml
+sidebar:
+  hidden: [channels, datasources]   # refs in the shared nav grammar; opaque data
+```
+
+- **Plan**: one object per workspace, keyed by the pack name (like `agent`), checksum over the
+  ordered ref set. A changed set is drift (re-applies), same set is a NoOp.
+- **Dispatch**: `apply_sidebar` calls `nav_hidden_set` — full-set LWW, so a re-apply **clobbers
+  loudly** (listed as `sidebar:<pack>`), exactly the shipped clobber contract.
+- **Caps**: `nav_hidden_set` authorizes `nav.save` under the caller's principal — a caller who
+  can't shape the workspace's menus by hand can't hide via a pack either. Declutter, **never
+  authz**: a hidden surface's route still loads by deep link (the gateway re-checks every verb).
+
+**Planned (this family, not yet built):** `Kind::Nav` (`nav.save`/`set_default`/`share`),
+`Kind::Team` + `Kind::User` (create-if-absent, **never-clobber** for people — the one place the
+loud-clobber rule inverts). See the consumer scope for the manifest shapes and the re-apply
+asymmetry that makes people-kinds a distinct arm.
 
 ## Intent / approach
 
@@ -147,6 +183,11 @@ decisions the PR makes and documents.
 
 - NubeIO/rubix-ai#13 — the downstream origin (scope `docs/scope/packs/domain-packs-scope.md`
   there): the proven applier this ports, and the embedder that migrates first.
+- NubeIO/rubix-ai → `docs/scope/packs/pack-workspace-seed-scope.md` — the **consumer scope** for
+  the workspace-seed family (sidebar → nav → access). It owns the pack content + the Packs-UI
+  render of the new kinds; this scope owns the `Kind` variants + `apply_*` arms. `Kind::Sidebar`
+  (U-pack-sidebar) is shipped; `Kind::Nav` / `Kind::Team` / `Kind::User` (U-pack-nav /
+  U-pack-access) are the remaining upstream asks named there.
 - NubeIO/rubix-ai#14 — the map widget: the worked example of a widget configured FROM a
   pack's vocabulary (the `geo:` entity hint) — a consumer of `pack.get`.
 - `docs/scope/extensions/pack-toolchain-publish-scope.md` — the *extension artifact*

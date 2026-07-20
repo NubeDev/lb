@@ -60,6 +60,12 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<Agent>,
 
+    /// The workspace sidebar seed — a subtractive hidden-set applied via `nav.hidden.set`
+    /// (full-set LWW). Declutter, never authz: hiding a surface never blocks its route (the
+    /// gateway re-checks every verb on click). One object per workspace, keyed by the pack.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar: Option<Sidebar>,
+
     /// Required extension ids — CHECKED against the installed set, never installed (installing is
     /// the admin's act; the pack only declares needs). An absent requirement warns, never blocks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -128,6 +134,19 @@ pub struct Channel {
 pub struct Agent {
     /// Bundle-relative path to the markdown context file.
     pub context: String,
+}
+
+/// The sidebar seed — the set of item refs a pack hides from the workspace rail. Each ref is
+/// opaque data in the shared nav grammar (a bare surface key like `channels`, `ext:<id>`, or
+/// `dashboard:<id>`); the applier does not interpret them, it hands the set to `nav.hidden.set`
+/// verbatim. Rule 10: the arm branches on the KIND, never on a named pack, and never on which
+/// surface a ref names.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Sidebar {
+    /// The refs to hide (full set — LWW replaces, empty clears).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hidden: Vec<String>,
 }
 
 impl Manifest {
@@ -201,5 +220,27 @@ agent:
         assert_eq!(m.datasource.as_ref().unwrap().name, "demo-buildings");
         assert_eq!(m.channels[0].name, "critical-faults");
         assert_eq!(m.agent.as_ref().unwrap().context, "agent-context.md");
+    }
+
+    #[test]
+    fn parses_a_sidebar_hidden_block() {
+        let m = Manifest::parse(
+            "pack: bas\ntitle: T\nversion: 1\n\
+             sidebar:\n  hidden:\n    - channels\n    - datasources\n",
+        )
+        .unwrap();
+        assert_eq!(
+            m.sidebar.as_ref().unwrap().hidden,
+            vec!["channels", "datasources"]
+        );
+    }
+
+    #[test]
+    fn a_typod_key_inside_sidebar_is_a_loud_error() {
+        // `deny_unknown_fields` on `Sidebar` too — `hiddn:` must not silently apply nothing.
+        let err =
+            Manifest::parse("pack: bas\ntitle: T\nversion: 1\nsidebar:\n  hiddn: [channels]\n")
+                .unwrap_err();
+        assert!(err.to_string().contains("hiddn"), "{err}");
     }
 }
