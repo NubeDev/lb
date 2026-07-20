@@ -30,7 +30,40 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-20 — the native (Tier-2) control line is MULTIPLEXED: a 13-query dashboard
+**Just shipped 2026-07-20 — the federation QUERY-RESULT CACHE, closing the three-layer stack.**
+`crates/federation/src/results.rs` (new) holds a TTL-bounded, process-local map of query results, so
+a repeat of an identical query inside a caller-declared freshness window is served from memory. With
+the pool cache (no connect) and the transport fix (no queue) already in, this removes the last term:
+the query itself. **Opt-in only** — `cache: {ttl_s}` on `federation.query`, absent by default (then
+behavior is today's, bit for bit), with `ttl_s` **required** inside the sub-schema and a node
+kill-switch `LB_FEDERATION_RESULT_CACHE=off`.
+
+The slot is `{current, inflight}`, **not** `pool.rs`'s `OnceCell` (set-once, cannot refill): a caller
+whose TTL accepts `current` returns immediately and never waits on a stricter caller's refresh; one
+whose TTL rejects it joins the single in-flight refresh or starts it. That one mechanism is both
+cold-start single-flight (13 identical tiles → 1 query) and the no-racing-refreshers rule. Bounds:
+128 entries / 64 MB / 4 MB per entry, measured on the serialized envelope — and the 64 MB is **per
+child**, i.e. × active workspaces on a multi-tenant node. Evicts on `federation.write`, applied
+`federation.migrate`, and a failed probe. Events gain `result_cache: hit|miss|bypass` + `age_ms`
+(the pool `cache` field is omitted on a result hit — no connect was consulted).
+
+**The field does not ride for free:** the host rebuilds the child input by enumeration, so this took
+four host touches (arg parse in `federation/tool.rs`, the `federation_query()` parameter, the
+child-input `json!`, and the descriptor schema). `federation.mirror` deliberately passes no cache
+contract — a mirror exists to persist the source's *current* rows.
+
+Tests: `crates/federation/tests/result_cache_test.rs`, all 10 scope categories on real seeded SQLite,
+**every behavioural test asserting row content by mutating the file under the cache** (this crate has
+shipped vacuously-green cache tests twice). Four revert-checks confirmed red; **two false greens were
+caught in-session** — a recursive-CTE slow query that `validate_select` rejected outright, then a
+replacement burn query too fast to make the race real, which is now both sized from measurement and
+guarded by an assertion that the race outlasted the mid-flight insert. ⚠️ **Live latency win not yet
+verified** against a real remote source — same posture the pool-cache slice ended in.
+Scope: `docs/scope/datasources/federation-result-cache-scope.md` ·
+session: `docs/sessions/datasources/federation-result-cache-session.md` ·
+public: `doc-site/content/public/datasources/datasources.mdx`.
+
+**Shipped 2026-07-20 — the native (Tier-2) control line is MULTIPLEXED: a 13-query dashboard
 went 12.68 s → 1.85 s (6.9×).** Every tool call to a native extension was serialized behind one mutex
 per `(ws, ext_id)`, with the lock held across the whole round-trip — so concurrency to a native child
 was effectively **1, node-wide**. A dashboard issuing 13 `federation.query` calls did not run 13

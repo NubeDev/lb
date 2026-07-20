@@ -44,7 +44,10 @@ pub async fn federation_mirror<L: Launcher>(
 ) -> Result<String, FederationError> {
     // The query path authorizes `mcp:federation.query:call` (workspace-first) — the mirror reuses it,
     // so a caller without the read cap cannot mirror either (the deny path is shared).
-    let result = federation_query(node, launcher, caller, ws, source, sql, ts).await?;
+    // Never cached: a mirror is a durable job whose whole purpose is to copy the source's CURRENT
+    // rows into the series plane. Serving it a cached answer would persist staleness — exactly the
+    // failure mode the result cache's TTL exists to bound in transient page reads only.
+    let result = federation_query(node, launcher, caller, ws, source, sql, None, ts).await?;
     let rows = result
         .get("rows")
         .and_then(|v| v.as_array())

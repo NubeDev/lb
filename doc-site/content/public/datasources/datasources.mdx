@@ -31,6 +31,49 @@ production-shaped (issues #55–#58, one PR):
   (sum+count carried → exact re-aggregation), then evicts; bucketed reads transparently merge the
   finest tier where raw was evicted. The series table no longer grows forever.
 
+## Query-result cache (shipped 2026-07-20)
+
+Dashboards re-run the same SQL on every load, every refresh tick, and for every viewer. The
+federation child now keeps a **TTL-bounded cache of query results**, so a repeat of an identical
+query inside a caller-declared freshness window is served from memory instead of paying another
+round-trip to the source. It completes the three-layer stack: no connect cost (pool cache), no
+transport queue (call concurrency), no repeat query.
+
+**It is off unless you ask for it.** Add a freshness window to `federation.query`:
+
+```json
+{ "source": "warehouse", "sql": "SELECT …", "cache": { "ttl_s": 30 } }
+```
+
+- **No `cache` field** → today's behaviour, bit for bit. `ttl_s` is **required** inside `cache` (an
+  empty `cache: {}` is a schema error) — the child never invents a freshness contract for you.
+- `ttl_s: 0` disables caching for that call.
+- **Node kill-switch:** `LB_FEDERATION_RESULT_CACHE=off` on the node process forces every call to
+  bypass regardless of what callers ask for. The child inherits it at spawn; restart to apply.
+
+**Who sets `ttl_s`:** the surface that knows its own refresh contract — a dashboard page refreshing
+every 30 s tolerates ~30 s of staleness. Nothing in lb core decides a TTL.
+
+**The staleness bound, stated honestly.** With `ttl_s` equal to your refresh interval, a tick can
+land on a 29.9 s-old entry, hit, and serve it for another full cycle: worst case is
+**`ttl_s` + your refresh interval**, not `ttl_s`. Set `ttl_s` slightly below the interval (≈0.9×) if
+the tighter bound matters. An external writer mutating the remote database directly is bounded
+**only** by `ttl_s` — that is the contract.
+
+**What invalidates an entry:** `federation.write` and an applied `federation.migrate` drop every
+cached result for that source, and so does a failed `datasource.test` probe. Writes made *outside*
+lb are not seen — only the TTL bounds those.
+
+**Bounds and footprint.** Per child: 128 entries, 64 MB total, 4 MB per entry (a larger result is
+served but not cached). The cache is process-local and children are per `(workspace, extension)`, so
+a cross-workspace hit is impossible by construction — and a node's worst-case footprint is **64 MB ×
+active workspaces**. A multi-tenant cloud node may want that cap lowered. The cache is lost on
+restart, harmlessly: the next query is simply slow.
+
+**Observability.** Each query event on the child's stderr carries `result_cache: hit|miss|bypass`,
+plus `age_ms` on a hit — which is what lets a UI badge "data as of Xs ago". Events never carry the
+DSN or raw SQL (SQL appears only as `sql_digest`).
+
 In flight: the **schema designer + write plane**
 (`docs/scope/datasources/schema-designer-scope.md`) — `db_schema` records with a
 visual designer, `federation.migrate` (Ask-gated DDL), `federation.write`

@@ -37,7 +37,13 @@ pub async fn call_federation_tool(
         "federation.query" => {
             let source = str_arg(input, "source")?;
             let sql = str_arg(input, "sql")?;
-            let out = federation_query(node, &launcher, principal, ws, source, sql, ts).await?;
+            // The opt-in result-cache contract (`{ttl_s}`), passed through to the child verbatim.
+            // Parsed EXPLICITLY here rather than riding along in a blob: the child input downstream
+            // is built by enumeration, so an unparsed field validates against the schema and is then
+            // silently dropped — a caching request that quietly does nothing.
+            let cache = input.get("cache");
+            let out =
+                federation_query(node, &launcher, principal, ws, source, sql, cache, ts).await?;
             Ok(out)
         }
         "federation.schema" => {

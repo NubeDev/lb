@@ -78,6 +78,11 @@ pub async fn run_migrate(
         .await
         .map_err(|e| e.to_string())?;
 
+    // Write-through invalidation (federation-result-cache scope), same rule as `federation.write`:
+    // the source's SHAPE just changed, so a cached result carrying the old columns is worse than a
+    // slow one. Only on the applied path — a `dry_run` touched nothing and returns above.
+    crate::results::evict_source(kind, dsn);
+
     Ok(json!({
         "statements": statement_json,
         "applied": true,

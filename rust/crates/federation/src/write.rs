@@ -75,6 +75,14 @@ pub async fn run_write(
         .write_rows(table, columns, &typed_rows, key)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Write-through invalidation (federation-result-cache scope): this source's rows just changed,
+    // so every cached RESULT computed from it is now known-wrong. Dropping them here rather than in
+    // the `main.rs` dispatch means any path that writes invalidates — the guarantee belongs to the
+    // write, not to one caller of it. Coarse by source on purpose: the child cannot know which
+    // cached SELECTs a given INSERT touches, and over-evicting costs one re-query while
+    // under-evicting serves rows the child KNOWS it invalidated.
+    crate::results::evict_source(kind, dsn);
     Ok(affected)
 }
 

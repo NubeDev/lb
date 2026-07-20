@@ -4,6 +4,20 @@
 **Status:** shipped · measured live · exit gate met
 **Date:** 2026-07-20
 
+> **Scope of the green claim.** The native surface (32 tests: supervisor 20, host native 12,
+> including the 5 real-OS-process supervision tests) is verified green and every concurrency test is
+> revert-checked.
+>
+> **A full `cargo test --workspace` green was NOT obtained, and could not be** — another session was
+> editing this repo throughout (the `federation-result-cache` slice). Three workspace runs died:
+> two to `target/` contention (test binaries deleted mid-run: `never executed` / `No such file`, ~60
+> crates "failing" with **zero** `test result: FAILED`), and one to a genuine compile error in
+> `federation`'s **integration-test target** — `crate::results` unresolved in `tests/pool_cache_test.rs`,
+> which `#[path]`-includes `src/*.rs` without `main.rs`'s `mod results;`. That file is untracked/
+> modified by the other session, not by this one; `cargo check -p federation` on the library itself is
+> clean. Verified instead with `-p lb-supervisor -p lb-host` — the crates this change actually
+> touches. See the prerequisite note above and the `ext-wasm-test-prereq` memory.
+
 Every tool call to a native (Tier-2) extension was serialized behind one mutex per `(ws, ext_id)`,
 with the lock held across the entire round-trip. This session multiplexed **both ends** of the
 control line — host and child — and re-measured against the live `pdnsw` remote Timescale source.
@@ -166,6 +180,14 @@ separate ceiling and not addressed here.
 
 Live verification by the user on the real dashboard: confirmed faster.
 
+**Which build produced these numbers.** The exit-gate table and the 13/13 identity check were taken
+against a node+child built at 19:51 containing **both** multiplex fixes (host `Conn`/short-lock and
+child `serve`) — verified live by thread count (the child had 6 threads = `worker_threads = 4`, vs 4
+on the old build) and by inspecting the running binary. The later additions (host `CALL_TIMEOUT`, the
+`Timeout`-is-a-fault fix, generation-aware retry) are **fault-path only** and do not touch the
+happy-path measurement; they are covered by unit tests rather than re-measured. That node has since
+been stopped, so re-measuring would need `make dev` again.
+
 ---
 
 ## Testing
@@ -257,6 +279,19 @@ Per the repo rule, and because the pool-cache session found two vacuous tests:
 | Generation-blind retry (drop the `current_gen == first_gen` guard) | `a_noop_recovery_does_not_retry_the_same_generation` | ✅ RED — 2 call frames instead of 1 |
 | ″ (the complement must stay green) | `a_real_restart_is_still_retried` | ✅ still GREEN — the guard does not over-fire |
 
+### Housekeeping: a pre-existing `run_query` dead-code warning
+
+`federation`'s `bin` target warned `function run_query is never used`. Pre-existing (the binary moved
+to `run_query_cached`), but cleaned up here since this session touched `main.rs`'s dispatch.
+
+Kept, not deleted: the pool-cache suite drives the **uncached** path through it at 11 call sites, and
+that suite is specifically about *connection* reuse — which the result cache would mask by
+short-circuiting the query entirely. `#[cfg(test)]` is not usable (the integration tests
+`#[path]`-include `query.rs`, compiling it with `cfg(test)` **false**, so they would lose the function
+they need — which is exactly why `results.rs::len()` can use `#[cfg(test)]` and this cannot). Marked
+`#[allow(dead_code)]` with the reasoning in the doc comment. Verified: `bin` build clean on both the
+default and `postgres` features, `pool_cache_test` still **36 passed**.
+
 ### A bug the new timeout introduced, caught by its own test
 
 Adding `CALL_TIMEOUT` **silently removed restart-and-retry for hung children**. The fault arm matched
@@ -269,7 +304,8 @@ happened). Fix: `Timeout(_)` joins `Transport(_)` in the fault arm — same cond
 answering"), same recovery path. `Child(_)` deliberately stays out of it (an error *reply* over a
 healthy line is not a fault — the regression `call.rs` documents in blood).
 
-Worth recording because the timeout was the *safe-looking* part of this change.
+Worth recording because the timeout was the *safe-looking* part of this change. Debug entry:
+[`host-timeout-silently-disabled-restart-retry`](../../debugging/extensions/host-timeout-silently-disabled-restart-retry.md).
 
 ### Generation-aware retry (Risk 7) — and two vacuous tests before one that worked
 
@@ -301,7 +337,8 @@ against a deliberately leaking `restart`** — because `Conn::drop` aborts the r
 `restart` forgot to close still got cleaned up the moment the last `Arc` went away, and the count
 never grew. Rewritten to assert the observable property: the superseded generation must be **dead
 while still referenced** (a call on it is refused), which is only true if `restart` actually closed
-it. Confirmed RED against the leaking version.
+it. Confirmed RED against the leaking version. Debug entry:
+[`leak-test-passes-against-leaking-restart`](../../debugging/extensions/leak-test-passes-against-leaking-restart.md).
 
 ---
 

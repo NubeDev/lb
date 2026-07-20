@@ -26,6 +26,14 @@ use crate::boot::Node;
 /// Run `sql` against the registered `source` in `ws` as `caller`. Returns the sidecar's
 /// `{columns, rows}` JSON value. `launcher` spawns/restarts the sidecar (the real path uses
 /// `OsLauncher`); the call is routed through the native supervisor exactly like any sidecar tool.
+///
+/// `cache` is the caller's OPTIONAL result-cache contract (`{ttl_s}`, federation-result-cache
+/// scope), threaded verbatim into the child input. It is a parameter rather than something read out
+/// of a passed-through args blob **because the child input is built here by enumeration** (see the
+/// `json!` below): a field that is not named on this signature reaches neither the query nor the
+/// child's cache key. Every future result-shaping field has to touch this seam the same way — that
+/// is the review rule the cache's key discipline rests on, since the hash can only cover what
+/// actually arrives.
 pub async fn federation_query<L: Launcher>(
     node: &Node,
     launcher: &L,
@@ -33,6 +41,7 @@ pub async fn federation_query<L: Launcher>(
     ws: &str,
     source: &str,
     sql: &str,
+    cache: Option<&Value>,
     ts: u64,
 ) -> Result<Value, FederationError> {
     authorize(caller, ws, "federation.query")?;
@@ -53,13 +62,20 @@ pub async fn federation_query<L: Launcher>(
     // handed child-ward in the call input — never returned, never logged.
     let dsn = mediate_dsn(node, ws, &ds.secret_ref).await?;
 
-    let input = json!({
+    let mut input = json!({
         "kind": ds.kind,
         "dsn": dsn,
         "source": source,
         "sql": sql,
-    })
-    .to_string();
+    });
+    // Additive and optional: with no caller contract the child input is byte-for-byte what it was
+    // before this scope, so the uncached path stays the default. Note the host deliberately does NOT
+    // forward the volatile `ts` it receives — which is what keeps the child's cache key stable
+    // across refresh ticks rather than missing on every one.
+    if let Some(cache) = cache {
+        input["cache"] = cache.clone();
+    }
+    let input = input.to_string();
 
     let out = crate::native::call_sidecar(
         node,

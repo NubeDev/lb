@@ -263,6 +263,24 @@ broken code, and each must be broken-and-watched-red per the repo rule.
 - **Kill-switch delivery:** env inheritance works — `os.rs:32-38` `.envs(env)` with no
   `env_clear()`; the child inherits the node process's environment. No `init`-handshake threading.
 
+## Status: SHIPPED (2026-07-20)
+
+Built as specified — see `docs/sessions/datasources/federation-result-cache-session.md` and
+`doc-site/content/public/datasources/datasources.mdx`. The slot design, the four host touches, the
+bounds, the eviction levers, and the event fields all shipped as written; no part of the core
+mechanism had to be approximated.
+
+Three decisions the scope left to the session, recorded in the session doc: eviction lives in
+`write.rs`/`migrate.rs` rather than the dispatch arms (so *any* write path invalidates); the
+in-flight handle is a `tokio::sync::broadcast` sender (no new dependency, and a dropped joiner
+cannot block the refresher); and miss/bypass emit their own event line rather than back-patching the
+inner query's. The three non-tool callers of `federation_query()` pass no cache contract —
+`federation.mirror` deliberately never caches, since a mirror exists to persist the source's
+*current* rows.
+
+**Still unverified:** the live latency win against a real remote source. Same posture the pool-cache
+session ended in.
+
 ## Open questions
 
 None — all decided. The two that remained are now scoped decisions:

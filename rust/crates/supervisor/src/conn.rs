@@ -171,9 +171,15 @@ impl Conn {
 
     /// Seal the pending map and drop every waiter's sender — each one's `rx.await` resolves `Err`,
     /// i.e. a transport error. This is invariant 2: no orphaned waiter, ever.
+    ///
+    /// The two statements are deliberate and must stay two. The `lock()` temporary is released at the
+    /// end of the FIRST statement, so the senders (and the waker each one fires) drop on the second
+    /// with **no lock held**. Collapsing this into `drop(self.pending.lock().unwrap().take())` holds
+    /// the `std::sync::Mutex` across every wake — a self-deadlock the moment anything a waiter runs
+    /// on wake touches `pending` again.
     fn seal(&self) {
         let drained = self.pending.lock().unwrap().take();
-        drop(drained); // dropping the senders wakes every waiter with Err
+        drop(drained); // dropping the senders wakes every waiter with Err — unlocked, see above
     }
 }
 

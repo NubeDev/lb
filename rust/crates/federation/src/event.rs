@@ -52,17 +52,31 @@ pub fn sql_digest(sql: &str) -> String {
     format!("{hex}:{}", sql.len())
 }
 
+/// How a query was resolved against the RESULT cache (federation-result-cache scope) — carried
+/// alongside the pool `cache` field, which answers a different question (was a *connection* warm).
+pub struct ResultCacheEvent {
+    pub state: crate::results::ResultCache,
+    /// Age of the served entry, on a hit only. This is what lets a UI badge "data as of Xs ago" —
+    /// the honest counterweight to the scope's defining risk (stale data that looks live).
+    pub age_ms: Option<u128>,
+}
+
 /// Emit one query event as a JSON line on stderr.
 ///
 /// `source` is the host-side datasource NAME (an opaque label, not a DSN) — the child receives it
 /// for exactly this purpose. Callers that have no name pass `None`.
+///
+/// `cache` (the pool's state) is `None` — and the field is **OMITTED** — on a result-cache hit: no
+/// connect was consulted, so reporting `cache:"hit"` there would imply a pool lookup that never
+/// happened. An event must say what the call did, not what is true of the child afterwards.
 pub fn query_event(
     source: Option<&str>,
     kind: &str,
-    cache: Cache,
+    cache: Option<Cache>,
     sql: &str,
     elapsed_ms: u128,
     outcome: &Outcome,
+    result_cache: Option<&ResultCacheEvent>,
 ) {
     let (result, rows, error) = match outcome {
         Outcome::Ok(n) => ("ok", Some(*n), None),
@@ -72,11 +86,19 @@ pub fn query_event(
     let mut event = serde_json::json!({
         "evt": "federation.query",
         "kind": kind,
-        "cache": cache.as_str(),
         "sql_digest": sql_digest(sql),
         "elapsed_ms": elapsed_ms as u64,
         "outcome": result,
     });
+    if let Some(c) = cache {
+        event["cache"] = serde_json::json!(c.as_str());
+    }
+    if let Some(rc) = result_cache {
+        event["result_cache"] = serde_json::json!(rc.state.as_str());
+        if let Some(age) = rc.age_ms {
+            event["age_ms"] = serde_json::json!(age as u64);
+        }
+    }
     if let Some(s) = source {
         event["source"] = serde_json::json!(s);
     }

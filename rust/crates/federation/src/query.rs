@@ -26,8 +26,9 @@ use datafusion::prelude::SessionContext;
 use datafusion::sql::TableReference;
 use serde_json::Value;
 
-use crate::event::{query_event, Cache, Outcome};
+use crate::event::{query_event, Cache, Outcome, ResultCacheEvent};
 use crate::pool::{cached_connect, evict, is_warm};
+use crate::results::{self, Envelope, ResultCache};
 use crate::source::{connect, ColumnMeta, Source, SourceError, TableMeta};
 use crate::validate::{validate_select, ROW_CAP};
 
@@ -60,8 +61,89 @@ pub struct QueryResult {
 /// per child lifetime instead of once per query. The whole thing is bounded by
 /// [`DEFAULT_QUERY_TIMEOUT`]; on elapse the pool is evicted (it is suspect) and a typed error is
 /// returned, so one hung remote cannot occupy the child.
+///
+/// **Used by tests, not by the binary** — hence the `allow`. The child's dispatch calls
+/// [`run_query_cached`] (which wraps [`run_query_with`]), so nothing in `main.rs` reaches this
+/// wrapper and the `bin` target reports it dead. It is kept because the pool-cache suite drives the
+/// uncached path through it at 11 call sites: that suite is specifically about *connection* reuse,
+/// which the result cache would mask by short-circuiting the query entirely. Deleting it would mean
+/// threading an explicit `DEFAULT_QUERY_TIMEOUT` through every one of those calls to say nothing new.
+///
+/// `#[cfg(test)]` is NOT usable here: the integration tests `#[path]`-include this file as a module,
+/// so they compile it with `cfg(test)` **false** and would lose the function they need.
+#[allow(dead_code)]
 pub async fn run_query(kind: &str, dsn: &str, sql: &str) -> Result<QueryResult, String> {
     run_query_with(kind, dsn, sql, None, DEFAULT_QUERY_TIMEOUT).await
+}
+
+/// [`run_query_with`] fronted by the TTL-bounded **result** cache (federation-result-cache scope).
+///
+/// `input` is the whole child-received call input — it is what the cache keys on (minus `cache` and
+/// `dsn`), so every field the child actually receives participates in identity automatically. The
+/// freshness window comes from `input.cache.ttl_s`; absent, zero, or kill-switched → this is exactly
+/// [`run_query_with`] with a `bypass` event and nothing stored.
+///
+/// On a HIT no query runs, so no pool `cache` state is sampled and that field is omitted from the
+/// event (see `event::query_event`).
+pub async fn run_query_cached(
+    kind: &str,
+    dsn: &str,
+    sql: &str,
+    source_name: Option<&str>,
+    input: &Value,
+) -> Result<QueryResult, String> {
+    let ttl = results::requested_ttl(input);
+    let started = std::time::Instant::now();
+
+    let (outcome, state, age_ms) =
+        results::cached_query(kind, dsn, input, ttl, || async {
+            // The inner future is the UNCHANGED query path — pool cache, validation, timeout,
+            // eviction and its own event all still happen exactly as before. The result cache only
+            // decides whether this future runs at all.
+            run_query_with(kind, dsn, sql, source_name, DEFAULT_QUERY_TIMEOUT)
+                .await
+                .map(|r| Envelope::new(r.columns, r.rows))
+        })
+        .await;
+
+    // A miss/bypass already emitted its own `federation.query` event from inside `run_query_with`
+    // (with the pool state and the real elapsed time). Only a HIT is unreported so far — it is the
+    // one path where no query ran, and it is precisely the path an operator needs to see.
+    if state == ResultCache::Hit {
+        let rows = outcome.as_ref().map(|e| e.rows.len()).unwrap_or(0);
+        query_event(
+            source_name,
+            kind,
+            None,
+            sql,
+            started.elapsed().as_millis(),
+            &Outcome::Ok(rows),
+            Some(&ResultCacheEvent {
+                state,
+                age_ms,
+            }),
+        );
+    } else {
+        // Re-state the result-cache verdict for miss/bypass on its own line, so an operator can
+        // count hit/miss/bypass from one field without correlating two event shapes.
+        query_event(
+            source_name,
+            kind,
+            None,
+            sql,
+            started.elapsed().as_millis(),
+            &match &outcome {
+                Ok(e) => Outcome::Ok(e.rows.len()),
+                Err(e) => Outcome::Error(e.clone()),
+            },
+            Some(&ResultCacheEvent { state, age_ms }),
+        );
+    }
+
+    outcome.map(|env| QueryResult {
+        columns: env.columns.clone(),
+        rows: env.rows.clone(),
+    })
 }
 
 /// [`run_query`] with an explicit bound and the host-side datasource `source` name for events.
@@ -94,17 +176,18 @@ pub async fn run_query_with(
     match bounded {
         Ok(Ok(result)) => {
             let rows = result.rows.len();
-            query_event(source_name, kind, cache, sql, elapsed, &Outcome::Ok(rows));
+            query_event(source_name, kind, Some(cache), sql, elapsed, &Outcome::Ok(rows), None);
             Ok(result)
         }
         Ok(Err(e)) => {
             query_event(
                 source_name,
                 kind,
-                cache,
+                Some(cache),
                 sql,
                 elapsed,
                 &Outcome::Error(e.clone()),
+                None,
             );
             Err(e)
         }
@@ -113,7 +196,7 @@ pub async fn run_query_with(
             // would serve failures for the child's lifetime, where per-call connect self-healed —
             // i.e. caching would be strictly WORSE than the behaviour it replaced.
             evict(kind, dsn);
-            query_event(source_name, kind, cache, sql, elapsed, &Outcome::Timeout);
+            query_event(source_name, kind, Some(cache), sql, elapsed, &Outcome::Timeout, None);
             Err(format!(
                 "query exceeded the {}s bound and was cancelled; the connection was dropped",
                 timeout.as_secs()
@@ -136,6 +219,10 @@ pub async fn probe(kind: &str, dsn: &str) -> Result<(), String> {
     .await;
     if result.is_err() {
         evict(kind, dsn);
+        // A source that failed its probe must not keep serving cached ROWS either — the probe is the
+        // manual "this source is broken, drop what you're holding" lever, and half-dropping (pool but
+        // not results) would leave the child answering from memory for a source it just declared down.
+        results::evict_source(kind, dsn);
     }
     result
 }

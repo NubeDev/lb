@@ -100,7 +100,9 @@ pub async fn query_run(
             // The federation path has no bind-param path in v1 (validate_params rejected params above),
             // so vars are necessarily empty here — no interpolation, ever.
             let launcher = OsLauncher;
-            federation_query(node, &launcher, caller, ws, &name, &sql, ts)
+            // No caller-declared freshness window on this seam: `query.run` is the generic
+            // SQL-runner surface, not a dashboard page with a refresh contract. Uncached, as today.
+            federation_query(node, &launcher, caller, ws, &name, &sql, None, ts)
                 .await
                 .map_err(|e| match e {
                     crate::federation::FederationError::NotFound => {

@@ -16,9 +16,19 @@
 //! stays restart-transparent. It exists because building the pool per query cost ~2,500 ms of a
 //! ~2,530 ms remote read — 98% of wall time, paid again for every tile on a dashboard.
 //!
+//! `results.rs` is the SAME resolution one layer up (federation-result-cache scope): a TTL-bounded
+//! map of query RESULTS, so a repeat of an identical query inside a caller-declared freshness window
+//! is served from memory instead of re-running the ~0.9 s remote read. Read §3.4 the same way — the
+//! entries are reconstructible from the next call's own input, a hit returns exactly the rows the
+//! query would have returned, and a respawn costs one slow query. It differs from the pool only in
+//! being OPT-IN (`cache: {ttl_s}` on the call, absent by default) and killable per node
+//! (`LB_FEDERATION_RESULT_CACHE=off`), because unlike a warm socket a cached ROW can be stale, so the
+//! surface that knows its own refresh contract decides — never this child, and never the core.
+//!
 //! Tools served (the rest of the federation surface — `datasource.add`/`remove`/`list`/`mirror` —
 //! is HOST-side, this child only executes the engine-bound verbs):
-//!   - `federation.query {kind, dsn, source, sql}` → `{columns, rows}` (SELECT-only, row-capped).
+//!   - `federation.query {kind, dsn, source, sql, cache?}` → `{columns, rows}` (SELECT-only,
+//!     row-capped; `cache: {ttl_s}` opts into the result cache for that call).
 //!   - `datasource.test  {kind, dsn}`              → `{ok: true}` (a real connectivity probe).
 //!
 //! Attribution: the embedded-DataFusion + SQL-validator pattern is adapted from `rubix-cube`
@@ -29,6 +39,7 @@ mod info_schema;
 mod migrate;
 mod pool;
 mod query;
+mod results;
 mod sample;
 mod source;
 mod validate;
@@ -63,8 +74,9 @@ async fn main() {
     // which capped the whole native transport at concurrency 1 regardless of the host.
     //
     // `handle_call` is therefore invoked CONCURRENTLY now. It is safe: it owns no mutable process
-    // state — every path derives everything from its own `Request`, and the only shared state is
-    // `pool.rs`'s cache, which is internally synchronized and built for concurrent racers on one key.
+    // state — every path derives everything from its own `Request`, and the only shared state is the
+    // `pool.rs` / `results.rs` caches, which are internally synchronized and built for concurrent
+    // racers on one key (results.rs additionally COLLAPSES them: N identical cold tiles → one query).
     lb_supervisor::serve(stdin(), stdout(), ext_id, |req: Request| async move {
         handle_call(&req).await
     })
@@ -107,7 +119,10 @@ async fn federation_query(id: u64, input: &Value) -> Reply {
     // `source` is the host-side datasource NAME — an opaque label used only to make the emitted
     // query event readable. Optional: older callers omit it, and it is never a DSN.
     let source_name = str_of(input, "source");
-    match query::run_query_with(kind, dsn, sql, source_name, query::DEFAULT_QUERY_TIMEOUT).await {
+    // The WHOLE input is handed to the cached path: it is what the result-cache key is computed from
+    // (minus `cache` and `dsn`), so any field the child receives participates in identity. With no
+    // `cache: {ttl_s}` this is exactly the uncached call it always was.
+    match query::run_query_cached(kind, dsn, sql, source_name, input).await {
         Ok(r) => {
             let out = json!({ "columns": r.columns, "rows": r.rows });
             Reply::ok(id, out.to_string())

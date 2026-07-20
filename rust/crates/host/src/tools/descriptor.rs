@@ -155,15 +155,41 @@ fn type_matches(want: &str, value: &Value) -> bool {
     }
 }
 
-/// Build the canonical JSON Schema for `federation.query`'s input — `{source, sql}` — shared by
-/// the host descriptor and mirrored by the UI type. `x-lb-entity: datasource` drives the `@`-picker;
-/// `x-lb-widget: sql` selects the mini SQL editor.
+/// Build the canonical JSON Schema for `federation.query`'s input — `{source, sql, cache?}` —
+/// shared by the host descriptor and mirrored by the UI type. `x-lb-entity: datasource` drives the
+/// `@`-picker; `x-lb-widget: sql` selects the mini SQL editor.
+///
+/// `cache` is the optional, opt-in result-cache contract (federation-result-cache scope): a caller
+/// that declares a freshness window may be served a repeat of an identical query from the
+/// federation child's memory. Omitting it is today's behaviour bit for bit — the cache is never
+/// assumed, because only the surface that knows its own refresh contract may accept staleness.
+///
+/// `ttl_s` is REQUIRED inside `cache`: an empty `cache: {}` is a schema error rather than a default,
+/// because the child must never invent a freshness contract on a caller's behalf. (The schema sets
+/// no `additionalProperties: false`, so before this field was parsed host-side a caller-sent `cache`
+/// validated fine and was then silently dropped by the enumerated child-input build — which is worse
+/// than a rejection. That is why the parse, the signature, the `json!`, and this schema ship
+/// together or not at all.)
 pub(crate) fn federation_query_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
             "source": { "type": "string", "x-lb": { "entity": "datasource" } },
-            "sql": { "type": "string", "x-lb": { "widget": "sql" } }
+            "sql": { "type": "string", "x-lb": { "widget": "sql" } },
+            "cache": {
+                "type": "object",
+                "description": "Opt-in result caching. Serves an identical repeat of this query \
+                                from the federation child's memory when it is younger than ttl_s. \
+                                Worst-case staleness is ttl_s + the caller's refresh interval, so \
+                                size ttl_s slightly below that interval if the tighter bound matters.",
+                "properties": {
+                    "ttl_s": {
+                        "type": "number",
+                        "description": "Freshness window in seconds. 0 disables caching for this call."
+                    }
+                },
+                "required": ["ttl_s"]
+            }
         },
         "required": ["source", "sql"]
     })
