@@ -338,5 +338,9 @@ async fn add_self_approves_a_new_endpoint() {
     .unwrap();
     let again = read_install(&node.store, ws, FED).await.unwrap().unwrap();
     let count = again.granted.iter().filter(|g| *g == new_grant).count();
-    assert_eq!(count, 1, "endpoint grant must not be duplicated: {:?}", again.granted);
+    assert_eq!(
+        count, 1,
+        "endpoint grant must not be duplicated: {:?}",
+        again.granted
+    );
 }

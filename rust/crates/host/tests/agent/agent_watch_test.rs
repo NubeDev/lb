@@ -10,7 +10,7 @@ use lb_host::{invoke, load_extension, serve_ext, watch_run, AllowedTool, Invocat
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider, ToolCall};
 use lb_run_events::{RunEvent, RunOutcome};
 
-const MANIFEST: &str = include_str!("../../../extensions/hello/extension.toml");
+const MANIFEST: &str = include_str!("../../../../extensions/hello/extension.toml");
 
 fn hello_wasm() -> Vec<u8> {
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

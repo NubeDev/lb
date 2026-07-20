@@ -9,7 +9,8 @@ use datafusion::prelude::SessionContext;
 use datafusion::sql::TableReference;
 use serde_json::{json, Value};
 
-use crate::source::{connect, ForeignKeyMeta};
+use crate::pool::cached_connect;
+use crate::source::ForeignKeyMeta;
 
 /// At most this many tables per snapshot (deterministic order; `truncated: true` when cut).
 pub const MAX_TABLES: usize = 25;
@@ -35,7 +36,7 @@ pub async fn run_sample(
     limit: usize,
 ) -> Result<Value, String> {
     let limit = limit.clamp(1, MAX_ROWS);
-    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
+    let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
 
     let mut names: Vec<String> = source
         .list_tables()

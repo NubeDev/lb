@@ -142,15 +142,21 @@ impl std::error::Error for SourceError {}
 
 /// Construct a `Source` for `kind` from its `dsn`. The DSN is consumed here and lives only inside the
 /// pool — it is not retained anywhere a log/result could observe it.
-pub async fn connect(kind: &str, dsn: &str) -> Result<Box<dyn Source>, SourceError> {
+///
+/// Returns an `Arc` rather than a `Box` so one connected source can be **shared across calls** by
+/// the warm-pool cache (`crate::pool`) — building the pool per query cost ~2,500 ms against a remote
+/// Timescale (federation-pool-cache scope). Callers still reach the trait via `.as_ref()`,
+/// unchanged. Prefer `pool::cached_connect` on any hot path; this is the uncached construction it
+/// wraps, and the right call for a `probe` that must prove a FRESH connection works.
+pub async fn connect(kind: &str, dsn: &str) -> Result<Arc<dyn Source>, SourceError> {
     match kind {
         #[cfg(feature = "postgres")]
-        "postgres" | "timescale" => Ok(Box::new(PostgresSource::connect(dsn).await?)),
+        "postgres" | "timescale" => Ok(Arc::new(PostgresSource::connect(dsn).await?)),
         #[cfg(not(feature = "postgres"))]
         "postgres" | "timescale" => Err(SourceError(
             "postgres source not built in (rebuild federation with --features postgres)".into(),
         )),
-        "sqlite" => Ok(Box::new(SqliteSource::connect(dsn).await?)),
+        "sqlite" => Ok(Arc::new(SqliteSource::connect(dsn).await?)),
         other => Err(SourceError(format!("unknown source kind: {other}"))),
     }
 }

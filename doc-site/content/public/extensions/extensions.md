@@ -78,3 +78,39 @@ let out = host.call_tool("<verb>", json!({ /* args */ })).await?;   // e.g. "ing
 This is the out-of-process peer of the wasm guest's in-process `host.call-tool` bridge: two
 transports, one MCP contract, one gate.
 
+
+## Native extensions: your handlers run CONCURRENTLY (breaking change)
+
+The native (Tier-2) control line is **multiplexed**: many in-flight calls to one child overlap,
+correlated by the request `id` the protocol already carries.
+
+**This changed a stable contract.** Before, the transport was serial at both ends — the host held one
+lock across each whole round-trip, and the child awaited each handler before reading the next frame.
+Handlers were therefore *implicitly serialized*: only one ran at a time, so a handler could touch
+process-global state without synchronization and never notice. **That accidental mutual exclusion is
+gone.**
+
+```rust
+// The SDK owns the loop. Read a frame, spawn the handler, keep reading; every reply is
+// funnelled through exactly one writer task (two writers would corrupt Content-Length framing).
+lb_supervisor::serve(stdin(), stdout(), ext_id, |req| async move { handle_call(&req).await }).await;
+```
+
+What this means for an extension author:
+
+- **Your handler must be concurrency-safe.** If it mutates shared state, take your own lock. If it
+  genuinely must run serially, use `serve_with(.., max_in_flight = 1)` — the escape hatch exists for
+  exactly this.
+- **In-flight work is bounded** at `DEFAULT_MAX_IN_FLIGHT` (8). Past the bound calls queue and still
+  complete; they do not fan out unboundedly and open N simultaneous connections.
+- **`init` / `health` / `shutdown` are answered inline**, outside the bound — a health poll cannot
+  queue behind saturated tool calls and get your child wrongly declared dead under load.
+- **The host bounds every call at 45 s.** Your own timeout should be *tighter* if you want a typed
+  error to reach the caller; the host bound is a backstop for a child that has stopped answering.
+- **A restart fails in-flight calls cleanly.** Each channel generation has its own reply map, so a
+  caller waiting on the dead generation gets a transport error — never a reply from the new child
+  that belonged to somebody else.
+
+Why it was worth breaking: a dashboard issuing 13 queries to one native child did not run 13
+queries — it ran one, thirteen times, and every caller was billed for the whole queue. Measured
+against a live remote source, 13 concurrent queries went **12.68 s → 1.85 s**, flat to N=8.

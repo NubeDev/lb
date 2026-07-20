@@ -15,7 +15,7 @@ use lb_jobs::{JobStatus, SuspensionDecision, TranscriptEvent};
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider, ToolCall};
 use serde_json::json;
 
-const MANIFEST: &str = include_str!("../../../extensions/hello/extension.toml");
+const MANIFEST: &str = include_str!("../../../../extensions/hello/extension.toml");
 
 fn hello_wasm() -> Vec<u8> {
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
