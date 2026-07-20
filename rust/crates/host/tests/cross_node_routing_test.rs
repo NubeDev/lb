@@ -71,6 +71,13 @@ async fn node_on_bus(bus: Bus, role: NodeRole) -> Node {
 /// doc and debugging/bus/routed-call-races-mesh-discovery.md). The hub listens on an OS-assigned
 /// loopback port; the edge connects to that exact locator. Returns both nodes and the live tool
 /// server (kept alive for the test's duration).
+/// Every workspace any test in this file routes in. The hub declares its node-qualified queryable
+/// PER WORKSPACE (routed-node-dispatch #81, open question 6 — the per-workspace declaration IS the
+/// workspace wall on this path), so a ws it does not serve is not merely refused but unreachable.
+/// Listing them here keeps that explicit: `xnode-iso-a` is deliberately ABSENT, which is what
+/// `a_principal_in_ws_b_cannot_route_into_ws_a` relies on.
+const SERVED_WORKSPACES: &[&str] = &["xnode-routes", "xnode-deny"];
+
 async fn edge_and_hub() -> (Node, Node, ToolServer) {
     // Pick a concrete free loopback port up front so the hub LISTENS on it and the edge CONNECTS to
     // exactly it — a deterministic point-to-point link. (We bind a throwaway socket to `:0`, read
@@ -90,17 +97,25 @@ async fn edge_and_hub() -> (Node, Node, ToolServer) {
     load_extension(&hub, MANIFEST, &hello_wasm(), &[])
         .await
         .expect("hub loads hello");
-    let server = serve_ext(&hub.bus, hub.registry.clone(), "hello")
-        .await
-        .expect("hub serves hello");
+    let server = serve_ext(
+        &hub.bus,
+        hub.registry.clone(),
+        "hello",
+        &hub.node_id(),
+        SERVED_WORKSPACES,
+    )
+    .await
+    .expect("hub serves hello");
 
     // Edge connects straight to the hub's endpoint — discovery is now deterministic, not multicast.
     let edge_bus = Bus::peer_with(&[], &[endpoint])
         .await
         .expect("edge bus connects to hub");
     let edge = node_on_bus(edge_bus, NodeRole::Edge).await;
-    // The edge knows hello lives elsewhere — a routing entry, no local instance.
-    register_remote_extension(&edge, "hello", &["echo".to_string()]);
+    // The edge knows hello lives elsewhere — a routing entry naming the hub, no local instance.
+    // The node id is what the routed call addresses (#81); without it the edge could record only
+    // "somewhere else", which is precisely what made a second host unrepresentable.
+    register_remote_extension(&edge, "hello", hub.node_id(), &["echo".to_string()]);
 
     (edge, hub, server)
 }

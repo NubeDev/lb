@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use dashmap::DashMap;
 use lb_auth::SigningKey;
-use lb_bus::{Bus, BusError};
+use lb_bus::{Bus, BusError, NodeId};
 use lb_mcp::Registry;
 use lb_runtime::{Engine, RuntimeError};
 use lb_store::{Store, StoreError};
@@ -15,6 +15,18 @@ use crate::agent::{ErasedModel, ModelBuilder, RuntimeRegistry, UnconfiguredModel
 use crate::apikey::ApiKeyCache;
 use crate::native::SidecarMap;
 use crate::role::Role;
+
+/// A fresh, process-unique node id for a node whose deployment has not installed a durable one.
+///
+/// Unique but deliberately **not stable across a restart** — see [`Node::node_id`]'s field doc. It
+/// exists so a test or solo node always has a valid identity to serve and be addressed under,
+/// rather than making every caller invent one; a real deployment overrides it via
+/// [`Node::install_node_id`]. Hex, so it is trivially key-expression-safe.
+fn fresh_node_id() -> NodeId {
+    use rand::Rng;
+    let n: u64 = rand::thread_rng().gen();
+    NodeId::new(format!("node:{n:016x}")).expect("hex node id is key-safe")
+}
 
 #[derive(Debug, Error)]
 pub enum NodeError {
@@ -92,6 +104,17 @@ pub struct Node {
     /// component happened to have set that var before the spawn ran — which broke the moment a second
     /// spawn path (boot bring-up) ran earlier than the one that set it.
     gateway_url: Mutex<Option<String>>,
+    /// This node's stable identity on the bus (routed-node-dispatch, #81) — what a routed call
+    /// addresses when it names a target, and what this node declares its serving queryable under.
+    ///
+    /// **Stability is a config concern, and this default is NOT stable.** `boot*` mints a fresh
+    /// random id per process, which is correct for a test or a solo node (unique, never collides)
+    /// but wrong for a real deployment: a restart would look like a brand-new node and the fleet
+    /// roster would grow ghosts. A deployment must install a durable id from config —
+    /// [`install_node_id`](Node::install_node_id) — exactly as `gateway_url` and the signing `key`
+    /// are installed by the layer that knows them. Fleet-presence owns making that config real
+    /// (its "NodeId stability" risk); this field is the seam it installs into.
+    node_id: Mutex<NodeId>,
     pub role: Role,
 }
 
@@ -121,6 +144,7 @@ impl Node {
             model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
             gateway_url: Mutex::new(None),
+            node_id: Mutex::new(fresh_node_id()),
             role: Role::Solo,
         })
     }
@@ -146,6 +170,7 @@ impl Node {
             model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
             gateway_url: Mutex::new(None),
+            node_id: Mutex::new(fresh_node_id()),
             role,
         })
     }
@@ -170,8 +195,27 @@ impl Node {
             model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
             gateway_url: Mutex::new(None),
+            node_id: Mutex::new(fresh_node_id()),
             role,
         })
+    }
+
+    /// This node's [`NodeId`] — the identity a routed call addresses it by (#81). Cloned out under
+    /// a brief lock; `NodeId` is a small owned string, so callers never hold the lock.
+    pub fn node_id(&self) -> NodeId {
+        self.node_id.lock().expect("node_id lock").clone()
+    }
+
+    /// Install this node's durable identity, read from config by the layer that knows it (the
+    /// `node` binary / a deployment layer) — the same install-after-boot pattern as
+    /// [`install_key`](Node::install_key) and [`install_gateway_url`](Node::install_gateway_url).
+    ///
+    /// Call this BEFORE serving any extension: `serve_ext` declares queryables under the id, so
+    /// changing it afterwards would leave this node answering on a key nobody addresses. The
+    /// boot-time default is a fresh random id (unique but NOT stable across a restart) — see the
+    /// `node_id` field doc for why a real deployment must not rely on it.
+    pub fn install_node_id(&self, id: NodeId) {
+        *self.node_id.lock().expect("node_id lock") = id;
     }
 
     /// The node's agent runtime registry (external-agent #1). Clones the inner `Arc` out under a brief

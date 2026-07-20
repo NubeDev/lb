@@ -110,7 +110,7 @@ async fn a_reloaded_run_continues_the_conversation_instead_of_re_asking() {
         .await
         .unwrap();
     std::mem::forget(
-        serve_ext(&node.bus, node.registry.clone(), "hello")
+        serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
             .await
             .unwrap(),
     );

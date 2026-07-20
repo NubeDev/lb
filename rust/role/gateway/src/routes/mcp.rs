@@ -93,12 +93,27 @@ pub async fn mcp_call(
 /// made a wire-shape bug indistinguishable from a capability denial (a sidecar's `SidecarClient`
 /// maps 403 → `Denied`, so a `{key}`-vs-`{id}` arg typo printed as "capability/workspace gate").
 /// An `Extension` failure (the tool ran and errored/trapped) is `502` — upstream fault, not caller.
+///
+/// The routed-dispatch failures (#81) follow the same "who can fix this?" logic:
+/// - `Ambiguous` → **409 Conflict**: the request is well-formed and authorized, but underspecified
+///   given the current fleet — the CALLER fixes it by naming a target node, and the error body
+///   lists the candidates. Not `403` (nothing was denied, and this caller is already authorized —
+///   the existence-oracle concern does not apply once past the gate) and not `502` (nothing
+///   upstream failed; no call was made).
+/// - `NodeUnreachable` → **503 Service Unavailable**: the addressed node is not here. Transient
+///   and retryable in principle, which `503` says and `502` does not.
+/// - `NodeTooOld` → **502 Bad Gateway**: the node answered for itself but cannot speak targeted
+///   dispatch. An upstream capability fault, not a transient one — retrying will not help; an
+///   upgrade will. Kept distinct from `503` precisely so a rolling upgrade is diagnosable.
 fn tool_error_status(e: lb_mcp::ToolError) -> (StatusCode, String) {
     use lb_mcp::ToolError;
     let status = match &e {
         ToolError::Denied | ToolError::NotFound => StatusCode::FORBIDDEN,
         ToolError::BadInput(_) => StatusCode::BAD_REQUEST,
         ToolError::Extension(_) => StatusCode::BAD_GATEWAY,
+        ToolError::Ambiguous { .. } => StatusCode::CONFLICT,
+        ToolError::NodeUnreachable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+        ToolError::NodeTooOld { .. } => StatusCode::BAD_GATEWAY,
     };
     (status, e.to_string())
 }

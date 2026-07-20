@@ -13,6 +13,12 @@ pub enum BusError {
     Session(String),
     #[error("bus config error: {0}")]
     Config(String),
+    /// More than one node answered a request/reply key that only one node should declare
+    /// (routed-node-dispatch, #81). Surfaced instead of silently keeping the first reply — see
+    /// [`query`](crate::query). Two nodes answering a node-qualified MCP key means two nodes are
+    /// announcing the same node id, which is a provisioning fault, not a transient condition.
+    #[error("more than one node answered {key:?} — exactly one responder was expected")]
+    MultipleResponders { key: String },
 }
 
 /// An embedded Zenoh peer. Cloneable handle to the live session.

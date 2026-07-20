@@ -11,11 +11,11 @@
 //! when it answers (it never trusts an unauthorized call: the query only reaches its queryable
 //! for the workspace in the key, which is the authorized principal's own workspace).
 
-use lb_bus::{query, Bus};
+use lb_bus::{query, Bus, BusError, NodeId};
 use lb_runtime::{CallContext, RuntimeError};
 
 use crate::registry::Target;
-use crate::route::{call_key, CallReply, CallRequest};
+use crate::route::{node_call_key, CallReply, CallRequest};
 
 use super::error::ToolError;
 
@@ -60,14 +60,22 @@ pub async fn dispatch(
                 .await
                 .map_err(map_err)
         }
-        Target::Remote { .. } => route(bus, ws, qualified_tool, input_json).await,
+        Target::Remote { node, .. } => route(bus, ws, node, qualified_tool, input_json).await,
     }
 }
 
 /// Route a call to the node hosting `qualified_tool`'s extension over the bus queryable.
+///
+/// **Always dispatches on the NODE-QUALIFIED key** (`mcp/{ext}/{node}/call`), never the shared
+/// `mcp/{ext}/call` — resolve always knows the node, even for an untargeted call to a singly-hosted
+/// ext, so there is no case left that needs the fan-in key. This closes the residual coin flip for
+/// a caller whose registry knows only one host while a second is live: on the shared key such a
+/// caller would resolve "unambiguously" and still race two responders (scope, Risks — "the shared
+/// key cannot simply be deleted, but it can stop carrying calls").
 async fn route(
     bus: &Bus,
     ws: &str,
+    node: &NodeId,
     qualified_tool: &str,
     input_json: &str,
 ) -> Result<String, ToolError> {
@@ -81,10 +89,26 @@ async fn route(
     };
     let bytes = serde_json::to_vec(&req).map_err(|e| ToolError::BadInput(e.to_string()))?;
 
-    let reply = query(bus, ws, &call_key(ext), &bytes)
+    let reply = query(bus, ws, &node_call_key(ext, node), &bytes)
         .await
-        .map_err(|e| ToolError::Extension(format!("route: {e}")))?
-        .ok_or_else(|| ToolError::Extension("no node answered the routed call".into()))?;
+        .map_err(|e| match e {
+            // Two nodes answered a key only one node should declare. `lb_bus::query` catches this
+            // at the call site (see its `MultipleResponders`); surfacing it as a distinct error
+            // rather than silently keeping the first reply is the runtime half of the "exactly one
+            // responder" invariant. It means two nodes are announcing the SAME node id — a
+            // provisioning fault that must be loud.
+            BusError::MultipleResponders { .. } => ToolError::Extension(format!(
+                "routing fault: more than one node answered for {node} — duplicate node id?"
+            )),
+            other => ToolError::Extension(format!("route: {other}")),
+        })?
+        // Zero responders on a node-qualified key: that node is not here. This is the primary
+        // unreachability signal (scope, open question 8) — a `get` against a key with no matching
+        // queryable completes fast, so this is a prompt refusal, not a timeout. It is a REFUSAL:
+        // never a queue, never a fallback to another host of the same ext.
+        .ok_or_else(|| ToolError::NodeUnreachable {
+            node: node.to_string(),
+        })?;
 
     match serde_json::from_slice::<CallReply>(&reply)
         .map_err(|e| ToolError::Extension(format!("bad routed reply: {e}")))?

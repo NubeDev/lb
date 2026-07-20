@@ -74,6 +74,7 @@ async fn node_with_leaky_ext() -> Arc<Node> {
     let node = Arc::new(Node::boot().await.unwrap());
     node.registry.register_remote_descriptors(
         "leaky",
+        lb_bus::NodeId::new("node:leaky-host").unwrap(),
         vec![
             ToolDescriptor {
                 name: "send".into(),

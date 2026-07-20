@@ -19,13 +19,28 @@ mechanism.
 ## Goals
 
 - Give every running node a **stable `NodeId`** and attach its **persona + role + version** to
-  that identity, read from config at boot (ties to the `LB_ROLE` config slice).
+  that identity, read from config at boot (ties to the `LB_ROLE` config slice). The id must be
+  **Zenoh key-expression-safe** — no `/`, no `*` / `$` / `?` / `#` — because routed-node-dispatch
+  (issue #81) puts it in a bus key segment (`mcp/{ext}/{node}/call`); freeze the charset here,
+  once, before any id shape ships.
 - Each node **announces itself** onto the bus via a Zenoh liveliness token at
   `ws/{id}/nodes/{node_id}`, auto-retracted on clean shutdown *or* crash (no stale "online").
 - Expose an **admin-gated `nodes.list` MCP tool** + a gateway route so the admin UI renders a
   live roster (and a watch/stream for join/leave deltas).
 - Put the **persona terms in code** (`hub`, `appliance`, `workstation`, `mobile`) so the
   backend speaks the same vocabulary the docs and UI do.
+
+> **Update 2026-07-20 — `NodeId` has been minted, by #81, to this scope's constraints.**
+> [`../mcp/routed-node-dispatch-scope.md`](../mcp/routed-node-dispatch-scope.md) could not proceed
+> without a node identity (its Phase 0 confirmed nothing existed to stand in for one: the signing
+> key is per-boot and secret, `gateway_url` is `None` when headless, and zenoh's ZID is behind the
+> `unstable` feature the workspace declined). Rather than fork identity or block #81 behind a slice
+> not yet started, #81 **mints `NodeId` as this scope's primitive** — key-expression-safe charset
+> enforced at construction, stable across restart — and places it where this scope owns it.
+> **This scope therefore consumes `NodeId`; it does not re-mint it.** Anything here that would have
+> introduced a node identity should widen that type instead. The persona/role/version metadata,
+> the `ws/{id}/nodes/{node_id}` announce, and `nodes.list`/`nodes.watch` remain entirely this
+> scope's to build.
 
 ## Non-goals
 
@@ -151,7 +166,14 @@ Mandatory categories from `scope/testing/testing-scope.md` that apply:
 - **Admin grant name** — reuse an existing admin cap or mint `mcp:admin.nodes:list`? Settle with
   `auth-caps`.
 - **Extension health** (§6.4 pairs liveliness with "extension health") — same keyspace
-  (`ws/{id}/nodes/{id}/ext/*`) or its own scope? Likely its own; note the seam.
+  (`ws/{id}/nodes/{id}/ext/*`) or its own scope? Likely its own; note the seam. **Update
+  (2026-07-20): the `ext/*` half of this keyspace is no longer optional** —
+  routed-node-dispatch's ambiguity guard needs an **ext-hosting announce** (which nodes host
+  which ext, derived from live liveliness) and today nothing populates it: the mcp registry's
+  remote entries are hand-wired (`rust/crates/host/src/remote.rs`). This scope is the natural
+  owner (it owns node liveliness); routed dispatch consumes. Health/status details can still be
+  a later slice — the hosting *fact* (`ws/{id}/nodes/{node}/ext/{ext}` token exists ⇔ node hosts
+  ext) is what #81 needs.
 
 ## Related
 
@@ -163,3 +185,12 @@ Mandatory categories from `scope/testing/testing-scope.md` that apply:
   `crates/host/src/role.rs` (`Role`), `role/gateway/src/routes/stream.rs` (SSE).
 - Prerequisite: the `LB_ROLE` + Zenoh router/connect + `LB_STORE_PATH` config slice (gives a real
   `NodeId`/`Persona`/`Role` at boot) — see `node-roles/deployment-personas-session.md`.
+- **Downstream, and the reason the `NodeId` half is now urgent:**
+  [`../mcp/routed-node-dispatch-scope.md`](../mcp/routed-node-dispatch-scope.md) (issue #81) needs a
+  node identity to *address* a call to — it is blocked on the identity this scope mints, and ems's
+  gateways slice 2 is blocked on that. Settle node identity **once, here**; two scopes each
+  inventing one would be expensive to unpick. #81 also pushes two concrete requirements into this
+  scope: the **key-expression-safe id charset** (Goals) and the **ext-hosting announce** at
+  `ws/{id}/nodes/{node}/ext/{ext}` (Open questions) — its ambiguity guard has no candidate set
+  without it. Consider carrying a `targeted_dispatch: bool` (or min-version) in the presence
+  payload so mixed-version fleets can be refused honestly (`NodeTooOld`, not `NodeUnreachable`).

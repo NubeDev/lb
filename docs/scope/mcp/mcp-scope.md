@@ -93,8 +93,12 @@ These three are exactly the S1 exit gate (STAGES.md S1).
 - Tool input/output schema format: raw JSON; adopt JSON-Schema snapshots as the **contract test**
   once there's a second tool. Golden-file location TBD with the WIT snapshots.
 - Streaming tool results (for AI/gateway, §6.14) — out of scope until S5; a deliberate WIT bump.
-- Routing tie-breaks when **two nodes host the same extension** — still open (S3 hosts each ext on
-  one node; the registry maps id→single target). Decide with the registry/discovery flow.
+- Routing tie-breaks when **two nodes host the same extension** — **now scoped in
+  [`routed-node-dispatch-scope.md`](routed-node-dispatch-scope.md)** (issue #81). Note the severity
+  is worse than a missing tie-break: every host answers the same key and `lb_bus::query` keeps the
+  first reply, so today's behaviour is a *silent nondeterministic wrong node*, not an error. That
+  scope puts the target node on the bus key and makes the untargeted multi-host case an explicit
+  `Ambiguous` refusal. Prerequisite: fleet-presence's `NodeId` (unbuilt).
 - **Serve-side authorization** when a hub-hosted extension touches *hub-authoritative* data —
   would need the principal/grant on the wire (token-on-the-bus). Sufficient today because routed
   tools (hello) touch no hub-owned data and the workspace wall holds on the queryable key.

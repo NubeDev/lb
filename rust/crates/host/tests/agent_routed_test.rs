@@ -61,10 +61,25 @@ async fn hub_and_edge(agent_caps: Vec<String>) -> (Node, Arc<Node>) {
     load_extension(&hub, MANIFEST, &hello_wasm(), &[])
         .await
         .expect("hub loads hello");
+    // The hub serves `hello` for every workspace these tests use. (The agent calls `hello.echo`
+    // LOCALLY on the hub — this serving registration is incidental to that path — but declaring
+    // per workspace is what `serve_ext` now requires, since the node-qualified key is the
+    // workspace wall on the routed path: #81 open question 6.)
     std::mem::forget(
-        serve_ext(&hub.bus, hub.registry.clone(), "hello")
-            .await
-            .unwrap(),
+        serve_ext(
+            &hub.bus,
+            hub.registry.clone(),
+            "hello",
+            &hub.node_id(),
+            &[
+                "agent-routed",
+                "agent-routed-deny",
+                "agent-routed-iso-a",
+                "agent-routed-iso-b",
+            ],
+        )
+        .await
+        .unwrap(),
     );
 
     let model = Arc::new(AiGateway::new(MockProvider::new(vec![

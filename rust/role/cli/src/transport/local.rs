@@ -106,6 +106,13 @@ impl Transport for Local {
             Err(ToolError::NotFound) => Err(CliError::BadInput(format!("no such tool: {tool}"))),
             Err(ToolError::BadInput(msg)) => Err(CliError::BadInput(msg)),
             Err(ToolError::Extension(msg)) => Err(CliError::Other(format!("tool error: {msg}"))),
+            // Routed-dispatch failures (#81). Their `Display` is already written for a human — it
+            // names the candidate nodes (`Ambiguous`) or the node that could not be reached — so it
+            // is surfaced verbatim rather than flattened into a generic message. `Ambiguous` in
+            // particular tells a CLI user exactly what to do next: name a target node.
+            Err(e @ (ToolError::Ambiguous { .. }
+            | ToolError::NodeUnreachable { .. }
+            | ToolError::NodeTooOld { .. })) => Err(CliError::Other(e.to_string())),
         }
     }
 }

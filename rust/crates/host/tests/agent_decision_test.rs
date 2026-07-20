@@ -78,7 +78,7 @@ async fn node_with_ask_policy(ws: &str) -> Arc<Node> {
     load_extension(&node, MANIFEST, &hello_wasm(), &[])
         .await
         .unwrap();
-    let _server = serve_ext(&node.bus, node.registry.clone(), "hello")
+    let _server = serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
         .await
         .unwrap();
     // Keep the server alive for the test's lifetime by leaking it (the node owns the bus).
@@ -264,9 +264,16 @@ async fn a_ws_b_policy_does_not_affect_ws_a() {
     load_extension(&node, MANIFEST, &hello_wasm(), &[])
         .await
         .unwrap();
-    let server = serve_ext(&node.bus, node.registry.clone(), "hello")
-        .await
-        .unwrap();
+    // Both workspaces this test exercises — the ws-A run and the ws-B policy.
+    let server = serve_ext(
+        &node.bus,
+        node.registry.clone(),
+        "hello",
+        &node.node_id(),
+        &["agent-pol-a", "agent-pol-b"],
+    )
+    .await
+    .unwrap();
     std::mem::forget(server);
     save_policy(
         &node.store,

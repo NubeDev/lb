@@ -12,7 +12,7 @@ mod resolve;
 pub use error::ToolError;
 
 use lb_auth::Principal;
-use lb_bus::Bus;
+use lb_bus::{Bus, NodeId};
 use lb_runtime::CallContext;
 
 use crate::registry::Registry;
@@ -57,6 +57,40 @@ pub async fn call(
     .await
 }
 
+/// Call `<ext>.<tool>` **on a named node** (routed-node-dispatch, #81). Identical to [`call`] in
+/// every respect except that resolve is given an explicit target, so:
+///
+/// - a multiply-hosted extension resolves unambiguously instead of returning
+///   [`ToolError::Ambiguous`];
+/// - a node that is not reachable returns [`ToolError::NodeUnreachable`] — a refusal, never a
+///   fallback to another host of the same extension (the fallback is the misprovisioning bug).
+///
+/// **Addressing is not authorization.** A targeted call authorizes exactly as an untargeted one
+/// does, `mcp:<ext>.<tool>:call`, with no per-node grant and no new grammar — naming a node cannot
+/// widen what a caller may do, and a capless caller is `Denied` before any node is looked at.
+pub async fn call_on_node(
+    registry: &Registry,
+    bus: &Bus,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    input_json: &str,
+    node: &NodeId,
+) -> Result<String, ToolError> {
+    call_inner(
+        registry,
+        bus,
+        principal,
+        ws,
+        qualified_tool,
+        input_json,
+        None,
+        false,
+        Some(node),
+    )
+    .await
+}
+
 /// Like [`call`], but carries an optional host-callback [`CallContext`] for a **local wasm guest**:
 /// the host installs it into the instance so the guest's `host.call-tool` import can re-enter the
 /// host MCP surface under the guest's delegated authority (host-callback scope). `None` (and any
@@ -72,15 +106,53 @@ pub async fn call_with_ctx(
     ctx: Option<CallContext>,
     reentrant: bool,
 ) -> Result<String, ToolError> {
+    call_inner(
+        registry,
+        bus,
+        principal,
+        ws,
+        qualified_tool,
+        input_json,
+        ctx,
+        reentrant,
+        None,
+    )
+    .await
+}
+
+/// The one pipeline every entry point funnels through. `target_node` is the only axis that
+/// differs between [`call`]/[`call_with_ctx`] and [`call_on_node`] — keeping ONE body means the
+/// authorize→resolve→dispatch ordering (and its deny guarantee) cannot drift between the targeted
+/// and untargeted paths.
+#[allow(clippy::too_many_arguments)]
+async fn call_inner(
+    registry: &Registry,
+    bus: &Bus,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    input_json: &str,
+    ctx: Option<CallContext>,
+    reentrant: bool,
+    target_node: Option<&NodeId>,
+) -> Result<String, ToolError> {
     // 1. authorize FIRST — the DENY gate. Workspace isolation, then the
     //    mcp:<ext>.<tool>:call capability. Running it before resolve guarantees a denied
     //    caller cannot distinguish "not allowed" from "tool doesn't exist": both paths that
     //    a unauthorized caller can reach return `Denied` with no existence signal.
+    //
+    //    This ordering is LOAD-BEARING for #81 too, and more sharply than before: resolve can now
+    //    return `Ambiguous` (which NAMES the nodes hosting an ext) and `NodeUnreachable` (which
+    //    confirms whether a named node exists). Running authorize first means an unauthorized
+    //    caller reaches neither — it cannot enumerate the fleet, and its `Denied` is identical
+    //    whether or not the node it named is real. The targeted path adds NO new grant surface:
+    //    the capability checked is the same `mcp:<ext>.<tool>:call` regardless of `target_node`.
     authorize::authorize(principal, ws, qualified_tool)?;
 
-    // 2. resolve the "<ext>.<tool>" name to a target (local instance or remote node) — only
-    //    reached once authorized.
-    let target = resolve::resolve(registry, qualified_tool)?;
+    // 2. resolve the "<ext>.<tool>" name (plus any explicit target) to ONE target — only reached
+    //    once authorized. This is where an untargeted call to a multiply-hosted ext is refused
+    //    rather than coin-flipped.
+    let target = resolve::resolve(registry, qualified_tool, target_node)?;
 
     // 3. dispatch: call the local instance (with the callback context), or route over the bus to
     //    the hosting node. The seam is identical whether the ext is local or remote — that is the

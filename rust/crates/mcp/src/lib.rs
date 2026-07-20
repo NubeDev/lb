@@ -15,7 +15,7 @@ mod registry;
 mod route;
 mod serve;
 
-pub use call::{authorize_tool, call, call_with_ctx, ToolError};
+pub use call::{authorize_tool, call, call_on_node, call_with_ctx, ToolError};
 pub use registry::{Hosted, Registry, RegistrySummary, Target, ToolDescriptor};
-pub use route::{call_key, CallReply, CallRequest};
+pub use route::{call_key, node_call_key, CallReply, CallRequest};
 pub use serve::serve_call;

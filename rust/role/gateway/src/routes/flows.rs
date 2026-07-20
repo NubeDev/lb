@@ -418,5 +418,12 @@ fn status(e: ToolError) -> (StatusCode, String) {
         ToolError::BadInput(m) => (StatusCode::BAD_REQUEST, m),
         ToolError::NotFound => (StatusCode::NOT_FOUND, "no such flow".into()),
         ToolError::Extension(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
+        // Routed-dispatch failures (#81) are not expected on this route — these verbs are
+        // host-native and always local, so there is no node to address. Mapped to 500 rather than
+        // silently swallowed: if one ever appears here it is a real bug in verb routing, and it
+        // should be loud enough to notice.
+        e @ (ToolError::Ambiguous { .. }
+        | ToolError::NodeUnreachable { .. }
+        | ToolError::NodeTooOld { .. }) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
 }

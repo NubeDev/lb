@@ -352,7 +352,7 @@ pub use reminder::{
     Action as ReminderAction, ReactorPass as ReminderReactorPass, Reminder, ReminderError,
     ReminderPatch, ReminderStatus, FIRE_KIND as REMINDER_FIRE_KIND,
 };
-pub use remote::register_remote_extension;
+pub use remote::{forget_remote_extension, register_remote_extension};
 pub use render_templates::{
     call_template_tool, template_delete, template_get, template_list, template_save, Engine,
     RenderTemplate, RenderTemplateError, RenderTemplateSummary, INLINE_MAX_BYTES,

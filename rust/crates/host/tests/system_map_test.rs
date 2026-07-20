@@ -311,8 +311,13 @@ async fn tools_catalog_lists_host_native_and_extension_tools() {
 
     // Register a real extension's declared tools into the registry (a routed/remote ext — names only,
     // no fake instance). This is a legitimate real registry state the catalog must surface.
-    node.registry
-        .register_remote("weather", vec!["forecast".into(), "alerts".into()]);
+    // Hosted on another node — the routing entry names WHICH one (#81), since a remote target is
+    // now node-bound. A single host means the catalog and untargeted calls behave exactly as before.
+    node.registry.register_remote(
+        "weather",
+        lb_bus::NodeId::new("node:weather-host").unwrap(),
+        vec!["forecast".into(), "alerts".into()],
+    );
 
     let cat = system_tools(&node, &ada, ws).await.unwrap();
     assert_eq!(cat.ws, "acme");

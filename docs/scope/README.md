@@ -157,7 +157,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   **confirmed wire shapes** an out-of-tree native ext reaches all of the above by live in
   `mcp/ems-provisioning-verb-shapes-scope.md` (answers issue #48: the exact request/reply of
   `rules.save`/`series.latest`/`authz.check_scoped`/`scope_filter`/`grants.assign`, each pinned to a
-  green test — no `rules.create`, `series.latest`→`{sample}` not `{value,ts}`). Also see
+  green test — no `rules.create`, `series.latest`→`{sample}` not `{value,ts}`). The addressing
+  half is `mcp/routed-node-dispatch-scope.md` (**calling a tool on a NAMED node** — `call_key(ext)`
+  addresses an extension, not a node, so a fleet running the same ext is unaddressable and, worse,
+  *silently misaddressable*: every host answers the same key and `lb_bus::query` keeps whichever
+  replied first, so a supervisor can provision the wrong physical box and get a success reply.
+  Puts the target node on the bus key as ordinary call data, turns the multi-host untargeted case
+  into a structured `Ambiguous` error instead of a coin flip, and changes no capability grammar.
+  Prerequisite: fleet-presence's `NodeId`, which does not exist in code yet. Answers issue #81 and
+  the open tie-break question in `mcp-scope.md`; blocks ems's gateways slice 2). Also see
   `invites-scope.md` (**token onboarding for people
   who don't exist yet** — a durable single-use `invite` record carrying role/team intent + an
   opaque caller payload, delivered via an outbox email target, redeemed on the one pre-auth accept

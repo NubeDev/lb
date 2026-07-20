@@ -78,7 +78,7 @@ async fn disconnect_mid_permission_suspends_durably_and_resumes_out_of_band() {
         .await
         .unwrap();
     std::mem::forget(
-        serve_ext(&node.bus, node.registry.clone(), "hello")
+        serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
             .await
             .unwrap(),
     );
@@ -197,7 +197,7 @@ async fn session_cancel_stops_the_run_durably() {
         .await
         .unwrap();
     std::mem::forget(
-        serve_ext(&node.bus, node.registry.clone(), "hello")
+        serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
             .await
             .unwrap(),
     );

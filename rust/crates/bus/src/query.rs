@@ -92,8 +92,23 @@ pub async fn declare_queryable(bus: &Bus, ws: &str, rel: &str) -> Result<Respond
     })
 }
 
-/// Send `request` to the queryable on `(ws, rel)` and await the first reply's bytes. `None` if
-/// no node answered (e.g. the hosting node is offline) — the caller maps that to its own error.
+/// Send `request` to the queryable on `(ws, rel)` and await the reply bytes. `None` if no node
+/// answered (e.g. the hosting node is offline) — the caller maps that to its own error.
+///
+/// **Enforces "exactly one responder" rather than assuming it** (routed-node-dispatch, #81). This
+/// used to take the first successful reply and say so in a comment; that comment WAS the bug — with
+/// two nodes answering one key, the caller silently kept whichever won the race and had no way to
+/// know a second existed. Now a second responder is a [`BusError::MultipleResponders`].
+///
+/// The check is deliberately at the CALL SITE, not the serving side: a serving node knows only
+/// about itself, so detecting a duplicate there would require cross-node coordination. Here, the
+/// replies all arrive in one place and the duplicate is simply visible.
+///
+/// **Cost.** After the first reply we drain the remaining replies, which is why this does not slow
+/// the common case: Zenoh closes the reply channel once every matching queryable has answered (or
+/// the query completes), so with one responder `recv_async` returns `Err` immediately and there is
+/// no added wait — no extra hop, no timer, no latency on the single-host path this scope promised
+/// to leave unchanged.
 pub async fn query(
     bus: &Bus,
     ws: &str,
@@ -108,11 +123,18 @@ pub async fn query(
         .await
         .map_err(|e| BusError::Session(e.to_string()))?;
 
-    // Take the first successful reply; a routed tool call has exactly one responder.
+    let mut first: Option<Vec<u8>> = None;
     while let Ok(reply) = replies.recv_async().await {
         if let Ok(sample) = reply.result() {
-            return Ok(Some(sample.payload().to_bytes().to_vec()));
+            let bytes = sample.payload().to_bytes().to_vec();
+            if first.is_some() {
+                // A second node answered a key that only one node should declare. Refusing is the
+                // point: silently keeping one of two answers is how a caller ends up acting on the
+                // wrong node's result.
+                return Err(BusError::MultipleResponders { key });
+            }
+            first = Some(bytes);
         }
     }
-    Ok(None)
+    Ok(first)
 }

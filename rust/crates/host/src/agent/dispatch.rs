@@ -252,5 +252,11 @@ fn tool_to_agent(e: lb_mcp::ToolError) -> AgentError {
         lb_mcp::ToolError::NotFound => AgentError::NotFound,
         lb_mcp::ToolError::BadInput(m) => AgentError::BadInput(m),
         lb_mcp::ToolError::Extension(m) => AgentError::BadInput(m),
+        // A routing failure while resolving a persona (routed-node-dispatch #81) carries its
+        // message through as `BadInput`, matching how `Extension` is treated here: an explicit
+        // persona ask that could not be honoured must say why rather than silently degrading.
+        e @ (lb_mcp::ToolError::Ambiguous { .. }
+        | lb_mcp::ToolError::NodeUnreachable { .. }
+        | lb_mcp::ToolError::NodeTooOld { .. }) => AgentError::BadInput(e.to_string()),
     }
 }

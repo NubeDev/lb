@@ -27,11 +27,19 @@ pub async fn serve_call(registry: &Registry, ws: &str, req: &CallRequest) -> Cal
     let Some((ext_id, tool)) = req.tool.split_once('.') else {
         return CallReply::Err("malformed tool name".into());
     };
-    let hosted = match registry.get(ext_id) {
-        Some(Target::Local(h)) if h.tools.iter().any(|t| t.name == tool) => h,
-        // We are the serving node but don't host this tool locally — refuse rather than re-route
-        // (no routing loops). A remote/absent entry here is a misroute.
-        _ => return CallReply::Err("tool not hosted on the serving node".into()),
+    // Only a LOCAL target may answer a routed call. We are the serving node: if this tool is not
+    // hosted here, refuse rather than re-route (no routing loops) — a remote/absent entry means the
+    // call was misrouted, and forwarding it would let a call bounce between nodes. This holds for
+    // node-qualified keys too: a call that reaches the wrong node is refused, never relayed on.
+    let local = registry
+        .targets(ext_id)
+        .into_iter()
+        .find_map(|t| match t {
+            Target::Local(h) if h.tools.iter().any(|d| d.name == tool) => Some(h),
+            _ => None,
+        });
+    let Some(hosted) = local else {
+        return CallReply::Err("tool not hosted on the serving node".into());
     };
 
     let mut instance = hosted.instance.lock().await;

@@ -88,5 +88,12 @@ fn map_tool_err(e: ToolError) -> BridgeError {
         ToolError::Denied => BridgeError::Failed("denied".into()),
         ToolError::NotFound => BridgeError::Failed("no such tool".into()),
         ToolError::Extension(m) => BridgeError::Failed(m),
+        // Routing failures (routed-node-dispatch #81) reach the guest as opaque `Failed`, like
+        // deny/not-found. A guest re-entering the host does not address nodes — it has no target
+        // parameter and no node identity — so these are host-infrastructure facts it can neither
+        // act on nor legitimately learn. Their `Display` carries the detail for host-side logs.
+        e @ (ToolError::Ambiguous { .. }
+        | ToolError::NodeUnreachable { .. }
+        | ToolError::NodeTooOld { .. }) => BridgeError::Failed(e.to_string()),
     }
 }

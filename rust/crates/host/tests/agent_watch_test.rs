@@ -71,7 +71,7 @@ async fn a_late_watcher_gets_a_transcript_snapshot_then_finish() {
         .await
         .unwrap();
     std::mem::forget(
-        serve_ext(&node.bus, node.registry.clone(), "hello")
+        serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
             .await
             .unwrap(),
     );
@@ -132,7 +132,7 @@ async fn a_live_watcher_receives_deltas_as_the_run_progresses() {
         .await
         .unwrap();
     std::mem::forget(
-        serve_ext(&node.bus, node.registry.clone(), "hello")
+        serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws])
             .await
             .unwrap(),
     );
@@ -220,7 +220,7 @@ async fn ws_b_cannot_watch_a_ws_a_run() {
         .await
         .unwrap();
     std::mem::forget(
-        serve_ext(&node.bus, node.registry.clone(), "hello")
+        serve_ext(&node.bus, node.registry.clone(), "hello", &node.node_id(), &[ws_a])
             .await
             .unwrap(),
     );

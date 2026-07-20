@@ -12,6 +12,7 @@
 
 mod await_subscriber;
 mod key;
+mod node_id;
 mod peer;
 mod presence;
 mod publish;
@@ -21,6 +22,7 @@ mod subscribe;
 
 pub use await_subscriber::await_subscriber;
 pub use key::ws_key;
+pub use node_id::{NodeId, NodeIdError};
 pub use peer::{Bus, BusError};
 pub use presence::{declare_presence, watch_presence, Presence, PresenceWatch};
 pub use publish::publish;
