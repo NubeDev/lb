@@ -103,7 +103,16 @@ export function DashboardGrid<S = unknown>({
 
   useEffect(() => {
     const measure = () => {
-      const w = ref.current?.offsetWidth ?? 0;
+      const node = ref.current;
+      if (!node) return;
+      // react-grid-layout draws in the CONTENT box — the canvas padding must be
+      // excluded or the grid overflows by exactly that padding (a permanent
+      // horizontal scrollbar). clientWidth also excludes any vertical scrollbar.
+      const style = window.getComputedStyle(node);
+      const w =
+        node.clientWidth -
+        (parseFloat(style.paddingLeft) || 0) -
+        (parseFloat(style.paddingRight) || 0);
       if (w > 0) setWidth(w);
     };
 
