@@ -230,3 +230,134 @@ async fn denies_read_without_capability() {
     .unwrap_err();
     assert!(matches!(err, ToolError::Denied));
 }
+
+/// `series.latest_many` is the batched fleet snapshot (series-read-perf scope). One call, one
+/// authorize, one round-trip: it returns `{ latest: { name: sample|null } }` with an entry for
+/// EVERY requested name — a series with samples yields its newest one, an absent series yields
+/// `null` — and each present sample equals what single `series.latest` returns for that name
+/// (the parity contract the ems fetcher collapse relies on).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn latest_many_batches_the_snapshot_and_parities_single_latest() {
+    let store = Store::memory().await.unwrap();
+    let p = principal(
+        "client:pi-7",
+        "acme",
+        &["mcp:ingest.write:call", "mcp:series.latest:call"],
+    );
+
+    // Two series with history; a third name that was never written.
+    call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "ingest.write",
+        &json!({ "samples": [
+            sample("cpu", 1, json!(60.0)), sample("cpu", 2, json!(62.5)),
+            sample("mem", 1, json!(10.0)),
+        ] }),
+    )
+    .await
+    .unwrap();
+
+    let out = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "series.latest_many",
+        &json!({ "series": ["cpu", "mem", "absent"] }),
+    )
+    .await
+    .unwrap();
+    let latest = out["latest"].as_object().expect("`latest` is a map");
+
+    // Every requested name present; absent series → null (caller reconciles nothing).
+    assert_eq!(latest.len(), 3);
+    assert_eq!(latest["cpu"]["seq"], 2, "cpu's newest sample");
+    assert_eq!(latest["cpu"]["payload"], 62.5);
+    assert_eq!(latest["mem"]["seq"], 1);
+    assert!(latest["absent"].is_null(), "never-written series → null");
+
+    // Parity: each present entry equals single `series.latest` for that name.
+    for name in ["cpu", "mem"] {
+        let single = call_ingest_tool(
+            &store,
+            &p,
+            "acme",
+            "series.latest",
+            &json!({ "series": name }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            latest[name], single["sample"],
+            "latest_many[{name}] must equal series.latest's sample"
+        );
+    }
+}
+
+/// The batch reuses the single-latest grant and is authorized ONCE for the whole batch: a principal
+/// WITHOUT `mcp:series.latest:call` is denied the entire `series.latest_many` call — it cannot read
+/// in a batch a latest it could not read singly.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn latest_many_denied_without_the_single_latest_cap() {
+    let store = Store::memory().await.unwrap();
+    // Has write + read, but NOT series.latest — the batch shares series.latest's cap, so it denies.
+    let p = principal(
+        "client:pi-7",
+        "acme",
+        &["mcp:ingest.write:call", "mcp:series.read:call"],
+    );
+    let err = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "series.latest_many",
+        &json!({ "series": ["cpu", "mem"] }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ToolError::Denied),
+        "no series.latest grant → Denied"
+    );
+}
+
+/// Workspace-first isolation: a series written in ws-A resolves to `null` under a ws-B token (the
+/// name list carries no reach; the namespace predicate is the wall). Every requested name still
+/// appears — just all null — so a cross-ws batch leaks nothing, not even existence.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn latest_many_is_workspace_scoped() {
+    let store = Store::memory().await.unwrap();
+    let a = principal(
+        "client:a",
+        "acme",
+        &["mcp:ingest.write:call", "mcp:series.latest:call"],
+    );
+    call_ingest_tool(
+        &store,
+        &a,
+        "acme",
+        "ingest.write",
+        &json!({ "samples": [sample("cpu", 1, json!(99.0))] }),
+    )
+    .await
+    .unwrap();
+
+    // A different workspace, same series name.
+    let b = principal("client:b", "other", &["mcp:series.latest:call"]);
+    let out = call_ingest_tool(
+        &store,
+        &b,
+        "other",
+        "series.latest_many",
+        &json!({ "series": ["cpu"] }),
+    )
+    .await
+    .unwrap();
+    let latest = out["latest"].as_object().unwrap();
+    assert_eq!(latest.len(), 1);
+    assert!(
+        latest["cpu"].is_null(),
+        "ws-B sees ws-A's series as null — the hard wall holds"
+    );
+}

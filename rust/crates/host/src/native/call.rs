@@ -294,7 +294,10 @@ mod tests {
         let handle = Arc::new(AsyncMutex::new(sidecar));
 
         let out = call_once_or_restart(&handle, "echo", "1", None, || async { Ok(()) }).await;
-        assert!(out.is_err(), "the child never replies, so the call must fail");
+        assert!(
+            out.is_err(),
+            "the child never replies, so the call must fail"
+        );
 
         assert_eq!(
             calls.load(Ordering::SeqCst),

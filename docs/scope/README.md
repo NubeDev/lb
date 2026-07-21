@@ -224,7 +224,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   DataFusion pages only by predicate **pushdown** to the real source, and anything that must load at
   dashboard speed is **mirrored** into the series plane and keyset-paged there; a chart **downsamples**
   (time-bucket min/max/avg) rather than paging raw points. Offset paging and DataFusion-as-primary-pager
-  rejected. **`sqlite-datasource-demo-scope.md`** makes the sidecar's shipped `sqlite` kind
+  rejected. **`series-read-perf-scope.md`** finishes slice C's stated goal: it swaps the bucketed
+  `series.read` in-Rust fold for the read-time SurrealDB `GROUP BY` the decimation scope always intended
+  (O(buckets), not O(raw rows) — a 2.9 s → tens-of-ms fix, wire shape unchanged) and adds a plural
+  `series.latest_many` so a fleet snapshot is one round-trip instead of N; no new cap. **`sqlite-datasource-demo-scope.md`** makes the sidecar's shipped `sqlite` kind
   first-class (kind select + path-DSN semantics in the Datasources UI) and emits the demo building
   dataset into a SQLite file (`seed.py --sqlite`, lite profile + `make seed-demo-sqlite`) — the
   Docker-free demo source the Data Studio 10x demo toggle points at.

@@ -51,8 +51,10 @@ fn seed_db(tag: &str, marker: i64) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    let path =
-        std::env::temp_dir().join(format!("lb-fed-result-{tag}-{seq}-{}.db", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "lb-fed-result-{tag}-{seq}-{}.db",
+        std::process::id()
+    ));
     let _ = std::fs::remove_file(&path);
     let conn = rusqlite::Connection::open(&path).expect("open sqlite fixture");
     conn.execute_batch("CREATE TABLE marker (id INTEGER);")
@@ -72,10 +74,12 @@ fn seed_db(tag: &str, marker: i64) -> String {
 /// that exist.
 fn seed_burn(dsn: &str, rows: i64) {
     let conn = rusqlite::Connection::open(dsn).expect("open sqlite fixture for burn");
-    conn.execute_batch("CREATE TABLE burn (n INTEGER);").expect("create burn");
+    conn.execute_batch("CREATE TABLE burn (n INTEGER);")
+        .expect("create burn");
     let tx = conn.unchecked_transaction().unwrap();
     for i in 0..rows {
-        tx.execute("INSERT INTO burn VALUES (?1)", [i]).expect("seed burn");
+        tx.execute("INSERT INTO burn VALUES (?1)", [i])
+            .expect("seed burn");
     }
     tx.commit().unwrap();
 }
@@ -111,9 +115,15 @@ fn input(source: &str, sql: &str, ttl_s: Option<f64>) -> serde_json::Value {
 const SQL: &str = "SELECT id FROM marker ORDER BY id";
 
 async fn run(dsn: &str, input: &serde_json::Value) -> query::QueryResult {
-    query::run_query_cached("sqlite", dsn, SQL, input.get("source").and_then(|s| s.as_str()), input)
-        .await
-        .expect("query")
+    query::run_query_cached(
+        "sqlite",
+        dsn,
+        SQL,
+        input.get("source").and_then(|s| s.as_str()),
+        input,
+    )
+    .await
+    .expect("query")
 }
 
 /// 1. **A hit serves the cached rows, provably.** Query with a 60 s window, insert a row under the
@@ -152,7 +162,11 @@ async fn a_hit_serves_the_cached_rows_not_the_new_ones() {
         Some(1),
         "and they must be the same rows, not an empty/placeholder envelope"
     );
-    assert_eq!(second.columns, vec!["id".to_string()], "columns survive too");
+    assert_eq!(
+        second.columns,
+        vec!["id".to_string()],
+        "columns survive too"
+    );
 }
 
 /// 2. **TTL expiry.** With a short window, the entry stops being acceptable and the new row appears.
@@ -322,7 +336,11 @@ async fn a_write_to_one_source_leaves_another_sources_cache_intact() {
     .await
     .expect("write to A");
 
-    assert_eq!(run(&a, &ia).await.rows.len(), 2, "A was written → A is fresh");
+    assert_eq!(
+        run(&a, &ia).await.rows.len(),
+        2,
+        "A was written → A is fresh"
+    );
     assert_eq!(
         run(&b, &ib).await.rows.len(),
         1,
@@ -370,12 +388,24 @@ async fn distinct_calls_never_share_an_entry() {
     // (iii) Same DSN and shape, differing only in a paging cursor → different entries.
     let page0 = "SELECT id FROM marker ORDER BY id LIMIT 1 OFFSET 0";
     let page1 = "SELECT id FROM marker ORDER BY id LIMIT 1 OFFSET 1";
-    let r0 = query::run_query_cached("sqlite", &a, page0, Some("src"), &input("src", page0, Some(60.0)))
-        .await
-        .expect("page 0");
-    let r1 = query::run_query_cached("sqlite", &a, page1, Some("src"), &input("src", page1, Some(60.0)))
-        .await
-        .expect("page 1");
+    let r0 = query::run_query_cached(
+        "sqlite",
+        &a,
+        page0,
+        Some("src"),
+        &input("src", page0, Some(60.0)),
+    )
+    .await
+    .expect("page 0");
+    let r1 = query::run_query_cached(
+        "sqlite",
+        &a,
+        page1,
+        Some("src"),
+        &input("src", page1, Some(60.0)),
+    )
+    .await
+    .expect("page 1");
     assert_eq!(r0.rows[0][0].as_i64(), Some(100));
     assert_eq!(
         r1.rows[0][0].as_i64(),
@@ -411,7 +441,10 @@ async fn the_source_alias_is_part_of_the_key() {
     );
     // The original alias's entry is untouched.
     assert_eq!(
-        run(&dsn, &input("alias-a", SQL, Some(60.0))).await.rows.len(),
+        run(&dsn, &input("alias-a", SQL, Some(60.0)))
+            .await
+            .rows
+            .len(),
         1
     );
 }
@@ -435,8 +468,11 @@ async fn an_over_cap_result_is_served_but_not_stored() {
         let payload = "x".repeat(6000);
         let tx = conn.unchecked_transaction().unwrap();
         for i in 0..900 {
-            tx.execute("INSERT INTO big VALUES (?1, ?2)", rusqlite::params![i, payload])
-                .unwrap();
+            tx.execute(
+                "INSERT INTO big VALUES (?1, ?2)",
+                rusqlite::params![i, payload],
+            )
+            .unwrap();
         }
         tx.commit().unwrap();
     }
@@ -451,8 +487,11 @@ async fn an_over_cap_result_is_served_but_not_stored() {
     // Not stored → the next call re-queries → the row inserted meanwhile is visible.
     {
         let conn = rusqlite::Connection::open(&dsn).unwrap();
-        conn.execute("INSERT INTO big VALUES (?1, ?2)", rusqlite::params![9999, "y"])
-            .unwrap();
+        conn.execute(
+            "INSERT INTO big VALUES (?1, ?2)",
+            rusqlite::params![9999, "y"],
+        )
+        .unwrap();
     }
     let second = query::run_query_cached("sqlite", &dsn, sql, Some("bigsrc"), &inp)
         .await
@@ -489,7 +528,10 @@ async fn the_entry_cap_bounds_the_map_without_evicting_the_newest() {
     }
 
     // The most recent key is still cached: insert behind its back and confirm the OLD rows come out.
-    let last = format!("SELECT id, {} AS n FROM marker", results::MAX_RESULT_ENTRIES + 19);
+    let last = format!(
+        "SELECT id, {} AS n FROM marker",
+        results::MAX_RESULT_ENTRIES + 19
+    );
     let inp = input("capsrc", &last, Some(60.0));
     insert_row(&dsn, 2);
     let again = query::run_query_cached("sqlite", &dsn, &last, Some("capsrc"), &inp)
@@ -588,9 +630,15 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     let sql = SLOW_SQL;
 
     // Warm the entry.
-    let warm = query::run_query_cached("sqlite", &dsn, sql, Some("rsrc"), &input("rsrc", sql, Some(60.0)))
-        .await
-        .expect("warm");
+    let warm = query::run_query_cached(
+        "sqlite",
+        &dsn,
+        sql,
+        Some("rsrc"),
+        &input("rsrc", sql, Some(60.0)),
+    )
+    .await
+    .expect("warm");
     assert_eq!(warm.rows.len(), 1);
 
     // Now the entry is fresh-but-non-zero-age. Insert behind its back, then race:
@@ -600,17 +648,29 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     // A STRICT caller (ttl below the entry's age) → rejects → starts the one refresh.
     let (d1, s1) = (dsn.clone(), sql.to_string());
     let strict = tokio::spawn(async move {
-        query::run_query_cached("sqlite", &d1, &s1, Some("rsrc"), &input("rsrc", &s1, Some(0.05)))
-            .await
-            .expect("strict")
+        query::run_query_cached(
+            "sqlite",
+            &d1,
+            &s1,
+            Some("rsrc"),
+            &input("rsrc", &s1, Some(0.05)),
+        )
+        .await
+        .expect("strict")
     });
 
     // A LENIENT caller (60 s window) → accepts → must return the OLD rows without waiting.
     tokio::time::sleep(Duration::from_millis(20)).await;
     let started = std::time::Instant::now();
-    let lenient = query::run_query_cached("sqlite", &dsn, sql, Some("rsrc"), &input("rsrc", sql, Some(60.0)))
-        .await
-        .expect("lenient");
+    let lenient = query::run_query_cached(
+        "sqlite",
+        &dsn,
+        sql,
+        Some("rsrc"),
+        &input("rsrc", sql, Some(60.0)),
+    )
+    .await
+    .expect("lenient");
     let waited = started.elapsed();
 
     // **The invariant, asserted unconditionally**: whatever it was served, the accepting caller did
@@ -655,9 +715,15 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     );
 
     // And the refresh replaced `current`: a subsequent accepting caller now sees the fresh rows.
-    let after = query::run_query_cached("sqlite", &dsn, sql, Some("rsrc"), &input("rsrc", sql, Some(60.0)))
-        .await
-        .expect("after refresh");
+    let after = query::run_query_cached(
+        "sqlite",
+        &dsn,
+        sql,
+        Some("rsrc"),
+        &input("rsrc", sql, Some(60.0)),
+    )
+    .await
+    .expect("after refresh");
     assert_eq!(
         after.rows.len(),
         2,
@@ -686,7 +752,14 @@ async fn a_failed_refresh_leaves_the_entry_serving() {
         conn.execute_batch("ALTER TABLE marker RENAME TO marker_gone;")
             .unwrap();
     }
-    let failed = query::run_query_cached("sqlite", &dsn, SQL, Some("fsrc"), &input("fsrc", SQL, Some(0.001))).await;
+    let failed = query::run_query_cached(
+        "sqlite",
+        &dsn,
+        SQL,
+        Some("fsrc"),
+        &input("fsrc", SQL, Some(0.001)),
+    )
+    .await;
     assert!(failed.is_err(), "the refresh itself must surface the error");
 
     // `current` untouched: an accepting caller still gets the stored rows.
@@ -703,10 +776,15 @@ async fn a_failed_refresh_leaves_the_entry_serving() {
         conn.execute_batch("ALTER TABLE marker_gone RENAME TO marker;")
             .unwrap();
     }
-    let recovered =
-        query::run_query_cached("sqlite", &dsn, SQL, Some("fsrc"), &input("fsrc", SQL, Some(0.001)))
-            .await
-            .expect("a recovered source must re-query cleanly (inflight was cleared)");
+    let recovered = query::run_query_cached(
+        "sqlite",
+        &dsn,
+        SQL,
+        Some("fsrc"),
+        &input("fsrc", SQL, Some(0.001)),
+    )
+    .await
+    .expect("a recovered source must re-query cleanly (inflight was cleared)");
     assert_eq!(recovered.rows.len(), 1);
 }
 
@@ -727,7 +805,11 @@ async fn a_lost_cache_costs_freshness_not_correctness() {
 
     assert_eq!(run(&dsn, &inp).await.rows.len(), 1);
     insert_row(&dsn, 2);
-    assert_eq!(run(&dsn, &inp).await.rows.len(), 1, "cached before the drop");
+    assert_eq!(
+        run(&dsn, &inp).await.rows.len(),
+        1,
+        "cached before the drop"
+    );
 
     // Everything a respawn would lose.
     results::evict_source("sqlite", &dsn);

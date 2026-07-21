@@ -95,16 +95,15 @@ pub async fn run_query_cached(
     let ttl = results::requested_ttl(input);
     let started = std::time::Instant::now();
 
-    let (outcome, state, age_ms) =
-        results::cached_query(kind, dsn, input, ttl, || async {
-            // The inner future is the UNCHANGED query path — pool cache, validation, timeout,
-            // eviction and its own event all still happen exactly as before. The result cache only
-            // decides whether this future runs at all.
-            run_query_with(kind, dsn, sql, source_name, DEFAULT_QUERY_TIMEOUT)
-                .await
-                .map(|r| Envelope::new(r.columns, r.rows))
-        })
-        .await;
+    let (outcome, state, age_ms) = results::cached_query(kind, dsn, input, ttl, || async {
+        // The inner future is the UNCHANGED query path — pool cache, validation, timeout,
+        // eviction and its own event all still happen exactly as before. The result cache only
+        // decides whether this future runs at all.
+        run_query_with(kind, dsn, sql, source_name, DEFAULT_QUERY_TIMEOUT)
+            .await
+            .map(|r| Envelope::new(r.columns, r.rows))
+    })
+    .await;
 
     // A miss/bypass already emitted its own `federation.query` event from inside `run_query_with`
     // (with the pool state and the real elapsed time). Only a HIT is unreported so far — it is the
@@ -118,10 +117,7 @@ pub async fn run_query_cached(
             sql,
             started.elapsed().as_millis(),
             &Outcome::Ok(rows),
-            Some(&ResultCacheEvent {
-                state,
-                age_ms,
-            }),
+            Some(&ResultCacheEvent { state, age_ms }),
         );
     } else {
         // Re-state the result-cache verdict for miss/bypass on its own line, so an operator can
@@ -176,7 +172,15 @@ pub async fn run_query_with(
     match bounded {
         Ok(Ok(result)) => {
             let rows = result.rows.len();
-            query_event(source_name, kind, Some(cache), sql, elapsed, &Outcome::Ok(rows), None);
+            query_event(
+                source_name,
+                kind,
+                Some(cache),
+                sql,
+                elapsed,
+                &Outcome::Ok(rows),
+                None,
+            );
             Ok(result)
         }
         Ok(Err(e)) => {
@@ -196,7 +200,15 @@ pub async fn run_query_with(
             // would serve failures for the child's lifetime, where per-call connect self-healed —
             // i.e. caching would be strictly WORSE than the behaviour it replaced.
             evict(kind, dsn);
-            query_event(source_name, kind, Some(cache), sql, elapsed, &Outcome::Timeout, None);
+            query_event(
+                source_name,
+                kind,
+                Some(cache),
+                sql,
+                elapsed,
+                &Outcome::Timeout,
+                None,
+            );
             Err(format!(
                 "query exceeded the {}s bound and was cancelled; the connection was dropped",
                 timeout.as_secs()

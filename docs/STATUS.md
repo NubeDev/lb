@@ -57,6 +57,27 @@ tested; the React surface lives in a product host and must assert the shared nex
 Scope: `scope/rules/scheduled-rules-scope.md` · session: `sessions/rules/scheduled-rules-session.md` ·
 public: `../doc-site/content/public/rules/rules.md` · skill: `skills/rules/SKILL.md` §10.
 
+**Just shipped 2026-07-21 (backend) — SERIES-READ PERF: bucketed `series.read` becomes a pushed-down
+`GROUP BY`, plus a batched `series.latest_many`.** The `mode:"buckets"` decimation stopped paging every
+raw row into the host (a 10 k-sample window moved 10 k rows to emit ~240 buckets) — it now aggregates
+**where the data lives**, in one `query_ws` two-statement snapshot: Query N (`math::min/max/sum` +
+`count()` over `type::is::number(payload)` → exact `avg`) and Query L (`count()` + `array::last` over an
+`ORDER BY ts,seq` subquery → exact ordered `last`, non-numeric included). This is the read-time
+`GROUP BY` the [decimation scope](scope/datasources/series-decimation-scope.md) always intended; its
+cited blockers (ordered `last`, non-numeric tolerance) were **disproven** against SurrealDB 2.6.5 on the
+real `mem://` store. The old in-Rust fold is **kept only as the parity oracle** — the pushdown is
+asserted byte-identical to it. **New verb `series.latest_many {series:[String]}`** → `{latest:{name:
+Sample|null}}`, one `WHERE series IN` scan, collapsing a K-series fleet snapshot from K round-trips to
+one; **no new cap** (reuses `mcp:series.latest:call`, checked once for the batch), **no wire break** on
+`series.read`. **Bug caught in-session by the oracle:** the first pushdown keyed buckets `from`-relative,
+mis-splitting an absolute bucket when `from` is unaligned — fixed to key on the absolute `floor(ts/width)`
+(the exact seam the scope's risks flagged). **Tests (rule 9, real store/caps/bridge):** `lb-ingest`
+`series_plane_test` (fold-parity incl. spike/non-numeric/tiebreaker/gap, unaligned-`from`, O(buckets) perf
+guard, `latest_many` parity+scoping) + `lb-host` `ingest_test` (`latest_many` batch parity, whole-batch
+deny, ws-isolation). **Deferred (explicit):** live-latency timing on a real node ("2.9 s → low tens of
+ms"); the O(buckets) *shape* is already test-pinned. Scope:
+`scope/datasources/series-read-perf-scope.md` · session: `sessions/datasources/series-read-perf-session.md`.
+
 **Just shipped 2026-07-20 — the federation QUERY-RESULT CACHE, closing the three-layer stack.**
 `crates/federation/src/results.rs` (new) holds a TTL-bounded, process-local map of query results, so
 a repeat of an identical query inside a caller-declared freshness window is served from memory. With

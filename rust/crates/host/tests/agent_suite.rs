@@ -20,12 +20,12 @@ mod agent_config_test;
 mod agent_dangling_test;
 #[path = "agent/agent_decision_test.rs"]
 mod agent_decision_test;
+#[path = "agent/agent_def_test_test.rs"]
+mod agent_def_test_test;
 #[path = "agent/agent_default_runtime_test.rs"]
 mod agent_default_runtime_test;
 #[path = "agent/agent_defs_test.rs"]
 mod agent_defs_test;
-#[path = "agent/agent_def_test_test.rs"]
-mod agent_def_test_test;
 #[path = "agent/agent_exfil_test.rs"]
 mod agent_exfil_test;
 #[path = "agent/agent_external_substrate_test.rs"]

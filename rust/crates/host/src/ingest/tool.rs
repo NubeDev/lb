@@ -14,7 +14,10 @@ use lb_store::Store;
 use lb_tags::Facet;
 use serde_json::{json, Value};
 
-use super::{drain_workspace_bounded, ingest_write, own_batches, series_latest_value, IngestError};
+use super::{
+    drain_workspace_bounded, ingest_write, own_batches, series_latest_many, series_latest_value,
+    IngestError,
+};
 
 /// Dispatch an ingest/series MCP call. `input` is the verb's JSON arguments; the return is the
 /// verb's JSON result. Each verb authorizes first; denials are opaque (`ToolError::Denied`).
@@ -93,6 +96,19 @@ pub async fn call_ingest_tool(
                 .await
                 .map_err(ingest_to_tool)?;
             Ok(json!({ "sample": last }))
+        }
+        "series.latest_many" => {
+            let names = string_arr(input, "series")?;
+            let pairs = series_latest_many(store, principal, ws, &names)
+                .await
+                .map_err(ingest_to_tool)?;
+            // `{ latest: { name: Sample|null } }` — every requested name present, absent → null, so
+            // the caller reconciles nothing (parity with single series.latest's null contract).
+            let latest: serde_json::Map<String, Value> = pairs
+                .into_iter()
+                .map(|(name, s)| (name, json!(s)))
+                .collect();
+            Ok(json!({ "latest": latest }))
         }
         "series.delete" => {
             let series = str_arg(input, "series")?;
@@ -221,6 +237,20 @@ fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
 
 fn u64_arg(input: &Value, key: &str) -> Option<u64> {
     input.get(key).and_then(|v| v.as_u64())
+}
+
+/// Parse a required `[String]` argument (e.g. `series.latest_many`'s `series` name list).
+fn string_arr(input: &Value, key: &str) -> Result<Vec<String>, ToolError> {
+    let arr = arg(input, key)?
+        .as_array()
+        .ok_or_else(|| ToolError::BadInput(format!("arg not an array: {key}")))?;
+    arr.iter()
+        .map(|v| {
+            v.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| ToolError::BadInput(format!("{key}: entries must be strings")))
+        })
+        .collect()
 }
 
 /// Parse the `facets` array of a `series.find` query (value present → exact, absent → key-only).

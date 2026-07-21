@@ -12,8 +12,8 @@
 
 use lb_auth::Principal;
 use lb_ingest::{
-    latest as series_latest, read as series_read, read_buckets, read_page, Bucket, BucketQuery,
-    Page, PageError, PageQuery, Sample,
+    latest as series_latest, latest_many as series_latest_many_read, read as series_read,
+    read_buckets, read_page, Bucket, BucketQuery, Page, PageError, PageQuery, Sample,
 };
 use lb_store::Store;
 
@@ -79,4 +79,19 @@ pub async fn series_latest_value(
 ) -> Result<Option<Sample>, IngestError> {
     authorize_ingest(principal, ws, "series.latest")?;
     Ok(series_latest(store, ws, series).await?)
+}
+
+/// The newest committed sample of EACH named series in `ws`, in one round-trip (series-read-perf
+/// scope). Authorizes `mcp:series.latest:call` **ONCE for the whole batch** — the batch is one
+/// logical read of the series-latest surface, not K grants; a principal without the grant is denied
+/// the entire batch (it cannot read a latest here it could not read singly). Every requested name
+/// appears in the result (absent series → `None`), workspace-first so a ws-B caller sees only ws-B.
+pub async fn series_latest_many(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    names: &[String],
+) -> Result<Vec<(String, Option<Sample>)>, IngestError> {
+    authorize_ingest(principal, ws, "series.latest")?;
+    Ok(series_latest_many_read(store, ws, names).await?)
 }

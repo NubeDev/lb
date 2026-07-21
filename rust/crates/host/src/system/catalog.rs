@@ -670,6 +670,11 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "the latest committed value of a series",
     },
     HostTool {
+        tool: "series.latest_many",
+        group: "series",
+        description: "the latest committed value of each named series, in one round-trip",
+    },
+    HostTool {
         tool: "series.find",
         group: "series",
         description: "find series by tag/name match",

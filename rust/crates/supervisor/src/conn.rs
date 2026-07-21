@@ -74,11 +74,7 @@ impl Conn {
     /// The lock discipline is the whole point: register the waiter FIRST (so a reply cannot arrive
     /// before there is somewhere to route it), then hold the write lock for exactly one frame, then
     /// await unlocked.
-    pub async fn request(
-        &self,
-        method: Method,
-        params: String,
-    ) -> Result<String, SupervisorError> {
+    pub async fn request(&self, method: Method, params: String) -> Result<String, SupervisorError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
 

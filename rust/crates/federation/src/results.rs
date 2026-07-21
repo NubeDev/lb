@@ -420,10 +420,7 @@ mod tests {
     use super::*;
 
     fn env_of(marker: i64) -> Envelope {
-        Envelope::new(
-            vec!["id".to_string()],
-            vec![serde_json::json!([marker])],
-        )
+        Envelope::new(vec!["id".to_string()], vec![serde_json::json!([marker])])
     }
 
     /// Canonicalization is order-insensitive and null-insensitive, but value-sensitive — the three
@@ -433,7 +430,11 @@ mod tests {
     fn canonical_is_deterministic_but_value_sensitive() {
         let a = serde_json::json!({ "sql": "SELECT 1", "source": "wh", "extra": null });
         let b = serde_json::json!({ "source": "wh", "sql": "SELECT 1" });
-        assert_eq!(canonical(&a), canonical(&b), "key order + nulls must not matter");
+        assert_eq!(
+            canonical(&a),
+            canonical(&b),
+            "key order + nulls must not matter"
+        );
         let c = serde_json::json!({ "source": "wh", "sql": "SELECT 2" });
         assert_ne!(canonical(&a), canonical(&c), "a changed VALUE must matter");
     }

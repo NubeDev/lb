@@ -39,7 +39,10 @@ pub use error::IngestError;
 pub use find::series_find;
 pub use list::{series_list, MAX_SERIES_LIST};
 pub use motion::{publish_sample, subscribe_series, SeriesSub};
-pub use read::{series_latest_value, series_read_buckets, series_read_page, series_read_range};
+pub use read::{
+    series_latest_many, series_latest_value, series_read_buckets, series_read_page,
+    series_read_range,
+};
 pub use rename::series_rename;
 pub use retention::{
     series_retention_delete, series_retention_gc, series_retention_list, series_retention_set,

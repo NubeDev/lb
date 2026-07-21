@@ -45,7 +45,9 @@ pub use runtime::{
     RuleRun,
 };
 pub use sandbox::RuleLimits;
-pub use schedule::{compile_phrase, extract_schedule, strip_directive, RuleSchedule, ScheduleError};
+pub use schedule::{
+    compile_phrase, extract_schedule, strip_directive, RuleSchedule, ScheduleError,
+};
 pub use seam::{
     AiCompletion, AiSeam, DataSeam, JobSeam, MessagingSeam, SchemaColumn, SeamError, SourceKind,
 };

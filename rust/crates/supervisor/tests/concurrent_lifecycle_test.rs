@@ -31,9 +31,9 @@ async fn a_restart_never_lets_the_new_child_answer_an_old_waiter() {
     let mut inflight = Vec::new();
     for i in 0..6u32 {
         let conn = Arc::clone(&conn);
-        inflight.push(tokio::spawn(
-            async move { conn.call_with_caller("q", &i.to_string(), None).await },
-        ));
+        inflight.push(tokio::spawn(async move {
+            conn.call_with_caller("q", &i.to_string(), None).await
+        }));
     }
 
     // Let the frames land, but restart well before the handlers finish (WORK = 100 ms).
@@ -77,9 +77,9 @@ async fn child_death_wakes_every_waiter_with_an_error() {
     let mut inflight = Vec::new();
     for i in 0..6u32 {
         let conn = Arc::clone(&conn);
-        inflight.push(tokio::spawn(
-            async move { conn.call_with_caller("q", &i.to_string(), None).await },
-        ));
+        inflight.push(tokio::spawn(async move {
+            conn.call_with_caller("q", &i.to_string(), None).await
+        }));
     }
     tokio::time::sleep(Duration::from_millis(20)).await;
 
@@ -117,7 +117,9 @@ async fn repeated_restarts_do_not_leak_reader_tasks() {
     // away, and the count never grew. (Verified — that version passed against a deliberately
     // leaking `restart`.) The observable property is that the OLD generation is dead *while still
     // referenced*: a call on it must be refused, which is only true if `restart` closed it.
-    let baseline = tokio::runtime::Handle::current().metrics().num_alive_tasks();
+    let baseline = tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks();
     let mut retired = Vec::new();
     for _ in 0..10 {
         let old = sc.conn().unwrap();
@@ -132,7 +134,9 @@ async fn repeated_restarts_do_not_leak_reader_tasks() {
     // Now drop them all and confirm nothing accumulated.
     drop(retired);
     tokio::time::sleep(Duration::from_millis(50)).await;
-    let after = tokio::runtime::Handle::current().metrics().num_alive_tasks();
+    let after = tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks();
 
     assert!(
         after <= baseline + 4,

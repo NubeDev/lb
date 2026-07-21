@@ -39,13 +39,15 @@ mod schema;
 mod staging;
 mod write;
 
-pub use bucket::{effective_width, read_buckets, Bucket, BucketQuery, MAX_BUCKETS};
+pub use bucket::{
+    effective_width, read_buckets, read_buckets_fold, Bucket, BucketQuery, MAX_BUCKETS,
+};
 pub use cap::{cap_series, over_cap_warning, sample_count, CAP_EVICT_BATCH, DEFAULT_MAX_SAMPLES};
 pub use commit::{commit_batch, commit_batch_capped, CommitPass};
 pub use cursor::Cursor;
 pub use delete::delete_series;
 pub use gc::{run_gc, GcPass};
-pub use latest::latest;
+pub use latest::{latest, latest_many};
 pub use meta::{series_names, DEFAULT_SERIES_CAP};
 pub use overflow::{enforce_bound, OverflowPolicy};
 pub use page::{

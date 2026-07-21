@@ -141,7 +141,10 @@ const INSTALL_CAPS: &[&str] = &["mcp:native.install:call", "mcp:native.call:call
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn capability_deny_holds_under_concurrent_calls() {
     let node = Node::boot().await.unwrap();
-    let launcher = ConcurrentLauncher { ws: "acme".into(), calls: Arc::new(AtomicU32::new(0)) };
+    let launcher = ConcurrentLauncher {
+        ws: "acme".into(),
+        calls: Arc::new(AtomicU32::new(0)),
+    };
     let admin = principal("acme", INSTALL_CAPS);
     install_native(&node, &launcher, &admin, "acme", MANIFEST, "", &[], 1)
         .await
@@ -206,7 +209,10 @@ async fn capability_deny_holds_under_concurrent_calls() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn workspace_isolation_holds_under_concurrent_calls_with_colliding_ids() {
     let node = Node::boot().await.unwrap();
-    let launcher = ConcurrentLauncher { ws: "unset".into(), calls: Arc::new(AtomicU32::new(0)) };
+    let launcher = ConcurrentLauncher {
+        ws: "unset".into(),
+        calls: Arc::new(AtomicU32::new(0)),
+    };
 
     for ws in ["ws-a", "ws-b"] {
         let admin = principal(ws, INSTALL_CAPS);
@@ -270,7 +276,10 @@ async fn workspace_isolation_holds_under_concurrent_calls_with_colliding_ids() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_host_call_path_does_not_serialize() {
     let node = Node::boot().await.unwrap();
-    let launcher = ConcurrentLauncher { ws: "acme".into(), calls: Arc::new(AtomicU32::new(0)) };
+    let launcher = ConcurrentLauncher {
+        ws: "acme".into(),
+        calls: Arc::new(AtomicU32::new(0)),
+    };
     let admin = principal("acme", INSTALL_CAPS);
     install_native(&node, &launcher, &admin, "acme", MANIFEST, "", &[], 1)
         .await

@@ -112,7 +112,9 @@ impl Sidecar {
     /// means the child is unhealthy (the host triggers the restart policy). `&self` — a health poll
     /// no longer queues behind in-flight tool calls.
     pub async fn health(&self) -> Result<(), SupervisorError> {
-        self.request(Method::Health, String::new()).await.map(|_| ())
+        self.request(Method::Health, String::new())
+            .await
+            .map(|_| ())
     }
 
     /// Cooperatively stop the child: send `shutdown`, then close the generation (which stops the
@@ -190,7 +192,10 @@ impl Sidecar {
     /// Close the live generation and install a freshly launched, handshaken one. The single place a
     /// generation boundary is crossed, shared by `restart` and `rearm` so the ordering (close-then-
     /// launch, waiters failed before the new channel exists) cannot drift between them.
-    async fn replace_generation<L: Launcher>(&mut self, launcher: &L) -> Result<(), SupervisorError> {
+    async fn replace_generation<L: Launcher>(
+        &mut self,
+        launcher: &L,
+    ) -> Result<(), SupervisorError> {
         if let Some(conn) = self.conn.take() {
             conn.close().await;
         }

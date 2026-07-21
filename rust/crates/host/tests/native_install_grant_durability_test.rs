@@ -209,7 +209,11 @@ async fn repeated_reinstalls_do_not_duplicate_grants() {
     }
 
     let after = read_install(&node.store, ws, &id).await.unwrap().unwrap();
-    let count = after.granted.iter().filter(|g| **g == runtime_grant).count();
+    let count = after
+        .granted
+        .iter()
+        .filter(|g| **g == runtime_grant)
+        .count();
     assert_eq!(count, 1, "grants must not accumulate: {:?}", after.granted);
 }
 

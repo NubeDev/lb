@@ -127,4 +127,3 @@ pub fn launcher() -> (ConcurrentLauncher, Arc<AtomicU32>) {
         launches,
     )
 }
-
