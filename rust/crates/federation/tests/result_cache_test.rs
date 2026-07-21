@@ -616,8 +616,15 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     // **The invariant, asserted unconditionally**: whatever it was served, the accepting caller did
     // not BLOCK. The refresh takes ~750 ms; anything near that means rule 1 was violated and the
     // accept path joined `inflight` instead of returning `current`.
+    //
+    // The bound is 350 ms, not 100 ms. The accept path is a lockless synchronous return
+    // (results.rs `Action::Serve` — no `.await` on any refresh), so the wait it MEASURES is pure
+    // runtime-scheduling latency, and a saturated 16-worker run of this suite legitimately breached
+    // 100 ms on a continuation that never blocked (a flake — see the debugging entry). A genuine
+    // rule-1 violation would join `inflight` and wait ~750 ms, so 350 ms (< half the refresh) still
+    // catches it with margin while absorbing scheduling jitter that scales with box load.
     assert!(
-        waited < Duration::from_millis(100),
+        waited < Duration::from_millis(350),
         "the accepting caller waited {waited:?} — it must never block on a stricter caller's \
          in-flight refresh (slot rule 1)"
     );

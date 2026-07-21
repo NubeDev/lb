@@ -103,6 +103,35 @@ The gate is deliberately *not* "loosen the assertion to accept 1 or 2", which wo
 test's teeth in exactly the case it exists for. It distinguishes the two worlds instead of averaging
 them.
 
+## A THIRD manifestation — the *timing* half of the same test (found 2026-07-21)
+
+The second fix split the test into an unconditional timing invariant (`waited < 100 ms`) and a
+content assertion gated on `strict.is_finished()`. On a *different* machine (16 workers, concurrent
+`cargo build`), the suite flaked again — but now on the **timing** assertion, not the content one:
+
+```
+test an_accepting_caller_never_waits_on_a_stricter_callers_refresh ... FAILED
+panicked at crates/federation/tests/result_cache_test.rs:619:5:
+the accepting caller waited …ms — it must never block on a stricter caller's in-flight refresh
+```
+
+Root cause, again not a code defect: the accept path is a **lockless synchronous return**
+(`results.rs` `Action::Serve` — it returns `current` with no `.await` on any refresh). So the time
+that assertion measures is pure runtime **scheduling latency**: on a saturated box, tokio can leave
+the accepting caller's continuation unscheduled for >100 ms even though it never blocked. The 100 ms
+bound was an absolute wall-clock bet that does not scale with box load, so it produced a false red.
+
+Fix: widen the bound to **350 ms**, which is still under half the ~750 ms refresh. The distinction
+that gives the assertion teeth is *block vs no-block*, and those differ by ~750 ms — a genuine rule-1
+violation would join `inflight` and wait the full refresh. 350 ms sits comfortably between the two:
+it cannot be reached by an immediate return's scheduling jitter, and it is far below what a real
+block would cost. (Asserting *relative* to a measured refresh duration was considered and rejected:
+the refresh runs concurrently with the lenient caller, so its duration isn't known until the join at
+the end of the test — after the assertion needs it. The refresh cost is instead pinned by the 12 000
+-row burn seed, so a fixed fraction of it is a stable, readable bound.)
+
+Verified by re-running the full binary at `--test-threads=16` several times after the change.
+
 ## Lesson
 
 A test that fails **only in company** and whose failing set **moves between runs** is almost never a

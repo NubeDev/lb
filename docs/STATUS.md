@@ -59,6 +59,12 @@ caught in-session** — a recursive-CTE slow query that `validate_select` reject
 replacement burn query too fast to make the race real, which is now both sized from measurement and
 guarded by an assertion that the race outlasted the mid-flight insert. ⚠️ **Live latency win not yet
 verified** against a real remote source — same posture the pool-cache slice ended in.
+**Three lb-host federation e2e suites (`federation_test`, `federation_sqlite_test`, `query_test`)
+abort with `fatal runtime error: stack overflow` — proven PRE-EXISTING, not caused by this change:
+reverting all six host touches to the parent commit (`18dc1f44~1`) reproduces the identical overflow
+in `federation_sqlite_test` **and** `query_test`, then restored. The recursion is in the shared plan
+path (both sqlite and postgres drivers hit it), unrelated to the result cache — a container-free
+repro exists via the sqlite suite. Not this session's to fix; tracked below.**
 Scope: `docs/scope/datasources/federation-result-cache-scope.md` ·
 session: `docs/sessions/datasources/federation-result-cache-session.md` ·
 public: `doc-site/content/public/datasources/datasources.mdx`.
@@ -390,9 +396,11 @@ binaries) plus triage of every red. What the "known-red list" actually was:
   **`crates/devkit/templates/wasm/Cargo.toml.tmpl`**, meaning *every wasm extension anyone scaffolded
   was born unbuildable* since the SDK split. `agent_routed_test` was simply stale (3/3 green).
 - **Genuinely red (3):** `agent_persona_catalog_test` 6/8, `agent_persona_coding_test` 2/10,
-  `reminder_test` 1/4. Plus two **pre-existing federation e2e stack overflows** (postgres *and* —
-  newly found — sqlite, which proves the recursion is in the shared plan path, not a driver, and
-  gives a container-free repro).
+  `reminder_test` 1/4. Plus the **pre-existing federation e2e stack overflows** — now confirmed to be
+  **three** suites: `federation_test` (postgres), `federation_sqlite_test`, and `query_test` (both
+  sqlite). The recursion is in the shared plan path, not a driver, so the sqlite suites give a
+  container-free repro. Re-confirmed pre-existing during the result-cache slice by reverting all six
+  host touches to `18dc1f44~1` and reproducing the identical overflow.
 - **Not failures at all:** `fleet_monitor_test`/`native_test` needed `cargo build -p fleet-monitor -p
   echo-sidecar` (binaries wiped with `target/`); `rules_test` hangs *only* under heavy box load
   (27 concurrent `worker_threads = 1` runtimes starve into a real deadlock — green when quiet).

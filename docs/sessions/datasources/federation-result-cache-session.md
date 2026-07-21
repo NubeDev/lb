@@ -1,7 +1,8 @@
 # Session: federation query-result cache
 
 **Scope:** `docs/scope/datasources/federation-result-cache-scope.md` ·
-**Status:** implemented, tested (49 federation + host suites green); **live verification pending**
+**Status:** implemented, tested (49 federation + host suites green; three unrelated federation e2e
+suites confirmed pre-existing stack overflows, not this change); **live latency verification pending**
 
 Ships the TTL-bounded result cache inside the federation child, plus the four host touches that make
 the `cache: {ttl_s}` field actually reach it. Third and last layer of the same campaign: pool cache
@@ -120,6 +121,40 @@ scope's Risk 5 names.
    the vacuity cannot silently come back if the box gets faster.
 
 Green output is pasted at the end of this doc.
+
+### A third flake manifestation, found + fixed on this machine
+
+Re-running `result_cache_test` at `--test-threads=16` on this (different) box surfaced a fresh
+intermittent failure — the **timing** half of `an_accepting_caller_never_waits_on_a_stricter_callers_refresh`
+(`waited < 100 ms` at line 619), distinct from the content half a prior session already fixed. The
+accept path is a lockless synchronous return, so that assertion measures only scheduling latency;
+under a saturated 16-worker run tokio can leave the (non-blocking) continuation unscheduled past
+100 ms. Widened the bound to 350 ms — still under half the ~750 ms refresh, so it catches a genuine
+rule-1 block (which would cost the full refresh) while absorbing load-scaled jitter. Verified 3/3
+green at `--test-threads=16` after the change. Logged as the third cause in
+`docs/debugging/federation/result-cache-tests-flake-under-parallelism.md`.
+
+### The three federation e2e stack overflows are PRE-EXISTING (not this change)
+
+Three lb-host suites — `federation_test`, `federation_sqlite_test`, `query_test` — abort with
+`fatal runtime error: stack overflow` (SIGABRT). They are **not** caused by the result cache:
+
+- `federation_test` was already proven pre-existing earlier in the session (stash of the six host
+  files, re-run, restore).
+- `federation_sqlite_test` and `query_test` re-verified cleanly here (the earlier `query_test`
+  stash-and-rerun had produced no result line and was inconclusive). Method: reverted all six host
+  touches to the parent commit (`git checkout 18dc1f44~1 -- <the six files>`), ran
+  `cargo test -p lb-host --test query_test --test federation_sqlite_test --no-fail-fast`, and both
+  aborted with the **identical** `fatal runtime error: stack overflow` / SIGABRT. Restored the files
+  to HEAD afterward.
+
+The result-cache commit landed as `18dc1f44 "added ds cache"` on `master` (the working branch named
+in the handoff, `fix/native-install-preserves-runtime-net-grants`, had already been merged/renamed —
+no work lost). Reverting to `18dc1f44~1` therefore isolates exactly this change's six host edits.
+
+Conclusion: the recursion lives in the shared federation plan path — both the sqlite suites and the
+postgres suite hit it, so it is not a driver bug and the sqlite suites give a container-free repro.
+Out of scope for this slice; recorded in STATUS.md for a future owner. **No regression to fix.**
 
 ## Not verified yet — live
 
