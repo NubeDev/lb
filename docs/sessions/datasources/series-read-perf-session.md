@@ -1,9 +1,18 @@
 # Session: series-read performance — pushdown decimation + batched latest
 
 **Scope:** `docs/scope/datasources/series-read-perf-scope.md` ·
-**Status:** implemented, tested (ingest `series_plane_test` 20 green; host `ingest_test` +
-`ingest_isolation_test` green; full workspace build green). Live-latency verification against a real
-node deferred — the O(buckets) contract is pinned by a crate integration test, not yet timed on a box.
+**Status:** implemented, tested green on the final code — `lb-ingest --test series_plane_test` **20/20**
+and `lb-host --test ingest_test --test ingest_isolation_test` (**7 + 3**) both pass on a clean run;
+`cargo build --workspace` is green. Live-latency verification against a real node is deferred — the
+O(buckets) contract is pinned by a crate integration test (`pushdown_is_o_buckets_not_o_rows`), not yet
+timed on a box.
+
+> **Note on a pre-existing, unrelated test failure:** `cargo test --workspace` cannot *compile*
+> `lb-cli`'s `ext_publish_test` in this environment because it needs a prebuilt wasm fixture
+> (`extensions/hello-v2/target/wasm32-wasip2/release/hello_v2_ext.wasm`) produced by an extension
+> `build.sh` that hasn't run here. This aborts the whole-workspace test *compile* before any test runs,
+> so verify the affected crates directly (the two commands above) rather than via `--workspace`. This is
+> environmental, not caused by this change — no `role/cli` or `extensions/*` files were touched.
 
 Closes the two measured slownesses in the series read plane, both without a wire break:
 
@@ -103,3 +112,15 @@ The mandatory capability-deny and workspace-isolation categories are covered at 
 None new. The scope's three (pushdown vs fold, one query or two, result shape) were resolved in the
 scope and hold in the implementation. Only follow-up: time the pushdown on a real node/box to confirm
 the "2.9 s → low tens of ms" target (the O(buckets) *shape* is already test-pinned).
+
+## Session housekeeping — a build-lock incident (not a code issue)
+
+While verifying, background `cargo` runs from this session (`cargo test -p lb-ingest -p lb-host`, then a
+`cargo build -p federation --features postgres`) were stopped at the session layer but **kept running as
+OS processes**, each holding `rust/target/debug/.cargo-lock`. Because the product host (`rubix-ai`)
+builds into the **shared** `lb/rust/target` directory, its `make dev` sat at *"Blocking waiting for file
+lock on build directory"* behind them. Diagnosed with `fuser -v rust/target/debug/.cargo-lock` (prints
+the holding PID), killed the orphans, and confirmed the lock released. No source or config was involved —
+purely orphaned processes. Takeaway for future sessions: stopping a background task in the harness does
+not always reap the spawned `cargo`/`rustc`; check `fuser` on the lockfile before assuming a build is
+wedged, and prefer foreground/`timeout`-bounded cargo runs for verification.
