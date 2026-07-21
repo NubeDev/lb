@@ -69,6 +69,7 @@ fn rhai_flow(id: &str) -> Flow {
         concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
+        managed_by: None,
     }
 }
 

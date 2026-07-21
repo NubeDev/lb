@@ -382,6 +382,59 @@ zero-authority compute (`docs/scope/rules/data-stdlib-scope.md`). The authoritat
 locally when shaped (a bounded `Frame`/array). Don't materialize a million rows to average them —
 `g.col("v").avg()` pushes the mean down; `g.frame()` is for reshaping the bounded result.
 
+## 10. Scheduling a rule — one line, no canvas (scheduled-rules)
+
+Put a `#[schedule(...)]` directive on the **first line** of a rule body and `rules.save` compiles it to
+a managed `cron → rule` flow that the shipped flow cron reactor fires. The rule is self-describing
+(read line 1, know when it runs), and there is still **exactly one scheduler** — no rule-cron reactor
+exists; the directive is parsed at save, never executed.
+
+```bash
+# save a rule that raises an insight every 15 minutes — no flow canvas
+lb-cli call rules.save '{
+  "id":"cooler-foodsafety","name":"cooler-foodsafety",
+  "body":"#[schedule(\"every 15 minutes\")]\n\ninsight.raise(#{ dedup_key: \"cooler:1\", severity: \"critical\", title: \"cooler over temp\" });"
+}'
+# → {"id":"cooler-foodsafety","schedule":{"managed":true,"flow_id":"schedule:cooler-foodsafety","raw":"every 15 minutes","cron":"*/15 * * * *"}}
+```
+
+The save response's `schedule` block tells you what happened:
+- `{"managed":true, ...}` — the managed flow `flow:{ws}:schedule:{id}` was built (`cron trigger → rule
+  node`, enabled, `start_on_boot`, `managedBy:"rule-schedule:{id}"`). It fires through `react_cron`.
+- `{"managed":false,"pending":"needs flow-write", ...}` — you hold `rules.save` but **not** flow-write.
+  The rule + its schedule metadata persist, but the managed flow could not be built (scheduling is
+  `rule-write ∩ flow-write` — it never widens your authority). Grant flow-write and re-save.
+
+**Directive forms** (the parser emits ONLY a cron string; `croner` owns validation + the preview):
+
+| Directive | Compiled cron |
+|---|---|
+| `#[schedule("every 15 minutes")]` | `*/15 * * * *` |
+| `#[schedule("every 2 hours")]` | `0 */2 * * *` |
+| `#[schedule("hourly")]` / `"daily"` | `0 * * * *` / `0 0 * * *` |
+| `#[schedule("weekdays at 08:00")]` | `0 8 * * 1-5` |
+| `#[schedule("every day at 2pm")]` | `0 14 * * *` |
+| `#[schedule(cron = "0 2 * * *")]` | `0 2 * * *` (explicit escape hatch) |
+
+An **unparseable phrase is a save error** (never a silent no-schedule) — use a supported phrase or the
+explicit `cron = "..."` form. Schedules are **UTC** (v1). Read the schedule + preview back:
+
+```bash
+lb-cli call rules.get '{"id":"cooler-foodsafety"}'
+# → { ...rule..., "schedule": { "raw":"every 15 minutes", "cron":"*/15 * * * *",
+#     "next_runs":[…5 logical-second instants…], "flow_id":"schedule:cooler-foodsafety",
+#     "managed":true, "drift":false } }
+
+lb-cli call rules.list '{"scheduled":true}'   # the roll-up: only rules that run on a timer
+```
+
+`next_runs` are computed with the **same `croner` engine the reactor fires on**, so the preview never
+lies. **Change** the directive + re-save → one `flows.node.update` to the new cron. **Delete** the line
++ re-save → the managed flow is deleted (the rule reverts to run-on-demand). If a power user hand-edits
+the managed flow's cron, `rules.get` flags `drift:true` and the next save **re-asserts** the directive
+(the rule is the source of truth). The directive line is **stripped before the cage compiles the body**,
+so `insight.raise(#{…})` and other `#{}` map literals below it run normally.
+
 ## Gotchas
 
 - **A run can't widen its invoker** — a data verb hitting a source the *caller* lacks is denied

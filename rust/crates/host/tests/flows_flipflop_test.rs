@@ -75,6 +75,7 @@ fn flipflop_flow(id: &str, node_id: &str, period_secs: u64, start: bool) -> Flow
         concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
+        managed_by: None,
     }
 }
 

@@ -117,6 +117,7 @@ fn flow_with(id: &str, nodes: Vec<Node>, concurrency: Concurrency) -> Flow {
         concurrency,
         cron: None,
         next_attempt_ts: 0,
+        managed_by: None,
     }
 }
 

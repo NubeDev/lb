@@ -216,6 +216,13 @@ pub struct Flow {
     /// skip). 0 = not yet computed.
     #[serde(default)]
     pub next_attempt_ts: u64,
+    /// Marks a flow as **derived state** owned by another record, not hand-authored (scheduled-rules-
+    /// scope). A `#[schedule(...)]` directive on a rule compiles to a managed flow tagged
+    /// `managed_by = "rule-schedule:{rule_id}"`; the rule directive is the source of truth and the
+    /// syncer re-asserts this flow on every save. `None` = an ordinary hand-authored flow. Additive
+    /// serde default so a pre-scheduling flow deserialises as unmanaged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_by: Option<String>,
 }
 
 fn enabled_default() -> bool {
@@ -243,6 +250,7 @@ impl Flow {
             concurrency: Concurrency::default(),
             cron: None,
             next_attempt_ts: 0,
+            managed_by: None,
         }
     }
     /// In-degree (number of `needs`) per node — the rubix-cube DAG math verbatim.
@@ -481,6 +489,7 @@ mod tests {
             concurrency: Concurrency::default(),
             cron: None,
             next_attempt_ts: 0,
+            managed_by: None,
         }
     }
 

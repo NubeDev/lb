@@ -13,6 +13,35 @@ Shipped so far:
 - **Long-running rule runs** — jobs, checkpoints, pause/resume (`long-running-rules`, 2026-07-15).
 - **The data stdlib** — `time`, `json`, `stats`, `mathx`, and the polars `Frame`
   (`data-stdlib`, 2026-07-15).
+- **Scheduled rules** — a `#[schedule(...)]` directive that compiles to a managed cron flow
+  (`scheduled-rules`, 2026-07-21).
+
+## Scheduled rules — `#[schedule(...)]`, no canvas
+
+A rule declares its own schedule with one line at the top of its body —
+`#[schedule("every 15 minutes")]` (natural language) or `#[schedule(cron = "*/15 * * * *")]`
+(explicit). On `rules.save` the directive is **parsed, never executed**: a small phrase-matcher
+compiles it to a 5-field cron string (`croner` validates), the compiled `{raw, cron}` is stored on the
+rule record, and a **syncer builds a managed `cron → rule` flow** `flow:{ws}:schedule:{rule_id}`
+(marked `managedBy:"rule-schedule:{rule_id}"`, enabled, `start_on_boot`). From there it is an ordinary
+cron flow — the **existing** `react_cron` reactor fires it. There is **no second scheduler**: the
+directive is authoring sugar for a flow, not a runtime that scans rules.
+
+- **Save side effects.** Directive present → the managed flow is created/updated (a changed phrase =
+  one `flows.node.update` to the new cron; an unchanged re-save is a no-op). Directive removed → the
+  managed flow is deleted and the rule reverts to run-on-demand. An unparseable phrase is a **save
+  error**, never a silent no-schedule.
+- **Capabilities.** Scheduling is `rule-write ∩ flow-write` under the same caller — the syncer uses the
+  existing `flows.save`/`flows.node.update`/`flows.delete` verbs, no new cap and no widening. A caller
+  with rule-write but not flow-write gets `schedule:{managed:false, pending:"needs flow-write"}` — the
+  metadata persists, the flow is not built, and nothing lies about being scheduled.
+- **Reads.** `rules.get` returns a `schedule` block `{raw, cron, next_runs, flow_id, managed, drift?}`;
+  `next_runs` (the next 5 firings) are computed with the same `croner` engine the reactor fires on, so
+  the preview matches reality. `rules.list {scheduled:true}` returns only rules that run on a timer. A
+  hand-edited managed flow shows `drift:true`; the next save re-asserts the directive (the rule is the
+  source of truth). Schedules are UTC (v1).
+
+See the skill (`docs/skills/rules/SKILL.md` §10) for the phrase table and worked payloads.
 
 ## Long-running runs — `rules.run_async` + `rules.runs.*`
 

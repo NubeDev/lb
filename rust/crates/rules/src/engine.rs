@@ -172,7 +172,11 @@ impl RuleEngine {
             scope.push_dynamic(name.as_str(), value.clone());
         }
 
-        let result = engine.eval_with_scope::<rhai::Dynamic>(&mut scope, &rule.body);
+        // Strip any `#[schedule(...)]` authoring directive before compiling — `#` is a reserved rhai
+        // symbol, so an un-stripped directive is a run-time compile error. The directive is metadata
+        // parsed at save (scheduled-rules-scope); the cage never executes it.
+        let source = crate::schedule::strip_directive(&rule.body);
+        let result = engine.eval_with_scope::<rhai::Dynamic>(&mut scope, &source);
 
         // Drain collectors regardless of outcome (findings emitted before a later error still count).
         run.findings = collectors.drain_findings();

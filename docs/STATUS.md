@@ -30,6 +30,33 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-21 (backend) — SCHEDULED RULES: a `#[schedule(...)]` directive on a rule that
+compiles to a managed cron flow, no canvas.** A rule declares its own schedule with one line at the top
+of its body — `#[schedule("every 15 minutes")]` (NL) or `#[schedule(cron = "*/15 * * * *")]` (explicit).
+On `rules.save` the directive is **parsed, never executed**: a vendored phrase-matcher compiles it to a
+5-field cron (`croner` validates), `{raw, cron}` is stored on the rule, and a **syncer builds a managed
+`cron → rule` flow** `flow:{ws}:schedule:{id}` (`managedBy:"rule-schedule:{id}"`, enabled,
+`start_on_boot`). From there the **existing `react_cron` reactor** fires it — **there is exactly one
+scheduler; no rule-cron reactor exists** (a workspace-wide grep is a shipped ship-gate test). Scheduling
+is `rule-write ∩ flow-write` under the same caller (no new cap, no widening) — a split-grant caller gets
+`schedule:{managed:false, pending:"needs flow-write"}`, metadata persisted, no silent half-state.
+`rules.get` gains a `{raw, cron, next_runs, flow_id, managed, drift?}` block (next-runs via the same
+`croner` engine the reactor fires on — no lying preview); `rules.list {scheduled:true}` is the roll-up.
+
+**NL-parser verdict:** `natural-cron` (the scope candidate) is MIT but a `0.0.2`, ~17%-documented
+builder/validator — too immature for a core crate (rule 1); vendored a thin phrase-matcher instead,
+`croner` stays the one time engine. **Bug found + fixed in-session** (`debugging/rules/
+scheduled-rule-directive-breaks-cage.md`): the directive is stored in the body but `#` is reserved in
+rhai, so running the rule errored `'#' is a reserved symbol` — fixed by stripping the directive line at
+the single cage-compile chokepoint (invisible until the slice-4 firing test actually ran the rule).
+**Tests (rule 9, real store/caps/bridge/reactor):** `lb-rules` 10 schedule unit + `lb-host`
+`scheduled_rules_test` **12** (capability-deny incl. split-grant, ws-isolation, preview parity vs
+`next_after`, reconcile create/update/delete, firing e2e + dedup, the no-rule-cron ship gate).
+**Deferred (explicit, not a gap):** the frontend rule-page schedule block (backend contract complete +
+tested; the React surface lives in a product host and must assert the shared next-5 fixture).
+Scope: `scope/rules/scheduled-rules-scope.md` · session: `sessions/rules/scheduled-rules-session.md` ·
+public: `../doc-site/content/public/rules/rules.md` · skill: `skills/rules/SKILL.md` §10.
+
 **Just shipped 2026-07-20 — the federation QUERY-RESULT CACHE, closing the three-layer stack.**
 `crates/federation/src/results.rs` (new) holds a TTL-bounded, process-local map of query results, so
 a repeat of an identical query inside a caller-declared freshness window is served from memory. With

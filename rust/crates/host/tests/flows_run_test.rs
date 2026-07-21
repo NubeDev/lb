@@ -159,6 +159,7 @@ fn flow(id: &str, nodes: Vec<Node>) -> Flow {
         concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
+        managed_by: None,
     }
 }
 

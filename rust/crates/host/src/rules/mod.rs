@@ -23,6 +23,7 @@ mod run;
 mod run_by_id;
 mod runs;
 mod save;
+mod schedule;
 mod seam;
 
 pub use config::{ai_limits, rule_limits};
@@ -256,16 +257,47 @@ pub async fn call_rules_tool(
                 .get("params")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default();
-            let saved = rules_save(&node.store, principal, ws, id, name, body, params).await?;
-            Ok(json!({ "id": saved }))
+            let (saved, schedule) =
+                rules_save(&node.store, principal, ws, id, name, body, params).await?;
+            // Compile the `#[schedule(...)]` directive into a managed `cron → rule` flow (or tear it
+            // down when the directive is gone). Scheduling = rule-write ∩ flow-write under the SAME
+            // caller: a caller lacking flow-write gets a `pending` marker, never a silent half-state.
+            let sync =
+                schedule::sync_schedule(node, principal, ws, &saved, schedule.as_ref()).await;
+            Ok(json!({ "id": saved, "schedule": sync }))
         }
         "rules.get" => {
             let id = str_arg(input, "id")?;
             let rule = rules_get(&node.store, principal, ws, id).await?;
-            Ok(serde_json::to_value(rule).unwrap_or(Value::Null))
+            let mut out = serde_json::to_value(&rule).unwrap_or(Value::Null);
+            // Enrich with the resolved schedule block (raw/cron/next_runs/flow_id/managed/drift) so the
+            // rule page renders the schedule + preview from one read (scheduled-rules-scope slice 3).
+            // `next_runs` are computed with the SAME `croner` engine the reactor fires on (no lying
+            // preview). `drift`/`managed` are read from the managed flow under the caller.
+            if let Some(sched) = &rule.schedule {
+                let now = input
+                    .get("ts")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or_else(now_ms)
+                    / 1000;
+                let block =
+                    schedule::schedule_block(node, principal, ws, &rule.id, sched, now).await;
+                if let Value::Object(map) = &mut out {
+                    map.insert("schedule".into(), block);
+                }
+            }
+            Ok(out)
         }
         "rules.list" => {
-            let rules = rules_list(&node.store, principal, ws).await?;
+            let scheduled_only = input
+                .get("scheduled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let mut rules = rules_list(&node.store, principal, ws).await?;
+            if scheduled_only {
+                // The roll-up: "what runs on a timer" — only rules carrying a compiled schedule.
+                rules.retain(|r| r.schedule.is_some());
+            }
             Ok(json!({ "rules": rules }))
         }
         "rules.delete" => {
