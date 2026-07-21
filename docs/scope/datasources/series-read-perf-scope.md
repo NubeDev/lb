@@ -1,8 +1,12 @@
 # Datasources scope — series-read performance (pushdown decimation + batched latest)
 
-Status: **implemented** (ingest + host suites green; session log
-`docs/sessions/datasources/series-read-perf-session.md`). Live-latency timing on a real node is the
-one remaining verification. Promotes to `doc-site/content/public/datasources/` once timed.
+Status: **implemented + released + consumed downstream** (2026-07-21). Ingest + host suites green
+(session log `docs/sessions/datasources/series-read-perf-session.md`); **released as `node-v0.5.0`**
+(minor bump — new `series.latest_many` verb, no wire break); **ems consumed it** — pins bumped to
+`node-v0.5.0` and `fetchLatest` collapsed to one `series.latest_many` call (ems companion scope now
+marked implemented). Live-latency timing on a real node is the one remaining verification (the
+O(buckets) *shape* is test-pinned by `pushdown_is_o_buckets_not_o_rows`). Promotes to
+`doc-site/content/public/datasources/` once timed.
 Owning repo: **lb** (this repo). Downstream embedders (ems) consume it by bumping the `node-v*`
 tag once shipped — see the ems companion scope `ems/docs/scope/series-ingest/series-fetch-fast-path-scope.md`
 (the next slice of ems's `series-ingest-readiness-scope.md`, which already anticipates "ems bumps pin +

@@ -41,6 +41,8 @@ fn admin(ws: &str) -> Principal {
             "mcp:native.call:call",
             "mcp:native.status:call",
             "mcp:federation.query:call",
+            "mcp:federation.write:call",
+            "mcp:federation.delete:call",
             "mcp:datasource.add:call",
             "mcp:datasource.list:call",
             "mcp:datasource.test:call",
@@ -393,6 +395,108 @@ async fn federation_end_to_end_sqlite() {
     assert!(
         matches!(iso_sample, lb_mcp::ToolError::BadInput(_)),
         "sample not found in ws-B: {iso_sample:?}"
+    );
+
+    let _ = std::fs::remove_file(&db);
+}
+
+/// **O-2 — `federation.delete`** (`pack-entity-binding-scope.md` O-2): a first-class, bounded,
+/// STRUCTURED row DELETE (key columns + key-aligned value rows, never SQL) — NOT a tombstone hack.
+/// Same caps/shape as `federation.write`. This proves it end-to-end over the real sqlite source: a
+/// write puts a row, a delete by key removes exactly it, a read-back confirms it is gone; plus the
+/// capability-deny (no `mcp:federation.delete:call` → opaque `Denied`) and the bad-identifier refusal.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn federation_delete_removes_a_row_by_key() {
+    let dir = federation_dir();
+    let db = seed_db();
+    let ws = "acme-del";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let admin = admin(ws);
+    install_federation(&node, &admin, ws, &dir).await;
+    add_source(&node, &admin, ws, "demo", &db).await;
+
+    let count = |node: &std::sync::Arc<Node>, admin: &Principal| {
+        let node = node.clone();
+        let admin = admin.clone();
+        async move {
+            call(
+                &node,
+                &admin,
+                ws,
+                "federation.query",
+                json!({"source":"demo","sql":"SELECT id FROM site ORDER BY id","ts":2}),
+            )
+            .await
+            .expect("query sites")["rows"]
+                .as_array()
+                .unwrap()
+                .len()
+        }
+    };
+    let before = count(&node, &admin).await;
+
+    // Add a row to delete (federation.write reaches the same sqlite source).
+    call(
+        &node,
+        &admin,
+        ws,
+        "federation.write",
+        json!({"source":"demo","table":"site","columns":["id","name"],
+               "rows":[["site-del","To Be Deleted"]],"key":["id"]}),
+    )
+    .await
+    .expect("write the row to delete");
+    assert_eq!(count(&node, &admin).await, before + 1, "the row was added");
+
+    // Delete it by key — structured, no SQL from the caller.
+    let del = call(
+        &node,
+        &admin,
+        ws,
+        "federation.delete",
+        json!({"source":"demo","table":"site","key":["id"],"rows":[["site-del"]]}),
+    )
+    .await
+    .expect("federation.delete by key");
+    assert_eq!(del["affected"], 1, "exactly one row deleted: {del}");
+    assert_eq!(
+        count(&node, &admin).await,
+        before,
+        "the row is gone, seed rows untouched"
+    );
+
+    // CAPABILITY-DENY: delete without the cap is opaque.
+    let no_cap = principal(ws, &["mcp:federation.query:call"]);
+    let denied = call(
+        &node,
+        &no_cap,
+        ws,
+        "federation.delete",
+        json!({"source":"demo","table":"site","key":["id"],"rows":[["site-001"]]}),
+    )
+    .await
+    .expect_err("delete without mcp:federation.delete:call is denied");
+    assert!(
+        matches!(denied, lb_mcp::ToolError::Denied),
+        "opaque deny: {denied:?}"
+    );
+
+    // BAD IDENTIFIER: a key column that isn't a plain identifier is refused (injection guard).
+    let bad = call(
+        &node,
+        &admin,
+        ws,
+        "federation.delete",
+        json!({"source":"demo","table":"site","key":["id\"; DROP TABLE site--"],"rows":[["x"]]}),
+    )
+    .await
+    .expect_err("a non-identifier key column is refused");
+    let _ = bad; // the shape of the error varies; that it REFUSED (Err) is the assertion.
+                 // The seed rows survived the refused injection attempt.
+    assert_eq!(
+        count(&node, &admin).await,
+        before,
+        "injection attempt changed nothing"
     );
 
     let _ = std::fs::remove_file(&db);

@@ -15,6 +15,7 @@
 //! `pack.*` verb handlers in `lb-host`. Nothing in this crate performs I/O, and nothing in it knows
 //! a pack by name (rule 10): a pack is data.
 
+pub mod binding;
 pub mod bundle;
 pub mod decision;
 pub mod manifest;

@@ -104,7 +104,11 @@ async fn apply_object(
     warnings: &mut Vec<String>,
 ) -> String {
     match obj.kind {
-        Kind::Datasource => apply_datasource(node, principal, ws, pack, ts).await,
+        // `run_rules` is the FIRST-APPLY signal (true iff no prior receipt). Seeded rows are starting
+        // data — applied once, never re-clobbered — so the datasource seeds ONLY on first apply, the
+        // same run-once model as rules (pack-entity-binding-scope.md §seed-ownership). A re-apply
+        // leaves the operator's rows intact.
+        Kind::Datasource => apply_datasource(node, principal, ws, pack, run_rules, ts).await,
         Kind::Rule => apply_rule(node, principal, ws, pack, &obj.id, run_rules, ts, warnings).await,
         Kind::Dashboard => apply_dashboard(node, principal, ws, pack, &obj.id, ts).await,
         Kind::Channel => apply_channel(node, principal, ws, &obj.id, ts).await,
@@ -118,6 +122,7 @@ async fn apply_datasource(
     principal: &Principal,
     ws: &str,
     pack: &Pack,
+    first_apply: bool,
     ts: u64,
 ) -> String {
     let Some(ds) = &pack.manifest.datasource else {
@@ -126,14 +131,35 @@ async fn apply_datasource(
 
     // Only sqlite is materialized node-locally (see `sqlite.rs` for the tradeoff); every other
     // engine registers as a pointer to a source the operator already stood up.
+    //
+    // SEED OWNERSHIP (pack-entity-binding-scope.md): the seed is run-once. On FIRST apply we build
+    // the db fresh (schema + seed). On a re-apply the db already exists and its rows may be operator-
+    // edited — so we DO NOT rebuild or re-seed; we resolve the existing file and re-register it. This
+    // is what makes "an operator CRUDs the seeded sites, then the pack ships v4" safe: the data is the
+    // operator's, and re-applying the pack never clobbers it. (Schema evolution is the additive
+    // `federation.migrate` path, not a raw re-run of the authored DDL, which would fail anyway.)
     let dsn = if ds.engine == "sqlite" && (pack.schema_sql.is_some() || pack.seed_sql.is_some()) {
-        match super::sqlite::materialize(
-            ws,
-            &pack.manifest.pack,
-            &ds.name,
-            pack.schema_sql.as_deref(),
-            pack.seed_sql.as_deref(),
-        ) {
+        // Re-apply resolves the existing db (preserving operator rows); a first apply — or a re-apply
+        // whose db was purged (`resolve_existing` → None) — builds it fresh from the authored SQL.
+        let existing = if first_apply {
+            None
+        } else {
+            match super::sqlite::resolve_existing(ws, &pack.manifest.pack, &ds.name) {
+                Ok(p) => p,
+                Err(_) => return FAILED.to_string(),
+            }
+        };
+        let path = match existing {
+            Some(p) => Ok(p),
+            None => super::sqlite::materialize(
+                ws,
+                &pack.manifest.pack,
+                &ds.name,
+                pack.schema_sql.as_deref(),
+                pack.seed_sql.as_deref(),
+            ),
+        };
+        match path {
             Ok(p) => Some(p.to_string_lossy().into_owned()),
             Err(_) => return FAILED.to_string(),
         }

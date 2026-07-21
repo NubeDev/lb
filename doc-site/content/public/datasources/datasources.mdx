@@ -74,6 +74,37 @@ restart, harmlessly: the next query is simply slow.
 plus `age_ms` on a hit — which is what lets a UI badge "data as of Xs ago". Events never carry the
 DSN or raw SQL (SQL appears only as `sql_digest`).
 
+## Per-target query diagnostics: why a panel is blank (shipped 2026-07-21)
+
+`viz.query` resolves each of a panel's targets by re-entering the dispatcher under the caller's
+authority. It used to **collapse any target failure to an empty frame and throw the reason away**
+(`Err(_) => Vec::new()`), so four very different outcomes — a capability deny, a bad query, an
+operational error, and a query that genuinely matched zero rows — all reached the client as the same
+`{fields:[],length:0}` frame with HTTP 200. A blank tile could never say **why** it was blank.
+
+Each frame now carries an additive **`status`** — one of `ok`, `empty`, `denied`, `error`:
+
+```jsonc
+{ "refId": "A", "fields": [], "length": 0,
+  "status": { "state": "error",
+              "message": "parse error: … No field named nonexistent_col …" } }
+```
+
+- **`ok`** — ran, ≥1 row. `message` absent.
+- **`empty`** — ran, 0 rows. `message` absent (the UI writes its own "0 rows for &lt;range&gt;").
+- **`error`** — the downstream tool's own message: the bad SQL you typed, the malformed arg you
+  passed. It is *your own request echoed back to you*, so surfacing it leaks nothing — and withholding
+  it was the actual papercut.
+- **`denied`** — a target you lack the capability for. **`message` is always absent** — the deny is
+  opaque by construction: it never reveals a gate, a tool's existence, or cross-workspace shape, and
+  its status is byte-for-byte identical whether or not the named data exists (no enumeration oracle).
+
+**Additive and backward-compatible.** Same verb, same `mcp:viz.query:call` cap — no new verb, no new
+capability. `status` is `#[serde(default)]`, so a legacy client that ignores it renders exactly as
+before, and the compute-only (frames-in) path — which resolves no target — carries no `status` at all.
+A failed target still yields an empty frame; no rows are ever fabricated. The consuming
+empty-state/status-bar UI is downstream (rubix-ai `dashboard-first-paint-scope.md`).
+
 In flight: the **schema designer + write plane**
 (`docs/scope/datasources/schema-designer-scope.md`) — `db_schema` records with a
 visual designer, `federation.migrate` (Ask-gated DDL), `federation.write`

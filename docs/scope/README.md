@@ -258,6 +258,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   round-trip), SurrealDB-persisted results (durable staleness), and a host-level generic MCP cache
   (can't know purity; stampedes past single-flight) all rejected; `federation.mirror` remains the
   durable "make it local" answer.
+  **`query-diagnostics-scope.md`** stops `viz.query` from laundering every per-target failure into an
+  identical empty frame (`dispatch_target`: `Err(_) => Vec::new()`): it attaches a per-frame **`status`**
+  (`ok`/`empty`/`denied`/`error`) that **surfaces a query author's own diagnostic** (the federation
+  planner's `No field named …`) while keeping a **capability `denied` opaque** — matching the `ToolError`
+  variant, not discarding it. Additive field, same verb/cap; the fix that lets a dashboard finally say
+  *why* a tile is blank (rubix-ai `dashboard-first-paint-scope.md` consumes it).
 - `control-engine/` — the native (Tier-2) **`control-engine` extension** (scope co-located with the
   extension at `rust/extensions/control-engine/docs/control-engine-scope.md` — it is **100% an
   extension**, so its docs live with it; the core stays CE-ignorant, CI-enforced):
@@ -589,7 +595,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   receipts, the live-proven refusal matrix/clobber/run-once semantics ported from the rubix-ai
   prototype (NubeIO/rubix-ai#13), which deletes its downstream applier on the shipping tag. Core
   owns the mechanism and knows no pack by name (rule 10); packs are embedder data. Unrelated to
-  `lb-pack`, the extension artifact packager.
+  `lb-pack`, the extension artifact packager. `pack-entity-binding-scope.md` (the ask) adds an
+  **optional** `entities[].table` (+`pk`/`parent_fk`/`display`) projection that makes the vocabulary
+  addressable as data (carried in `pack.get`), the seed-ownership re-apply decision (seeded rows are
+  starting data, never re-clobbered), and the gating question of whether `federation.write` reaches a
+  pack's in-process sqlite source — NOT an ORM (holds the `entities`-is-vocabulary line); it unblocks
+  the downstream operator data plane (`NubeIO/rubix-ai → docs/scope/packs/entity-data-plane-scope.md`).
 - `sync/` — multi-node sync + authority (S3).
 - `system-map/` — a framework-level **workspace topology + status console**: two admin-gated read
   verbs (`system.overview` status grid · `system.topology` react-flow wiring) that derive a live,

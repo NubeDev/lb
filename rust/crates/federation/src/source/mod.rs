@@ -125,6 +125,19 @@ pub trait Source: Send + Sync {
         rows: &[Vec<serde_json::Value>],
         key: Option<&[String]>,
     ) -> Result<u64, SourceError>;
+
+    /// Delete every row matching a structured key from `table`. `key` names the identifying
+    /// columns; each entry in `rows` is a `key`-aligned `Vec<Value>` of values for those columns,
+    /// so one row here is one `DELETE ... WHERE k1=? AND k2=? ...`. All the DELETEs run in ONE
+    /// transaction (a mid-batch failure rolls everything back). Returns the affected row count.
+    /// Used by `federation.delete`. Values are parameterized (never inlined into SQL) — a caller
+    /// cannot inject SQL through a key value, and the caller NEVER supplies SQL.
+    async fn delete_rows(
+        &self,
+        table: &str,
+        key: &[String],
+        rows: &[Vec<serde_json::Value>],
+    ) -> Result<u64, SourceError>;
 }
 
 /// A source-layer error. The DSN is NEVER included in the message (secret mediation — datasources

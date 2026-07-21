@@ -74,6 +74,13 @@ pub struct Manifest {
 
 /// One entity in the vocabulary tree. Deliberately a *vocabulary*, not an ORM: `parent` is the only
 /// relation, `kinds`/`units` are flat hints. The moment it grows behavior it is a NEW scope.
+///
+/// The optional **entity→table binding** (`table`/`pk`/`parent_fk`/`display`,
+/// `pack-entity-binding-scope.md`) is a *projection*, not behavior: it names which table an entity's
+/// rows live in, so a downstream surface can address them through the `federation.*` verbs. An entity
+/// with no `table` is exactly the shape-only vocabulary — the promise is unbroken. The binding stores
+/// no rows, generates no SQL in core, and enforces nothing about the data (that line is where a NEW
+/// scope begins — `unique`/`required`/`computed`/a second FK are all "not a fifth field").
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Entity {
@@ -84,6 +91,19 @@ pub struct Entity {
     pub kinds: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub units: BTreeMap<String, String>,
+    /// The table this entity's rows live in (binding). Absent ⇒ shape-only vocabulary (today's shape).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
+    /// The primary-key column of `table` — the UPSERT key a downstream row editor writes on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pk: Option<String>,
+    /// The column of `table` that references the PARENT entity's row (drill-down through the forest).
+    /// Requires the entity to declare `parent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_fk: Option<String>,
+    /// The human-label column of `table` — the roster/picker label a downstream surface shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
 }
 
 /// The insight-key grammar block.

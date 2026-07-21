@@ -87,9 +87,72 @@ impl Field {
     }
 }
 
+/// Why a frame is (or isn't) blank — per-target diagnostic (query-diagnostics scope). The resolver
+/// distinguishes four outcomes that all otherwise reach the client as the same `{fields:[],length:0}`:
+/// a query `ok` with rows, an `empty` success (ran, 0 rows), a `denied` target (opaque by design), and
+/// an `error` (the downstream tool's own message — the author's bad SQL/args). Plain data — no store
+/// or bus reach — so `lb-viz` stays pure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FrameState {
+    Ok,
+    Empty,
+    Denied,
+    Error,
+}
+
+/// A frame's resolution status. `message` is present ONLY for `error` (the downstream tool's text) —
+/// `denied` carries **no** message by construction (the deny-opacity contract: an unauthorized caller
+/// learns nothing, not even that a message exists), and `ok`/`empty` need none (the UI writes its own
+/// "0 rows for <range>").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrameStatus {
+    pub state: FrameState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+impl FrameStatus {
+    /// A target that produced ≥1 row.
+    pub fn ok() -> Self {
+        FrameStatus {
+            state: FrameState::Ok,
+            message: None,
+        }
+    }
+
+    /// A target that ran and matched 0 rows (a correct-but-empty range).
+    pub fn empty() -> Self {
+        FrameStatus {
+            state: FrameState::Empty,
+            message: None,
+        }
+    }
+
+    /// A denied/not-found target — opaque, never a message (never reveals a gate or tool existence).
+    pub fn denied() -> Self {
+        FrameStatus {
+            state: FrameState::Denied,
+            message: None,
+        }
+    }
+
+    /// A target error carrying the downstream tool's own message (the caller's bad SQL/args echoed
+    /// back to the same caller — safe and the whole point).
+    pub fn error(message: impl Into<String>) -> Self {
+        FrameStatus {
+            state: FrameState::Error,
+            message: Some(message.into()),
+        }
+    }
+}
+
 /// A canonical columnar frame. `refId` ties it back to the target that produced it (A, B, …) so
 /// transforms (`joinByField`, `merge`) and field overrides can reference it. `length` is the row count
-/// (the longest field; a ragged frame reads short fields as null).
+/// (the longest field; a ragged frame reads short fields as null). `status` is the per-target
+/// resolution diagnostic (query-diagnostics scope) — `#[serde(default)]` + skip-when-absent so a
+/// legacy/frames-in frame that omits it deserializes as `None` (treated as `ok`) and a client that
+/// ignores it renders exactly as before.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Frame {
     #[serde(default, rename = "refId", skip_serializing_if = "String::is_empty")]
@@ -98,6 +161,8 @@ pub struct Frame {
     pub name: String,
     pub fields: Vec<Field>,
     pub length: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<FrameStatus>,
 }
 
 impl Frame {
@@ -109,6 +174,7 @@ impl Frame {
             name: String::new(),
             fields,
             length,
+            status: None,
         }
     }
 
@@ -200,3 +266,57 @@ impl Frame {
 
 /// The pipeline I/O — many frames in, many frames out (a join collapses N→1, a partition would expand).
 pub type Frames = Vec<Frame>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // query-diagnostics scope: a `status`-less frame (legacy / frames-in) deserializes as `None` and,
+    // re-serialized, emits NO `status` key — an old client and a responder stub are unaffected.
+    #[test]
+    fn frame_status_defaults_absent_and_round_trips() {
+        let legacy = json!({ "refId": "A", "fields": [], "length": 0 });
+        let f: Frame = serde_json::from_value(legacy).unwrap();
+        assert_eq!(f.status, None, "absent status → None (legacy/ok)");
+        let back = serde_json::to_value(&f).unwrap();
+        assert!(
+            back.get("status").is_none(),
+            "None status is not serialized"
+        );
+    }
+
+    // `error` carries its message; `denied`/`empty`/`ok` do not (denied opacity + no noise).
+    #[test]
+    fn frame_status_error_carries_message_others_do_not() {
+        let mut f = Frame::new(vec![]);
+        f.status = Some(FrameStatus::error("Schema error: No field named x"));
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(v["status"]["state"], json!("error"));
+        assert_eq!(
+            v["status"]["message"],
+            json!("Schema error: No field named x")
+        );
+
+        for (s, state) in [
+            (FrameStatus::ok(), "ok"),
+            (FrameStatus::empty(), "empty"),
+            (FrameStatus::denied(), "denied"),
+        ] {
+            let mut f = Frame::new(vec![]);
+            f.status = Some(s);
+            let v = serde_json::to_value(&f).unwrap();
+            assert_eq!(
+                v["status"],
+                json!({ "state": state }),
+                "{state} has no message"
+            );
+        }
+
+        // Round-trip preserves the variant + message.
+        let mut f = Frame::new(vec![]);
+        f.status = Some(FrameStatus::error("boom"));
+        let back: Frame = serde_json::from_value(serde_json::to_value(&f).unwrap()).unwrap();
+        assert_eq!(back.status, Some(FrameStatus::error("boom")));
+    }
+}

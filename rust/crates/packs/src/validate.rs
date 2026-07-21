@@ -117,6 +117,26 @@ pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
         }
     }
 
+    // ENTITY→TABLE BINDING lint (pack-entity-binding-scope.md). Errors are manifest-only structural
+    // inconsistencies (parent_fk with no parent); everything schema-referential is a WARNING, since a
+    // pack's schema can be opaque (postgres) and the real oracle is the apply — the dialect precedent.
+    let schema = crate::binding::SchemaTables::parse(pack.schema_sql.as_deref().unwrap_or(""));
+    for (name, ent) in &pack.manifest.entities {
+        let (errs, warns) = crate::binding::validate_binding(name, ent, &schema);
+        for message in errs {
+            out.push(Finding {
+                error: true,
+                message,
+            });
+        }
+        for message in warns {
+            out.push(Finding {
+                error: false,
+                message,
+            });
+        }
+    }
+
     // WARNING — dialect poison in the schema/seed SQL. Comments are stripped first: the scan is a
     // substring match, so without this a comment WARNING the author off `datetime()` trips the very
     // warning it is telling them to avoid.

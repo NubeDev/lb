@@ -14,9 +14,9 @@ use serde_json::{json, Value};
 
 use super::{
     datasource_add, datasource_list, datasource_remove, datasource_test, dbschema_delete,
-    dbschema_get, dbschema_list, dbschema_save, federation_export, federation_migrate,
-    federation_mirror, federation_query, federation_sample, federation_schema, federation_write,
-    ExportFrom,
+    dbschema_get, dbschema_list, dbschema_save, federation_delete, federation_export,
+    federation_migrate, federation_mirror, federation_query, federation_sample, federation_schema,
+    federation_write, ExportFrom,
 };
 use crate::boot::Node;
 
@@ -123,6 +123,27 @@ pub async fn call_federation_tool(
                 &rows,
                 key.as_deref(),
                 ts,
+            )
+            .await?;
+            Ok(out)
+        }
+        "federation.delete" => {
+            let source = str_arg(input, "source")?;
+            let table = str_arg(input, "table")?;
+            let key: Vec<String> = input
+                .get("key")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| ToolError::BadInput("missing string-array arg: key".into()))?
+                .iter()
+                .filter_map(|c| c.as_str().map(str::to_string))
+                .collect();
+            let rows: Vec<Value> = input
+                .get("rows")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| ToolError::BadInput("missing array arg: rows".into()))?
+                .clone();
+            let out = federation_delete(
+                node, &launcher, principal, ws, source, table, &key, &rows, ts,
             )
             .await?;
             Ok(out)

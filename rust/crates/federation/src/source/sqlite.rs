@@ -291,6 +291,59 @@ impl Source for SqliteSource {
         .map_err(|e| super::SourceError(format!("write worker: {e}")))?
         .map_err(|e| super::SourceError(format!("write rows: {e}")))
     }
+
+    /// `DELETE FROM <table> WHERE <k1>=?1 AND <k2>=?2 ...`, one statement per key row, with
+    /// parameterized key values — never inlined into SQL (no injection surface). The whole batch
+    /// runs in one transaction so a mid-batch failure rolls everything back (the federation.delete
+    /// invariant). Identifiers are quote_ident'd (validated caller-side + defense in depth here).
+    async fn delete_rows(
+        &self,
+        table: &str,
+        key: &[String],
+        rows: &[Vec<serde_json::Value>],
+    ) -> Result<u64, super::SourceError> {
+        if rows.is_empty() {
+            return Ok(0);
+        }
+        let path = self.path.clone();
+        let table = table.to_string();
+        let key: Vec<String> = key.to_vec();
+        let rows: Vec<Vec<serde_json::Value>> = rows.to_vec();
+        tokio::task::spawn_blocking(move || -> Result<u64, rusqlite::Error> {
+            let mut conn = rusqlite::Connection::open(&path)?;
+            let tx = conn.transaction()?;
+            let mut affected = 0u64;
+            // Build the SQL once (one `k=?n` term per key column), reuse the prepared statement per
+            // row. Identifiers are quote_ident'd (validated caller-side + defense in depth here).
+            let predicates: Vec<String> = key
+                .iter()
+                .enumerate()
+                .map(|(i, c)| format!("{}=?{}", super::dialect::quote_ident(c), i + 1))
+                .collect();
+            let sql = format!(
+                "DELETE FROM {} WHERE {}",
+                super::dialect::quote_ident(&table),
+                predicates.join(" AND ")
+            );
+            {
+                let mut stmt = tx.prepare(&sql)?;
+                for row in &rows {
+                    // `key[i]` ↔ `row[i]` (key-aligned). Bind each cell as a sqlite Value —
+                    // parameterized, never inlined into SQL.
+                    let params: Vec<rusqlite::types::Value> =
+                        row.iter().map(json_to_sqlite).collect();
+                    let params_ref: Vec<&dyn rusqlite::ToSql> =
+                        params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+                    affected += stmt.execute(params_ref.as_slice())? as u64;
+                }
+            }
+            tx.commit()?;
+            Ok(affected)
+        })
+        .await
+        .map_err(|e| super::SourceError(format!("delete worker: {e}")))?
+        .map_err(|e| super::SourceError(format!("delete rows: {e}")))
+    }
 }
 
 /// Map a JSON cell value to a sqlite `Value` (parameterized — never inlined). sqlite is dynamically

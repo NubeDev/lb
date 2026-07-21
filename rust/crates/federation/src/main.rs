@@ -34,6 +34,7 @@
 //! Attribution: the embedded-DataFusion + SQL-validator pattern is adapted from `rubix-cube`
 //! (its `spice_engine` wrapper over the `datafusion` crate + its SQL validator), MIT/Apache-2.0.
 
+mod delete;
 mod event;
 mod info_schema;
 mod migrate;
@@ -100,6 +101,7 @@ async fn handle_call(req: &Request) -> Reply {
         "federation.schema" => federation_schema(req.id, &input).await,
         "federation.sample" => federation_sample(req.id, &input).await,
         "federation.write" => federation_write(req.id, &input).await,
+        "federation.delete" => federation_delete(req.id, &input).await,
         "federation.migrate" => federation_migrate(req.id, &input).await,
         "datasource.test" => datasource_test(req.id, &input).await,
         other => Reply::err(req.id, format!("unknown tool: {other}")),
@@ -231,6 +233,41 @@ async fn federation_write(id: u64, input: &Value) -> Reply {
 
     let key_ref: Option<&[String]> = key.as_deref();
     match write::run_write(kind, dsn, table, &columns, &rows, key_ref).await {
+        Ok(affected) => {
+            let out = json!({ "affected": affected });
+            Reply::ok(id, out.to_string())
+        }
+        Err(e) => Reply::err(id, e),
+    }
+}
+
+/// `federation.delete {kind, dsn, table, key, rows}` — bounded, structured row DELETE (entity-
+/// binding scope, O-2). The host resolves the source + mediates the DSN; this sidecar generates the
+/// parameterized `DELETE ... WHERE <key>=?` per row and runs it through `Source::delete_rows`.
+/// Row-capped; the caller NEVER supplies SQL. The DSN never appears in the reply.
+async fn federation_delete(id: u64, input: &Value) -> Reply {
+    let (kind, dsn, table) = match (
+        str_of(input, "kind"),
+        str_of(input, "dsn"),
+        str_of(input, "table"),
+    ) {
+        (Some(k), Some(d), Some(t)) => (k, d, t),
+        _ => return Reply::err(id, "missing kind/dsn/table"),
+    };
+    let key: Vec<String> = match input.get("key").and_then(|v| v.as_array()) {
+        Some(a) => a
+            .iter()
+            .filter_map(|c| c.as_str().map(str::to_string))
+            .collect(),
+        None => return Reply::err(id, "missing key"),
+    };
+    let rows: Vec<Value> = input
+        .get("rows")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    match delete::run_delete(kind, dsn, table, &key, &rows).await {
         Ok(affected) => {
             let out = json!({ "affected": affected });
             Reply::ok(id, out.to_string())

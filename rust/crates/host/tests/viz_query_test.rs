@@ -313,6 +313,165 @@ async fn frames_in_shapes_without_resolving_a_source() {
     assert_eq!(out["frames"][0]["refId"], json!("A"), "refId preserved");
 }
 
+/// The per-target `status` object on frame `ref_id` (query-diagnostics scope), or `Null` if absent.
+fn frame_status(out: &Value, ref_id: &str) -> Value {
+    out["frames"]
+        .as_array()
+        .expect("frames")
+        .iter()
+        .find(|f| f["refId"] == json!(ref_id))
+        .map(|f| f["status"].clone())
+        .unwrap_or(Value::Null)
+}
+
+// query-diagnostics scope: a valid query with rows → `ok`; a valid query matching 0 rows → `empty`.
+// The UI writes its own "0 rows for <range>" off `empty`, and never confuses it with a bug or a deny.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn status_ok_vs_empty() {
+    let ws = "viz-status-oe";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    seed_series(&node, &p, ws, "cpu", &[10.0, 20.0]).await;
+
+    // ≥1 row → ok, no message.
+    let out = viz_query(
+        &node,
+        &p,
+        ws,
+        sql_panel("SELECT seq, payload FROM series", json!([])),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        frame_status(&out, "A"),
+        json!({ "state": "ok" }),
+        "rows → ok"
+    );
+
+    // Ran, 0 rows → empty, no message.
+    let out = viz_query(
+        &node,
+        &p,
+        ws,
+        sql_panel(
+            "SELECT seq, payload FROM series WHERE payload > 9999",
+            json!([]),
+        ),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        frame_status(&out, "A"),
+        json!({ "state": "empty" }),
+        "0 rows → empty"
+    );
+}
+
+// query-diagnostics scope: a bad query (the caller's OWN SQL) surfaces `error` WITH the downstream
+// tool's message — the single papercut this scope fixes — while the frame stays honestly empty (no
+// fabricated rows). Today all four outcomes collapsed to the same silent blank.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn status_error_surfaces_message_frame_still_empty() {
+    let ws = "viz-status-err";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    seed_series(&node, &p, ws, "cpu", &[1.0]).await;
+
+    // A syntactically invalid SELECT → the store's parse error → `BadInput` → surfaced as `error`.
+    let out = viz_query(&node, &p, ws, sql_panel("SELECT payload FROM", json!([])))
+        .await
+        .expect("viz.query verb granted; the TARGET errs, not the call");
+    let status = frame_status(&out, "A");
+    assert_eq!(
+        status["state"],
+        json!("error"),
+        "bad SQL → error, got {status}"
+    );
+    assert!(
+        status["message"].as_str().unwrap_or("").len() > 0,
+        "error carries the downstream tool's message, got {status}"
+    );
+    // No invented rows — a failed target is still an empty frame.
+    assert!(
+        out["rows"].as_array().unwrap().is_empty(),
+        "errored target → empty rows, never fabricated"
+    );
+}
+
+// query-diagnostics scope (MANDATORY cap-deny + no enumeration oracle): a target the caller lacks the
+// cap for → `denied` with NO message, and the status is BYTE-IDENTICAL whether the queried data exists
+// or not. A `denied` that varied by existence would be an enumeration oracle; the opacity is the point.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn status_denied_is_opaque_with_no_enumeration_oracle() {
+    let node = Arc::new(Node::boot().await.unwrap());
+
+    // ws-full: rows exist; ws-empty: none. A writer seeds ws-full (needs QUERY+WRITE to seed).
+    let writer = principal("user:seed", "ws-full", &[QUERY, WRITE]);
+    seed_series(&node, &writer, "ws-full", "cpu", &[1.0, 2.0, 3.0]).await;
+
+    // The caller holds viz.query but NOT store.query, in each workspace.
+    let caller_full = principal("user:ada", "ws-full", &[VIZ]);
+    let caller_empty = principal("user:ada", "ws-empty", &[VIZ]);
+
+    let out_full = viz_query(
+        &node,
+        &caller_full,
+        "ws-full",
+        sql_panel("SELECT seq, payload FROM series", json!([])),
+    )
+    .await
+    .expect("viz.query granted");
+    let out_empty = viz_query(
+        &node,
+        &caller_empty,
+        "ws-empty",
+        sql_panel("SELECT seq, payload FROM series", json!([])),
+    )
+    .await
+    .expect("viz.query granted");
+
+    let s_full = frame_status(&out_full, "A");
+    let s_empty = frame_status(&out_empty, "A");
+    // denied, message ABSENT (opaque — never reveals a gate or tool existence).
+    assert_eq!(
+        s_full,
+        json!({ "state": "denied" }),
+        "denied carries no message"
+    );
+    // Byte-identical regardless of whether the underlying data exists → no enumeration oracle.
+    assert_eq!(
+        s_full, s_empty,
+        "denied status must not depend on data existence"
+    );
+    // And still an honest empty frame (no bypass, no fabrication).
+    assert!(out_full["rows"].as_array().unwrap().is_empty());
+}
+
+// query-diagnostics scope (legacy/compat): the frames-in (compute-only) path resolves NO target, so
+// its frames carry NO `status` — a client that ignores status renders identically to before, and a
+// `viz.query` responder that omits status still validates (`#[serde(default)]`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn status_absent_on_frames_in_path() {
+    let ws = "viz-status-fi";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let caller = principal("user:ada", ws, &[VIZ]);
+
+    let panel = json!({
+        "frames": [{
+            "refId": "A",
+            "fields": [{ "name": "v", "type": "number", "values": [1, 2, 3] }],
+            "length": 3
+        }],
+        "transformations": [],
+    });
+    let out = viz_query(&node, &caller, ws, panel).await.unwrap();
+    assert_eq!(
+        frame_status(&out, "A"),
+        Value::Null,
+        "frames-in resolves no target → no status field (legacy shape)"
+    );
+}
+
 const RUN: &str = "mcp:rules.run:call";
 const SAVE: &str = "mcp:rules.save:call";
 const GET: &str = "mcp:rules.get:call";

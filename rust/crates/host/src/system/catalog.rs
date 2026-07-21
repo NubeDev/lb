@@ -780,6 +780,11 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "write rows to a registered datasource (bounded INSERT/UPSERT)",
     },
     HostTool {
+        tool: "federation.delete",
+        group: "federation",
+        description: "delete rows from a registered datasource (bounded, structured key match)",
+    },
+    HostTool {
         tool: "federation.migrate",
         group: "federation",
         description: "plan/apply a designed schema to a datasource (additive DDL, dry-run default)",

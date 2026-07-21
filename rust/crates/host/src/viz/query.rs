@@ -18,7 +18,8 @@
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_viz::{transform, transform_stepwise, Frame, Frames, Transformation};
+use lb_mcp::ToolError;
+use lb_viz::{transform, transform_stepwise, Frame, FrameStatus, Frames, Transformation};
 use serde_json::{json, Value};
 
 use super::error::VizError;
@@ -72,10 +73,14 @@ pub async fn viz_query(
     // honest EMPTY frame (no bypass, no fabricated rows). Frames keep target order so refIds line up.
     let mut frames: Frames = Vec::with_capacity(targets.len());
     for t in &targets {
-        let rows = dispatch_target(node, caller, ws, t, &query_options, now, depth).await;
+        let (rows, status) = dispatch_target(node, caller, ws, t, &query_options, now, depth).await;
         let rows = cap_rows(rows);
         let time = detect_time_field(&rows);
-        frames.push(Frame::from_rows(&t.ref_id, &rows, time.as_deref()));
+        // Attach the per-target diagnostic (query-diagnostics scope). On the common no-transform path
+        // the empty pipeline returns frames unchanged, so `status` survives to the client verbatim.
+        let mut frame = Frame::from_rows(&t.ref_id, &rows, time.as_deref());
+        frame.status = Some(status);
+        frames.push(frame);
     }
 
     // DEBUG (editor-parity step 7): when the panel asks for per-step frames, run the pipeline stepwise
@@ -202,6 +207,14 @@ fn panel_pipeline(panel: &Value) -> Vec<Transformation> {
 /// series.*/federation.query routing — no re-implemented dispatch, no privilege escalation. A denial
 /// or any tool error → an EMPTY row set (honest empty frame; the deny is opaque and never a fabricated
 /// value). `now` is threaded so a target verb that needs a logical clock (federation) gets one.
+///
+/// Returns the rows **and** a [`FrameStatus`] (query-diagnostics scope): rather than swallow the error
+/// with `Err(_) => Vec::new()`, it matches the [`ToolError`] **variant** so the four outcomes are
+/// distinguishable at the client — while keeping a `Denied`/`NotFound` target **opaque** (empty rows,
+/// no message: the deny reveals no gate, tool existence, or cross-workspace shape). `Extension`/
+/// `BadInput` are the downstream tool answering the caller's OWN request (bad SQL/args), so surfacing
+/// their message to that same authorized caller leaks nothing they did not send. The `Denied`/`NotFound`
+/// arm is listed BEFORE any catch-all so `Denied`'s `Display` ("denied") can never leak in as a message.
 async fn dispatch_target(
     node: &Arc<Node>,
     caller: &Principal,
@@ -210,7 +223,7 @@ async fn dispatch_target(
     query_options: &QueryOptions,
     now: u64,
     depth: u32,
-) -> Vec<Value> {
+) -> (Vec<Value>, FrameStatus) {
     // Thread the caller's logical `now` into the args (a federation/ingest verb reads `ts` from args;
     // a store.query ignores it). Never overwrite a caller-supplied ts.
     let mut args = t.args.clone();
@@ -234,11 +247,30 @@ async fn dispatch_target(
     ))
     .await;
     match dispatched {
-        Ok(out) => serde_json::from_str::<Value>(&out)
-            .map(|v| result_to_rows(&v))
-            .unwrap_or_default(),
-        // Denied / NotFound / any tool error → honest empty (no bypass, no fabrication).
-        Err(_) => Vec::new(),
+        Ok(out) => {
+            let rows = serde_json::from_str::<Value>(&out)
+                .map(|v| result_to_rows(&v))
+                .unwrap_or_default();
+            // Ran successfully: `empty` (0 rows) vs `ok` (≥1) so the UI can write its own
+            // "0 rows for <range>" rather than an unexplained blank.
+            let status = if rows.is_empty() {
+                FrameStatus::empty()
+            } else {
+                FrameStatus::ok()
+            };
+            (rows, status)
+        }
+        // Opaque by design — no message, indistinguishable from a missing tool (mcp scope). Listed
+        // FIRST so `Denied`'s `Display` never leaks in via the catch-all below.
+        Err(ToolError::Denied) | Err(ToolError::NotFound) => (Vec::new(), FrameStatus::denied()),
+        // The caller's OWN query/args being validated by the downstream tool — safe (and vital) to
+        // surface back to that same authorized caller.
+        Err(ToolError::Extension(msg)) | Err(ToolError::BadInput(msg)) => {
+            (Vec::new(), FrameStatus::error(msg))
+        }
+        // Operational (routing/reachability) — surface the message; these already carry no fleet
+        // secret beyond what the caller named (see the `ToolError` enum's per-variant notes).
+        Err(e) => (Vec::new(), FrameStatus::error(e.to_string())),
     }
 }
 

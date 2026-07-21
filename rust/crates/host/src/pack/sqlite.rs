@@ -76,6 +76,25 @@ pub fn materialize(
         .map_err(|e| PackError::Internal(format!("resolving pack db path: {e}")))
 }
 
+/// Resolve an already-materialized pack db WITHOUT touching its rows — the re-apply path (seed
+/// ownership, `pack-entity-binding-scope.md`). `Ok(Some(path))` when the file exists (re-register
+/// against the operator's live data); `Ok(None)` when it is absent, so the caller rebuilds it fresh.
+/// A missing db is not an error: the seed is starting data, and with no file there is no operator
+/// data to protect — rebuilding reaches the same end state as a first apply (idempotence holds).
+pub fn resolve_existing(
+    ws: &str,
+    pack: &str,
+    datasource: &str,
+) -> Result<Option<PathBuf>, PackError> {
+    let path = db_path(ws, pack, datasource);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    path.canonicalize()
+        .map(Some)
+        .map_err(|e| PackError::Internal(format!("resolving pack db path: {e}")))
+}
+
 fn sanitize_component(raw: &str) -> String {
     raw.chars()
         .map(|c| {

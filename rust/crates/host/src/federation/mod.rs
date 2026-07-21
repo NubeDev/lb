@@ -24,6 +24,7 @@ mod dbschema_get;
 mod dbschema_list;
 mod dbschema_record;
 mod dbschema_save;
+mod delete;
 mod error;
 mod export;
 mod install;
@@ -49,6 +50,7 @@ pub use dbschema_list::dbschema_list;
 #[allow(unused_imports)]
 pub use dbschema_record::{schema_tag, DbSchemaRecord, SCHEMA_VERSION, TABLE as DBSCHEMA_TABLE};
 pub use dbschema_save::dbschema_save;
+pub use delete::{delete_descriptor, federation_delete};
 pub use error::FederationError;
 pub use export::{export_descriptor, federation_export, ExportFrom};
 pub use install::{install_federation, Installed, SeedSource};

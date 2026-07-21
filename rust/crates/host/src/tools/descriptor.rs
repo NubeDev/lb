@@ -31,6 +31,9 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // The write plane (schema-designer scope): bounded INSERT/UPSERT + DDL migrate + durable
         // export. Each gates on its own cap; `federation.migrate` is admin + dry-run-default.
         crate::federation::write_descriptor(),
+        // The structured row DELETE (entity-binding scope, O-2): mirrors write's caps/shape — a
+        // bounded key-match delete, gated on its own `mcp:federation.delete:call`.
+        crate::federation::delete_descriptor(),
         crate::federation::migrate_descriptor(),
         crate::federation::export_descriptor(),
         crate::query::save_descriptor(),

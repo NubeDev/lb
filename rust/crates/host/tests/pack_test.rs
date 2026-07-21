@@ -279,6 +279,106 @@ async fn validate_of_the_bas_fixture_plans_every_object() {
     );
 }
 
+// ----- 2b. the entity→table binding: receipt carry + validate lint (Phase B) ---------------------
+
+/// A pack whose entities carry the `{table, pk, parent_fk, display}` binding
+/// (`pack-entity-binding-scope.md`). The binding rides `manifest.entities` in the receipt, so
+/// `pack.get` returns it verbatim — no new verb, no envelope change. This is the read a downstream
+/// surface (the rubix-ai Sites page / entity var) consumes to address a pack's rows as data. A
+/// channel object makes the pack applyable without a datasource (so this test needs no sidecar).
+fn bound_bundle() -> Value {
+    let manifest = "pack: bound\ntitle: Bound Pack\nversion: 1\n\
+        entities:\n\
+        \x20 site:  { label: Site,  table: site,  pk: id, display: name }\n\
+        \x20 meter: { label: Meter, parent: site, table: meter, pk: id, parent_fk: site_id, display: name }\n\
+        channels:\n  - name: c\n";
+    json!({"manifest": manifest, "files": {}})
+}
+
+/// The binding is carried through apply → receipt → `pack.get` unchanged, and an UNBOUND entity keeps
+/// exactly today's shape (no null-spammed binding fields — `skip_serializing_if` keeps the promise).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_entity_table_binding_rides_the_receipt_to_pack_get() {
+    let ws = "pack-bind";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let admin = principal(
+        ws,
+        &[
+            "mcp:pack.validate:call",
+            "mcp:pack.apply:call",
+            "mcp:pack.get:call",
+            "bus:chan/*:pub",
+            "bus:chan/*:sub",
+        ],
+    );
+
+    // Validate first: a clean binding lints clean (no gate).
+    let v = call(
+        &node,
+        &admin,
+        ws,
+        "pack.validate",
+        json!({"bundle": bound_bundle()}),
+    )
+    .await
+    .expect("validate bound pack");
+    assert_eq!(v["valid"], true, "a well-formed binding lints clean: {v}");
+
+    apply(&node, &admin, ws, bound_bundle(), 1)
+        .await
+        .expect("apply the bound pack");
+
+    let got = call(&node, &admin, ws, "pack.get", json!({"pack": "bound"}))
+        .await
+        .expect("pack.get");
+    let ents = &got["manifest"]["entities"];
+    assert_eq!(ents["site"]["table"], "site", "site binds its table: {got}");
+    assert_eq!(ents["site"]["pk"], "id");
+    assert_eq!(ents["site"]["display"], "name");
+    assert_eq!(
+        ents["meter"]["parent_fk"], "site_id",
+        "meter carries the parent FK: {got}"
+    );
+    // parent_fk is absent (not null) on a root entity — the un-broken-promise shape.
+    assert!(
+        ents["site"].get("parent_fk").is_none(),
+        "an unbound field must be ABSENT, not null-spammed: {got}"
+    );
+}
+
+/// A malformed binding WARNS but does not gate (the dialect-lint precedent) — except `parent_fk` with
+/// no `parent`, a manifest-only inconsistency that gates like a dangling parent. An entity with no
+/// `table` is byte-for-byte today's shape (the promise is unbroken).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_malformed_binding_warns_but_only_parent_fk_without_parent_gates() {
+    let ws = "pack-bind-lint";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = principal(ws, PACK_SURFACE);
+
+    // parent_fk with no parent → an ERROR that gates.
+    let bad = json!({"manifest":
+        "pack: b\ntitle: B\nversion: 1\n\
+         entities:\n  x: { label: X, table: t, pk: id, parent_fk: y_id }\n\
+         channels:\n  - name: c\n", "files": {}});
+    let out = call(&node, &p, ws, "pack.validate", json!({"bundle": bad}))
+        .await
+        .expect("validate");
+    assert_eq!(out["valid"], false, "parent_fk without parent gates: {out}");
+
+    // A bound table the (opaque, no-schema) pack does not declare → a WARNING, still valid.
+    let warn = json!({"manifest":
+        "pack: b\ntitle: B\nversion: 1\n\
+         entities:\n  x: { label: X, table: ghost, pk: id }\n\
+         channels:\n  - name: c\n", "files": {}});
+    let out = call(&node, &p, ws, "pack.validate", json!({"bundle": warn}))
+        .await
+        .expect("validate");
+    assert_eq!(
+        out["valid"], true,
+        "an unverifiable table warns, never gates: {out}"
+    );
+}
+
 // ----- 3. validate: lint errors gate -----------------------------------------------------------------
 
 /// A self-inconsistent pack reports `valid: false`. A dangling entity parent is the canonical case:
@@ -1092,6 +1192,224 @@ async fn the_demo_oracle_blank_node_one_apply_raises_a_real_insight() {
             .any(|i| i.dedup_key.starts_with("fdd:sensor-flatline:")),
         "the flatline rule must raise against the seeded data — dedup keys seen: {:?}",
         page.items.iter().map(|i| &i.dedup_key).collect::<Vec<_>>()
+    );
+
+    let _ = std::fs::remove_dir_all(&lb_dir);
+}
+
+// ----- 11. O-1: federation.write reaches a pack's in-process sqlite materialized source ----------
+
+/// **O-1 — the entity-data-plane pivot** (rubix-ai `entity-data-plane-scope.md`; lb
+/// `pack-entity-binding-scope.md` §Risks/O-1). `federation.write` is documented for a *registered
+/// external source* and gates on the source's `net:*` endpoint; a pack's datasource is an **in-process
+/// sqlite materializer** with a node-local file DSN. This test settles, live, whether `federation.write`
+/// reaches it — the fact the whole downstream data plane turns on. It applies the real `bas` pack (which
+/// materializes `demo-buildings`), then:
+///   1. writes a NEW `site` row and reads it back (INSERT reaches the file);
+///   2. UPSERTs the same PK twice and asserts it lands once (idempotence);
+///   3. edits a SEEDED site's coordinate via UPSERT (operator edit of pack data);
+///   4. RE-APPLIES `bas` and asserts the operator's new row + edit SURVIVE — the seed-ownership rule
+///      (`pack-entity-binding-scope.md` §"seed-ownership decision"): seeded rows are starting data
+///      applied once, never re-clobbered.
+///
+/// `#[ignore]` for the same reason as the demo oracle: it needs the real `federation` sidecar built.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs the real federation sidecar built: cargo build -p federation"]
+async fn o1_federation_write_reaches_the_pack_materialized_sqlite_source() {
+    use lb_host::install_native;
+    use lb_supervisor::OsLauncher;
+
+    const FEDERATION_MANIFEST: &str = include_str!("../../federation/extension.toml");
+
+    let lb_dir = std::env::temp_dir().join(format!("lb-o1-write-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&lb_dir);
+    std::env::set_var("LB_DIR", &lb_dir);
+
+    let dir = {
+        if let Ok(p) = std::env::var("FEDERATION_BIN") {
+            std::path::PathBuf::from(&p)
+                .parent()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let target = manifest_dir.join("../../target/debug");
+            let status = std::process::Command::new("cargo")
+                .args(["build", "-p", "federation"])
+                .current_dir(manifest_dir.join("../.."))
+                .status()
+                .expect("cargo build -p federation runs");
+            assert!(
+                status.success() && target.join("federation").exists(),
+                "the default-features (sqlite) federation sidecar builds"
+            );
+            target.to_string_lossy().into_owned()
+        }
+    };
+
+    let ws = "o1";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let admin = principal(
+        ws,
+        &[
+            "mcp:pack.validate:call",
+            "mcp:pack.apply:call",
+            "mcp:pack.list:call",
+            "mcp:pack.get:call",
+            "mcp:native.install:call",
+            "mcp:native.call:call",
+            "mcp:native.status:call",
+            "mcp:datasource.add:call",
+            "mcp:datasource.list:call",
+            "mcp:datasource.test:call",
+            "mcp:federation.query:call",
+            "mcp:federation.write:call",
+            "secret:federation/*:write",
+            "secret:federation/*:get",
+            "mcp:rules.save:call",
+            "mcp:rules.run:call",
+            "mcp:rules.get:call",
+            "store:rule:write",
+            "store:rule:read",
+            "mcp:dashboard.save:call",
+            "store:dashboard:write",
+            "store:dashboard:read",
+            "mcp:agent.memory.set:call",
+            "store:agent_memory/workspace:write",
+            "mcp:insight.raise:call",
+            "mcp:tags.add:call",
+            "bus:chan/*:pub",
+            "bus:chan/*:sub",
+        ],
+    );
+
+    install_native(
+        &node,
+        &OsLauncher,
+        &admin,
+        ws,
+        FEDERATION_MANIFEST,
+        &dir,
+        &[
+            "net:tls:127.0.0.1:0:connect".to_string(),
+            "secret:federation/*:get".to_string(),
+        ],
+        1,
+    )
+    .await
+    .expect("federation sidecar installs + spawns");
+
+    apply(&node, &admin, ws, bas_bundle(), 1000)
+        .await
+        .expect("one pack.apply of the bas fixture");
+
+    // How many sites did the seed plant? (Baseline — the operator's add must be seen ON TOP.)
+    let count_sites = |node: &Arc<Node>, admin: &Principal| {
+        let node = node.clone();
+        let admin = admin.clone();
+        async move {
+            call(
+                &node,
+                &admin,
+                ws,
+                "federation.query",
+                json!({"source":"demo-buildings","sql":"SELECT id, name FROM site ORDER BY id","ts":2}),
+            )
+            .await
+            .expect("federation.query sites")
+        }
+    };
+    let seeded = count_sites(&node, &admin).await;
+    let seeded_n = seeded["rows"].as_array().expect("rows").len();
+    assert!(seeded_n > 0, "the bas seed plants sites: {seeded}");
+
+    // --- 1. INSERT a NEW site via federation.write, and read it back ---------------------------
+    let w = call(
+        &node,
+        &admin,
+        ws,
+        "federation.write",
+        json!({
+            "source": "demo-buildings",
+            "table": "site",
+            "columns": ["id", "name"],
+            "rows": [["site-o1", "Riverside Annex 2"]],
+            "key": ["id"],
+        }),
+    )
+    .await
+    .expect("federation.write reaches the in-process sqlite materialized source (O-1 = YES)");
+    assert_eq!(w["affected"], 1, "one row written: {w}");
+
+    let after = count_sites(&node, &admin).await;
+    assert_eq!(
+        after["rows"].as_array().unwrap().len(),
+        seeded_n + 1,
+        "the written row is now readable back from the materialized source: {after}"
+    );
+    assert!(
+        after.to_string().contains("Riverside Annex 2"),
+        "the new site's name round-trips: {after}"
+    );
+
+    // --- 2. UPSERT idempotence: writing the same PK twice lands ONE row -------------------------
+    call(
+        &node,
+        &admin,
+        ws,
+        "federation.write",
+        json!({
+            "source": "demo-buildings", "table": "site",
+            "columns": ["id", "name"],
+            "rows": [["site-o1", "Riverside Annex 2 (v2)"]],
+            "key": ["id"],
+        }),
+    )
+    .await
+    .expect("redelivered UPSERT");
+    let deduped = count_sites(&node, &admin).await;
+    assert_eq!(
+        deduped["rows"].as_array().unwrap().len(),
+        seeded_n + 1,
+        "the UPSERT updated in place — no duplicate PK: {deduped}"
+    );
+
+    // --- 3. Edit a SEEDED site in place (operator editing pack-seeded data) ---------------------
+    let first_seeded_id = seeded["rows"][0][0]
+        .as_str()
+        .expect("seeded id")
+        .to_string();
+    call(
+        &node,
+        &admin,
+        ws,
+        "federation.write",
+        json!({
+            "source": "demo-buildings", "table": "site",
+            "columns": ["id", "name"],
+            "rows": [[first_seeded_id, "OPERATOR-EDITED"]],
+            "key": ["id"],
+        }),
+    )
+    .await
+    .expect("edit a seeded row via UPSERT");
+
+    // --- 4. RE-APPLY the pack: the operator's add + edit MUST survive (seed-ownership rule) ------
+    apply(&node, &admin, ws, bas_bundle(), 2000)
+        .await
+        .expect("re-apply of the bas fixture");
+
+    let survived = count_sites(&node, &admin).await;
+    let txt = survived.to_string();
+    assert!(
+        txt.contains("Riverside Annex 2 (v2)"),
+        "SEED OWNERSHIP: the operator-added site must survive a pack re-apply (it did NOT — \
+         materialize() rebuilds the db fresh; the seed-ownership rule is the required lb fix): {survived}"
+    );
+    assert!(
+        txt.contains("OPERATOR-EDITED"),
+        "SEED OWNERSHIP: the operator's edit to a seeded row must survive re-apply: {survived}"
     );
 
     let _ = std::fs::remove_dir_all(&lb_dir);
