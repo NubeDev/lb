@@ -72,6 +72,7 @@ pub async fn resolve_template_group(
         children.push(ResolvedItem {
             kind: "dashboard".into(),
             label: value,
+            icon: String::new(),
             surface: String::new(),
             dashboard: format!("dashboard:{dash_id}"),
             ext: String::new(),
@@ -83,6 +84,7 @@ pub async fn resolve_template_group(
     Ok(Some(ResolvedItem {
         kind: "group".into(),
         label: label_or(&item.label, &template.title),
+        icon: item.icon.clone(),
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),
