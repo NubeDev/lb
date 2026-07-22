@@ -228,24 +228,40 @@ fake cache (`scope/testing/testing-scope.md` §0). Mandatory categories:
 
 - **Warm tier:** **cut from v1.** Slice 3, conditional on the Pi perf assertion, and
   blocked on persisted generations (Risks). Nothing persistent ships now.
-- **Admin surface:** **ship `cache.stats` + `cache.purge` in v1** under `cache:read`/
-  `cache:admin` caps, with deny tests and `skills/page-cache/SKILL.md` (grounded in a live
-  run). Rationale: the perf assertion and any operator tuning need observability from day
-  one; purge is the stale-data escape hatch.
-- **v1 cacheable allowlist:** **`viz.query` (time-windowed class, 30 s TTL = bucket)** and
+- **Admin surface:** **ship `cache.stats` + `cache.purge` in v1** with deny tests and
+  `skills/page-cache/SKILL.md`. **Grammar (build-resolved):** the `cache:read`/`cache:admin`
+  pair is realised as two MCP verb caps — **`mcp:cache.stats:call` (read)** and
+  **`mcp:cache.purge:call` (admin)** — NOT a new `Surface::Cache`. The generic host-verb
+  dispatch authorizes every verb via `Surface::Mcp`; a parallel surface would force the cache
+  verbs off that generic path (a rule-10 wrinkle) for no gain. Both ride `ADMIN_ONLY_CAPS`.
+- **v1 cacheable allowlist (build-resolved — `viz.query` DEFERRED):** the shipped allowlist is
   the source-picker bundle reads — **`datasource.list`, `series.list`, `flows.list`,
-  `flows.get`, `ext.list` (list class, 60 s TTL)**. **`dashboard.get/list` are excluded**:
-  a single store get is cheap and the burst cost lives in the queries — include them later
-  only if per-verb dispatch-latency instrumentation (part of the perf assertion, run
-  first on the Pi target) proves otherwise. Build step one: audit each listed verb for
-  grant-filtering; any subject-filtered verb drops out until keyed safely.
+  `flows.get`, `ext.list` (list class, 60 s TTL)** — every one proven caller-independent by
+  the build's grant-filtering audit. **`viz.query` DROPPED from v1:** the audit found it
+  **subject-filtered** — it re-authorizes each panel target under the caller's own grants
+  (`crates/host/src/viz/query.rs:240-265`), so a denied target degrades to an empty frame and
+  the result varies by caller; caching it under this scope's subject-free key would leak a
+  privileged caller's frames to a co-workspace caller who lacks the target caps. Per this
+  section's own "drops out **until keyed safely**" rule, `viz.query` re-enters the allowlist
+  only via a **`subject_scoped` cache class** that folds a capability fingerprint (not
+  identity/token) into the key. That is the named follow-up; **time-bucket quantisation defers
+  with it** (`viz.query` is its only consumer, so v1 ships no quantiser). `dashboard.get/list`
+  remain excluded (a single store get is cheap). `ext.list` is admitted but its liveness
+  (`running`/`restart_count`) is TTL-bounded, not generation-invalidated (no MCP write dirties
+  it) — a generation-bump-on-install/sidecar-transition is a hardening follow-up.
 - **Feature default:** **not in lb's default features** (embedders opt in — the
   `external-agent` precedent keeps the stock binary lean); when compiled in,
   `cache: None` ⇒ off. Downstream hosts choose their own default.
 - **Extension tools:** **uncacheable in v1**; manifest-declared cache class is the named
   SDK follow-up (with generation-bump-on-publish).
-- **TTLs:** `viz.query` 30 s (= bucket), lists 60 s — starting points, tuned from the perf
-  assertion.
+- **TTLs:** lists 60 s (the v1 shipped class). `viz.query` 30 s (= bucket) applies only when
+  the time-windowed class ships with the `viz.query` follow-up. Starting points, tuned from
+  the perf assertion.
+- **Policy home (build-resolved):** the verb-class allowlist + write→dirty map is a declarative
+  table (`crates/host/src/cache/policy.rs`), not per-`ToolDescriptor` fields yet — the v1
+  allowlist is small enough to state and test by hand. Per-descriptor `cache_class`/`dirties`
+  (so the staleness sweep is mechanical over *every* registered verb) is the named
+  invalidation-hardening follow-up.
 - **Asset headers:** verified/added as slice 1 — the implementing session checks the
   current shell/ext-UI serve path first and only changes what's missing.
 

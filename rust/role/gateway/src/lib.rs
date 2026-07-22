@@ -1,3 +1,10 @@
+// Raise the trait-solver recursion limit: proving `Sync` for the deeply-nested rhai AST type
+// (`rhai::Dynamic` in a route handler's captured state, under `axum::routing::post`'s `Handler`
+// bound) overflows the default 128 on a COLD compile (warm incremental builds dodge it). rhai's
+// `sync` feature is unified on in this graph, so the type IS `Sync` — a depth limit, not a real
+// `!Sync`. Latent pre-existing on master; a fresh cold build of the response-cache test suite
+// surfaced it.
+#![recursion_limit = "512"]
 //! Role-only: the **SSE/HTTP gateway** for browsers (README §6.13, frontend scope). A browser
 //! reaches a REAL node here — POST to send, GET for durable history, and one SSE stream that
 //! pushes *others'* live messages + presence. This replaces the S2 in-memory UI fake: the

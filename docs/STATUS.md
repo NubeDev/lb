@@ -30,6 +30,19 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**In progress 2026-07-22 (backend) — OPTIONAL RESPONSE CACHE (`page-cache` feature).** A read-through,
+single-flight (`moka::try_get_with`) cache wrapped around host-native MCP read dispatch
+(`crates/host/src/cache/`, hooked in `tool_call.rs::dispatch_at_depth` after the caps gate), keyed
+`{ws, verb, canonical-args, generation}` — behind auth + the wall, never a subject. Per-`{ws,class}`
+generation counters invalidate on write; `moka` byte-weighted budget + TTL; `cache.stats`/`cache.purge`
+admin verbs (`mcp:cache.stats|purge:call`). Additive `BootConfig.cache: Option<CacheConfig>`, wired in
+`builder.rs`; **feature-off is a zero-cost no-op seam** (no `moka`, existing suite green). v1 allowlist:
+`datasource.list`/`series.list`/`flows.list`/`flows.get`/`ext.list` (60 s). **`viz.query` DEFERRED** —
+the grant-audit proved it subject-filtered, so it re-enters only keyed-safely (a capability
+fingerprint); quantisation defers with it. Branch `feat/gateway-response-cache` (commit `f5405ad9`);
+integration suite `crates/host/tests/response_cache_test.rs` (run in an isolated worktree while a
+concurrent session churned the main tree). Scope + session: `scope/caching/`, `sessions/caching/`.
+
 **Just shipped 2026-07-21 (backend) — SCHEDULED RULES: a `#[schedule(...)]` directive on a rule that
 compiles to a managed cron flow, no canvas.** A rule declares its own schedule with one line at the top
 of its body — `#[schedule("every 15 minutes")]` (NL) or `#[schedule(cron = "*/15 * * * *")]` (explicit).
