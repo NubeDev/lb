@@ -32,7 +32,7 @@ use serde_json::Value;
 
 use crate::labels::apply_labels;
 use crate::meta::{is_registered, register, series_count, DEFAULT_SERIES_CAP};
-use crate::schema::ensure_series_schema;
+use crate::schema::{ensure_series_schema, SERIES_LATEST_TABLE};
 use crate::staging::{Staged, DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
 
 /// Outcome of one commit pass: how many samples were committed exactly-once this batch, and how
@@ -86,6 +86,26 @@ pub async fn commit_batch_capped(
         }
     }
 
+    // Per-series NEWEST sample in this batch, by (ts, seq) — the axis `latest` orders on. Used to
+    // advance the `series_latest` pointer transactionally (schema::SERIES_LATEST_TABLE), so reads are
+    // a point lookup instead of a full ordered scan. Only admitted (non-dead-lettered) samples count.
+    let mut batch_newest: std::collections::HashMap<&str, &crate::sample::Sample> =
+        std::collections::HashMap::new();
+    for s in &staged {
+        if !admitted_series.contains(&s.sample.series) {
+            continue;
+        }
+        let smp = &s.sample;
+        batch_newest
+            .entry(smp.series.as_str())
+            .and_modify(|cur| {
+                if (smp.ts, smp.seq) > (cur.ts, cur.seq) {
+                    *cur = smp;
+                }
+            })
+            .or_insert(smp);
+    }
+
     // Build one BEGIN…COMMIT: admitted samples UPSERT into series; cap-rejected samples divert to
     // the dead-letter table. Both delete their staged row in the SAME tx (atomic dequeue).
     let mut sql = String::from("BEGIN TRANSACTION;\n");
@@ -129,6 +149,36 @@ pub async fn commit_batch_capped(
         bindings.push((ts, Value::Number(s.sample.ts.into())));
         bindings.push((pl, s.sample.payload.clone()));
     }
+
+    // Advance the newest-sample pointer for each series touched this batch — in the SAME tx, so the
+    // pointer is exactly as durable as the raw write. It moves FORWARD only: the guard skips the
+    // UPSERT when an existing pointer already holds a `(ts, seq)` ≥ this batch's newest (a replayed
+    // or late batch never regresses it). `ts` stored as epoch ms (integer) so the guard is a plain
+    // numeric compare — `latest` reads it straight back without a datetime round-trip.
+    for (j, (series, smp)) in batch_newest.iter().enumerate() {
+        let (lse, lpr, lsq, lts, lpl) = (
+            format!("lse{j}"),
+            format!("lpr{j}"),
+            format!("lsq{j}"),
+            format!("lts{j}"),
+            format!("lpl{j}"),
+        );
+        // Read the current pointer's (ts, seq); UPSERT only if this batch's newest strictly beats it
+        // (or none exists). `??` defaults an absent pointer to below any real sample.
+        sql.push_str(&format!(
+            "LET $cur{j} = (SELECT ts, seq FROM ONLY type::thing('{SERIES_LATEST_TABLE}', ${lse}))?.{{ ts: ts, seq: seq }} ?? {{ ts: -1, seq: -1 }};\n\
+             IF [${lts}, ${lsq}] > [$cur{j}.ts, $cur{j}.seq] {{ \
+               UPSERT type::thing('{SERIES_LATEST_TABLE}', ${lse}) CONTENT {{ \
+                 series: ${lse}, producer: ${lpr}, seq: ${lsq}, ts: ${lts}, payload: ${lpl} }}; \
+             }};\n"
+        ));
+        bindings.push((lse, Value::String((*series).to_string())));
+        bindings.push((lpr, Value::String(smp.producer.clone())));
+        bindings.push((lsq, Value::Number(smp.seq.into())));
+        bindings.push((lts, Value::Number(smp.ts.into())));
+        bindings.push((lpl, smp.payload.clone()));
+    }
+
     sql.push_str("COMMIT TRANSACTION;");
 
     store.query_ws(ws, &sql, bindings).await?;

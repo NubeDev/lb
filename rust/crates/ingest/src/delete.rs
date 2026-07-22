@@ -16,7 +16,7 @@ use lb_store::{Store, StoreError};
 use lb_tags::{entity_parts, TAGGED_TABLE};
 use serde_json::Value;
 
-use crate::schema::{ROLLUP_TABLE, SERIES_META_TABLE};
+use crate::schema::{ROLLUP_TABLE, SERIES_LATEST_TABLE, SERIES_META_TABLE};
 use crate::staging::{SERIES_TABLE, STAGING_TABLE};
 
 /// Delete every trace of `series` in `ws`: committed samples, rollups, any still-staged samples, the
@@ -31,6 +31,7 @@ pub async fn delete_series(store: &Store, ws: &str, series: &str) -> Result<(), 
     let sql = format!(
         "DELETE {SERIES_TABLE} WHERE series = $series;
          DELETE {ROLLUP_TABLE} WHERE series = $series;
+         DELETE {SERIES_LATEST_TABLE} WHERE series = $series;
          DELETE {STAGING_TABLE} WHERE sample.series = $series;
          DELETE {SERIES_META_TABLE} WHERE series = $series;
          DELETE {TAGGED_TABLE} WHERE in = type::thing($etb, $eid);"

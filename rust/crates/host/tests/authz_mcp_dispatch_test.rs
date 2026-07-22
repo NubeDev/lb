@@ -306,3 +306,50 @@ async fn ws_b_admin_cannot_touch_ws_a_authz_over_the_bridge() {
         );
     }
 }
+
+// ── series.latest_many rides the series.latest cap (series-read-perf scope) ─────────────────────
+// The batched fleet-snapshot read is ONE logical read of the series-latest surface, so it rides the
+// existing `mcp:series.latest:call` grant via the `gate_tool_for` alias — no `_many` cap exists in
+// any role bundle. Regression guard for the shipped-but-denied state: dispatch demanded the literal
+// `mcp:series.latest_many:call` and denied every caller (incl. the ems ext + admins) until aliased.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn series_latest_many_rides_the_series_latest_cap() {
+    let ws = "ws-series-latest-many";
+    let node = Arc::new(Node::boot().await.unwrap());
+
+    // A caller holding ONLY the singular grant — deliberately NOT `mcp:series.latest_many:call`.
+    let reader = principal("user:reader", ws, &["mcp:series.latest:call"]);
+
+    // The batch dispatches (alias → series.latest) and returns the null-per-name contract for an
+    // unseeded series — never `Denied`, which is the bug this test pins.
+    let out = call(
+        &node,
+        &reader,
+        ws,
+        "series.latest_many",
+        json!({ "series": ["modbus.x.y.z"] }),
+    )
+    .await
+    .expect("series.latest_many dispatches on the mcp:series.latest:call grant (alias)");
+    assert!(
+        out["latest"].is_object(),
+        "batch returns a {{ latest: {{ name: Sample|null }} }} map: {out}"
+    );
+
+    // A caller WITHOUT the series.latest grant is denied the whole batch (parity with singular).
+    let no_cap = principal("user:intruder", ws, &["mcp:series.read:call"]);
+    let err = call(
+        &node,
+        &no_cap,
+        ws,
+        "series.latest_many",
+        json!({ "series": ["modbus.x.y.z"] }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ToolError::Denied),
+        "no series.latest grant → batch denied, got {err:?}"
+    );
+}

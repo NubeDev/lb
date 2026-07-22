@@ -20,11 +20,46 @@ use lb_store::{Store, StoreError};
 use serde_json::Value;
 
 use crate::sample::Sample;
+use crate::schema::SERIES_LATEST_TABLE;
 use crate::staging::SERIES_TABLE;
 
 /// The newest committed sample of `series` in `ws` (latest `ts`, tie-broken by highest `seq`), or
 /// `None` if the series has no committed samples in this workspace.
+///
+/// Reads the `series_latest` POINTER (a point lookup by record id — O(1)), maintained forward-only by
+/// the commit worker. A series committed BEFORE the pointer existed has no pointer row yet; that case
+/// falls back to the ordered scan ONCE and lazily backfills the pointer, so old series self-heal on
+/// first read and every subsequent read is O(1). (New series always have a pointer from their first
+/// commit.) The pointer's `ts` is epoch ms — the same wire form the scan projects.
 pub async fn latest(store: &Store, ws: &str, series: &str) -> Result<Option<Sample>, StoreError> {
+    // Fast path: the maintained pointer.
+    let mut resp = store
+        .query_ws(
+            ws,
+            &format!("SELECT series, producer, seq, ts, payload FROM ONLY type::thing('{SERIES_LATEST_TABLE}', $series)"),
+            vec![("series".into(), Value::String(series.to_string()))],
+        )
+        .await?;
+    let hit: Option<Sample> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
+    if let Some(s) = hit {
+        return Ok(Some(s));
+    }
+
+    // Cold path: no pointer (a pre-pointer series). Ordered scan once, then backfill the pointer.
+    let scanned = latest_by_scan(store, ws, series).await?;
+    if let Some(s) = &scanned {
+        backfill_pointer(store, ws, s).await?;
+    }
+    Ok(scanned)
+}
+
+/// The legacy `ORDER BY ts DESC, seq DESC LIMIT 1` scan — the correctness oracle, now used only to
+/// seed a missing pointer (cold path) and by tests. O(rows-in-series); the pointer exists to avoid it.
+async fn latest_by_scan(
+    store: &Store,
+    ws: &str,
+    series: &str,
+) -> Result<Option<Sample>, StoreError> {
     let mut resp = store
         .query_ws(
             ws,
@@ -39,6 +74,31 @@ pub async fn latest(store: &Store, ws: &str, series: &str) -> Result<Option<Samp
         .take(0)
         .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(rows.into_iter().next())
+}
+
+/// Seed the `series_latest` pointer from a scanned newest sample (cold-path self-heal). Forward-only
+/// like the commit-path advance: only writes if no newer pointer landed concurrently.
+async fn backfill_pointer(store: &Store, ws: &str, s: &Sample) -> Result<(), StoreError> {
+    let sql = format!(
+        "LET $cur = (SELECT ts, seq FROM ONLY type::thing('{SERIES_LATEST_TABLE}', $series))?.{{ ts: ts, seq: seq }} ?? {{ ts: -1, seq: -1 }};\
+         IF [$ts, $seq] > [$cur.ts, $cur.seq] {{ \
+           UPSERT type::thing('{SERIES_LATEST_TABLE}', $series) CONTENT {{ \
+             series: $series, producer: $producer, seq: $seq, ts: $ts, payload: $payload }}; }};"
+    );
+    store
+        .query_ws(
+            ws,
+            &sql,
+            vec![
+                ("series".into(), Value::String(s.series.clone())),
+                ("producer".into(), Value::String(s.producer.clone())),
+                ("seq".into(), Value::Number(s.seq.into())),
+                ("ts".into(), Value::Number(s.ts.into())),
+                ("payload".into(), s.payload.clone()),
+            ],
+        )
+        .await?;
+    Ok(())
 }
 
 /// The newest committed sample of EACH requested series in `ws`, in one query — the fleet-snapshot
@@ -67,13 +127,15 @@ pub async fn latest_many(
         return Ok(out);
     }
 
-    // Newest-first across the whole name list; the FIRST row seen for a series is its latest.
+    // Fast path: ONE point-scan of the pointer table for all names (`WHERE series IN` over records
+    // keyed by series name — the pointer holds exactly the newest per series, no ORDER BY, no
+    // per-series 10k-row sort). A name with no pointer row simply doesn't come back here.
     let mut resp = store
         .query_ws(
             ws,
             &format!(
-                "SELECT series, producer, seq, time::millis(ts) AS ts, payload FROM {SERIES_TABLE} \
-                 WHERE series IN $names ORDER BY ts DESC, seq DESC"
+                "SELECT series, producer, seq, ts, payload FROM {SERIES_LATEST_TABLE} \
+                 WHERE series IN $names"
             ),
             vec![(
                 "names".into(),
@@ -84,10 +146,21 @@ pub async fn latest_many(
     let rows: Vec<Sample> = resp
         .take(0)
         .map_err(|e| StoreError::Decode(e.to_string()))?;
-
     for s in rows {
         if let Some(slot) = out.iter_mut().find(|(k, v)| k == &s.series && v.is_none()) {
             slot.1 = Some(s);
+        }
+    }
+
+    // Cold path: any name still None may be a PRE-POINTER series (committed before the pointer
+    // existed) rather than a truly-empty one. Fall back to the ordered scan for just those names and
+    // backfill each pointer, so the batch is complete AND self-heals. New/empty series stay None.
+    for (name, slot) in out.iter_mut() {
+        if slot.is_none() {
+            if let Some(s) = latest_by_scan(store, ws, name).await? {
+                backfill_pointer(store, ws, &s).await?;
+                *slot = Some(s);
+            }
         }
     }
     Ok(out)

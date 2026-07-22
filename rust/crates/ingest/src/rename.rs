@@ -16,7 +16,7 @@ use lb_tags::{entity_parts, TAGGED_TABLE};
 use serde_json::Value;
 
 use crate::meta::is_registered;
-use crate::schema::{ROLLUP_TABLE, SERIES_META_TABLE};
+use crate::schema::{ROLLUP_TABLE, SERIES_LATEST_TABLE, SERIES_META_TABLE};
 use crate::staging::{SERIES_TABLE, STAGING_TABLE};
 
 /// Why a rename was refused.
@@ -63,6 +63,10 @@ pub async fn rename_series(
          DELETE type::thing($meta_tb, $from);
          UPSERT type::thing($meta_tb, $to) SET series = $to, \
              labels_applied = ($meta.labels_applied OR false);
+         LET $ptr = (SELECT producer, seq, ts, payload FROM ONLY type::thing($latest_tb, $from));
+         DELETE type::thing($latest_tb, $from);
+         IF $ptr != NONE {{ UPSERT type::thing($latest_tb, $to) CONTENT {{ \
+             series: $to, producer: $ptr.producer, seq: $ptr.seq, ts: $ptr.ts, payload: $ptr.payload }}; }};
          UPDATE {TAGGED_TABLE} SET in = type::thing($to_tb, $to_id), ent = $to_entity \
              WHERE in = type::thing($from_tb, $from_id);"
     );
@@ -74,6 +78,7 @@ pub async fn rename_series(
                 ("from".into(), Value::String(from.to_string())),
                 ("to".into(), Value::String(to.to_string())),
                 ("meta_tb".into(), Value::String(SERIES_META_TABLE.into())),
+                ("latest_tb".into(), Value::String(SERIES_LATEST_TABLE.into())),
                 ("from_tb".into(), Value::String(from_tb.to_string())),
                 ("from_id".into(), Value::String(from_id.to_string())),
                 ("to_tb".into(), Value::String(to_tb.to_string())),

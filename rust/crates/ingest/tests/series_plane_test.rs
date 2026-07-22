@@ -940,3 +940,72 @@ async fn an_unpoliced_series_is_warned_about_not_evicted() {
     );
     assert_eq!(sample_count(&store, "acme", "unpoliced").await.unwrap(), 30);
 }
+
+// ── The series_latest POINTER: forward-only, restart-safe, replay-idempotent (perf fix) ─────────
+// `latest`/`latest_many` read a materialized newest-pointer (schema::SERIES_LATEST_TABLE) advanced
+// transactionally by the commit worker, so they are point lookups not an O(rows) ordered scan. These
+// pin the pointer's correctness contract against the real store — the exact corners the ts-primary,
+// forward-only advance exists to get right.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn latest_pointer_advances_forward_only_across_commits() {
+    let store = Store::memory().await.unwrap();
+
+    // Commit 1: newest is ts=2000.
+    seed(&store, "acme", vec![
+        sample("p", "prod", 1, 1000, json!(10.0)),
+        sample("p", "prod", 2, 2000, json!(20.0)),
+    ]).await;
+    assert_eq!(latest(&store, "acme", "p").await.unwrap().unwrap().payload, json!(20.0));
+
+    // Commit 2 brings a strictly-newer sample (ts=3000) → pointer advances.
+    seed(&store, "acme", vec![sample("p", "prod", 3, 3000, json!(30.0))]).await;
+    assert_eq!(latest(&store, "acme", "p").await.unwrap().unwrap().payload, json!(30.0));
+
+    // Commit 3 brings an OLDER sample (a late/out-of-order arrival, ts=1500, a fresh producer so its
+    // (series,producer,seq) doesn't collide) → the pointer must NOT regress off ts=3000.
+    seed(&store, "acme", vec![sample("p", "late", 1, 1500, json!(99.0))]).await;
+    assert_eq!(
+        latest(&store, "acme", "p").await.unwrap().unwrap().payload,
+        json!(30.0),
+        "a later commit of an OLDER sample never regresses the pointer"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn latest_pointer_is_ts_primary_across_a_producer_restart() {
+    let store = Store::memory().await.unwrap();
+    // The restart trap (see latest.rs docstring): stream A reaches seq=9 at ts=9000; a restarted
+    // stream B re-enters at seq=0 but a HIGHER ts=10000. "Newest" is ts-primary, so B's sample wins
+    // even though its seq is far lower — the pointer must reflect that, exactly as the scan would.
+    seed(&store, "acme", vec![
+        sample("s", "streamA", 9, 9000, json!("old")),
+        sample("s", "streamB", 0, 10000, json!("new")),
+    ]).await;
+    assert_eq!(
+        latest(&store, "acme", "s").await.unwrap().unwrap().payload,
+        json!("new"),
+        "higher ts wins over higher seq (ts-primary, restart-safe)"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn latest_pointer_survives_replay_and_delete() {
+    let store = Store::memory().await.unwrap();
+    seed(&store, "acme", vec![
+        sample("d", "prod", 1, 1000, json!(1.0)),
+        sample("d", "prod", 2, 2000, json!(2.0)),
+    ]).await;
+
+    // Idempotent replay: re-writing the SAME samples (same (series,producer,seq)) re-commits them;
+    // the pointer stays on the newest, never duplicated or regressed.
+    seed(&store, "acme", vec![
+        sample("d", "prod", 1, 1000, json!(1.0)),
+        sample("d", "prod", 2, 2000, json!(2.0)),
+    ]).await;
+    assert_eq!(latest(&store, "acme", "d").await.unwrap().unwrap().payload, json!(2.0));
+
+    // After delete_series the pointer is gone with everything else → latest is None (not a stale hit).
+    lb_ingest::delete_series(&store, "acme", "d").await.unwrap();
+    assert!(latest(&store, "acme", "d").await.unwrap().is_none(), "deleted series → no pointer, None");
+}
