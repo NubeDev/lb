@@ -46,7 +46,11 @@ outlier never renamed. Result: `dashboard.save` didn't recognise the UI's `argsT
 `--test dashboard_test` (12/12) · `cargo fmt -p lb-host --check` clean. Downstream rubix-ai `cargo build`
 green against this checkout via its local `[patch]`.
 
-## Release
+## Release (done)
 
-Cut a `node-v*` tag carrying this; rubix-ai bumps its `lb-node` pin (currently `node-v0.5.1`) and drops
-its dev `[patch]`.
+Committed on `fix/pack-store-migration-upgrade` (the `node-v0.5.1` lineage — a child of that tag, so it
+carries the migration-on-upgrade fix too) and tagged **`node-v0.5.2`** (`88baa96b`). rubix-ai's `lb-node`
+pin is bumped to it. **Not pushed yet** — the git owner pushes `node-v0.5.2`, after which rubix-ai drops
+its transient dev `[patch]` (which currently mirrors the tag commit locally so its build resolves before
+the push). Note for lb hygiene: `master` is one commit *behind* this line (`node-v0.5.1` was cut from the
+fix branch and not merged back); reconcile at the git owner's discretion.
