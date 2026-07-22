@@ -51,6 +51,10 @@ pub const MAX_GROUP_DEPTH: usize = 5;
 /// tag-group results separately so a broad facet can't blow up the menu). Extra matches are dropped.
 pub const MAX_TAG_GROUP: usize = 50;
 
+/// Cap on an item's `icon` name length (an opaque UI icon key — anything longer is garbage, not a
+/// name; rejected `BadInput` at save like the other bounds).
+pub const MAX_ICON_LEN: usize = 64;
+
 /// The largest hidden-set `nav.hidden.set` accepts (hide-and-pins scope, "Bounds"). Rejected over-cap
 /// (`BadInput`), never silently truncated.
 pub const MAX_HIDDEN: usize = 200;
@@ -106,6 +110,11 @@ pub struct NavItem {
     /// target when empty); required-ish for `tag-group`/`group` (the section header).
     #[serde(default)]
     pub label: String,
+    /// An optional author-chosen display icon **name** — opaque data the UI maps to its own icon set
+    /// (an unknown name falls back to the kind's default; the core never interprets it). Bounded by
+    /// [`MAX_ICON_LEN`] at save. Meaningful on any kind; empty = the UI's per-kind default.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub icon: String,
     /// `surface`: the opaque core surface key (`"channels"`, `"rules"`, …). Empty otherwise.
     #[serde(default)]
     pub surface: String,
@@ -270,6 +279,10 @@ pub struct ResolvedNav {
 pub struct ResolvedItem {
     pub kind: String,
     pub label: String,
+    /// The author's icon name, echoed through untouched (opaque — the UI maps it, defaulting per
+    /// kind when empty or unknown).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub icon: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub surface: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]

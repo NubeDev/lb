@@ -277,19 +277,17 @@ pub fn mint_cell_from_envelope(
         .transpose()?
         .unwrap_or_default();
 
-    // `action { tool, argsTemplate }` — the envelope uses camelCase `argsTemplate`; `Action` stores
-    // `args_template` (snake). Map explicitly (no serde rename so the on-wire cell shape stays unchanged).
+    // `action { tool, argsTemplate }` — the envelope shape matches `Action` field-for-field (`Action`
+    // now carries `#[serde(rename = "argsTemplate")]`, so the camelCase envelope deserializes directly,
+    // exactly like `source` above; the old explicit `argsTemplate`→`args_template` map is retired).
     let action: Action = envelope
         .get("action")
         .filter(|v| !v.is_null())
-        .map(|a| Action {
-            tool: a
-                .get("tool")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            args_template: a.get("argsTemplate").cloned().unwrap_or(Value::Null),
+        .map(|a| {
+            serde_json::from_value(a.clone())
+                .map_err(|e| DashboardError::BadInput(format!("envelope.action: {e}")))
         })
+        .transpose()?
         .unwrap_or_default();
 
     // The envelope's extra `tools[]` (row-control write verbs) become hidden `sources[]` so the bridge

@@ -292,6 +292,7 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
     Some(ResolvedItem {
         kind: "surface".into(),
         label: label_or(&item.label, &item.surface),
+        icon: item.icon.clone(),
         surface: item.surface.clone(),
         dashboard: String::new(),
         ext: String::new(),
@@ -319,6 +320,7 @@ async fn resolve_dashboard(
         Ok(d) => Ok(Some(ResolvedItem {
             kind: "dashboard".into(),
             label: label_or(&item.label, &d.title),
+            icon: item.icon.clone(),
             surface: String::new(),
             dashboard: format!("dashboard:{id}"),
             ext: String::new(),
@@ -353,6 +355,7 @@ async fn resolve_ext(
     match found {
         Some(row) => Ok(Some(ResolvedItem {
             kind: "ext".into(),
+            icon: item.icon.clone(),
             // The extension's own declared label (via `ext.list`) when the author left it empty,
             // falling back to the opaque id itself.
             label: label_or(
@@ -405,6 +408,7 @@ async fn resolve_tag_group(
             children.push(ResolvedItem {
                 kind: "dashboard".into(),
                 label: d.title.clone(),
+                icon: String::new(),
                 surface: String::new(),
                 dashboard: format!("dashboard:{id}"),
                 ext: String::new(),
@@ -417,6 +421,7 @@ async fn resolve_tag_group(
     Ok(Some(ResolvedItem {
         kind: "group".into(),
         label: label_or(&item.label, "Tagged"),
+        icon: item.icon.clone(),
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),
@@ -454,6 +459,7 @@ async fn resolve_group(
     Ok(Some(ResolvedItem {
         kind: "group".into(),
         label: label_or(&item.label, "Group"),
+        icon: item.icon.clone(),
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),

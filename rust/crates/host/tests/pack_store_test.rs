@@ -13,11 +13,17 @@
 //!   - the caps wall re-fires per row: no `store:<table>:write` → the datasource object is `denied`,
 //!     an honest partial, never a smuggled write (rule 10 / pack-core no-privileged-path).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{call_tool, store_tables_view, Node};
 use serde_json::{json, Value};
+
+/// The two migration tests both set the process-global `LB_DIR` (the pack db root) to a temp path and
+/// read it back through `sqlite::db_path` at apply time. `cargo test` runs tests in parallel threads,
+/// so without serialization one test's `set_var` could race the other's apply — they take this lock
+/// for their whole body. Poison-tolerant: a panicking test must not cascade into the other.
+static MIGRATE_LB_DIR_LOCK: Mutex<()> = Mutex::new(());
 
 // ----- the store-backed pack, as a bundle over the wire ------------------------------------------
 //
@@ -381,6 +387,9 @@ async fn a_missing_store_write_cap_is_a_denied_partial() {
 /// (pack-store-datasource-scope §Migration), on a real node with a real sqlite file.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_sqlite_to_store_migration_carries_operator_rows_without_loss_or_clobber() {
+    let _lb_dir_guard = MIGRATE_LB_DIR_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     // Point the pack db root at a temp dir so the migration's sqlite file never lands in the repo.
     let lb_dir = std::env::temp_dir().join(format!("lb-migrate-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&lb_dir);
@@ -458,6 +467,109 @@ async fn the_sqlite_to_store_migration_carries_operator_rows_without_loss_or_clo
         name("site-seed"),
         "<absent>",
         "seed skips a migrated (owned) table: {sites:?}"
+    );
+    assert_eq!(sites.len(), 2, "exactly the two operator rows: {sites:?}");
+
+    let _ = std::fs::remove_dir_all(&lb_dir);
+}
+
+// ----- 5c. the migration runs on an in-place UPGRADE (version bump), not only a first apply --------
+
+/// The REAL-WORLD migration path (`pack-store-datasource-scope.md` §Migration): a workspace already
+/// applied a PRIOR version (so it has a receipt), then UPGRADES to a store-backed version that names
+/// `migrate_from`. Because a prior receipt exists, the decision is `Upgrade`, NOT a first `Apply` — so
+/// `run_rules`/`first_apply` is FALSE. The seed + migration must still run (gated on
+/// `first_apply || upgrade`), or the one path an operator actually takes — bumping `bas v4 → v5` in
+/// place — would silently skip carrying their sqlite rows into the store. The 5b test proves the
+/// migration MECHANICS on a first apply; this proves the `Upgrade` DECISION reaches them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_migration_runs_on_an_in_place_upgrade() {
+    let _lb_dir_guard = MIGRATE_LB_DIR_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let lb_dir = std::env::temp_dir().join(format!("lb-upgrade-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&lb_dir);
+    std::env::set_var("LB_DIR", &lb_dir);
+
+    let ws = "store-upgrade";
+    let pack = "bup";
+    let old_source = "demo-old";
+    // The operator's LIVE rows in the prior sqlite entity datasource (an edit + an add), at the
+    // deterministic pack db path the migration sweeps.
+    let db = lb_dir
+        .join("packs")
+        .join(ws)
+        .join(pack)
+        .join(format!("{old_source}.db"));
+    std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+    {
+        let c = rusqlite::Connection::open(&db).unwrap();
+        c.execute_batch(
+            "CREATE TABLE site (id TEXT PRIMARY KEY, name TEXT);\
+             INSERT INTO site VALUES ('site-001','Operator RENAMED');\
+             INSERT INTO site VALUES ('site-op','Operator Added');",
+        )
+        .unwrap();
+    }
+
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = store_full(ws);
+
+    // v1: a store pack that establishes a PRIOR RECEIPT and leaves the store `site` table EMPTY — a
+    // pure store-engine datasource with no `seed_rows`/`migrate_from` seeds nothing.
+    let v1 = json!({"manifest": format!(
+        "pack: {pack}\ntitle: Bup\nversion: 1\n\
+         entities:\n  site: {{ label: Site, table: site, pk: id, display: name, backend: store }}\n\
+         datasource:\n  name: curr\n  engine: store\n"),
+        "files": {}});
+    let r1 = apply(&node, &p, ws, v1, 10).await.expect("v1 apply");
+    assert_eq!(r1["outcome"], "applied", "v1 applied: {r1}");
+    assert!(
+        read_rows(&node, &p, ws, "site").await.is_empty(),
+        "v1 seeds nothing — the store is empty before the upgrade"
+    );
+
+    // v2: bump to a store pack naming `migrate_from` → a prior receipt exists, so this is an UPGRADE,
+    // NOT a first apply. The seed's `site-001` differs from the operator's row (must not win); the
+    // seed carries a `site-seed` the operator never had (must be skipped — the table is migrated/owned).
+    let v2 = json!({"manifest": format!(
+        "pack: {pack}\ntitle: Bup\nversion: 2\n\
+         entities:\n  site: {{ label: Site, table: site, pk: id, display: name, backend: store }}\n\
+         seed_rows: seed.json\n\
+         migrate_from: {old_source}\n\
+         datasource:\n  name: curr\n  engine: store\n"),
+        "files": {"seed.json": r#"{"site":[
+            {"id":"site-001","name":"Seed Original"},
+            {"id":"site-seed","name":"Seed Only"}
+        ]}"#}});
+    let r2 = apply(&node, &p, ws, v2, 11)
+        .await
+        .expect("v2 upgrade apply");
+    assert_eq!(r2["outcome"], "applied", "the upgrade applied: {r2}");
+
+    // The operator's live sqlite rows were carried into the store ON THE UPGRADE (the bug: they were
+    // not, because the seed/migration was gated on first-apply only).
+    let sites = read_rows(&node, &p, ws, "site").await;
+    let name = |id: &str| {
+        find_row(&sites, "id", id)
+            .and_then(|r| r["name"].as_str())
+            .unwrap_or("<absent>")
+            .to_string()
+    };
+    assert_eq!(
+        name("site-001"),
+        "Operator RENAMED",
+        "the operator's live edit migrated on the UPGRADE, and the seed did not clobber it: {sites:?}"
+    );
+    assert_eq!(
+        name("site-op"),
+        "Operator Added",
+        "the operator's added row migrated on the upgrade: {sites:?}"
+    );
+    assert_eq!(
+        name("site-seed"),
+        "<absent>",
+        "the seed skips the migrated (owned) table on the upgrade: {sites:?}"
     );
     assert_eq!(sites.len(), 2, "exactly the two operator rows: {sites:?}");
 

@@ -71,8 +71,12 @@ pub struct Action {
     /// The write tool invoked on interaction. E.g. `mqtt.publish`, `ingest.write`, `<ext>.<verb>`.
     pub tool: String,
     /// The argument template; a `{{value}}` token (any string leaf) is substituted with the control
-    /// state on interaction. Opaque to the host.
-    #[serde(default, deserialize_with = "null_default")]
+    /// state on interaction. Opaque to the host. `rename = "argsTemplate"` because the entire platform
+    /// speaks camelCase on the wire — the UI, `flowBindingOfAction`, every reminder descriptor, the
+    /// `dashboard.pin` envelope — exactly like the sibling `Target::ref_id`'s `refId`. Without it a
+    /// flow-bound switch/slider lost its `flows.inject` binding on every `dashboard.save`/`get`
+    /// (stored `null`, read `undefined`), so the flow-fed-widgets feature read as entirely dead.
+    #[serde(default, deserialize_with = "null_default", rename = "argsTemplate")]
     pub args_template: Value,
 }
 
@@ -736,6 +740,45 @@ mod tests {
         assert!(
             !cell.query_options.is_empty(),
             "a set field keeps it on the wire"
+        );
+    }
+
+    /// A control's `Action` round-trips its `argsTemplate` under the camelCase wire key — the UI, the
+    /// reminder descriptors and the `dashboard.pin` envelope all speak `argsTemplate`, so a snake
+    /// `args_template` on the wire (the pre-rename bug) dropped a flow-bound switch/slider's
+    /// `flows.inject` binding on every save. Pins BOTH directions: `argsTemplate` deserializes into the
+    /// struct AND serializes back out as `argsTemplate` (never `args_template`).
+    #[test]
+    fn action_round_trips_args_template_camel_case() {
+        let sent = serde_json::json!({
+            "tool": "flows.inject",
+            "argsTemplate": { "id": "cooler-ctl", "node": "setpoint-in", "port": "payload", "value": "{{value}}" }
+        });
+        let a: Action = serde_json::from_value(sent).expect("camelCase argsTemplate deserializes");
+        assert_eq!(a.tool, "flows.inject");
+        assert_eq!(a.args_template["node"], "setpoint-in");
+        assert_eq!(a.args_template["value"], "{{value}}");
+
+        let out = serde_json::to_value(&a).expect("serializes");
+        assert_eq!(
+            out["argsTemplate"]["node"], "setpoint-in",
+            "the wire key is argsTemplate, matching every other producer"
+        );
+        assert!(
+            out.get("args_template").is_none(),
+            "the snake key never appears on the wire (the pre-rename bug)"
+        );
+
+        // The snake form is NOT accepted on the wire — nothing in lb emits it (grep-verified), so the
+        // rename can't strand an existing producer, and this pins that the outlier is closed.
+        let snake: Action = serde_json::from_value(serde_json::json!({
+            "tool": "flows.inject", "args_template": { "node": "x" }
+        }))
+        .expect("deserializes (unknown key ignored)");
+        assert_eq!(
+            snake.args_template,
+            Value::Null,
+            "a snake args_template is ignored, not read"
         );
     }
 

@@ -119,6 +119,7 @@ mod tests {
         ResolvedItem {
             kind: "surface".into(),
             label: key.into(),
+            icon: String::new(),
             surface: key.into(),
             dashboard: String::new(),
             ext: String::new(),
@@ -165,6 +166,7 @@ mod tests {
         let dash = ResolvedItem {
             kind: "dashboard".into(),
             label: "Site health".into(),
+            icon: String::new(),
             surface: String::new(),
             dashboard: "dashboard:site-health".into(),
             ext: String::new(),
@@ -185,6 +187,7 @@ mod tests {
         let ext_child = ResolvedItem {
             kind: "ext".into(),
             label: "mqtt".into(),
+            icon: String::new(),
             surface: String::new(),
             dashboard: String::new(),
             ext: "mqtt".into(),
@@ -194,6 +197,7 @@ mod tests {
         let group = ResolvedItem {
             kind: "group".into(),
             label: "Ops".into(),
+            icon: String::new(),
             surface: String::new(),
             dashboard: String::new(),
             ext: String::new(),
