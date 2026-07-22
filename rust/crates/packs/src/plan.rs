@@ -63,6 +63,14 @@ pub fn plan(pack: &Pack) -> Vec<PlannedObject> {
         if let Some(s) = &pack.seed_sql {
             h.push_str(s);
         }
+        // The store seed rows fold into the datasource checksum too, so an edited store seed is drift
+        // (the same "changed content at the same version is refused" contract the sqlite seed gets).
+        for (table, rows) in &pack.seed_rows {
+            h.push_str(table);
+            for row in rows {
+                h.push_str(&row.to_string());
+            }
+        }
         out.push(PlannedObject {
             kind: Kind::Datasource,
             id: ds.name.clone(),
@@ -142,6 +150,12 @@ pub fn content_checksum(pack: &Pack) -> String {
     }
     for sql in [&pack.schema_sql, &pack.seed_sql].into_iter().flatten() {
         h.update(sql.as_bytes());
+    }
+    for (table, rows) in &pack.seed_rows {
+        h.update(table.as_bytes());
+        for row in rows {
+            h.update(row.to_string().as_bytes());
+        }
     }
     if let Some(ctx) = &pack.agent_context {
         h.update(ctx.as_bytes());

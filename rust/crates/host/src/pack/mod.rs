@@ -34,6 +34,7 @@ mod read;
 mod run;
 mod sqlite;
 mod store;
+mod store_seed;
 mod tool;
 mod validate;
 mod verb;

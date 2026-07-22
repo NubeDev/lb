@@ -65,6 +65,13 @@ pub struct Pack {
     pub dashboards: Vec<LoadedDashboard>,
     pub schema_sql: Option<String>,
     pub seed_sql: Option<String>,
+    /// The STRUCTURED seed for a `store`-engine datasource (`pack-store-datasource-scope.md` O-1):
+    /// `table -> rows`, resolved from the datasource's `seed_rows` JSON file. Empty when the pack has
+    /// no `seed_rows` (a sqlite pack, or a store pack that seeds nothing). Each row is a JSON object
+    /// whose fields become the stored record; the entity binding's `pk` selects the record id at apply
+    /// time. Kept parsed (not raw text) because the apply loop iterates rows, and the checksum folds
+    /// the canonical JSON so a changed seed is drift.
+    pub seed_rows: BTreeMap<String, Vec<serde_json::Value>>,
     pub agent_context: Option<String>,
 }
 
@@ -136,6 +143,12 @@ impl Bundle {
             None => (None, None),
         };
 
+        // Store-backed entity seed rows are a TOP-LEVEL concern, independent of the datasource block.
+        let seed_rows = match manifest.seed_rows.as_deref() {
+            Some(path) => parse_seed_rows(self.file(path)?, path)?,
+            None => BTreeMap::new(),
+        };
+
         let agent_context = manifest
             .agent
             .as_ref()
@@ -150,6 +163,7 @@ impl Bundle {
             dashboards,
             schema_sql,
             seed_sql,
+            seed_rows,
             agent_context,
         })
     }
@@ -159,6 +173,39 @@ impl Bundle {
             format!("the manifest references '{path}' but the bundle has no such file")
         })
     }
+}
+
+/// Parse a store datasource's `seed_rows` JSON — `{ "<table>": [ {<row>}, … ], … }` — into the
+/// `table -> rows` map the apply loop UPSERTs. Loud on the two authoring mistakes that would
+/// otherwise seed nothing silently: a top-level value that is not an object, or a table value that is
+/// not an array of objects. Each row MUST be a JSON object (the store record's fields); a scalar or
+/// array row is rejected with the table named, the same posture `deny_unknown_fields` holds for the
+/// manifest.
+fn parse_seed_rows(
+    text: &str,
+    path: &str,
+) -> Result<BTreeMap<String, Vec<serde_json::Value>>, String> {
+    let root: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("seed_rows '{path}' is not valid JSON: {e}"))?;
+    let obj = root.as_object().ok_or_else(|| {
+        format!("seed_rows '{path}' must be a JSON object mapping table -> [rows], not a {root}")
+    })?;
+    let mut out = BTreeMap::new();
+    for (table, rows) in obj {
+        let arr = rows.as_array().ok_or_else(|| {
+            format!("seed_rows '{path}': table '{table}' must map to an ARRAY of row objects")
+        })?;
+        for row in arr {
+            if !row.is_object() {
+                return Err(format!(
+                    "seed_rows '{path}': every row of table '{table}' must be a JSON object (a \
+                     store record's fields), not a scalar/array"
+                ));
+            }
+        }
+        out.insert(table.clone(), arr.clone());
+    }
+    Ok(out)
 }
 
 /// The filename stem of a bundle-relative path — the rule id convention.
@@ -234,6 +281,39 @@ mod tests {
         );
         let err = b.resolve().unwrap_err();
         assert!(err.contains("`id`"), "{err}");
+    }
+
+    #[test]
+    fn resolves_store_seed_rows_into_the_table_map() {
+        let b = bundle(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, table: site, pk: id, backend: store }\n\
+             seed_rows: seed.json\n\
+             datasource:\n  name: d\n  engine: store\n",
+            &[(
+                "seed.json",
+                r#"{"site":[{"id":"s1","name":"One"},{"id":"s2"}]}"#,
+            )],
+        );
+        let pack = b.resolve().unwrap();
+        assert_eq!(pack.seed_rows["site"].len(), 2);
+        assert_eq!(pack.seed_rows["site"][0]["name"], "One");
+    }
+
+    #[test]
+    fn a_seed_rows_row_that_is_not_an_object_is_a_loud_error() {
+        let b = bundle(
+            "pack: p\ntitle: P\nversion: 1\nseed_rows: seed.json\n",
+            &[("seed.json", r#"{"site":["not-an-object"]}"#)],
+        );
+        let err = b.resolve().unwrap_err();
+        assert!(err.contains("must be a JSON object"), "{err}");
+    }
+
+    #[test]
+    fn a_pack_with_no_seed_rows_has_an_empty_map() {
+        let b = bundle("pack: p\ntitle: P\nversion: 1\n", &[]);
+        assert!(b.resolve().unwrap().seed_rows.is_empty());
     }
 
     #[test]

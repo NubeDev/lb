@@ -39,9 +39,33 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub insights: Option<Insights>,
 
-    /// The datasource to register, with its optional schema/seed SQL.
+    /// The datasource to register, with its optional schema/seed SQL. For a pack whose entities live
+    /// in the STORE (`pack-store-datasource-scope.md`), this block is TIME-SERIES only (or absent) —
+    /// entity rows are seeded via the top-level `seed_rows`, not here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub datasource: Option<Datasource>,
+
+    /// STRUCTURED seed rows for STORE-backed entities (`pack-store-datasource-scope.md` O-1): a
+    /// bundle-relative path to a JSON object `{ "<table>": [ {<row fields>}, … ], … }`. This is a
+    /// TOP-LEVEL concern, independent of any `datasource` block — the rows seed the ONE application
+    /// store (SurrealDB) directly, so a store-only pack needs no datasource at all. Each row is
+    /// UPSERT'd at `<table>:<pk>` on FIRST apply, run-once (seed-ownership); the pk column comes from
+    /// the entity binding that names the table. The store takes structured values, never SQL (mirrors
+    /// `federation.write`'s no-SQL contract) — a store pack ships `seed_rows`, a sqlite pack ships
+    /// `datasource.seed`, and a pack may ship BOTH (store entities + a federation readings table).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_rows: Option<String>,
+
+    /// The name of a PRIOR sqlite datasource whose entity rows should be MIGRATED into the store on
+    /// first apply (`pack-store-datasource-scope.md` §Migration). A pack that USED to bind its
+    /// `site`/`meter`/`point` to a sqlite datasource, and now binds them `backend: store`, names that
+    /// old datasource here — so a workspace that already CRUD'd the sqlite rows carries the OPERATOR's
+    /// live rows into the store (read the live rows, never the seed), not just the pack's fresh seed.
+    /// Absent ⇒ no migration (a pack that was always store-backed). The migration runs BEFORE the seed
+    /// and only into an empty store table (never clobbering); a failed migration leaves the sqlite
+    /// file in place (no half-move).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migrate_from: Option<String>,
 
     /// Rhai rules to save, and run once on first apply.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -104,6 +128,27 @@ pub struct Entity {
     /// The human-label column of `table` — the roster/picker label a downstream surface shows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display: Option<String>,
+    /// Which backend this entity's rows live in (`pack-store-datasource-scope.md`): `store` (a
+    /// SurrealDB record via the `store.*` verbs — the one application store, Data-browser-visible,
+    /// graph-linkable, caps-scopable) or `datasource` (the federation/sqlite path, for time-series or
+    /// a registered external source). Absent ⇒ the pack's `datasource.engine` decides (O-2:
+    /// `store` engine ⇒ store; `sqlite`/`postgres` ⇒ datasource), so existing packs keep working.
+    /// The receipt carries this so a downstream surface routes without guessing (rule 10: route on
+    /// the binding, never on a pack/entity name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<Backend>,
+}
+
+/// The storage backend an entity's rows live in. `deny_unknown_fields` on `Entity` already rejects a
+/// typo'd KEY; this enum rejects a typo'd VALUE (`bakend: stor` fails to parse loudly rather than
+/// silently defaulting), the same loud-error posture the whole manifest holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    /// A SurrealDB record via the `store.*` verbs (the one application store).
+    Store,
+    /// The federation datasource (sqlite/postgres/…) via the `federation.*` verbs.
+    Datasource,
 }
 
 /// The insight-key grammar block.
@@ -134,7 +179,8 @@ pub struct Datasource {
     /// Optional DDL file (a bundle-relative path). Dialect-intersection rules apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
-    /// Optional seed SQL file (a bundle-relative path).
+    /// Optional seed SQL file (a bundle-relative path). Used by the `sqlite` materialize path only.
+    /// (Store-backed entity rows are seeded via the top-level `seed_rows`, not here.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<String>,
 }
@@ -240,6 +286,58 @@ agent:
         assert_eq!(m.datasource.as_ref().unwrap().name, "demo-buildings");
         assert_eq!(m.channels[0].name, "critical-faults");
         assert_eq!(m.agent.as_ref().unwrap().context, "agent-context.md");
+    }
+
+    #[test]
+    fn parses_the_entity_backend_and_rejects_a_bad_value() {
+        let m = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, table: site, pk: id, backend: store }\n",
+        )
+        .unwrap();
+        assert_eq!(m.entities["site"].backend, Some(Backend::Store));
+
+        // A typo'd VALUE fails to parse loudly (not a silent default).
+        let err = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, backend: stor }\n",
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("backend") || err.to_string().contains("stor"),
+            "{err}"
+        );
+
+        // Absent backend is the today's shape (engine decides downstream).
+        let m2 =
+            Manifest::parse("pack: p\ntitle: P\nversion: 1\nentities:\n  site: { label: Site }\n")
+                .unwrap();
+        assert_eq!(m2.entities["site"].backend, None);
+    }
+
+    #[test]
+    fn parses_a_top_level_seed_rows_with_a_store_datasource() {
+        let m = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             seed_rows: seed.json\n\
+             datasource:\n  name: d\n  engine: store\n",
+        )
+        .unwrap();
+        assert_eq!(m.seed_rows.as_deref(), Some("seed.json"));
+        assert_eq!(m.datasource.unwrap().engine, "store");
+    }
+
+    #[test]
+    fn parses_seed_rows_with_no_datasource_at_all() {
+        // A store-only pack needs no datasource block — `seed_rows` is a top-level concern.
+        let m = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, table: site, pk: id, backend: store }\n\
+             seed_rows: seed.json\n",
+        )
+        .unwrap();
+        assert_eq!(m.seed_rows.as_deref(), Some("seed.json"));
+        assert!(m.datasource.is_none());
     }
 
     #[test]

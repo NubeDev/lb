@@ -148,6 +148,93 @@ async fn apply_datasource(
         return FAILED.to_string();
     };
 
+    // STORE SEED (pack-store-datasource-scope.md): a pack's entity rows live in the ONE application
+    // store, not a sqlite file. `seed_rows` (structured `{table: [rows]}`, O-1) is UPSERT'd as
+    // SurrealDB records at `{table}:{pk}` through the same `store.write` verb every other workspace
+    // record rides — Data-browser-visible, graph-linkable, caps-scopable. This is INDEPENDENT of the
+    // engine below: a pack may seed entity tables into the store AND keep a sqlite/federation
+    // datasource for append-heavy time-series (`point_reading`) in the same manifest (the scope's
+    // "entities in the store, time-series in federation" line). Run-once, seed-ownership: only the
+    // FIRST apply seeds; a re-apply/upgrade never re-clobbers an operator-edited record.
+    if first_apply && (!pack.seed_rows.is_empty() || pack.manifest.migrate_from.is_some()) {
+        // The pk COLUMN for a store-seed table comes from the entity binding that names it (rule 10:
+        // the seed reads the binding, never a table name it special-cases). An entity is bound to a
+        // table iff `entity.table == table`; its `pk` is the id column.
+        let pk_for = |table: &str| -> Option<String> {
+            pack.manifest
+                .entities
+                .values()
+                .find(|e| e.table.as_deref() == Some(table))
+                .and_then(|e| e.pk.clone())
+        };
+
+        // MIGRATION (pack-store-datasource-scope.md §Migration) — BEFORE the seed. A pack that names a
+        // prior sqlite `migrate_from` datasource carries the operator's LIVE sqlite entity rows into
+        // the store (into empty store tables only — never clobbering), so a workspace on the old
+        // sqlite era keeps its edits. It runs before the seed so an operator-edited row wins over the
+        // fresh seed for the same id (the seed UPSERT would otherwise overwrite it — but a migrated,
+        // now-non-empty store table's rows are the operator's, and the seed re-UPSERT at the same id
+        // is idempotent to the migrated value only if unchanged; the ordering keeps operator intent).
+        if let Some(old_ds) = &pack.manifest.migrate_from {
+            // The store-bound (table, pk) pairs the migration sweeps — the same bindings the seed uses.
+            let pairs: Vec<(String, String)> = pack
+                .manifest
+                .entities
+                .values()
+                .filter_map(|e| match (&e.table, &e.pk) {
+                    (Some(t), Some(pk)) => Some((t.clone(), pk.clone())),
+                    _ => None,
+                })
+                .collect();
+            let sqlite_path = super::sqlite::db_path(ws, &pack.manifest.pack, old_ds);
+            match super::store_seed::migrate_sqlite_entities(
+                node,
+                principal,
+                ws,
+                &sqlite_path,
+                &pairs,
+            )
+            .await
+            {
+                Ok(migrated) => {
+                    let total: usize = migrated.iter().map(|(_, n)| n).sum();
+                    if total > 0 {
+                        warnings.push(format!(
+                            "migrated {total} entity row(s) from the prior sqlite '{old_ds}' into the \
+                             store — {}",
+                            migrated
+                                .iter()
+                                .map(|(t, n)| format!("{t}:{n}"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                    }
+                }
+                Err(PackError::Denied) => return DENIED.to_string(),
+                // A failed migration leaves the sqlite file in place (no half-move) — but it IS a
+                // failure of the datasource object (the operator's data did not move), so surface it.
+                Err(e) => {
+                    warnings.push(format!("sqlite→store migration failed: {e}"));
+                    return FAILED.to_string();
+                }
+            }
+        }
+
+        match super::store_seed::seed_rows(node, principal, ws, &pack.seed_rows, pk_for).await {
+            Ok(_) => {}
+            // A missing `store:<table>:write` on the applier is the recoverable partial — no pack
+            // grants a smuggled write. Anything else (a bad seed row) is a hard failure.
+            Err(PackError::Denied) => return DENIED.to_string(),
+            Err(_) => return FAILED.to_string(),
+        }
+    }
+
+    // A pure store pack (engine `store`, no sqlite schema/seed) has NO external source to register —
+    // its rows ARE the store. Return applied once the seed lands; there is no `datasource_add`.
+    if ds.engine == "store" {
+        return APPLIED.to_string();
+    }
+
     // Only sqlite is materialized node-locally (see `sqlite.rs` for the tradeoff); every other
     // engine registers as a pointer to a source the operator already stood up.
     //

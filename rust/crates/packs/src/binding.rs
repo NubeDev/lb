@@ -237,6 +237,7 @@ mod tests {
             pk: pk.map(String::from),
             parent_fk: parent_fk.map(String::from),
             display: display.map(String::from),
+            backend: None,
         }
     }
 

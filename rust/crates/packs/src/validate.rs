@@ -157,15 +157,54 @@ pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
 
     // WARNING — schema/seed declared for an engine the host cannot materialize: the source will
     // register, but the SQL will not run, and the author should know before they wonder why the
-    // tables are empty.
+    // tables are empty. A `store` engine is EXEMPT: it is not a federation source at all — its rows
+    // are seeded structurally via the top-level `seed_rows`, so `schema`/`seed` SQL on a store engine
+    // is the separate mistake warned just after.
     if let Some(ds) = &pack.manifest.datasource {
-        if ds.engine != "sqlite" && (ds.schema.is_some() || ds.seed.is_some()) {
+        if ds.engine != "sqlite"
+            && ds.engine != "store"
+            && (ds.schema.is_some() || ds.seed.is_some())
+        {
             out.push(Finding {
                 error: false,
                 message: format!(
                     "datasource '{}' declares schema/seed SQL but engine is '{}' — the source \
                      registers, the SQL does not run (materializing is sqlite-only)",
                     ds.name, ds.engine
+                ),
+            });
+        }
+        // WARNING — a `store` engine takes STRUCTURED seed rows (top-level `seed_rows`), never SQL
+        // (O-1). `schema`/`seed` on a store engine will not run.
+        if ds.engine == "store" && (ds.schema.is_some() || ds.seed.is_some()) {
+            out.push(Finding {
+                error: false,
+                message: format!(
+                    "datasource '{}' engine is 'store' but declares schema/seed SQL — the store takes \
+                     structured top-level `seed_rows` (JSON), not SQL; the SQL will not run",
+                    ds.name
+                ),
+            });
+        }
+    }
+
+    // ERROR — a `seed_rows` table must be bound by an entity that carries a `pk` (the record id
+    // column). This is manifest-only and readable with no schema, so it GATES: without the pk the
+    // apply cannot key the store record, and a silent skip would seed a pack that is not the one
+    // authored. (An entity binds a table iff `entity.table == table`.) Checked independent of any
+    // datasource block — store seeding is a top-level concern.
+    for table in pack.seed_rows.keys() {
+        let bound_with_pk = pack
+            .manifest
+            .entities
+            .values()
+            .any(|e| e.table.as_deref() == Some(table.as_str()) && e.pk.is_some());
+        if !bound_with_pk {
+            out.push(Finding {
+                error: true,
+                message: format!(
+                    "seed_rows declares table '{table}' but no entity binds it with a `pk` — a store \
+                     record needs an id column; add an entity with `table: {table}` and a `pk`"
                 ),
             });
         }
@@ -328,6 +367,7 @@ mod tests {
             dashboards: vec![],
             schema_sql: None,
             seed_sql: None,
+            seed_rows: Default::default(),
             agent_context: None,
         };
         let f = validate(&p, &plan(&p));
