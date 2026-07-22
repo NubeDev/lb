@@ -108,6 +108,11 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 Feature-off `host_catalog_covers_dispatch_prefixes` and feature-on `cache::live::tests` (4) also green.
 
+**Feature-off no-op seam verified:** with `page-cache` OFF, the existing `flows_run_test` suite passes
+(`49 passed; 0 failed` in 22.5 s) — 49 dispatch-heavy tests exercise the refactored `run_host_verb`
+path with the cache compiled out, proving the extraction + no-op seam changed nothing. (The full
+285-test lb-host suite feature-off is not yet run — this is a strong representative sample.)
+
 ## Debugging
 - Debug-stack overflow from the extracted large future → fixed by `Box::pin` (above). Regression
   coverage: the whole integration suite exercises the boxed path; a stack overflow would abort it.
