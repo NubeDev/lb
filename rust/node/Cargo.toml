@@ -64,3 +64,8 @@ http-body-util = "0.1"
 # runtime registry; off leaves a default-only registry with zero external surface.
 default = []
 external-agent = ["dep:lb-role-external-agent"]
+# Forward the optional response cache (response-cache scope) to the host crate that owns it. OFF in
+# lb's default features (embedders opt in — the `external-agent` precedent keeps the stock binary
+# lean); a downstream host enables `lb-node/page-cache` in ITS defaults (rubix-ai does). Feature-off
+# ⇒ no `moka`, a zero-cost no-op cache seam.
+page-cache = ["lb-host/page-cache"]

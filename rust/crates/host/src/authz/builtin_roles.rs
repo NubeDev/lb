@@ -610,6 +610,12 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // undo-exposure scope: undoing ANOTHER actor's step touches another principal's work — the
     // definition of an admin-only cap. Always prominently audited by the host verb.
     "mcp:undo.any:call",
+    // response-cache scope: observing the node's response-cache internals (`cache.stats`) and
+    // purging a workspace's cached reads (`cache.purge`) are operator/admin authorities — a
+    // node-diagnostic read and the stale-data escape hatch, respectively. A member/viewer holds
+    // neither, so a non-admin caller is opaquely `Denied` on a warm key exactly as on a cold one.
+    "mcp:cache.stats:call",
+    "mcp:cache.purge:call",
 ];
 
 /// Does this cap set carry workspace-admin authority? True iff it holds ANY [`ADMIN_ONLY_CAPS`]

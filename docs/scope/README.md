@@ -193,10 +193,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `caching/` — an **optional server-side response cache** on the gateway's MCP read path
   (`response-cache-scope.md`): warm page opens (dashboards above all) answered from memory
   instead of re-running the query engines — the biggest win on Raspberry-Pi-class edge nodes.
-  `moka` hot tier (TTL + byte-weighted budget) + a SurrealDB `cache_entry` warm tier for
-  expensive derived results only; **no Redis/sidecar** (one-datastore rule). Sits **behind**
-  auth + the caps wall, keyed `{ws, verb, canonical-args, generation}` (never the subject),
-  write-verbs bump per-`{ws, class}` generations, TTL is the backstop. Compile-time optional
+  `moka`-only in v1 (TTL + byte-weighted budget + `try_get_with` single-flight); **no
+  Redis/sidecar** (one-datastore rule), and the SurrealDB warm tier is a conditional v2
+  slice blocked on restart-persisted generation counters. Sits **behind** auth + the caps
+  wall, keyed `{ws, verb, canonical-args, generation}` (never the subject), write-verbs
+  bump per-`{ws, class}` generations, time-windowed verbs bucket-quantised so relative
+  ranges hit, TTL is the backstop; ships `cache.stats`/`cache.purge`. Compile-time optional
   (`page-cache` cargo feature, the `external-agent` precedent) + runtime `BootConfig.cache`
   — feature off is a zero-cost no-op seam.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a

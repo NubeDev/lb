@@ -83,6 +83,11 @@ argon2.workspace = true
 # The per-workspace model memoization cache on the `Node` (active-agent-wiring scope, Slice 2). State
 # on the node spine — not a role concern, so it lives here in core host.
 dashmap.workspace = true
+# The hot tier of the OPTIONAL response cache (response-cache scope). Behind the `page-cache` feature
+# (below) via `dep:moka`, so a DEFAULT build carries none of it — the compile-time optionality gate,
+# the `external-agent` precedent. `moka::future::Cache` gives per-entry TTL, a byte weigher, and
+# `try_get_with` single-flight in one crate.
+moka = { workspace = true, optional = true }
 # The `signature`-mode shared-secret generator (webhooks scope) — reuses `lb_apikey::generate_secret`
 # for the entropy; `rand` is only for the (currently-unused) `random_bytes` helper kept for parity.
 rand.workspace = true
@@ -92,6 +97,14 @@ rand.workspace = true
 # asked for directly in the node/host crate, not as a role or an extension. `rustls-tls` — no system
 # OpenSSL dependency, same posture as every other reqwest use in the tree.
 reqwest.workspace = true
+
+[features]
+# The optional server-side response cache (response-cache scope). OFF by default — a default
+# `cargo build -p lb-host` compiles NONE of the cache code and pulls in no `moka` (the `dep:moka`
+# gate). A downstream host turns it on (rubix-ai puts it in ITS default features). The feature-off
+# path is a zero-cost no-op seam (`cache::dispatch` just runs the handler); CI builds it OFF to prove
+# the seam compiles and the read-path suite stays green.
+page-cache = ["dep:moka"]
 
 [dev-dependencies]
 tokio.workspace = true

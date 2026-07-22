@@ -115,6 +115,14 @@ pub struct Node {
     /// are installed by the layer that knows them. Fleet-presence owns making that config real
     /// (its "NodeId stability" risk); this field is the seam it installs into.
     node_id: Mutex<NodeId>,
+    /// The optional server-side response cache (response-cache scope), installed once at boot from
+    /// `BootConfig.cache` ([`install_response_cache`](Node::install_response_cache)). A `OnceLock`
+    /// so the hot dispatch path reads it lock-free. Feature-gated: with `page-cache` off this is a
+    /// zero-sized `()` and every access compiles away — the cost-free seam. `None` inside the lock
+    /// ⇒ the cache is compiled in but disabled (no `BootConfig.cache`, or `enabled:false`).
+    // Feature-off it is a `()` written at construction but never read — that is the point (zero cost).
+    #[cfg_attr(not(feature = "page-cache"), allow(dead_code))]
+    response_cache: crate::cache::CacheSlot,
     pub role: Role,
 }
 
@@ -145,6 +153,7 @@ impl Node {
             key: Mutex::new(Arc::new(SigningKey::generate())),
             gateway_url: Mutex::new(None),
             node_id: Mutex::new(fresh_node_id()),
+            response_cache: crate::cache::new_slot(),
             role: Role::Solo,
         })
     }
@@ -171,6 +180,7 @@ impl Node {
             key: Mutex::new(Arc::new(SigningKey::generate())),
             gateway_url: Mutex::new(None),
             node_id: Mutex::new(fresh_node_id()),
+            response_cache: crate::cache::new_slot(),
             role,
         })
     }
@@ -196,6 +206,7 @@ impl Node {
             key: Mutex::new(Arc::new(SigningKey::generate())),
             gateway_url: Mutex::new(None),
             node_id: Mutex::new(fresh_node_id()),
+            response_cache: crate::cache::new_slot(),
             role,
         })
     }
@@ -290,6 +301,33 @@ impl Node {
     /// callback client fails cleanly — the pre-existing behaviour for a sidecar that never calls back.
     pub fn install_gateway_url(&self, url: impl Into<String>) {
         *self.gateway_url.lock().expect("node gateway url lock") = Some(url.into());
+    }
+
+    /// Install the optional response cache from `BootConfig.cache` (response-cache scope) — the same
+    /// install-after-boot pattern as [`install_key`](Node::install_key). Called ONCE at boot by the
+    /// builder. `None`/`enabled:false` ⇒ the cache stays absent (the slot holds `None`), so every
+    /// dispatch passes through. With the `page-cache` feature OFF this is a zero-cost no-op that
+    /// ignores its argument entirely — no `moka`, no state.
+    #[cfg(feature = "page-cache")]
+    pub fn install_response_cache(&self, cfg: Option<crate::cache::CacheConfig>) {
+        let built = cfg
+            .filter(|c| c.enabled)
+            .map(|c| Arc::new(crate::cache::ResponseCache::new(&c)));
+        // Installed once at boot; a second call is a no-op (the boot layer owns this).
+        let _ = self.response_cache.set(built);
+    }
+
+    /// Feature-off: the response cache does not exist. This no-op keeps the ONE call site in the
+    /// builder feature-agnostic (it always calls `install_response_cache`, and off ⇒ nothing).
+    #[cfg(not(feature = "page-cache"))]
+    pub fn install_response_cache(&self, _cfg: Option<crate::cache::CacheConfig>) {}
+
+    /// The installed response cache, if one is enabled on this node. Lock-free read on the hot
+    /// dispatch path (a `OnceLock` `get`). `None` when the cache is compiled in but disabled, or not
+    /// yet installed. Only compiled under `page-cache` — the cache seam is the sole caller.
+    #[cfg(feature = "page-cache")]
+    pub(crate) fn response_cache(&self) -> Option<Arc<crate::cache::ResponseCache>> {
+        self.response_cache.get().and_then(|slot| slot.clone())
     }
 
     /// This node's gateway URL for child callbacks, if one was installed.

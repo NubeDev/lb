@@ -220,6 +220,19 @@ pub struct BootConfig {
     /// default) seeds no global email — the dev user still logs in via the legacy `/login` or the dev
     /// form. `from_env` reads `LB_SEED_EMAIL`. Filled at the binary boundary; the email is non-secret.
     pub seed_email: Option<String>,
+
+    /// The optional server-side response cache (response-cache scope). `None` (the default) ⇒ no
+    /// cache — every read dispatches, byte-for-byte today's behaviour. `Some(CacheConfig)` ⇒ the
+    /// node builds an in-process moka cache with that budget/TTL and serves the audited allowlist
+    /// (`datasource.list`/`series.list`/`flows.list`/`flows.get`/`ext.list`) read-through +
+    /// single-flight, invalidated by per-`{ws, class}` generation counters on write.
+    ///
+    /// Additive on two axes, matching the scope's "optional twice": the `page-cache` CARGO feature
+    /// gates whether the live cache is even compiled (off ⇒ this field is honoured as a no-op, no
+    /// `moka` in the binary); this field is the RUNTIME switch on a build that compiled it in. An
+    /// embedder fills it directly (rubix-ai maps `RUBIX_CACHE_*` → here at its binary boundary);
+    /// `from_env` maps `LB_CACHE_*` for the standalone binary.
+    pub cache: Option<lb_host::CacheConfig>,
 }
 
 impl Default for BootConfig {
@@ -262,6 +275,9 @@ impl Default for BootConfig {
             // No global email seeded by default — an embedder fills this to give the new `/auth/login`
             // front door a first admin. `None` ⇒ the dev user logs in via the legacy `/login`/dev form.
             seed_email: None,
+            // No response cache by default — an embedder opts in (rubix-ai does, on by default in
+            // ITS binary). `from_env` (below) turns it on for the standalone binary via `LB_CACHE_*`.
+            cache: None,
         }
     }
 }
@@ -338,8 +354,33 @@ impl BootConfig {
             seed_email: std::env::var("LB_SEED_EMAIL")
                 .ok()
                 .filter(|s| !s.trim().is_empty()),
+            // The standalone binary keeps the cache OFF unless asked (lb does not put `page-cache`
+            // in its default features, so the stock binary usually can't cache anyway). `LB_CACHE=1`
+            // (or any non-empty non-"0") turns it on; `LB_CACHE_BUDGET_MB` sizes it. Read only here.
+            cache: cache_from_env(),
         }
     }
+}
+
+/// The standalone binary's response-cache config from `LB_CACHE*` (from-env only). `None` unless
+/// `LB_CACHE` is set to a truthy value; the budget comes from `LB_CACHE_BUDGET_MB` (default 32).
+/// Embedders never call this — they fill `BootConfig.cache` directly (rubix-ai maps `RUBIX_CACHE_*`).
+fn cache_from_env() -> Option<lb_host::CacheConfig> {
+    let on = std::env::var("LB_CACHE")
+        .ok()
+        .map(|v| !v.is_empty() && v != "0")
+        .unwrap_or(false);
+    if !on {
+        return None;
+    }
+    let mut c = lb_host::CacheConfig::default();
+    if let Some(mb) = std::env::var("LB_CACHE_BUDGET_MB")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        c.memory_budget_bytes = mb * 1024 * 1024;
+    }
+    Some(c)
 }
 
 /// Map `LB_DEV_LOGIN` to a [`CredentialMode`], matching the standalone gateway's

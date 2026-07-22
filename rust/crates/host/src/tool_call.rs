@@ -96,6 +96,10 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "bus.",
     "reminder.",
     "query.",
+    // response-cache scope: the `cache.stats` / `cache.purge` admin verbs. Host-native like the rest;
+    // dispatched to `crate::cache::call_cache_tool` (feature-off ⇒ NotFound). Reached over the one MCP
+    // bridge — no per-extension case (rule 10).
+    "cache.",
     "assets.",
     // doc-extraction scope: the `docs.*` doc-derived verb family (v1: `docs.extract`). A NEW
     // native prefix, NOT an `assets.` arm — doc CRUD lives under `assets.` (`assets.put_doc`), while
@@ -164,6 +168,14 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // `mcp:identity.manage:call` grant (the scope's MCP §6.1 decision), not a new per-verb cap.
         // Each verb re-checks `identity.manage` inside.
         "identity.manage"
+    } else if qualified_tool == "series.latest_many" {
+        // series-read-perf scope: a batched fleet-snapshot read is ONE logical read of the
+        // series-latest surface, not K grants — it rides the existing `mcp:series.latest:call`
+        // grant, checked ONCE for the batch (the inner `authorize_ingest` in ingest/read.rs uses
+        // the same `series.latest` cap). No `mcp:series.latest_many:call` exists in any role
+        // bundle, so without this alias the outer gate denies the batch verb for every caller —
+        // the shipped-but-unusable state the scope's "reuses the grant" clause intended to avoid.
+        "series.latest"
     } else if qualified_tool == "outbox.enqueue_held" {
         "outbox.enqueue"
     } else if qualified_tool.starts_with("telemetry.") {
@@ -486,6 +498,62 @@ async fn dispatch_at_depth(
         validate_declared_args(node, qualified_tool, input_json)?;
         let input: Value = serde_json::from_str(input_json)
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
+        // RESPONSE CACHE seam (response-cache scope): caps + arg-validation have passed above; hand
+        // the dispatch to the cache. Feature-off / disabled / a non-allowlisted verb ⇒ this just runs
+        // `run_host_verb` and serialises (byte-for-byte today's behaviour). An allowlisted read is
+        // served read-through + single-flight; a write bumps the generations it dirties. depth-0 only.
+        return crate::cache::dispatch(node, principal, ws, qualified_tool, &input, depth).await;
+    }
+
+    // An `<ext>.<tool>` target: build the guest's host-callback context so its backend can call
+    // host tools under its DELEGATED, INTERSECTED authority (host-callback scope).
+    let ctx = build_call_context(node, principal, ws, qualified_tool, depth).await;
+
+    // A targeted call (routed-dispatch-sidecar-bridge scope) funnels into `call_on_node`, which runs
+    // on the named node or refuses — no fallback to another host of the same ext. It carries no
+    // callback ctx by construction: a routed guest's callback identity would have to ride the wire
+    // (a separate scope), which is exactly what `call_on_node` already assumes.
+    if let Some(target) = target_node {
+        return lb_mcp::call_on_node(
+            &node.registry,
+            &node.bus,
+            principal,
+            ws,
+            qualified_tool,
+            input_json,
+            target,
+        )
+        .await;
+    }
+
+    // depth > 0 means this call ORIGINATED from a guest's host-callback (re-entrant): dispatch must
+    // not block on the instance lock (it may be the in-flight guest's own) — fail fast instead.
+    lb_mcp::call_with_ctx(
+        &node.registry,
+        &node.bus,
+        principal,
+        ws,
+        qualified_tool,
+        input_json,
+        ctx,
+        depth > 0,
+    )
+    .await
+}
+
+/// Run a host-native verb's handler and return its JSON `Value`. Extracted from `dispatch_at_depth`
+/// so the response-cache seam (`crate::cache::dispatch`) can wrap it lazily — computing only on a
+/// miss and coalescing concurrent identical misses onto one run (single-flight). Every arm is the
+/// exact dispatch that used to be inline; the caps gate + arg validation already ran in the caller.
+#[allow(clippy::too_many_lines)]
+pub(crate) async fn run_host_verb(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    input: Value,
+    depth: u32,
+) -> Result<Value, ToolError> {
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
             call_inbox_outbox_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("insight.") {
@@ -705,6 +773,11 @@ async fn dispatch_at_depth(
             || qualified_tool.starts_with("history.")
         {
             call_undo_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("cache.") {
+            // response-cache scope: the `cache.stats` / `cache.purge` admin verbs, reached over the
+            // one MCP bridge like every host-native verb. The outer gate ran `mcp:cache.<verb>:call`;
+            // feature-off ⇒ the cache is not compiled in and this returns `NotFound` (an unknown verb).
+            crate::cache::call_cache_tool(node, principal, ws, qualified_tool, &input).await?
         } else {
             let out = call_ingest_tool(&node.store, principal, ws, qualified_tool, &input).await?;
             // Parity with the gateway's `POST /ingest` route (routes/ingest.rs): after the durable
@@ -718,43 +791,7 @@ async fn dispatch_at_depth(
             }
             out
         };
-        return serde_json::to_string(&out).map_err(|e| ToolError::Extension(e.to_string()));
-    }
-
-    // An `<ext>.<tool>` target: build the guest's host-callback context so its backend can call
-    // host tools under its DELEGATED, INTERSECTED authority (host-callback scope).
-    let ctx = build_call_context(node, principal, ws, qualified_tool, depth).await;
-
-    // A targeted call (routed-dispatch-sidecar-bridge scope) funnels into `call_on_node`, which runs
-    // on the named node or refuses — no fallback to another host of the same ext. It carries no
-    // callback ctx by construction: a routed guest's callback identity would have to ride the wire
-    // (a separate scope), which is exactly what `call_on_node` already assumes.
-    if let Some(target) = target_node {
-        return lb_mcp::call_on_node(
-            &node.registry,
-            &node.bus,
-            principal,
-            ws,
-            qualified_tool,
-            input_json,
-            target,
-        )
-        .await;
-    }
-
-    // depth > 0 means this call ORIGINATED from a guest's host-callback (re-entrant): dispatch must
-    // not block on the instance lock (it may be the in-flight guest's own) — fail fast instead.
-    lb_mcp::call_with_ctx(
-        &node.registry,
-        &node.bus,
-        principal,
-        ws,
-        qualified_tool,
-        input_json,
-        ctx,
-        depth > 0,
-    )
-    .await
+    Ok(out)
 }
 
 /// Build the [`CallContext`] for a wasm guest call: derive the effective principal

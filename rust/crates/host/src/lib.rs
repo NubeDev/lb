@@ -17,6 +17,9 @@ mod authz;
 mod boot;
 mod brand;
 mod bus;
+/// The optional server-side response cache (response-cache scope). `pub` so `BootConfig` can name
+/// `CacheConfig`; the live tier is feature-gated behind `page-cache` (zero-cost when off).
+pub mod cache;
 mod callback;
 mod channel;
 mod channel_registry;
@@ -146,6 +149,7 @@ pub use authz::{
     ROLE_WORKSPACE_ADMIN,
 };
 pub use boot::{Node, NodeError};
+pub use cache::CacheConfig;
 pub use bus::{
     authorize_bus, authorize_subject_scoped, bus_publish, bus_watch, call_bus_tool,
     still_scoped_authorized, wall_subject, BusError, BusSub, WatchMode,

@@ -103,6 +103,12 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // Boot the spine over the config's store. `Arc` so the reactors + role mounts share it.
     let node = Arc::new(Node::boot_with_store(open_store(&cfg).await?).await?);
 
+    // RESPONSE CACHE (response-cache scope): install the optional in-process cache from config, right
+    // after boot so every subsequent host-verb dispatch sees it (a headless node caches too — the win
+    // is not gateway-specific). A no-op when the `page-cache` feature is off OR `cfg.cache` is
+    // `None`/disabled — the zero-cost seam. Symmetric: on/off/budget is config, never a role branch.
+    node.install_response_cache(cfg.cache.clone());
+
     // TELEMETRY sink selection: choose the tracing layers by config, right after boot so every
     // subsequent instrumented call is captured. Shares the node's OWN store + bus handles.
     lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), cfg.telemetry.clone());

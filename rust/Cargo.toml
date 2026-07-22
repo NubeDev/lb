@@ -261,6 +261,11 @@ dirs = "5"
 # `AiGateway` per call. Lock-free reads (the hot path); invalidated on `agent.config.set`. Used by
 # core `lb-host` only — it is state on the node spine, not a role concern.
 dashmap = "6"
+# The hot tier of the optional response cache (`page-cache` feature, response-cache scope): an
+# async-aware, TTL + byte-weighted, single-flight (`try_get_with`) in-process cache. Pulled in ONLY
+# by `lb-host`'s optional `page-cache` feature — a feature-off build carries none of it. `future` =
+# the async `Cache` the host dispatch path awaits.
+moka = { version = "0.12", features = ["future"] }
 # Test-only: a scratch config/key dir for the CLI's config-persistence + 0600-perms unit tests, and a
 # throwaway `LB_DIR` for the live gateway/local integration tests (real store, real socket — no mocks).
 tempfile = "3"

@@ -3,7 +3,7 @@
 
 use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum ToolError {
     /// Authorization failed (workspace isolation or missing capability). No further detail by
     /// design — does not reveal tool existence.
