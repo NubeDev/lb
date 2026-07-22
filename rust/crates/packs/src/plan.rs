@@ -23,6 +23,7 @@ pub enum Kind {
     Channel,
     Agent,
     Sidebar,
+    Retention,
 }
 
 impl Kind {
@@ -34,6 +35,7 @@ impl Kind {
             Kind::Channel => "channel",
             Kind::Agent => "agent",
             Kind::Sidebar => "sidebar",
+            Kind::Retention => "retention",
         }
     }
 }
@@ -119,6 +121,21 @@ pub fn plan(pack: &Pack) -> Vec<PlannedObject> {
             kind: Kind::Sidebar,
             id: pack.manifest.pack.clone(),
             checksum: checksum(&sidebar.hidden.join("\n")),
+        });
+    }
+
+    for p in &pack.manifest.retention {
+        // One object per policy, keyed by its PREFIX (the policy's natural id — the retention row is
+        // one-per-prefix, LWW). The checksum folds every field (prefix, horizons, ordered tiers), so
+        // an edited horizon/tier is drift and re-applies (LWW clobbers), even at the same pack version.
+        let mut body = format!("{}|{}|{}", p.prefix, p.raw_for_ms, p.max_samples);
+        for t in &p.tiers {
+            body.push_str(&format!("|{}:{}", t.width_ms, t.keep_for_ms));
+        }
+        out.push(PlannedObject {
+            kind: Kind::Retention,
+            id: p.prefix.clone(),
+            checksum: checksum(&body),
         });
     }
 

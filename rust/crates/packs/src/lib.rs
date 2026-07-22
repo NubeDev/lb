@@ -25,7 +25,7 @@ pub mod validate;
 
 pub use bundle::{Bundle, LoadedDashboard, LoadedRule, Pack, MAX_BUNDLE_BYTES};
 pub use decision::{decide, Decision};
-pub use manifest::Manifest;
+pub use manifest::{Manifest, RetentionPolicy, RetentionTier};
 pub use plan::{checksum, content_checksum, plan, Kind, PlannedObject};
 pub use receipt::{ObjectReceipt, Receipt};
 pub use validate::{has_errors, validate, Finding};

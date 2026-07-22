@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_packs::{Decision, Kind, Pack, PlannedObject, Receipt};
+use lb_packs::{Decision, Kind, Pack, PlannedObject, Receipt, RetentionPolicy};
 use serde_json::Value;
 
 use super::error::PackError;
@@ -132,6 +132,7 @@ async fn apply_object(
         Kind::Channel => apply_channel(node, principal, ws, &obj.id, ts).await,
         Kind::Agent => apply_agent(node, principal, ws, pack, ts).await,
         Kind::Sidebar => apply_sidebar(node, principal, ws, pack, ts).await,
+        Kind::Retention => apply_retention(node, principal, ws, pack, &obj.id).await,
     }
 }
 
@@ -444,6 +445,48 @@ async fn apply_channel(
         Ok(_) => APPLIED.to_string(),
         Err(e) if is_denied(&format!("{e:?}")) => DENIED.to_string(),
         Err(_) => FAILED.to_string(),
+    }
+}
+
+async fn apply_retention(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    pack: &Pack,
+    id: &str,
+) -> String {
+    // `id` is the policy's PREFIX (its plan key). Find the inline policy and set it via the SAME
+    // `series.retention.set` the public verb dispatches to — which re-checks
+    // `mcp:series.retention.set:call` under the caller's principal (pack-core §Caps: no privileged
+    // path through a pack). Pure LWW upsert, so it applies on every run; no run-once gate.
+    let Some(policy) = pack.manifest.retention.iter().find(|p| p.prefix == id) else {
+        return FAILED.to_string();
+    };
+    match crate::ingest::series_retention_set(&node.store, principal, ws, &to_ingest_policy(policy))
+        .await
+    {
+        Ok(_) => APPLIED.to_string(),
+        Err(crate::ingest::IngestError::Denied) => DENIED.to_string(),
+        Err(_) => FAILED.to_string(),
+    }
+}
+
+/// Convert the pack manifest's [`RetentionPolicy`] into the ingest [`lb_ingest::Policy`] the setter
+/// takes. The two share field names by design (the manifest struct is the verb's mirror), so this is
+/// a field-for-field move — the one place a shape drift between them would surface.
+fn to_ingest_policy(p: &RetentionPolicy) -> lb_ingest::Policy {
+    lb_ingest::Policy {
+        prefix: p.prefix.clone(),
+        raw_for_ms: p.raw_for_ms,
+        max_samples: p.max_samples,
+        tiers: p
+            .tiers
+            .iter()
+            .map(|t| lb_ingest::Tier {
+                width_ms: t.width_ms,
+                keep_for_ms: t.keep_for_ms,
+            })
+            .collect(),
     }
 }
 

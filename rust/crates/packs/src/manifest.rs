@@ -90,6 +90,14 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar: Option<Sidebar>,
 
+    /// Series retention policies to set (`pack-retention-scope.md`). Each is applied via
+    /// `series.retention.set` (LWW upsert keyed by `prefix`), so a pack shipping a high-rate
+    /// producer (e.g. EMS's `modbus.*` polls) declares "keep raw for N, roll up, evict" instead of
+    /// leaving every deployment to accumulate unbounded raw. Inline objects (the `channels:` model),
+    /// NOT file refs — a policy is a small structured record. One receipt object per `prefix`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retention: Vec<RetentionPolicy>,
+
     /// Required extension ids — CHECKED against the installed set, never installed (installing is
     /// the admin's act; the pack only declares needs). An absent requirement warns, never blocks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -213,6 +221,37 @@ pub struct Sidebar {
     /// The refs to hide (full set — LWW replaces, empty clears).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden: Vec<String>,
+}
+
+/// One series retention policy to seed (`pack-retention-scope.md`). The field shape MIRRORS the
+/// `series.retention.set` verb args byte-for-byte (`lb_ingest::Policy`) so a policy that validates in
+/// the verb deserializes here and back — the apply arm converts this straight into that `Policy`.
+/// Keyed by `prefix` (its natural id): the retention policy for a series-name prefix.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetentionPolicy {
+    /// The series-name PREFIX this policy governs (e.g. `modbus.`). The longest matching prefix wins
+    /// (series-retention scope). Also the receipt object id (`retention:<prefix>`).
+    pub prefix: String,
+    /// Keep raw samples this many ms before rolling them up + evicting. `0` disables the time horizon.
+    #[serde(default)]
+    pub raw_for_ms: u64,
+    /// FIFO count cap on raw samples per series (`0` = unbounded). The oldest over the cap are evicted.
+    #[serde(default)]
+    pub max_samples: u64,
+    /// Downsample tiers: what falls off `raw_for_ms` rolls into these, each kept for its own horizon.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tiers: Vec<RetentionTier>,
+}
+
+/// One downsample tier of a [`RetentionPolicy`] — mirrors `lb_ingest::Tier`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetentionTier {
+    /// Bucket width (ms) this tier rolls raw into.
+    pub width_ms: u64,
+    /// How long (ms) this tier's rollup rows are kept before eviction.
+    pub keep_for_ms: u64,
 }
 
 impl Manifest {
@@ -360,5 +399,52 @@ agent:
             Manifest::parse("pack: bas\ntitle: T\nversion: 1\nsidebar:\n  hiddn: [channels]\n")
                 .unwrap_err();
         assert!(err.to_string().contains("hiddn"), "{err}");
+    }
+
+    #[test]
+    fn parses_a_retention_block_with_tiers() {
+        let m = Manifest::parse(concat!(
+            "pack: ems\ntitle: T\nversion: 1\n",
+            "retention:\n",
+            "  - prefix: \"modbus.\"\n",
+            "    raw_for_ms: 3600000\n",
+            "    max_samples: 5000\n",
+            "    tiers:\n",
+            "      - {width_ms: 60000, keep_for_ms: 604800000}\n",
+        ))
+        .unwrap();
+        assert_eq!(m.retention.len(), 1);
+        let p = &m.retention[0];
+        assert_eq!(p.prefix, "modbus.");
+        assert_eq!(p.raw_for_ms, 3_600_000);
+        assert_eq!(p.max_samples, 5_000);
+        assert_eq!(p.tiers.len(), 1);
+        assert_eq!(p.tiers[0].width_ms, 60_000);
+        assert_eq!(p.tiers[0].keep_for_ms, 604_800_000);
+    }
+
+    #[test]
+    fn retention_defaults_and_empty_are_clean() {
+        // No block ⇒ empty vec (the `#[serde(default)]` path).
+        let none = Manifest::parse("pack: ems\ntitle: T\nversion: 1\n").unwrap();
+        assert!(none.retention.is_empty());
+        // A policy may omit optional fields (raw_for_ms/max_samples/tiers default to 0/0/[]).
+        let bare = Manifest::parse(
+            "pack: ems\ntitle: T\nversion: 1\nretention:\n  - prefix: \"m.\"\n",
+        )
+        .unwrap();
+        assert_eq!(bare.retention[0].prefix, "m.");
+        assert_eq!(bare.retention[0].raw_for_ms, 0);
+        assert!(bare.retention[0].tiers.is_empty());
+    }
+
+    #[test]
+    fn a_typod_key_inside_a_retention_policy_is_a_loud_error() {
+        // `deny_unknown_fields` on `RetentionPolicy` — `raw_for_mss:` must not silently drop.
+        let err = Manifest::parse(
+            "pack: ems\ntitle: T\nversion: 1\nretention:\n  - prefix: \"m.\"\n    raw_for_mss: 1\n",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("raw_for_mss"), "{err}");
     }
 }

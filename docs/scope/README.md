@@ -611,6 +611,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   starting data, never re-clobbered), and the gating question of whether `federation.write` reaches a
   pack's in-process sqlite source — NOT an ORM (holds the `entities`-is-vocabulary line); it unblocks
   the downstream operator data plane (`NubeIO/rubix-ai → docs/scope/packs/entity-data-plane-scope.md`).
+  `pack-retention-scope.md` (the ask) adds a `retention:` block (`Kind::Retention`, the closed-`Kind`
+  four-step recipe) that seeds `series.retention.*` policies from a pack — so a pack shipping a
+  high-rate producer (EMS's `modbus.*` polls) bounds its raw series tier from first apply instead of
+  leaving every deployment to accumulate unbounded raw and slow its reads.
 - `sync/` — multi-node sync + authority (S3).
 - `system-map/` — a framework-level **workspace topology + status console**: two admin-gated read
   verbs (`system.overview` status grid · `system.topology` react-flow wiring) that derive a live,

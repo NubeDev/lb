@@ -1598,3 +1598,149 @@ async fn pack_upgrade_reconciles_schema_and_preserves_rows() {
 
     let _ = std::fs::remove_dir_all(&lb_dir);
 }
+
+// ----- retention (pack-retention-scope) ----------------------------------------------------------
+//
+// A `retention:` block is a new closed-`Kind` object (Kind::Retention): inline policies applied via
+// `series.retention.set` under the caller's principal. These prove the four contracts of the family
+// for this arm — applies + is readable, the per-object cap wall fires, idempotent+drift, workspace
+// isolation — against the real node (no mocks), driving the same `series_retention_set` the verb does.
+
+/// A bundle with a `retention:` block (+ a channel so the pack has a second object). Inline policies,
+/// no bundle files. `raw`/`title` vary so a test can force drift.
+fn retention_bundle(raw_for_ms: u64, title: &str) -> Value {
+    json!({"manifest": format!(
+        "pack: ret\ntitle: {title}\nversion: 1\n\
+         channels:\n  - name: c\n\
+         retention:\n  - prefix: \"modbus.\"\n    raw_for_ms: {raw_for_ms}\n    max_samples: 5000\n    tiers:\n      - {{width_ms: 60000, keep_for_ms: 604800000}}\n"
+    ), "files": {}})
+}
+
+/// The pack surface + the two per-object caps this bundle re-checks (the channel `pub`/`sub` gate and
+/// the retention setter). Deliberately granular so a test can drop just the retention cap.
+fn retention_full(ws: &str) -> Principal {
+    let mut caps: Vec<&str> = PACK_SURFACE.to_vec();
+    caps.extend_from_slice(&[
+        "bus:chan/*:pub",
+        "bus:chan/*:sub",
+        "mcp:series.retention.set:call",
+        "mcp:series.retention.list:call",
+    ]);
+    principal(ws, &caps)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn retention_block_applies_and_is_readable() {
+    let ws = "ws-ret-apply";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = retention_full(ws);
+
+    let resp = apply(&node, &p, ws, retention_bundle(3_600_000, "T"), 1)
+        .await
+        .expect("apply");
+    assert_eq!(object_outcome(&resp, "retention"), "applied", "{resp}");
+
+    // The policy is now set — `series.retention.list` returns it exactly as declared.
+    let list = call(&node, &p, ws, "series.retention.list", json!({}))
+        .await
+        .expect("list");
+    let pol = list["policies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["prefix"] == "modbus.")
+        .unwrap_or_else(|| panic!("modbus. policy present: {list}"));
+    assert_eq!(pol["raw_for_ms"], 3_600_000);
+    assert_eq!(pol["max_samples"], 5_000);
+    assert_eq!(pol["tiers"][0]["width_ms"], 60_000);
+    assert_eq!(pol["tiers"][0]["keep_for_ms"], 604_800_000);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn retention_object_is_denied_without_the_setter_cap() {
+    let ws = "ws-ret-deny";
+    let node = Arc::new(Node::boot().await.unwrap());
+    // The pack surface + the channel gate, but NOT the retention setter → a PARTIAL: the channel
+    // applies, the retention object is denied and listed, no policy is written.
+    let missing = principal(ws, &{
+        let mut c: Vec<&str> = PACK_SURFACE.to_vec();
+        c.extend_from_slice(&["bus:chan/*:pub", "bus:chan/*:sub", "mcp:series.retention.list:call"]);
+        c
+    });
+
+    let resp = apply(&node, &missing, ws, retention_bundle(3_600_000, "T"), 1)
+        .await
+        .expect("apply");
+    assert_eq!(object_outcome(&resp, "channel"), "applied", "{resp}");
+    assert_eq!(object_outcome(&resp, "retention"), "denied", "{resp}");
+
+    // No policy was written — the deny is real, not cosmetic.
+    let list = call(&node, &missing, ws, "series.retention.list", json!({}))
+        .await
+        .expect("list");
+    assert!(
+        list["policies"].as_array().unwrap().is_empty(),
+        "no policy set on a denied apply: {list}"
+    );
+
+    // Grant the cap + re-apply recovers it (the pack-core partial→grant→recover matrix, this arm).
+    let full = retention_full(ws);
+    let resp2 = apply(&node, &full, ws, retention_bundle(3_600_000, "T"), 2)
+        .await
+        .expect("re-apply");
+    assert_eq!(object_outcome(&resp2, "retention"), "applied", "{resp2}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn retention_reapply_is_noop_and_a_changed_policy_drifts() {
+    let ws = "ws-ret-drift";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = retention_full(ws);
+
+    apply(&node, &p, ws, retention_bundle(3_600_000, "T"), 1)
+        .await
+        .expect("apply 1");
+
+    // SAME bundle → NoOp (unchanged checksum): the response carries no re-applied objects.
+    let noop = apply(&node, &p, ws, retention_bundle(3_600_000, "T"), 2)
+        .await
+        .expect("re-apply same");
+    assert_eq!(noop["outcome"], "noop", "unchanged pack is a NoOp: {noop}");
+
+    // A changed policy at a BUMPED version re-applies and `list` reflects the new horizon.
+    let changed = json!({"manifest":
+        "pack: ret\ntitle: T\nversion: 2\n\
+         channels:\n  - name: c\n\
+         retention:\n  - prefix: \"modbus.\"\n    raw_for_ms: 7200000\n    max_samples: 5000\n    tiers:\n      - {width_ms: 60000, keep_for_ms: 604800000}\n", "files": {}});
+    apply(&node, &p, ws, changed, 3).await.expect("apply changed");
+    let list = call(&node, &p, ws, "series.retention.list", json!({}))
+        .await
+        .expect("list");
+    let pol = list["policies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["prefix"] == "modbus.")
+        .unwrap();
+    assert_eq!(pol["raw_for_ms"], 7_200_000, "the bumped horizon applied: {list}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn retention_policies_do_not_cross_the_workspace_wall() {
+    let node = Arc::new(Node::boot().await.unwrap());
+    let pa = retention_full("ws-ret-a");
+    let pb = retention_full("ws-ret-b");
+
+    apply(&node, &pa, "ws-ret-a", retention_bundle(3_600_000, "A"), 1)
+        .await
+        .expect("apply A");
+
+    // ws-B has NOT applied anything → its retention list is empty (no read of ws-A's policy).
+    let list_b = call(&node, &pb, "ws-ret-b", "series.retention.list", json!({}))
+        .await
+        .expect("list B");
+    assert!(
+        list_b["policies"].as_array().unwrap().is_empty(),
+        "ws-B sees no policy from ws-A: {list_b}"
+    );
+}
