@@ -505,24 +505,24 @@ async fn the_refusal_matrix_holds_against_a_real_receipt() {
         other => panic!("expected a BadInput refusal, got {other:?}"),
     }
 
-    // ROW 4 — a higher version means an upgrade, which this engine does not do. Refused honestly
-    // rather than silently re-applied as if a version bump were cosmetic.
-    let err = apply(&node, &p, ws, small_bundle(2, SMALL_CONTEXT), 13)
+    // ROW 4 — a higher version is an UPGRADE (pack-upgrade-scope): re-drive every object, do NOT
+    // re-run rules, and report the version bump loudly. (This small pack has no datasource, so the
+    // schema-reconcile step is a no-op — the upgrade of the materialized schema is covered by the
+    // sqlite unit tests + the O-1 integration path.)
+    let up = apply(&node, &p, ws, small_bundle(2, SMALL_CONTEXT), 13)
         .await
-        .expect_err("a higher version must refuse");
-    assert!(
-        matches!(&err, lb_mcp::ToolError::BadInput(m) if m.contains("HIGHER") || m.contains("upgrade")),
-        "expected an upgrade-not-built refusal, got {err:?}"
+        .expect("a higher version upgrades");
+    assert_eq!(up["outcome"], "applied", "the upgrade applied: {up}");
+    assert_eq!(up["upgraded"]["from"], 1, "loud version bump: {up}");
+    assert_eq!(up["upgraded"]["to"], 2);
+    assert_eq!(
+        up["ran_rules"], false,
+        "an upgrade never re-runs rules: {up}"
     );
 
-    // ROW 5 — a downgrade is always refused.
-    let bump = apply(&node, &p, ws, small_bundle(1, SMALL_CONTEXT), 14).await;
-    assert_eq!(
-        bump.unwrap()["outcome"],
-        "noop",
-        "state is still at version 1"
-    );
-    let err = apply(&node, &p, ws, small_bundle(0, SMALL_CONTEXT), 15)
+    // ROW 5 — a downgrade is always refused. State is now at v2 (the upgrade), so re-applying v1 is a
+    // downgrade, not a no-op.
+    let err = apply(&node, &p, ws, small_bundle(1, SMALL_CONTEXT), 14)
         .await
         .expect_err("a lower version must refuse");
     assert!(
@@ -1410,6 +1410,190 @@ async fn o1_federation_write_reaches_the_pack_materialized_sqlite_source() {
     assert!(
         txt.contains("OPERATOR-EDITED"),
         "SEED OWNERSHIP: the operator's edit to a seeded row must survive re-apply: {survived}"
+    );
+
+    let _ = std::fs::remove_dir_all(&lb_dir);
+}
+
+// ----- 12. pack UPGRADE end-to-end (a version bump reconciles the schema, preserves rows) ----------
+
+/// **The pack-upgrade oracle** (`pack-upgrade-scope.md`): a version bump migrates the materialized
+/// schema ADDITIVELY while PRESERVING the operator's rows — the thing that lets a pack evolve without
+/// abandoning a workspace's data. Applies a minimal sqlite pack at v1 (`site(id,name)`, seeded), writes
+/// an operator row, then applies v2 whose schema adds a `lat` column. Asserts: the response reports the
+/// upgrade (`from:1,to:2`), the operator's row SURVIVED, the new column EXISTS (and is null on the old
+/// row), and the receipt is now v2. `#[ignore]` for the same reason as the O-1 test — the real sidecar.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs the real federation sidecar built: cargo build -p federation"]
+async fn pack_upgrade_reconciles_schema_and_preserves_rows() {
+    use lb_host::install_native;
+    use lb_supervisor::OsLauncher;
+
+    const FEDERATION_MANIFEST: &str = include_str!("../../federation/extension.toml");
+
+    let lb_dir = std::env::temp_dir().join(format!("lb-upgrade-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&lb_dir);
+    std::env::set_var("LB_DIR", &lb_dir);
+
+    let dir = {
+        if let Ok(p) = std::env::var("FEDERATION_BIN") {
+            std::path::PathBuf::from(&p)
+                .parent()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let target = manifest_dir.join("../../target/debug");
+            let status = std::process::Command::new("cargo")
+                .args(["build", "-p", "federation"])
+                .current_dir(manifest_dir.join("../.."))
+                .status()
+                .expect("cargo build -p federation runs");
+            assert!(
+                status.success() && target.join("federation").exists(),
+                "federation sidecar builds"
+            );
+            target.to_string_lossy().into_owned()
+        }
+    };
+
+    let ws = "upgrade";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let admin = principal(
+        ws,
+        &[
+            "mcp:pack.validate:call",
+            "mcp:pack.apply:call",
+            "mcp:pack.get:call",
+            "mcp:native.install:call",
+            "mcp:native.call:call",
+            "mcp:native.status:call",
+            "mcp:datasource.add:call",
+            "mcp:datasource.list:call",
+            "mcp:datasource.test:call",
+            "mcp:federation.query:call",
+            "mcp:federation.write:call",
+            "secret:federation/*:write",
+            "secret:federation/*:get",
+        ],
+    );
+
+    install_native(
+        &node,
+        &OsLauncher,
+        &admin,
+        ws,
+        FEDERATION_MANIFEST,
+        &dir,
+        &[
+            "net:tls:127.0.0.1:0:connect".to_string(),
+            "secret:federation/*:get".to_string(),
+        ],
+        1,
+    )
+    .await
+    .expect("federation sidecar installs + spawns");
+
+    // A minimal pack: one sqlite datasource `demo`, `site(id,name)`, seeded with one row.
+    let bundle_v1 = json!({
+        "manifest": "pack: up\ntitle: Up\nversion: 1\n\
+            datasource:\n  name: demo\n  engine: sqlite\n  schema: schema.sql\n  seed: seed.sql\n",
+        "files": {
+            "schema.sql": "CREATE TABLE site (id TEXT PRIMARY KEY, name TEXT NOT NULL);",
+            "seed.sql": "INSERT INTO site VALUES ('seed-1','Seeded Site');",
+        },
+    });
+    apply(&node, &admin, ws, bundle_v1, 1000)
+        .await
+        .expect("apply v1");
+
+    // The operator adds a row (their data — must survive the upgrade).
+    call(
+        &node,
+        &admin,
+        ws,
+        "federation.write",
+        json!({"source":"demo","table":"site","columns":["id","name"],
+               "rows":[["op-1","Operator Site"]],"key":["id"]}),
+    )
+    .await
+    .expect("operator writes a row");
+
+    // v2: the SAME pack, version bumped, schema adds a nullable `lat` column.
+    let bundle_v2 = json!({
+        "manifest": "pack: up\ntitle: Up\nversion: 2\n\
+            datasource:\n  name: demo\n  engine: sqlite\n  schema: schema.sql\n  seed: seed.sql\n",
+        "files": {
+            "schema.sql": "CREATE TABLE site (id TEXT PRIMARY KEY, name TEXT NOT NULL, lat REAL);",
+            "seed.sql": "INSERT INTO site VALUES ('seed-1','Seeded Site');",
+        },
+    });
+    let up = apply(&node, &admin, ws, bundle_v2, 2000)
+        .await
+        .expect("apply v2 = upgrade");
+    assert_eq!(up["outcome"], "applied", "the upgrade applied: {up}");
+    assert_eq!(up["upgraded"]["from"], 1, "loud version bump: {up}");
+    assert_eq!(up["upgraded"]["to"], 2);
+
+    // The reconcile is host-side (out-of-band to the sidecar's warm connection), so re-check the
+    // source to drop any pool connection opened before the migration — `datasource.test` is the
+    // "this source changed shape, drop what you're holding" lever (query.rs::probe evicts on it).
+    call(
+        &node,
+        &admin,
+        ws,
+        "datasource.test",
+        json!({"source":"demo","ts":25}),
+    )
+    .await
+    .expect("probe re-checks the migrated source");
+
+    // The new column EXISTS now.
+    let cols = call(
+        &node,
+        &admin,
+        ws,
+        "federation.schema",
+        json!({"source":"demo","table":"site","ts":3}),
+    )
+    .await
+    .expect("schema after upgrade");
+    let names: Vec<&str> = cols["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        names.contains(&"lat"),
+        "the added column exists after upgrade: {cols}"
+    );
+
+    // BOTH rows SURVIVED (the seed row + the operator's), and `lat` is null on them.
+    let rows = call(
+        &node,
+        &admin,
+        ws,
+        "federation.query",
+        json!({"source":"demo","sql":"SELECT id, lat FROM site ORDER BY id","ts":4}),
+    )
+    .await
+    .expect("query after upgrade");
+    let arr = rows["rows"].as_array().unwrap();
+    assert_eq!(arr.len(), 2, "both rows survived the upgrade: {rows}");
+    assert!(
+        rows.to_string().contains("op-1"),
+        "the operator's row survived: {rows}"
+    );
+
+    // The receipt is now v2.
+    let got = call(&node, &admin, ws, "pack.get", json!({"pack":"up"}))
+        .await
+        .expect("pack.get");
+    assert_eq!(
+        got["version"], 2,
+        "the receipt records the new version: {got}"
     );
 
     let _ = std::fs::remove_dir_all(&lb_dir);

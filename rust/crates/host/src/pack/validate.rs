@@ -62,6 +62,7 @@ pub async fn pack_validate(
 pub(super) fn decision_label(d: &Decision) -> &'static str {
     match d {
         Decision::Apply { .. } => "apply",
+        Decision::Upgrade { .. } => "upgrade",
         Decision::NoOp => "noop",
         Decision::Refuse(_) => "refuse",
     }

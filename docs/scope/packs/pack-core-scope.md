@@ -49,7 +49,9 @@ crate; nothing here touches the extension toolchain.
     `store.query`-on-`pack_receipts` convention with a real, caps-walled read surface).
 - **The manifest format** (ported as proven): `pack.yaml` + files-by-reference — `entities`
   (vocabulary: label/parent/kinds/units; explicitly unstable until a runtime consumer),
-  `insights.keys` (dedup-key grammar), `datasource` (schema/seed SQL), `rules` (Rhai),
+  `insights.keys` (dedup-key grammar — **parsed but INERT as of 2026-07-22: applied to no seam;
+  the insight plane exists but a pack cannot yet seed/bind it — an honest future ask**),
+  `datasource` (schema/seed SQL), `rules` (Rhai),
   `dashboards` (cell JSON), `channels`, `agent.context` (markdown → workspace agent memory),
   `extensions` (requirements checked against `ext.list`, never installed), `sidebar.hidden`
   (workspace hidden-set → `nav.hidden.set`, the first **workspace-seed** block — below).

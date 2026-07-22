@@ -48,6 +48,7 @@ pub struct Applied {
 
 /// Drive the plan. `run_rules` comes from the [`Decision`]; `clobbering` is true when a prior
 /// receipt existed (so the caller is told what the re-apply cost).
+#[allow(clippy::too_many_arguments)]
 pub async fn apply_plan(
     node: &Arc<Node>,
     principal: &Principal,
@@ -56,6 +57,7 @@ pub async fn apply_plan(
     plan: &[PlannedObject],
     run_rules: bool,
     clobbering: bool,
+    upgrade: bool,
     ts: u64,
 ) -> Applied {
     let mut outcomes = Vec::with_capacity(plan.len());
@@ -78,8 +80,18 @@ pub async fn apply_plan(
         if clobbering {
             clobbered.push(format!("{}:{}", obj.kind.as_str(), obj.id));
         }
-        let outcome =
-            apply_object(node, principal, ws, pack, obj, run_rules, ts, &mut warnings).await;
+        let outcome = apply_object(
+            node,
+            principal,
+            ws,
+            pack,
+            obj,
+            run_rules,
+            upgrade,
+            ts,
+            &mut warnings,
+        )
+        .await;
         outcomes.push(outcome);
     }
 
@@ -93,6 +105,7 @@ pub async fn apply_plan(
 /// Apply one object through its seam. Every arm maps a seam error to the receipt's outcome
 /// vocabulary: a capability refusal is `denied` (the recoverable partial), anything else is
 /// `failed`. Neither aborts the run — the receipt records the whole picture.
+#[allow(clippy::too_many_arguments)]
 async fn apply_object(
     node: &Arc<Node>,
     principal: &Principal,
@@ -100,6 +113,7 @@ async fn apply_object(
     pack: &Pack,
     obj: &PlannedObject,
     run_rules: bool,
+    upgrade: bool,
     ts: u64,
     warnings: &mut Vec<String>,
 ) -> String {
@@ -107,8 +121,10 @@ async fn apply_object(
         // `run_rules` is the FIRST-APPLY signal (true iff no prior receipt). Seeded rows are starting
         // data — applied once, never re-clobbered — so the datasource seeds ONLY on first apply, the
         // same run-once model as rules (pack-entity-binding-scope.md §seed-ownership). A re-apply
-        // leaves the operator's rows intact.
-        Kind::Datasource => apply_datasource(node, principal, ws, pack, run_rules, ts).await,
+        // leaves the operator's rows intact; an UPGRADE additionally reconciles the schema additively.
+        Kind::Datasource => {
+            apply_datasource(node, principal, ws, pack, run_rules, upgrade, ts, warnings).await
+        }
         Kind::Rule => apply_rule(node, principal, ws, pack, &obj.id, run_rules, ts, warnings).await,
         Kind::Dashboard => apply_dashboard(node, principal, ws, pack, &obj.id, ts).await,
         Kind::Channel => apply_channel(node, principal, ws, &obj.id, ts).await,
@@ -117,13 +133,16 @@ async fn apply_object(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn apply_datasource(
     node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
     pack: &Pack,
     first_apply: bool,
+    upgrade: bool,
     ts: u64,
+    warnings: &mut Vec<String>,
 ) -> String {
     let Some(ds) = &pack.manifest.datasource else {
         return FAILED.to_string();
@@ -136,8 +155,13 @@ async fn apply_datasource(
     // the db fresh (schema + seed). On a re-apply the db already exists and its rows may be operator-
     // edited — so we DO NOT rebuild or re-seed; we resolve the existing file and re-register it. This
     // is what makes "an operator CRUDs the seeded sites, then the pack ships v4" safe: the data is the
-    // operator's, and re-applying the pack never clobbers it. (Schema evolution is the additive
-    // `federation.migrate` path, not a raw re-run of the authored DDL, which would fail anyway.)
+    // operator's, and re-applying the pack never clobbers it.
+    //
+    // UPGRADE (pack-upgrade-scope.md): a version bump additionally reconciles the schema ADDITIVELY —
+    // any table/column the new `schema.sql` declares that the live db lacks is created / added
+    // (nullable, empty on existing rows). This is what lets a pack EVOLVE without abandoning the
+    // operator's workspace. Additive-only by construction (v1 first step): a removed/retyped column is
+    // NOT dropped (the safe direction) — a destructive migration stays an explicit future act.
     let dsn = if ds.engine == "sqlite" && (pack.schema_sql.is_some() || pack.seed_sql.is_some()) {
         // Re-apply resolves the existing db (preserving operator rows); a first apply — or a re-apply
         // whose db was purged (`resolve_existing` → None) — builds it fresh from the authored SQL.
@@ -159,10 +183,35 @@ async fn apply_datasource(
                 pack.seed_sql.as_deref(),
             ),
         };
-        match path {
-            Ok(p) => Some(p.to_string_lossy().into_owned()),
+        let path = match path {
+            Ok(p) => p,
             Err(_) => return FAILED.to_string(),
+        };
+        // On an upgrade of an EXISTING db, bring its schema up to the new `schema.sql` additively.
+        // (A fresh materialize already ran the new schema, so this only matters when `existing` was
+        // Some — but `reconcile_schema` is a no-op when nothing is missing, so calling it either way
+        // is safe and keeps the branch simple.)
+        if upgrade {
+            if let Some(schema) = pack.schema_sql.as_deref() {
+                match super::sqlite::reconcile_schema(&path, schema) {
+                    Ok(added) if !added.is_empty() => warnings.push(format!(
+                        "datasource '{}' upgraded: added {} column/table(s) — {}",
+                        ds.name,
+                        added.len(),
+                        added.join(", ")
+                    )),
+                    Ok(_) => {}
+                    Err(e) => {
+                        warnings.push(format!(
+                            "datasource '{}' schema reconcile failed: {e}",
+                            ds.name
+                        ));
+                        return FAILED.to_string();
+                    }
+                }
+            }
         }
+        Some(path.to_string_lossy().into_owned())
     } else {
         None
     };
@@ -397,13 +446,35 @@ pub async fn finish(
     Ok(receipt)
 }
 
-/// The decision → a refusal, or the `(run_rules, clobbering)` pair an apply runs with.
-pub fn resolve_decision(
-    decision: Decision,
-    had_prior: bool,
-) -> Result<Option<(bool, bool)>, PackError> {
+/// How an apply should run, once the decision says it should run at all.
+pub struct RunPlan {
+    /// Run the pack's rules (true only on the very first apply).
+    pub run_rules: bool,
+    /// A prior receipt existed — the run clobbers pack-owned objects (loud-listed).
+    pub clobbering: bool,
+    /// A version bump — additionally reconcile the materialized schema additively.
+    pub upgrade: bool,
+    /// `Some((from, to))` on an upgrade, for the loud "upgraded pack: vN → vM" note.
+    pub version_bump: Option<(u32, u32)>,
+}
+
+/// The decision → a refusal, or the [`RunPlan`] an apply runs with (`None` = a NoOp).
+pub fn resolve_decision(decision: Decision, had_prior: bool) -> Result<Option<RunPlan>, PackError> {
     match decision {
-        Decision::Apply { run_rules } => Ok(Some((run_rules, had_prior))),
+        Decision::Apply { run_rules } => Ok(Some(RunPlan {
+            run_rules,
+            clobbering: had_prior,
+            upgrade: false,
+            version_bump: None,
+        })),
+        // An upgrade re-drives every object (rules never re-run), clobbers pack-owned objects to the
+        // new version, and reconciles the schema additively.
+        Decision::Upgrade { from, to } => Ok(Some(RunPlan {
+            run_rules: false,
+            clobbering: true,
+            upgrade: true,
+            version_bump: Some((from, to)),
+        })),
         Decision::NoOp => Ok(None),
         Decision::Refuse(why) => Err(PackError::Refused(why)),
     }

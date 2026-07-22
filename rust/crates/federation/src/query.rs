@@ -221,21 +221,24 @@ pub async fn run_query_with(
 ///
 /// Deliberately BYPASSES the warm-pool cache and uses a fresh `connect`: a probe that reused a
 /// cached pool would no longer prove that a new connection can be established, which is the entire
-/// question `datasource.test` is asked. It also evicts on failure, so a probe doubles as the manual
-/// "this source is broken, drop what you're holding" lever.
+/// question `datasource.test` is asked.
+///
+/// A probe is also the "re-check this source from scratch" lever, so it EVICTS the warm pool + the
+/// result cache unconditionally — after a probe, the next query reflects the source's CURRENT state,
+/// not a pre-probe cached view. This is what makes `datasource.test` the host's "I changed this
+/// source (a schema migration / a pack UPGRADE reconciled a column), drop what you're holding" tool:
+/// a stale connection opened before the change would otherwise keep serving the old shape
+/// (pack-upgrade-scope §Risks: a host-side reconcile is out-of-band to the sidecar's cache).
 pub async fn probe(kind: &str, dsn: &str) -> Result<(), String> {
     let result = async {
         let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
         source.probe().await.map_err(|e| e.to_string())
     }
     .await;
-    if result.is_err() {
-        evict(kind, dsn);
-        // A source that failed its probe must not keep serving cached ROWS either — the probe is the
-        // manual "this source is broken, drop what you're holding" lever, and half-dropping (pool but
-        // not results) would leave the child answering from memory for a source it just declared down.
-        results::evict_source(kind, dsn);
-    }
+    // Drop any warm connection + cached rows for this source, pass or fail — the source may have
+    // changed shape since the pool warmed (a migration/upgrade), and a probe is the re-check lever.
+    evict(kind, dsn);
+    results::evict_source(kind, dsn);
     result
 }
 

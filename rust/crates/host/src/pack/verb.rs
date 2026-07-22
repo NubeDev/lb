@@ -50,7 +50,7 @@ pub async fn pack_apply(
         .map_err(|e| PackError::Internal(format!("reading receipt: {e}")))?;
 
     let decision = decide(pack.manifest.version, &checksum, prior.as_ref());
-    let Some((run_rules, clobbering)) = resolve_decision(decision, prior.is_some())? else {
+    let Some(run) = resolve_decision(decision, prior.is_some())? else {
         // The idempotent no-op: same version, same content, nothing partial. Change nothing, and
         // say so — a caller must be able to tell "already applied" from "just applied".
         return Ok(json!({
@@ -61,7 +61,18 @@ pub async fn pack_apply(
         }));
     };
 
-    let applied = apply_plan(node, principal, ws, &pack, &plan, run_rules, clobbering, ts).await;
+    let applied = apply_plan(
+        node,
+        principal,
+        ws,
+        &pack,
+        &plan,
+        run.run_rules,
+        run.clobbering,
+        run.upgrade,
+        ts,
+    )
+    .await;
 
     let receipt = finish(node, ws, &pack, checksum.clone(), &plan, &applied, ts).await?;
 
@@ -69,8 +80,10 @@ pub async fn pack_apply(
         "pack": pack.manifest.pack,
         "version": pack.manifest.version,
         "outcome": if receipt.is_complete() { "applied" } else { "partial" },
+        // An upgrade is a distinct, loud outcome — the caller learns "vN → vM", not just "applied".
+        "upgraded": run.version_bump.map(|(from, to)| json!({ "from": from, "to": to })),
         "manifest_checksum": checksum,
-        "ran_rules": run_rules,
+        "ran_rules": run.run_rules,
         // Every pack-owned object this run overwrote. Loud by contract — an admin who tuned a
         // dashboard or the agent context learns exactly what the re-apply cost.
         "clobbered": applied.clobbered,

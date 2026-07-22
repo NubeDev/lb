@@ -1,7 +1,16 @@
 # Packs scope — the entity→table binding (making `entities` addressable as data, without making it an ORM)
 
-Status: **scope (the ask), 2026-07-21.** Owning repo: **lb (core)** — the manifest, the receipt,
-and the seed re-apply semantics all live in `crates/packs` + `crates/host/src/pack/`. Origin: the
+Status: **SHIPPED in code, 2026-07-22 status flip** — the four binding fields exist on `Entity`
+(`rust/crates/packs/src/manifest.rs:94-106`), `validate_binding` is implemented
+(`rust/crates/packs/src/binding.rs`) and wired into the linter (`validate.rs`), and the
+seed-run-once / never-reclobber ownership decision is implemented (`host/src/pack/apply.rs` +
+`sqlite.rs::resolve_existing`). **Release tag + downstream pin bump still pending** (rubix-ai consumes
+via a local `[patch]`). Open questions resolved: **O-1** — yes, `federation.write` reaches the
+materialized in-process sqlite source (it registers as a normal datasource at loopback `127.0.0.1:0`,
+which `resolve` + `enforce_endpoint` accept; no new verb was needed); **O-2** — `federation.delete`
+exists (`host/src/federation/delete.rs`); **O-3** — `for_each` stays deferred (U-entity-foreach).
+Owning repo: **lb (core)** — the manifest, the receipt,
+and the seed re-apply semantics all live in `rust/crates/packs` + `rust/crates/host/src/pack/`. Origin: the
 downstream consumer scope `NubeIO/rubix-ai → docs/scope/packs/entity-data-plane-scope.md`, which
 wants to give an operator CRUD over a pack's entity rows and make those rows the spine for vars,
 dashboards, and rules. That surface is all downstream `ui/`; the **one thing it cannot do without

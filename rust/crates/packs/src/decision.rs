@@ -6,7 +6,7 @@
 //!   - no prior receipt                         → Apply       (first apply)
 //!   - same version, same manifest checksum     → NoOp        (the idempotent re-apply)
 //!   - same version, changed manifest checksum  → Refuse      ("bump the version")
-//!   - higher version than the receipt          → Refuse      ("upgrade not built")
+//!   - higher version than the receipt          → Upgrade     (re-drive + additive schema reconcile)
 //!   - lower version than the receipt           → Refuse      (always — a downgrade)
 //!
 //! Plus the sixth row that makes recovery work: same version, same checksum, but a PARTIAL prior
@@ -24,6 +24,12 @@ pub enum Decision {
     /// partial-recovery re-apply applies objects but never re-runs rules (their dedup keys must not
     /// decide idempotence).
     Apply { run_rules: bool },
+    /// A version BUMP (`version > prior.version`) — an upgrade (pack-upgrade-scope). Re-drives every
+    /// object like a re-apply (rules never re-run), preserves the operator's rows (seed-ownership),
+    /// and ADDITIVELY reconciles the materialized schema (new tables/columns are added; a destructive
+    /// change — a dropped/retyped column — is refused, never silently applied). `from`/`to` are the
+    /// version pair for the loud "upgraded pack: vN → vM" listing.
+    Upgrade { from: u32, to: u32 },
     /// The manifest matches the receipt exactly — change nothing.
     NoOp,
     /// Refuse with a human reason.
@@ -45,11 +51,13 @@ pub fn decide(version: u32, manifest_checksum: &str, prior: Option<&Receipt>) ->
         ));
     }
     if version > prior.version {
-        return Decision::Refuse(format!(
-            "manifest version {version} is HIGHER than the applied version {} — upgrade is not \
-             built yet; a version bump means an upgrade, which this engine does not do",
-            prior.version
-        ));
+        // A version bump is an UPGRADE (pack-upgrade-scope): re-drive every object (rules never
+        // re-run), preserve the operator's rows, and additively reconcile the materialized schema.
+        // Destructive schema changes are refused at apply time, not here (the decision is pure).
+        return Decision::Upgrade {
+            from: prior.version,
+            to: version,
+        };
     }
     // Same version.
     if manifest_checksum == prior.manifest_checksum {
@@ -119,11 +127,18 @@ mod tests {
     }
 
     #[test]
-    fn higher_version_refuses_upgrade_not_built() {
+    fn higher_version_is_an_upgrade() {
+        // pack-upgrade-scope: a version bump is now an Upgrade (re-drive objects, reconcile schema
+        // additively, preserve rows), not a refusal. The from/to pair rides for the loud listing.
         let prior = receipt(1, "abc");
         assert!(matches!(
+            decide(4, "different-checksum", Some(&prior)),
+            Decision::Upgrade { from: 1, to: 4 }
+        ));
+        // A version bump with the SAME checksum is still an upgrade (the version is the signal).
+        assert!(matches!(
             decide(2, "abc", Some(&prior)),
-            Decision::Refuse(_)
+            Decision::Upgrade { from: 1, to: 2 }
         ));
     }
 
