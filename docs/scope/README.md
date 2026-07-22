@@ -190,7 +190,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   pool and makes an active agent run "block" navigation (browsers refuse cleartext HTTP/2,
   so the cap is structural on the plain-HTTP posture; verified live —
   `debugging/frontend/agent-dock-blocks-navigation-sse-pool-exhaustion.md`).
-- `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
+- `caching/` — an **optional server-side response cache** on the gateway's MCP read path
+  (`response-cache-scope.md`): warm page opens (dashboards above all) answered from memory
+  instead of re-running the query engines — the biggest win on Raspberry-Pi-class edge nodes.
+  `moka` hot tier (TTL + byte-weighted budget) + a SurrealDB `cache_entry` warm tier for
+  expensive derived results only; **no Redis/sidecar** (one-datastore rule). Sits **behind**
+  auth + the caps wall, keyed `{ws, verb, canonical-args, generation}` (never the subject),
+  write-verbs bump per-`{ws, class}` generations, TTL is the backstop. Compile-time optional
+  (`page-cache` cargo feature, the `external-agent` precedent) + runtime `BootConfig.cache`
+  — feature off is a zero-cost no-op seam.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
   sandboxed `rhai` cage + a lazy `Grid` + a verb library (`rules-engine-scope.md`, data via
   `data.query`/`series.*`/`federation.query`, `ai.*` via the AI-gateway, `emit`/`alert` via inbox/outbox).
