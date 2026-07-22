@@ -204,6 +204,13 @@ struct ParsedColumn {
 /// which the caller's live-column check simply never matches). A statement it cannot bound is skipped
 /// (the table stays unreconciled — a fresh apply is the fallback), never guessed.
 fn parse_create_tables(schema_sql: &str) -> Vec<ParsedTable> {
+    // Strip SQL comments FIRST — a pack's schema header commonly narrates "kept to CREATE TABLE only
+    // …", and the raw substring scan below would otherwise mistake that comment for a real statement,
+    // read the next word as a table name, and emit bogus DDL that fails on `execute_batch`. (This path
+    // only runs on an UPGRADE's schema reconcile; a fresh apply runs the schema through sqlite directly,
+    // which handles comments, so the bug lay dormant until the store migration exercised the upgrade.)
+    let stripped = strip_sql_comments(schema_sql);
+    let schema_sql = stripped.as_str();
     let bytes = schema_sql.as_bytes();
     let lower = schema_sql.to_lowercase();
     let mut out = Vec::new();
@@ -234,6 +241,43 @@ fn parse_create_tables(schema_sql: &str) -> Vec<ParsedTable> {
             columns,
         });
         search = close + 1;
+    }
+    out
+}
+
+/// Strip SQL comments (`-- … EOL` line comments and `/* … */` block comments) so the CREATE TABLE
+/// scanner never mistakes a `CREATE TABLE` written inside a comment for a real statement. Char-based
+/// (UTF-8 safe — a comment may carry an em-dash); a line comment keeps its trailing newline and a
+/// block comment collapses to one space, so token boundaries survive. Scoped to the pack DDL subset,
+/// which carries no `--`/`/*` inside a string literal (consistent with this module's dialect-blind,
+/// packs-only remit).
+fn strip_sql_comments(sql: &str) -> String {
+    let mut out = String::with_capacity(sql.len());
+    let mut chars = sql.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '-' && chars.peek() == Some(&'-') {
+            // Line comment — consume through the end of the line, keeping the newline.
+            for c2 in chars.by_ref() {
+                if c2 == '\n' {
+                    out.push('\n');
+                    break;
+                }
+            }
+            continue;
+        }
+        if c == '/' && chars.peek() == Some(&'*') {
+            chars.next(); // consume '*'
+            let mut prev = ' ';
+            for c2 in chars.by_ref() {
+                if prev == '*' && c2 == '/' {
+                    break;
+                }
+                prev = c2;
+            }
+            out.push(' ');
+            continue;
+        }
+        out.push(c);
     }
     out
 }
@@ -386,6 +430,27 @@ mod tests {
         let tagcols: Vec<&str> = ts[1].columns.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(tagcols, vec!["site_id", "tag"]);
         assert!(ts[0].create_sql.starts_with("CREATE TABLE site"));
+    }
+
+    /// A `CREATE TABLE` written in a COMMENT must NOT be parsed as a real statement — the regression the
+    /// store-migration upgrade path exposed (`packs/bas`/`packs/ems` schema headers say "kept to CREATE
+    /// TABLE only …", and the em-dash after it made the bogus DDL fail on `execute_batch`). Both a line
+    /// comment and a block comment carrying `CREATE TABLE` are ignored; the real table still parses.
+    #[test]
+    fn a_create_table_inside_a_comment_is_ignored() {
+        let ts = parse_create_tables(
+            "-- NOTE: kept to CREATE TABLE only — the DDL parser drops CREATE INDEX.\n\
+             /* another CREATE TABLE ghost in a block comment */\n\
+             CREATE TABLE point_reading (point_id TEXT NOT NULL, val REAL NOT NULL);",
+        );
+        let names: Vec<&str> = ts.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["point_reading"],
+            "only the real table is parsed"
+        );
+        let cols: Vec<&str> = ts[0].columns.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(cols, vec!["point_id", "val"]);
     }
 
     /// The load-bearing test: an existing db with the OLD schema + a row, reconciled to a schema that

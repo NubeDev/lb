@@ -119,9 +119,11 @@ async fn apply_object(
 ) -> String {
     match obj.kind {
         // `run_rules` is the FIRST-APPLY signal (true iff no prior receipt). Seeded rows are starting
-        // data — applied once, never re-clobbered — so the datasource seeds ONLY on first apply, the
-        // same run-once model as rules (pack-entity-binding-scope.md §seed-ownership). A re-apply
-        // leaves the operator's rows intact; an UPGRADE additionally reconciles the schema additively.
+        // data — applied once, never re-clobbered — so the datasource seeds on first apply OR an
+        // upgrade (into EMPTY store tables only; the per-table guard preserves seed-ownership), the
+        // same run-once model as rules (pack-entity-binding-scope.md §seed-ownership). A plain re-apply
+        // leaves the operator's rows intact; an UPGRADE additionally reconciles the schema additively
+        // AND runs the sqlite→store migration (`migrate_from`) — the in-place version-bump path.
         Kind::Datasource => {
             apply_datasource(node, principal, ws, pack, run_rules, upgrade, ts, warnings).await
         }
@@ -154,9 +156,17 @@ async fn apply_datasource(
     // record rides — Data-browser-visible, graph-linkable, caps-scopable. This is INDEPENDENT of the
     // engine below: a pack may seed entity tables into the store AND keep a sqlite/federation
     // datasource for append-heavy time-series (`point_reading`) in the same manifest (the scope's
-    // "entities in the store, time-series in federation" line). Run-once, seed-ownership: only the
-    // FIRST apply seeds; a re-apply/upgrade never re-clobbers an operator-edited record.
-    if first_apply && (!pack.seed_rows.is_empty() || pack.manifest.migrate_from.is_some()) {
+    // "entities in the store, time-series in federation" line).
+    //
+    // WHEN THIS RUNS: first apply OR an upgrade. The upgrade case is REQUIRED — a workspace that
+    // applied a sqlite-entity vN and bumps to a store-backed vN+1 must have its `migrate_from` sqlite
+    // rows carried into the store ON THE BUMP (an in-place upgrade has a prior receipt, so
+    // `first_apply`/`run_rules` is false there — gating on it alone silently skips the one real
+    // migration path). Seed-ownership still holds WITHOUT that gate: both the migration and the seed
+    // only ever write into an EMPTY store table (`store_table_empty` per table), so a later
+    // upgrade over already-owned tables is a safe no-op and a plain re-apply never enters here.
+    let seed_this_run = first_apply || upgrade;
+    if seed_this_run && (!pack.seed_rows.is_empty() || pack.manifest.migrate_from.is_some()) {
         // The pk COLUMN for a store-seed table comes from the entity binding that names it (rule 10:
         // the seed reads the binding, never a table name it special-cases). An entity is bound to a
         // table iff `entity.table == table`; its `pk` is the id column.
