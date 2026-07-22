@@ -554,243 +554,242 @@ pub(crate) async fn run_host_verb(
     input: Value,
     depth: u32,
 ) -> Result<Value, ToolError> {
-        let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
-            call_inbox_outbox_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("insight.") {
-            // insights scope: the durable insight + occurrences + subscriptions + policy surface.
-            // The outer gate ran `mcp:insight.<verb>:call`; the verb re-runs it inside (defense in
-            // depth). `insight.raise` needs the full `&Node` (bus event + tag graph + channel
-            // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
-            // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
-            crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("authz.")
-            || qualified_tool.starts_with("grants.")
-            || qualified_tool.starts_with("roles.")
-            || qualified_tool.starts_with("teams.")
-        {
-            // entity-scoped-grants scope: `authz.check_scoped` / `authz.scope_filter` — the scoped
-            // read API extensions reach via `host.call-tool` so an extension verb asks the wall
-            // "what can this principal reach?" instead of re-implementing the filter. The outer
-            // gate ran `mcp:authz.<verb>:call`; the verb resolves the CALLING principal's own reach
-            // by default. native-caller-identity scope: an optional `subject` lets a caller that
-            // holds `mcp:authz.delegate_reach:call` ask about ANOTHER subject (a native sidecar
-            // answering "does the guardian reach this child?"); absent `subject` is unchanged, and a
-            // `subject` without the delegation cap fails closed (see `authz::scoped`). `authz.resolve` /
-            // `authz.revoke-tokens` are the access-console admin verbs (already in `call_authz_tool`).
-            //
-            // authz-verbs-mcp-dispatch scope: `grants.*`/`roles.*`/`teams.*` route here too — the
-            // same `call_authz_tool` implements them, gated by the same admin caps (with the outer
-            // gate aliased to the inner cap for the four verbs `gate_tool_for` maps). This makes the
-            // WRITE half of the scoped-grant surface reachable over the callback, symmetric with the
-            // READ half above.
-            crate::call_authz_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("invite.") {
-            // invites scope: the admin verbs (create/list/revoke/resend). The pre-auth `accept` is
-            // a gateway route (POST /public/invite/accept), NOT an MCP verb — it has no principal.
-            crate::call_invite_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("media.") {
-            // media scope: upload_begin/commit/get/list/delete MCP verbs. The chunk upload (PUT)
-            // and serve (GET) are HTTP routes — bytes over HTTP, not MCP payloads.
-            crate::call_media_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("device.") || qualified_tool.starts_with("notify.") {
-            // push-target scope: device.register/list/remove + notify.send.
-            crate::call_notify_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool == "dashboard.catalog" {
-            // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
-            // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only
-            // `dashboard.` branch. Workspace-first; folds only the caller's installed `[[widget]]` tiles.
-            let cat = crate::dashboard_catalog(node, principal, ws).await?;
-            serde_json::to_value(cat).unwrap_or(Value::Null)
-        } else if qualified_tool == "dashboard.import" || qualified_tool == "dashboard.export" {
-            // viz import-export scope (Phase 4): the Grafana-JSON edge. Import needs the full `&Node`
-            // (it resolves each datasource remap against `datasource.list` — the workspace-walled
-            // grant check), so like `dashboard.catalog` it is dispatched BEFORE the store-only
-            // `dashboard.` branch. Export is grouped with it (same bridge, `&Node`).
-            crate::call_dashboard_grafana_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("dashboard.") {
-            crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("pack.") {
-            // packs scope: `pack.apply` drives rules/dashboards/datasources/channels/agent memory
-            // through their internal seams, so the family takes the full `&Arc<Node>` (like the
-            // `rules.` bridge). Each seam re-checks its OWN capability under this principal — the
-            // pack surface grants nothing downstream.
-            crate::call_pack_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("nav.") {
-            // nav scope: the user-/team-authored menu asset. `resolve` + `pref.*` need the `&Node`
-            // (ext discovery for `ext` items); the bridge takes it for all verbs.
-            crate::call_nav_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("layout.") {
-            // data-studio scope v2: the member-owned per-surface ui-layout record (store-only).
-            crate::call_layout_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("panel.") {
-            // library-panels scope: the reusable panel asset. Same store-only surface as dashboards.
-            crate::call_panel_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("report.") {
-            // reports scope: the report-builder asset. Store-only surface (export is a gateway route).
-            crate::call_report_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("brand.") {
-            // reports scope: the reusable brand-profile asset. Store-only surface.
-            crate::call_brand_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("channel.chart_pref.") {
-            // channel query charts: a viewer's per-item plot override. The outer gate ran
-            // `mcp:channel.chart_pref.<verb>:call`; the verb re-checks the channel `sub` gate.
-            crate::call_channel_chart_pref_tool(&node.store, principal, ws, qualified_tool, &input)
-                .await?
-        } else if qualified_tool.starts_with("channel.") {
-            // rules-messaging scope: the channel read/write MCP surface (post/history/edit/delete/
-            // list). Thin wrappers over the existing host fns, each gate-identical to the WS path —
-            // the outer gate ran `mcp:channel.<verb>:call`; the host fn re-runs the `bus:chan/{cid}:
-            // {Pub|Sub}` gate inside. Reached here AFTER `channel.chart_pref.` (matched above).
-            crate::call_channel_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("viz.") {
-            // The panel-data resolver. It RE-ENTERS this dispatcher (`call_tool_at_depth`) per target
-            // under the caller's authority — so `depth` is threaded through to re-enter at depth+1
-            // (no render-path cap bypass; the workspace wall + each target tool's own cap re-checked).
-            crate::call_viz_tool(node, principal, ws, qualified_tool, &input, depth).await?
-        } else if qualified_tool.starts_with("template.") {
-            crate::call_template_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("devkit.") {
-            crate::call_devkit_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool == "agent.def.test" {
-            // agent-catalog test-and-secrets scope: the context-proving diagnostic. Handled HERE
-            // (not in `call_agent_tool`) because it needs the `&Arc<Node>` this dispatcher holds — it
-            // assembles the caller's reachable tool menu (which needs the Arc) and runs one model turn
-            // over the node's default model. Its own `mcp:agent.def.test:call` gate runs inside.
-            let id = input.get("id").and_then(Value::as_str);
-            let result = crate::agent_def_test(node, principal, ws, id).await?;
-            serde_json::to_value(result).map_err(|e| ToolError::Extension(e.to_string()))?
-        } else if qualified_tool.starts_with("agent.") {
-            // agent-run scope Part 2: the policy/decision verbs (`agent.policy.set`, `agent.decide`).
-            // One branch; `call_agent_tool` matches the verb and delegates. `agent.watch` (Part 3)
-            // is added inside `call_agent_tool` by that worker — its arm is currently `NotFound`.
-            crate::call_agent_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("tools.") {
-            // channels-command-palette scope: the `tools.catalog` read, reached over the same MCP
-            // bridge as any verb (rule 7). The verb re-runs its own `authorize_tool` gate inside the
-            // service, so the outer gate above and the inner one agree (one gate, two callers).
-            crate::call_tools_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("assets.") {
-            // document-store / files scope: the asset verbs (`assets.put_doc`, `assets.get_doc`,
-            // `assets.put_asset`, …) over the SAME MCP bridge every host-native verb uses. The
-            // outer gate already ran `mcp:assets.<verb>:call`; `call_asset_tool` re-runs it
-            // (defense in depth, and it is the tested bridge the UI/gateway calls directly too).
-            // Routing here — rather than leaving `assets.*` as a side call — is what makes a
-            // markdown **save** flow through the undo auto-capture wrapper at depth 0
-            // (document-store scope: "save participates in undo/redo") and lets a guest
-            // extension reach the store over the same dispatch path as everyone else.
-            crate::call_asset_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("docs.") {
-            // doc-extraction scope: the `docs.*` doc-derived verbs (v1: `docs.extract`). Its own
-            // native family (see the prefix note above). The outer gate ran `mcp:docs.<verb>:call`;
-            // `call_docs_tool` re-runs it, then the service adds the per-item media-read + doc-write
-            // gates — a `docs.extract` grant never bypasses those.
-            crate::call_docs_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("rules.") {
-            crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("flows.") {
-            // Type-erase this dispatch edge to a boxed `dyn Future + Send`. A `flows.run` reached from
-            // INSIDE a running flow (a `tool` node invoking `flows.run`) is an async recursion through
-            // here; without erasure the opaque future types cycle (`flows_run_async` → drive → tool →
-            // dispatch → `flows_run_async`) and the compiler can neither size them nor prove `Send` —
-            // which the background-run `tokio::spawn` requires. The output type is concrete
-            // (`Result<String, ToolError>`), so the `dyn` cast is clean and cuts the cycle.
-            crate::call_flows_tool_boxed(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("federation.")
-            || qualified_tool.starts_with("datasource.")
-            || qualified_tool.starts_with("dbschema.")
-        {
-            // datasources scope: the federation host service (resolve source → net:* → mediate DSN →
-            // route to the supervised sidecar) + the `dbschema.*` designed-record CRUD (schema-
-            // designer scope — store-only, no sidecar). The per-verb gate runs inside the service.
-            crate::call_federation_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("host.") {
-            crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("secret.") {
-            // secrets scope: the `secret.*` CRUD surface (set/get/set_visibility/delete/list),
-            // reached over the same MCP bridge as any verb. The per-verb MCP gate + the
-            // three-gate secret read run inside `call_secret_tool` / `lb-secrets`.
-            crate::call_secret_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("prefs.") {
-            crate::call_prefs_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("message.") {
-            // i18n-catalogs scope: `message.render` / `message.set_catalog`. The outer gate ran the
-            // base `mcp:message.<verb>:call`; the render verb adds the `message.render_recipient`
-            // grant for a foreign-recipient fan-out, and set_catalog publishes the "catalog changed"
-            // hint (needs the bus).
-            crate::call_catalog_tool(
-                &node.store,
-                &node.bus,
-                principal,
-                ws,
-                qualified_tool,
-                &input,
-            )
+    let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
+        call_inbox_outbox_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("insight.") {
+        // insights scope: the durable insight + occurrences + subscriptions + policy surface.
+        // The outer gate ran `mcp:insight.<verb>:call`; the verb re-runs it inside (defense in
+        // depth). `insight.raise` needs the full `&Node` (bus event + tag graph + channel
+        // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
+        // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
+        crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("authz.")
+        || qualified_tool.starts_with("grants.")
+        || qualified_tool.starts_with("roles.")
+        || qualified_tool.starts_with("teams.")
+    {
+        // entity-scoped-grants scope: `authz.check_scoped` / `authz.scope_filter` — the scoped
+        // read API extensions reach via `host.call-tool` so an extension verb asks the wall
+        // "what can this principal reach?" instead of re-implementing the filter. The outer
+        // gate ran `mcp:authz.<verb>:call`; the verb resolves the CALLING principal's own reach
+        // by default. native-caller-identity scope: an optional `subject` lets a caller that
+        // holds `mcp:authz.delegate_reach:call` ask about ANOTHER subject (a native sidecar
+        // answering "does the guardian reach this child?"); absent `subject` is unchanged, and a
+        // `subject` without the delegation cap fails closed (see `authz::scoped`). `authz.resolve` /
+        // `authz.revoke-tokens` are the access-console admin verbs (already in `call_authz_tool`).
+        //
+        // authz-verbs-mcp-dispatch scope: `grants.*`/`roles.*`/`teams.*` route here too — the
+        // same `call_authz_tool` implements them, gated by the same admin caps (with the outer
+        // gate aliased to the inner cap for the four verbs `gate_tool_for` maps). This makes the
+        // WRITE half of the scoped-grant surface reachable over the callback, symmetric with the
+        // READ half above.
+        crate::call_authz_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("invite.") {
+        // invites scope: the admin verbs (create/list/revoke/resend). The pre-auth `accept` is
+        // a gateway route (POST /public/invite/accept), NOT an MCP verb — it has no principal.
+        crate::call_invite_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("media.") {
+        // media scope: upload_begin/commit/get/list/delete MCP verbs. The chunk upload (PUT)
+        // and serve (GET) are HTTP routes — bytes over HTTP, not MCP payloads.
+        crate::call_media_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("device.") || qualified_tool.starts_with("notify.") {
+        // push-target scope: device.register/list/remove + notify.send.
+        crate::call_notify_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "dashboard.catalog" {
+        // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
+        // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only
+        // `dashboard.` branch. Workspace-first; folds only the caller's installed `[[widget]]` tiles.
+        let cat = crate::dashboard_catalog(node, principal, ws).await?;
+        serde_json::to_value(cat).unwrap_or(Value::Null)
+    } else if qualified_tool == "dashboard.import" || qualified_tool == "dashboard.export" {
+        // viz import-export scope (Phase 4): the Grafana-JSON edge. Import needs the full `&Node`
+        // (it resolves each datasource remap against `datasource.list` — the workspace-walled
+        // grant check), so like `dashboard.catalog` it is dispatched BEFORE the store-only
+        // `dashboard.` branch. Export is grouped with it (same bridge, `&Node`).
+        crate::call_dashboard_grafana_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("dashboard.") {
+        crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("pack.") {
+        // packs scope: `pack.apply` drives rules/dashboards/datasources/channels/agent memory
+        // through their internal seams, so the family takes the full `&Arc<Node>` (like the
+        // `rules.` bridge). Each seam re-checks its OWN capability under this principal — the
+        // pack surface grants nothing downstream.
+        crate::call_pack_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("nav.") {
+        // nav scope: the user-/team-authored menu asset. `resolve` + `pref.*` need the `&Node`
+        // (ext discovery for `ext` items); the bridge takes it for all verbs.
+        crate::call_nav_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("layout.") {
+        // data-studio scope v2: the member-owned per-surface ui-layout record (store-only).
+        crate::call_layout_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("panel.") {
+        // library-panels scope: the reusable panel asset. Same store-only surface as dashboards.
+        crate::call_panel_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("report.") {
+        // reports scope: the report-builder asset. Store-only surface (export is a gateway route).
+        crate::call_report_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("brand.") {
+        // reports scope: the reusable brand-profile asset. Store-only surface.
+        crate::call_brand_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("channel.chart_pref.") {
+        // channel query charts: a viewer's per-item plot override. The outer gate ran
+        // `mcp:channel.chart_pref.<verb>:call`; the verb re-checks the channel `sub` gate.
+        crate::call_channel_chart_pref_tool(&node.store, principal, ws, qualified_tool, &input)
             .await?
-        } else if qualified_tool.starts_with("query.") {
-            // query scope: the saved-PRQL-query service (compile→dispatch to store.query /
-            // federation.query). query.run adds the no-widening target cap inside its service.
-            crate::call_query_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("telemetry.") {
-            // telemetry-console scope: the gated, workspace-walled read surface over the capped
-            // telemetry ring (query/trace/purge). Writes come from the SurrealCappedLayer only —
-            // there is no telemetry.write verb; the ws wall is enforced inside each read.
-            crate::call_telemetry_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool == "store.query" || qualified_tool == "store.schema" {
-            crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool == "store.write" || qualified_tool == "store.delete" {
-            // The generic per-table mutation surface (the write half of the direct-store contract).
-            // The outer gate above already ran `mcp:store.<verb>:call`; the verb re-runs the
-            // per-table `store:<table>:write` gate inside. A write lands at depth 0, so it flows
-            // through the undo auto-capture wrapper like every other store mutation.
-            crate::call_store_mutate_tool(&node.store, principal, ws, qualified_tool, &input)
-                .await?
-        } else if qualified_tool == "store.status" || qualified_tool == "store.compact" {
-            // online-compaction scope: the store's operational pair. The outer gate above ran
-            // `mcp:store.<verb>:call`; the verbs re-gate on the store-surface caps inside
-            // (`store:status:read` / `store:compact:run`). compact ENQUEUES a job — the pass
-            // itself runs on the reactor, never on this request path.
-            crate::call_store_admin_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool == "identity.set_credential" {
-            // login-hardening scope: set/rotate a user's password hash. Gated `mcp:identity.manage:call`
-            // (the outer gate above ran it); the verb hashes argon2 before any write and returns no hash.
-            crate::call_credential_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool == "identity.set_password" {
-            // email-login scope: set/rotate a person's GLOBAL password (all workspaces). Gated
-            // `mcp:identity.manage:call` (the outer gate ran it); argon2-hashed before write, no hash
-            // returned. Distinct from `identity.set_credential` (the per-ws legacy credential).
-            crate::call_identity_credential_tool(&node.store, principal, ws, qualified_tool, &input)
-                .await?
-        } else if qualified_tool.starts_with("identity.") {
-            // The other identity directory verbs (create/get/list/workspaces), reachable over the same
-            // bridge as their dedicated admin REST routes. Each re-checks `mcp:identity.manage:call`.
-            crate::call_identity_tool(&node.store, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("bus.") {
-            crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("reminder.") {
-            crate::call_reminder_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool == "undo"
-            || qualified_tool == "redo"
-            || qualified_tool.starts_with("history.")
-        {
-            call_undo_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("cache.") {
-            // response-cache scope: the `cache.stats` / `cache.purge` admin verbs, reached over the
-            // one MCP bridge like every host-native verb. The outer gate ran `mcp:cache.<verb>:call`;
-            // feature-off ⇒ the cache is not compiled in and this returns `NotFound` (an unknown verb).
-            crate::cache::call_cache_tool(node, principal, ws, qualified_tool, &input).await?
-        } else {
-            let out = call_ingest_tool(&node.store, principal, ws, qualified_tool, &input).await?;
-            // Parity with the gateway's `POST /ingest` route (routes/ingest.rs): after the durable
-            // write+drain, publish each committed sample onto its series motion subject so a live
-            // subscriber (a dashboard widget, or the `GET /series/{s}/stream` SSE) advances without
-            // polling (state vs motion, rule 3). Without this, the MCP `ingest.write` path was
-            // durable-only — a sample written via MCP never surfaced on the live feed. Best-effort:
-            // a publish failure never fails the durable write. Generic + domain-free; no CE knowledge.
-            if qualified_tool == "ingest.write" {
-                publish_ingest_motion(node, principal, ws, &input).await;
-            }
-            out
-        };
+    } else if qualified_tool.starts_with("channel.") {
+        // rules-messaging scope: the channel read/write MCP surface (post/history/edit/delete/
+        // list). Thin wrappers over the existing host fns, each gate-identical to the WS path —
+        // the outer gate ran `mcp:channel.<verb>:call`; the host fn re-runs the `bus:chan/{cid}:
+        // {Pub|Sub}` gate inside. Reached here AFTER `channel.chart_pref.` (matched above).
+        crate::call_channel_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("viz.") {
+        // The panel-data resolver. It RE-ENTERS this dispatcher (`call_tool_at_depth`) per target
+        // under the caller's authority — so `depth` is threaded through to re-enter at depth+1
+        // (no render-path cap bypass; the workspace wall + each target tool's own cap re-checked).
+        crate::call_viz_tool(node, principal, ws, qualified_tool, &input, depth).await?
+    } else if qualified_tool.starts_with("template.") {
+        crate::call_template_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("devkit.") {
+        crate::call_devkit_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "agent.def.test" {
+        // agent-catalog test-and-secrets scope: the context-proving diagnostic. Handled HERE
+        // (not in `call_agent_tool`) because it needs the `&Arc<Node>` this dispatcher holds — it
+        // assembles the caller's reachable tool menu (which needs the Arc) and runs one model turn
+        // over the node's default model. Its own `mcp:agent.def.test:call` gate runs inside.
+        let id = input.get("id").and_then(Value::as_str);
+        let result = crate::agent_def_test(node, principal, ws, id).await?;
+        serde_json::to_value(result).map_err(|e| ToolError::Extension(e.to_string()))?
+    } else if qualified_tool.starts_with("agent.") {
+        // agent-run scope Part 2: the policy/decision verbs (`agent.policy.set`, `agent.decide`).
+        // One branch; `call_agent_tool` matches the verb and delegates. `agent.watch` (Part 3)
+        // is added inside `call_agent_tool` by that worker — its arm is currently `NotFound`.
+        crate::call_agent_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("tools.") {
+        // channels-command-palette scope: the `tools.catalog` read, reached over the same MCP
+        // bridge as any verb (rule 7). The verb re-runs its own `authorize_tool` gate inside the
+        // service, so the outer gate above and the inner one agree (one gate, two callers).
+        crate::call_tools_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("assets.") {
+        // document-store / files scope: the asset verbs (`assets.put_doc`, `assets.get_doc`,
+        // `assets.put_asset`, …) over the SAME MCP bridge every host-native verb uses. The
+        // outer gate already ran `mcp:assets.<verb>:call`; `call_asset_tool` re-runs it
+        // (defense in depth, and it is the tested bridge the UI/gateway calls directly too).
+        // Routing here — rather than leaving `assets.*` as a side call — is what makes a
+        // markdown **save** flow through the undo auto-capture wrapper at depth 0
+        // (document-store scope: "save participates in undo/redo") and lets a guest
+        // extension reach the store over the same dispatch path as everyone else.
+        crate::call_asset_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("docs.") {
+        // doc-extraction scope: the `docs.*` doc-derived verbs (v1: `docs.extract`). Its own
+        // native family (see the prefix note above). The outer gate ran `mcp:docs.<verb>:call`;
+        // `call_docs_tool` re-runs it, then the service adds the per-item media-read + doc-write
+        // gates — a `docs.extract` grant never bypasses those.
+        crate::call_docs_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("rules.") {
+        crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("flows.") {
+        // Type-erase this dispatch edge to a boxed `dyn Future + Send`. A `flows.run` reached from
+        // INSIDE a running flow (a `tool` node invoking `flows.run`) is an async recursion through
+        // here; without erasure the opaque future types cycle (`flows_run_async` → drive → tool →
+        // dispatch → `flows_run_async`) and the compiler can neither size them nor prove `Send` —
+        // which the background-run `tokio::spawn` requires. The output type is concrete
+        // (`Result<String, ToolError>`), so the `dyn` cast is clean and cuts the cycle.
+        crate::call_flows_tool_boxed(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("federation.")
+        || qualified_tool.starts_with("datasource.")
+        || qualified_tool.starts_with("dbschema.")
+    {
+        // datasources scope: the federation host service (resolve source → net:* → mediate DSN →
+        // route to the supervised sidecar) + the `dbschema.*` designed-record CRUD (schema-
+        // designer scope — store-only, no sidecar). The per-verb gate runs inside the service.
+        crate::call_federation_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("host.") {
+        crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("secret.") {
+        // secrets scope: the `secret.*` CRUD surface (set/get/set_visibility/delete/list),
+        // reached over the same MCP bridge as any verb. The per-verb MCP gate + the
+        // three-gate secret read run inside `call_secret_tool` / `lb-secrets`.
+        crate::call_secret_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("prefs.") {
+        crate::call_prefs_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("message.") {
+        // i18n-catalogs scope: `message.render` / `message.set_catalog`. The outer gate ran the
+        // base `mcp:message.<verb>:call`; the render verb adds the `message.render_recipient`
+        // grant for a foreign-recipient fan-out, and set_catalog publishes the "catalog changed"
+        // hint (needs the bus).
+        crate::call_catalog_tool(
+            &node.store,
+            &node.bus,
+            principal,
+            ws,
+            qualified_tool,
+            &input,
+        )
+        .await?
+    } else if qualified_tool.starts_with("query.") {
+        // query scope: the saved-PRQL-query service (compile→dispatch to store.query /
+        // federation.query). query.run adds the no-widening target cap inside its service.
+        crate::call_query_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("telemetry.") {
+        // telemetry-console scope: the gated, workspace-walled read surface over the capped
+        // telemetry ring (query/trace/purge). Writes come from the SurrealCappedLayer only —
+        // there is no telemetry.write verb; the ws wall is enforced inside each read.
+        crate::call_telemetry_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "store.query" || qualified_tool == "store.schema" {
+        crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "store.write" || qualified_tool == "store.delete" {
+        // The generic per-table mutation surface (the write half of the direct-store contract).
+        // The outer gate above already ran `mcp:store.<verb>:call`; the verb re-runs the
+        // per-table `store:<table>:write` gate inside. A write lands at depth 0, so it flows
+        // through the undo auto-capture wrapper like every other store mutation.
+        crate::call_store_mutate_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "store.status" || qualified_tool == "store.compact" {
+        // online-compaction scope: the store's operational pair. The outer gate above ran
+        // `mcp:store.<verb>:call`; the verbs re-gate on the store-surface caps inside
+        // (`store:status:read` / `store:compact:run`). compact ENQUEUES a job — the pass
+        // itself runs on the reactor, never on this request path.
+        crate::call_store_admin_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "identity.set_credential" {
+        // login-hardening scope: set/rotate a user's password hash. Gated `mcp:identity.manage:call`
+        // (the outer gate above ran it); the verb hashes argon2 before any write and returns no hash.
+        crate::call_credential_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "identity.set_password" {
+        // email-login scope: set/rotate a person's GLOBAL password (all workspaces). Gated
+        // `mcp:identity.manage:call` (the outer gate ran it); argon2-hashed before write, no hash
+        // returned. Distinct from `identity.set_credential` (the per-ws legacy credential).
+        crate::call_identity_credential_tool(&node.store, principal, ws, qualified_tool, &input)
+            .await?
+    } else if qualified_tool.starts_with("identity.") {
+        // The other identity directory verbs (create/get/list/workspaces), reachable over the same
+        // bridge as their dedicated admin REST routes. Each re-checks `mcp:identity.manage:call`.
+        crate::call_identity_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("bus.") {
+        crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("reminder.") {
+        crate::call_reminder_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "undo"
+        || qualified_tool == "redo"
+        || qualified_tool.starts_with("history.")
+    {
+        call_undo_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("cache.") {
+        // response-cache scope: the `cache.stats` / `cache.purge` admin verbs, reached over the
+        // one MCP bridge like every host-native verb. The outer gate ran `mcp:cache.<verb>:call`;
+        // feature-off ⇒ the cache is not compiled in and this returns `NotFound` (an unknown verb).
+        crate::cache::call_cache_tool(node, principal, ws, qualified_tool, &input).await?
+    } else {
+        let out = call_ingest_tool(&node.store, principal, ws, qualified_tool, &input).await?;
+        // Parity with the gateway's `POST /ingest` route (routes/ingest.rs): after the durable
+        // write+drain, publish each committed sample onto its series motion subject so a live
+        // subscriber (a dashboard widget, or the `GET /series/{s}/stream` SSE) advances without
+        // polling (state vs motion, rule 3). Without this, the MCP `ingest.write` path was
+        // durable-only — a sample written via MCP never surfaced on the live feed. Best-effort:
+        // a publish failure never fails the durable write. Generic + domain-free; no CE knowledge.
+        if qualified_tool == "ingest.write" {
+            publish_ingest_motion(node, principal, ws, &input).await;
+        }
+        out
+    };
     Ok(out)
 }
 

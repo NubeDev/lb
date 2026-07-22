@@ -149,11 +149,11 @@ pub use authz::{
     ROLE_WORKSPACE_ADMIN,
 };
 pub use boot::{Node, NodeError};
-pub use cache::CacheConfig;
 pub use bus::{
     authorize_bus, authorize_subject_scoped, bus_publish, bus_watch, call_bus_tool,
     still_scoped_authorized, wall_subject, BusError, BusSub, WatchMode,
 };
+pub use cache::CacheConfig;
 pub use channel::{
     call_channel_chart_pref_tool, call_channel_tool, delete, edit, history, join, post,
     subscribe_channel, watch, watch_deletions, ChannelError, ChannelPresence, ChannelSub,

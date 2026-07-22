@@ -61,15 +61,25 @@ async fn boot_cached() -> Arc<Node> {
 
 /// Write one sample into `series` through the real ingest write+drain path (a real store mutation).
 async fn ingest(node: &Arc<Node>, p: &Principal, ws: &str, series: &str, seq: u64, v: f64) {
-    let sample =
-        json!({ "series": series, "producer": "seed", "ts": seq, "seq": seq, "payload": v, "qos": "best-effort" });
-    call_tool(node, p, ws, "ingest.write", &json!({ "samples": [sample] }).to_string())
-        .await
-        .expect("ingest.write");
+    let sample = json!({ "series": series, "producer": "seed", "ts": seq, "seq": seq, "payload": v, "qos": "best-effort" });
+    call_tool(
+        node,
+        p,
+        ws,
+        "ingest.write",
+        &json!({ "samples": [sample] }).to_string(),
+    )
+    .await
+    .expect("ingest.write");
 }
 
 /// `series.list` (optionally prefixed) → the sorted set of series names.
-async fn series_list(node: &Arc<Node>, p: &Principal, ws: &str, prefix: Option<&str>) -> Vec<String> {
+async fn series_list(
+    node: &Arc<Node>,
+    p: &Principal,
+    ws: &str,
+    prefix: Option<&str>,
+) -> Vec<String> {
     let args = match prefix {
         Some(px) => json!({ "prefix": px }),
         None => json!({}),
@@ -83,12 +93,15 @@ async fn series_list(node: &Arc<Node>, p: &Principal, ws: &str, prefix: Option<&
 
 /// The node-wide `cache.stats` snapshot.
 async fn stats(node: &Arc<Node>, p: &Principal, ws: &str) -> Value {
-    let out = call_tool(node, p, ws, "cache.stats", "{}").await.expect("cache.stats");
+    let out = call_tool(node, p, ws, "cache.stats", "{}")
+        .await
+        .expect("cache.stats");
     serde_json::from_str(&out).unwrap()
 }
 
 fn u(v: &Value, k: &str) -> u64 {
-    v[k].as_u64().unwrap_or_else(|| panic!("stats.{k} missing in {v}"))
+    v[k].as_u64()
+        .unwrap_or_else(|| panic!("stats.{k} missing in {v}"))
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -108,7 +121,11 @@ async fn warm_reopen_runs_zero_engine_dispatches() {
 
     let s = stats(&node, &p, "acme").await;
     assert_eq!(u(&s, "misses"), 1, "exactly one cold compute");
-    assert_eq!(u(&s, "hits"), 1, "the re-open served from cache (zero engine dispatch)");
+    assert_eq!(
+        u(&s, "hits"),
+        1,
+        "the re-open served from cache (zero engine dispatch)"
+    );
 }
 
 /// Single-flight: N concurrent identical COLD reads collapse to ONE compute (one miss), and every
@@ -123,7 +140,9 @@ async fn single_flight_coalesces_concurrent_cold_reads() {
     for _ in 0..16 {
         let (n, pr) = (node.clone(), p.clone());
         handles.push(tokio::spawn(async move {
-            call_tool(&n, &pr, "acme", "series.list", "{}").await.unwrap()
+            call_tool(&n, &pr, "acme", "series.list", "{}")
+                .await
+                .unwrap()
         }));
     }
     let mut outs = Vec::new();
@@ -131,10 +150,17 @@ async fn single_flight_coalesces_concurrent_cold_reads() {
         outs.push(h.await.unwrap());
     }
     // All identical.
-    assert!(outs.windows(2).all(|w| w[0] == w[1]), "all coalesced callers see one value");
+    assert!(
+        outs.windows(2).all(|w| w[0] == w[1]),
+        "all coalesced callers see one value"
+    );
 
     let s = stats(&node, &p, "acme").await;
-    assert_eq!(u(&s, "misses"), 1, "16 concurrent cold reads → ONE engine dispatch (single-flight)");
+    assert_eq!(
+        u(&s, "misses"),
+        1,
+        "16 concurrent cold reads → ONE engine dispatch (single-flight)"
+    );
     assert_eq!(u(&s, "hits"), 15, "the other 15 coalesced onto it");
 }
 
@@ -152,7 +178,10 @@ async fn write_invalidates_immediately() {
     // A dirtying write (ingest.write → Series) must be visible immediately, not after the TTL.
     ingest(&node, &p, "acme", "b", 2, 2.0).await;
     let after = series_list(&node, &p, "acme", None).await;
-    assert!(after.contains(&"b".to_string()), "the just-written series is visible at once: {after:?}");
+    assert!(
+        after.contains(&"b".to_string()),
+        "the just-written series is visible at once: {after:?}"
+    );
 
     // The generic store.write nukes every class — prove the coarse path also re-dispatches. Warm the
     // key (a hit), then store.write, then the next read must be a fresh MISS (miss count climbs).
@@ -192,9 +221,15 @@ async fn workspace_isolation_and_purge_scope() {
     assert_eq!(b, vec!["only_b".to_string()]);
 
     // Purge A. B's cached entry still serves (purge is per-ws).
-    call_tool(&node, &pa, "wsa", "cache.purge", "{}").await.expect("purge A");
+    call_tool(&node, &pa, "wsa", "cache.purge", "{}")
+        .await
+        .expect("purge A");
     let b_after = series_list(&node, &pb, "wsb", None).await;
-    assert_eq!(b_after, vec!["only_b".to_string()], "purging A left B untouched");
+    assert_eq!(
+        b_after,
+        vec!["only_b".to_string()],
+        "purging A left B untouched"
+    );
 }
 
 /// Capability-deny: a caller lacking `mcp:series.list:call` is `Denied` — and priming the key with a
@@ -210,8 +245,13 @@ async fn deny_is_identical_on_warm_and_cold_keys() {
     let _ = series_list(&node, &capable, "acme", None).await;
 
     // The capless caller is denied on the WARM key exactly as on a cold one.
-    let err = call_tool(&node, &capless, "acme", "series.list", "{}").await.unwrap_err();
-    assert!(matches!(err, lb_mcp::ToolError::Denied), "capless caller denied on a warm key: {err:?}");
+    let err = call_tool(&node, &capless, "acme", "series.list", "{}")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, lb_mcp::ToolError::Denied),
+        "capless caller denied on a warm key: {err:?}"
+    );
 }
 
 /// The `cache.*` admin verbs carry their own caps: a caller without them is `Denied`.
@@ -220,11 +260,15 @@ async fn cache_admin_verbs_require_their_caps() {
     let node = boot_cached().await;
     let no_admin = principal("acme", &["mcp:series.list:call"]);
     assert!(matches!(
-        call_tool(&node, &no_admin, "acme", "cache.stats", "{}").await.unwrap_err(),
+        call_tool(&node, &no_admin, "acme", "cache.stats", "{}")
+            .await
+            .unwrap_err(),
         lb_mcp::ToolError::Denied
     ));
     assert!(matches!(
-        call_tool(&node, &no_admin, "acme", "cache.purge", "{}").await.unwrap_err(),
+        call_tool(&node, &no_admin, "acme", "cache.purge", "{}")
+            .await
+            .unwrap_err(),
         lb_mcp::ToolError::Denied
     ));
 }
@@ -238,10 +282,18 @@ async fn uncacheable_verb_never_hits() {
     let p = principal("acme", CAPS);
 
     // `tools.catalog` is not on the read allowlist — two calls, still zero cache activity.
-    let _ = call_tool(&node, &p, "acme", "tools.catalog", "{}").await.expect("tools.catalog");
-    let _ = call_tool(&node, &p, "acme", "tools.catalog", "{}").await.expect("tools.catalog");
+    let _ = call_tool(&node, &p, "acme", "tools.catalog", "{}")
+        .await
+        .expect("tools.catalog");
+    let _ = call_tool(&node, &p, "acme", "tools.catalog", "{}")
+        .await
+        .expect("tools.catalog");
     let s = stats(&node, &p, "acme").await;
-    assert_eq!(u(&s, "hits"), 0, "a non-allowlisted verb never hits the cache");
+    assert_eq!(
+        u(&s, "hits"),
+        0,
+        "a non-allowlisted verb never hits the cache"
+    );
     assert_eq!(u(&s, "misses"), 0, "…and never populates it");
 }
 
@@ -264,6 +316,13 @@ async fn budget_bounds_the_cache() {
     }
     let s = stats(&node, &p, "acme").await;
     let entries = u(&s, "entry_count");
-    assert!(entries < 60, "the 512-byte budget evicted: {entries} entries held for 60 distinct reads");
-    assert!(u(&s, "weighted_size_bytes") <= 4096, "weighted size stays near the budget: {}", u(&s, "weighted_size_bytes"));
+    assert!(
+        entries < 60,
+        "the 512-byte budget evicted: {entries} entries held for 60 distinct reads"
+    );
+    assert!(
+        u(&s, "weighted_size_bytes") <= 4096,
+        "weighted size stays near the budget: {}",
+        u(&s, "weighted_size_bytes")
+    );
 }

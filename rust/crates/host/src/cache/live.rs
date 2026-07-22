@@ -43,9 +43,7 @@ impl ResponseCache {
             .max_capacity(cfg.memory_budget_bytes)
             // Weigh key + serialised value bytes so the budget is HONEST about real footprint
             // (Risks: "a weigher that under-counts blows the small-RAM budget").
-            .weigher(|k: &String, v: &Arc<str>| {
-                (k.len() + v.len()).min(u32::MAX as usize) as u32
-            })
+            .weigher(|k: &String, v: &Arc<str>| (k.len() + v.len()).min(u32::MAX as usize) as u32)
             .time_to_live(Duration::from_secs(cfg.list_ttl_secs.max(1)))
             .eviction_listener(move |_k: Arc<String>, _v: Arc<str>, cause: RemovalCause| {
                 // Count only capacity/TTL evictions — an explicit `invalidate` (none in v1) or a
@@ -110,7 +108,8 @@ impl ResponseCache {
     /// first so `entry_count`/`weighted_size` reflect just-applied inserts/evictions.
     pub async fn stats_snapshot(&self) -> Value {
         self.moka.run_pending_tasks().await;
-        self.stats.snapshot(self.moka.entry_count(), self.moka.weighted_size())
+        self.stats
+            .snapshot(self.moka.entry_count(), self.moka.weighted_size())
     }
 }
 
@@ -138,7 +137,12 @@ fn canonicalize(v: &Value) -> Value {
             // regardless of whether serde_json's `Map` is a BTreeMap or an insertion-ordered IndexMap.
             let sorted: std::collections::BTreeMap<&String, Value> =
                 m.iter().map(|(k, val)| (k, canonicalize(val))).collect();
-            Value::Object(sorted.into_iter().map(|(k, val)| (k.clone(), val)).collect())
+            Value::Object(
+                sorted
+                    .into_iter()
+                    .map(|(k, val)| (k.clone(), val))
+                    .collect(),
+            )
         }
         Value::Array(a) => Value::Array(a.iter().map(canonicalize).collect()),
         other => other.clone(),

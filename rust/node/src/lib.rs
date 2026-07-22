@@ -44,8 +44,8 @@ pub use lb_host::Node;
 // embedder must be able to NAME it with only the `lb-node` dep — same reason `SigningKey` and `Node`
 // are re-exported above. Without this, opting into the `/api/*` seam forces a direct dep on an
 // internal role crate purely to spell one field's type, which is the leak this block exists to close.
-pub use lb_role_gateway::BrowserSessionConfig;
 /// The optional response-cache config an embedder sets on [`BootConfig::cache`] (response-cache
 /// scope). Re-exported so a downstream host names it with only the `lb-node` dep (the
 /// `BrowserSessionConfig` precedent). Always available; the LIVE cache is `page-cache`-gated.
 pub use lb_host::CacheConfig;
+pub use lb_role_gateway::BrowserSessionConfig;
