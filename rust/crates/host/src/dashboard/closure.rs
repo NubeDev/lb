@@ -103,6 +103,7 @@ mod tests {
             color: String::new(),
             toolbar: Default::default(),
             timezone: String::new(),
+            cache_ttl_s: 0,
             owner: "user:ada".into(),
             visibility: Default::default(),
             cells,

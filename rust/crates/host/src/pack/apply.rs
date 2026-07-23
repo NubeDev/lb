@@ -421,6 +421,7 @@ async fn apply_dashboard(
             .get("timezone")
             .and_then(Value::as_str)
             .map(String::from),
+        d.json.get("cacheTtlS").and_then(Value::as_u64),
         None,
         cells,
         variables,

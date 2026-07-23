@@ -435,6 +435,14 @@ pub struct Dashboard {
     /// scope, open question resolved in the P1 session doc). Opaque to the host beyond serde.
     #[serde(default, deserialize_with = "null_default")]
     pub timezone: String,
+    /// Per-dashboard freshness — the `viz.query` cache TTL in seconds (dashboard-query-acceleration
+    /// scope §C). The UI resolves the effective TTL (a set auto-refresh interval wins; else this;
+    /// else the client default) and threads it as the top-level `cache: {ttl_s}` directive so a warm
+    /// re-open serves from the federation result / gateway response cache. `0` = live (no directive).
+    /// Additive/defaulted — a pre-freshness dashboard round-trips unchanged. Opaque to the host beyond
+    /// serde (the host caches on the directive the UI sends, not on this field).
+    #[serde(default, deserialize_with = "null_default", rename = "cacheTtlS")]
+    pub cache_ttl_s: u64,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
     #[serde(default, deserialize_with = "null_default")]

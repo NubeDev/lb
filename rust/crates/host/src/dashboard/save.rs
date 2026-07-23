@@ -37,6 +37,7 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "icon": { "type": "string", "x-lb": { "label": "Icon", "description": "Optional icon-lib name for the page, e.g. 'activity' (omit to keep the existing one)" } },
                 "color": { "type": "string", "x-lb": { "label": "Colour", "description": "Optional CSS accent colour for the page icon (omit to keep the existing one)" } },
                 "timezone": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional dashboard timezone — an IANA name like 'Australia/Sydney' or 'browser' (omit to keep the existing one)" } },
+                "cacheTtlS": { "type": "integer", "x-lb": { "label": "Freshness (cache TTL)", "description": "Optional per-dashboard viz.query cache TTL in seconds; 0 = live (omit to keep the existing one)" } },
                 "toolbar": { "type": "object", "properties": {
                     "dateSelect": { "type": "boolean" },
                     "refreshRate": { "type": "boolean" },
@@ -70,7 +71,7 @@ pub async fn dashboard_save(
     // preserved. The settings dialog is the only writer of icon/colour/subtitle; it calls
     // `dashboard_save_meta` directly.
     dashboard_save_meta(
-        store, principal, ws, id, title, None, None, None, None, None, cells, variables, now,
+        store, principal, ws, id, title, None, None, None, None, None, None, cells, variables, now,
     )
     .await
 }
@@ -91,6 +92,7 @@ pub async fn dashboard_save_meta(
     icon: Option<String>,
     color: Option<String>,
     timezone: Option<String>,
+    cache_ttl_s: Option<u64>,
     toolbar: Option<Toolbar>,
     mut cells: Vec<Cell>,
     variables: Vec<Variable>,
@@ -134,32 +136,42 @@ pub async fn dashboard_save_meta(
 
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record
     // is treated as absent — a save with that id resurrects it under the new owner (create).
-    let (owner, visibility, prev_desc, prev_icon, prev_color, prev_timezone, prev_toolbar) =
-        match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
-            Some(existing) => {
-                if existing.owner != principal.owner_sub() {
-                    return Err(DashboardError::Denied);
-                }
-                (
-                    existing.owner,
-                    existing.visibility,
-                    existing.description,
-                    existing.icon,
-                    existing.color,
-                    existing.timezone,
-                    existing.toolbar,
-                )
+    let (
+        owner,
+        visibility,
+        prev_desc,
+        prev_icon,
+        prev_color,
+        prev_timezone,
+        prev_cache_ttl_s,
+        prev_toolbar,
+    ) = match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
+        Some(existing) => {
+            if existing.owner != principal.owner_sub() {
+                return Err(DashboardError::Denied);
             }
-            None => (
-                principal.owner_sub().to_string(),
-                Visibility::Private,
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                Toolbar::default(),
-            ),
-        };
+            (
+                existing.owner,
+                existing.visibility,
+                existing.description,
+                existing.icon,
+                existing.color,
+                existing.timezone,
+                existing.cache_ttl_s,
+                existing.toolbar,
+            )
+        }
+        None => (
+            principal.owner_sub().to_string(),
+            Visibility::Private,
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            0,
+            Toolbar::default(),
+        ),
+    };
 
     let dashboard = Dashboard {
         id: id.to_string(),
@@ -169,6 +181,7 @@ pub async fn dashboard_save_meta(
         icon: icon.unwrap_or(prev_icon),
         color: color.unwrap_or(prev_color),
         timezone: timezone.unwrap_or(prev_timezone),
+        cache_ttl_s: cache_ttl_s.unwrap_or(prev_cache_ttl_s),
         toolbar: toolbar.unwrap_or(prev_toolbar),
         owner,
         visibility,

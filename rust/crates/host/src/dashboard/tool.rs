@@ -63,6 +63,7 @@ pub async fn call_dashboard_tool(
                 opt_str_arg(input, "icon"),
                 opt_str_arg(input, "color"),
                 opt_str_arg(input, "timezone"),
+                opt_u64_arg(input, "cacheTtlS"),
                 opt_toolbar_arg(input),
                 cells,
                 variables,
@@ -210,6 +211,15 @@ fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
 /// non-string is coerced to `None` too (lenient — no reason to fail a whole save over it).
 fn opt_str_arg(input: &Value, key: &str) -> Option<String> {
     input.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// An OPTIONAL u64 arg: `Some` when present and a number (or a numeric string, the lenient form AI
+/// callers emit), `None` when absent, null, or unparseable — the "preserve the stored value" signal,
+/// exactly like `opt_str_arg`. Used for `cacheTtlS` (per-dashboard freshness). Never fails a save.
+fn opt_u64_arg(input: &Value, key: &str) -> Option<u64> {
+    let v = input.get(key)?;
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
 }
 
 /// The OPTIONAL `toolbar` arg (dashboard toolbar-settings): the header-chrome visibility flags.

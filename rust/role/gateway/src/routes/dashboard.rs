@@ -68,6 +68,10 @@ pub struct SaveDashboard {
     /// preserve-on-omit discipline as the fields above. Only the settings dialog sends this.
     #[serde(default)]
     pub toolbar: Option<lb_host::DashboardToolbar>,
+    /// Per-dashboard freshness — the viz.query cache TTL in seconds (dashboard-query-acceleration §C).
+    /// Additive & OPTIONAL, same preserve-on-omit discipline; the settings dialog sends it as `cacheTtlS`.
+    #[serde(default, rename = "cacheTtlS")]
+    pub cache_ttl_s: Option<u64>,
     #[serde(default)]
     pub cells: Vec<Cell>,
     /// Variable definitions (widget-config-vars Slice 2) — additive; a pre-variables client omits it.
@@ -95,6 +99,7 @@ pub async fn save_dashboard(
         body.icon,
         body.color,
         body.timezone,
+        body.cache_ttl_s,
         body.toolbar,
         body.cells,
         body.variables,

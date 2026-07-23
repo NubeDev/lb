@@ -146,6 +146,7 @@ pub async fn dashboard_import(
         None,
         timezone,
         None,
+        None,
         cells,
         variables,
         now,

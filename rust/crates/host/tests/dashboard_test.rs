@@ -153,6 +153,8 @@ async fn page_settings_round_trip_and_preserve() {
         Some("activity".into()),
         Some("#3b82f6".into()),
         None,
+        // Per-dashboard freshness (dashboard-query-acceleration §C) — the viz.query cache TTL.
+        Some(120),
         // Opt the date-select + share controls into the header (toolbar-settings); refresh stays hidden.
         Some(Toolbar {
             date_select: true,
@@ -170,6 +172,8 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.description, "Fleet health at a glance");
     assert_eq!(got.icon, "activity");
     assert_eq!(got.color, "#3b82f6");
+    // Freshness TTL persists through save → get (the bug that silently dropped it before this field).
+    assert_eq!(got.cache_ttl_s, 120);
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
 
     // The cheap summary carries icon + colour (roster paints them without a full get).
@@ -199,8 +203,11 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.color, "#3b82f6");
     // Toolbar flags are page chrome too — a plain layout save preserves them.
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
+    // Freshness is page chrome too — a plain layout save must never reset it to live.
+    assert_eq!(got.cache_ttl_s, 120);
 
-    // Setting one field via meta preserves the others (Some on icon, None on the rest — incl. toolbar).
+    // Setting one field via meta preserves the others (Some on icon, None on the rest — incl. toolbar
+    // and the freshness TTL).
     dashboard_save_meta(
         &store,
         &ada,
@@ -209,6 +216,7 @@ async fn page_settings_round_trip_and_preserve() {
         "Ops v2",
         None,
         Some("gauge".into()),
+        None,
         None,
         None,
         None,
@@ -224,6 +232,8 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.color, "#3b82f6");
     // `None` toolbar on the meta save preserved the opted-in flags (never re-hidden by a partial edit).
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
+    // `None` cacheTtlS on the meta save preserved the freshness window (the preserve-on-omit path).
+    assert_eq!(got.cache_ttl_s, 120);
 }
 
 // widget-config-vars scope, Slice 1: a cell's `title` round-trips through `dashboard.save`/`get` with no

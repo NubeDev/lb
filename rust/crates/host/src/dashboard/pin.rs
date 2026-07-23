@@ -89,6 +89,7 @@ pub async fn dashboard_pin(
                     icon: String::new(),
                     color: String::new(),
                     timezone: String::new(),
+                    cache_ttl_s: 0,
                     toolbar: Default::default(),
                     owner: principal.owner_sub().to_string(),
                     visibility: Visibility::Private,
