@@ -57,7 +57,8 @@ degrading (lb additive first, rubix-ai bumps the pin and lights up):
   says "both 24-col (the spine pins our grid to 24)"; the shipped UI is **`GRID_COLS = 12`** (`gridGeometry.ts`).
   Copying Grafana's 24-col `gridPos` verbatim onto a 12-col board overflows every tile (a `w=8 x=16` third-
   width panel lands off-grid and stretches full-width with huge gaps — the "looks like shit" alignment bug).
-  Pick one grid and make the mapper honor it.
+  **Decision (locked): keep 12-col** — the mapper remaps Grafana 24-col → our 12-col (halve x/w, scale
+  row-height, repack y), and the stale "24-col" doc line is corrected. No UI re-pin.
 - **Placeholders are dropped, not carried as empty "no template" tiles.** Grafana's default `metric_table`
   banner-stats, an empty logo `<div>`, and `dashlist` have no data and no host equivalent; mapping them to a
   `template`/unsupported cell renders an ugly empty box. Drop-with-notice; the report names each.
@@ -115,11 +116,10 @@ The mapper already migrates schema, binds datasources, and preserves rows/timezo
   `$__from`/`$__to` window (end-day-exclusive), `$__timeGroup`/`$__interval`/`$__timeFrom`/`$__timeTo` →
   their equivalents. Anything unrecognized is **left verbatim and reported** (`unsupported macro $__foo`),
   never silently dropped. This is where "mapped but times out because the scan is unbounded" gets fixed.
-- **Grid remap (decide the grid first — Open Q1).** If the shipped grid is 12-col (as `gridGeometry.ts` is
-  today), the mapper halves x/w, scales row-height (Grafana 30 px → our 56 px), and repacks y by band so
-  tiles align 3-across instead of overflowing. If the spine is re-pinned to 24-col (matching Grafana 1:1),
-  `gridPos` copies verbatim and `gridGeometry.ts` is the bug to fix. **Either way the doc and the code must
-  agree** — the drift is the bug.
+- **Grid remap (locked: 12-col).** The shipped grid stays `GRID_COLS = 12` (`gridGeometry.ts` unchanged).
+  The mapper halves Grafana's 24-col x/w, scales row-height (Grafana 30 px → our 56 px), and repacks y by
+  band so tiles align 3-across instead of overflowing; the stale "24-col" line in `import-export-scope.md:110`
+  is corrected to match. No UI re-pin.
 - **Drop placeholders with a notice.** Detect Grafana's default `metric_table`/`time_column` placeholder
   query and empty-content `text` panels; drop them (don't emit a "no template" cell) and report each.
 - **Honest report, completed.** Add the missing lines: mapped-but-unwired (now impossible by construction,
@@ -256,10 +256,10 @@ Grafana export `.json` is a **fixture**, not a fake. Mandatory categories:
 
 ## Risks & hard problems
 
-- **The grid decision is load-bearing and currently ambiguous.** The scope says 24-col; the code ships
-  12-col. Picking wrong (or not picking) reintroduces the overflow. This must be **resolved first** (Open
-  Q1) — every mapper grid line depends on it, and the fix is either in the mapper (remap to 12) or in
-  `gridGeometry.ts` (re-pin to 24), not both.
+- **The grid is load-bearing (decision locked: 12-col).** The fix is entirely in the **mapper** (remap
+  Grafana 24-col → our 12-col); `gridGeometry.ts` is not touched, and the stale "24-col" doc line is
+  corrected to match. The risk is now only in the remap math (off-by-one on the halve/repack) — covered by
+  the grid-alignment test (≥3 columns, no cell exceeds width, no y-overlap).
 - **Macro translation is a dialect, and dialects leak.** `$__timeFilter` is easy; `$__timeGroup(col,'5m')`,
   `$__unixEpochFilter`, nested macros, and Grafana's per-datasource macro variants are a long tail. The
   bounded map covers the measured page; the honest fallback (leave verbatim + report) keeps an unknown macro
@@ -278,10 +278,11 @@ Grafana export `.json` is a **fixture**, not a fake. Mandatory categories:
 
 ## Open questions
 
-1. **The grid: 12 or 24?** The shipped UI is 12-col; the spine doc says 24. **Recommend keeping 12** (the
-   real, shipped, denser grid) and fixing the mapper to remap + the doc to match — re-pinning the whole UI to
-   24 is a larger, riskier change for a 1:1-with-Grafana benefit users don't see. Decide **before** any
-   mapper grid work.
+1. **The grid: 12 or 24? — RESOLVED (2026-07-23): keep 12.** The shipped UI stays **`GRID_COLS = 12`**
+   (`gridGeometry.ts` unchanged). The mapper **remaps** Grafana's 24-col `gridPos` → 12-col (halve x/w, scale
+   row-height 30 px → 56 px, repack y by band), and **`import-export-scope.md:110` is corrected** from "both
+   24-col" to "Grafana 24-col → our 12-col (remapped)". No UI re-pin. This is the standing decision — all
+   mapper grid work targets 12.
 2. **Plugin-query synthesis — this campaign or a follow-up?** 18 of 35 tiles on *this class* of NubeIO board
    need it, but it's plugin-specific (not generic Grafana). **Recommend a named follow-up** in
    `grafana-parity-backend`'s datasource family; this scope reports it honestly meanwhile.

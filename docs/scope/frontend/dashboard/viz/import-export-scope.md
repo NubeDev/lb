@@ -107,7 +107,7 @@ One responsibility per file; `grafana→cell` (import) and `cell→grafana` (exp
 | `panel.datasource` + `panel.targets[]` | `Cell.sources[]` + each `Target.datasource`/`tool`/`args` | a target = one query; the `DataSourceRef.uid` is **remapped** (see below). [`datasource-binding-scope.md`](datasource-binding-scope.md) |
 | `panel.fieldConfig{defaults,overrides[]}` | `Cell.fieldConfig` | unit/decimals/thresholds/mappings/color/overrides 1:1. [`field-config-scope.md`](field-config-scope.md) |
 | `panel.transformations[]` | `Cell.transformations[]` | `{id,options,disabled,filter}` 1:1; unsupported `id` → preserved + flagged. [`transformations-scope.md`](transformations-scope.md) |
-| `panel.gridPos{x,y,w,h}` | `Cell.x,y,w,h` | exact — both 24-col (the [spine](panel-model-scope.md) pins our grid to 24). |
+| `panel.gridPos{x,y,w,h}` | `Cell.x,y,w,h` | **Grafana 24-col → our 12-col (remapped)** — the shipped grid is `GRID_COLS = 12` (`gridGeometry.ts`); the mapper halves x/w, scales row-height (30 px → 56 px), and repacks y by band (`grafana/grid.rs`). Decision locked 2026-07-23 in [`../../../viz/grafana-dashboard-fidelity-scope.md`](../../../viz/grafana-dashboard-fidelity-scope.md). |
 | `panel.options` | `Cell.options` | per-view structured options, passed through per the view's shape. |
 | `panel.id` (numeric) + `panel.pluginVersion` | mapper-carried `id` + `Cell.pluginVersion` | numeric `id` round-trips inside the mapper; our record keys cells by string `i`. |
 | `templating.list[]` (VariableModel) | `Dashboard.variables` | map Grafana var types (`query`/`custom`/`constant`/`textbox`/`interval`/`datasource`/…) to our shipped vars lib; unsupported type → preserved + flagged. |

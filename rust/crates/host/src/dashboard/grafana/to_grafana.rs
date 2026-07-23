@@ -102,6 +102,18 @@ pub fn cell_to_panel(cell: &Cell) -> Value {
     if cell.transparent {
         panel.insert("transparent".to_string(), Value::Bool(true));
     }
+    if !cell.repeat.is_empty() {
+        panel.insert("repeat".to_string(), Value::String(cell.repeat.clone()));
+    }
+    if !cell.repeat_direction.is_empty() {
+        panel.insert(
+            "repeatDirection".to_string(),
+            Value::String(cell.repeat_direction.clone()),
+        );
+    }
+    if cell.max_per_row > 0 {
+        panel.insert("maxPerRow".to_string(), Value::from(cell.max_per_row));
+    }
     overlay_query_options(&mut panel, cell);
 
     Value::Object(panel)

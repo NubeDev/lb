@@ -269,6 +269,34 @@ pub struct Cell {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub links: Vec<Value>,
+    /// **Panel/row repeat** (Grafana parity — viz grafana-dashboard-fidelity slice 2). The name of the
+    /// multi-value variable this panel repeats over (`repeat: "meter"`); the renderer expands one tile
+    /// per selected value (bounded "+N more"). Carried opaque here — the host stores the binding, the UI
+    /// owns the expansion. Additive/skip-if-empty so a non-repeating cell round-trips byte-stable.
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub repeat: String,
+    /// Repeat layout direction (`"h"` | `"v"`; Grafana `repeatDirection`). Meaningful only with
+    /// [`Cell::repeat`]; opaque to the host. Skip-if-empty (byte-stable pre-repeat records).
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        rename = "repeatDirection",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub repeat_direction: String,
+    /// Max repeated tiles per row before wrapping (Grafana `maxPerRow`, horizontal repeat). Opaque to
+    /// the host; `0` = unset. Skip-if-zero (byte-stable pre-repeat records).
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        rename = "maxPerRow",
+        skip_serializing_if = "is_zero_u32"
+    )]
+    pub max_per_row: u32,
     /// Set by `dashboard.get` hydration when a ref cell's `panel_ref` cannot be resolved (deleted,
     /// unshared, or unreadable by the viewer) — the cell renders an honest "panel not accessible"
     /// placeholder, never a leaked spec (library-panels scope, "Dangling refs"). Never persisted:
@@ -293,6 +321,11 @@ pub struct Cell {
 /// serde `skip_serializing_if` helper — keeps a `false` [`Cell::panel_missing`] off the wire/record.
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+/// serde `skip_serializing_if` helper — keeps an unset (`0`) [`Cell::max_per_row`] off the wire/record.
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
 }
 
 /// A dashboard VARIABLE definition (widget-config-vars scope, Slice 2). One model: a `name` bound to a
@@ -731,6 +764,39 @@ mod tests {
         let v: Variable = serde_json::from_value(serde_json::json!({ "name": "env" }))
             .expect("pre-P1 variable deserializes");
         assert!(v.description.is_empty() && !v.skip_url_sync && !v.allow_custom_value);
+    }
+
+    /// Slice-2 additive: panel/row `repeat` round-trips, y-axis `min`/`max` ride the opaque
+    /// `fieldConfig` unchanged, and a cell WITHOUT them stays byte-stable (skip predicates).
+    #[test]
+    fn repeat_and_y_axis_fields_round_trip_and_default_clean() {
+        let cell: Cell = serde_json::from_value(serde_json::json!({
+            "i": "r1", "x": 0, "y": 0, "w": 6, "h": 4, "v": 3, "view": "timeseries",
+            "repeat": "meter", "repeatDirection": "h", "maxPerRow": 3,
+            "fieldConfig": { "defaults": { "min": 0, "max": 50, "custom": { "softClamp": true } } }
+        }))
+        .expect("deserializes");
+        assert_eq!(cell.repeat, "meter");
+        assert_eq!(cell.repeat_direction, "h");
+        assert_eq!(cell.max_per_row, 3);
+        // y-axis min/max + soft-clamp ride the opaque fieldConfig untouched (the UI owns the shape).
+        assert_eq!(cell.field_config["defaults"]["min"], 0);
+        assert_eq!(cell.field_config["defaults"]["max"], 50);
+        assert_eq!(cell.field_config["defaults"]["custom"]["softClamp"], true);
+        let out = serde_json::to_value(&cell).expect("serializes");
+        assert_eq!(out["repeat"], "meter");
+        assert_eq!(out["repeatDirection"], "h");
+        assert_eq!(out["maxPerRow"], 3);
+
+        // A non-repeating cell keeps every repeat key OFF the wire (byte-stable).
+        let plain: Cell = serde_json::from_value(serde_json::json!({
+            "i": "p", "x": 0, "y": 0, "w": 4, "h": 3, "v": 3, "view": "stat"
+        }))
+        .expect("deserializes");
+        let out = serde_json::to_value(&plain).expect("serializes");
+        assert!(out.get("repeat").is_none());
+        assert!(out.get("repeatDirection").is_none());
+        assert!(out.get("maxPerRow").is_none());
     }
 
     /// A PARTIAL `queryOptions` (the shipped UI sends only its trio) deserializes with the rest
