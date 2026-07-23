@@ -352,6 +352,23 @@ pub struct Variable {
     /// `query`/`source`: the resolver `{ tool, args }` (opaque; re-checked per call).
     #[serde(default, deserialize_with = "null_default")]
     pub query: Value,
+    /// `entity` (entity-data-plane scope, Phase D): the entity→table BINDING an `entity` variable
+    /// resolves through — `{ entity, source, table, pk, display, parentFk?, parentVar?, backend? }`.
+    /// The client (`entityVar.ts`) COMPILES it to the SAME `{ tool, args }` resolver `query` carries
+    /// (`SELECT <pk> AS value, <display> AS text FROM <table>` over `store.query`/`federation.query`),
+    /// so the host stays opaque here exactly like `query` — it stores the DEFINITION and re-checks the
+    /// resolved tool per call (rule 5). Additive `#[serde(default, deserialize_with = "null_default",
+    /// skip_serializing_if = "Value::is_null")]` — a pre-entity dashboard round-trips byte-clean and an
+    /// empty binding stays off the wire. **Load-bearing:** without this field the typed `Variable` DROPS
+    /// the binding on `dashboard.save`/`get`/`pack.apply`, so an entity var resolves no options and a
+    /// meter/site template dashboard renders empty (the same silent-drop class as `queryOptions`/
+    /// `argsTemplate` before their fields landed).
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        skip_serializing_if = "Value::is_null"
+    )]
+    pub entity: Value,
     /// `custom`: a static option list.
     #[serde(default, deserialize_with = "null_default")]
     pub custom: Vec<String>,
@@ -599,6 +616,53 @@ mod tests {
         assert_eq!(
             out["options"],
             serde_json::json!([{ "text": "West", "value": "WST" }])
+        );
+    }
+
+    /// An `entity`-type variable's BINDING round-trips through `Variable` (entity-data-plane Phase D).
+    /// The closed struct must carry the binding the UI's `entityVar.ts` compiles its resolver from —
+    /// dropping it (the state before this field) makes an entity var resolve NO options, so a
+    /// meter/site template dashboard renders empty. This is the serde-level pin; the MCP save→get pin
+    /// lives in `tests/dashboard_entity_var_test.rs`.
+    #[test]
+    fn entity_variable_binding_round_trips() {
+        let sent = serde_json::json!({
+            "name": "meter",
+            "label": "Meter",
+            "type": "entity",
+            "required": true,
+            "entity": {
+                "entity": "meter", "source": "ems-readings", "table": "meter",
+                "pk": "id", "display": "name", "backend": "store",
+            },
+        });
+        let v: Variable = serde_json::from_value(sent).expect("deserializes");
+        assert_eq!(v.r#type, "entity");
+        assert!(v.required);
+        assert_eq!(v.entity["table"], "meter");
+        assert_eq!(v.entity["backend"], "store");
+
+        // The binding survives re-serialization (the store round-trip) verbatim — not dropped.
+        let out = serde_json::to_value(&v).expect("serializes");
+        assert_eq!(out["entity"]["pk"], "id");
+        assert_eq!(out["entity"]["display"], "name");
+        assert_eq!(out["type"], "entity");
+    }
+
+    /// The additive guard: a variable with NO entity binding keeps `entity` off the wire
+    /// (`skip_serializing_if`), so a pre-entity dashboard round-trips byte-clean rather than growing
+    /// an `"entity": null` on every variable.
+    #[test]
+    fn absent_entity_binding_stays_off_the_wire() {
+        let v: Variable = serde_json::from_value(serde_json::json!({
+            "name": "env", "type": "custom", "custom": ["prod"],
+        }))
+        .expect("deserializes");
+        assert!(v.entity.is_null());
+        let out = serde_json::to_value(&v).expect("serializes");
+        assert!(
+            out.get("entity").is_none(),
+            "empty entity stays off the wire"
         );
     }
 
