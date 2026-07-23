@@ -245,9 +245,10 @@ pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, drain_workspace_bounded, ingest_write,
     own_batches, publish_sample, series_delete, series_find, series_latest_value, series_list,
-    series_read_range, series_rename, spawn_ingest_reactors, spawn_retention_reactors,
-    subscribe_series, DrainPass, IngestError, Qos, Sample, SeriesSub, COMMIT_BATCH,
-    DEFAULT_STAGING_BOUND, MAX_SERIES_LIST, RETENTION_PERIOD,
+    series_read_range, series_rename, series_samples_delete, series_samples_update,
+    spawn_ingest_reactors, spawn_retention_reactors, subscribe_series, DrainPass, IngestError, Qos,
+    Sample, SampleKey, SampleUpdate, SeriesSub, COMMIT_BATCH, DEFAULT_STAGING_BOUND,
+    MAX_SERIES_LIST, RETENTION_PERIOD,
 };
 /// The **insights** service — the capability-gated surface over `lb_insights` (insights umbrella
 /// scope + occurrences/subscriptions/notify sub-scopes). The MCP bridge `call_insight_tool` is

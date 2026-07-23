@@ -177,6 +177,70 @@ pub async fn read_samples(
     Ok(Json(json!({ "samples": rows })))
 }
 
+/// `DELETE /series/{series}/samples` body — the selector: explicit `keys` ([{producer, seq}]) XOR
+/// a `from`/`to` seq range (at least one bound). Neither → `400` (a whole-series delete must be the
+/// explicit `DELETE /series/{series}`).
+#[derive(Debug, Deserialize)]
+pub struct DeleteSamplesBody {
+    #[serde(default)]
+    pub keys: Option<Vec<lb_host::SampleKey>>,
+    #[serde(default)]
+    pub from: Option<u64>,
+    #[serde(default)]
+    pub to: Option<u64>,
+}
+
+/// `DELETE /series/{series}/samples` — bulk-delete committed raw samples. Gated
+/// `series.samples.delete` (admin-only). Rolled-up history is untouched. Returns `{ deleted }` —
+/// the rows actually removed. The workspace comes from the token, never the body.
+pub async fn delete_series_samples_route(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(series): Path<String>,
+    Json(body): Json<DeleteSamplesBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let deleted = lb_host::series_samples_delete(
+        &gw.node.store,
+        &p,
+        p.ws(),
+        &series,
+        body.keys,
+        body.from,
+        body.to,
+    )
+    .await
+    .map_err(ingest_status)?;
+    Ok(Json(json!({ "deleted": deleted })))
+}
+
+/// `PATCH /series/{series}/samples` body — the in-place edits. Each entry names an existing
+/// sample by `(producer, seq)` and must set at least one of `payload`/`ts` (epoch ms).
+#[derive(Debug, Deserialize)]
+pub struct UpdateSamplesBody {
+    pub updates: Vec<lb_host::SampleUpdate>,
+}
+
+/// `PATCH /series/{series}/samples` — edit committed raw samples in place. Gated
+/// `series.samples.update` (admin-only). UPDATE semantics, never UPSERT: a missing sample is
+/// skipped, never created. Returns `{ updated }`. The workspace comes from the token.
+pub async fn update_series_samples_route(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(series): Path<String>,
+    Json(body): Json<UpdateSamplesBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let updated = lb_host::series_samples_update(&gw.node.store, &p, p.ws(), &series, body.updates)
+        .await
+        .map_err(ingest_status)?;
+    Ok(Json(json!({ "updated": updated })))
+}
+
 /// `DELETE /series/{series}` — remove the series and its whole footprint (samples, rollups, staged
 /// rows, registry row, tag edges). Gated `series.delete`. Idempotent — deleting an unknown series
 /// succeeds. The workspace comes from the token (the hard wall), never the path.

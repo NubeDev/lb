@@ -355,7 +355,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   canvas widget like `echarts-panel` recolors via the v-next `update` hook) and `css-isolation-scope.md`
   (an extension's CSS **never leaks into the host shell** — the shipped `library-css-leaks-global-utilities`
   regression turned into an enforced remote-CSS contract: scoped utilities, aliased tokens, no preflight,
-  a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence). `node-roles/` also
+  a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence), and
+  `ext-ui-caller-identity-scope.md` (an extension **page** learns whether the caller is an admin without
+  probing — the host stamps a minimal caller projection `caps`/`isAdmin` onto `PageCtx` at mount, the
+  UI twin of `native-caller-identity-scope`; today a federated page gets only `{ workspace }` so it
+  can't gate admin affordances and either hides them for everyone or round-trips a verb to guess.
+  `isAdmin` reuses the host's own cap-derivation — one definition, projected not recomputed — and the
+  role string is deprecated as an authz signal since lb mints every session `role: "member"`). `node-roles/` also
   holds `embed-node-scope.md` (**lb as a Rust library**: the boot ritual `main.rs`/the Tauri shell/
   `test_gateway` each hand-copy today becomes ONE `BootConfig` + `NodeBuilder` lib target on the
   `node` package — the sanctioned role-aware layer, §3.1 — with struct config (`from_env()` only at

@@ -28,6 +28,8 @@ mod read;
 mod rename;
 mod retention;
 mod retention_reactor;
+mod samples_delete;
+mod samples_update;
 mod tool;
 mod write;
 
@@ -48,8 +50,10 @@ pub use retention::{
     series_retention_delete, series_retention_gc, series_retention_list, series_retention_set,
 };
 pub use retention_reactor::{spawn_retention_reactors, RETENTION_PERIOD};
+pub use samples_delete::series_samples_delete;
+pub use samples_update::series_samples_update;
 pub use tool::call_ingest_tool;
 pub use write::{ingest_write, DEFAULT_STAGING_BOUND};
 
 // Re-export the wire envelope so host callers / tests use one `Sample`/`Qos` type.
-pub use lb_ingest::{Qos, Sample};
+pub use lb_ingest::{Qos, Sample, SampleKey, SampleUpdate};

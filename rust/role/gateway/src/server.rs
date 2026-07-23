@@ -32,6 +32,7 @@ use crate::routes::{
     list_insights, list_members, list_navs, list_occurrences, list_panels, list_reports,
     list_roles, list_rules, list_series, list_shares_nav, list_tables, list_team_members,
     list_teams, list_users, list_webhooks, list_workspaces, load_skill, login, mcp_call,
+    delete_series_samples_route, update_series_samples_route,
     mcp_catalog, native_call, panel_usage, patch_flow_run, pin_dashboards, post_message, post_redo,
     post_undo, post_webhook, publish_extension, publish_message, purge_workspace, put_asset_bin,
     put_doc, put_media_chunk, put_skill, read_graph, read_samples, read_schema, refresh_run_token,
@@ -347,7 +348,12 @@ pub fn router(gw: Gateway) -> Router {
         .route("/series", get(list_series))
         .route("/series/find", post(find_series))
         .route("/series/{series}/latest", get(latest_sample))
-        .route("/series/{series}/samples", get(read_samples))
+        .route(
+            "/series/{series}/samples",
+            get(read_samples)
+                .patch(update_series_samples_route)
+                .delete(delete_series_samples_route),
+        )
         // series lifecycle (admin) — delete a whole series or rename it, carrying its footprint.
         .route("/series/{series}", delete(delete_series_route))
         .route("/series/{series}/rename", post(rename_series_route))

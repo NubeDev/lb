@@ -128,8 +128,8 @@ pub use identity::{
 };
 pub use inbox::{list_inbox, resolve_inbox};
 pub use ingest::{
-    delete_series_route, find_series, latest_sample, list_series, read_samples,
-    rename_series_route, write_samples,
+    delete_series_route, delete_series_samples_route, find_series, latest_sample, list_series,
+    read_samples, rename_series_route, update_series_samples_route, write_samples,
 };
 pub use insight::{
     ack_insight, delete_insight, delete_occurrence, get_insight, insight_events, list_insights,
