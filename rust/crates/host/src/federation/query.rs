@@ -43,6 +43,7 @@ pub async fn federation_query<L: Launcher>(
     sql: &str,
     cache: Option<&Value>,
     ts: u64,
+    trace_id: &str,
 ) -> Result<Value, FederationError> {
     authorize(caller, ws, "federation.query")?;
 
@@ -67,6 +68,7 @@ pub async fn federation_query<L: Launcher>(
         "dsn": dsn,
         "source": source,
         "sql": sql,
+        "trace_id": trace_id,
     });
     // Additive and optional: with no caller contract the child input is byte-for-byte what it was
     // before this scope, so the uncached path stays the default. Note the host deliberately does NOT

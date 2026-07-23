@@ -156,7 +156,11 @@ async fn timeout_fires_and_evicts_without_wedging_other_sources() {
     let result = query::run_query_with(
         "sqlite",
         &slow,
-        "SELECT id FROM marker",
+        // Query `information_schema.tables` to force the DataFusion path (the direct
+        // path handles all real-database queries, even complex JOINs — but synthetic
+        // views only exist in DataFusion's in-memory registration, so they must still
+        // go through the federation ceremony).
+        "SELECT table_name FROM information_schema.tables",
         Some("slowsrc"),
         // Below the floor of a cold connect + plan + execute: this MUST elapse.
         Duration::from_nanos(1),

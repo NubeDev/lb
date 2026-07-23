@@ -33,6 +33,10 @@ pub struct ValidatedSelect {
     pub tables: Vec<String>,
     pub wants_info_tables: bool,
     pub wants_info_columns: bool,
+    /// Whether this query is a simple single-table SELECT with no JOINs, subqueries, CTEs,
+    /// or set operations. When true the query can skip the DataFusion planning/unparsing
+    /// ceremony and run directly against the source (fast path).
+    pub is_simple: bool,
 }
 
 /// Validate that `sql` is exactly one SELECT-only statement and return what it references (so the
@@ -77,10 +81,19 @@ pub fn validate_select(sql: &str) -> Result<ValidatedSelect, ValidationError> {
              — {{source}} lists tables, {{source, table}} lists a table's columns"
         )));
     }
+
+    // Can we bypass DataFusion and send the SQL directly to the source? YES for any query
+    // whose tables all live in one database — the database handles JOINs, subqueries, CTEs,
+    // aggregations, set operations, everything natively. DataFusion adds ZERO value for a
+    // single-source query. The only queries that still need the federated path are those
+    // referencing synthetic `information_schema` views (which don't exist in the real DB).
+    let use_direct_path = !collector.wants_info_tables && !collector.wants_info_columns;
+
     Ok(ValidatedSelect {
         tables: collector.tables,
         wants_info_tables: collector.wants_info_tables,
         wants_info_columns: collector.wants_info_columns,
+        is_simple: use_direct_path,
     })
 }
 

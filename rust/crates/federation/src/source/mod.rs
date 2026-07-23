@@ -16,8 +16,10 @@ mod sqlite;
 
 use std::sync::Arc;
 
+use arrow::record_batch::RecordBatch;
 use datafusion::catalog::TableProvider;
 use datafusion::sql::TableReference;
+use serde_json::Value;
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresSource;
@@ -71,6 +73,70 @@ pub trait Source: Send + Sync {
         &self,
         table: &TableReference,
     ) -> Result<Arc<dyn TableProvider>, SourceError>;
+
+    /// Execute raw SQL directly against the source, bypassing the DataFusion planning/unparsing
+    /// ceremony. Returns Arrow record batches. Only safe for single-table SELECTs where the
+    /// application layer has already validated the query shape — no JOINs, subqueries, CTEs,
+    /// or set operations that would require multi-source orchestration.
+    ///
+    /// The default impl returns an error; sources opt in by implementing against their pool.
+    async fn query_direct(&self, _sql: &str) -> Result<Vec<RecordBatch>, SourceError> {
+        Err(SourceError("direct query not supported by this source".into()))
+    }
+
+    /// Execute raw SQL and return JSON values directly, skipping the Arrow intermediate layer
+    /// entirely. Returns `(column_names, rows)` where each row is a column-aligned JSON array.
+    ///
+    /// The default impl converts through `query_direct` (which goes through Arrow) for sources
+    /// that don't implement this directly. Sources that CAN skip Arrow (e.g. Postgres) SHOULD
+    /// override this to eliminate the ~500ms Postgres→Arrow→JSON double-conversion overhead.
+    async fn query_direct_json(&self, sql: &str) -> Result<(Vec<String>, Vec<Value>), SourceError> {
+        let batches = self.query_direct(sql).await?;
+        let columns: Vec<String> = match batches.first() {
+            Some(b) => b
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| f.name().clone())
+                .collect(),
+            None => return Ok((Vec::new(), Vec::new())),
+        };
+
+        // Arrow → JSON via the same path as `query::shape` (arrow_json::ArrayWriter).
+        let mut buf = Vec::new();
+        {
+            let mut writer = arrow_json::ArrayWriter::new(&mut buf);
+            for batch in &batches {
+                writer
+                    .write(batch)
+                    .map_err(|e| SourceError(format!("arrow->json: {e}")))?;
+            }
+            writer
+                .finish()
+                .map_err(|e| SourceError(format!("arrow->json finish: {e}")))?;
+        }
+
+        let objs: Vec<Value> = if buf.is_empty() {
+            Vec::new()
+        } else {
+            serde_json::from_slice(&buf)
+                .map_err(|e| SourceError(format!("json parse: {e}")))?
+        };
+
+        let rows: Vec<Value> = objs
+            .into_iter()
+            .map(|obj| {
+                Value::Array(
+                    columns
+                        .iter()
+                        .map(|c| obj.get(c).cloned().unwrap_or(Value::Null))
+                        .collect(),
+                )
+            })
+            .collect();
+
+        Ok((columns, rows))
+    }
 
     /// List the user tables in the source (per-impl: each knows its own catalog query). Used by the
     /// `federation.schema` discovery verb so a non-SQL UI can browse without writing a query.

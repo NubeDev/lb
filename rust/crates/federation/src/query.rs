@@ -24,11 +24,12 @@
 use arrow::record_batch::RecordBatch;
 use datafusion::prelude::SessionContext;
 use datafusion::sql::TableReference;
+use futures::StreamExt;
 use serde_json::Value;
 
-use crate::event::{query_event, Cache, Outcome, ResultCacheEvent};
+use crate::event::{query_event, Cache, Outcome, QueryPhaseTimings, ResultCacheEvent};
 use crate::pool::{cached_connect, evict, is_warm};
-use crate::results::{self, Envelope, ResultCache};
+use crate::results::{self, Envelope};
 use crate::source::{connect, ColumnMeta, Source, SourceError, TableMeta};
 use crate::validate::{validate_select, ROW_CAP};
 
@@ -73,7 +74,9 @@ pub struct QueryResult {
 /// so they compile it with `cfg(test)` **false** and would lose the function they need.
 #[allow(dead_code)]
 pub async fn run_query(kind: &str, dsn: &str, sql: &str) -> Result<QueryResult, String> {
-    run_query_with(kind, dsn, sql, None, DEFAULT_QUERY_TIMEOUT).await
+    run_query_with(kind, dsn, sql, None, DEFAULT_QUERY_TIMEOUT)
+        .await
+        .map(|(r, _phases)| r)
 }
 
 /// [`run_query_with`] fronted by the TTL-bounded **result** cache (federation-result-cache scope).
@@ -84,7 +87,11 @@ pub async fn run_query(kind: &str, dsn: &str, sql: &str) -> Result<QueryResult, 
 /// [`run_query_with`] with a `bypass` event and nothing stored.
 ///
 /// On a HIT no query runs, so no pool `cache` state is sampled and that field is omitted from the
-/// event (see `event::query_event`).
+/// event (see `event::query_event`). Phase timings are absent on a hit.
+///
+/// This function is the SOLE event emitter for the federation query path: `run_query_with` no longer
+/// emits its own event, so every result (hit/miss/bypass/error/timeout) produces exactly one line
+/// on stderr carrying both the result-cache verdict and the per-phase timing breakdown.
 pub async fn run_query_cached(
     kind: &str,
     dsn: &str,
@@ -95,46 +102,47 @@ pub async fn run_query_cached(
     let ttl = results::requested_ttl(input);
     let started = std::time::Instant::now();
 
+    // Shared cell the inner closure fills with phase timings; on a hit the closure never runs so
+    // `phases` stays `None`.
+    let phases_cell = std::sync::Arc::new(std::sync::Mutex::new(None::<QueryPhaseTimings>));
+    let phases_cell_clone = phases_cell.clone();
+
     let (outcome, state, age_ms) = results::cached_query(kind, dsn, input, ttl, || async {
-        // The inner future is the UNCHANGED query path — pool cache, validation, timeout,
-        // eviction and its own event all still happen exactly as before. The result cache only
-        // decides whether this future runs at all.
-        run_query_with(kind, dsn, sql, source_name, DEFAULT_QUERY_TIMEOUT)
-            .await
-            .map(|r| Envelope::new(r.columns, r.rows))
+        match run_query_with(kind, dsn, sql, source_name, DEFAULT_QUERY_TIMEOUT).await {
+            Ok((result, p)) => {
+                *phases_cell_clone.lock().expect("phases mutex") = Some(p);
+                Ok(Envelope::new(result.columns, result.rows))
+            }
+            Err(e) => Err(e),
+        }
     })
     .await;
 
-    // A miss/bypass already emitted its own `federation.query` event from inside `run_query_with`
-    // (with the pool state and the real elapsed time). Only a HIT is unreported so far — it is the
-    // one path where no query ran, and it is precisely the path an operator needs to see.
-    if state == ResultCache::Hit {
-        let rows = outcome.as_ref().map(|e| e.rows.len()).unwrap_or(0);
-        query_event(
-            source_name,
-            kind,
-            None,
-            sql,
-            started.elapsed().as_millis(),
-            &Outcome::Ok(rows),
-            Some(&ResultCacheEvent { state, age_ms }),
-        );
-    } else {
-        // Re-state the result-cache verdict for miss/bypass on its own line, so an operator can
-        // count hit/miss/bypass from one field without correlating two event shapes.
-        query_event(
-            source_name,
-            kind,
-            None,
-            sql,
-            started.elapsed().as_millis(),
-            &match &outcome {
-                Ok(e) => Outcome::Ok(e.rows.len()),
-                Err(e) => Outcome::Error(e.clone()),
-            },
-            Some(&ResultCacheEvent { state, age_ms }),
-        );
-    }
+    let elapsed_ms = started.elapsed().as_millis();
+    let phases = phases_cell.lock().expect("phases mutex").take();
+
+    // Pool cache state — sampled inside `run_query_with` and threaded back via phases.
+    let pool_cache = phases.as_ref().and_then(|p| p.pool_cache);
+
+    // Trace id for correlating sub-queries of one dashboard panel refresh.
+    let trace_id = input.get("trace_id").and_then(|v| v.as_str()).unwrap_or("");
+
+    let outcome_for_event = match &outcome {
+        Ok(e) => Outcome::Ok(e.rows.len()),
+        Err(e) => Outcome::Error(e.clone()),
+    };
+
+    query_event(
+        source_name,
+        kind,
+        pool_cache,
+        sql,
+        elapsed_ms,
+        &outcome_for_event,
+        Some(&ResultCacheEvent { state, age_ms }),
+        phases.as_ref(),
+        if trace_id.is_empty() { None } else { Some(trace_id) },
+    );
 
     outcome.map(|env| QueryResult {
         columns: env.columns.clone(),
@@ -144,71 +152,60 @@ pub async fn run_query_cached(
 
 /// [`run_query`] with an explicit bound and the host-side datasource `source` name for events.
 /// `source` is an opaque label, never a DSN.
+///
+/// Returns the result alongside a [`QueryPhaseTimings`] breakdown. This function does NOT emit a
+/// query event — the caller (`run_query_cached`) owns the sole event emission so the phases and the
+/// result-cache status appear in one line.
 pub async fn run_query_with(
     kind: &str,
     dsn: &str,
     sql: &str,
-    source_name: Option<&str>,
+    _source_name: Option<&str>,
     timeout: std::time::Duration,
-) -> Result<QueryResult, String> {
-    let validated = validate_select(sql).map_err(|e| e.to_string())?;
-
-    // Sampled BEFORE the connect, so the event reports what this call actually did rather than the
-    // state it leaves behind (which is always "warm").
-    let cache = if is_warm(kind, dsn) {
+) -> Result<(QueryResult, QueryPhaseTimings), String> {
+    // Sampled BEFORE the connect, so phases report what this call actually did rather than the
+    // state it leaves behind (which is always "warm"). Captured by `move` into the timeout block.
+    let pool_cache = if is_warm(kind, dsn) {
         Cache::Hit
     } else {
         Cache::Miss
     };
-    let started = std::time::Instant::now();
 
-    let bounded = tokio::time::timeout(timeout, async {
+    let t0 = std::time::Instant::now();
+    let validated = validate_select(sql).map_err(|e| e.to_string())?;
+    let validate_ms = t0.elapsed().as_millis() as u64;
+
+    let bounded = tokio::time::timeout(timeout, async move {
+        let mut phases = QueryPhaseTimings::default();
+        phases.pool_cache = Some(pool_cache);
+
+        let t0 = std::time::Instant::now();
         let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
-        register_and_run(source.as_ref(), &validated, sql).await
+        phases.connect_ms = t0.elapsed().as_millis() as u64;
+
+        let (result, inner) = register_and_run(source.as_ref(), &validated, sql).await?;
+        phases.info_schema_reg_ms = inner.info_schema_reg_ms;
+        phases.table_reg_ms = inner.table_reg_ms;
+        phases.plan_ms = inner.plan_ms;
+        phases.execute_ms = inner.execute_ms;
+        phases.ttfb_ms = inner.ttfb_ms;
+        phases.fetch_ms = inner.fetch_ms;
+        phases.serialize_ms = inner.serialize_ms;
+        Ok((result, phases))
     })
     .await;
 
-    let elapsed = started.elapsed().as_millis();
     match bounded {
-        Ok(Ok(result)) => {
-            let rows = result.rows.len();
-            query_event(
-                source_name,
-                kind,
-                Some(cache),
-                sql,
-                elapsed,
-                &Outcome::Ok(rows),
-                None,
-            );
-            Ok(result)
+        Ok(Ok((result, mut phases))) => {
+            phases.validate_ms = validate_ms;
+            Ok((result, phases))
         }
-        Ok(Err(e)) => {
-            query_event(
-                source_name,
-                kind,
-                Some(cache),
-                sql,
-                elapsed,
-                &Outcome::Error(e.clone()),
-                None,
-            );
-            Err(e)
-        }
+        Ok(Err(e)) => Err(e),
         Err(_elapsed) => {
             // Scope Risk 3: a pool that hung is suspect. Without this eviction a poisoned entry
             // would serve failures for the child's lifetime, where per-call connect self-healed —
             // i.e. caching would be strictly WORSE than the behaviour it replaced.
             evict(kind, dsn);
-            query_event(
-                source_name,
-                kind,
-                Some(cache),
-                sql,
-                elapsed,
-                &Outcome::Timeout,
-                None,
-            );
             Err(format!(
                 "query exceeded the {}s bound and was cancelled; the connection was dropped",
                 timeout.as_secs()
@@ -244,12 +241,45 @@ pub async fn probe(kind: &str, dsn: &str) -> Result<(), String> {
 
 /// Register each referenced table into a fresh `SessionContext` (plus any synthesized
 /// `information_schema` views the query reads), run the SQL, and shape the result.
+/// Returns the result alongside a per-phase timing breakdown.
 async fn register_and_run(
     source: &dyn Source,
     validated: &crate::validate::ValidatedSelect,
     sql: &str,
-) -> Result<QueryResult, String> {
+) -> Result<(QueryResult, QueryPhaseTimings), String> {
+    let mut phases = QueryPhaseTimings::default();
+
+    // Fast path: ALL queries whose tables live in one database can skip the DataFusion
+    // planning/unparsing ceremony and execute directly against the source. The database
+    // handles JOINs, subqueries, CTEs, aggregations — everything — natively. DataFusion
+    // is only needed when the query references synthetic `information_schema` views that
+    // don't exist in the real database. This cuts ~700 ms of overhead per query.
+    if validated.is_simple {
+        let t0 = std::time::Instant::now();
+
+        // Try the Arrow-free JSON path first (Postgres overrides this to skip Arrow entirely).
+        // The serialization is bundled INTO execute_ms — there is no separate serialize step.
+        let (columns, mut json_rows) = source
+            .query_direct_json(sql)
+            .await
+            .map_err(|e| format!("direct json query: {e}"))?;
+
+        // Cap results to ROW_CAP (same as the DataFusion path does via df.limit).
+        json_rows.truncate(ROW_CAP);
+
+        phases.execute_ms = t0.elapsed().as_millis() as u64;
+        phases.ttfb_ms = phases.execute_ms;
+
+        let result = QueryResult {
+            columns,
+            rows: json_rows,
+        };
+        return Ok((result, phases));
+    }
+
     let ctx = federated_context();
+
+    let t0 = std::time::Instant::now();
     crate::info_schema::register_information_schema(
         &ctx,
         source,
@@ -257,6 +287,9 @@ async fn register_and_run(
         validated.wants_info_columns,
     )
     .await?;
+    phases.info_schema_reg_ms = t0.elapsed().as_millis() as u64;
+
+    let t0 = std::time::Instant::now();
     for table in &validated.tables {
         let reference = TableReference::bare(table.clone());
         let provider = source
@@ -266,14 +299,37 @@ async fn register_and_run(
         ctx.register_table(reference, provider)
             .map_err(|e| format!("register {table}: {e}"))?;
     }
+    phases.table_reg_ms = t0.elapsed().as_millis() as u64;
 
+    let t0 = std::time::Instant::now();
     let df = ctx.sql(sql).await.map_err(|e| format!("plan: {e}"))?;
+    phases.plan_ms = t0.elapsed().as_millis() as u64;
+
     // Cap before collect: under pushdown this unparses to a remote LIMIT executed in the source
     // engine (strictly better than the prior client-side cap); under fallback it still caps the
     // collected batches. An unbounded export is a mirror job, never a live query (§6.1).
     let df = df.limit(0, Some(ROW_CAP)).map_err(|e| e.to_string())?;
-    let batches = df.collect().await.map_err(|e| format!("execute: {e}"))?;
-    shape(batches)
+
+    let t0 = std::time::Instant::now();
+    let mut stream = df
+        .execute_stream()
+        .await
+        .map_err(|e| format!("execute: {e}"))?;
+    let mut batches: Vec<RecordBatch> = Vec::new();
+    while let Some(batch) = stream.next().await {
+        if phases.ttfb_ms == 0 {
+            phases.ttfb_ms = t0.elapsed().as_millis() as u64;
+        }
+        batches.push(batch.map_err(|e| format!("execute: {e}"))?);
+    }
+    phases.execute_ms = t0.elapsed().as_millis() as u64;
+    phases.fetch_ms = phases.execute_ms.saturating_sub(phases.ttfb_ms);
+
+    let t0 = std::time::Instant::now();
+    let result = shape(batches)?;
+    phases.serialize_ms = t0.elapsed().as_millis() as u64;
+
+    Ok((result, phases))
 }
 
 /// Convert collected Arrow batches into `{columns, rows}`. Columns come from the first batch's
@@ -516,6 +572,7 @@ mod tests {
         register_and_run(source, &validated, sql)
             .await
             .expect("run")
+            .0
     }
 
     /// 1. Correctness heart — the demo-shaped JOIN + GROUP BY + ORDER BY returns the exact expected

@@ -5,7 +5,7 @@
 //! to Postgres (adapted from rubix-cube's per-table registration, MIT/Apache-2.0).
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use datafusion::catalog::TableProvider;
 use datafusion::sql::TableReference;
@@ -15,12 +15,21 @@ use secrecy::SecretString;
 
 use super::{Source, SourceError};
 
+use arrow::array::*;
+use arrow::datatypes::{DataType, TimeUnit};
+use arrow::record_batch::RecordBatch;
+use datafusion_table_providers::sql::db_connection_pool::{
+    dbconnection::query_arrow, DbConnectionPool,
+};
+use futures::TryStreamExt;
+
 /// A connected Postgres source: the pool + a table-provider factory over it. The pool is retained
 /// (not just the factory) so `apply_ddl`/`write_rows` can open a `connect_direct` connection and
 /// run real `execute`/transaction — the read-only DataFusion provider path cannot express a write.
 pub struct PostgresSource {
     factory: PostgresTableFactory,
     pool: Arc<PostgresConnectionPool>,
+    provider_cache: Mutex<HashMap<String, Arc<dyn TableProvider>>>,
 }
 
 impl PostgresSource {
@@ -47,6 +56,7 @@ impl PostgresSource {
         Ok(Self {
             factory: PostgresTableFactory::new(Arc::clone(&pool)),
             pool,
+            provider_cache: Mutex::new(HashMap::new()),
         })
     }
 }
@@ -70,10 +80,43 @@ impl Source for PostgresSource {
         &self,
         table: &TableReference,
     ) -> Result<Arc<dyn TableProvider>, SourceError> {
-        self.factory
+        let table_name = table.to_string();
+        if let Some(cached) = self.provider_cache.lock().expect("cache mutex").get(&table_name) {
+            return Ok(cached.clone());
+        }
+        let provider = self
+            .factory
             .table_provider(table.clone())
             .await
-            .map_err(|e| SourceError(format!("table {table}: {e}")))
+            .map_err(|e| SourceError(format!("table {table}: {e}")))?;
+        self.provider_cache
+            .lock()
+            .expect("cache mutex")
+            .insert(table_name, provider.clone());
+        Ok(provider)
+    }
+
+    async fn query_direct(&self, sql: &str) -> Result<Vec<RecordBatch>, SourceError> {
+        let conn = self
+            .pool
+            .connect()
+            .await
+            .map_err(|e| SourceError(format!("direct connect: {e}")))?;
+        let stream = query_arrow(conn, sql.to_string(), None)
+            .await
+            .map_err(|e| SourceError(format!("direct query: {e}")))?;
+        stream
+            .try_collect()
+            .await
+            .map_err(|e| SourceError(format!("direct collect: {e}")))
+    }
+
+    async fn query_direct_json(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<String>, Vec<serde_json::Value>), SourceError> {
+        let batches = self.query_direct(sql).await?;
+        Ok(batches_to_column_rows(&batches))
     }
 
     async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {
@@ -350,3 +393,165 @@ impl tokio_postgres::types::ToSql for PgValue {
 
     tokio_postgres::types::to_sql_checked!();
 }
+
+/// Convert Arrow RecordBatches to column-aligned `(columns, rows)` by iterating each
+/// column's typed Arrow array — no JSON text intermediate, no per-cell Postgres OID dispatch.
+fn batches_to_column_rows(batches: &[RecordBatch]) -> (Vec<String>, Vec<serde_json::Value>) {
+    let columns: Vec<String> = match batches.first() {
+        Some(b) => b.schema().fields().iter().map(|f| f.name().clone()).collect(),
+        None => return (Vec::new(), Vec::new()),
+    };
+
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    let mut rows = Vec::with_capacity(total_rows);
+
+    for batch in batches {
+        for r in 0..batch.num_rows() {
+            let mut vals = Vec::with_capacity(columns.len());
+            for c in 0..batch.num_columns() {
+                vals.push(cell_to_value(batch.column(c).as_ref(), r));
+            }
+            rows.push(serde_json::Value::Array(vals));
+        }
+    }
+
+    (columns, rows)
+}
+
+/// Convert one Arrow cell to a JSON Value by dispatching on the column's Arrow DataType.
+/// NULL cells are handled before dispatch; typed array access replaces the prior row-by-row
+/// string-based Postgres OID match + per-cell `try_get` decode.
+fn cell_to_value(col: &dyn arrow::array::Array, row: usize) -> serde_json::Value {
+    if col.is_null(row) {
+        return serde_json::Value::Null;
+    }
+    match col.data_type() {
+        DataType::Boolean => {
+            let a = col.as_any().downcast_ref::<BooleanArray>().unwrap();
+            serde_json::Value::Bool(a.value(row))
+        }
+        DataType::Int16 => {
+            let a = col.as_any().downcast_ref::<Int16Array>().unwrap();
+            serde_json::json!(a.value(row))
+        }
+        DataType::Int32 => {
+            let a = col.as_any().downcast_ref::<Int32Array>().unwrap();
+            serde_json::json!(a.value(row))
+        }
+        DataType::Int64 => {
+            let a = col.as_any().downcast_ref::<Int64Array>().unwrap();
+            serde_json::json!(a.value(row))
+        }
+        DataType::Float32 => {
+            let a = col.as_any().downcast_ref::<Float32Array>().unwrap();
+            serde_json::json!(a.value(row))
+        }
+        DataType::Float64 => {
+            let a = col.as_any().downcast_ref::<Float64Array>().unwrap();
+            serde_json::json!(a.value(row))
+        }
+        DataType::Utf8 => {
+            let a = col.as_any().downcast_ref::<StringArray>().unwrap();
+            serde_json::Value::String(a.value(row).to_string())
+        }
+        DataType::LargeUtf8 => {
+            let a = col.as_any().downcast_ref::<LargeStringArray>().unwrap();
+            serde_json::Value::String(a.value(row).to_string())
+        }
+        DataType::Timestamp(unit, tz_override) => {
+            let (secs, nsecs) = match unit {
+                TimeUnit::Second => {
+                    let a = col.as_any().downcast_ref::<TimestampSecondArray>().unwrap();
+                    (a.value(row), 0)
+                }
+                TimeUnit::Millisecond => {
+                    let a = col.as_any().downcast_ref::<TimestampMillisecondArray>().unwrap();
+                    let ms = a.value(row);
+                    (ms / 1000, ((ms % 1000) * 1_000_000) as u32)
+                }
+                TimeUnit::Microsecond => {
+                    let a = col.as_any().downcast_ref::<TimestampMicrosecondArray>().unwrap();
+                    let us = a.value(row);
+                    (us / 1_000_000, ((us % 1_000_000) * 1_000) as u32)
+                }
+                TimeUnit::Nanosecond => {
+                    let a = col.as_any().downcast_ref::<TimestampNanosecondArray>().unwrap();
+                    let ns = a.value(row);
+                    (ns / 1_000_000_000, (ns % 1_000_000_000) as u32)
+                }
+            };
+            match chrono::DateTime::from_timestamp(secs, nsecs) {
+                Some(dt) => {
+                    if tz_override.is_some() {
+                        serde_json::Value::String(dt.to_rfc3339())
+                    } else {
+                        serde_json::Value::String(dt.naive_utc().to_string())
+                    }
+                }
+                None => serde_json::Value::Null,
+            }
+        }
+        DataType::Date32 => {
+            let a = col.as_any().downcast_ref::<Date32Array>().unwrap();
+            let days = a.value(row);
+            // Arrow Date32 = days since epoch; chrono CE days = epoch + 719163
+            let ce_days = days + 719_163;
+            let date = chrono::NaiveDate::from_num_days_from_ce_opt(ce_days)
+                .map(|d| d.to_string())
+                .unwrap_or_default();
+            serde_json::Value::String(date)
+        }
+        DataType::Date64 => {
+            let a = col.as_any().downcast_ref::<Date64Array>().unwrap();
+            let ms = a.value(row);
+            let ce_days = (ms / 86_400_000) as i32 + 719_163;
+            let date = chrono::NaiveDate::from_num_days_from_ce_opt(ce_days)
+                .map(|d| d.to_string())
+                .unwrap_or_default();
+            serde_json::Value::String(date)
+        }
+        DataType::Time32(unit) => {
+            let a = col.as_any().downcast_ref::<Time32MillisecondArray>().unwrap();
+            let val = a.value(row);
+            let secs = match unit {
+                TimeUnit::Second => val,
+                TimeUnit::Millisecond => val / 1000,
+                _ => val / 1000,
+            };
+            let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs as u32, 0)
+                .map(|t| t.to_string())
+                .unwrap_or_default();
+            serde_json::Value::String(time)
+        }
+        DataType::Time64(unit) => {
+            let a = col.as_any().downcast_ref::<Time64NanosecondArray>().unwrap();
+            let ns = a.value(row);
+            let secs = match unit {
+                TimeUnit::Microsecond | TimeUnit::Nanosecond => ns / 1_000_000_000,
+                _ => ns / 1_000_000_000,
+            };
+            let remaining_ns = match unit {
+                TimeUnit::Microsecond => ((ns % 1_000_000_000) * 1_000) as u32,
+                TimeUnit::Nanosecond => (ns % 1_000_000_000) as u32,
+                _ => 0,
+            };
+            let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(
+                secs as u32,
+                remaining_ns,
+            )
+            .map(|t| t.to_string())
+            .unwrap_or_default();
+            serde_json::Value::String(time)
+        }
+        DataType::Decimal128(_, _) => {
+            let a = col.as_any().downcast_ref::<Decimal128Array>().unwrap();
+            let val = a.value(row);
+            let scale = a.scale();
+            let as_f64 = val as f64 / 10f64.powi(scale as i32);
+            serde_json::json!(as_f64)
+        }
+        _ => serde_json::Value::Null,
+    }
+}
+
+
