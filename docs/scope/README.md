@@ -200,7 +200,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   bump per-`{ws, class}` generations, time-windowed verbs bucket-quantised so relative
   ranges hit, TTL is the backstop; ships `cache.stats`/`cache.purge`. Compile-time optional
   (`page-cache` cargo feature, the `external-agent` precedent) + runtime `BootConfig.cache`
-  — feature off is a zero-cost no-op seam.
+  — feature off is a zero-cost no-op seam. **`dashboard-query-acceleration-scope.md`** closes the
+  campaign: it makes `viz.query` genuinely cacheable at both layers (a top-level `cache: {ttl_s}`
+  passthrough to the federation result cache **and** the deferred `subject_scoped` gateway class with
+  a capability fingerprint + the time-bucket quantiser) and adds a `viz.query_batch` fan-in verb to
+  kill the browser connection ceiling — targeting a hard 10× on dashboard opens (its rubix-ai UI half
+  is `rubix-ai/docs/scope/frontend/dashboard/dashboard-query-acceleration-scope.md`).
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
   sandboxed `rhai` cage + a lazy `Grid` + a verb library (`rules-engine-scope.md`, data via
   `data.query`/`series.*`/`federation.query`, `ai.*` via the AI-gateway, `emit`/`alert` via inbox/outbox).

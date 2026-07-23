@@ -30,6 +30,25 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-23 (backend) — DASHBOARD QUERY ACCELERATION (`viz.query` cache + batch).** The
+follow-up the response cache DEFERRED: `viz.query` is now gateway-cacheable and a batch verb kills the
+browser connection ceiling — a hard 10× on warm dashboard opens. Three slices, all `page-cache`-gated:
+(1) `viz.query` accepts a top-level `cache: {ttl_s}` threaded SOURCE-BLIND into every target's args
+(per-target override wins; `0`/absent ⇒ bypass) — `viz/query.rs` + `viz/tool.rs`; (2) a new
+`Class::VizSubjectScoped` whose key folds a **capability fingerprint** (`cache/fingerprint.rs` — the
+sorted set of the panel's target caps the caller HOLDS, never identity/token) + a **time-bucket
+quantiser** (`cache/quantise.rs`), so a warm re-open skips the resolver and N viewers single-flight to
+one compute; the wall holds by construction (a warm frame is only served to a caller whose grants would
+have computed it) — `cache/policy.rs` + `cache/live.rs::get_or_compute_scoped` +
+`cache/mod.rs::dispatch_subject_scoped`; (3) `viz.query_batch {panels[], now?, cache?}` — a synchronous,
+bounded (cap 64) concurrent fan-in, per-item partial failure, riding the existing `mcp:viz.query:call`
+cap (`viz/batch.rs`). Feature-off stays a zero-cost no-op; `fmt` clean. Tests: `cache/quantise.rs` units
++ `crates/host/tests/viz_query_acceleration_test.rs` (11 — incl. the NEW cross-grant leak test,
+mutation-checked, and the perf assertion: a warm batched re-open runs ZERO resolver dispatches). Branch
+`feat/viz-query-acceleration`; scope + session `scope/caching/dashboard-query-acceleration-scope.md`,
+`sessions/caching/dashboard-query-acceleration-session.md`; public `doc-site/…/caching/caching.md`. The
+rubix-ai consumer half (send the directive, adopt the batch verb, per-page TTL) bumps the pin.
+
 **In progress 2026-07-22 (backend) — OPTIONAL RESPONSE CACHE (`page-cache` feature).** A read-through,
 single-flight (`moka::try_get_with`) cache wrapped around host-native MCP read dispatch
 (`crates/host/src/cache/`, hooked in `tool_call.rs::dispatch_at_depth` after the caps gate), keyed

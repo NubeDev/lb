@@ -32,11 +32,34 @@ pub enum Class {
     /// by the list TTL (the documented operator expectation, like an external sqlite writer). An
     /// install/sidecar-transition generation bump is a hardening follow-up.
     Ext,
+    /// `viz.query` — the SUBJECT-SCOPED class (dashboard-query-acceleration scope, slice 2). Unlike
+    /// the caller-independent lists above, `viz.query` re-authorizes each panel target under the
+    /// caller's grants (a denied target → empty frame), so its result varies by caller. It is safe to
+    /// cache ONLY under a key that also folds a **capability fingerprint** ([`is_subject_scoped`]) — a
+    /// stable hash of the caller's relevant grants — so a warm hit is provably the frame THAT caller
+    /// would have computed and a denied target can never leak across the wall through a warm entry.
+    /// Its underlying data is external (federation), so no MCP write dirties it: staleness is
+    /// TTL/time-bucket-bounded (the quantiser), like the `Ext` class's external-writer case.
+    VizSubjectScoped,
 }
 
 /// Every class — the target of a coarse "nuke this workspace" invalidation (a generic `store.write`
 /// could touch any cached domain, and `cache.purge` clears the lot).
-pub const ALL_CLASSES: &[Class] = &[Class::Datasource, Class::Series, Class::Flows, Class::Ext];
+pub const ALL_CLASSES: &[Class] = &[
+    Class::Datasource,
+    Class::Series,
+    Class::Flows,
+    Class::Ext,
+    Class::VizSubjectScoped,
+];
+
+/// Does this class require a per-caller **capability fingerprint** folded into its key? True only for
+/// [`Class::VizSubjectScoped`] — the ONE subject-filtered read. The cache middleware asks this (never
+/// an `if verb == "viz.query"`) to decide whether to take the fingerprinted + quantised path (rule 10:
+/// the subject-scoping is a property of the class in this table, not a verb name in the cache code).
+pub fn is_subject_scoped(class: Class) -> bool {
+    matches!(class, Class::VizSubjectScoped)
+}
 
 /// The v1 read allowlist. `Some(class)` ⇒ this verb's response is cacheable under
 /// `{ws, verb, canonical-args, generation(class)}`; `None` ⇒ uncacheable (dispatched every call).
@@ -52,6 +75,10 @@ pub fn read_class(verb: &str) -> Option<Class> {
         "series.list" => Class::Series,
         "flows.list" | "flows.get" => Class::Flows,
         "ext.list" => Class::Ext,
+        // The subject-scoped re-entry (slice 2): cacheable ONLY via the fingerprinted + quantised path
+        // ([`is_subject_scoped`]). A subject-free key would leak a privileged caller's frames — hence
+        // the dedicated class rather than a row in the caller-independent allowlist above.
+        "viz.query" => Class::VizSubjectScoped,
         _ => return None,
     })
 }

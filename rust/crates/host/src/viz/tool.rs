@@ -15,6 +15,7 @@ use lb_mcp::ToolError;
 use serde_json::Value;
 
 use super::authorize::authorize_viz;
+use super::batch::viz_query_batch;
 use super::error::VizError;
 use super::query::viz_query;
 use crate::boot::Node;
@@ -31,12 +32,25 @@ pub async fn call_viz_tool(
 ) -> Result<Value, ToolError> {
     match qualified_tool {
         "viz.query" => {
-            authorize_viz(principal, ws, qualified_tool).map_err(to_tool)?;
+            authorize_viz(principal, ws, "viz.query").map_err(to_tool)?;
             // The panel spec — the whole cell (`sources[]`/`transformations[]`/`source`). Accept it
             // under `panel`, or treat the input itself as the panel for a bare call.
             let panel = input.get("panel").unwrap_or(input);
             let now = input.get("now").and_then(Value::as_u64).unwrap_or(0);
-            let out = viz_query(node, principal, ws, panel, now, depth)
+            // Slice 1: the top-level `cache: {ttl_s}` freshness directive, threaded into every target.
+            let cache = input.get("cache");
+            let out = viz_query(node, principal, ws, panel, now, depth, cache)
+                .await
+                .map_err(to_tool)?;
+            Ok(out)
+        }
+        // The batch fan-in (dashboard-query-acceleration scope slice 3): resolve many panels in ONE
+        // call, concurrently, per-item partial failure. Rides the SAME `mcp:viz.query:call` gate (a
+        // fan-in of the same authorized verb, no new capability) — the outer dispatcher aliased it via
+        // `gate_tool_for`; we re-check it here (defense in depth) exactly as `viz.query` does.
+        "viz.query_batch" => {
+            authorize_viz(principal, ws, "viz.query").map_err(to_tool)?;
+            let out = viz_query_batch(node, principal, ws, input, depth)
                 .await
                 .map_err(to_tool)?;
             Ok(out)

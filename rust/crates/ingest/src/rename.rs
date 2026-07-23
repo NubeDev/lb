@@ -78,7 +78,10 @@ pub async fn rename_series(
                 ("from".into(), Value::String(from.to_string())),
                 ("to".into(), Value::String(to.to_string())),
                 ("meta_tb".into(), Value::String(SERIES_META_TABLE.into())),
-                ("latest_tb".into(), Value::String(SERIES_LATEST_TABLE.into())),
+                (
+                    "latest_tb".into(),
+                    Value::String(SERIES_LATEST_TABLE.into()),
+                ),
                 ("from_tb".into(), Value::String(from_tb.to_string())),
                 ("from_id".into(), Value::String(from_id.to_string())),
                 ("to_tb".into(), Value::String(to_tb.to_string())),

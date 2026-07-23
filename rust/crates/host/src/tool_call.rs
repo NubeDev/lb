@@ -168,6 +168,14 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // `mcp:identity.manage:call` grant (the scope's MCP §6.1 decision), not a new per-verb cap.
         // Each verb re-checks `identity.manage` inside.
         "identity.manage"
+    } else if qualified_tool == "viz.query_batch" {
+        // dashboard-query-acceleration scope, slice 3: the batch fan-in is a fan-in of the SAME
+        // authorized read, not a new privilege — it rides `mcp:viz.query:call`, checked ONCE for the
+        // batch (each panel re-checks its own target caps inside the resolver, unchanged). No
+        // `mcp:viz.query_batch:call` exists in any role bundle, so without this alias the outer gate
+        // would deny the batch verb for every caller — the shipped-but-unusable state the "reuses the
+        // grant" clause avoids (same shape as `series.latest_many`).
+        "viz.query"
     } else if qualified_tool == "series.latest_many" {
         // series-read-perf scope: a batched fleet-snapshot read is ONE logical read of the
         // series-latest surface, not K grants — it rides the existing `mcp:series.latest:call`

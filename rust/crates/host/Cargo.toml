@@ -66,6 +66,11 @@ if-addrs.workspace = true
 hostname.workspace = true
 dirs.workspace = true
 tokio.workspace = true
+# Bounded concurrent fan-in for `viz.query_batch` (dashboard-query-acceleration scope slice 3):
+# `join_all` resolves a board's panels concurrently in ONE call, so a page open is one HTTP round-trip
+# instead of one-per-tile behind the browser's connection cap. I/O-bound (DB round trips), so cooperative
+# concurrency on one task is exactly right; a semaphore bounds the in-flight count.
+futures.workspace = true
 tracing.workspace = true
 base64ct = { version = "1", features = ["alloc"] }
 # Base64 for media chunk encoding (media scope).

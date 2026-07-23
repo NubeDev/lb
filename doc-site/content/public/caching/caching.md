@@ -27,11 +27,35 @@ function of `{workspace, args}` (a coarse verb-level cap gate, no per-caller row
 | `flows.list` / `flows.get` | flows | 60 s |
 | `ext.list` | ext | 60 s |
 
-Everything else dispatches every call. **`viz.query` is deliberately NOT cached in v1**: it
-re-authorizes each panel target under the *caller's* grants, so its result varies by caller and a
-subject-free key would leak one caller's data to another. It re-enters only once keyed safely (a
-capability-fingerprinted key) — the named follow-up. Extension (`<ext>.<tool>`) verbs are uncacheable
+Everything else on this list dispatches every call. Extension (`<ext>.<tool>`) verbs are uncacheable
 by construction (no cache class).
+
+## `viz.query` — the subject-scoped class (dashboard query acceleration)
+
+`viz.query` re-authorizes each panel target under the *caller's* grants (a denied target → an empty
+frame), so its result varies by caller — a subject-free key would leak one caller's data to another.
+It is cached under a dedicated **`subject_scoped`** class whose key folds a **capability fingerprint**:
+a stable hash of the sorted set of the panel's target caps the caller HOLDS (never identity, never the
+token). Two callers with the same reach share a warm entry; a caller who would get a different (denied)
+frame produces a different key and resolves their own. The wall holds by construction — a warm frame is
+only ever served to a caller whose grants would have computed it.
+
+Three pieces make a warm dashboard open ~microseconds instead of one DB round-trip per tile:
+
+- **A caller freshness directive.** `viz.query` accepts a top-level `cache: {ttl_s}` (sibling of `now`),
+  threaded source-blind into every target's args before dispatch — a `federation.query` target honours
+  it (the per-source result cache), other verbs ignore it. `ttl_s:0`/absent ⇒ live (bypass), the
+  default. A per-target `cache` overrides the top-level.
+- **A time-bucket quantiser.** The resolved range (`now` + numeric `from`/`to`) is floored to the TTL
+  bucket, so relative "last 1h" opens inside one bucket share a key — and the query runs on the bucketed
+  range (the cache never serves a range it did not compute). End-day-exclusivity survives the floor.
+- **`viz.query_batch {panels[], now?, cache?}`.** A synchronous, bounded (cap 64) fan-in that resolves a
+  board's panels concurrently in ONE call — killing the browser's HTTP/1.1 connection ceiling. Per-item
+  partial failure (one bad tile errors, the rest resolve); rides the existing `mcp:viz.query:call` cap
+  (no new privilege); each panel resolves through the same `subject_scoped` cached path.
+
+Single-flight (moka `try_get_with`) collapses N concurrent viewers of the same board to one compute.
+The class shows in the `cache.stats` per-class breakdown as `viz`.
 
 ## Invalidation
 
@@ -55,7 +79,6 @@ Both `cache.*` verbs are admin-only. See `skills/page-cache/SKILL.md` for the dr
 
 ## Not in v1 (named follow-ups)
 
-- **`viz.query` (+ time-bucket quantisation)** — cached under a capability-fingerprinted key.
 - **A persistent warm tier** — a restart is a cold cache by design; a SurrealDB tier is a conditional
   v2, blocked on restart-persisted generation counters (a cold cache with persisted counters would
   serve stale data).
