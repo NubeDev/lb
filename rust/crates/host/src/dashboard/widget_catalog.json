@@ -250,6 +250,19 @@
       ]
     },
     {
+      "id": "text",
+      "label": "Text",
+      "kind": "read",
+      "version": 1,
+      "buildable": true,
+      "data": false,
+      "action": false,
+      "options": [
+        { "id": "mode", "label": "Mode", "scope": "options", "path": "mode", "control": "select", "choices": ["markdown", "html", "code"] },
+        { "id": "content", "label": "Content", "scope": "options", "path": "content", "control": "text" }
+      ]
+    },
+    {
       "id": "row",
       "label": "Row",
       "kind": "layout",

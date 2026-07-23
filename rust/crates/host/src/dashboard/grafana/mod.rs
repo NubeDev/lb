@@ -18,7 +18,10 @@
 mod bind;
 mod datasources;
 mod export;
+mod grid;
 mod import;
+mod macros;
+mod report;
 mod to_cell;
 mod to_grafana;
 mod view_alias;
@@ -107,7 +110,8 @@ pub struct DatasourceRemap {
 /// still imported (preserved + placeholder); the report lists why.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DegradedItem {
-    /// `panel` | `transform` | `variable` | `datasource` | `migration` — what kind of thing degraded.
+    /// `panel` | `transform` | `variable` | `datasource` | `migration` | `target` | `macro` |
+    /// `annotation` | `refresh` | `dashboard` — what kind of thing degraded.
     pub kind: String,
     /// The cell/panel index or name it belongs to (empty for dashboard-level notices).
     #[serde(default)]

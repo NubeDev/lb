@@ -23,11 +23,15 @@ pub fn view_for_panel_type(panel_type: &str) -> Option<&'static str> {
         "barchart" => "barchart",
         "piechart" => "piechart",
         "row" => "row",
+        // A real `text`/markdown note maps to the shipped `text` view (sanitized markdown/html/code —
+        // grafana-dashboard-fidelity slice 2). An EMPTY/logo text panel never reaches here — the
+        // placeholder-drop (`report::drop_reason`) removes it first.
+        "text" => "text",
         // Legacy aliases (a caller that imported without the P3 migration still resolves).
         "graph" => "timeseries",
         "singlestat" | "grafana-singlestat-panel" => "stat",
         "table-old" => "table",
-        // Everything else — heatmap, logs, nodeGraph, text, a plugin panel — is unsupported here.
+        // Everything else — heatmap, logs, nodeGraph, a plugin panel — is unsupported here.
         _ => return None,
     })
 }
@@ -46,6 +50,8 @@ pub fn panel_type_for_view(view: &str) -> &str {
         "barchart" => "barchart",
         "piechart" => "piechart",
         "row" => "row",
+        // Our `text` view is Grafana's `text` panel (round-trips a converted note back).
+        "text" => "text",
         // No Grafana analogue — carry our own view name so a round-trip is stable.
         other => other,
     }
@@ -81,7 +87,13 @@ mod tests {
     fn unsupported_type_is_none() {
         assert_eq!(view_for_panel_type("heatmap"), None);
         assert_eq!(view_for_panel_type("nodeGraph"), None);
-        assert_eq!(view_for_panel_type("text"), None);
+        assert_eq!(view_for_panel_type("logs"), None);
+    }
+
+    #[test]
+    fn text_maps_to_the_text_view_and_round_trips() {
+        assert_eq!(view_for_panel_type("text"), Some("text"));
+        assert_eq!(panel_type_for_view("text"), "text");
     }
 
     #[test]

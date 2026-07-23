@@ -19,12 +19,14 @@ use lb_mcp::ToolDescriptor;
 
 use super::super::authorize::authorize_dashboard;
 use super::super::error::DashboardError;
-use super::super::model::{Cell, Dashboard, Variable};
+use super::super::model::{Cell, Dashboard, Toolbar, Variable};
 use super::super::save::dashboard_save_meta;
 use crate::boot::Node;
 
 use super::bind;
 use super::datasources;
+use super::grid;
+use super::report;
 use super::to_cell::panel_to_cell;
 use super::{DatasourceRemap, ImportReport};
 
@@ -79,10 +81,27 @@ pub async fn dashboard_import(
         .clone();
     let mut cells: Vec<Cell> = Vec::with_capacity(panels.len());
     for (i, panel) in panels.iter().enumerate() {
+        // Drop decorative placeholders (Grafana default `metric_table` banners, empty/logo `text`,
+        // `dashlist`) instead of carrying them as empty "no template" tiles — and name each drop.
+        if let Some(detail) = report::drop_reason(panel) {
+            report.degraded.push(super::DegradedItem {
+                kind: "panel".to_string(),
+                cell: report::dropped_panel_key(panel),
+                detail,
+            });
+            continue;
+        }
         let cell = panel_to_cell(panel, i, &mut report.degraded);
         cells.push(cell);
     }
+    // Remap Grafana's 24-col grid to our shipped 12-col grid (halve x/w, scale height, repack y by band)
+    // so tiles pack 3-across instead of overflowing.
+    grid::remap_cells(&mut cells);
     report.mapped_panels = cells.iter().filter(|c| c.view != "json").count();
+
+    // Dashboard-level drops the panel loop never sees (annotation plane, refresh interval, graphTooltip)
+    // — honesty contract: every drop is a report line.
+    report.degraded.extend(report::dashboard_drops(&json));
 
     // Stage 3 — datasources. Collect every referenced source; the preview lists them for remap.
     report.datasources = datasources::collect(&json);
@@ -135,6 +154,27 @@ pub async fn dashboard_import(
         .and_then(serde_json::Value::as_str)
         .map(str::to_string);
 
+    // Toolbar chrome the import implies: show the date pickers when a wired query bounds itself on the
+    // host `$__from`/`$__to` window (the macro translation depends on the picker to feed those tokens),
+    // and show the refresh control when the source auto-refreshed.
+    let needs_picker = cells.iter().any(|c| {
+        c.sources.iter().any(|t| {
+            t.args
+                .get("sql")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|s| s.contains("$__from") || s.contains("$__to"))
+        })
+    });
+    let has_refresh = json
+        .get("refresh")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|s| !s.is_empty());
+    let toolbar = Some(Toolbar {
+        date_select: needs_picker,
+        refresh_rate: has_refresh,
+        share: false,
+    });
+
     let dashboard = dashboard_save_meta(
         &node.store,
         principal,
@@ -146,7 +186,7 @@ pub async fn dashboard_import(
         None,
         timezone,
         None,
-        None,
+        toolbar,
         cells,
         variables,
         now,

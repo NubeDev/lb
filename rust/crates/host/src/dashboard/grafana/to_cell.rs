@@ -36,6 +36,9 @@ const CONSUMED_KEYS: &[&str] = &[
     "hideTimeOverride",
     "maxDataPoints",
     "interval",
+    "repeat",
+    "repeatDirection",
+    "maxPerRow",
 ];
 
 /// Map one Grafana panel to a `Cell`. `index` seeds the cell key `i` when the panel has no usable id.
@@ -115,6 +118,17 @@ pub fn panel_to_cell(panel: &Value, index: usize, degraded: &mut Vec<DegradedIte
             .get("transparent")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        repeat: obj
+            .get("repeat")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        repeat_direction: obj
+            .get("repeatDirection")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        max_per_row: obj.get("maxPerRow").and_then(Value::as_u64).unwrap_or(0) as u32,
         query_options: query_options(&obj),
         grafana_passthrough: passthrough(&obj),
         ..Cell::default()

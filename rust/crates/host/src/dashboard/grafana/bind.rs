@@ -24,6 +24,7 @@ use serde_json::{Map, Value};
 
 use crate::dashboard::model::{Cell, Target};
 
+use super::macros::translate_sql;
 use super::DegradedItem;
 
 /// The MCP tool a bound target dispatches to. A bound ref is either one of the two reserved
@@ -58,48 +59,64 @@ fn bound_name(datasource: &Value) -> Option<&str> {
         .filter(|s| !s.is_empty() && *s != "__expr__")
 }
 
-/// Fill one target's `tool` + executable args from its bound datasource. Returns a `DegradedItem` when
-/// the target is bound but carries no SQL we can hand the tool — honest, because that panel WILL render
-/// empty and the report should say so rather than claim a clean import.
-fn bind_target(target: &mut Target, cell_key: &str, bound: &[String]) -> Option<DegradedItem> {
+/// Fill one target's `tool` + executable args from its bound datasource. Returns the degrade notices
+/// for this target: a "no SQL" line when it is bound but carries nothing to run (that panel WILL render
+/// empty — say so, don't claim a clean import), and one `macro` line per Grafana macro we could not
+/// translate (left verbatim, per the honesty contract).
+fn bind_target(target: &mut Target, cell_key: &str, bound: &[String]) -> Vec<DegradedItem> {
     // Only bind what the caller actually mapped. An unmapped ref keeps its Grafana uid and already
     // degrades in `datasources::apply` — binding it would invent a source the caller never chose.
-    let name = bound_name(&target.datasource)?;
-    if !bound.iter().any(|b| b == name) {
-        return None;
+    let Some(name) = bound_name(&target.datasource) else {
+        return Vec::new();
+    };
+    let name = name.to_string();
+    if !bound.iter().any(|b| *b == name) {
+        return Vec::new();
     }
-    let tool = tool_for_binding(name);
+    let tool = tool_for_binding(&name);
     // A caller-supplied tool wins — this stage fills a GAP, it never overrides an explicit choice.
     if target.tool.is_empty() {
         target.tool = tool.to_string();
     }
 
+    let ref_id = target.ref_id.clone();
     let Value::Object(args) = &mut target.args else {
         // No target object to read a query out of; nothing to bind, and the empty-args case is already
         // visible as an empty panel.
-        return None;
+        return Vec::new();
     };
 
-    let sql = grafana_sql(args).map(str::to_string);
-    match sql {
-        Some(sql) => {
-            // ADD our arg names alongside Grafana's (which `to_grafana` re-emits). `entry` keeps a
-            // caller-supplied value if the target already speaks our shape.
-            args.entry("source".to_string())
-                .or_insert_with(|| Value::String(name.to_string()));
-            args.entry("sql".to_string())
-                .or_insert_with(|| Value::String(sql));
-            None
-        }
-        None => Some(DegradedItem {
+    let Some(raw_sql) = grafana_sql(args).map(str::to_string) else {
+        return vec![DegradedItem {
             kind: "target".to_string(),
             cell: cell_key.to_string(),
             detail: format!(
-                "target '{}' has no SQL query — bound to '{name}' but renders empty",
-                target.ref_id
+                "target '{ref_id}' has no SQL query — bound to '{name}' but renders empty"
             ),
-        }),
-    }
+        }];
+    };
+
+    // Translate the Grafana macro dialect to the host `$__from`/`$__to` window BEFORE handing the tool
+    // its `sql` — an untranslated `$__timeFilter` leaves the scan unbounded (the measured 30 s cancel).
+    // Unknown macros ride through verbatim and each earns a report line.
+    let translated = translate_sql(&raw_sql);
+    let degraded: Vec<DegradedItem> = translated
+        .unsupported
+        .iter()
+        .map(|m| DegradedItem {
+            kind: "macro".to_string(),
+            cell: cell_key.to_string(),
+            detail: format!("unsupported SQL macro {m} in target '{ref_id}' — left verbatim"),
+        })
+        .collect();
+
+    // ADD our arg names alongside Grafana's (which `to_grafana` re-emits). `entry` keeps a
+    // caller-supplied value if the target already speaks our shape.
+    args.entry("source".to_string())
+        .or_insert_with(|| Value::String(name.clone()));
+    args.entry("sql".to_string())
+        .or_insert_with(|| Value::String(translated.sql));
+    degraded
 }
 
 /// Bind every target in `cells` that the caller mapped, in place. `bound` is the set of datasource
@@ -111,9 +128,7 @@ pub fn bind_cells(cells: &mut [Cell], bound: &[String]) -> Vec<DegradedItem> {
     for cell in cells.iter_mut() {
         let key = cell.i.clone();
         for target in cell.sources.iter_mut() {
-            if let Some(d) = bind_target(target, &key, bound) {
-                degraded.push(d);
-            }
+            degraded.extend(bind_target(target, &key, bound));
         }
     }
     degraded
@@ -202,6 +217,35 @@ mod tests {
         assert_eq!(t.tool, "ext.custom");
         assert_eq!(t.args["source"], json!("chosen"));
         assert_eq!(t.args["sql"], json!("SELECT 2"));
+    }
+
+    #[test]
+    fn grafana_macros_are_translated_when_the_sql_is_wired() {
+        let mut cells = [cell_with(
+            json!({"refId": "A", "rawSql": "SELECT $__time(ts), value FROM h WHERE $__timeFilter(ts)"}),
+            json!({"uid": "demo"}),
+        )];
+        let degraded = bind_cells(&mut cells, &["demo".to_string()]);
+        let sql = cells[0].sources[0].args["sql"].as_str().unwrap();
+        // no Grafana macro survives; the bounded host window is present
+        assert!(!sql.contains("$__time("));
+        assert!(!sql.contains("$__timeFilter("));
+        assert!(sql.contains("to_timestamp($__from / 1000.0)"));
+        assert!(degraded.is_empty());
+    }
+
+    #[test]
+    fn an_unknown_macro_is_left_verbatim_and_reported_at_bind() {
+        let mut cells = [cell_with(
+            json!({"refId": "A", "rawSql": "SELECT $__unixEpochFilter(ts) FROM h"}),
+            json!({"uid": "demo"}),
+        )];
+        let degraded = bind_cells(&mut cells, &["demo".to_string()]);
+        let sql = cells[0].sources[0].args["sql"].as_str().unwrap();
+        assert!(sql.contains("$__unixEpochFilter(ts)")); // untouched
+        assert_eq!(degraded.len(), 1);
+        assert_eq!(degraded[0].kind, "macro");
+        assert!(degraded[0].detail.contains("$__unixEpochFilter"));
     }
 
     #[test]
