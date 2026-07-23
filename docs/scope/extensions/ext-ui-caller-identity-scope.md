@@ -1,6 +1,11 @@
 # Ext-UI caller-identity scope — an extension PAGE learns whether the caller is an admin (and what caps they hold), without probing
 
-Status: **scope** (the ask). Promotes to `public/extensions/` once shipped. Topic:
+Status: **in-progress** (contract shipped; consumers landing). The SDK change is tagged
+[`ui-v0.12.0`](https://github.com/NubeDev/lb-ext-ui-sdk/pull/5) — `PageCtx`/`WidgetCtx` gain
+`caps`/`isAdmin`, `useCaps()`/`useIsAdmin()` added, `role` deprecated as an authz signal. Host producer
+([rubix-ai#26](https://github.com/NubeIO/rubix-ai/pull/26)) and first consumer
+([ems#11](https://github.com/NubeIO/ems/pull/11)) PRs are open and verified live on the running node.
+Promotes to `public/extensions/` once all three merge. Topic:
 [`extensions`](extensions-scope.md) — the extension family. This is the **UI twin** of
 [`native-caller-identity-scope.md`](native-caller-identity-scope.md) (SHIPPED): that scope carried the
 caller's identity across the **native sidecar** call frame; this one carries it across the **federated
