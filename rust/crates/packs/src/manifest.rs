@@ -145,6 +145,80 @@ pub struct Entity {
     /// the binding, never on a pack/entity name).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backend: Option<Backend>,
+    /// Optional MAP hint (`map-widget-scope` Phase 2): this entity's rows can be drawn as pins on a
+    /// geomap. A *projection*, like the binding — it names which columns carry the map's four facts
+    /// (id/label/lat/lng) and, optionally, a child rollup for badge counts. Core stores no rows and
+    /// generates no SQL from it; a downstream builder reads it off the receipt to fill a map cell,
+    /// deriving the read verb from `backend` (store ⇒ `store.query`, datasource ⇒ `federation.query`).
+    /// Absent ⇒ the entity is not mappable (today's shape). See [`GeoHint`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geo: Option<GeoHint>,
+}
+
+/// The `geo:` map hint on an [`Entity`] (`map-widget-scope` Phase 2). Backend-agnostic: for a
+/// `backend: store` entity the downstream builder derives `SELECT data FROM <table>` from the binding,
+/// so `source`/`query` are only needed to OVERRIDE that (a `datasource` entity, or a hand-tuned read).
+/// Every column falls back to the map form's own default downstream, so the minimal useful hint is an
+/// empty `geo: {}` on a bound, coordinate-carrying entity.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoHint {
+    /// Override datasource for the rows (a `datasource`-backed entity). Absent for a store entity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Override read query (source A). Absent ⇒ the builder derives it from `backend` + `table`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    /// Which columns carry the four map facts. Every key is optional (falls back downstream).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub columns: Option<GeoColumns>,
+    /// Optional equip→site rollup backing per-pin badge counts. Absent ⇒ plain pins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollup: Option<GeoRollup>,
+}
+
+/// The column mapping inside a [`GeoHint`] — all optional, all defaulted downstream.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoColumns {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lat: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lng: Option<String>,
+}
+
+/// The rollup source inside a [`GeoHint`] — a child query naming (equip, site) so open insights tally
+/// onto their site pin. `source`/`query` optional the same way as the parent hint.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRollup {
+    /// Override datasource for the rollup rows. Absent ⇒ same routing as the parent (store/datasource).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// The rollup read query. For a store rollup the builder derives `SELECT data FROM <table>` when
+    /// this is absent and a `table` is given; otherwise this is the read verbatim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    /// The store table the rollup reads (store rollups) — lets the builder derive `SELECT data FROM t`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
+    /// Column naming the equip, and the column naming the site it belongs to. Optional/defaulted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub columns: Option<GeoRollupColumns>,
+}
+
+/// The (equip, site) column mapping inside a [`GeoRollup`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRollupColumns {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equip: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site: Option<String>,
 }
 
 /// The storage backend an entity's rows live in. `deny_unknown_fields` on `Entity` already rejects a
@@ -352,6 +426,62 @@ agent:
             Manifest::parse("pack: p\ntitle: P\nversion: 1\nentities:\n  site: { label: Site }\n")
                 .unwrap();
         assert_eq!(m2.entities["site"].backend, None);
+    }
+
+    #[test]
+    fn parses_the_geo_map_hint_and_rejects_a_typo() {
+        // A store entity's map hint: no `source`/`query` (the builder derives `SELECT data FROM site`
+        // from the binding); a column override and a store rollup naming its child table.
+        let yaml = r#"
+pack: ems
+title: Energy Management
+version: 1
+entities:
+  site:
+    label: Site
+    table: site
+    pk: id
+    backend: store
+    geo:
+      columns: { id: id, label: name, lat: lat, lng: lng }
+      rollup:
+        table: meter
+        columns: { equip: id, site: site_id }
+  meter:
+    label: Meter
+    parent: site
+    table: meter
+    pk: id
+    backend: store
+"#;
+        let m = Manifest::parse(yaml).unwrap();
+        let geo = m.entities["site"].geo.as_ref().expect("site declares geo");
+        assert_eq!(geo.source, None); // store entity — routed by backend, no datasource
+        assert_eq!(geo.query, None); // derived downstream from the binding
+        let cols = geo.columns.as_ref().unwrap();
+        assert_eq!(cols.lat.as_deref(), Some("lat"));
+        let rollup = geo.rollup.as_ref().unwrap();
+        assert_eq!(rollup.table.as_deref(), Some("meter"));
+        assert_eq!(
+            rollup.columns.as_ref().unwrap().site.as_deref(),
+            Some("site_id")
+        );
+
+        // A minimal `geo: {}` on a bound entity is legal — every field defaults downstream.
+        let bare = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, table: site, pk: id, backend: store, geo: {} }\n",
+        )
+        .unwrap();
+        assert!(bare.entities["site"].geo.is_some());
+
+        // A typo'd KEY inside `geo:` fails loudly (deny_unknown_fields on GeoHint).
+        let err = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, geo: { colums: {} } }\n",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("colums"), "{err}");
     }
 
     #[test]

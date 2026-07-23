@@ -238,6 +238,7 @@ mod tests {
             parent_fk: parent_fk.map(String::from),
             display: display.map(String::from),
             backend: None,
+            geo: None,
         }
     }
 
