@@ -40,7 +40,9 @@ pub async fn latest(store: &Store, ws: &str, series: &str) -> Result<Option<Samp
             vec![("series".into(), Value::String(series.to_string()))],
         )
         .await?;
-    let hit: Option<Sample> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
+    let hit: Option<Sample> = resp
+        .take(0)
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     if let Some(s) = hit {
         return Ok(Some(s));
     }

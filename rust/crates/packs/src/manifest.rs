@@ -559,10 +559,9 @@ entities:
         let none = Manifest::parse("pack: ems\ntitle: T\nversion: 1\n").unwrap();
         assert!(none.retention.is_empty());
         // A policy may omit optional fields (raw_for_ms/max_samples/tiers default to 0/0/[]).
-        let bare = Manifest::parse(
-            "pack: ems\ntitle: T\nversion: 1\nretention:\n  - prefix: \"m.\"\n",
-        )
-        .unwrap();
+        let bare =
+            Manifest::parse("pack: ems\ntitle: T\nversion: 1\nretention:\n  - prefix: \"m.\"\n")
+                .unwrap();
         assert_eq!(bare.retention[0].prefix, "m.");
         assert_eq!(bare.retention[0].raw_for_ms, 0);
         assert!(bare.retention[0].tiers.is_empty());

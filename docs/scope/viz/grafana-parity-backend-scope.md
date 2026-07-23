@@ -226,6 +226,9 @@ Per `scope/testing/testing-scope.md` — no fakes; real Grafana exports are **fi
   consume the import pin · `frontend/dashboard/grafana-conversion-scope.md` — the standalone
   converter (same pin) · `frontend/dashboard/viz/transformations-scope.md` — lb-viz tranche 1 +
   the `viz.query` doctrine this extends.
+- [`grafana-dashboard-fidelity-scope.md`](grafana-dashboard-fidelity-scope.md) — the **measured**
+  gap-closure campaign (lossless import + richer model + robust render), grounded in converting a real
+  35-panel pdnsw board; consumes the additive fields (markdown view, y-clamp, repeat) named here.
 - `rust/crates/host/src/dashboard/model.rs` (the v3 model) · `rust/crates/viz/` (transforms,
   reducer) · `rust/crates/host/src/viz/query.rs` (the verb).
 - Grafana reference clone `~/code/go/grafana` (13.2.0-pre): `kinds/dashboard/dashboard_kind.cue` +

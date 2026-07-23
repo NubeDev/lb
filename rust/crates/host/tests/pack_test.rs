@@ -1664,7 +1664,11 @@ async fn retention_object_is_denied_without_the_setter_cap() {
     // applies, the retention object is denied and listed, no policy is written.
     let missing = principal(ws, &{
         let mut c: Vec<&str> = PACK_SURFACE.to_vec();
-        c.extend_from_slice(&["bus:chan/*:pub", "bus:chan/*:sub", "mcp:series.retention.list:call"]);
+        c.extend_from_slice(&[
+            "bus:chan/*:pub",
+            "bus:chan/*:sub",
+            "mcp:series.retention.list:call",
+        ]);
         c
     });
 
@@ -1712,7 +1716,9 @@ async fn retention_reapply_is_noop_and_a_changed_policy_drifts() {
         "pack: ret\ntitle: T\nversion: 2\n\
          channels:\n  - name: c\n\
          retention:\n  - prefix: \"modbus.\"\n    raw_for_ms: 7200000\n    max_samples: 5000\n    tiers:\n      - {width_ms: 60000, keep_for_ms: 604800000}\n", "files": {}});
-    apply(&node, &p, ws, changed, 3).await.expect("apply changed");
+    apply(&node, &p, ws, changed, 3)
+        .await
+        .expect("apply changed");
     let list = call(&node, &p, ws, "series.retention.list", json!({}))
         .await
         .expect("list");
@@ -1722,7 +1728,10 @@ async fn retention_reapply_is_noop_and_a_changed_policy_drifts() {
         .iter()
         .find(|x| x["prefix"] == "modbus.")
         .unwrap();
-    assert_eq!(pol["raw_for_ms"], 7_200_000, "the bumped horizon applied: {list}");
+    assert_eq!(
+        pol["raw_for_ms"], 7_200_000,
+        "the bumped horizon applied: {list}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
