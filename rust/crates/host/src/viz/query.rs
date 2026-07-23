@@ -38,6 +38,13 @@ const MAX_ROWS_PER_FRAME: usize = 10_000;
 /// Resolve a panel to canonical frames. `caller`/`ws` are the token's — every target dispatches under
 /// them. `depth` is the resolver's own call depth (it re-enters dispatch at `depth + 1`). `now` is the
 /// caller's logical clock, threaded into each target call (determinism; no wall-clock in core).
+///
+/// `cache` is the caller's OPTIONAL top-level freshness directive (`{ttl_s}`, dashboard-query-
+/// acceleration scope slice 1) — threaded SOURCE-BLIND into EVERY target's args before dispatch, the
+/// same mechanism `now`/`apply_time_override` already use. A `federation.query` target honours it (the
+/// shipped result cache); a `store.query`/`series.read` target ignores an unknown field harmlessly. A
+/// caller-supplied PER-TARGET `cache` wins (the top-level is only the default). `None`/absent ⇒ today's
+/// path exactly.
 pub async fn viz_query(
     node: &Arc<Node>,
     caller: &Principal,
@@ -45,6 +52,7 @@ pub async fn viz_query(
     panel: &Value,
     now: u64,
     depth: u32,
+    cache: Option<&Value>,
 ) -> Result<Value, VizError> {
     let pipeline = panel_pipeline(panel);
 
@@ -73,7 +81,8 @@ pub async fn viz_query(
     // honest EMPTY frame (no bypass, no fabricated rows). Frames keep target order so refIds line up.
     let mut frames: Frames = Vec::with_capacity(targets.len());
     for t in &targets {
-        let (rows, status) = dispatch_target(node, caller, ws, t, &query_options, now, depth).await;
+        let (rows, status) =
+            dispatch_target(node, caller, ws, t, &query_options, now, depth, cache).await;
         let rows = cap_rows(rows);
         let time = detect_time_field(&rows);
         // Attach the per-target diagnostic (query-diagnostics scope). On the common no-transform path
@@ -112,6 +121,18 @@ pub async fn viz_query(
     let rows: Vec<Value> = frames.first().map(Frame::to_rows).unwrap_or_default();
 
     Ok(json!({ "frames": frames, "rows": rows }))
+}
+
+/// The qualified target tools a panel dispatches, in order — the EXACT set the resolver re-authorizes.
+/// The gateway `subject_scoped` cache (dashboard-query-acceleration scope, slice 2) folds the caps that
+/// gate these tools into its capability fingerprint, so it MUST see precisely the tools `panel_targets`
+/// would dispatch (same hidden/unconfigured-slot skipping) — a fingerprint over a different set would
+/// mis-key the leak boundary. Reusing `panel_targets` keeps the two in lockstep. A malformed panel
+/// yields an empty list (no targets → a caller-independent frame → an empty, shared fingerprint).
+pub(crate) fn panel_target_tools(panel: &Value) -> Vec<String> {
+    panel_targets(panel)
+        .map(|ts| ts.into_iter().map(|t| t.tool).collect())
+        .unwrap_or_default()
 }
 
 /// One resolved target (the bits the resolver needs — its refId, tool, and args).
@@ -215,6 +236,7 @@ fn panel_pipeline(panel: &Value) -> Vec<Transformation> {
 /// `BadInput` are the downstream tool answering the caller's OWN request (bad SQL/args), so surfacing
 /// their message to that same authorized caller leaks nothing they did not send. The `Denied`/`NotFound`
 /// arm is listed BEFORE any catch-all so `Denied`'s `Display` ("denied") can never leak in as a message.
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_target(
     node: &Arc<Node>,
     caller: &Principal,
@@ -223,6 +245,7 @@ async fn dispatch_target(
     query_options: &QueryOptions,
     now: u64,
     depth: u32,
+    cache: Option<&Value>,
 ) -> (Vec<Value>, FrameStatus) {
     // Thread the caller's logical `now` into the args (a federation/ingest verb reads `ts` from args;
     // a store.query ignores it). Never overwrite a caller-supplied ts.
@@ -232,6 +255,13 @@ async fn dispatch_target(
     apply_time_override(&mut args, query_options, now);
     if let Value::Object(map) = &mut args {
         map.entry("ts").or_insert(json!(now));
+        // Slice 1 (dashboard-query-acceleration): thread the top-level `cache` directive into THIS
+        // target's args, source-blind, WITHOUT overwriting a per-target `cache` (per-target wins).
+        // `federation.query` reads it (result cache); other verbs ignore the unknown field. Only added
+        // when the caller sent one — an absent directive leaves the args byte-for-byte as before.
+        if let Some(cache) = cache {
+            map.entry("cache").or_insert_with(|| cache.clone());
+        }
     }
     let input = args.to_string();
 

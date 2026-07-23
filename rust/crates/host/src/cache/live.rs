@@ -104,6 +104,42 @@ impl ResponseCache {
         }
     }
 
+    /// The SUBJECT-SCOPED read-through, single-flight lookup (dashboard-query-acceleration scope,
+    /// slice 2) — the same coalescing lookup as [`get_or_compute`], but the key also folds a
+    /// **capability fingerprint** so a warm hit is provably the frame THAT caller (that grant set)
+    /// would have computed. Two callers with the same fingerprint share the entry and single-flight;
+    /// a caller whose grants would yield a DIFFERENT (denied) frame gets a different key → a miss →
+    /// their own resolve. `args` is the already-QUANTISED input (the time-bucket floor is applied
+    /// before this), so relative-range opens inside one bucket share the key. The wall holds by
+    /// construction: no cross-grant leak is possible through this entry.
+    pub async fn get_or_compute_scoped<F>(
+        &self,
+        ws: &str,
+        verb: &str,
+        args: &Value,
+        class: Class,
+        fingerprint: &str,
+        init: F,
+    ) -> Result<String, ToolError>
+    where
+        F: std::future::Future<Output = Result<String, ToolError>>,
+    {
+        let generation = self.generations.current(ws, class);
+        let key = build_key_scoped(ws, verb, args, generation, fingerprint);
+        let init = async move { init.await.map(|s| Arc::<str>::from(s.into_boxed_str())) };
+        match self.moka.entry(key).or_try_insert_with(init).await {
+            Ok(entry) => {
+                if entry.is_fresh() {
+                    self.stats.record_miss(class);
+                } else {
+                    self.stats.record_hit(class);
+                }
+                Ok(entry.into_value().as_ref().to_owned())
+            }
+            Err(arc) => Err((*arc).clone()),
+        }
+    }
+
     /// A snapshot of the cache's observability counters — the `cache.stats` payload. `run_pending_tasks`
     /// first so `entry_count`/`weighted_size` reflect just-applied inserts/evictions.
     pub async fn stats_snapshot(&self) -> Value {
@@ -122,6 +158,25 @@ fn build_key(ws: &str, verb: &str, args: &Value, generation: u64) -> String {
     let mut h = Sha256::new();
     h.update(canon.as_bytes());
     format!("{ws}\u{1f}{verb}\u{1f}{generation}\u{1f}{:x}", h.finalize())
+}
+
+/// The subject-scoped key: the base `{ws, verb, generation, args-hash}` key with the caller's
+/// **capability fingerprint** appended (dashboard-query-acceleration scope, slice 2). Two callers with
+/// the same fingerprint (same relevant grants) hit the same entry; a caller who would get a different
+/// (denied) frame produces a different fingerprint → a different key → a miss. The fingerprint is a
+/// stable hash of the caller's GRANTS, never identity/token — so co-workspace callers with the same
+/// reach share the cache (the win) while the grant boundary is never crossed (the wall).
+fn build_key_scoped(
+    ws: &str,
+    verb: &str,
+    args: &Value,
+    generation: u64,
+    fingerprint: &str,
+) -> String {
+    format!(
+        "{}\u{1f}{fingerprint}",
+        build_key(ws, verb, args, generation)
+    )
 }
 
 /// The canonical JSON string of `v` — object keys sorted recursively. `null`-vs-absent is preserved
@@ -206,6 +261,7 @@ fn class_name(c: Class) -> &'static str {
         Class::Series => "series",
         Class::Flows => "flows",
         Class::Ext => "ext",
+        Class::VizSubjectScoped => "viz",
     }
 }
 

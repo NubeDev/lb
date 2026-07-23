@@ -820,6 +820,15 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "viz",
         description: "run a saved/inline query shaped for charts + tables (the one viz bridge)",
     },
+    // viz.query_batch — the batch fan-in (dashboard-query-acceleration scope, slice 3). Rides the
+    // SAME `mcp:viz.query:call` cap (a fan-in of the same read, no new privilege) — so the catalog's
+    // per-tool `authorize_tool(principal, ws, gate_tool_for(name))` gate makes it visible to exactly
+    // the callers who can run `viz.query`.
+    HostTool {
+        tool: "viz.query_batch",
+        group: "viz",
+        description: "resolve many panels in ONE call, concurrently (per-item partial failure)",
+    },
     // query.* — saved queries (query-workbench scope).
     HostTool {
         tool: "query.run",
