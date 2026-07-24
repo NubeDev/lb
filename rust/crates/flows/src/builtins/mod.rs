@@ -11,6 +11,8 @@
 //! - [`sequence`] — `split`/`join` (array-carry + the `parts` contract) + `batch` (durable grouping).
 //! - [`function`] — `filter` (RBE), `unique` (dedupe), `switch` (routing), `delay` (durable park).
 //! - [`observability`] — `debug` (Node-RED's debug node: a motion-only sink the debug panel tails).
+//! - [`platform`] — the ext & store node pack (ext-store-nodes scope): `ext-list` / `ext-call` +
+//!   `store-read` / `store-write` / `store-delete`, dispatching the existing platform verbs.
 //!
 //! Every built-in speaks the **message envelope** (flow-message-envelope-scope D6): input port
 //! `payload` (+ `topic` carried alongside), output `payload` (+ any field it sets, e.g. the sequence
@@ -21,6 +23,7 @@ pub mod data;
 pub mod function;
 pub mod observability;
 pub mod parse;
+pub mod platform;
 pub mod sequence;
 
 use crate::descriptor::NodeDescriptor;
@@ -35,6 +38,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
     out.extend(sequence::sequence_descriptors());
     out.extend(function::function_descriptors());
     out.extend(observability::observability_descriptors());
+    out.extend(platform::platform_descriptors());
     out
 }
 
@@ -84,6 +88,12 @@ mod tests {
         "delay",
         // observability (1)
         "debug",
+        // platform (5)
+        "ext-list",
+        "ext-call",
+        "store-read",
+        "store-write",
+        "store-delete",
     ];
 
     #[test]
@@ -93,8 +103,8 @@ mod tests {
         assert_eq!(types, EXPECTED);
         assert_eq!(
             d.len(),
-            33,
-            "12 spine + 20 data/JSON pack + 1 observability"
+            38,
+            "12 spine + 20 data/JSON pack + 1 observability + 5 platform"
         );
         // Every built-in carries a compilable config schema (the load-time contract this test owns).
         for desc in &d {
@@ -163,7 +173,8 @@ mod tests {
     fn data_pack_nodes_are_envelope_transforms() {
         // Every one of the twenty data/JSON-pack nodes is a payload→payload transform (the drop-in
         // mould). They follow the 12 spine nodes (trigger…sink), so the pack is `EXPECTED[12..32]`.
-        // `EXPECTED[32..]` is the observability pack (`debug`, a sink — NOT a transform), excluded here.
+        // `EXPECTED[32..]` is the observability pack (`debug`, a sink — NOT a transform) then the
+        // platform pack (which carries its own sink, `store-delete`) — both excluded here.
         let d = builtin_descriptors();
         for ty in &EXPECTED[12..32] {
             let desc = d.iter().find(|x| &x.r#type == ty).unwrap();

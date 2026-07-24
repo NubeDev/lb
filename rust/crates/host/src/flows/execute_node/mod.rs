@@ -11,6 +11,10 @@
 //! - [`delay`] — durable delay + rate-limit, parking on the resume seam (Decision 16).
 //! - [`debug`] — Node-RED's debug node: a motion-only sink that publishes each wire message onto the
 //!   per-flow debug subject for the canvas debug panel to tail (debug-node-scope).
+//! - [`ext_call`] / [`store_crud`] — the platform pack (ext-store-nodes scope): `ext-list`/`ext-call`
+//!   dispatch `ext.list` / the picked `<ext>.<tool>`; `store-read`/`store-write`/`store-delete`
+//!   dispatch `store.query` (a host-built parameterized SELECT) / `store.write` / `store.delete` —
+//!   all under the caller's principal through the one chokepoint (no new verb, no new cap).
 //!
 //! Every dispatch goes through the one host chokepoint `call_tool`, so each node-tool's own gate is
 //! re-checked — a flow whose node calls a tool the caller lacks is **denied at that node** (no
@@ -21,9 +25,11 @@ mod approval;
 mod core;
 mod debug;
 mod delay;
+mod ext_call;
 mod pure;
 mod sink;
 mod stateful;
+mod store_crud;
 mod subflow;
 mod switch;
 
@@ -272,6 +278,13 @@ async fn dispatch(
             .await
         }
         "subflow" => subflow::dispatch_subflow(node, principal, ws, config, inputs, now).await,
+        // The platform pack (ext-store-nodes scope): each dispatches an existing platform verb under
+        // the caller's principal — a caller lacking that verb's cap is denied AT the node.
+        "ext-list" => ext_call::ext_list(node, principal, ws, config).await,
+        "ext-call" => ext_call::ext_call(node, principal, ws, config, &inputs).await,
+        "store-read" => store_crud::store_read(node, principal, ws, config, &inputs).await,
+        "store-write" => store_crud::store_write(node, principal, ws, config, &inputs).await,
+        "store-delete" => store_crud::store_delete(node, principal, ws, config, &inputs).await,
         "filter" => stateful::filter(node, ws, flow, node_id, config, &inputs, now).await,
         "unique" => stateful::unique(node, ws, flow, node_id, config, &inputs, now).await,
         "batch" => stateful::batch(node, ws, flow, node_id, &inputs, config, now).await,
@@ -329,6 +342,22 @@ pub(super) async fn call_tool_node(
         }
         Err(e) => NodeOutcome::Err(tool_err_string(e)),
     }
+}
+
+/// The `tool` node's args rule, shared with `ext-call` (ext-store-nodes scope — one rule, not two):
+/// `config.args` (default `{}`) with an object `payload`'s top-level keys merged over it (the wire
+/// wins on conflict, so an upstream node can drive an arg the author left fixed).
+pub(super) fn merge_tool_args(config: &Value, inputs: &serde_json::Map<String, Value>) -> Value {
+    let mut args = config
+        .get("args")
+        .cloned()
+        .unwrap_or(Value::Object(Default::default()));
+    if let (Value::Object(map), Some(Value::Object(p))) = (&mut args, inputs.get("payload")) {
+        for (k, v) in p {
+            map.insert(k.clone(), v.clone());
+        }
+    }
+    args
 }
 
 /// The "size" of a `payload` for `count`/`counter` (D6): array → len, object → key count,

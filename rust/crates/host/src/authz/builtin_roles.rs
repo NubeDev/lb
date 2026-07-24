@@ -372,6 +372,11 @@ const AUTHOR_CAPS: &[&str] = &[
     // Author-tier: it is the authoring read behind the widget builder, not a viewer's tile render.
     "mcp:store.query:call",
     "mcp:store.schema:call",
+    // ext-store-nodes scope: the flow-editor store-table picker. Reveals table names + row counts
+    // ONLY (an author holding `store.query` can enumerate them anyway) — moved down from admin so
+    // `store.tables` opens to flow authors. The raw-ROW lenses (`store.scan`/`store.graph`) stay
+    // admin-only below: they relax gate 3 and answer "every record in the workspace".
+    "mcp:store.tables:call",
     // dashboards — a member BUILDS/SHARES/DELETES their OWN (gate-3 owns which). delete_any is admin.
     "mcp:dashboard.save:call",
     "mcp:dashboard.delete:call",
@@ -546,7 +551,7 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:assets.revoke_skill:call",
     "mcp:assets.deprecate_skill:call",
     // raw-store lenses — a scan answers "every record in the workspace" (relaxes gate-3).
-    "mcp:store.tables:call",
+    // (`store.tables` — names + counts only — is AUTHOR-tier since the ext-store-nodes scope.)
     "mcp:store.scan:call",
     "mcp:store.graph:call",
     // store operational pair (online-compaction scope): node-level maintenance is workspace-data

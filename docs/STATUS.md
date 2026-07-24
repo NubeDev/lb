@@ -30,6 +30,30 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-25 (backend + rubix-ai/ui) — THE EXT & STORE NODE PACK + THE RESERVED-TABLE
+WALL (flows, [`ext-store-nodes-scope`](scope/flows/ext-store-nodes-scope.md)).** Five new built-in
+flow nodes over the platform's own MCP surface — `ext-list` (installed extensions), one generic
+`ext-call` (pick ext → pick tool from `tools.catalog` → args form rendered from the tool's own
+`input_schema`; no typed verb strings, no per-ext special-case) and `store-read`/`store-write`/
+`store-delete` over a picked table — registry **33→38**. Plus the one new guard: a canonical
+reserved-table set (`store/src/reserved.rs` + `is_reserved`) that `store.write`/`store.delete`
+**hard-reject before the cap gate, regardless of grants** (even `store:*:write`; no override cap), so
+a flow cannot brick `flow`/`install`/`dashboard` through the mutate surface; `store.tables` rows gain
+`system: bool` and the writable picker excludes them; `mcp:store.tables:call` opened to the editor
+role. A drift test (every host `TABLE` const ∈ reserved) keeps the set from going stale. **No new
+verb, cap, or table** (rule 10). Executors dispatch each existing verb through the one `call_tool`
+chokepoint under the caller's principal (per-node deny, no widening). Build-time fix: the `ext.*`
+lifecycle family was gateway-REST-only — never on the MCP bridge — so `ext-list` got "no such tool";
+wired `ext.list`/`enable`/`disable`/`uninstall` into `HOST_NATIVE_EXACT` + `call_ext_tool`
+([debugging](debugging/flows/ext-list-node-no-such-tool-not-on-mcp-bridge.md)). The editor pickers
+(`lb:extension`/`lb:ext-tool`/`lb:store-table[-writable]`, the nested args form, one typed
+`SiblingContext`) land in **rubix-ai/ui**. **Tested (real store `mem://`, real registry, real hello
+wasm — no mocks):** platform nodes **10**, reserved wall **7**, lb-store lib **100**, lb-host lib
+**332**, lb-flows lib **3**, ext_lifecycle **6**, authz_mcp_dispatch **4**; rubix-ai/ui vitest **21**;
+rubix-ai builds green against the local lb `[patch]`. **Awaiting release:** lb tag `node-v0.10.0` +
+rubix-ai pin bump (do not push/tag without the user). Session:
+[`sessions/flows/ext-store-nodes-session.md`](sessions/flows/ext-store-nodes-session.md).
+
 **Just shipped 2026-07-24 (backend + rubix-ai) — PANEL RESOLUTION NEGOTIATION (`viz.query` asks for
 buckets, issue #101).** The dashboard finally requests decimation instead of raw rows. `viz.query` turns
 a panel's visible range + point budget into ONE bucket width and passes it down: (1) `host/src/viz/

@@ -12,6 +12,11 @@ pub enum StoreMutateError {
     /// A missing/invalid argument (`table`/`id`/`value`) — feedback for the caller, not an auth signal.
     #[error("{0}")]
     BadInput(String),
+    /// The table is host-owned (`lb_store::reserved`) — the MCP mutate surface never touches it,
+    /// regardless of grants (`store:*:write` does not pierce; ext-store-nodes scope). Deliberately
+    /// NOT opaque: the reserved set is a public const, so naming it is author feedback, not a leak.
+    #[error("reserved table: {table}")]
+    ReservedTable { table: String },
     /// The underlying store rejected the mutation.
     #[error(transparent)]
     Store(#[from] lb_store::StoreError),

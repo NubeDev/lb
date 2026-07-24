@@ -67,9 +67,10 @@ async fn seed_ext(
     record_install(&node.store, ws, &install).await.unwrap();
 }
 
-/// The 32 built-in node types in registry order (12 spine + the 20 data/JSON pack). The spine gained
-/// `webhook` (the inbound source), `rule` (run a saved rule), and `approval` (the gate) in the
-/// rules-workflow-convergence scope.
+/// The 38 built-in node types in registry order (12 spine + the 20 data/JSON pack + 1 observability
+/// + 5 platform). The spine gained `webhook` (the inbound source), `rule` (run a saved rule), and
+/// `approval` (the gate) in the rules-workflow-convergence scope; the platform pack (`ext-list`…
+/// `store-delete`) landed in the ext-store-nodes scope.
 const BUILTINS: &[&str] = &[
     "trigger",
     "flipflop",
@@ -104,6 +105,11 @@ const BUILTINS: &[&str] = &[
     "switch",
     "delay",
     "debug",
+    "ext-list",
+    "ext-call",
+    "store-read",
+    "store-write",
+    "store-delete",
 ];
 
 fn types(out: &serde_json::Value) -> Vec<String> {

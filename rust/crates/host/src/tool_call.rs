@@ -127,6 +127,17 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     // online-compaction scope: the operational pair — observability read + the compaction job.
     "store.status",
     "store.compact",
+    // ext-store-nodes scope: the ext-lifecycle family, reached over the one MCP bridge (rule 7 —
+    // "MCP is the contract") like every host-native verb, so a flow's `ext-list` node and any MCP
+    // client can call it — not only the gateway REST route. Listed by EXACT name (not an `ext.`
+    // PREFIX) so the host does NOT reserve the whole `ext.` namespace against a hypothetical
+    // extension whose id is `ext` (rule 10): only these four reserved lifecycle verbs are host-
+    // native; an `ext.<other>` still routes to the runtime registry. Each re-checks its own cap
+    // (`mcp:ext.<verb>:call`) inside `call_ext_tool`; the outer gate agrees.
+    "ext.list",
+    "ext.enable",
+    "ext.disable",
+    "ext.uninstall",
 ];
 
 pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
@@ -592,10 +603,13 @@ pub(crate) async fn run_host_verb(
         // WRITE half of the scoped-grant surface reachable over the callback, symmetric with the
         // READ half above.
         crate::call_authz_tool(&node.store, principal, ws, qualified_tool, &input).await?
-    } else if qualified_tool.starts_with("invite.") {
-        // invites scope: the admin verbs (create/list/revoke/resend). The pre-auth `accept` is
-        // a gateway route (POST /public/invite/accept), NOT an MCP verb — it has no principal.
-        crate::call_invite_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("ext.") {
+        // ext-store-nodes scope: the ext-lifecycle family (`ext.list`/`enable`/`disable`/`uninstall`)
+        // over the one MCP bridge, so a flow's `ext-list` node (and any MCP client) reaches it — not
+        // only the gateway REST route. `is_host_native` admits ONLY these four exact verbs (see
+        // HOST_NATIVE_EXACT), so this branch never sees an extension's own `ext.<tool>` (rule 10);
+        // `call_ext_tool` re-checks each verb's own cap and returns `NotFound` for anything else.
+        crate::call_ext_tool(node, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("media.") {
         // media scope: upload_begin/commit/get/list/delete MCP verbs. The chunk upload (PUT)
         // and serve (GET) are HTTP routes — bytes over HTTP, not MCP payloads.

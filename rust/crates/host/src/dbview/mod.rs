@@ -26,7 +26,7 @@ pub use authorize::authorize_dbview;
 pub use error::DbViewError;
 pub use graph::store_graph_view;
 pub use scan::store_scan_view;
-pub use tables::store_tables_view;
+pub use tables::{store_tables_view, TableInfo};
 pub use tool::call_dbview_tool;
 
 // Re-export the wire shapes so host callers / the gateway / tests use one type set.

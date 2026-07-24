@@ -26,6 +26,7 @@ pub async fn store_write_run(
     value: &Value,
 ) -> Result<(String, String), StoreMutateError> {
     validate_key(table, id)?;
+    reject_reserved(table)?;
     authorize_store_mutate(principal, ws, table)?;
     lb_store::write(store, ws, table, id, value).await?;
     Ok((table.to_string(), id.to_string()))
@@ -41,9 +42,24 @@ pub async fn store_delete_run(
     id: &str,
 ) -> Result<(String, String), StoreMutateError> {
     validate_key(table, id)?;
+    reject_reserved(table)?;
     authorize_store_mutate(principal, ws, table)?;
     lb_store::delete(store, ws, table, id).await?;
     Ok((table.to_string(), id.to_string()))
+}
+
+/// The **reserved-table wall** (ext-store-nodes scope): a host-owned table is never mutable through
+/// this MCP surface, so the check runs BEFORE the capability gate — even `store:*:write` (the editor
+/// bundle's wildcard) must not pierce it, and there is no override cap. Host internals writing
+/// through the direct `Store` handle (`lb_store::write`) are untouched; a legitimate system-table
+/// mutation is the owning verb family's job (packs, migrations), never a generic `store.write`.
+fn reject_reserved(table: &str) -> Result<(), StoreMutateError> {
+    if lb_store::reserved::is_reserved(table) {
+        return Err(StoreMutateError::ReservedTable {
+            table: table.to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Reject an empty `table` or `id`. Both are bound as `type::thing` params by the store (never string

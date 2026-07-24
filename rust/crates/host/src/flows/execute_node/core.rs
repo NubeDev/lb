@@ -11,7 +11,7 @@ use crate::boot::Node;
 use crate::tool_call::call_tool;
 
 use super::super::run_store::NodeOutcome;
-use super::{call_tool_node, payload_size, tool_err_string, unwrap_rule_output};
+use super::{call_tool_node, merge_tool_args, payload_size, tool_err_string, unwrap_rule_output};
 
 /// The entry node (D6): emits `{ payload: <firing value>, topic: <config.topic?> }`. The firing value
 /// is read from params under the node id (a cron ts / injected payload), else the resolved `payload`.
@@ -49,15 +49,7 @@ pub(super) async fn tool(
     if verb.is_empty() {
         return NodeOutcome::Err("tool node missing config.verb".into());
     }
-    let mut args = config
-        .get("args")
-        .cloned()
-        .unwrap_or(Value::Object(Default::default()));
-    if let (Value::Object(map), Some(Value::Object(p))) = (&mut args, inputs.get("payload")) {
-        for (k, v) in p {
-            map.insert(k.clone(), v.clone());
-        }
-    }
+    let args = merge_tool_args(config, inputs);
     match call_tool_node(node, principal, ws, verb, &args).await {
         NodeOutcome::Ok { emitted, .. } => NodeOutcome::ok(json!({ "payload": emitted })),
         other => other,

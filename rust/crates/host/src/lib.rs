@@ -177,7 +177,7 @@ pub use dashboard::{
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,
-    DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount,
+    DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount, TableInfo,
 };
 pub use devkit::{
     authorize_devkit, call_devkit_tool, container_enabled, devkit_build, devkit_inspect,

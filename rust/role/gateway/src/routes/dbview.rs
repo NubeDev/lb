@@ -13,7 +13,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use lb_host::{DbViewError, Graph, Page, TableCount};
+use lb_host::{DbViewError, Graph, Page, TableInfo};
 use serde::Deserialize;
 
 use crate::session::authenticate;
@@ -23,7 +23,7 @@ use crate::state::Gateway;
 pub async fn list_tables(
     State(gw): State<Gateway>,
     headers: HeaderMap,
-) -> Result<Json<Vec<TableCount>>, (StatusCode, String)> {
+) -> Result<Json<Vec<TableInfo>>, (StatusCode, String)> {
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;

@@ -47,11 +47,16 @@ pub async fn call_store_mutate_tool(
 }
 
 /// Map the mutation gate's outcome onto the MCP tool error. `Denied` stays opaque; a bad argument is
-/// author feedback (`BadInput`); a store fault is `Extension`.
+/// author feedback (`BadInput`); a store fault is `Extension`. A reserved-table reject surfaces as
+/// `BadInput("reserved table: <t>")` — deliberately NOT `Denied`: the wall is a structural rule over
+/// a public const list, so a clear message is flow-author feedback, never an existence/auth leak.
 fn to_tool(e: StoreMutateError) -> ToolError {
     match e {
         StoreMutateError::Denied => ToolError::Denied,
         StoreMutateError::BadInput(m) => ToolError::BadInput(m),
+        StoreMutateError::ReservedTable { table } => {
+            ToolError::BadInput(format!("reserved table: {table}"))
+        }
         StoreMutateError::Store(s) => ToolError::Extension(s.to_string()),
     }
 }
