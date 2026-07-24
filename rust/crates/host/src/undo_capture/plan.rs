@@ -19,6 +19,8 @@ use lb_inbox::{record_id, TABLE as INBOX_TABLE};
 const DOC_TABLE: &str = "doc";
 /// The store table for binary assets (must match `lb_assets::asset::TABLE`).
 const ASSET_TABLE: &str = "asset";
+/// The store table for dashboards (must match `crate::dashboard::model::TABLE`).
+const DASHBOARD_TABLE: &str = "dashboard";
 
 /// How the dispatch seam should capture a tool call.
 pub(crate) enum CapturePlan {
@@ -70,6 +72,17 @@ pub(crate) fn plan_capture(qualified_tool: &str, input: &Value) -> CapturePlan {
         "assets.put_asset" | "assets.delete_asset" => match str_arg(input, "id") {
             Some(id) => CapturePlan::Reversible {
                 table: ASSET_TABLE.to_string(),
+                id: id.to_string(),
+            },
+            _ => CapturePlan::NotMutating,
+        },
+
+        // Dashboard save/delete are single-record upserts at `dashboard:{id}` — the same reversible
+        // floor as a doc/inbox record. Before-image is the prior `dashboard:{id}` (empty on create);
+        // undo restores it. Delete is an idempotent tombstone upsert on the same id → undo resurrects.
+        "dashboard.save" | "dashboard.delete" => match str_arg(input, "id") {
+            Some(id) => CapturePlan::Reversible {
+                table: DASHBOARD_TABLE.to_string(),
                 id: id.to_string(),
             },
             _ => CapturePlan::NotMutating,
