@@ -643,7 +643,15 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
 
     // Now the entry is fresh-but-non-zero-age. Insert behind its back, then race:
     insert_row(&dsn, 2);
-    tokio::time::sleep(Duration::from_millis(120)).await;
+    // The warm entry must be provably OLDER than the strict caller's TTL, or that caller ACCEPTS
+    // `current` (rule 1) and returns the stale 1 row WITHOUT refreshing — the "refresher sees the
+    // fresh 2 rows" assertion then fails. This used a 30 ms sleep vs a 50 ms strict TTL: fine at base,
+    // where the ~750 ms burn `warm` query itself aged the entry well past 50 ms before this line was
+    // reached, but the PR's fast direct path returns `warm` in microseconds, so the entry is genuinely
+    // ~30 ms young here and a 50 ms-TTL caller accepts it. Sleep 50 ms past a 10 ms TTL (5× margin) so
+    // the reject is deterministic and independent of how fast `warm` ran.
+    let strict_ttl = 0.01;
+    tokio::time::sleep(Duration::from_millis(50)).await;
 
     // A STRICT caller (ttl below the entry's age) → rejects → starts the one refresh.
     let (d1, s1) = (dsn.clone(), sql.to_string());
@@ -653,7 +661,7 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
             &d1,
             &s1,
             Some("rsrc"),
-            &input("rsrc", &s1, Some(0.05)),
+            &input("rsrc", &s1, Some(strict_ttl)),
         )
         .await
         .expect("strict")
@@ -745,19 +753,34 @@ async fn a_failed_refresh_leaves_the_entry_serving() {
 
     assert_eq!(run(&dsn, &inp_long).await.rows.len(), 1, "warm");
 
-    // Force a failing refresh on the SAME key: drop the table so the query errors, with a TTL that
-    // rejects the warm entry.
+    // Force a failing refresh on the SAME key: rename the table away so the query errors.
     {
         let conn = rusqlite::Connection::open(&dsn).unwrap();
         conn.execute_batch("ALTER TABLE marker RENAME TO marker_gone;")
             .unwrap();
     }
+    // Evict the warm pool for this DSN. WHY this is required (and why the prior `RENAME`-then-query
+    // was not enough): the direct fast path reuses a WARM pooled SQLite connection, and that
+    // connection caches the schema — after an out-of-band `RENAME`/`DROP` (even deleting the file) the
+    // held connection keeps serving `SELECT id FROM marker` as an empty/stale `Ok`, never an error, so
+    // `failed.is_err()` was false. This mirrors production exactly: a schema change is invisible until
+    // the pool is dropped, which is precisely why `probe`/`datasource.test` evicts. Do the same here
+    // so the refresh opens a fresh connection, sees `no such table`, and genuinely fails.
+    pool::evict("sqlite", &dsn);
+    // The rejecting caller must find `current` STALE: give the warm entry a real age (>`strict`) so a
+    // `strict`-TTL caller rejects it and becomes the refresher, rather than accepting it (rule 1) and
+    // returning the stale rows without ever running the failing query. A sub-ms TTL with no elapsed
+    // time raced exactly that way. The margin is kept small (30 ms sleep vs a 10 ms TTL) so this test
+    // adds little wall-time to a saturated parallel run — a sibling timing test breaches its own bound
+    // under added load.
+    let strict = 0.01;
+    tokio::time::sleep(Duration::from_millis(30)).await;
     let failed = query::run_query_cached(
         "sqlite",
         &dsn,
         SQL,
         Some("fsrc"),
-        &input("fsrc", SQL, Some(0.001)),
+        &input("fsrc", SQL, Some(strict)),
     )
     .await;
     assert!(failed.is_err(), "the refresh itself must surface the error");
@@ -776,12 +799,17 @@ async fn a_failed_refresh_leaves_the_entry_serving() {
         conn.execute_batch("ALTER TABLE marker_gone RENAME TO marker;")
             .unwrap();
     }
+    // Same reason as above: the pool connection the failed refresh opened cached a schema WITHOUT
+    // `marker`; evict so the recovery caller opens a fresh connection that sees the restored table.
+    // `current` still holds the pre-failure warm rows (comfortably older than `strict` now), so a
+    // `strict`-TTL caller rejects it and actually re-queries — proving the key is not wedged.
+    pool::evict("sqlite", &dsn);
     let recovered = query::run_query_cached(
         "sqlite",
         &dsn,
         SQL,
         Some("fsrc"),
-        &input("fsrc", SQL, Some(0.001)),
+        &input("fsrc", SQL, Some(strict)),
     )
     .await
     .expect("a recovered source must re-query cleanly (inflight was cleared)");
