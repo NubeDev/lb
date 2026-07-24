@@ -609,6 +609,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   notice) consumed by `dashboard.import` and the downstream converter. Backend-only — the typed
   option shapes/editors/renderers are the downstream consumer's UI scope (rubix-ai
   `frontend/dashboard/viz/grafana-parity-ui-scope.md`).
+  **`panel-resolution-scope.md`** closes the resolution gap: `viz.query` finally consumes the
+  panel's `maxDataPoints`/`minInterval` + time range (authored + carried today, then dropped),
+  derives a snapped bucket width (`range/budget` — the Grafana model, not a fixed range ladder),
+  injects `mode:"buckets"` into platform `series.read` targets (the shipped O(buckets) decimation
+  engine) and substitutes `$__interval`/`$__timeFrom`/`$__timeTo` macros into federated SQL —
+  one decimation contract, both engines, cache-key-stable so N viewers collapse to one compute.
+  The UI sender is rubix-ai `frontend/dashboard/panel-resolution-ui-scope.md`.
 - `packs/` — **domain packs in core** (`pack-core-scope.md`, the ask): the generic `pack.*` verb
   family (`validate`/`apply`/`list`/`get`) — one declarative, versioned manifest (schema+seed,
   entity vocabulary, insight-key grammar, rules, dashboards, channels, agent context) applied to

@@ -46,15 +46,7 @@ pub async fn call_federation_tool(
             // non-dashboard paths (query.run, mirror, query worker); empty string = no trace.
             let trace_id = input.get("trace_id").and_then(|v| v.as_str()).unwrap_or("");
             let out = federation_query(
-                node,
-                &launcher,
-                principal,
-                ws,
-                source,
-                sql,
-                cache,
-                ts,
-                trace_id,
+                node, &launcher, principal, ws, source, sql, cache, ts, trace_id,
             )
             .await?;
             Ok(out)

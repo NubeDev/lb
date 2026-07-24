@@ -166,7 +166,11 @@ async fn federation_schema(id: u64, input: &Value) -> Reply {
         }),
     };
     let elapsed_ms = started.elapsed().as_millis();
-    let cache = Some(if pool_warm { event::Cache::Hit } else { event::Cache::Miss });
+    let cache = Some(if pool_warm {
+        event::Cache::Hit
+    } else {
+        event::Cache::Miss
+    });
 
     match &result {
         Ok(_) => {

@@ -82,7 +82,12 @@ impl Source for SqliteSource {
         table: &TableReference,
     ) -> Result<Arc<dyn TableProvider>, SourceError> {
         let table_name = table.to_string();
-        if let Some(cached) = self.provider_cache.lock().expect("cache mutex").get(&table_name) {
+        if let Some(cached) = self
+            .provider_cache
+            .lock()
+            .expect("cache mutex")
+            .get(&table_name)
+        {
             return Ok(cached.clone());
         }
         // Mirror `SqliteTableFactory::table_provider` (the upstream helper does not auto-wrap under

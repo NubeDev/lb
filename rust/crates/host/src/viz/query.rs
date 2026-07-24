@@ -91,8 +91,18 @@ pub async fn viz_query(
     let t_dispatch = std::time::Instant::now();
     for t in &targets {
         let t_target = std::time::Instant::now();
-        let (rows, status) =
-            dispatch_target(node, caller, ws, t, &query_options, now, depth, cache, &trace_id).await;
+        let (rows, status) = dispatch_target(
+            node,
+            caller,
+            ws,
+            t,
+            &query_options,
+            now,
+            depth,
+            cache,
+            &trace_id,
+        )
+        .await;
         let target_elapsed = t_target.elapsed();
         let rows = cap_rows(rows);
         let time = detect_time_field(&rows);

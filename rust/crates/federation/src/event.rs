@@ -161,15 +161,36 @@ pub fn query_event(
     }
     if let Some(p) = phases {
         let mut o = serde_json::Map::new();
-        if p.validate_ms != 0 { o.insert("validate_ms".into(), serde_json::json!(p.validate_ms)); }
-        if p.connect_ms != 0 { o.insert("connect_ms".into(), serde_json::json!(p.connect_ms)); }
-        if p.info_schema_reg_ms != 0 { o.insert("info_schema_reg_ms".into(), serde_json::json!(p.info_schema_reg_ms)); }
-        if p.table_reg_ms != 0 { o.insert("table_reg_ms".into(), serde_json::json!(p.table_reg_ms)); }
-        if p.plan_ms != 0 { o.insert("plan_ms".into(), serde_json::json!(p.plan_ms)); }
-        if p.execute_ms != 0 { o.insert("execute_ms".into(), serde_json::json!(p.execute_ms)); }
-        if p.ttfb_ms != 0 { o.insert("ttfb_ms".into(), serde_json::json!(p.ttfb_ms)); }
-        if p.fetch_ms != 0 { o.insert("fetch_ms".into(), serde_json::json!(p.fetch_ms)); }
-        if p.serialize_ms != 0 { o.insert("serialize_ms".into(), serde_json::json!(p.serialize_ms)); }
+        if p.validate_ms != 0 {
+            o.insert("validate_ms".into(), serde_json::json!(p.validate_ms));
+        }
+        if p.connect_ms != 0 {
+            o.insert("connect_ms".into(), serde_json::json!(p.connect_ms));
+        }
+        if p.info_schema_reg_ms != 0 {
+            o.insert(
+                "info_schema_reg_ms".into(),
+                serde_json::json!(p.info_schema_reg_ms),
+            );
+        }
+        if p.table_reg_ms != 0 {
+            o.insert("table_reg_ms".into(), serde_json::json!(p.table_reg_ms));
+        }
+        if p.plan_ms != 0 {
+            o.insert("plan_ms".into(), serde_json::json!(p.plan_ms));
+        }
+        if p.execute_ms != 0 {
+            o.insert("execute_ms".into(), serde_json::json!(p.execute_ms));
+        }
+        if p.ttfb_ms != 0 {
+            o.insert("ttfb_ms".into(), serde_json::json!(p.ttfb_ms));
+        }
+        if p.fetch_ms != 0 {
+            o.insert("fetch_ms".into(), serde_json::json!(p.fetch_ms));
+        }
+        if p.serialize_ms != 0 {
+            o.insert("serialize_ms".into(), serde_json::json!(p.serialize_ms));
+        }
         event["phases"] = serde_json::Value::Object(o);
     }
     if let Some(t) = trace_id {
