@@ -45,6 +45,10 @@ const MAX_ROWS_PER_FRAME: usize = 10_000;
 /// shipped result cache); a `store.query`/`series.read` target ignores an unknown field harmlessly. A
 /// caller-supplied PER-TARGET `cache` wins (the top-level is only the default). `None`/absent ⇒ today's
 /// path exactly.
+///
+/// Generates one `trace_id` per panel refresh so all sub-queries (each target's `federation.query`)
+/// share a correlation id in their phase-timing events. Emits a `viz.query` umbrella event on stderr
+/// with per-target and per-phase timing breakdown.
 pub async fn viz_query(
     node: &Arc<Node>,
     caller: &Principal,
@@ -61,43 +65,81 @@ pub async fn viz_query(
     // requery" path: a fieldConfig/transform tweak re-shapes frames ALREADY fetched instead of re-hitting
     // the datasource. It reaches NO gated read (it resolves nothing), so it stays purely inside the one
     // transform impl. Same verb, same `mcp:viz.query:call` gate — an inline `frames` just skips step 2.
+    // No umbrella event emitted (no targets dispatched).
     if let Some(frames) = panel_inline_frames(panel) {
         let frames = transform(frames, &pipeline);
         let rows: Vec<Value> = frames.first().map(Frame::to_rows).unwrap_or_default();
         return Ok(json!({ "frames": frames, "rows": rows }));
     }
 
-    let targets = panel_targets(panel)?;
+    let t_start = std::time::Instant::now();
+    let trace_id = lb_store::new_ulid();
 
-    // The panel's time override (grafana-parity-backend P1): `timeFrom`/`timeShift` from the cell's
-    // `queryOptions`, applied to each target's args before dispatch (`time_override.rs` pins the
-    // Grafana semantics). Malformed/absent → default (no-op).
+    let t_setup = std::time::Instant::now();
+    let targets = panel_targets(panel)?;
     let query_options: QueryOptions = panel
         .get("queryOptions")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
+    let setup_ms = t_setup.elapsed();
 
     // Dispatch each non-hidden target under the caller's authority; a denied/failed target → an
     // honest EMPTY frame (no bypass, no fabricated rows). Frames keep target order so refIds line up.
+    // One trace_id per panel refresh so every target's federation sub-query is correlated.
     let mut frames: Frames = Vec::with_capacity(targets.len());
+    let mut target_details: Vec<Value> = Vec::with_capacity(targets.len());
+    let t_dispatch = std::time::Instant::now();
     for t in &targets {
-        let (rows, status) =
-            dispatch_target(node, caller, ws, t, &query_options, now, depth, cache).await;
+        let t_target = std::time::Instant::now();
+        let (rows, status) = dispatch_target(
+            node,
+            caller,
+            ws,
+            t,
+            &query_options,
+            now,
+            depth,
+            cache,
+            &trace_id,
+        )
+        .await;
+        let target_elapsed = t_target.elapsed();
         let rows = cap_rows(rows);
         let time = detect_time_field(&rows);
         // Attach the per-target diagnostic (query-diagnostics scope). On the common no-transform path
         // the empty pipeline returns frames unchanged, so `status` survives to the client verbatim.
         let mut frame = Frame::from_rows(&t.ref_id, &rows, time.as_deref());
-        frame.status = Some(status);
+        frame.status = Some(status.clone());
         frames.push(frame);
+
+        // Collect per-target timing for the umbrella event.
+        let mut detail = json!({
+            "refId": t.ref_id,
+            "tool": t.tool,
+            "elapsed_ms": target_elapsed.as_millis() as u64,
+            "rows": rows.len(),
+        });
+        let status_val: Value = serde_json::to_value(&status).unwrap_or_default();
+        if let Some(s) = status_val.get("state").and_then(|v| v.as_str()) {
+            detail["state"] = json!(s);
+        }
+        if let Some(msg) = status_val.get("message").and_then(|v| v.as_str()) {
+            if !msg.is_empty() {
+                detail["message"] = json!(msg);
+            }
+        }
+        target_details.push(detail);
     }
+    let dispatch_ms = t_dispatch.elapsed();
 
     // DEBUG (editor-parity step 7): when the panel asks for per-step frames, run the pipeline stepwise
     // and return a `steps[]` snapshot (input + one per applied step), honoring an optional `stopAt`.
     // Additive + opt-in — inherits the same `mcp:viz.query:call` cap, no new verb. The same frame budget
     // applies (it's the same `apply_step`), so the debug view can't blow past the cap either.
     if let Some(debug) = panel_debug(panel) {
+        let t_transform = std::time::Instant::now();
         let snapshots = transform_stepwise(frames, &pipeline, debug.stop_at);
+        let transform_ms = t_transform.elapsed();
         // The last snapshot's primary frame flattened to rows = the effective result (so the preview
         // still renders while the debug view is on). Computed BEFORE serializing the snapshots.
         let rows: Vec<Value> = snapshots
@@ -110,15 +152,38 @@ pub async fn viz_query(
             .into_iter()
             .map(|(step, frames)| json!({ "step": step, "frames": cap_frames(frames) }))
             .collect();
+        let elapsed_ms = t_start.elapsed().as_millis() as u64;
+        emit_viz_event(
+            &trace_id,
+            elapsed_ms,
+            setup_ms.as_millis() as u64,
+            dispatch_ms.as_millis() as u64,
+            transform_ms.as_millis() as u64,
+            &target_details,
+            rows.len(),
+        );
         return Ok(json!({ "steps": steps, "rows": rows }));
     }
 
     // Run the transform pipeline — the ONE impl, server-side (invariant B).
+    let t_transform = std::time::Instant::now();
     let frames = transform(frames, &pipeline);
+    let transform_ms = t_transform.elapsed();
 
     // The primary frame (first) flattened to rows = the SAME shape the shipped client fetch produced,
     // so renderers/preview are unchanged. Empty when there is no frame.
     let rows: Vec<Value> = frames.first().map(Frame::to_rows).unwrap_or_default();
+
+    let elapsed_ms = t_start.elapsed().as_millis() as u64;
+    emit_viz_event(
+        &trace_id,
+        elapsed_ms,
+        setup_ms.as_millis() as u64,
+        dispatch_ms.as_millis() as u64,
+        transform_ms.as_millis() as u64,
+        &target_details,
+        rows.len(),
+    );
 
     Ok(json!({ "frames": frames, "rows": rows }))
 }
@@ -129,10 +194,41 @@ pub async fn viz_query(
 /// would dispatch (same hidden/unconfigured-slot skipping) — a fingerprint over a different set would
 /// mis-key the leak boundary. Reusing `panel_targets` keeps the two in lockstep. A malformed panel
 /// yields an empty list (no targets → a caller-independent frame → an empty, shared fingerprint).
+#[cfg(feature = "page-cache")]
 pub(crate) fn panel_target_tools(panel: &Value) -> Vec<String> {
     panel_targets(panel)
         .map(|ts| ts.into_iter().map(|t| t.tool).collect())
         .unwrap_or_default()
+}
+
+/// Emit a `viz.query` umbrella timing event: total time, per-phase breakdown (setup / dispatch /
+/// transform), per-target details, and total rows. Written as a JSON line on stderr so it appears
+/// alongside the per-query `federation.query` phase events, correlated by `trace_id`.
+fn emit_viz_event(
+    trace_id: &str,
+    elapsed_ms: u64,
+    setup_ms: u64,
+    dispatch_ms: u64,
+    transform_ms: u64,
+    target_details: &[Value],
+    rows: usize,
+) {
+    let mut event = json!({
+        "evt": "viz.query",
+        "trace_id": trace_id,
+        "elapsed_ms": elapsed_ms,
+        "rows": rows,
+        "targets": target_details.len(),
+        "phases": {
+            "setup_ms": setup_ms,
+            "dispatch_ms": dispatch_ms,
+            "transform_ms": transform_ms,
+        },
+    });
+    if !target_details.is_empty() {
+        event["targets_detail"] = json!(target_details);
+    }
+    eprintln!("{event}");
 }
 
 /// One resolved target (the bits the resolver needs — its refId, tool, and args).
@@ -246,6 +342,7 @@ async fn dispatch_target(
     now: u64,
     depth: u32,
     cache: Option<&Value>,
+    trace_id: &str,
 ) -> (Vec<Value>, FrameStatus) {
     // Thread the caller's logical `now` into the args (a federation/ingest verb reads `ts` from args;
     // a store.query ignores it). Never overwrite a caller-supplied ts.
@@ -262,6 +359,7 @@ async fn dispatch_target(
         if let Some(cache) = cache {
             map.entry("cache").or_insert_with(|| cache.clone());
         }
+        map.entry("trace_id").or_insert(json!(trace_id));
     }
     let input = args.to_string();
 

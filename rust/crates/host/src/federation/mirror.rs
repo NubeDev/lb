@@ -47,7 +47,7 @@ pub async fn federation_mirror<L: Launcher>(
     // Never cached: a mirror is a durable job whose whole purpose is to copy the source's CURRENT
     // rows into the series plane. Serving it a cached answer would persist staleness — exactly the
     // failure mode the result cache's TTL exists to bound in transient page reads only.
-    let result = federation_query(node, launcher, caller, ws, source, sql, None, ts).await?;
+    let result = federation_query(node, launcher, caller, ws, source, sql, None, ts, "").await?;
     let rows = result
         .get("rows")
         .and_then(|v| v.as_array())

@@ -31,7 +31,10 @@ async-trait = "0.1"
 # `lb-bus` (Zenoh) into a supervised sidecar that must link neither.
 sha2 = { workspace = true }
 
-# The embedded query engine (datasources scope: embed the crate, never the Spice/Cube product). The
+# Async stream utilities for timing batch-level query execution (ttfb_ms/fetch_ms split).
+futures = "0.3"
+
+# The embedded query engine
 # `Source` trait fronts it; each source owns a pool behind that trait. Pinned to the major
 # `datafusion-table-providers` is built against (datafusion ^53). The SELECT-only validator uses
 # `datafusion::sql::sqlparser` (re-export) so there is one sqlparser version, never a mismatch.
@@ -60,6 +63,10 @@ secrecy = "0.10"
 # Arrow → JSON row conversion for the `{columns, rows}` result (same major as datafusion 53's arrow).
 arrow = "58"
 arrow-json = "58"
+# Timestamp/date/time extraction for the direct-to-JSON path — `pg_cell_to_json` needs chrono to
+# extract Postgres timestamp/timestamptz/date/time values as Rust types and format them to JSON-safe
+# strings. Also a workspace dep already in the graph from datafusion/arrow.
+chrono = { workspace = true }
 # Only pulled in when the `postgres` feature is on (its connector needs native-tls → openssl). Build
 # OpenSSL from source so no system OpenSSL/pkg-config is required (datasources scope: heavy/native
 # deps live ONLY in this extension). Optional → off by default (sqlite path links no TLS).
@@ -68,7 +75,7 @@ openssl = { version = "0.10", features = ["vendored"], optional = true }
 # which the read-only DataFusion provider path cannot express (they need a live `execute` + a
 # transaction). Pinned to the same 0.7 the pool already links (one `tokio-postgres` in the graph).
 # Gated on `postgres`; the sqlite path never pulls it.
-tokio-postgres = { version = "0.7", optional = true, features = ["with-serde_json-1"] }
+tokio-postgres = { version = "0.7", optional = true, features = ["with-serde_json-1", "with-chrono-0_4"] }
 
 # Direct catalog reads the DataFusion provider path cannot express (`PRAGMA foreign_key_list` for
 # `federation.sample`'s relationships). Same version/features as the host's dev-dep so the one

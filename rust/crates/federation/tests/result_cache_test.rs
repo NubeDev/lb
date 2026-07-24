@@ -881,6 +881,8 @@ fn the_result_cache_event_reports_state_without_leaking() {
             state: results::ResultCache::Hit,
             age_ms: Some(10_000),
         }),
+        None,
+        None,
     );
     let digest = event::sql_digest(sql);
     for forbidden in ["hunter2", "payments", "card", "token"] {

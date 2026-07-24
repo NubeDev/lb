@@ -138,12 +138,19 @@ async fn federation_query(id: u64, input: &Value) -> Reply {
 /// referenced tables). With no `table` arg it lists the source's user tables (each `{name, rows?}`);
 /// with a `table` arg it returns that table's columns (`{columns:[{name,data_type,nullable}]}`),
 /// read from the provider's real Arrow schema. The DSN is mediated by the host, same as query.
+///
+/// Emits a `federation.schema` timing event on stderr (same channel and secret discipline as query
+/// events): `connect_ms` + `execute_ms` under a `"phases"` key, never the DSN.
 async fn federation_schema(id: u64, input: &Value) -> Reply {
     let (kind, dsn) = match (str_of(input, "kind"), str_of(input, "dsn")) {
         (Some(k), Some(d)) => (k, d),
         _ => return Reply::err(id, "missing kind/dsn"),
     };
+    let source = str_of(input, "source");
     let table = str_of(input, "table");
+    let started = std::time::Instant::now();
+
+    let pool_warm = pool::is_warm(kind, dsn);
     let result = match table {
         None => query::discover_tables(kind, dsn).await.map(|tables| {
             json!({ "tables": tables.iter().map(|t| {
@@ -152,12 +159,30 @@ async fn federation_schema(id: u64, input: &Value) -> Reply {
                 o
             }).collect::<Vec<_>>() })
         }),
-        Some(table) => query::describe_table(kind, dsn, table).await.map(|cols| {
+        Some(t) => query::describe_table(kind, dsn, t).await.map(|cols| {
             json!({ "columns": cols.iter().map(|c| json!({
                 "name": c.name, "data_type": c.data_type, "nullable": c.nullable
             })).collect::<Vec<_>>() })
         }),
     };
+    let elapsed_ms = started.elapsed().as_millis();
+    let cache = Some(if pool_warm {
+        event::Cache::Hit
+    } else {
+        event::Cache::Miss
+    });
+
+    match &result {
+        Ok(_) => {
+            let outcome = event::Outcome::Ok(0);
+            event::schema_event(source, kind, elapsed_ms, &outcome, cache);
+        }
+        Err(e) => {
+            let outcome = event::Outcome::Error(e.clone());
+            event::schema_event(source, kind, elapsed_ms, &outcome, cache);
+        }
+    }
+
     match result {
         Ok(value) => Reply::ok(id, value.to_string()),
         Err(e) => Reply::err(id, e),

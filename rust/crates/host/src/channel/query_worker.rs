@@ -81,7 +81,7 @@ async fn run_query(
     let launcher = OsLauncher;
     // Uncached: a posted query is a one-shot read whose answer is snapshotted into the message.
     let out =
-        crate::federation::federation_query(node, &launcher, poster, ws, source, sql, None, 0)
+        crate::federation::federation_query(node, &launcher, poster, ws, source, sql, None, 0, "")
             .await
             .map_err(federation_error_message)?;
 

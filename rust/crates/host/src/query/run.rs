@@ -102,7 +102,7 @@ pub async fn query_run(
             let launcher = OsLauncher;
             // No caller-declared freshness window on this seam: `query.run` is the generic
             // SQL-runner surface, not a dashboard page with a refresh contract. Uncached, as today.
-            federation_query(node, &launcher, caller, ws, &name, &sql, None, ts)
+            federation_query(node, &launcher, caller, ws, &name, &sql, None, ts, "")
                 .await
                 .map_err(|e| match e {
                     crate::federation::FederationError::NotFound => {

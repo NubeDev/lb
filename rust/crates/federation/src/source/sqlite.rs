@@ -10,7 +10,8 @@
 //! `create_federated_table_provider()`. The factory's small `connect → get_schema → build` flow is
 //! inlined here for that one purpose; everything else (`probe`, FKs) keeps its prior shape.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use datafusion::catalog::TableProvider;
@@ -26,11 +27,16 @@ use datafusion_table_providers::sqlite::DynSqliteConnectionPool;
 
 use super::{Source, SourceError};
 
+use arrow::record_batch::RecordBatch;
+use datafusion_table_providers::sql::db_connection_pool::dbconnection::query_arrow;
+use futures::TryStreamExt;
+
 /// A connected SQLite source: a file-backed pool + the file path (the path is retained ONLY for
 /// direct catalog reads — `PRAGMA foreign_key_list` — the same path that is the DSN, never echoed).
 pub struct SqliteSource {
     pool: Arc<SqliteConnectionPool>,
     path: String,
+    provider_cache: Mutex<HashMap<String, Arc<dyn TableProvider>>>,
 }
 
 impl SqliteSource {
@@ -55,6 +61,7 @@ impl SqliteSource {
         Ok(Self {
             pool: Arc::new(pool),
             path: path.to_string(),
+            provider_cache: Mutex::new(HashMap::new()),
         })
     }
 }
@@ -74,6 +81,15 @@ impl Source for SqliteSource {
         &self,
         table: &TableReference,
     ) -> Result<Arc<dyn TableProvider>, SourceError> {
+        let table_name = table.to_string();
+        if let Some(cached) = self
+            .provider_cache
+            .lock()
+            .expect("cache mutex")
+            .get(&table_name)
+        {
+            return Ok(cached.clone());
+        }
         // Mirror `SqliteTableFactory::table_provider` (the upstream helper does not auto-wrap under
         // `sqlite-federation`), then wrap with `create_federated_table_provider` so the federation
         // optimizer recognizes this table as belonging to one compute context and pushes the whole
@@ -95,7 +111,27 @@ impl Source for SqliteSource {
         let federated = sqlite_table
             .create_federated_table_provider()
             .map_err(|e| SourceError(format!("federate {table}: {e}")))?;
-        Ok(Arc::new(federated))
+        let provider: Arc<dyn TableProvider> = Arc::new(federated);
+        self.provider_cache
+            .lock()
+            .expect("cache mutex")
+            .insert(table_name, provider.clone());
+        Ok(provider)
+    }
+
+    async fn query_direct(&self, sql: &str) -> Result<Vec<RecordBatch>, SourceError> {
+        let conn = self
+            .pool
+            .connect()
+            .await
+            .map_err(|e| SourceError(format!("direct connect: {e}")))?;
+        let stream = query_arrow(conn, sql.to_string(), None)
+            .await
+            .map_err(|e| SourceError(format!("direct query: {e}")))?;
+        stream
+            .try_collect()
+            .await
+            .map_err(|e| SourceError(format!("direct collect: {e}")))
     }
 
     async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {

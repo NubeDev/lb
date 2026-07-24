@@ -195,6 +195,7 @@ fn args_hash(input: &Value) -> String {
     if let Some(obj) = stripped.as_object_mut() {
         obj.remove("cache");
         obj.remove("dsn");
+        obj.remove("trace_id");
     }
     let digest = Sha256::digest(canonical(&stripped).to_string().as_bytes());
     digest.iter().map(|b| format!("{b:02x}")).collect()
