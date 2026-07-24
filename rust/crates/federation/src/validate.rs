@@ -190,6 +190,28 @@ impl Visitor for TableCollector {
 #[allow(unused_imports)]
 use Query as _Query;
 
+/// Wrap `sql` so the source engine returns at most [`ROW_CAP`] rows — the DIRECT-path counterpart of
+/// the DataFusion path's `df.limit(0, Some(ROW_CAP))` (which unparses to a remote LIMIT). Before this,
+/// the direct path fetched the FULL result and then `truncate(ROW_CAP)` client-side — the source did
+/// all the work and we discarded the tail. Here the cap becomes a real remote `LIMIT`, so an unbounded
+/// `SELECT * FROM huge` returns ROW_CAP rows off the wire.
+///
+/// Implementation: wrap the validated SELECT as a derived table under an outer `LIMIT ROW_CAP` rather
+/// than editing the inner query's own LIMIT. Two reasons: it is **dialect-agnostic** (Postgres and
+/// SQLite both accept `SELECT * FROM (<q>) t LIMIT n`, no per-engine `LimitClause` surgery), and the
+/// outer LIMIT **clamps whatever the inner produced** — a user-supplied `LIMIT 50` yields ≤50 (the
+/// inner wins), a user `LIMIT 1000000` (or none) is clamped to ROW_CAP (the outer wins). "Use the
+/// smaller" falls out of the nesting for free; we never have to compare two literals ourselves.
+///
+/// The input is already `validate_select`-approved (exactly one read-only SELECT), so the wrap can't
+/// smuggle a second statement or a write. The alias is a fixed internal identifier.
+pub fn cap_direct_sql(sql: &str) -> String {
+    format!(
+        "SELECT * FROM (\n{}\n) AS lb_capped LIMIT {ROW_CAP}",
+        sql.trim()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

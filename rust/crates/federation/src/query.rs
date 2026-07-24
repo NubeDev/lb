@@ -141,7 +141,11 @@ pub async fn run_query_cached(
         &outcome_for_event,
         Some(&ResultCacheEvent { state, age_ms }),
         phases.as_ref(),
-        if trace_id.is_empty() { None } else { Some(trace_id) },
+        if trace_id.is_empty() {
+            None
+        } else {
+            Some(trace_id)
+        },
     );
 
     outcome.map(|env| QueryResult {
@@ -255,26 +259,7 @@ async fn register_and_run(
     // is only needed when the query references synthetic `information_schema` views that
     // don't exist in the real database. This cuts ~700 ms of overhead per query.
     if validated.is_simple {
-        let t0 = std::time::Instant::now();
-
-        // Try the Arrow-free JSON path first (Postgres overrides this to skip Arrow entirely).
-        // The serialization is bundled INTO execute_ms — there is no separate serialize step.
-        let (columns, mut json_rows) = source
-            .query_direct_json(sql)
-            .await
-            .map_err(|e| format!("direct json query: {e}"))?;
-
-        // Cap results to ROW_CAP (same as the DataFusion path does via df.limit).
-        json_rows.truncate(ROW_CAP);
-
-        phases.execute_ms = t0.elapsed().as_millis() as u64;
-        phases.ttfb_ms = phases.execute_ms;
-
-        let result = QueryResult {
-            columns,
-            rows: json_rows,
-        };
-        return Ok((result, phases));
+        return run_direct_path(source, sql).await;
     }
 
     let ctx = federated_context();
@@ -330,6 +315,89 @@ async fn register_and_run(
     phases.serialize_ms = t0.elapsed().as_millis() as u64;
 
     Ok((result, phases))
+}
+
+/// The direct fast path: send the (row-capped) SQL straight to the source, bypassing DataFusion.
+///
+/// Taken for any query that does not read a synthetic `information_schema` view (`is_simple`). The
+/// database handles JOINs/subqueries/CTEs/aggregations natively, so DataFusion's plan+unparse ceremony
+/// (~700 ms) adds nothing. [`crate::validate::cap_direct_sql`] pushes the [`ROW_CAP`] down as a REAL
+/// remote LIMIT (the source returns only capped rows) rather than the prior fetch-everything-then-
+/// `truncate` — parity with the DataFusion path's `df.limit(0, Some(ROW_CAP))`.
+async fn run_direct_path(
+    source: &dyn Source,
+    sql: &str,
+) -> Result<(QueryResult, QueryPhaseTimings), String> {
+    let mut phases = QueryPhaseTimings::default();
+    let t0 = std::time::Instant::now();
+
+    let capped_sql = crate::validate::cap_direct_sql(sql);
+
+    // Try the Arrow-free JSON path first (Postgres overrides this to skip Arrow entirely).
+    // The serialization is bundled INTO execute_ms — there is no separate serialize step.
+    let (columns, json_rows) = source
+        .query_direct_json(&capped_sql)
+        .await
+        .map_err(|e| format!("direct json query: {e}"))?;
+
+    phases.execute_ms = t0.elapsed().as_millis() as u64;
+    phases.ttfb_ms = phases.execute_ms;
+
+    Ok((
+        QueryResult {
+            columns,
+            rows: json_rows,
+        },
+        phases,
+    ))
+}
+
+// ── Test seams ──────────────────────────────────────────────────────────────────────────────────
+// The integration tests `#[path]`-include this file (compiled with `cfg(test)` FALSE), so a
+// `#[cfg(test)]` helper is invisible to them. These thin `pub` wrappers expose the REAL direct and
+// DataFusion paths for the parity tests — they add no behavior, they only let a test drive each path
+// explicitly and compare (fine-grained-data-path scope §Testing plan). Dead in the `bin` target.
+
+/// Drive the REAL direct fast path for a query the validator marked `is_simple`. Used by the parity
+/// test to compare the direct path's output against the DataFusion oracle for the same SQL.
+#[allow(dead_code)]
+pub async fn run_via_direct_for_test(
+    source: &dyn Source,
+    validated: &crate::validate::ValidatedSelect,
+    sql: &str,
+) -> Result<QueryResult, String> {
+    debug_assert!(validated.is_simple, "helper is for the direct path");
+    run_direct_path(source, sql).await.map(|(r, _)| r)
+}
+
+/// Drive the REAL routing function [`register_and_run`] — the exact code the sidecar runs for a
+/// `federation.query` (and thus for a `viz.query` panel target) — and return the per-phase timings.
+/// Used to PROVE that a normal panel query (no `information_schema`) takes the direct path: the
+/// DataFusion-only phases (`info_schema_reg_ms`/`table_reg_ms`/`plan_ms`) stay ZERO.
+#[allow(dead_code)]
+pub async fn run_with_phases_for_test(
+    source: &dyn Source,
+    sql: &str,
+) -> Result<(QueryResult, QueryPhaseTimings), String> {
+    let validated = crate::validate::validate_select(sql).map_err(|e| e.to_string())?;
+    register_and_run(source, &validated, sql).await
+}
+
+/// Force the REAL DataFusion path (per-table providers + unparse/pushdown) for a plain user query,
+/// regardless of `is_simple`. The oracle the direct path must match cell-for-cell.
+#[allow(dead_code)]
+pub async fn run_via_datafusion_for_test(
+    source: &dyn Source,
+    sql: &str,
+) -> Result<QueryResult, String> {
+    let validated = crate::validate::validate_select(sql).map_err(|e| e.to_string())?;
+    // Build a NON-simple validated view so `register_and_run` takes the DataFusion branch even for a
+    // single-table query (we deliberately test the slow path as the oracle).
+    let forced = crate::validate::ValidatedSelect {
+        is_simple: false,
+        ..validated
+    };
+    register_and_run(source, &forced, sql).await.map(|(r, _)| r)
 }
 
 /// Convert collected Arrow batches into `{columns, rows}`. Columns come from the first batch's

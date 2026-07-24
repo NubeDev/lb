@@ -81,7 +81,12 @@ impl Source for PostgresSource {
         table: &TableReference,
     ) -> Result<Arc<dyn TableProvider>, SourceError> {
         let table_name = table.to_string();
-        if let Some(cached) = self.provider_cache.lock().expect("cache mutex").get(&table_name) {
+        if let Some(cached) = self
+            .provider_cache
+            .lock()
+            .expect("cache mutex")
+            .get(&table_name)
+        {
             return Ok(cached.clone());
         }
         let provider = self
@@ -94,6 +99,40 @@ impl Source for PostgresSource {
             .expect("cache mutex")
             .insert(table_name, provider.clone());
         Ok(provider)
+    }
+
+    async fn exec_raw_for_test(&self, sql: &str) -> Result<(), SourceError> {
+        // Real write connection (same `connect_direct` path apply_ddl/write_rows use) so a test seeds
+        // through the actual pool, not a shortcut. Internal test SQL only — never a caller surface.
+        let conn = self
+            .pool
+            .connect_direct()
+            .await
+            .map_err(|e| SourceError(format!("exec connect: {e}")))?;
+        conn.conn
+            .batch_execute(sql)
+            .await
+            .map_err(|e| SourceError(format!("exec: {e}")))
+    }
+
+    async fn explain_for_test(&self, sql: &str) -> Result<String, SourceError> {
+        let conn = self
+            .pool
+            .connect_direct()
+            .await
+            .map_err(|e| SourceError(format!("explain connect: {e}")))?;
+        let rows = conn
+            .conn
+            .query(&format!("EXPLAIN {sql}"), &[])
+            .await
+            .map_err(|e| SourceError(format!("explain: {e}")))?;
+        let mut plan = String::new();
+        for row in &rows {
+            let line: &str = row.get(0);
+            plan.push_str(line);
+            plan.push('\n');
+        }
+        Ok(plan)
     }
 
     async fn query_direct(&self, sql: &str) -> Result<Vec<RecordBatch>, SourceError> {
@@ -398,7 +437,12 @@ impl tokio_postgres::types::ToSql for PgValue {
 /// column's typed Arrow array — no JSON text intermediate, no per-cell Postgres OID dispatch.
 fn batches_to_column_rows(batches: &[RecordBatch]) -> (Vec<String>, Vec<serde_json::Value>) {
     let columns: Vec<String> = match batches.first() {
-        Some(b) => b.schema().fields().iter().map(|f| f.name().clone()).collect(),
+        Some(b) => b
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect(),
         None => return (Vec::new(), Vec::new()),
     };
 
@@ -465,17 +509,26 @@ fn cell_to_value(col: &dyn arrow::array::Array, row: usize) -> serde_json::Value
                     (a.value(row), 0)
                 }
                 TimeUnit::Millisecond => {
-                    let a = col.as_any().downcast_ref::<TimestampMillisecondArray>().unwrap();
+                    let a = col
+                        .as_any()
+                        .downcast_ref::<TimestampMillisecondArray>()
+                        .unwrap();
                     let ms = a.value(row);
                     (ms / 1000, ((ms % 1000) * 1_000_000) as u32)
                 }
                 TimeUnit::Microsecond => {
-                    let a = col.as_any().downcast_ref::<TimestampMicrosecondArray>().unwrap();
+                    let a = col
+                        .as_any()
+                        .downcast_ref::<TimestampMicrosecondArray>()
+                        .unwrap();
                     let us = a.value(row);
                     (us / 1_000_000, ((us % 1_000_000) * 1_000) as u32)
                 }
                 TimeUnit::Nanosecond => {
-                    let a = col.as_any().downcast_ref::<TimestampNanosecondArray>().unwrap();
+                    let a = col
+                        .as_any()
+                        .downcast_ref::<TimestampNanosecondArray>()
+                        .unwrap();
                     let ns = a.value(row);
                     (ns / 1_000_000_000, (ns % 1_000_000_000) as u32)
                 }
@@ -483,7 +536,14 @@ fn cell_to_value(col: &dyn arrow::array::Array, row: usize) -> serde_json::Value
             match chrono::DateTime::from_timestamp(secs, nsecs) {
                 Some(dt) => {
                     if tz_override.is_some() {
-                        serde_json::Value::String(dt.to_rfc3339())
+                        // Match the DataFusion path's wire form exactly: `arrow_json` renders a
+                        // tz-aware timestamp as RFC3339 with a `Z` suffix for UTC (`…05Z`), not
+                        // `+00:00`. `to_rfc3339()` would emit `+00:00` and diverge from every value a
+                        // dashboard already got via the DataFusion path — a spurious "changed" for the
+                        // same instant. `to_rfc3339_opts(_, use_z=true)` gives the `Z` form.
+                        serde_json::Value::String(
+                            dt.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true),
+                        )
                     } else {
                         serde_json::Value::String(dt.naive_utc().to_string())
                     }
@@ -511,7 +571,10 @@ fn cell_to_value(col: &dyn arrow::array::Array, row: usize) -> serde_json::Value
             serde_json::Value::String(date)
         }
         DataType::Time32(unit) => {
-            let a = col.as_any().downcast_ref::<Time32MillisecondArray>().unwrap();
+            let a = col
+                .as_any()
+                .downcast_ref::<Time32MillisecondArray>()
+                .unwrap();
             let val = a.value(row);
             let secs = match unit {
                 TimeUnit::Second => val,
@@ -524,7 +587,10 @@ fn cell_to_value(col: &dyn arrow::array::Array, row: usize) -> serde_json::Value
             serde_json::Value::String(time)
         }
         DataType::Time64(unit) => {
-            let a = col.as_any().downcast_ref::<Time64NanosecondArray>().unwrap();
+            let a = col
+                .as_any()
+                .downcast_ref::<Time64NanosecondArray>()
+                .unwrap();
             let ns = a.value(row);
             let secs = match unit {
                 TimeUnit::Microsecond | TimeUnit::Nanosecond => ns / 1_000_000_000,
@@ -535,12 +601,10 @@ fn cell_to_value(col: &dyn arrow::array::Array, row: usize) -> serde_json::Value
                 TimeUnit::Nanosecond => (ns % 1_000_000_000) as u32,
                 _ => 0,
             };
-            let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(
-                secs as u32,
-                remaining_ns,
-            )
-            .map(|t| t.to_string())
-            .unwrap_or_default();
+            let time =
+                chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs as u32, remaining_ns)
+                    .map(|t| t.to_string())
+                    .unwrap_or_default();
             serde_json::Value::String(time)
         }
         DataType::Decimal128(_, _) => {
@@ -550,8 +614,26 @@ fn cell_to_value(col: &dyn arrow::array::Array, row: usize) -> serde_json::Value
             let as_f64 = val as f64 / 10f64.powi(scale as i32);
             serde_json::json!(as_f64)
         }
-        _ => serde_json::Value::Null,
+        // Any Arrow type not given an explicit arm above (jsonb, uuid, arrays, interval, bytea,
+        // network types, enums, a `numeric` too wide for Decimal128, …). The prior catch-all
+        // returned `Null` here, which SILENTLY DROPPED every such cell — invisible data loss in a
+        // dashboard panel, and a divergence from the DataFusion path (which renders these via
+        // arrow_json). Instead render a best-effort TEXT form via Arrow's own display formatter,
+        // which handles lists/structs/decimals/etc. The cell was already proven non-null at the top
+        // of this fn, so this branch never fabricates a value for a genuinely-null cell.
+        _ => stringify_cell(col, row),
     }
 }
 
-
+/// Best-effort text rendering of one Arrow cell whose `DataType` has no explicit JSON mapping above.
+/// Uses `arrow::util::display::ArrayFormatter` — the same machinery `arrow`'s pretty-printer uses —
+/// so a `jsonb`/`uuid`/array/interval value becomes its readable string instead of vanishing to
+/// `null`. On the (unexpected) event the formatter itself can't be built, fall back to the type name
+/// so the loss is still VISIBLE (a marker string), never a silent `null`.
+fn stringify_cell(col: &dyn arrow::array::Array, row: usize) -> serde_json::Value {
+    use arrow::util::display::{ArrayFormatter, FormatOptions};
+    match ArrayFormatter::try_new(col, &FormatOptions::default()) {
+        Ok(fmt) => serde_json::Value::String(fmt.value(row).to_string()),
+        Err(_) => serde_json::Value::String(format!("<{}>", col.data_type())),
+    }
+}

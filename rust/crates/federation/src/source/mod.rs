@@ -81,7 +81,9 @@ pub trait Source: Send + Sync {
     ///
     /// The default impl returns an error; sources opt in by implementing against their pool.
     async fn query_direct(&self, _sql: &str) -> Result<Vec<RecordBatch>, SourceError> {
-        Err(SourceError("direct query not supported by this source".into()))
+        Err(SourceError(
+            "direct query not supported by this source".into(),
+        ))
     }
 
     /// Execute raw SQL and return JSON values directly, skipping the Arrow intermediate layer
@@ -119,8 +121,7 @@ pub trait Source: Send + Sync {
         let objs: Vec<Value> = if buf.is_empty() {
             Vec::new()
         } else {
-            serde_json::from_slice(&buf)
-                .map_err(|e| SourceError(format!("json parse: {e}")))?
+            serde_json::from_slice(&buf).map_err(|e| SourceError(format!("json parse: {e}")))?
         };
 
         let rows: Vec<Value> = objs
@@ -204,6 +205,24 @@ pub trait Source: Send + Sync {
         key: &[String],
         rows: &[Vec<serde_json::Value>],
     ) -> Result<u64, SourceError>;
+
+    /// TEST SEAM — run an arbitrary statement (DDL/INSERT) against the real pool, returning nothing.
+    /// Used by integration tests to SEED real tables through the real write connection (testing-scope
+    /// §3.1: seed, don't simulate). The statement is internal test SQL, never caller input — it is
+    /// NOT a query surface (the validated read path is `query_direct*`). Default: unsupported.
+    async fn exec_raw_for_test(&self, _sql: &str) -> Result<(), SourceError> {
+        Err(SourceError(
+            "exec_raw_for_test not supported by this source".into(),
+        ))
+    }
+
+    /// TEST SEAM — `EXPLAIN` a statement and return the plan as text, so a test can assert the source
+    /// actually received a bounded (LIMIT-carrying) plan. Default: unsupported.
+    async fn explain_for_test(&self, _sql: &str) -> Result<String, SourceError> {
+        Err(SourceError(
+            "explain_for_test not supported by this source".into(),
+        ))
+    }
 }
 
 /// A source-layer error. The DSN is NEVER included in the message (secret mediation — datasources
