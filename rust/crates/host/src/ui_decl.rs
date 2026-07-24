@@ -9,8 +9,8 @@
 //! decider" rule). The bridge re-filters and the host re-checks regardless; this is the durable,
 //! narrowed truth `ext.list` reports.
 
-use lb_assets::{ExtUi, ExtUiOption};
-use lb_ext_loader::{Manifest, Widget, WidgetOption};
+use lb_assets::{ExtNavItem, ExtUi, ExtUiOption};
+use lb_ext_loader::{Manifest, NavItem, Widget, WidgetOption};
 
 /// Build the `(page, widgets)` UI projection for an install from its parsed `manifest` and the
 /// computed `granted` cap set. `page` is `Some` iff the manifest declared `[ui]`; `widgets` carries
@@ -25,6 +25,9 @@ pub(crate) fn project(manifest: &Manifest, granted: &[String]) -> (Option<ExtUi>
         data: false,
         id: None,
         options: Vec::new(),
+        // The page's declared `[[ui.nav]]` destinations, relayed verbatim (validated at parse) — the
+        // shell renders them nested + routes `ext:<ext>/<id>`, branching on no id (ext-nav-contribution).
+        nav: u.nav.iter().map(project_nav).collect(),
     });
     let widgets = manifest
         .widgets
@@ -47,6 +50,20 @@ fn project_widget(w: &Widget, granted: &[String]) -> ExtUi {
         data: w.data,
         id: Some(w.widget_id()),
         options: w.options.iter().map(project_option).collect(),
+        // A widget contributes no top-level nav — nav is a page concern (ext-nav-contribution scope).
+        nav: Vec::new(),
+    }
+}
+
+/// A manifest `[[ui.nav]]` item → its persisted `ExtNavItem` mirror — a verbatim copy (opaque relay;
+/// the host stores/forwards/routes it, never interprets an id).
+fn project_nav(n: &NavItem) -> ExtNavItem {
+    ExtNavItem {
+        id: n.id.clone(),
+        label: n.label.clone(),
+        icon: n.icon.clone(),
+        admin: n.admin,
+        dynamic: n.dynamic,
     }
 }
 
@@ -162,6 +179,49 @@ class = "private"
             widgets[1].options.is_empty(),
             "widget B declared no options"
         );
+    }
+
+    #[test]
+    fn projects_ui_nav_onto_page_not_widget() {
+        // ext-nav-contribution scope: a page's `[[ui.nav]]` items are relayed verbatim onto its durable
+        // ExtUi.nav; a widget carries none. The host is a relay — flags + order + ids come through as-is.
+        const NAV_TOML: &str = r#"
+[extension]
+id = "ems"
+version = "0.1.0"
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.1.0"
+placement = "either"
+[ui]
+entry = "p.mjs"
+label = "EMS"
+[[ui.nav]]
+id = "sites"
+label = "nav.sites"
+icon = "layout-grid"
+dynamic = true
+[[ui.nav]]
+id = "studio"
+label = "nav.studio"
+admin = true
+[[widget]]
+entry = "w.mjs"
+label = "Tile"
+[visibility]
+class = "private"
+"#;
+        let m = Manifest::parse(NAV_TOML).unwrap();
+        let (page, widgets) = project(&m, &[]);
+        let page = page.unwrap();
+        assert_eq!(page.nav.len(), 2);
+        assert_eq!(page.nav[0].id, "sites");
+        assert_eq!(page.nav[0].label, "nav.sites");
+        assert_eq!(page.nav[0].icon, "layout-grid");
+        assert!(page.nav[0].dynamic && !page.nav[0].admin);
+        assert_eq!(page.nav[1].id, "studio");
+        assert!(page.nav[1].admin && !page.nav[1].dynamic);
+        assert!(widgets[0].nav.is_empty(), "a widget contributes no nav");
     }
 
     #[test]

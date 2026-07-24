@@ -28,6 +28,71 @@ pub enum ManifestError {
     /// `options` def (empty id/label/path, or an empty `control`).
     #[error("invalid [[widget]] block: {0}")]
     InvalidWidgetBlock(String),
+    /// A `[[ui.nav]]` block is malformed: an id that is not a `[a-z0-9-]{1,32}` slug, a duplicate id,
+    /// an empty/over-long label, an over-long icon, or more than 16 items (ext-nav-contribution scope).
+    /// A nav item is addressed `ext:<ext>/<id>` and referenced by pins/hides — a bad id is a load-time
+    /// reject, the same posture `pack.validate` takes on a reserved shadow (never a silent drop).
+    #[error("invalid [[ui.nav]] block: {0}")]
+    InvalidNavBlock(String),
+}
+
+/// The `[[ui.nav]]` caps (ext-nav-contribution scope). A declared nav tree is small and reviewed —
+/// these bound it at parse so a bad manifest fails loudly rather than shipping a broken rail.
+const NAV_MAX_ITEMS: usize = 16;
+const NAV_MAX_LABEL: usize = 64;
+const NAV_MAX_ICON: usize = 64;
+const NAV_MAX_ID: usize = 32;
+
+/// Is `id` a valid `[[ui.nav]]` slug — `[a-z0-9-]{1,32}` (lowercase ascii alphanumerics + hyphen)?
+/// The same grammar `ext:<ext>/<id>` view keys use, so a nav id is a safe URL sub-path segment.
+fn is_valid_nav_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= NAV_MAX_ID
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Validate a page's `[[ui.nav]]` items: slug ids unique within the block, non-empty label ≤64, icon
+/// ≤64, at most 16 items. A violation is a parse ERROR (never a silent drop) — the item is addressable
+/// (`ext:<ext>/<id>`) and pinnable, so a bad id must not reach the shell. Mirrors the `[[widget]]`
+/// posture: SHAPE + UNIQUENESS only, no interpretation of an id's meaning (rule 10).
+fn validate_nav(nav: &[NavItem]) -> Result<(), ManifestError> {
+    if nav.len() > NAV_MAX_ITEMS {
+        return Err(ManifestError::InvalidNavBlock(format!(
+            "{} items exceeds the max of {NAV_MAX_ITEMS}",
+            nav.len()
+        )));
+    }
+    let mut seen: Vec<&str> = Vec::with_capacity(nav.len());
+    for item in nav {
+        if !is_valid_nav_id(&item.id) {
+            return Err(ManifestError::InvalidNavBlock(format!(
+                "id '{}' is not a slug [a-z0-9-]{{1,{NAV_MAX_ID}}}",
+                item.id
+            )));
+        }
+        if seen.contains(&item.id.as_str()) {
+            return Err(ManifestError::InvalidNavBlock(format!(
+                "duplicate id '{}' — each nav ref must be unique",
+                item.id
+            )));
+        }
+        seen.push(&item.id);
+        if item.label.is_empty() || item.label.len() > NAV_MAX_LABEL {
+            return Err(ManifestError::InvalidNavBlock(format!(
+                "item '{}' label must be non-empty and ≤{NAV_MAX_LABEL} chars",
+                item.id
+            )));
+        }
+        if item.icon.len() > NAV_MAX_ICON {
+            return Err(ManifestError::InvalidNavBlock(format!(
+                "item '{}' icon exceeds {NAV_MAX_ICON} chars",
+                item.id
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Slugify a display label into a stable id — lowercased, runs of non-alphanumerics collapsed to a
@@ -137,6 +202,37 @@ pub struct UiPage {
     /// the install's `granted` (= `requested ∩ admin_approved`). Empty = the page calls nothing.
     #[serde(default)]
     pub scope: Vec<String>,
+    /// The `[[ui.nav]]` block — the extension's ordered top-level nav destinations, rendered by the
+    /// shell as nested children of the extension's sidebar group (ext-nav-contribution scope). Empty
+    /// (the default, and every manifest written before this field) ⇒ the extension keeps its single
+    /// flat slot, exactly today's behavior. The host RELAYS and RENDERS these; it never interprets an
+    /// `id`. Validated at parse (`validate_nav`): slug ids, per-block uniqueness, label/icon caps, ≤16.
+    #[serde(default)]
+    pub nav: Vec<NavItem>,
+}
+
+/// A `[[ui.nav]]` item — one top-level nav destination an extension declares (ext-nav-contribution
+/// scope). A **lens**, not authority: `admin` hides chrome, the verbs stay the wall. `label` is an
+/// i18n KEY in the extension's OWN catalog (the host never translates it). Opaque relay data — the
+/// host stores, forwards, and routes `ext:<ext>/<id>`, but branches on no id (rule 10).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct NavItem {
+    /// The item id — a slug `[a-z0-9-]{1,32}`, unique within the block. The `ext:<ext>/<id>` view-key
+    /// segment and the sub-path the shell routes (`/ext/<ext>/<id>`).
+    pub id: String,
+    /// An i18n key in the extension's own catalog (`≤64` chars, non-empty). Resolved ext-side.
+    pub label: String,
+    /// A lucide icon name (`≤64` chars; empty ⇒ the shell's default).
+    #[serde(default)]
+    pub icon: String,
+    /// Presentation gate ONLY — mirrors the shell's admin show/hide. Hiding never blocks the deep
+    /// link; the verbs remain the wall. Default `false` ⇒ visible to everyone.
+    #[serde(default)]
+    pub admin: bool,
+    /// Whether this item's children are supplied at RUNTIME via `bridge.setNav` (e.g. EMS's reachable
+    /// sites). Default `false` ⇒ a static leaf. A `dynamic` item with no children yet is deliberate.
+    #[serde(default)]
+    pub dynamic: bool,
 }
 
 /// A `[[widget]]` table — an extension that contributes a **dashboard tile** droppable into a grid
@@ -333,6 +429,13 @@ impl Manifest {
             }
         }
 
+        // Validate the `[[ui.nav]]` block (ext-nav-contribution scope): slug ids, per-block uniqueness,
+        // label/icon caps, ≤16 items. A nav item is addressable + pinnable, so a bad id is a load-time
+        // reject, not a silent drop. Only a page with a real `entry` keeps its nav (mirrors the drop below).
+        if let Some(ui) = raw.ui.as_ref().filter(|u| !u.entry.is_empty()) {
+            validate_nav(&ui.nav)?;
+        }
+
         Ok(Manifest {
             id: raw.extension.id,
             version: raw.extension.version,
@@ -450,6 +553,119 @@ class = "private"
         assert_eq!(ui.icon, "chart-bar");
         assert_eq!(ui.scope, vec!["channel.list".to_string()]);
         assert!(m.widgets.is_empty());
+        // A `[ui]` block with no `[[ui.nav]]` deserializes to an empty vec ⇒ one flat slot, today's
+        // exact behavior (ext-nav-contribution scope, the additive guarantee).
+        assert!(ui.nav.is_empty());
+    }
+
+    // ── `[[ui.nav]]` — the extension nav-contribution block (ext-nav-contribution scope) ──
+
+    #[test]
+    fn parses_ui_nav_block() {
+        // A valid ordered block: a dynamic parent, a plain item, an admin item — ids, flags, order kept.
+        let toml = with_runtime(
+            "wasm",
+            r#"[ui]
+entry = "e.mjs"
+label = "EMS"
+[[ui.nav]]
+id = "sites"
+label = "nav.sites"
+icon = "layout-grid"
+dynamic = true
+[[ui.nav]]
+id = "explore"
+label = "nav.explore"
+[[ui.nav]]
+id = "studio"
+label = "nav.studio"
+admin = true"#,
+        );
+        let m = Manifest::parse(&toml).expect("valid [[ui.nav]] parses");
+        let nav = m.ui.expect("has [ui]").nav;
+        assert_eq!(nav.len(), 3);
+        assert_eq!(nav[0].id, "sites");
+        assert_eq!(nav[0].label, "nav.sites");
+        assert_eq!(nav[0].icon, "layout-grid");
+        assert!(nav[0].dynamic);
+        assert!(!nav[0].admin);
+        assert_eq!(nav[1].id, "explore");
+        assert!(!nav[1].dynamic);
+        assert!(nav[2].admin, "studio is an admin item");
+    }
+
+    #[test]
+    fn rejects_duplicate_ui_nav_id() {
+        let toml = with_runtime(
+            "wasm",
+            r#"[ui]
+entry = "e.mjs"
+label = "EMS"
+[[ui.nav]]
+id = "sites"
+label = "A"
+[[ui.nav]]
+id = "sites"
+label = "B""#,
+        );
+        assert!(matches!(
+            Manifest::parse(&toml),
+            Err(ManifestError::InvalidNavBlock(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_bad_ui_nav_id_slug() {
+        // Uppercase / spaces / slashes are not `[a-z0-9-]{1,32}` — a bad addressable id is a reject.
+        for bad in ["Sites", "with space", "a/b", "", &"x".repeat(33)] {
+            let toml = with_runtime(
+                "wasm",
+                &format!(
+                    "[ui]\nentry = \"e.mjs\"\nlabel = \"EMS\"\n[[ui.nav]]\nid = \"{bad}\"\nlabel = \"L\""
+                ),
+            );
+            assert!(
+                matches!(Manifest::parse(&toml), Err(ManifestError::InvalidNavBlock(_))),
+                "id {bad:?} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_empty_ui_nav_label() {
+        let toml = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"e.mjs\"\nlabel = \"EMS\"\n[[ui.nav]]\nid = \"sites\"\nlabel = \"\"",
+        );
+        assert!(matches!(
+            Manifest::parse(&toml),
+            Err(ManifestError::InvalidNavBlock(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_over_cap_ui_nav_list() {
+        // 17 items exceeds the max of 16 — an over-cap block is a load-time reject, never truncated.
+        let items: String = (0..17)
+            .map(|i| format!("[[ui.nav]]\nid = \"item-{i}\"\nlabel = \"L\"\n"))
+            .collect();
+        let toml = with_runtime(
+            "wasm",
+            &format!("[ui]\nentry = \"e.mjs\"\nlabel = \"EMS\"\n{items}"),
+        );
+        assert!(matches!(
+            Manifest::parse(&toml),
+            Err(ManifestError::InvalidNavBlock(_))
+        ));
+    }
+
+    #[test]
+    fn absent_ui_nav_is_empty_not_error() {
+        // The additive guarantee: a `[ui]` with no nav (and every pre-field manifest) parses to an
+        // empty vec — one flat slot, exactly today's behavior — never an error.
+        let toml = with_runtime("wasm", "[ui]\nentry = \"e.mjs\"\nlabel = \"EMS\"");
+        let m = Manifest::parse(&toml).expect("parses");
+        assert!(m.ui.expect("has [ui]").nav.is_empty());
     }
 
     #[test]

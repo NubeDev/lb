@@ -15,6 +15,48 @@ use crate::plan::PlannedObject;
 /// through. A warning list, deliberately — see the module doc.
 pub const SQL_POISON: &[&str] = &["datetime(", "with ", "strftime("];
 
+/// The store tables the CORE owns — a pack MUST NOT bind an entity to one of these. The application
+/// store is a single shared namespace: core's own records (the gateway registry, grants, roles,
+/// dashboards, the pack receipts themselves, …) live in it as ordinary tables. A pack whose `table:`
+/// names one of these does not "reach the store" (rule 10 — that IS the store), it SHADOWS a core
+/// table: its seed rows land alongside (or its reads scan) core's records in the same namespace,
+/// silently corrupting the substrate the node runs on. This is a hard ERROR at validate/apply time —
+/// the author renames (the convention is a pack-scoped prefix, e.g. `ems_gateway`) so the store name
+/// is unambiguous AND stays the exact name the pack's extension writes (the one-datastore parity rule:
+/// lb NEVER auto-rewrites the table name, because the extension shares that contract).
+///
+/// This is the CORE set only — a cross-PACK table reuse is warned, not gated (two packs may legitimately
+/// coordinate on a shared table; core cannot be coordinated with). Keep in lockstep with the tables the
+/// host boots/owns (`credential`, `channel_registry`, `pack_receipt`, `native_status`, … each a
+/// `const TABLE` in its module) plus the platform planes (dashboards, rules, insights, tags, undo).
+pub const RESERVED_CORE_TABLES: &[&str] = &[
+    "agent_memory",
+    "channel_registry",
+    "credential",
+    "dashboard",
+    "datasource",
+    "gateway",
+    "grant",
+    "insight",
+    "insight_occ",
+    "install",
+    "membership",
+    "native_status",
+    "pack_receipt",
+    "rel",
+    "role",
+    "rule",
+    "secret",
+    "series_retention",
+    "tag",
+    "tagged",
+    "undo",
+    "undo_seq",
+    "undo_stack",
+    "user_prefs",
+    "workspace_prefs",
+];
+
 /// Strip SQL comments so the poison scan sees only executable text.
 ///
 /// Without this, a pack that WARNS ITS OWN AUTHOR off `datetime()` in a comment is flagged for the
@@ -137,6 +179,30 @@ pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
         }
     }
 
+    // ERROR — an entity binding that SHADOWS a core store table. The application store is one shared
+    // namespace; a pack binding `table: gateway`/`grant`/`role`/… would seed its rows into (and read
+    // over) core's own records. lb must NOT silently auto-prefix the name to dodge this — the pack's
+    // extension shares the table-name contract (one-datastore parity), so a rewrite on lb's side alone
+    // would split the pack and its extension onto different tables. The author renames to a pack-scoped
+    // name (`ems_gateway`) that is unambiguous AND the same on both sides. Gated because it is
+    // manifest-only and catastrophic if applied.
+    for (name, ent) in &pack.manifest.entities {
+        if let Some(table) = ent.table.as_deref() {
+            if RESERVED_CORE_TABLES.contains(&table) {
+                out.push(Finding {
+                    error: true,
+                    message: format!(
+                        "entity '{name}' binds table '{table}', which is a RESERVED core store table — \
+                         a pack must not shadow core's records. Rename the table to a pack-scoped name \
+                         (e.g. '{}_{table}') in BOTH the binding and the pack's extension so they stay \
+                         on the same store table",
+                        pack.manifest.pack
+                    ),
+                });
+            }
+        }
+    }
+
     // WARNING — dialect poison in the schema/seed SQL. Comments are stripped first: the scan is a
     // substring match, so without this a comment WARNING the author off `datetime()` trips the very
     // warning it is telling them to avoid.
@@ -256,6 +322,40 @@ mod tests {
         let f = validate(&p, &plan(&p));
         assert!(has_errors(&f), "{f:?}");
         assert!(f[0].message.contains("equip"), "{f:?}");
+    }
+
+    #[test]
+    fn binding_a_reserved_core_table_is_an_error() {
+        // A pack binding an entity to a core table (`gateway` = the node's own registry) shadows
+        // core's records in the one shared store namespace — a hard ERROR, not a silent merge.
+        let p = resolve(
+            "pack: ems\ntitle: E\nversion: 1\nentities:\n  gateway:\n    label: Gateway\n    \
+             table: gateway\n    pk: id\n",
+            &[],
+        );
+        let f = validate(&p, &plan(&p));
+        assert!(has_errors(&f), "shadowing a core table must gate: {f:?}");
+        assert!(
+            f.iter()
+                .any(|x| x.message.contains("RESERVED core store table")
+                    && x.message.contains("ems_gateway")),
+            "the error must name the clash and suggest the pack-scoped rename: {f:?}"
+        );
+    }
+
+    #[test]
+    fn a_pack_scoped_table_name_is_clean() {
+        // The same entity bound to the pack-scoped `ems_gateway` passes — the prefix resolves the clash.
+        let p = resolve(
+            "pack: ems\ntitle: E\nversion: 1\nentities:\n  gateway:\n    label: Gateway\n    \
+             table: ems_gateway\n    pk: id\n",
+            &[],
+        );
+        let f = validate(&p, &plan(&p));
+        assert!(
+            !f.iter().any(|x| x.message.contains("RESERVED")),
+            "a pack-scoped table must not trip the reserved guard: {f:?}"
+        );
     }
 
     #[test]

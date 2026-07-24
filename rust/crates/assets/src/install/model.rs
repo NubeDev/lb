@@ -53,6 +53,34 @@ pub struct ExtUi {
     /// written before this field. Serde-defaulted.
     #[serde(default)]
     pub options: Vec<ExtUiOption>,
+    /// The extension's declared top-level nav destinations (ext-nav-contribution scope) — one per
+    /// `[[ui.nav]]` item on a PAGE. Relayed verbatim to the shell, which renders them as nested sidebar
+    /// children and routes `ext:<ext>/<id>`; the host never interprets an id. Empty for a widget, for a
+    /// page that declared none, and for installs written before this field. Serde-defaulted, so a
+    /// pre-field install reads as an empty vec ⇒ one flat slot, exactly today's behavior.
+    #[serde(default)]
+    pub nav: Vec<ExtNavItem>,
+}
+
+/// A persisted mirror of a manifest `[[ui.nav]]` item (ext-nav-contribution scope). Carried on the
+/// install so `ext.list` tells the shell the extension's nav tree without re-reading the manifest.
+/// Opaque relay data — the host stores, forwards, and routes it, but branches on no id (rule 10).
+/// `label` is an i18n key in the extension's OWN catalog; the host never translates it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExtNavItem {
+    /// The item id — the `ext:<ext>/<id>` view-key segment (a `[a-z0-9-]{1,32}` slug, validated at parse).
+    pub id: String,
+    /// The nav label — an i18n key resolved by the extension.
+    pub label: String,
+    /// A lucide icon name (empty = the shell's default).
+    #[serde(default)]
+    pub icon: String,
+    /// Presentation-only admin gate — hides chrome; the verbs remain the wall.
+    #[serde(default)]
+    pub admin: bool,
+    /// Whether children are published at runtime via `bridge.setNav` (else a static leaf).
+    #[serde(default)]
+    pub dynamic: bool,
 }
 
 /// A persisted mirror of a manifest `WidgetOption` (ext-widget-panel-options scope). Carried on the
@@ -168,5 +196,40 @@ impl Install {
     pub fn with_nodes(mut self, nodes: Vec<lb_flows::NodeBlock>) -> Self {
         self.nodes = nodes;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ext_ui_pre_nav_field_deserializes_to_empty_nav() {
+        // The additive guarantee (ext-nav-contribution scope): an ExtUi JSON written before the `nav`
+        // field — i.e. every install already on disk — deserializes with an empty `nav`, so the shell
+        // renders one flat slot exactly as today. Serde-default, no migration.
+        let legacy = r#"{"entry":"remoteEntry.js","label":"EMS","icon":"activity","scope":[]}"#;
+        let ui: ExtUi = serde_json::from_str(legacy).expect("legacy ExtUi still deserializes");
+        assert!(ui.nav.is_empty());
+        assert_eq!(ui.label, "EMS");
+    }
+
+    #[test]
+    fn ext_nav_item_round_trips_and_defaults() {
+        let item = ExtNavItem {
+            id: "sites".into(),
+            label: "nav.sites".into(),
+            icon: "layout-grid".into(),
+            admin: false,
+            dynamic: true,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        let back: ExtNavItem = serde_json::from_str(&json).unwrap();
+        assert_eq!(item, back);
+        // A minimal item (id+label only) defaults icon/admin/dynamic.
+        let minimal: ExtNavItem =
+            serde_json::from_str(r#"{"id":"explore","label":"nav.explore"}"#).unwrap();
+        assert_eq!(minimal.icon, "");
+        assert!(!minimal.admin && !minimal.dynamic);
     }
 }

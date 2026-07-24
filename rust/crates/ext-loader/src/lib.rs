@@ -11,5 +11,5 @@ mod manifest;
 
 pub use grant::grant;
 pub use manifest::{
-    slug, Manifest, ManifestError, Native, Tool, UiPage, Visibility, Widget, WidgetOption,
+    slug, Manifest, ManifestError, NavItem, Native, Tool, UiPage, Visibility, Widget, WidgetOption,
 };
