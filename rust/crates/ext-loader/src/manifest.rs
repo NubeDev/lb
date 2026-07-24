@@ -3,6 +3,7 @@
 //! request, never a grant), and the WIT world major (checked against the host's SDK).
 
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -29,7 +30,8 @@ pub enum ManifestError {
     #[error("invalid [[widget]] block: {0}")]
     InvalidWidgetBlock(String),
     /// A `[[ui.nav]]` block is malformed: an id that is not a `[a-z0-9-]{1,32}` slug, a duplicate id,
-    /// an empty/over-long label, an over-long icon, or more than 16 items (ext-nav-contribution scope).
+    /// an empty/over-long label, an over-long icon, more than 16 items (ext-nav-contribution scope), or
+    /// a bad `dashboard` ref / over-cap `vars` binding (ext-dashboard-nav scope).
     /// A nav item is addressed `ext:<ext>/<id>` and referenced by pins/hides — a bad id is a load-time
     /// reject, the same posture `pack.validate` takes on a reserved shadow (never a silent drop).
     #[error("invalid [[ui.nav]] block: {0}")]
@@ -42,6 +44,13 @@ const NAV_MAX_ITEMS: usize = 16;
 const NAV_MAX_LABEL: usize = 64;
 const NAV_MAX_ICON: usize = 64;
 const NAV_MAX_ID: usize = 32;
+/// A declared `dashboard:<id>` ref cap (ext-dashboard-nav scope) — a nav item that opens a HOST
+/// dashboard instead of routing into the mount. Bounded like the other opaque refs; interpreted never.
+const NAV_MAX_DASHBOARD: usize = 128;
+/// The `vars` binding caps (ext-dashboard-nav scope) — mirror the SDK `clampNavChildren` bounds so a
+/// STATIC dashboard nav item is bounded at parse the same way a dynamic child is bounded at publish.
+const NAV_MAX_VARS: usize = 32;
+const NAV_MAX_VAR_KV: usize = 128;
 
 /// Is `id` a valid `[[ui.nav]]` slug — `[a-z0-9-]{1,32}` (lowercase ascii alphanumerics + hyphen)?
 /// The same grammar `ext:<ext>/<id>` view keys use, so a nav id is a safe URL sub-path segment.
@@ -90,6 +99,36 @@ fn validate_nav(nav: &[NavItem]) -> Result<(), ManifestError> {
                 "item '{}' icon exceeds {NAV_MAX_ICON} chars",
                 item.id
             )));
+        }
+        // A declared `dashboard` ref (ext-dashboard-nav scope) opens a HOST dashboard rather than the
+        // mount — it must be a non-empty, bounded ref. The host never resolves the id (rule 10), but a
+        // malformed ref is a load-time reject, not a silent drop (same posture as the id/label checks).
+        if let Some(dashboard) = item.dashboard.as_ref() {
+            if dashboard.is_empty() || dashboard.len() > NAV_MAX_DASHBOARD {
+                return Err(ManifestError::InvalidNavBlock(format!(
+                    "item '{}' dashboard ref must be non-empty and ≤{NAV_MAX_DASHBOARD} chars",
+                    item.id
+                )));
+            }
+        }
+        // The `vars` binding is bounded exactly like the SDK `clampNavChildren` bounds a dynamic child's
+        // vars (≤32 keys, key + value ≤128 chars each) — the STATIC manifest item and the DYNAMIC child
+        // share one posture. The host does not validate the vars against the dashboard's declared
+        // variables (rule 10); it only bounds their size.
+        if item.vars.len() > NAV_MAX_VARS {
+            return Err(ManifestError::InvalidNavBlock(format!(
+                "item '{}' declares {} vars, exceeding the max of {NAV_MAX_VARS}",
+                item.id,
+                item.vars.len()
+            )));
+        }
+        for (k, v) in &item.vars {
+            if k.is_empty() || k.len() > NAV_MAX_VAR_KV || v.len() > NAV_MAX_VAR_KV {
+                return Err(ManifestError::InvalidNavBlock(format!(
+                    "item '{}' var '{k}' key/value must be non-empty and ≤{NAV_MAX_VAR_KV} chars",
+                    item.id
+                )));
+            }
         }
     }
     Ok(())
@@ -233,6 +272,18 @@ pub struct NavItem {
     /// sites). Default `false` ⇒ a static leaf. A `dynamic` item with no children yet is deliberate.
     #[serde(default)]
     pub dynamic: bool,
+    /// An OPTIONAL `dashboard:<id>` ref (ext-dashboard-nav scope). Present ⇒ the shell renders this item
+    /// as a HOST-dashboard link (into the dashboard viewer) instead of routing `ext:<ext>/<id>` into the
+    /// mount, reusing the host's own `dashboard`-kind nav grammar. Opaque relay data — the host bounds it
+    /// at parse but never resolves the id (rule 10). Absent ⇒ an ext-route item, exactly today's behavior.
+    #[serde(default)]
+    pub dashboard: Option<String>,
+    /// An OPTIONAL pinned variable binding the shell folds into the viewer URL as `?var-<name>=<value>`
+    /// (ext-dashboard-nav scope) — the SAME `Record<string,string>` shape the host `NavItem.vars` uses.
+    /// Only meaningful with `dashboard`. Opaque relay data (the host does not check it against the
+    /// dashboard's declared variables — rule 10); a `BTreeMap` for a byte-stable serialization.
+    #[serde(default)]
+    pub vars: BTreeMap<String, String>,
 }
 
 /// A `[[widget]]` table — an extension that contributes a **dashboard tile** droppable into a grid
@@ -652,6 +703,72 @@ label = "B""#,
         let toml = with_runtime(
             "wasm",
             &format!("[ui]\nentry = \"e.mjs\"\nlabel = \"EMS\"\n{items}"),
+        );
+        assert!(matches!(
+            Manifest::parse(&toml),
+            Err(ManifestError::InvalidNavBlock(_))
+        ));
+    }
+
+    // ── ext-dashboard-nav scope: a `dashboard`/`vars` target on a declared nav item ──
+
+    #[test]
+    fn parses_ui_nav_dashboard_item() {
+        // A STATIC dashboard nav item (the degenerate case of the dynamic child): `dashboard` + `vars`
+        // parse verbatim and carry through onto the NavItem — the host relays, never interprets.
+        let toml = with_runtime(
+            "wasm",
+            r#"[ui]
+entry = "e.mjs"
+label = "EMS"
+[[ui.nav]]
+id = "fleet"
+label = "nav.fleet"
+icon = "layout-dashboard"
+dashboard = "dashboard:ems-fleet-overview"
+vars = { site = "site-1" }"#,
+        );
+        let m = Manifest::parse(&toml).expect("valid dashboard nav item parses");
+        let nav = m.ui.expect("has [ui]").nav;
+        assert_eq!(nav.len(), 1);
+        assert_eq!(nav[0].dashboard.as_deref(), Some("dashboard:ems-fleet-overview"));
+        assert_eq!(nav[0].vars.get("site").map(String::as_str), Some("site-1"));
+        // An item WITHOUT dashboard/vars defaults to None/empty — an ext-route item, unchanged.
+        let ext_route = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"e.mjs\"\nlabel = \"EMS\"\n[[ui.nav]]\nid = \"explore\"\nlabel = \"nav.explore\"",
+        );
+        let m2 = Manifest::parse(&ext_route).expect("parses");
+        let nav2 = m2.ui.expect("has [ui]").nav;
+        assert!(nav2[0].dashboard.is_none() && nav2[0].vars.is_empty());
+    }
+
+    #[test]
+    fn rejects_empty_ui_nav_dashboard_ref() {
+        // A declared but empty `dashboard` ref is a malformed addressable target — a load-time reject.
+        let toml = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"e.mjs\"\nlabel = \"EMS\"\n[[ui.nav]]\nid = \"fleet\"\nlabel = \"L\"\ndashboard = \"\"",
+        );
+        assert!(matches!(
+            Manifest::parse(&toml),
+            Err(ManifestError::InvalidNavBlock(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_over_cap_ui_nav_vars() {
+        // 33 vars exceeds the max of 32 — an over-cap binding is a load-time reject, never truncated
+        // silently on the static path (the dynamic path truncates-with-warning; the manifest errors).
+        let pairs = (0..33)
+            .map(|i| format!("k{i} = \"v\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let toml = with_runtime(
+            "wasm",
+            &format!(
+                "[ui]\nentry = \"e.mjs\"\nlabel = \"EMS\"\n[[ui.nav]]\nid = \"fleet\"\nlabel = \"L\"\ndashboard = \"dashboard:x\"\nvars = {{ {pairs} }}"
+            ),
         );
         assert!(matches!(
             Manifest::parse(&toml),

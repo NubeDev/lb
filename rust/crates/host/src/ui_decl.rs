@@ -64,6 +64,10 @@ fn project_nav(n: &NavItem) -> ExtNavItem {
         icon: n.icon.clone(),
         admin: n.admin,
         dynamic: n.dynamic,
+        // The optional HOST-dashboard target (ext-dashboard-nav scope) — relayed verbatim, interpreted
+        // never (rule 10). Absent ⇒ an ext-route item, unchanged.
+        dashboard: n.dashboard.clone(),
+        vars: n.vars.clone(),
     }
 }
 
@@ -205,6 +209,11 @@ dynamic = true
 id = "studio"
 label = "nav.studio"
 admin = true
+[[ui.nav]]
+id = "fleet"
+label = "nav.fleet"
+dashboard = "dashboard:ems-fleet-overview"
+vars = { site = "site-1" }
 [[widget]]
 entry = "w.mjs"
 label = "Tile"
@@ -214,13 +223,22 @@ class = "private"
         let m = Manifest::parse(NAV_TOML).unwrap();
         let (page, widgets) = project(&m, &[]);
         let page = page.unwrap();
-        assert_eq!(page.nav.len(), 2);
+        assert_eq!(page.nav.len(), 3);
         assert_eq!(page.nav[0].id, "sites");
         assert_eq!(page.nav[0].label, "nav.sites");
         assert_eq!(page.nav[0].icon, "layout-grid");
         assert!(page.nav[0].dynamic && !page.nav[0].admin);
+        // An ext-route item carries no dashboard/vars.
+        assert!(page.nav[0].dashboard.is_none() && page.nav[0].vars.is_empty());
         assert_eq!(page.nav[1].id, "studio");
         assert!(page.nav[1].admin && !page.nav[1].dynamic);
+        // ext-dashboard-nav scope: a static dashboard nav item's dashboard/vars relay verbatim.
+        assert_eq!(page.nav[2].id, "fleet");
+        assert_eq!(
+            page.nav[2].dashboard.as_deref(),
+            Some("dashboard:ems-fleet-overview")
+        );
+        assert_eq!(page.nav[2].vars.get("site").map(String::as_str), Some("site-1"));
         assert!(widgets[0].nav.is_empty(), "a widget contributes no nav");
     }
 

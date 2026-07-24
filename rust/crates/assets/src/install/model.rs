@@ -6,6 +6,7 @@
 //! for is live unless an admin approved it.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// The extension tier an install belongs to (README §6.3). `Wasm` is a Tier-1 component (no OS
 /// process); `Native` is a Tier-2 supervised sidecar. The lifecycle surface dispatches by this
@@ -81,6 +82,21 @@ pub struct ExtNavItem {
     /// Whether children are published at runtime via `bridge.setNav` (else a static leaf).
     #[serde(default)]
     pub dynamic: bool,
+    /// An OPTIONAL `dashboard:<id>` ref (ext-dashboard-nav scope). When present, the shell renders this
+    /// item as a HOST-dashboard link (into the dashboard viewer) instead of routing `ext:<ext>/<id>` into
+    /// the mount — reusing the host's own `dashboard`-kind nav grammar. Opaque relay data: the host stores
+    /// and forwards it, never resolves the id (rule 10). `None` for an ext-route item and for installs
+    /// written before this field. Serde-defaulted, so a pre-field install deserializes as `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dashboard: Option<String>,
+    /// An OPTIONAL pinned variable binding the host folds into the viewer URL as `?var-<name>=<value>`
+    /// (ext-dashboard-nav scope) — the SAME `Record<string,string>` shape the host `NavItem.vars` uses.
+    /// Only meaningful alongside `dashboard`. Opaque relay data: the host does not validate the vars
+    /// against the dashboard's declared variables (rule 10). Empty for an ext-route item and for pre-field
+    /// installs. Serde-defaulted + `BTreeMap` for a stable, byte-deterministic serialization (the shell's
+    /// active-highlight reverse-lookup matches on the sorted `(id, vars)` tuple).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
 }
 
 /// A persisted mirror of a manifest `WidgetOption` (ext-widget-panel-options scope). Carried on the
@@ -222,14 +238,45 @@ mod tests {
             icon: "layout-grid".into(),
             admin: false,
             dynamic: true,
+            dashboard: None,
+            vars: BTreeMap::new(),
         };
         let json = serde_json::to_string(&item).unwrap();
         let back: ExtNavItem = serde_json::from_str(&json).unwrap();
         assert_eq!(item, back);
-        // A minimal item (id+label only) defaults icon/admin/dynamic.
+        // A minimal item (id+label only) defaults icon/admin/dynamic/dashboard/vars.
         let minimal: ExtNavItem =
             serde_json::from_str(r#"{"id":"explore","label":"nav.explore"}"#).unwrap();
         assert_eq!(minimal.icon, "");
         assert!(!minimal.admin && !minimal.dynamic);
+        assert!(minimal.dashboard.is_none() && minimal.vars.is_empty());
+    }
+
+    #[test]
+    fn ext_nav_item_carries_dashboard_and_vars() {
+        // A dashboard-target static nav item (ext-dashboard-nav scope): the `dashboard`/`vars` fields
+        // relay verbatim through the same serde the install/`ExtRow` path uses. `vars` is a BTreeMap so
+        // the serialized form is byte-stable (the shell's active-highlight reverse-lookup depends on it).
+        let mut vars = BTreeMap::new();
+        vars.insert("site".to_string(), "site-1".to_string());
+        let item = ExtNavItem {
+            id: "site-1".into(),
+            label: "Acme HQ".into(),
+            icon: String::new(),
+            admin: false,
+            dynamic: false,
+            dashboard: Some("dashboard:ems-site-overview".into()),
+            vars,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains("\"dashboard\":\"dashboard:ems-site-overview\""));
+        assert!(json.contains("\"vars\":{\"site\":\"site-1\"}"));
+        let back: ExtNavItem = serde_json::from_str(&json).unwrap();
+        assert_eq!(item, back);
+
+        // A pre-field install (no dashboard/vars keys) deserializes to None/empty — additive, no migration.
+        let legacy: ExtNavItem =
+            serde_json::from_str(r#"{"id":"explore","label":"nav.explore","dynamic":false}"#).unwrap();
+        assert!(legacy.dashboard.is_none() && legacy.vars.is_empty());
     }
 }
