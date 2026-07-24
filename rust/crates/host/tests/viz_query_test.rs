@@ -661,15 +661,24 @@ async fn panel_time_override_applies_to_target_dispatch() {
         }
     };
 
+    // NOTE (issue #101): these targets pin `mode:"rows"` so the test stays focused on time-override
+    // math — an explicit mode always wins over the panel-resolution bucket injection (a mode-less
+    // series.read with a numeric window would now be upgraded to buckets; that path is covered in
+    // viz_resolution_test.rs). Override semantics are identical in either mode.
+
     // Baseline: no override → all 4 seeded rows.
-    let n = run(series_panel(json!({}), json!({ "series": "cpu" }))).await;
+    let n = run(series_panel(
+        json!({}),
+        json!({ "series": "cpu", "mode": "rows" }),
+    ))
+    .await;
     assert_eq!(n, 4, "baseline reads every seeded row");
 
     // timeFrom "50s" at now=100 → range [50, 100]; the seeded ts 1..4 fall OUTSIDE → 0 rows. The
     // override REPLACES even a caller-supplied range (that is what a Grafana panel override does).
     let n = run(series_panel(
         json!({ "timeFrom": "50s" }),
-        json!({ "series": "cpu", "from": 0, "to": 10 }),
+        json!({ "series": "cpu", "mode": "rows", "from": 0, "to": 10 }),
     ))
     .await;
     assert_eq!(n, 0, "timeFrom replaced the range with [50,100]");
@@ -677,7 +686,7 @@ async fn panel_time_override_applies_to_target_dispatch() {
     // timeShift "1m" over a caller range [61, 100] → [1, 40]; the seeded rows come back into view.
     let n = run(series_panel(
         json!({ "timeShift": "1m" }),
-        json!({ "series": "cpu", "from": 61, "to": 100 }),
+        json!({ "series": "cpu", "mode": "rows", "from": 61, "to": 100 }),
     ))
     .await;
     assert_eq!(n, 4, "timeShift moved the window back onto the seeded rows");

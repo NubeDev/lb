@@ -46,6 +46,16 @@ where
 {
     let plan = plan_capture(qualified_tool, input);
 
+    // The undo stack is scoped to a **surface** — the single record the reversible call touches (its
+    // `id`), so each open dashboard/doc/record has its own per-(ws,actor) undo/redo stack (the UI
+    // reads `history.list`/`undo`/`redo` on that same id). A non-generic/not-mutating call has no
+    // nameable record, so it lands on the actor's default (`""`) stack. Derived generically from the
+    // plan — never a per-tool special-case (rule 10).
+    let surface = match &plan {
+        CapturePlan::Reversible { id, .. } => id.clone(),
+        _ => String::new(),
+    };
+
     // Snapshot the before-image FIRST for a capturable reversible plan (we cannot read it after the
     // tool has overwritten the record). A read ERROR is kept distinct from a successful absent read
     // — `decide` maps it to not-undoable, never to a journaled "absent" (which a later undo would
@@ -76,6 +86,7 @@ where
         principal,
         ws,
         qualified_tool,
+        &surface,
         group,
         declared_compensation,
         plan,
@@ -93,6 +104,7 @@ async fn journal(
     principal: &Principal,
     ws: &str,
     tool: &str,
+    surface: &str,
     group: Option<String>,
     declared_compensation: Option<&str>,
     plan: CapturePlan,
@@ -127,7 +139,7 @@ async fn journal(
                 RecordIrreversible {
                     ws,
                     actor,
-                    surface: "",
+                    surface,
                     tool,
                     trace_id,
                     ts,
@@ -145,7 +157,7 @@ async fn journal(
                     RecordCaptured {
                         ws,
                         actor,
-                        surface: "",
+                        surface,
                         tool,
                         trace_id,
                         ts,
@@ -168,7 +180,7 @@ async fn journal(
                 RecordIrreversible {
                     ws,
                     actor,
-                    surface: "",
+                    surface,
                     tool,
                     trace_id,
                     ts,

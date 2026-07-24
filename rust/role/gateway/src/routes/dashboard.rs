@@ -89,25 +89,45 @@ pub async fn save_dashboard(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let d = lb_host::dashboard_save_meta(
-        &gw.node.store,
-        &p,
-        p.ws(),
-        &body.id,
-        &body.title,
-        body.description,
-        body.icon,
-        body.color,
-        body.timezone,
-        body.cache_ttl_s,
-        body.toolbar,
-        body.cells,
-        body.variables,
-        gw.now(),
-    )
-    .await
-    .map_err(status)?;
-    Ok(Json(serde_json::to_value(d).unwrap_or(Value::Null)))
+    // Dispatch through the generic `call_tool` seam (NOT a direct `dashboard_save_meta` call) so the
+    // undo auto-capture that wraps every dispatched mutation fires for a REST save exactly as it does
+    // for an `/mcp/call` save (undo-exposure scope). A direct host-fn call bypasses `capture_dispatch`
+    // — that is precisely what left browser-driven saves un-journalled and the undo toolbar dark.
+    // Preserve the optional page-settings fields' present-vs-absent meaning: an absent key must NOT
+    // reach the tool (the host preserves the stored value on omit), so build the arg object by inserting
+    // only the `Some(_)` fields.
+    let mut args = serde_json::Map::new();
+    args.insert("id".into(), json!(body.id));
+    args.insert("title".into(), json!(body.title));
+    args.insert("cells".into(), serde_json::to_value(&body.cells).unwrap_or(json!([])));
+    args.insert(
+        "variables".into(),
+        serde_json::to_value(&body.variables).unwrap_or(json!([])),
+    );
+    if let Some(v) = &body.description {
+        args.insert("description".into(), json!(v));
+    }
+    if let Some(v) = &body.icon {
+        args.insert("icon".into(), json!(v));
+    }
+    if let Some(v) = &body.color {
+        args.insert("color".into(), json!(v));
+    }
+    if let Some(v) = &body.timezone {
+        args.insert("timezone".into(), json!(v));
+    }
+    if let Some(v) = body.cache_ttl_s {
+        args.insert("cacheTtlS".into(), json!(v));
+    }
+    if let Some(v) = &body.toolbar {
+        args.insert("toolbar".into(), serde_json::to_value(v).unwrap_or(Value::Null));
+    }
+    args.insert("now".into(), json!(gw.now()));
+    let input = Value::Object(args).to_string();
+    let out = lb_host::call_tool(&gw.node, &p, p.ws(), "dashboard.save", &input)
+        .await
+        .map_err(tool_status)?;
+    Ok(Json(serde_json::from_str(&out).unwrap_or(Value::Null)))
 }
 
 /// `DELETE /dashboards/{id}` — idempotent tombstone (owner-only). Gated `dashboard.delete`.
@@ -119,9 +139,12 @@ pub async fn delete_dashboard(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    lb_host::dashboard_delete(&gw.node.store, &p, p.ws(), &id, gw.now())
+    // Through the `call_tool` seam so the delete is auto-captured (undo of a delete resurrects the
+    // record) — same reason as `save_dashboard` above.
+    let input = json!({ "id": id, "now": gw.now() }).to_string();
+    lb_host::call_tool(&gw.node, &p, p.ws(), "dashboard.delete", &input)
         .await
-        .map_err(status)?;
+        .map_err(tool_status)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -271,4 +294,20 @@ fn status(e: DashboardError) -> (StatusCode, String) {
         DashboardError::BadInput(m) => (StatusCode::BAD_REQUEST, m),
         DashboardError::Store(s) => (StatusCode::FORBIDDEN, s.to_string()),
     }
+}
+
+/// Map a `call_tool` dispatch failure onto an HTTP status, matching the `/mcp/call` mapping so a REST
+/// save/delete denies/refuses identically to the same verb over the generic bridge (`Denied`/`NotFound`
+/// stay `403`-opaque — no existence oracle; `BadInput` is `400`).
+fn tool_status(e: lb_mcp::ToolError) -> (StatusCode, String) {
+    use lb_mcp::ToolError;
+    let code = match &e {
+        ToolError::Denied | ToolError::NotFound => StatusCode::FORBIDDEN,
+        ToolError::BadInput(_) => StatusCode::BAD_REQUEST,
+        ToolError::Extension(_) => StatusCode::BAD_GATEWAY,
+        ToolError::Ambiguous { .. } => StatusCode::CONFLICT,
+        ToolError::NodeUnreachable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+        ToolError::NodeTooOld { .. } => StatusCode::BAD_GATEWAY,
+    };
+    (code, e.to_string())
 }

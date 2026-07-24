@@ -56,8 +56,9 @@ async fn a_reversible_mutation_is_auto_journaled_undoable() {
     .await
     .expect("inbox.record dispatches");
 
-    // It was auto-captured as an UNDOABLE step — no manual record_change anywhere.
-    let items = history_list(&node.store, &p, ws, "user:a", "")
+    // It was auto-captured as an UNDOABLE step — no manual record_change anywhere. The step lands on
+    // the touched record's own surface (its id `general__m1`), not a global stack.
+    let items = history_list(&node.store, &p, ws, "user:a", "general__m1")
         .await
         .expect("history reads");
     assert_eq!(items.len(), 1, "exactly one auto-captured step");
@@ -148,9 +149,9 @@ async fn the_auto_captured_journal_is_workspace_walled() {
     .await
     .expect("ws-a records");
 
-    // ws-A actually has the entry.
+    // ws-A actually has the entry (on the touched record's surface).
     assert_eq!(
-        history_list(&node.store, &a, "ws-a", "user:a", "")
+        history_list(&node.store, &a, "ws-a", "user:a", "general__m1")
             .await
             .unwrap()
             .len(),

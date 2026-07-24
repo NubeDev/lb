@@ -24,6 +24,8 @@ use serde_json::{json, Value};
 
 use super::error::VizError;
 use super::frame::{detect_time_field, result_to_rows};
+use super::macros::substitute_macros;
+use super::resolution::{maybe_inject_buckets, resolution_for};
 use super::time_override::apply_time_override;
 use crate::boot::Node;
 use crate::dashboard::QueryOptions;
@@ -350,6 +352,26 @@ async fn dispatch_target(
     // Panel time override FIRST (timeFrom replaces the range, timeShift moves it — by design it may
     // rewrite a caller-supplied `from`/`to`; that is exactly what a Grafana panel override does).
     apply_time_override(&mut args, query_options, now);
+
+    // Panel-resolution negotiation (viz panel-resolution scope, issue #101): with the window now
+    // fixed, derive ONE bucket width from (range, budget, minInterval) and upgrade the target IN
+    // PLACE — a mode-less `series.read` gains `{mode:"buckets", width_ms}` (the shipped decimation
+    // path); a `federation.query`'s `$__interval`/`$__timeFrom`/`$__timeTo` macros are substituted
+    // with the SAME derived values. Explicit author intent (an explicit `mode`/`width_ms`) always
+    // wins; a target with no numeric window is left byte-for-byte as today. `series.read`/
+    // `federation.query` are host-native verbs (README §6.1), not extension ids — no §10 branch.
+    match t.tool.as_str() {
+        "series.read" => {
+            maybe_inject_buckets(&mut args, query_options);
+        }
+        "federation.query" => {
+            if let Some(res) = resolution_for(&args, query_options) {
+                substitute_macros(&mut args, &res);
+            }
+        }
+        _ => {}
+    }
+
     if let Value::Object(map) = &mut args {
         map.entry("ts").or_insert(json!(now));
         // Slice 1 (dashboard-query-acceleration): thread the top-level `cache` directive into THIS

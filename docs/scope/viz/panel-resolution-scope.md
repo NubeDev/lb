@@ -1,6 +1,9 @@
 # Viz scope — panel resolution negotiation (the dashboard finally asks for buckets, on both engines)
 
-Status: scope (the ask) — [issue #101](https://github.com/NubeDev/lb/issues/101). Consumer half:
+Status: **v1 shipped** (2026-07-24, slices 1+2 + rubix-ai UI half) — session
+[`../../sessions/viz/panel-resolution-session.md`](../../sessions/viz/panel-resolution-session.md).
+v1.5 (structured `decimate` on `federation.query`) **deferred** (see Open questions). Originally: scope
+(the ask) — [issue #101](https://github.com/NubeDev/lb/issues/101). Consumer half:
 rubix-ai `docs/scope/frontend/dashboard/panel-resolution-ui-scope.md`. Promotes to
 `doc-site/content/public/datasources/` (beside the decimation contract it completes) once shipped.
 
@@ -155,17 +158,22 @@ Per `scope/testing/testing-scope.md` — real store, seeded real series, no mock
 
 ## Open questions
 
-- **Default budget:** 1,000 (recommended — matches the shipped decimation examples) vs deriving
-  from panel pixel width when the client sends it. Start fixed; the client hint is additive.
-- **Should injection apply when the target already carries explicit `width_ms`?** Recommend: an
-  explicit author value always wins (same rule as `timeFrom` overrides).
-- **Macro spelling:** Grafana's `$__interval` verbatim (eases dashboard import via
-  grafana-parity) vs a house style. Recommend Grafana-compatible — the conversion scope then maps
-  imported panels for free.
-- **Bucket-shaped frames on the federation macro path:** macros return whatever the author's SELECT
-  yields (a plain `avg` unless they add min/max); only the structured `decimate` (v1.5) guarantees
-  the spike-safe record. Acceptable for v1? (The picker-built bindings — the common case — should
-  move to v1.5's structured form.)
+- **Default budget:** ~~1,000 vs panel-pixel-width~~ **RESOLVED (2026-07-24): fixed 1,000**
+  (`resolution.rs::DEFAULT_BUDGET`). A client pixel-width hint stays additive/future.
+- **Injection when the target already carries explicit `width_ms`?** ~~Recommend explicit wins~~
+  **RESOLVED: explicit `mode` OR `width_ms` always wins** (`maybe_inject_buckets` returns early) —
+  same rule as `timeFrom`.
+- **Macro spelling:** ~~Grafana verbatim vs house style~~ **RESOLVED: Grafana-verbatim**
+  (`$__interval`/`$__interval_ms`/`$__timeFrom`/`$__timeTo`) — the grafana-parity import path benefits
+  for free.
+- **Bucket-shaped frames on the federation macro path:** **v1 ACCEPTED** — macros return whatever the
+  author's SELECT yields (the SQLite demo test uses an explicit `max()`, so the spike survives); only
+  the structured `decimate` (v1.5) *guarantees* the spike-safe record for picker-built bindings.
+- **v1.5 — structured `decimate` on `federation.query` (per-dialect `time_bucket`/`date_bin`/
+  `strftime`): DEFERRED (2026-07-24).** Gated on the in-flight `fine-grained-data-path` federation
+  work being merged AND stable; its commits are on master (`27ae3708`) but still stabilizing, and a
+  concurrent session is active in the checkout. Deferred to its own focused session per this scope's
+  own sequencing ("land v1 host-side first"). v1's macro path already delivers federated decimation.
 
 ## Related
 

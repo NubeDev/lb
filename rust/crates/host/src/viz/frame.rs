@@ -16,6 +16,7 @@ use serde_json::Value;
 /// channel-rich-responses reminders tenant — keep in lock-step with the client mirror in `useSource.ts`).
 const ROW_KEYS: &[&str] = &[
     "samples",
+    "buckets",
     "items",
     "rows",
     "templates",
@@ -24,8 +25,10 @@ const ROW_KEYS: &[&str] = &[
 ];
 
 /// The canonical time-column names a row may carry (first match wins). Used to TAG the frame's time
-/// field so the renderer/axis treats it as an instant — the value stays canonical epoch-ms.
-const TIME_KEYS: &[&str] = &["ts", "time", "timestamp", "_time"];
+/// field so the renderer/axis treats it as an instant — the value stays canonical epoch-ms. `t` is the
+/// bucket-frame time key (`series.read mode:"buckets"` → `{t,min,max,avg,last,count}`); it is LAST so a
+/// row that also carries a `ts`/`time` column tags that instead (a bucket row has only `t`).
+const TIME_KEYS: &[&str] = &["ts", "time", "timestamp", "_time", "t"];
 
 /// Normalize a tool result into rows. Handles the columnar `{columns, rows}` shape (`federation.query`
 /// — column-aligned arrays zipped into objects), `{samples:[…]}`/`{items}`/…, a bare array, a single

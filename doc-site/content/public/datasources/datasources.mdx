@@ -105,6 +105,59 @@ before, and the compute-only (frames-in) path — which resolves no target — c
 A failed target still yields an empty frame; no rows are ever fabricated. The consuming
 empty-state/status-bar UI is downstream (rubix-ai `dashboard-first-paint-scope.md`).
 
+## Panel resolution negotiation: the dashboard asks for buckets (shipped 2026-07-24)
+
+The [series plane's decimation](#series-plane-paging-decimation-retention-shipped-2026-07-14) shipped
+`series.read {mode:"buckets", from, to, width_ms}` — an O(buckets) spike-safe read — but nothing asked
+for it: every chart fetched **raw rows** and `viz.query` **dropped** the `maxDataPoints`/`minInterval`
+that ride the panel. This is the negotiation seam that turns a panel's **visible time range + point
+budget** into a bucket width and passes it down — natively for SurrealDB series, by pushdown for
+federated tiles. One contract, both engines, chosen per target by where the data lives.
+
+**The derivation (`host/src/viz/resolution.rs`), Grafana's model, not a fixed ladder:**
+`width = ceil(range / budget)`, snapped **UP** to a human step ladder
+(`1s 5s 10s 30s 1m 5m 10m 15m 30m 1h 2h 3h 6h 12h 1d 7d 30d`), floored by `minInterval`, clamped to
+`MAX_BUCKETS` (2000). The resolution scales with the range for free — the point payload stays ~flat at
+every window:
+
+| Range | budget 1000 → width | points |
+|---|---|---|
+| 6 h | 30 s | ~720 |
+| 1 month | 1 h | ~720 |
+| 1 year | 12 h | ~730 |
+| 2 years | 1 d | ~730 |
+
+**Series targets, native.** A mode-less `series.read` chart target with a numeric window is upgraded
+in place to `{mode:"buckets", width_ms}` — the shipped decimation path, rollup-tier merge included. An
+explicit `mode:"rows"` (tables/exports/the raw inspector) or an explicit `width_ms` (aligned
+multi-series overlay) **always wins**. The width is a pure function of `(range, budget, minInterval)`,
+so N viewers of a panel derive byte-identical args → the quantised cache keys collapse them to one
+compute.
+
+**Federated targets, by pushdown — interval macros (zero SQL parsing).** `viz.query` substitutes four
+Grafana-compatible macros into a `federation.query` target's SQL before dispatch, with the SAME derived
+resolution:
+
+```sql
+SELECT date_bin(INTERVAL '$__interval', ts, TIMESTAMP '1970-01-01') AS bucket, avg(v), max(v), min(v)
+FROM readings WHERE ts BETWEEN $__timeFrom AND $__timeTo GROUP BY bucket
+```
+
+- `$__interval_ms` → the width in ms (integer) · `$__interval` → the same as a Grafana duration string
+  (`"12h"`) · `$__timeFrom`/`$__timeTo` → the window (epoch ms). So a tile coarsens itself as the range
+  grows. **An un-macro'd SQL is byte-identical** — a hand-SQL tile runs verbatim. (The structured
+  `decimate` arg with per-dialect `time_bucket`/`date_bin`/`strftime` and a guaranteed spike-safe record
+  is the deferred v1.5.)
+
+**Additive, capability- and workspace-safe.** No new verb, no new capability: `viz.query` starts
+honoring fields it already accepted. An injected `mode:"buckets"` rides the same `mcp:series.read:call`
+grant; a macro-substituted SQL the same `federation.query` gate. A denied target is still an honest
+empty frame; a ws-B panel resolves nothing from a ws-A series regardless of mode. The **dashboard sends
+the inputs** (rubix-ai): the fetch hook threads the window (zoom → refetch at the auto-derived width),
+`$__interval` becomes a computed built-in, and line/area renderers draw a min–max envelope so a spike
+that survived decimation survives on screen. Against an un-bumped lb pin the extra args degrade to
+today's raw fetch (feature-detected by the frame shape, not the version).
+
 In flight: the **schema designer + write plane**
 (`docs/scope/datasources/schema-designer-scope.md`) — `db_schema` records with a
 visual designer, `federation.migrate` (Ask-gated DDL), `federation.write`

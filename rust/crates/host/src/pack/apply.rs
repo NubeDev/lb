@@ -83,7 +83,9 @@ pub async fn apply_plan(
     // the start of the run, before any object apply, so seeded rows exist when later objects reference
     // them. Its outcome rides `warnings` (+ a hard-failure short-circuit); a `denied`/`failed` here
     // aborts the run just as an object seam would.
-    if let Some(outcome) = seed_store_rows(node, principal, ws, pack, run_rules, upgrade, &mut warnings).await {
+    if let Some(outcome) =
+        seed_store_rows(node, principal, ws, pack, run_rules, upgrade, &mut warnings).await
+    {
         if outcome == DENIED || outcome == FAILED {
             return Applied {
                 outcomes: vec![outcome],

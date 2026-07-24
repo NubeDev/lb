@@ -30,6 +30,24 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-24 (backend + rubix-ai) — PANEL RESOLUTION NEGOTIATION (`viz.query` asks for
+buckets, issue #101).** The dashboard finally requests decimation instead of raw rows. `viz.query` turns
+a panel's visible range + point budget into ONE bucket width and passes it down: (1) `host/src/viz/
+resolution.rs` — `derive_width` (the step ladder `1s…30d`, snap UP, `minInterval` floor, `MAX_BUCKETS`
+clamp, default budget 1000) + injection in `dispatch_target` so a mode-less `series.read` chart target
+gains `{mode:"buckets", width_ms}` (explicit `mode`/`width_ms` wins); (2) `host/src/viz/macros.rs` —
+Grafana `$__interval`/`$__interval_ms`/`$__timeFrom`/`$__timeTo` substituted into a `federation.query`
+target's SQL before dispatch (zero SQL parsing; un-macro'd SQL byte-identical). Additive: no new verb/
+cap; deny + workspace wall re-asserted through the injected args. `frame.rs` gained `buckets`→rows
+unwrap + `t` time key (one debug entry). rubix-ai half: `useVizQuery` threads the window into the fetch
+key (zoom refetches; cache TTL stays out), `$__interval` is a computed built-in (`intervalLadder.ts`),
+and line/area draw a min–max envelope on the detected bucket frame (graceful against an old pin). Tests:
+`viz::resolution`/`viz::macros` units (33) + `viz_resolution_test.rs` (6, real seeded series) +
+`viz_resolution_macros_test.rs` (2, real SQLite) + rubix-ai 42 unit/hook. **v1.5** (structured `decimate`
+on `federation.query`, per-dialect) **DEFERRED** — waits on `fine-grained-data-path` being confirmed
+stable (Refs #101, not Closes). Scope `scope/viz/panel-resolution-scope.md` + session
+`sessions/viz/panel-resolution-session.md`; public `doc-site/…/datasources/datasources.mdx`.
+
 **Just shipped 2026-07-23 (backend) — DASHBOARD QUERY ACCELERATION (`viz.query` cache + batch).** The
 follow-up the response cache DEFERRED: `viz.query` is now gateway-cacheable and a batch verb kills the
 browser connection ceiling — a hard 10× on warm dashboard opens. Three slices, all `page-cache`-gated:

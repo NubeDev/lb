@@ -20,7 +20,9 @@ mod authorize;
 mod batch;
 mod error;
 mod frame;
+mod macros;
 mod query;
+mod resolution;
 mod time_override;
 mod tool;
 
