@@ -210,6 +210,11 @@ pub trait Source: Send + Sync {
     /// Used by integration tests to SEED real tables through the real write connection (testing-scope
     /// §3.1: seed, don't simulate). The statement is internal test SQL, never caller input — it is
     /// NOT a query surface (the validated read path is `query_direct*`). Default: unsupported.
+    ///
+    /// `#[allow(dead_code)]`: reached ONLY from the `#[cfg(feature = "postgres")]` integration test
+    /// (`tests/direct_path_pg_test.rs`), a separate crate. The default `bin` build compiles this trait
+    /// without that consumer, so it reads as dead there — it is not.
+    #[allow(dead_code)]
     async fn exec_raw_for_test(&self, _sql: &str) -> Result<(), SourceError> {
         Err(SourceError(
             "exec_raw_for_test not supported by this source".into(),
@@ -217,7 +222,9 @@ pub trait Source: Send + Sync {
     }
 
     /// TEST SEAM — `EXPLAIN` a statement and return the plan as text, so a test can assert the source
-    /// actually received a bounded (LIMIT-carrying) plan. Default: unsupported.
+    /// actually received a bounded (LIMIT-carrying) plan. Default: unsupported. `#[allow(dead_code)]`
+    /// for the same reason as [`Source::exec_raw_for_test`] — only the postgres integration test calls it.
+    #[allow(dead_code)]
     async fn explain_for_test(&self, _sql: &str) -> Result<String, SourceError> {
         Err(SourceError(
             "explain_for_test not supported by this source".into(),
