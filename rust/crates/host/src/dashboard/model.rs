@@ -493,6 +493,12 @@ pub struct Dashboard {
     /// serde (the host caches on the directive the UI sends, not on this field).
     #[serde(default, deserialize_with = "null_default", rename = "cacheTtlS")]
     pub cache_ttl_s: u64,
+    /// Page content width (dashboard page-settings) — `"wide"` (full-bleed, the default/empty) or
+    /// `"centered"` (a constrained, centred content column, the marketing-page look). Additive/
+    /// defaulted — a pre-width dashboard round-trips as empty (⇒ wide). Opaque to the host beyond
+    /// serde; the UI reads it and clamps the board container.
+    #[serde(default, deserialize_with = "null_default")]
+    pub width: String,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
     #[serde(default, deserialize_with = "null_default")]

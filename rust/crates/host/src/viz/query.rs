@@ -25,6 +25,7 @@ use serde_json::{json, Value};
 use super::error::VizError;
 use super::frame::{detect_time_field, result_to_rows};
 use super::macros::substitute_macros;
+use super::reach::{apply_entity_reach, EntityReach};
 use super::resolution::{maybe_inject_buckets, resolution_for};
 use super::time_override::apply_time_override;
 use crate::boot::Node;
@@ -233,11 +234,15 @@ fn emit_viz_event(
     eprintln!("{event}");
 }
 
-/// One resolved target (the bits the resolver needs — its refId, tool, and args).
+/// One resolved target (the bits the resolver needs — its refId, tool, and args). `entity` is the
+/// OPTIONAL entity-grant reach hint (entity-scoped option sources): when set AND the result is that
+/// entity's table, the resolver keeps only the rows the caller's entity-grant reaches (the same
+/// `scope_filter` the `.list` verb applies). `None` ⇒ today's path exactly.
 struct ResolvedTarget {
     ref_id: String,
     tool: String,
     args: Value,
+    entity: Option<EntityReach>,
 }
 
 /// The panel's targets, v3 — `sources[]` (non-hidden) when present, else the v2 single `source` as a
@@ -263,6 +268,7 @@ fn panel_targets(panel: &Value) -> Result<Vec<ResolvedTarget>, VizError> {
                     .to_string(),
                 tool: tool.to_string(),
                 args: s.get("args").cloned().unwrap_or(json!({})),
+                entity: EntityReach::from_value(s.get("entity")),
             });
         }
     }
@@ -275,6 +281,7 @@ fn panel_targets(panel: &Value) -> Result<Vec<ResolvedTarget>, VizError> {
                     ref_id: "A".into(),
                     tool: tool.to_string(),
                     args: src.get("args").cloned().unwrap_or(json!({})),
+                    entity: EntityReach::from_value(src.get("entity")),
                 });
             }
         }
@@ -401,6 +408,14 @@ async fn dispatch_target(
             let rows = serde_json::from_str::<Value>(&out)
                 .map(|v| result_to_rows(&v))
                 .unwrap_or_default();
+            // Entity-scoped option sources: if this target names an `entity`, tighten the rows to the
+            // caller's entity-grant reach — the SAME `scope_filter` the `.list` verb applies — BEFORE
+            // the `ok`/`empty` status is derived (a caller scoped to zero reachable rows honestly reads
+            // `empty`, not `ok`). No hint ⇒ never called; `All` reach ⇒ rows pass through unchanged.
+            let rows = match &t.entity {
+                Some(entity) => apply_entity_reach(&node.store, ws, caller, entity, rows).await,
+                None => rows,
+            };
             // Ran successfully: `empty` (0 rows) vs `ok` (≥1) so the UI can write its own
             // "0 rows for <range>" rather than an unexplained blank.
             let status = if rows.is_empty() {

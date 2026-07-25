@@ -451,6 +451,10 @@ async fn apply_dashboard(
             .map(String::from),
         d.json.get("cacheTtlS").and_then(Value::as_u64),
         None,
+        d.json
+            .get("width")
+            .and_then(Value::as_str)
+            .map(String::from),
         cells,
         variables,
         ts,

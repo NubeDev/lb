@@ -45,6 +45,23 @@ fn reactor_caps() -> Vec<String> {
         "store:*:read".into(),
         "store:*:write".into(),
         "mcp:*.call:call".into(),
+        // ext-store-nodes scope: the built-in platform nodes a HEADLESS (cron / flip-flop / webhook)
+        // flow drives dispatch these MCP verbs under this reactor principal — the scope's own nightly-
+        // cron example is exactly such a flow (ext-list branch + store-write heartbeat). Without them a
+        // scheduled flow's `ext-list`/`store-*` node is `denied` while a MANUAL run (the user's token)
+        // succeeds — the asymmetry that reads as `partialFailure`. Each is already backstopped: the
+        // store MUTATE verbs re-check the reserved-table wall (a reactor cannot brick `flow`/`install`/
+        // `dashboard` any more than a user can), and `store:*:read/write` above is the surface cap they
+        // pair with. `ext.list` is the READ inventory verb (host-native by exact name, rule 10).
+        //
+        // NOT added: `ext-call` to an arbitrary `<ext>.<tool>` (that would need `mcp:*.*:call` — a
+        // near-omnipotent MCP grant for a system actor). A scheduled flow that must call a specific
+        // extension tool is the case for run-as-owner (mint the flow author's caps), tracked as a
+        // follow-up; a fixed system principal deliberately does not carry blanket third-party reach.
+        "mcp:ext.list:call".into(),
+        "mcp:store.query:call".into(),
+        "mcp:store.write:call".into(),
+        "mcp:store.delete:call".into(),
     ]
 }
 
@@ -122,5 +139,55 @@ async fn tick_once(node: &Arc<Node>, principal: &Principal, ws: &str, role: Role
         }
         Ok(_) => {}
         Err(e) => tracing::warn!(ws = %ws, error = %e, "flow approval reactor pass failed"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reactor_caps;
+    use lb_caps::{matches, Action, Request, Surface};
+
+    /// Does the reactor's system principal authorize `cap` (a `surface:resource:action` grant) through
+    /// the real matcher — i.e. would a headless flow node dispatching it pass Gate 2?
+    fn reactor_authorizes(cap: &str) -> bool {
+        let caps = reactor_caps();
+        let mut parts = cap.splitn(3, ':');
+        let surface = Surface::parse(parts.next().unwrap()).unwrap();
+        let resource = parts.next().unwrap();
+        let action = Action::parse(parts.next().unwrap()).unwrap();
+        matches(&caps, &Request::new("acme", surface, resource, action))
+    }
+
+    /// **The headless-flow node reach** (ext-store-nodes scope). A cron / flip-flop / webhook flow runs
+    /// under the reactor's system principal, so that principal must authorize every MCP verb the
+    /// scope's BUILT-IN platform nodes dispatch — or a scheduled flow's `ext-list`/`store-*` node is
+    /// `denied` while the author's MANUAL run succeeds (the `partialFailure` asymmetry this pins). It
+    /// must NOT authorize an arbitrary third-party `ext-call` verb: that is the deliberate boundary
+    /// (blanket `mcp:*.*:call` for a system actor is the escalation we refuse — run-as-owner is the
+    /// path for a scheduled ext-call).
+    #[test]
+    fn reactor_drives_the_builtin_platform_nodes_but_not_arbitrary_ext_call() {
+        for needed in [
+            "mcp:ext.list:call",     // ext-list node
+            "mcp:store.query:call",  // store-read node
+            "mcp:store.write:call",  // store-write node
+            "mcp:store.delete:call", // store-delete node
+            "mcp:flows.run:call",    // the run surface itself (already held pre-fix)
+        ] {
+            assert!(
+                reactor_authorizes(needed),
+                "the reactor must authorize {needed} so a headless flow's built-in node is not denied"
+            );
+        }
+        // The boundary: a headless flow cannot reach an arbitrary extension's own tool through the
+        // reactor. `mcp:*.call:call` covers only `<x>.call` verbs (e.g. `native.call`), never a
+        // third-party `<ext>.<verb>` like `modbus.point.read`.
+        for denied in ["mcp:modbus.point.read:call", "mcp:ext.uninstall:call"] {
+            assert!(
+                !reactor_authorizes(denied),
+                "the reactor must NOT authorize {denied} — arbitrary ext-call / lifecycle is off-limits \
+                 to the system principal (run-as-owner is the path for a scheduled ext-call)"
+            );
+        }
     }
 }

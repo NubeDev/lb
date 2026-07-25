@@ -381,6 +381,16 @@ const AUTHOR_CAPS: &[&str] = &[
     // `store.tables` opens to flow authors. The raw-ROW lenses (`store.scan`/`store.graph`) stay
     // admin-only below: they relax gate 3 and answer "every record in the workspace".
     "mcp:store.tables:call",
+    // ext-store-nodes scope: the `ext-list` flow node and the `lb:extension` picker dispatch the
+    // READ verb `ext.list` under the author's own principal (it returns the workspace's install
+    // inventory — id/version/tier/enabled/running/health, no bytes, no config). A flow author must
+    // hold it to branch on "is modbus running?"; the picker must hold it to offer the ext dropdown.
+    // Moved down from admin alongside `store.tables` (the same scope opened that one) — the two are
+    // the picker's read verbs. The LIFECYCLE MUTATORS stay admin-only below (`ext.disable`/`start`/
+    // `uninstall`/`publish`, `native.install`): enabling/stopping/removing an extension is an admin
+    // authority, listing what's installed is not. `ext.list` is host-native by EXACT name (rule 10),
+    // so this grants no reach over an `ext.<other>` an extension owns.
+    "mcp:ext.list:call",
     // dashboards — a member BUILDS/SHARES/DELETES their OWN (gate-3 owns which). delete_any is admin.
     "mcp:dashboard.save:call",
     "mcp:dashboard.delete:call",
@@ -542,8 +552,10 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // access console: resolved effective caps + live-token revoke.
     "mcp:authz.resolve:call",
     "mcp:authz.revoke-tokens:call",
-    // extension lifecycle + native supervision + publish.
-    "mcp:ext.list:call",
+    // extension lifecycle + native supervision + publish. NOTE: `ext.list` (the READ — install
+    // inventory) is NOT here; it moved to AUTHOR_CAPS (ext-store-nodes scope) so a flow author's
+    // `ext-list` node and the `lb:extension` picker can enumerate installs. Only the MUTATORS —
+    // disable/start/uninstall/publish + native install — are admin authority.
     "mcp:ext.disable:call",
     // `ext.start` is the peer of `ext.disable`'s stop-half: start a stopped extension now, without
     // bouncing the node. Same authority tier (an admin who may stop an extension may start it).
@@ -823,6 +835,47 @@ mod tests {
             member_role_caps().contains(&"mcp:panel.share:call".to_string()),
             "share_closure is useless without panel.share — they belong to the same tier"
         );
+    }
+
+    /// **The `ext.list` cap tier** (ext-store-nodes scope). `mcp:ext.list:call` is an AUTHOR cap: a
+    /// flow author's `ext-list` node and the editor's `lb:extension` picker enumerate the workspace's
+    /// installs (id/version/tier/enabled/running/health — a READ, no bytes). It must NOT be admin-only
+    /// (that denies every member's `ext-list` node — the live "list all extensions → denied" this
+    /// pins), and the LIFECYCLE MUTATORS must stay admin-only (enabling/removing an extension is admin
+    /// authority, listing what's installed is not). Pinned so a future re-classification of either
+    /// half fails at the bundle rather than in production.
+    #[test]
+    fn ext_list_is_an_author_cap_but_lifecycle_mutators_stay_admin() {
+        let list = "mcp:ext.list:call".to_string();
+        assert!(
+            author_caps().contains(&list),
+            "ext.list must be an AUTHOR cap — a flow author lists installs (ext-list node + picker)"
+        );
+        assert!(
+            member_role_caps().contains(&list),
+            "the member bundle must hold ext.list by name"
+        );
+        assert!(
+            !admin_only_caps().contains(&list),
+            "ext.list must NOT be admin-only — that denies every member's ext-list node"
+        );
+        // The mutators are the admin half — a member may enumerate installs, never change them.
+        for mutator in [
+            "mcp:ext.disable:call",
+            "mcp:ext.start:call",
+            "mcp:ext.uninstall:call",
+            "mcp:ext.publish:call",
+            "mcp:native.install:call",
+        ] {
+            assert!(
+                admin_only_caps().contains(&mutator.to_string()),
+                "the extension mutator {mutator} must stay admin-only"
+            );
+            assert!(
+                !member_role_caps().contains(&mutator.to_string()),
+                "a member must NOT hold the extension mutator {mutator}"
+            );
+        }
     }
 
     /// The `share_closure` cap REACHES through the real matcher for a member and does NOT for a

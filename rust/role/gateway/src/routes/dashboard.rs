@@ -72,6 +72,10 @@ pub struct SaveDashboard {
     /// Additive & OPTIONAL, same preserve-on-omit discipline; the settings dialog sends it as `cacheTtlS`.
     #[serde(default, rename = "cacheTtlS")]
     pub cache_ttl_s: Option<u64>,
+    /// Page content width (dashboard page-settings) — `"wide"` (default) or `"centered"`. Additive &
+    /// OPTIONAL, same preserve-on-omit discipline; the settings dialog sends it.
+    #[serde(default)]
+    pub width: Option<String>,
     #[serde(default)]
     pub cells: Vec<Cell>,
     /// Variable definitions (widget-config-vars Slice 2) — additive; a pre-variables client omits it.
@@ -121,6 +125,9 @@ pub async fn save_dashboard(
     }
     if let Some(v) = body.cache_ttl_s {
         args.insert("cacheTtlS".into(), json!(v));
+    }
+    if let Some(v) = &body.width {
+        args.insert("width".into(), json!(v));
     }
     if let Some(v) = &body.toolbar {
         args.insert(

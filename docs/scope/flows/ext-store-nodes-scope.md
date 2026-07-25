@@ -320,6 +320,34 @@ would reopen one of them is a finding to raise against this doc, not a silent di
   (every known `TABLE` const ∈ reserved) is the enforcement. `skill` is deliberately **excluded** (it
   rides its own `store:skill/**` cap grammar, not generic table CRUD) — the drift test documents the
   exception so a future move is a conscious one.
+- **`ext.list` had to move to the AUTHOR (member) role tier — it was admin-only.** Build-time finding
+  (live "list all the extensions → denied"): the scope moved `store.tables` to the author bundle for
+  the store-table picker but left `mcp:ext.list:call` in `ADMIN_ONLY_CAPS`. The `ext-list` node and the
+  `lb:extension` picker BOTH dispatch `ext.list` under the flow author's own principal, so a `member`/
+  editor was denied at the node. Moved `ext.list` (the install-inventory READ) into `AUTHOR_CAPS`
+  alongside `store.tables`; the LIFECYCLE MUTATORS (`ext.disable`/`start`/`uninstall`/`publish`,
+  `native.install`) stay admin-only. Because that verb was doubling as the **admin-console marker** in
+  three places, they were retargeted to the admin-only `ext.uninstall`: lb `nav/admin_lens.rs`
+  (`ADMIN_MARKER_CAPS`, or every member reads as admin and loses their curated nav — the nav-no-lockout
+  class), lb `nav/surfaces.rs` (the `extensions` nav-surface gate), and the rubix-ai/ui mirror
+  (`ADMIN_SECTION_CAPS` in `admin-caps.ts` + `allowedSurfaces` in `routing/allowed.ts`, kept in
+  lockstep). Individual extension **UI pages** (`useExtensionPages`, `previewReach`) stay on `ext.list`
+  — *using* an extension is member-level, *managing* extensions is admin. Regression tests:
+  `builtin_roles::ext_list_is_an_author_cap_but_lifecycle_mutators_stay_admin`, the lockstep test, and
+  `App.test.tsx`. See
+  [`debugging/flows/ext-list-node-denied-admin-only-cap-and-reactor-partialfailure.md`](../../debugging/flows/ext-list-node-denied-admin-only-cap-and-reactor-partialfailure.md).
+- **A headless (cron / flip-flop / webhook) flow could not drive the new nodes — the reactor's system
+  principal lacked their caps.** Second half of the same live finding: a MANUAL run (the author's token)
+  succeeded while the auto-fired run showed `partialFailure` — the `ext-list` node came back `denied`.
+  A reactor-fired run executes under `reactor_caps()` (`host/src/flows/reactor_loop.rs`), a curated
+  system principal whose `mcp:*.call:call` matches only `<x>.call` verbs — never `ext.list`/
+  `store.query`/`store.write`/`store.delete`. Added those four so a headless flow drives every BUILT-IN
+  platform node the scope shipped (the scope's own nightly-cron example is exactly such a flow); the
+  store mutators are still backstopped by the reserved-table wall. Deliberately NOT added: arbitrary
+  `ext-call` to a third-party `<ext>.<tool>` (that needs blanket `mcp:*.*:call` — a system-actor
+  escalation); a scheduled `ext-call` is the case for **run-as-owner** (mint the flow author's caps),
+  tracked as a follow-up. Regression:
+  `reactor_loop::reactor_drives_the_builtin_platform_nodes_but_not_arbitrary_ext_call`.
 
 ## Related
 

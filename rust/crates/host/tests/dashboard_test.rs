@@ -161,6 +161,8 @@ async fn page_settings_round_trip_and_preserve() {
             refresh_rate: false,
             share: true,
         }),
+        // Page content width (dashboard page-settings) — a centred column, not full-bleed.
+        Some("centered".into()),
         vec![chart_cell("cooler.temp")],
         vec![],
         10,
@@ -175,6 +177,8 @@ async fn page_settings_round_trip_and_preserve() {
     // Freshness TTL persists through save → get (the bug that silently dropped it before this field).
     assert_eq!(got.cache_ttl_s, 120);
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
+    // Page width persists through save → get (dashboard page-settings).
+    assert_eq!(got.width, "centered");
 
     // The cheap summary carries icon + colour (roster paints them without a full get).
     let roster = dashboard_list(&store, &ada, ws).await.unwrap();
@@ -205,6 +209,8 @@ async fn page_settings_round_trip_and_preserve() {
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
     // Freshness is page chrome too — a plain layout save must never reset it to live.
     assert_eq!(got.cache_ttl_s, 120);
+    // Page width is page chrome too — a plain layout save preserves it.
+    assert_eq!(got.width, "centered");
 
     // Setting one field via meta preserves the others (Some on icon, None on the rest — incl. toolbar
     // and the freshness TTL).
@@ -216,6 +222,7 @@ async fn page_settings_round_trip_and_preserve() {
         "Ops v2",
         None,
         Some("gauge".into()),
+        None,
         None,
         None,
         None,
@@ -234,6 +241,8 @@ async fn page_settings_round_trip_and_preserve() {
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
     // `None` cacheTtlS on the meta save preserved the freshness window (the preserve-on-omit path).
     assert_eq!(got.cache_ttl_s, 120);
+    // `None` width on the meta save preserved the page width (preserve-on-omit).
+    assert_eq!(got.width, "centered");
 }
 
 // widget-config-vars scope, Slice 1: a cell's `title` round-trips through `dashboard.save`/`get` with no

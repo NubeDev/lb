@@ -104,6 +104,7 @@ mod tests {
             toolbar: Default::default(),
             timezone: String::new(),
             cache_ttl_s: 0,
+            width: String::new(),
             owner: "user:ada".into(),
             visibility: Default::default(),
             cells,

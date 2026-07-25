@@ -28,7 +28,11 @@ pub fn surface_gate_cap(surface: &str) -> Option<&'static str> {
         "system-mcp" => Some("mcp:system.tools:call"),
         "system-acp" => Some("mcp:system.acp:call"),
         "telemetry" => Some("mcp:telemetry.read:call"),
-        "extensions" => Some("mcp:ext.list:call"),
+        // The Extensions management console is admin-gated on the LIFECYCLE cap, not `ext.list`: the
+        // ext-store-nodes scope opened `ext.list` (install-inventory READ) to the member bundle for the
+        // flow `ext-list` node + picker, so gating this nav surface on it would newly reveal the admin
+        // console to every member. `ext.uninstall` stays admin-only — the right marker for the console.
+        "extensions" => Some("mcp:ext.uninstall:call"),
         "studio" => Some("mcp:devkit.templates:call"),
         // `admin` is gated by the admin role (any admin cap); the resolver checks a representative
         // admin cap. A caller without it never sees the admin surface in a shared nav.

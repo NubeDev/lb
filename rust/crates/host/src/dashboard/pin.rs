@@ -91,6 +91,7 @@ pub async fn dashboard_pin(
                     timezone: String::new(),
                     cache_ttl_s: 0,
                     toolbar: Default::default(),
+                    width: String::new(),
                     owner: principal.owner_sub().to_string(),
                     visibility: Visibility::Private,
                     cells: Vec::new(),

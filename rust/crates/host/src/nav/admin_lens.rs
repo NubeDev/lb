@@ -46,7 +46,14 @@ const ADMIN_MARKER_CAPS: &[&str] = &[
     "mcp:teams.manage:call",
     "mcp:grants.assign:call",
     "mcp:workspace.delete:call",
-    "mcp:ext.list:call",
+    // The extensions-console marker is the LIFECYCLE cap, NOT `mcp:ext.list:call`: the ext-store-nodes
+    // scope moved `ext.list` (the install-inventory READ) down to the member `AUTHOR_CAPS` bundle so a
+    // flow author's `ext-list` node + the `lb:extension` picker can enumerate installs. A member now
+    // holds `ext.list`, so it can no longer LABEL the admin console (it would read every member as an
+    // admin and skip their curated nav — the very class `member_bundle_does_not_read_as_admin` pins).
+    // `ext.uninstall` stays admin-only (managing an extension is admin authority), so it is the stable
+    // marker for whether this caller sees the Extensions management console.
+    "mcp:ext.uninstall:call",
     "mcp:apikey.manage:call",
     "mcp:webhook.manage:call",
     "mcp:members.manage:call",

@@ -38,6 +38,7 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "color": { "type": "string", "x-lb": { "label": "Colour", "description": "Optional CSS accent colour for the page icon (omit to keep the existing one)" } },
                 "timezone": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional dashboard timezone — an IANA name like 'Australia/Sydney' or 'browser' (omit to keep the existing one)" } },
                 "cacheTtlS": { "type": "integer", "x-lb": { "label": "Freshness (cache TTL)", "description": "Optional per-dashboard viz.query cache TTL in seconds; 0 = live (omit to keep the existing one)" } },
+                "width": { "type": "string", "x-lb": { "label": "Page width", "description": "Optional page content width: 'wide' (full-bleed, default) or 'centered' (constrained centred column) (omit to keep the existing one)" } },
                 "toolbar": { "type": "object", "properties": {
                     "dateSelect": { "type": "boolean" },
                     "refreshRate": { "type": "boolean" },
@@ -71,7 +72,8 @@ pub async fn dashboard_save(
     // preserved. The settings dialog is the only writer of icon/colour/subtitle; it calls
     // `dashboard_save_meta` directly.
     dashboard_save_meta(
-        store, principal, ws, id, title, None, None, None, None, None, None, cells, variables, now,
+        store, principal, ws, id, title, None, None, None, None, None, None, None, cells,
+        variables, now,
     )
     .await
 }
@@ -94,6 +96,7 @@ pub async fn dashboard_save_meta(
     timezone: Option<String>,
     cache_ttl_s: Option<u64>,
     toolbar: Option<Toolbar>,
+    width: Option<String>,
     mut cells: Vec<Cell>,
     variables: Vec<Variable>,
     now: u64,
@@ -145,6 +148,7 @@ pub async fn dashboard_save_meta(
         prev_timezone,
         prev_cache_ttl_s,
         prev_toolbar,
+        prev_width,
     ) = match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
         Some(existing) => {
             if existing.owner != principal.owner_sub() {
@@ -159,6 +163,7 @@ pub async fn dashboard_save_meta(
                 existing.timezone,
                 existing.cache_ttl_s,
                 existing.toolbar,
+                existing.width,
             )
         }
         None => (
@@ -170,6 +175,7 @@ pub async fn dashboard_save_meta(
             String::new(),
             0,
             Toolbar::default(),
+            String::new(),
         ),
     };
 
@@ -183,6 +189,7 @@ pub async fn dashboard_save_meta(
         timezone: timezone.unwrap_or(prev_timezone),
         cache_ttl_s: cache_ttl_s.unwrap_or(prev_cache_ttl_s),
         toolbar: toolbar.unwrap_or(prev_toolbar),
+        width: width.unwrap_or(prev_width),
         owner,
         visibility,
         cells,

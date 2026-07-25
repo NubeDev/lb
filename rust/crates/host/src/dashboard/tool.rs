@@ -65,6 +65,7 @@ pub async fn call_dashboard_tool(
                 opt_str_arg(input, "timezone"),
                 opt_u64_arg(input, "cacheTtlS"),
                 opt_toolbar_arg(input),
+                opt_str_arg(input, "width"),
                 cells,
                 variables,
                 u64_arg(input, "now")?,
