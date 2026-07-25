@@ -39,6 +39,14 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         crate::query::save_descriptor(),
         crate::query::run_descriptor(),
         crate::query::compile_descriptor(),
+        // The direct-store verbs (store-mutation + read-only SQL surfaces). Schema'd so a model can
+        // FORM the call — the name-only `system::host_catalog` rows left the caller guessing the arg
+        // names (`table`/`id`/`value`, `sql`). `store.schema`/`store.status`/`store.compact` take no
+        // args, so they stay name-only rows in the catalog. Gated by each verb's own cap in the
+        // catalog (no `if`), exactly like every other host-native descriptor.
+        crate::store_query::query_descriptor(),
+        crate::store_mutate::write_descriptor(),
+        crate::store_mutate::delete_descriptor(),
         // The in-channel agent as a first-class palette command. Named `agent.invoke` on purpose: the
         // catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so the run's existing
         // `mcp:agent.invoke:call` gate ALSO decides this command's visibility — no new cap, no `if` in
