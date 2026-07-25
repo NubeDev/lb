@@ -1,9 +1,10 @@
-# Repo-root pnpm workspace. `ui/` is the app; `packages/*` are shared, independently
-# buildable libraries the app (and other Nube apps) consume — e.g. @nube/nav-rail, the
-# reusable sidebar. Promoting the workspace here (it used to live in ui/) lets `ui`
-# import a `workspace:*` sibling without a publish/link dance.
+# Repo-root pnpm workspace. `packages/*` are shared, independently buildable libraries that
+# product hosts (and other Nube apps) consume — e.g. @nube/nav-rail, the reusable sidebar.
+#
+# There is no `ui` member: the in-tree React shell was deleted (commit 678503f) and a stale
+# 'ui' glob sat here afterwards. It installed fine (pnpm skips a glob that matches nothing) but
+# it advertised a tree that must never come back — see CLAUDE.md § "Never recreate ui/".
 packages:
-  - 'ui'
   - 'packages/*'
   # The React Native mobile app: the shell host + the shared @nube/app-sdk contract/client
   # (docs/scope/app/). Extensions under app/extensions/* join when the app-extensions slice ships.

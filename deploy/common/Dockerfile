@@ -1,10 +1,16 @@
 # deploy/common/Dockerfile — the ONE image every driver (local Docker, GitHub CI, Fly.io) builds
 # from. See ../README.md and docs/scope/deploy/fly-deploy-scope.md. Build context is the REPO ROOT
-# (`lb/`) — everything the workspace needs (rust/, ui/, packages/) lives under it; there is no
-# sibling-dir path-dep the way dev-pulse needed `../starter`.
+# (`lb/`) — everything the workspace needs (rust/) lives under it; there is no sibling-dir path-dep
+# the way dev-pulse needed `../starter`.
 #
-# Three stages: build the Rust binaries (node + federation sidecar), build the React SPA, then
-# assemble a debian-slim runtime with Caddy + tini fronting both.
+# HEADLESS. This image is the lb NODE, not a product. lb is a library (MIGRATION.md) and `ui/` was
+# deleted (commit 678503f) — the SPA-builder stage that used to live here built `lazybones-ui` from
+# that tree and had been failing every build since. A product host (rubix-ai) vendors its own shell
+# and builds its own image FROM this one (or copies the binaries); serving a SPA is its job, not
+# lb's. Caddy stays as the single :8080 front door so that contract is unchanged for callers.
+#
+# Two stages: build the Rust binaries (node + federation sidecar), then assemble a debian-slim
+# runtime with Caddy + tini fronting the gateway.
 
 # ============================================================ rust
 FROM rust:1-bookworm AS rust-builder
@@ -31,30 +37,6 @@ WORKDIR /src/rust
 RUN cargo build --release -p lb-node -p federation --features federation/postgres \
  && cp target/release/node /tmp/node \
  && cp target/release/federation /tmp/federation
-
-# ============================================================ spa
-FROM node:22-slim AS spa-builder
-
-RUN npm install -g pnpm@10
-
-WORKDIR /src
-COPY pnpm-workspace.yaml pnpm-lock.yaml /src/
-COPY packages /src/packages
-COPY ui /src/ui
-# `tsc --noEmit` (in `ui`'s build script) type-checks test files that import generated JSON
-# straight out of the Rust tree by relative path (e.g. widgetCatalog.consistency.test.ts →
-# ../../../../../rust/crates/host/src/dashboard/widget_catalog.json) to keep the UI catalog and
-# the host's compiled-in catalog from drifting — so this stage needs `rust/` on disk too, even
-# though it builds nothing from it.
-COPY rust /src/rust
-
-# Same-origin SPA (README rule 1 posture: config, not a code branch): built with an EMPTY
-# VITE_GATEWAY_URL so every API call is a relative same-origin request that Caddy proxies to the
-# node — see ui/src/lib/ipc/http.ts `gatewayUrl()`.
-ENV VITE_GATEWAY_URL=""
-RUN pnpm install --frozen-lockfile=false \
- && pnpm --filter @nube/nav-rail run build \
- && pnpm --filter lazybones-ui run build
 
 # ============================================================ runtime
 FROM debian:bookworm-slim AS runtime
@@ -97,8 +79,10 @@ COPY docker/postgres/seed.py docker/postgres/generators.py docker/postgres/inven
      /opt/lazybones/seed/
 RUN chmod +x /opt/lazybones/seed/seed-demo-sqlite.sh
 
-# The SPA bundle, served by Caddy.
-COPY --from=spa-builder /src/ui/dist /usr/share/lazybones/web
+# The web root Caddy serves static files from. Empty in this image by design — a product host
+# mounts or COPYs its own SPA bundle here. It must EXIST though: Caddy's `file_server` errors on a
+# missing root, and an empty dir yields a clean 404 instead.
+RUN mkdir -p /usr/share/lazybones/web
 
 COPY deploy/common/Caddyfile     /etc/caddy/Caddyfile
 COPY deploy/common/entrypoint.sh /usr/local/bin/entrypoint.sh

@@ -20,8 +20,32 @@ jobs:
 
   build-and-test:
     runs-on: ubuntu-latest
+    env:
+      # This workspace links polars + surrealdb + rusqlite into ~200 test binaries, and a debug
+      # `cargo test --workspace` overran the runner's ~14 GB free disk. The failure did NOT look
+      # like a disk failure — ld died with `signal 7 [Bus error]` (SIGBUS is what you get when a
+      # writable mmap can't be backed by a block that no longer exists), and only one line further
+      # up said `rustc-LLVM ERROR: IO failure on output stream: No space left on device`. It read
+      # as a runner infra flake for weeks. These three knobs cut target/ by more than half:
+      #   - no debug info at all in CI (backtraces aren't read here; the local `[profile.dev]`
+      #     line-tables-only setting in rust/Cargo.toml still applies to developer machines),
+      #   - no incremental artifacts, which a one-shot CI build never reuses.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v4
+      # Reclaim ~25 GB of preinstalled toolchains this job never touches (dotnet, GHC, Android
+      # SDK, CodeQL bundles). Paired with the debug-info trim above, this is what keeps the link
+      # step from running the disk to zero. Cheap: a few seconds of `rm`.
+      - name: Free runner disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/powershell /usr/share/swift || true
+          sudo docker image prune -af || true
+          df -h /
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
@@ -52,27 +76,38 @@ jobs:
         working-directory: rust
         run: cargo fmt --all --check
 
-  ui:
+  # Was `ui:` — it installed and tested `ui/`, the React shell DELETED in commit 678503f. It had
+  # been failing at setup-node ("Some specified paths were not resolved") on a cache key pointing
+  # at ui/pnpm-lock.yaml ever since, so the repo's frontend had NO CI coverage at all. lb's
+  # frontend is now `packages/*` (the reusable libraries product hosts consume) plus `app/sdk`;
+  # this job covers those, from the ROOT lockfile. Do not point this back at ui/ — see
+  # CLAUDE.md § "Never recreate ui/".
+  packages:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # 11, not the 9 the old ui job pinned: pnpm-workspace.yaml uses keys that only pnpm 10+
+          # understands (`allowBuilds`, `onlyBuiltDependencies`) and relies on pnpm 11's
+          # minimumReleaseAge guard — which is why `overrides.electron-to-chromium` is pinned
+          # there. Installing under 9 would validate a workspace nobody actually develops against.
+          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: ui/pnpm-lock.yaml
-      - name: Install UI deps
-        working-directory: ui
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install deps
         run: pnpm install --frozen-lockfile
-      - name: Type-check + build
-        working-directory: ui
-        run: pnpm build
       - name: Test (Vitest)
-        working-directory: ui
-        run: pnpm test
+        run: pnpm -r --filter "./packages/*" run test
+      # app/sdk's suite is `test:gateway` — it spawns a REAL node (rule 9, no fakes), so it needs
+      # the Rust build and belongs with build-and-test, not here. Type-checking it is still a
+      # real contract check against the generated client and costs nothing.
+      - name: Type-check app/sdk
+        working-directory: app/sdk
+        run: pnpm typecheck
 
   deploy-image:
     # Proves the shared deploy image (deploy/common/Dockerfile — the SAME file local Docker and
@@ -81,5 +116,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Same disk headroom as build-and-test. Until now this job died at `COPY ui` within seconds
+      # and never reached a compile, so it has NEVER actually exercised the release build of the
+      # node + federation on a runner. Give it the room up front rather than discover the same
+      # No-space-left-on-device the hard way.
+      - name: Free runner disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/powershell /usr/share/swift || true
+          df -h /
       - name: Build deploy/common/Dockerfile
         run: docker build -f deploy/common/Dockerfile --tag lazybones:ci-deploy-check .
