@@ -77,3 +77,66 @@ pub(crate) fn descriptors_from(manifest: &Manifest) -> Vec<ToolDescriptor> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::descriptors_from;
+    use lb_ext_loader::Manifest;
+
+    /// An OPTIONAL `[[tools]].input_schema` (forms-10x item 4b) rides through the parse → the
+    /// `ToolDescriptor` `tools.catalog` serves: a manifest tool that declares one surfaces it, and a
+    /// tool that omits it round-trips to `None` (name-only, still callable). Real manifest parse (no
+    /// mock), the exact seam `load_extension`/`reload_extension` feed the registry through.
+    #[test]
+    fn manifest_input_schema_rides_through_to_the_descriptor() {
+        let toml = r#"
+[extension]
+id = "acme.widgets"
+version = "0.1.0"
+
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.1.0"
+placement = "either"
+
+[visibility]
+class = "private"
+
+[[tools]]
+name = "make"
+description = "make a widget"
+input_schema = { type = "object", properties = { size = { type = "number" } }, required = ["size"] }
+
+[[tools]]
+name = "list"
+description = "list widgets"
+"#;
+        let manifest = Manifest::parse(toml).expect("manifest parses");
+        let descriptors = descriptors_from(&manifest);
+
+        let make = descriptors
+            .iter()
+            .find(|d| d.name == "make")
+            .expect("make descriptor");
+        let schema = make
+            .input_schema
+            .as_ref()
+            .expect("the declared input_schema surfaces on the descriptor");
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["properties"]["size"]["type"], "number");
+        assert!(schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "size"));
+
+        let list = descriptors
+            .iter()
+            .find(|d| d.name == "list")
+            .expect("list descriptor");
+        assert!(
+            list.input_schema.is_none(),
+            "a tool that declares no schema round-trips to None (absent = name-only)"
+        );
+    }
+}

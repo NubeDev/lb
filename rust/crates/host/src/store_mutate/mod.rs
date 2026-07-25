@@ -22,11 +22,13 @@
 //! a caller needs erase-without-write.)
 
 mod authorize;
+mod descriptor;
 mod error;
 mod run;
 mod tool;
 
 pub use authorize::authorize_store_mutate;
+pub use descriptor::{delete_descriptor, write_descriptor};
 pub use error::StoreMutateError;
 pub use run::{store_delete_run, store_write_run};
 pub use tool::call_store_mutate_tool;

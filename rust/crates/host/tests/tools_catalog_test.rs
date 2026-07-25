@@ -129,6 +129,62 @@ async fn catalog_without_the_verb_gate_is_opaque_denied() {
     );
 }
 
+// The direct-store mutation verbs now carry a real `input_schema` (forms-10x item 4): an authorized
+// caller sees `store.write` with `{table,id,value}` (all required) and `store.delete` with
+// `{table,id}` — the exact args the `store_mutate` bridge reads (`store_mutate/tool.rs`), so a form
+// prefilled from the catalog lands the call. Additive: a verb with no schema still lists (name-only).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn catalog_store_write_and_delete_carry_their_input_schema() {
+    let node = Node::boot().await.expect("node boots");
+    let ws = "acme";
+    let a = principal(
+        ws,
+        &[
+            "mcp:tools.catalog:call",
+            "mcp:store.write:call",
+            "mcp:store.delete:call",
+        ],
+    );
+
+    let cat = tools_catalog(&node, &a, ws)
+        .await
+        .expect("authorized catalog");
+
+    // store.write — `{ table, id, value }`, all three required.
+    let w = cat
+        .tools
+        .iter()
+        .find(|t| t.name == "store.write")
+        .expect("an authorized principal sees store.write");
+    let ws_schema = w.input_schema.as_ref().expect("store.write has a schema");
+    assert_eq!(ws_schema["type"], "object");
+    assert_eq!(ws_schema["properties"]["table"]["type"], "string");
+    assert_eq!(ws_schema["properties"]["id"]["type"], "string");
+    assert!(
+        ws_schema["properties"]["value"].is_object(),
+        "value is declared (any-typed)"
+    );
+    let wr = ws_schema["required"].as_array().expect("required array");
+    assert!(wr.iter().any(|v| v == "table"));
+    assert!(wr.iter().any(|v| v == "id"));
+    assert!(wr.iter().any(|v| v == "value"));
+
+    // store.delete — `{ table, id }`, both required, no value.
+    let d = cat
+        .tools
+        .iter()
+        .find(|t| t.name == "store.delete")
+        .expect("an authorized principal sees store.delete");
+    let ds = d.input_schema.as_ref().expect("store.delete has a schema");
+    assert_eq!(ds["properties"]["table"]["type"], "string");
+    assert_eq!(ds["properties"]["id"]["type"], "string");
+    assert!(ds["properties"]["value"].is_null(), "delete takes no value");
+    let dr = ds["required"].as_array().expect("required array");
+    assert_eq!(dr.len(), 2);
+    assert!(dr.iter().any(|v| v == "table"));
+    assert!(dr.iter().any(|v| v == "id"));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn catalog_is_workspace_scoped() {
     // WORKSPACE ISOLATION: the catalog is always computed for the caller's own workspace; a ws-B

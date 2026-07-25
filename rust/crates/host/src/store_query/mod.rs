@@ -17,6 +17,7 @@
 //! the boundary; the visual builder (Slice C) is convenience above it.
 
 mod authorize;
+mod descriptor;
 mod error;
 mod model;
 mod parse;
@@ -25,6 +26,7 @@ mod schema;
 mod tool;
 
 pub use authorize::authorize_store_query;
+pub use descriptor::query_descriptor;
 pub use error::StoreQueryError;
 pub use model::{
     QueryResult, Schema, SchemaColumn, SchemaTable, MAX_QUERY_ROWS, QUERY_TIMEOUT_SECS,
