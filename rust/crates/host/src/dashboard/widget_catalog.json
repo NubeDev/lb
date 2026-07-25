@@ -275,6 +275,16 @@
         { "id": "showLine", "label": "Show divider line", "scope": "options", "path": "showLine", "control": "toggle" },
         { "id": "collapsed", "label": "Collapsed by default", "scope": "options", "path": "collapsed", "control": "toggle" }
       ]
+    },
+    {
+      "id": "form",
+      "label": "Form",
+      "kind": "container",
+      "version": 1,
+      "buildable": true,
+      "data": false,
+      "action": true,
+      "options": []
     }
   ]
 }

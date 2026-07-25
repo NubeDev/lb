@@ -99,7 +99,10 @@ pub async fn save_dashboard(
     let mut args = serde_json::Map::new();
     args.insert("id".into(), json!(body.id));
     args.insert("title".into(), json!(body.title));
-    args.insert("cells".into(), serde_json::to_value(&body.cells).unwrap_or(json!([])));
+    args.insert(
+        "cells".into(),
+        serde_json::to_value(&body.cells).unwrap_or(json!([])),
+    );
     args.insert(
         "variables".into(),
         serde_json::to_value(&body.variables).unwrap_or(json!([])),
@@ -120,7 +123,10 @@ pub async fn save_dashboard(
         args.insert("cacheTtlS".into(), json!(v));
     }
     if let Some(v) = &body.toolbar {
-        args.insert("toolbar".into(), serde_json::to_value(v).unwrap_or(Value::Null));
+        args.insert(
+            "toolbar".into(),
+            serde_json::to_value(v).unwrap_or(Value::Null),
+        );
     }
     args.insert("now".into(), json!(gw.now()));
     let input = Value::Object(args).to_string();

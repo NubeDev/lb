@@ -69,6 +69,12 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // the two-phase import call. Gated by each verb's own cap in the catalog (no `if`).
         crate::dashboard::import_descriptor(),
         crate::dashboard::export_descriptor(),
+        // The form asset verbs (forms scope) — schema'd so a model can form each call. Each is gated
+        // by its own `mcp:forms.<verb>:call` in the catalog (no new cap, no `if`), mirroring dashboard.
+        crate::forms::save_descriptor(),
+        crate::forms::get_descriptor(),
+        crate::forms::list_descriptor(),
+        crate::forms::delete_descriptor(),
         // The channel write (channel-widgets scope) — schema'd so a model can form the call; the
         // name-only row left the live agent guessing arg names ("missing arg: cid" × a whole run).
         crate::channel::post_descriptor(),

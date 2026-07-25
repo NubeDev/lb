@@ -221,6 +221,10 @@ const VIEWER_CAPS: &[&str] = &[
     // dashboards — a viewer READS the pages they were given (save/delete/share are author).
     "mcp:dashboard.get:call",
     "mcp:dashboard.list:call",
+    // forms — a viewer READS the forms they were given (save/delete are author). A form is a simple
+    // owner/workspace asset, so read is viewer-tier exactly like a dashboard read.
+    "mcp:forms.get:call",
+    "mcp:forms.list:call",
     // access-model scope: the read-only dependency-closure preflight for the viewer's OWN reach.
     "mcp:dashboard.access_check:call",
     // viz import-export scope: export is a READ (viewer); import (a write) is an author cap below.
@@ -381,6 +385,9 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:dashboard.save:call",
     "mcp:dashboard.delete:call",
     "mcp:dashboard.share:call",
+    // forms — a member BUILDS/DELETES their OWN (owner-only). delete_any is admin.
+    "mcp:forms.save:call",
+    "mcp:forms.delete:call",
     // share-closure scope: share the page's embedded library panels to a team. AUTHOR-tier, not
     // admin: it is an authoring action a member takes on their OWN panels — each panel is shared only
     // through `panel.share`, which re-checks the owner rule, so this cap can never widen a member's
@@ -578,6 +585,8 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:series.rename:call",
     // dashboard admin override (delete a dashboard the admin doesn't own).
     "mcp:dashboard.delete_any:call",
+    // form admin override (delete a form the admin doesn't own).
+    "mcp:forms.delete_any:call",
     // nav WRITES (author/share/set the workspace-default menu).
     "mcp:nav.save:call",
     "mcp:nav.delete:call",
@@ -898,6 +907,7 @@ mod tests {
             "mcp:template.save:call",
             "mcp:datasource.add:call",
             "mcp:dashboard.save:call",
+            "mcp:forms.save:call",
             "mcp:panel.save:call",
             "mcp:ingest.write:call",
             "mcp:store.query:call",
@@ -935,6 +945,8 @@ mod tests {
             "mcp:dashboard.list:call",
             "mcp:dashboard.catalog:call",
             "mcp:dashboard.pin:call",
+            "mcp:forms.get:call",
+            "mcp:forms.list:call",
             "mcp:panel.get:call",
             "mcp:panel.list:call",
             "mcp:nav.resolve:call",

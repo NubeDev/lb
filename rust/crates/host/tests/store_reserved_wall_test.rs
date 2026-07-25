@@ -72,7 +72,10 @@ async fn every_reserved_table_rejects_write_and_delete_despite_the_wildcard() {
         );
         // The reject happened before any store touch — nothing was written.
         assert!(
-            lb_store::read(&store, ws, table, "probe").await.unwrap().is_none(),
+            lb_store::read(&store, ws, table, "probe")
+                .await
+                .unwrap()
+                .is_none(),
             "{table}: no record may land behind the wall"
         );
     }
@@ -117,7 +120,9 @@ async fn a_user_table_with_the_same_principal_writes_and_deletes() {
         .expect("user-table write succeeds");
     assert_eq!((t.as_str(), id.as_str()), ("ops_heartbeat", "hb-1"));
     assert_eq!(
-        lb_store::read(&store, ws, "ops_heartbeat", "hb-1").await.unwrap(),
+        lb_store::read(&store, ws, "ops_heartbeat", "hb-1")
+            .await
+            .unwrap(),
         Some(value),
         "round-trips"
     );
@@ -125,7 +130,10 @@ async fn a_user_table_with_the_same_principal_writes_and_deletes() {
         .await
         .expect("user-table delete succeeds");
     assert!(
-        lb_store::read(&store, ws, "ops_heartbeat", "hb-1").await.unwrap().is_none(),
+        lb_store::read(&store, ws, "ops_heartbeat", "hb-1")
+            .await
+            .unwrap()
+            .is_none(),
         "erased"
     );
 }
@@ -211,7 +219,10 @@ fn every_known_host_table_const_is_reserved() {
         lb_host::CHUNK_TABLE,
     ];
     for t in consts {
-        assert!(is_reserved(t), "host TABLE const {t:?} is missing from lb_store::reserved");
+        assert!(
+            is_reserved(t),
+            "host TABLE const {t:?} is missing from lb_store::reserved"
+        );
     }
 
     // Literal list: host-owned tables whose consts are crate-private (each name verified against
@@ -227,6 +238,7 @@ fn every_known_host_table_const_is_reserved() {
         "registry_cache",   // host registry::cache
         "native_status",    // host native::status
         "dashboard",
+        "form", // host forms::model::TABLE
         "panel",
         "nav",
         "nav_pref",
@@ -242,9 +254,9 @@ fn every_known_host_table_const_is_reserved() {
         "user",
         "credential",
         "webhook",
-        "invite",       // lb_authz::invite (INVITE_TABLE is exported; kept literal beside its claim)
+        "invite", // lb_authz::invite (INVITE_TABLE is exported; kept literal beside its claim)
         "invite_claim", // lb_authz::invite
-        "secret",       // lb_secrets (private const)
+        "secret", // lb_secrets (private const)
         "agent_definition",
         "agent_memory",
         "agent_policy",
@@ -279,7 +291,10 @@ fn every_known_host_table_const_is_reserved() {
             // today; this branch documents the exception so a future move is a conscious one.
             continue;
         }
-        assert!(is_reserved(t), "host table literal {t:?} is missing from lb_store::reserved");
+        assert!(
+            is_reserved(t),
+            "host table literal {t:?} is missing from lb_store::reserved"
+        );
     }
 }
 
@@ -323,8 +338,14 @@ async fn store_tables_flags_system_rows_and_opens_to_the_member_role() {
         .unwrap();
     let member2 = principal("user:other", ws2, member_role_caps());
     let tables2 = store_tables_view(&store, &member2, ws2).await.unwrap();
-    let flow2 = tables2.iter().find(|t| t.table == "flow").expect("ws2 flow row");
-    assert_eq!(flow2.system, flow.system, "system flag identical across workspaces");
+    let flow2 = tables2
+        .iter()
+        .find(|t| t.table == "flow")
+        .expect("ws2 flow row");
+    assert_eq!(
+        flow2.system, flow.system,
+        "system flag identical across workspaces"
+    );
     // ...and ws-B's listing never contains ws-A's user table (the hard wall).
     assert!(
         !tables2.iter().any(|t| t.table == "ops_heartbeat"),

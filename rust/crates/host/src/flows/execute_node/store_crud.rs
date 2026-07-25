@@ -61,7 +61,9 @@ fn table_of(node_type: &str, config: &Value) -> Result<String, String> {
         return Err(format!("{node_type} node missing config.table"));
     }
     if !is_ident(table) {
-        return Err(format!("{node_type} node: invalid table identifier: {table}"));
+        return Err(format!(
+            "{node_type} node: invalid table identifier: {table}"
+        ));
     }
     Ok(table.to_string())
 }
@@ -148,7 +150,10 @@ pub(super) async fn store_read(
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    let desc = config.get("desc").and_then(|v| v.as_bool()).unwrap_or(false);
+    let desc = config
+        .get("desc")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let (sql, vars) = match build_read_sql(
         &table,
@@ -202,7 +207,11 @@ pub(super) async fn store_write(
         Some(v) => v.clone(),
         None => match inputs.get("payload").filter(|v| !v.is_null()) {
             Some(p) => p.clone(),
-            None => return NodeOutcome::Err("store-write node has no value (config.value and payload both absent)".into()),
+            None => {
+                return NodeOutcome::Err(
+                    "store-write node has no value (config.value and payload both absent)".into(),
+                )
+            }
         },
     };
     let args = json!({ "table": table, "id": id, "value": value });
@@ -257,7 +266,10 @@ mod tests {
     fn read_sql_construction_table() {
         // Bare read: default limit.
         let (sql, vars) = build_read_sql("site", None, None, None, None, false).unwrap();
-        assert_eq!(sql, "SELECT record::id(id) AS id, data, rev FROM type::table($tb) LIMIT 100");
+        assert_eq!(
+            sql,
+            "SELECT record::id(id) AS id, data, rev FROM type::table($tb) LIMIT 100"
+        );
         assert_eq!(vars["tb"], "site");
 
         // Single-id read.

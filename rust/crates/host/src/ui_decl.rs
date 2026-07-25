@@ -238,7 +238,10 @@ class = "private"
             page.nav[2].dashboard.as_deref(),
             Some("dashboard:ems-fleet-overview")
         );
-        assert_eq!(page.nav[2].vars.get("site").map(String::as_str), Some("site-1"));
+        assert_eq!(
+            page.nav[2].vars.get("site").map(String::as_str),
+            Some("site-1")
+        );
         assert!(widgets[0].nav.is_empty(), "a widget contributes no nav");
     }
 

@@ -276,7 +276,8 @@ mod tests {
 
         // A pre-field install (no dashboard/vars keys) deserializes to None/empty — additive, no migration.
         let legacy: ExtNavItem =
-            serde_json::from_str(r#"{"id":"explore","label":"nav.explore","dynamic":false}"#).unwrap();
+            serde_json::from_str(r#"{"id":"explore","label":"nav.explore","dynamic":false}"#)
+                .unwrap();
         assert!(legacy.dashboard.is_none() && legacy.vars.is_empty());
     }
 }

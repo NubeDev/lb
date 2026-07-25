@@ -31,6 +31,7 @@ mod directory;
 mod ext;
 mod federation;
 mod flows;
+mod forms;
 mod host_tools;
 mod identity;
 mod identity_credential;
@@ -204,6 +205,9 @@ pub use flows::{
     FlowWatch, SourceReactorPass,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
+pub use forms::{
+    call_forms_tool, forms_delete, forms_get, forms_list, forms_save, Form, FormError, FormSummary,
+};
 pub use lb_assets::{seed_core_skills, CORE_SKILLS_NS};
 /// Run-engine seams exposed for the runtime-control tests (deterministic mid-run cancel): seed a run,
 /// set its durable status, and drive it — so a test can prove the drive halts on a pre-written

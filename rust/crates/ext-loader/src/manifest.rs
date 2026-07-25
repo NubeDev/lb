@@ -676,7 +676,10 @@ label = "B""#,
                 ),
             );
             assert!(
-                matches!(Manifest::parse(&toml), Err(ManifestError::InvalidNavBlock(_))),
+                matches!(
+                    Manifest::parse(&toml),
+                    Err(ManifestError::InvalidNavBlock(_))
+                ),
                 "id {bad:?} must be rejected"
             );
         }
@@ -731,7 +734,10 @@ vars = { site = "site-1" }"#,
         let m = Manifest::parse(&toml).expect("valid dashboard nav item parses");
         let nav = m.ui.expect("has [ui]").nav;
         assert_eq!(nav.len(), 1);
-        assert_eq!(nav[0].dashboard.as_deref(), Some("dashboard:ems-fleet-overview"));
+        assert_eq!(
+            nav[0].dashboard.as_deref(),
+            Some("dashboard:ems-fleet-overview")
+        );
         assert_eq!(nav[0].vars.get("site").map(String::as_str), Some("site-1"));
         // An item WITHOUT dashboard/vars defaults to None/empty — an ext-route item, unchanged.
         let ext_route = with_runtime(

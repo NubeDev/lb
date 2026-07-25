@@ -71,6 +71,7 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "device.",
     "notify.",
     "dashboard.",
+    "forms.",
     // packs scope: the domain-pack verb family (validate/apply/list/get). Core owns the mechanism
     // and knows no pack by name (rule 10).
     "pack.",
@@ -631,6 +632,8 @@ pub(crate) async fn run_host_verb(
         crate::call_dashboard_grafana_tool(node, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("dashboard.") {
         crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("forms.") {
+        crate::call_forms_tool(&node.store, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("pack.") {
         // packs scope: `pack.apply` drives rules/dashboards/datasources/channels/agent memory
         // through their internal seams, so the family takes the full `&Arc<Node>` (like the

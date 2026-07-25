@@ -39,6 +39,7 @@ pub const RESERVED_TABLES: &[&str] = &[
     "pack_receipt",
     // -- dashboard / UI --
     "dashboard",
+    "form",
     "panel",
     "nav",
     "nav_pref",
@@ -139,10 +140,23 @@ mod tests {
 
     #[test]
     fn reserved_names_hit_and_user_tables_miss() {
-        for t in ["flow", "install", "dashboard", "workspace", "series", "undo"] {
+        for t in [
+            "flow",
+            "install",
+            "dashboard",
+            "workspace",
+            "series",
+            "undo",
+        ] {
             assert!(is_reserved(t), "{t} must be reserved");
         }
-        for t in ["site", "point_reading", "ems_meter", "ops_heartbeat", "widget"] {
+        for t in [
+            "site",
+            "point_reading",
+            "ems_meter",
+            "ops_heartbeat",
+            "widget",
+        ] {
             assert!(!is_reserved(t), "{t} must NOT be reserved (user/ext data)");
         }
     }

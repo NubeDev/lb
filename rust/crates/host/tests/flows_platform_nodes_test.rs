@@ -109,7 +109,9 @@ async fn save(node: &Arc<HostNode>, p: &Principal, ws: &str, flow: &Flow) {
 async fn await_terminal(node: &Arc<HostNode>, p: &Principal, ws: &str, run_id: &str) -> Value {
     for _ in 0..600 {
         let req = json!({ "run_id": run_id }).to_string();
-        let out = call_tool(node, p, ws, "flows.runs.get", &req).await.unwrap();
+        let out = call_tool(node, p, ws, "flows.runs.get", &req)
+            .await
+            .unwrap();
         let snap: Value = serde_json::from_str(&out).unwrap();
         let s = snap["status"].as_str().unwrap_or("");
         if matches!(
@@ -274,7 +276,11 @@ async fn store_delete_then_read_finds_nothing_and_delete_is_idempotent() {
     )
     .await;
     assert_eq!(outcome, "ok");
-    assert_eq!(output["payload"]["row"], Value::Null, "deleted row reads null");
+    assert_eq!(
+        output["payload"]["row"],
+        Value::Null,
+        "deleted row reads null"
+    );
 
     // Deleting an absent row is a success (the verb is idempotent).
     let req = json!({ "id": "f_d", "run_id": "f_d-r2", "ts": 2 }).to_string();
@@ -334,7 +340,10 @@ async fn payload_drives_id_and_value_while_the_table_stays_pinned() {
     )
     .await;
     assert_eq!(outcome, "ok");
-    assert_eq!(output["payload"]["id"], "cfg", "config.id wins over payload.id");
+    assert_eq!(
+        output["payload"]["id"], "cfg",
+        "config.id wins over payload.id"
+    );
 
     // A payload-id store-delete (config.id omitted) — the wire drives the delete too.
     let (_, outcome, _) = run_one_on(
@@ -447,7 +456,10 @@ async fn ext_call_dispatches_the_picked_tool_end_to_end() {
     )
     .await;
     assert_eq!(outcome, "ok");
-    assert_eq!(output["payload"]["echo"], "wire", "payload merges over config.args");
+    assert_eq!(
+        output["payload"]["echo"], "wire",
+        "payload merges over config.args"
+    );
 
     // Missing config.tool fails the node before any dispatch.
     let (status, outcome, _) = run_one_on(
@@ -512,9 +524,13 @@ async fn store_read_without_store_query_cap_is_denied_at_the_node() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ext_list_without_the_cap_is_denied_at_the_node() {
     let node = Arc::new(HostNode::boot().await.unwrap());
-    record_install(&node.store, "ws", &Install::new("alpha", "0.1.0", vec![], 1))
-        .await
-        .unwrap();
+    record_install(
+        &node.store,
+        "ws",
+        &Install::new("alpha", "0.1.0", vec![], 1),
+    )
+    .await
+    .unwrap();
     let p = principal_with("ws", &[]); // no mcp:ext.list:call
     let (status, outcome, _) = run_one_on(
         &node,
@@ -535,9 +551,13 @@ async fn ext_list_without_the_cap_is_denied_at_the_node() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ext_list_in_ws_b_omits_ws_a_installs() {
     let node = Arc::new(HostNode::boot().await.unwrap());
-    record_install(&node.store, "ws-a", &Install::new("alpha", "0.1.0", vec![], 1))
-        .await
-        .unwrap();
+    record_install(
+        &node.store,
+        "ws-a",
+        &Install::new("alpha", "0.1.0", vec![], 1),
+    )
+    .await
+    .unwrap();
 
     let pb = principal_with("ws-b", &["mcp:ext.list:call"]);
     let (_, outcome, output) = run_one_on(
