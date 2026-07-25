@@ -2,10 +2,18 @@
 //! "MCP surface"; a fresh id creates, an existing id updates — not two verbs). Synchronous (one small
 //! layout record; not a job). Gated by `mcp:dashboard.save:call`.
 //!
-//! **Ownership on update:** a save against an existing dashboard is allowed only for its owner — a
-//! non-owner with the save cap still cannot overwrite someone else's dashboard (mirrors `share_doc`'s
-//! owner check). Create stamps `owner = principal`; `visibility` is set via `dashboard.share`, so
-//! save **preserves** the existing visibility (it never silently re-privatizes a shared dashboard).
+//! **Ownership on update:** a save against an existing dashboard is allowed only for its owner
+//! UNLESS the caller also holds `mcp:dashboard.save_any:call` (an admin-granted cap, checked second
+//! so a non-admin never pays its cost) — an admin needs to *fix* a board they do not own, not only
+//! delete it (the asymmetry ext-managed-dashboards D2 closes; `dashboard.delete_any` is the shipped
+//! sibling this mirrors verbatim). Create stamps `owner = principal`; `visibility` is set via
+//! `dashboard.share`, so save **preserves** the existing visibility (it never silently
+//! re-privatizes a shared dashboard).
+//!
+//! **The managed marker:** on CREATE the record's `managedBy` is derived from the saving principal
+//! ([`super::managed::managed_by_of`] — the one helper); on UPDATE it is PRESERVED. It is never read
+//! from caller input, so a human cannot mark a board managed and an admin's `save_any` fix cannot
+//! blank (or steal) the marker of the extension that generates it.
 
 use lb_auth::Principal;
 use lb_mcp::ToolDescriptor;
@@ -13,8 +21,10 @@ use lb_store::Store;
 
 use super::authorize::authorize_dashboard;
 use super::error::DashboardError;
+use super::managed::managed_by_of;
 use super::model::{Cell, Dashboard, Toolbar, Variable, Visibility};
 use super::store::{read_dashboard, write_dashboard};
+use super::visibility::may_read_dashboard;
 
 /// The `dashboard.save` descriptor — a real arg schema so a model advertised the verb can FORM the
 /// call. Without it (name-only row) the live agent guessed the encoding and sent `cells` as a
@@ -31,7 +41,7 @@ pub fn save_descriptor() -> ToolDescriptor {
         input_schema: Some(serde_json::json!({
             "type": "object",
             "properties": {
-                "id": { "type": "string", "x-lb": { "label": "Dashboard id", "description": "Fresh id creates; existing id updates (owner-only)" } },
+                "id": { "type": "string", "x-lb": { "label": "Dashboard id", "description": "Fresh id creates; existing id updates (owner-only, or an admin holding dashboard.save_any)" } },
                 "title": { "type": "string", "x-lb": { "label": "Title" } },
                 "description": { "type": "string", "x-lb": { "label": "Description", "description": "Optional one-line subtitle for the page (omit to keep the existing one)" } },
                 "icon": { "type": "string", "x-lb": { "label": "Icon", "description": "Optional icon-lib name for the page, e.g. 'activity' (omit to keep the existing one)" } },
@@ -137,10 +147,12 @@ pub async fn dashboard_save_meta(
         .await
         .map_err(DashboardError::BadInput)?;
 
-    // Preserve owner + visibility across an update; only the owner may update. A tombstoned record
-    // is treated as absent — a save with that id resurrects it under the new owner (create).
+    // Preserve owner + visibility + the managed marker across an update; only the owner (or an admin
+    // holding `dashboard.save_any`) may update. A tombstoned record is treated as absent — a save
+    // with that id resurrects it under the new owner (create).
     let (
         owner,
+        managed_by,
         visibility,
         prev_desc,
         prev_icon,
@@ -151,11 +163,17 @@ pub async fn dashboard_save_meta(
         prev_width,
     ) = match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
         Some(existing) => {
-            if existing.owner != principal.owner_sub() {
-                return Err(DashboardError::Denied);
+            // Owner first, admin override strictly SECOND (`&&` short-circuits, so a non-admin never
+            // pays the second check's cost) — the exact shape `dashboard.delete`'s `delete_any` uses.
+            // Its own capability, never an ambient "is this caller an admin" role test.
+            if existing.owner != principal.owner_sub()
+                && authorize_dashboard(principal, ws, "dashboard.save_any").is_err()
+            {
+                return Err(managed_denial(store, principal, ws, &existing).await);
             }
             (
                 existing.owner,
+                existing.managed_by,
                 existing.visibility,
                 existing.description,
                 existing.icon,
@@ -168,6 +186,8 @@ pub async fn dashboard_save_meta(
         }
         None => (
             principal.owner_sub().to_string(),
+            // CREATE — the marker is derived from the saving principal, never from the args.
+            managed_by_of(principal).unwrap_or_default(),
             Visibility::Private,
             String::new(),
             String::new(),
@@ -191,6 +211,7 @@ pub async fn dashboard_save_meta(
         toolbar: toolbar.unwrap_or(prev_toolbar),
         width: width.unwrap_or(prev_width),
         owner,
+        managed_by,
         visibility,
         cells,
         variables,
@@ -213,4 +234,32 @@ pub async fn dashboard_save_meta(
         crate::panel::hydrate_cells(store, principal, ws, std::mem::take(&mut dashboard.cells))
             .await;
     Ok(dashboard)
+}
+
+/// The refusal for a save the owner check (and the `save_any` override) rejected — typed when, and
+/// only when, it is safe to be (ext-managed-dashboards Goal 5).
+///
+/// Returns [`DashboardError::ManagedDenied`] with the bare managing extension id iff BOTH hold:
+///   1. the board is marked (`managed_by` non-empty), and
+///   2. this caller could already **read** it — gates 1+2 passed to get here, and gate 3
+///      ([`may_read_dashboard`]) says yes.
+///
+/// Otherwise the opaque [`DashboardError::Denied`], unchanged. (2) is the no-existence-leak rule:
+/// a caller who cannot read a private/team board must not learn from a *refusal* that it exists, let
+/// alone who generates it. A caller who CAN read it can fetch `managedBy` with `dashboard.get`
+/// anyway, so telling them here adds no information — only a better error.
+async fn managed_denial(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    existing: &Dashboard,
+) -> DashboardError {
+    if !existing.managed_by.is_empty()
+        && may_read_dashboard(store, principal, ws, existing)
+            .await
+            .is_ok()
+    {
+        return DashboardError::ManagedDenied(existing.managed_by.clone());
+    }
+    DashboardError::Denied
 }

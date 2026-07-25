@@ -29,6 +29,7 @@ pub(crate) mod genui;
 mod get;
 mod grafana;
 mod list;
+mod managed;
 mod model;
 mod pin;
 mod save;
@@ -51,6 +52,7 @@ pub use grafana::{
     import_descriptor, DatasourceRemap, DegradedItem, ImportReport,
 };
 pub use list::dashboard_list;
+pub use managed::managed_by_of;
 pub use model::{
     Action, Cell, Dashboard, DashboardSummary, QueryOptions, Source, Target, Toolbar, Variable,
     Visibility,

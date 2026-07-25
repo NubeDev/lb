@@ -143,7 +143,11 @@ async fn call(
 /// exceeded, AI not configured); `NotFound` is `404`; anything else is `500` with its string.
 fn status(e: ToolError) -> (StatusCode, String) {
     match e {
-        ToolError::Denied => (StatusCode::FORBIDDEN, "not permitted".to_string()),
+        // Both denial shapes are `403` here: this route has no managed-asset surface, so the
+        // detailed sibling is treated exactly like the opaque one (never widened by accident).
+        ToolError::Denied | ToolError::DeniedBecause { .. } => {
+            (StatusCode::FORBIDDEN, "not permitted".to_string())
+        }
         ToolError::BadInput(m) => (StatusCode::BAD_REQUEST, m),
         ToolError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
         ToolError::Extension(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),

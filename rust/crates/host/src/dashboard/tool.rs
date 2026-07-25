@@ -172,6 +172,13 @@ pub async fn call_dashboard_tool(
 fn to_tool(e: DashboardError) -> ToolError {
     match e {
         DashboardError::Denied => ToolError::Denied,
+        // The typed managed-denial (ext-managed-dashboards Goal 5). The host only ever produces this
+        // for a caller who could already READ the board, so relaying the marker over MCP leaks
+        // nothing — it is what lets a client render "managed by <id> — duplicate to edit".
+        DashboardError::ManagedDenied(managed_by) => ToolError::DeniedBecause {
+            code: "managed".to_string(),
+            subject: managed_by,
+        },
         DashboardError::NotFound => ToolError::NotFound,
         DashboardError::BadInput(m) => ToolError::BadInput(m),
         DashboardError::Store(s) => ToolError::Extension(s.to_string()),

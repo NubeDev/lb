@@ -501,6 +501,21 @@ pub struct Dashboard {
     pub width: String,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
+    /// The BARE id of the extension that generates this board (`"modbus"`), or empty for an
+    /// ordinary human-authored one (ext-managed-dashboards scope, Goal 2 / D1). Additive/defaulted —
+    /// a pre-marker dashboard round-trips byte-clean, no migration.
+    ///
+    /// **Derived, never accepted as input**: `dashboard.save` computes it from the SAVING PRINCIPAL
+    /// in the one helper [`super::managed::managed_by_of`] and preserves it across an update. No verb
+    /// reads a `managedBy` argument, so a human cannot mark a board managed and one extension cannot
+    /// claim another's. The full principal already lives on `owner` (`"ext:modbus"`); this is the
+    /// bare id a badge renders and a roster filter keys on.
+    ///
+    /// **Opaque to the host** — set and relayed, never interpreted: no lookup of the extension, no
+    /// lifecycle coupling (uninstall does NOT cascade-delete its boards, D5), and the host never
+    /// branches on WHICH id it holds (rule 10). Clients branch on presence, not value.
+    #[serde(default, deserialize_with = "null_default", rename = "managedBy")]
+    pub managed_by: String,
     #[serde(default, deserialize_with = "null_default")]
     pub visibility: Visibility,
     #[serde(default, deserialize_with = "null_default")]
@@ -533,6 +548,11 @@ pub struct DashboardSummary {
     pub icon: String,
     #[serde(default)]
     pub color: String,
+    /// The managing extension's bare id, or empty (ext-managed-dashboards D3). Relayed on the CHEAP
+    /// summary so a roster paints the "managed by X" badge — and filters/groups on it — without a
+    /// full `dashboard.get` per row. Additive/defaulted; see [`Dashboard::managed_by`].
+    #[serde(default, rename = "managedBy")]
+    pub managed_by: String,
     pub visibility: Visibility,
     pub updated_ts: u64,
 }
@@ -544,6 +564,7 @@ impl From<&Dashboard> for DashboardSummary {
             title: d.title.clone(),
             icon: d.icon.clone(),
             color: d.color.clone(),
+            managed_by: d.managed_by.clone(),
             visibility: d.visibility,
             updated_ts: d.updated_ts,
         }

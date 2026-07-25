@@ -1,7 +1,14 @@
 //! `dashboard.share(id, {visibility, team?})` — set a dashboard private/team/workspace (dashboard
 //! scope, "Share"). For the `team` case it writes the **shipped S4 `share` edge** (`dashboard
 //! -[share]-> team`), so the existing gate-3 read check (`may_read_dashboard`) applies unchanged.
-//! Idempotent (re-share = same edge upsert + same visibility). Owner-only. Gated `mcp:dashboard.share`.
+//! Idempotent (re-share = same edge upsert + same visibility). Gated `mcp:dashboard.share`.
+//!
+//! Owner-only UNLESS the caller also holds `mcp:dashboard.share_any:call` (an admin-granted cap,
+//! checked second so a non-admin never pays its cost) — an admin who may delete and fix a board they
+//! do not own must also be able to RE-SCOPE its visibility, or the override story has a hole the
+//! first time a board is shared too widely (ext-managed-dashboards D2: the triad
+//! `delete_any`/`save_any`/`share_any` ships together). Its own capability, never an ambient
+//! admin-role test.
 
 use lb_assets::relate;
 use lb_auth::Principal;
@@ -37,7 +44,8 @@ pub fn share_descriptor() -> lb_mcp::ToolDescriptor {
     }
 }
 
-/// Set `id`'s visibility in `ws` as `principal` (owner-only), at logical time `now`. When `team` is
+/// Set `id`'s visibility in `ws` as `principal` (owner-only, or a non-owner also holding
+/// `mcp:dashboard.share_any:call`), at logical time `now`. When `team` is
 /// given (the `team` tier), writes the `share` edge so members of that team can read it. Returns the
 /// updated record.
 pub async fn dashboard_share(
@@ -56,8 +64,12 @@ pub async fn dashboard_share(
         .filter(|d| !d.deleted)
         .ok_or(DashboardError::NotFound)?;
 
-    // Only the owner shares their dashboard (mirrors `share_doc`).
-    if dashboard.owner != principal.owner_sub() {
+    // Only the owner shares their dashboard (mirrors `share_doc`) — unless the caller holds the
+    // admin override. Owner check FIRST, the override attempted strictly second (`&&`
+    // short-circuits), exactly as `dashboard.delete` treats `delete_any`.
+    if dashboard.owner != principal.owner_sub()
+        && authorize_dashboard(principal, ws, "dashboard.share_any").is_err()
+    {
         return Err(DashboardError::Denied);
     }
 

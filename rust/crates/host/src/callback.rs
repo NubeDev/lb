@@ -85,7 +85,11 @@ impl HostBridge for Bridge {
 fn map_tool_err(e: ToolError) -> BridgeError {
     match e {
         ToolError::BadInput(m) => BridgeError::BadInput(m),
-        ToolError::Denied => BridgeError::Failed("denied".into()),
+        // Both denial shapes reach a guest as the SAME opaque `Failed("denied")`. `DeniedBecause`'s
+        // detail is safe for the caller who could already read the asset, but a wasm guest has no
+        // "duplicate to edit" surface to render it on and no reason to learn it — collapse, never
+        // widen. The `Display` still carries the detail to host-side logs.
+        ToolError::Denied | ToolError::DeniedBecause { .. } => BridgeError::Failed("denied".into()),
         ToolError::NotFound => BridgeError::Failed("no such tool".into()),
         ToolError::Extension(m) => BridgeError::Failed(m),
         // Routing failures (routed-node-dispatch #81) reach the guest as opaque `Failed`, like
