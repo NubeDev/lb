@@ -100,7 +100,9 @@ impl Transport for Local {
         match out {
             Ok(s) => Ok(serde_json::from_str(&s).unwrap_or(Value::String(s))),
             // A local deny is the same honest deny a remote 403 is — surface it identically.
-            Err(ToolError::Denied) => Err(CliError::Denied {
+            // Both denial shapes print the same `DENIED mcp:<tool>:call` — local/remote parity is
+            // the contract here, and a remote `403` body is not parsed into a richer CLI error.
+            Err(ToolError::Denied | ToolError::DeniedBecause { .. }) => Err(CliError::Denied {
                 tool: tool.to_string(),
             }),
             Err(ToolError::NotFound) => Err(CliError::BadInput(format!("no such tool: {tool}"))),

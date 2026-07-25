@@ -85,6 +85,13 @@ pub async fn call_dashboard_grafana_tool(
 fn to_tool(e: DashboardError) -> ToolError {
     match e {
         DashboardError::Denied => ToolError::Denied,
+        // The typed managed-denial, relayed exactly as `tool::to_tool` relays it. Safe here for the
+        // same reason: the host only ever produces it for a caller who could already READ the board
+        // (see `save::managed_denial`), so an import over a managed id explains itself.
+        DashboardError::ManagedDenied(managed_by) => ToolError::DeniedBecause {
+            code: "managed".to_string(),
+            subject: managed_by,
+        },
         DashboardError::NotFound => ToolError::NotFound,
         DashboardError::BadInput(m) => ToolError::BadInput(m),
         DashboardError::Store(s) => ToolError::Extension(s.to_string()),

@@ -144,7 +144,12 @@ pub async fn mcp_call(
 fn tool_error_status(e: lb_mcp::ToolError) -> (StatusCode, String) {
     use lb_mcp::ToolError;
     let status = match &e {
-        ToolError::Denied | ToolError::NotFound => StatusCode::FORBIDDEN,
+        // `DeniedBecause` is a `403` like the opaque denial; the body is its `Display`, which
+        // carries the `code=subject` pair a client branches on. The host produces it only for a
+        // caller who could already read the asset, so relaying it here leaks nothing.
+        ToolError::Denied | ToolError::DeniedBecause { .. } | ToolError::NotFound => {
+            StatusCode::FORBIDDEN
+        }
         ToolError::BadInput(_) => StatusCode::BAD_REQUEST,
         ToolError::Extension(_) => StatusCode::BAD_GATEWAY,
         ToolError::Ambiguous { .. } => StatusCode::CONFLICT,

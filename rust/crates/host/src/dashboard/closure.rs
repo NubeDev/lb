@@ -106,6 +106,7 @@ mod tests {
             cache_ttl_s: 0,
             width: String::new(),
             owner: "user:ada".into(),
+            managed_by: String::new(),
             visibility: Default::default(),
             cells,
             variables: Vec::new(),

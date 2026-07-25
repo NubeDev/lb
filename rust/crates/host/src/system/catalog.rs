@@ -449,6 +449,12 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "create or update a dashboard the caller owns",
     },
     HostTool {
+        tool: "dashboard.save_any",
+        group: "dashboard",
+        description:
+            "admin override: save any dashboard in the workspace, not just the caller's own",
+    },
+    HostTool {
         tool: "dashboard.delete",
         group: "dashboard",
         description: "delete a dashboard the caller owns",
@@ -463,6 +469,12 @@ const HOST_TOOLS: &[HostTool] = &[
         tool: "dashboard.share",
         group: "dashboard",
         description: "share a dashboard with another principal/team",
+    },
+    HostTool {
+        tool: "dashboard.share_any",
+        group: "dashboard",
+        description:
+            "admin override: share any dashboard in the workspace, not just the caller's own",
     },
     HostTool {
         tool: "dashboard.access_check",

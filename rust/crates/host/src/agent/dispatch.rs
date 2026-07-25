@@ -248,7 +248,9 @@ pub async fn invoke_via_runtime(
 /// apply — an explicit ask must not silently degrade.
 fn tool_to_agent(e: lb_mcp::ToolError) -> AgentError {
     match e {
-        lb_mcp::ToolError::Denied => AgentError::Denied,
+        // Both denial shapes collapse to the run's opaque `Denied`: persona resolution has nothing
+        // to do with a managed asset, and an agent run has no surface to render the detail on.
+        lb_mcp::ToolError::Denied | lb_mcp::ToolError::DeniedBecause { .. } => AgentError::Denied,
         lb_mcp::ToolError::NotFound => AgentError::NotFound,
         lb_mcp::ToolError::BadInput(m) => AgentError::BadInput(m),
         lb_mcp::ToolError::Extension(m) => AgentError::BadInput(m),

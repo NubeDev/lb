@@ -391,7 +391,8 @@ const AUTHOR_CAPS: &[&str] = &[
     // authority, listing what's installed is not. `ext.list` is host-native by EXACT name (rule 10),
     // so this grants no reach over an `ext.<other>` an extension owns.
     "mcp:ext.list:call",
-    // dashboards — a member BUILDS/SHARES/DELETES their OWN (gate-3 owns which). delete_any is admin.
+    // dashboards — a member BUILDS/SHARES/DELETES their OWN (gate-3 owns which). The `*_any`
+    // overrides (save/share/delete) are admin-only, below.
     "mcp:dashboard.save:call",
     "mcp:dashboard.delete:call",
     "mcp:dashboard.share:call",
@@ -595,8 +596,14 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // the same workspace-data-administration privilege as retention, never an author one.
     "mcp:series.delete:call",
     "mcp:series.rename:call",
-    // dashboard admin override (delete a dashboard the admin doesn't own).
+    // dashboard admin overrides — the complete triad over an asset someone else owns
+    // (ext-managed-dashboards D2). Each is its OWN cap, each checked strictly after the verb's owner
+    // check fails, none folded into an ambient admin-role test. Ships together on purpose: an admin
+    // who may delete a board but not fix or re-scope it is the asymmetry that sends operators to
+    // delete-and-recreate. Nobody holds these by default — they arrive only with `workspace-admin`.
     "mcp:dashboard.delete_any:call",
+    "mcp:dashboard.save_any:call",
+    "mcp:dashboard.share_any:call",
     // form admin override (delete a form the admin doesn't own).
     "mcp:forms.delete_any:call",
     // nav WRITES (author/share/set the workspace-default menu).

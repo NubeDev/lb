@@ -125,7 +125,11 @@ fn parse(out: &str) -> Value {
 /// fault — the unavailable-probe case) → `500`. Mirrors the MCP→HTTP contract.
 fn status(e: ToolError) -> (StatusCode, String) {
     match e {
-        ToolError::Denied => (StatusCode::FORBIDDEN, "denied".into()),
+        // Both denial shapes are `403` here: this route has no managed-asset surface, so the
+        // detailed sibling is treated exactly like the opaque one (never widened by accident).
+        ToolError::Denied | ToolError::DeniedBecause { .. } => {
+            (StatusCode::FORBIDDEN, "denied".into())
+        }
         ToolError::BadInput(m) => (StatusCode::BAD_REQUEST, m),
         ToolError::NotFound => (StatusCode::NOT_FOUND, e.to_string()),
         ToolError::Extension(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),

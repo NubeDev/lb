@@ -303,6 +303,9 @@ fn parse_visibility(s: &str) -> Option<DashboardVisibility> {
 fn status(e: DashboardError) -> (StatusCode, String) {
     match e {
         DashboardError::Denied => (StatusCode::FORBIDDEN, e.to_string()),
+        // The typed managed-denial: still `403`, but the body names the managing extension
+        // (`denied: managed=<ext id>`). See `tool_status` below and `dashboard/save.rs`.
+        DashboardError::ManagedDenied(_) => (StatusCode::FORBIDDEN, e.to_string()),
         DashboardError::NotFound => (StatusCode::NOT_FOUND, e.to_string()),
         DashboardError::BadInput(m) => (StatusCode::BAD_REQUEST, m),
         DashboardError::Store(s) => (StatusCode::FORBIDDEN, s.to_string()),
@@ -315,7 +318,13 @@ fn status(e: DashboardError) -> (StatusCode, String) {
 fn tool_status(e: lb_mcp::ToolError) -> (StatusCode, String) {
     use lb_mcp::ToolError;
     let code = match &e {
-        ToolError::Denied | ToolError::NotFound => StatusCode::FORBIDDEN,
+        // The typed managed-denial is a `403` like any denial — the DIFFERENCE is the body, which
+        // is its `Display` (`denied: managed=<ext id>`), so the editor can render "managed by <id> —
+        // duplicate to edit" instead of a bare refusal. Only ever produced for a caller who could
+        // already read the board (`dashboard/save.rs::managed_denial`), so no existence leak.
+        ToolError::Denied | ToolError::DeniedBecause { .. } | ToolError::NotFound => {
+            StatusCode::FORBIDDEN
+        }
         ToolError::BadInput(_) => StatusCode::BAD_REQUEST,
         ToolError::Extension(_) => StatusCode::BAD_GATEWAY,
         ToolError::Ambiguous { .. } => StatusCode::CONFLICT,

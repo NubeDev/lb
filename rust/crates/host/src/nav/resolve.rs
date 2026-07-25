@@ -329,7 +329,11 @@ async fn resolve_dashboard(
             vars: item.vars.clone(),
         })),
         // Denied / not-found → stripped (the caller can't read it). Any other is a real fault.
-        Err(DashboardError::Denied) | Err(DashboardError::NotFound) => Ok(None),
+        // (`ManagedDenied` is a WRITE refusal — a read never produces it — but it IS a denial, so it
+        // strips the nav item exactly like the opaque one rather than faulting the whole menu.)
+        Err(DashboardError::Denied)
+        | Err(DashboardError::ManagedDenied(_))
+        | Err(DashboardError::NotFound) => Ok(None),
         Err(DashboardError::Store(e)) => Err(NavError::Store(e)),
         Err(DashboardError::BadInput(m)) => Err(NavError::BadInput(m)),
     }

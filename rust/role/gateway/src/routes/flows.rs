@@ -414,7 +414,11 @@ async fn call(
 /// `NotFound` → `404`; an extension/store fault → `500`.
 fn status(e: ToolError) -> (StatusCode, String) {
     match e {
-        ToolError::Denied => (StatusCode::FORBIDDEN, "not permitted".into()),
+        // Both denial shapes are `403` here: this route has no managed-asset surface, so the
+        // detailed sibling is treated exactly like the opaque one (never widened by accident).
+        ToolError::Denied | ToolError::DeniedBecause { .. } => {
+            (StatusCode::FORBIDDEN, "not permitted".into())
+        }
         ToolError::BadInput(m) => (StatusCode::BAD_REQUEST, m),
         ToolError::NotFound => (StatusCode::NOT_FOUND, "no such flow".into()),
         ToolError::Extension(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
