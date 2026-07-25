@@ -44,11 +44,14 @@ should never have been scanned.
 
 ## What we did
 
-1. **`build-and-test`** — added a `Free runner disk space` step (~25 GB: dotnet, Android
-   SDK, GHC, CodeQL, boost, swift, powershell) and set `CARGO_PROFILE_DEV_DEBUG=0`,
-   `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_INCREMENTAL=0` on the job. `rust/Cargo.toml`'s
-   `[profile.dev]` is untouched — `line-tables-only` is tuned for dev machines where
-   backtraces get read; CI never reads them.
+1. **`build-and-test`** — a `Free runner disk space` step (~22 GB) plus
+   `CARGO_PROFILE_{DEV,TEST}_DEBUG=0`, `CARGO_PROFILE_{DEV,TEST}_STRIP=symbols`,
+   `CARGO_INCREMENTAL=0`. **That was not enough** (see Verification) — the job is now
+   **sharded** into three matrix legs (`host` / `gateway` / `rest`) with
+   `fail-fast: false`, so no single `target/` ever holds all 324 test binaries.
+   `cargo fmt` moved to its own seconds-long `fmt` job instead of riding on a 25-minute
+   job that may die before reaching it. `rust/Cargo.toml`'s `[profile.dev]` is untouched
+   — `line-tables-only` is tuned for dev machines where backtraces get read.
 2. **`ui` job → `packages` job** — installs from the ROOT lockfile, runs
    `pnpm -r --filter "./packages/*" run test`, type-checks `app/sdk`. pnpm pinned **11**
    (was 9): `pnpm-workspace.yaml` uses `allowBuilds`/`onlyBuiltDependencies` (pnpm 10+)
@@ -86,7 +89,20 @@ should never have been scanned.
   dashboard 6, insights 2, nav-rail 2, panel 7. `cd app/sdk && pnpm typecheck` exit 0.
 - **pnpm install --frozen-lockfile** still exit 0 after the workspace edit (the lockfile
   had no `ui` importer — it was regenerated after the deletion).
-- **deploy-image** — `docker build --check` clean; full image build run locally.
+- **deploy-image** — `docker build --check` clean; full image built locally, and **green
+  in CI (47m)**.
+- **`build-and-test` — the first fix was insufficient, and CI said so.** PR run 1 still
+  ran the disk to zero, hard enough to kill the runner process mid-`Test`
+  (`System.IO.IOException: No space left on device` on the runner's own diag log), which
+  is why that job uploaded no log at all. The `df` numbers had to be read out of the
+  `deploy-image` job, which ran the same free-disk step and survived:
+  **88 GB free before cleanup, 109 GB after — and it still overran.** The original
+  "~14 GB free" figure was taken from an outdated runner spec and never measured; that
+  is what made the first fix undersized. `cargo metadata` then gave the real scale:
+  **324 integration test targets**, 152 in `lb-host` alone, each statically linking
+  polars + datafusion + surrealdb + typst. Hence sharding. Shard args validated locally
+  (`cargo pkgid` for each package, `--exclude` accepted by `cargo test`); the sharding
+  itself is verified by CI, not locally — a 3×25-minute matrix is not reproducible here.
 
 ### A trap worth recording
 

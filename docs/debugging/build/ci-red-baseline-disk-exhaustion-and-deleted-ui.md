@@ -37,9 +37,21 @@ error: could not compile `lb-role-gateway` (test "login_hardening_test")
   No space left on device (os error 28)
 ```
 
-`cargo test --workspace` links ~200 debug test binaries that each statically pull in
-polars + surrealdb + rusqlite. With full debug artifacts and incremental output on a
-runner with ~14 GB free, `target/` exhausts the disk partway through the link phase.
+`cargo test --workspace` links **324 integration test binaries** (152 in `lb-host`, 49 in
+`lb-role-gateway`, ~123 across the other 49 crates) and every one statically pulls in the
+full polars + datafusion + surrealdb + typst graph. `target/` exhausts the disk partway
+through the link phase.
+
+**The scale was badly underestimated on the first attempt** — see "Second attempt" below.
+The measured numbers, from the runner itself:
+
+```
+before freeing:  /dev/root  145G   58G used    88G avail
+after  freeing:  /dev/root  145G   36G used   109G avail
+```
+
+109 GB free was still not enough. Freeing runner disk is necessary but **cannot** fix
+this alone; the artifact set genuinely exceeds it.
 
 **2. `ui` — the job tested a tree that was deleted.** `ui/` was removed in commit
 `678503f` (lb is a library; product shells are vendored out-of-tree — `MIGRATION.md`).
@@ -59,11 +71,16 @@ looked identical to the standing backlog. An always-red check is an off check.
 
 ## Fix
 
-- **`build-and-test`:** added a `Free runner disk space` step (drops dotnet, Android
-  SDK, GHC, CodeQL, boost, swift, powershell — ~25 GB) and set
-  `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_INCREMENTAL=0` for
-  the job. The `[profile.dev]` `line-tables-only` setting in `rust/Cargo.toml` is left
-  alone — it is tuned for developer machines, where backtraces are read.
+- **`build-and-test`:** a `Free runner disk space` step (~22 GB) plus `debug=0`,
+  `strip=symbols` and `CARGO_INCREMENTAL=0`, **and — the part that actually fixes it —
+  the job is now SHARDED** into three matrix legs (`host`, `gateway`, `rest`) so no
+  single target dir ever holds all 324 test binaries. `fail-fast: false`, so one shard
+  failing never hides another's result. `rust/Cargo.toml`'s `[profile.dev]` is left alone
+  — `line-tables-only` is tuned for developer machines, where backtraces get read.
+  `cargo fmt` moved to its own `fmt` job: it costs seconds and should not ride on a
+  25-minute job that may die before reaching it. A `Report disk + target size` step
+  (`if: always()`) now leaves `df`/`du` numbers in every log, so the next person sizing
+  this has data instead of a guess.
 - **`ui` job → `packages` job:** installs from the ROOT lockfile, runs
   `pnpm -r --filter "./packages/*" run test` and type-checks `app/sdk`. `app/sdk`'s own
   suite is `test:gateway`, which spawns a real node (rule 9) — it needs the Rust build
@@ -81,6 +98,27 @@ looked identical to the standing backlog. An always-red check is an off check.
   or a baseline file that *grew*. Shrinking always passes; dropping under the limit
   prints a notice to re-run `check-file-size.sh --update`. `dist/` is now excluded — two
   committed rolled-up `.d.ts` build artifacts were being counted as source.
+
+## Second attempt — the first disk fix was insufficient, and said so loudly
+
+The first PR run still failed `build-and-test`, and harder: the disk hit zero while the
+GitHub **runner process itself** was writing its own diagnostic log —
+
+```
+System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.336.0/_diag/Worker_...-utc.log'
+```
+
+That is why the job showed `Test` stuck in `in_progress` with `conclusion: failure`, and
+why **no log blob was ever uploaded** (`gh ... /logs` → `BlobNotFound`). The `df` numbers
+had to be read out of the *`deploy-image`* job, which ran the identical free-disk step and
+survived.
+
+The root-cause diagnosis (disk, not flake) was right; the **sizing was wrong**. The
+initial estimate of "~14 GB free" came from an outdated runner spec and was never
+measured — the runner actually offers 88 GB free, 109 GB after cleanup, and the build
+overran even that. Counting the actual artifacts (`cargo metadata`: 324 integration test
+targets) is what made the real scale visible. Hence sharding.
 
 ## Aftershock — the new `packages` job immediately caught a real one
 
@@ -122,6 +160,12 @@ did not cover the config left behind.
 carries no information. If a quality backlog can't be paid down now, ratchet it: freeze
 the debt and fail only on regressions. The gate starts reporting again the same day —
 and, as the `minimal-shell` aftershock shows, starts finding things immediately.
+
+**Getting the cause right is not the same as getting the SIZE right.** "The disk is
+full" was correct on day one; the fix still failed because the estimate of *how* full
+was borrowed from an outdated spec instead of measured. A quantitative failure needs a
+measured number before a fix is designed — here, `cargo metadata` counting 324 test
+targets, and `df` from a job that actually survived.
 
 **"Green locally" proves nothing about CI when the difference between the two machines
 is the thing under test.** A `link:` to a sibling checkout is invisible on the box that
