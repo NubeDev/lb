@@ -100,8 +100,15 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install deps
         run: pnpm install --frozen-lockfile
+      # `!@nube/minimal-shell`: it declares `"@nube/ext-ui-sdk": "link:../../../lb-ext-ui-sdk"` — a
+      # filesystem link to a SIBLING REPO CHECKOUT (NubeDev/lb-ext-ui-sdk) that exists only on a
+      # developer box that cloned it next to lb. CI resolves it to nothing and vitest dies with
+      # `Failed to resolve import "@nube/ext-ui-sdk"`. It is un-CI-able as wired, and it is the only
+      # such package in the workspace. MIGRATION.md says lb should consume that SDK at a published
+      # TAG (ui-v0.4.1), not a live link — switching it is a cross-repo release decision, not a CI
+      # change, so this job skips the package and flags it rather than pretending it is covered.
       - name: Test (Vitest)
-        run: pnpm -r --filter "./packages/*" run test
+        run: pnpm -r --filter "./packages/*" --filter "!@nube/minimal-shell" run test
       # app/sdk's suite is `test:gateway` — it spawns a REAL node (rule 9, no fakes), so it needs
       # the Rust build and belongs with build-and-test, not here. Type-checking it is still a
       # real contract check against the generated client and costs nothing.

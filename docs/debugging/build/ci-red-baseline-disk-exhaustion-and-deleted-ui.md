@@ -82,6 +82,27 @@ looked identical to the standing backlog. An always-red check is an off check.
   prints a notice to re-run `check-file-size.sh --update`. `dist/` is now excluded — two
   committed rolled-up `.d.ts` build artifacts were being counted as source.
 
+## Aftershock — the new `packages` job immediately caught a real one
+
+The first PR run of the replacement job failed on `packages/minimal-shell`:
+`Failed to resolve import "@nube/ext-ui-sdk"`. That package declares
+
+```json
+"@nube/ext-ui-sdk": "link:../../../lb-ext-ui-sdk"
+```
+
+— a filesystem link to a **sibling repo checkout** that exists only on a developer box
+that cloned `NubeDev/lb-ext-ui-sdk` next to `lb/`. It is the only `link:`/`file:`
+dependency in the workspace. This is precisely why the suite passed locally and failed
+in CI: the local box has the sibling, a runner never will.
+
+The job now excludes that one package. It is **not** covered — `MIGRATION.md` has lb
+consuming that SDK at a published tag (`ui-v0.4.1`), and converting the live link to a
+tag is a cross-repo release decision, not a CI change.
+
+Worth noting on its own: this failure had been latent for as long as the `ui` job was
+red. Restoring the gate surfaced it within minutes.
+
 ## Lesson
 
 **A stack's fatal line is not always its causal line.** `ld` dying of SIGBUS is the
@@ -99,4 +120,10 @@ did not cover the config left behind.
 
 **A permanently-red gate is worse than no gate**, because it costs the same and
 carries no information. If a quality backlog can't be paid down now, ratchet it: freeze
-the debt and fail only on regressions. The gate starts reporting again the same day.
+the debt and fail only on regressions. The gate starts reporting again the same day —
+and, as the `minimal-shell` aftershock shows, starts finding things immediately.
+
+**"Green locally" proves nothing about CI when the difference between the two machines
+is the thing under test.** A `link:` to a sibling checkout is invisible on the box that
+has the sibling. Any dependency that resolves through the filesystem outside the repo is
+a local-only dependency, whatever the lockfile says.

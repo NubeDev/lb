@@ -74,9 +74,16 @@ should never have been scanned.
   - appended ONE line to a grandfathered file (`routes/flows.rs`, baseline 433) →
     `grew to 434 lines (baseline 433) — split it, don't extend it`, exit 1;
   - both probes reverted, tree clean, exit 0 again.
-- **packages job** — `pnpm -r --filter "./packages/*" run test` green locally
-  (ce-wiresheet 153, source-picker 48, panel 7, nav-rail, dashboard, genui, insights,
-  minimal-shell); `cd app/sdk && pnpm typecheck` exit 0.
+- **packages job** — green locally, then **red in CI on the first PR run**, which is
+  exactly what a working CI is for. `packages/minimal-shell` died with
+  `Failed to resolve import "@nube/ext-ui-sdk"`. Cause: it declares
+  `"@nube/ext-ui-sdk": "link:../../../lb-ext-ui-sdk"` — a filesystem link to a **sibling
+  repo checkout** (`NubeDev/lb-ext-ui-sdk`, cloned next to `lb/`). It resolves on a
+  developer box and can never resolve in CI, which is *why the local run passed*. It is
+  the only `link:`/`file:` dependency in the workspace (verified against every lockfile
+  importer). The job now excludes that one package; see the follow-up below.
+  Remaining 7 packages green: ce-wiresheet 153, source-picker 48, genui 8 files,
+  dashboard 6, insights 2, nav-rail 2, panel 7. `cd app/sdk && pnpm typecheck` exit 0.
 - **pnpm install --frozen-lockfile** still exit 0 after the workspace edit (the lockfile
   had no `ui` importer — it was regenerated after the deletion).
 - **deploy-image** — `docker build --check` clean; full image build run locally.
@@ -93,6 +100,13 @@ checkout has no such file, so this never affected CI — but it meant a local bu
 not reproduce CI at all. Added `**/.cargo/config.toml` to `.dockerignore`.
 
 ## Follow-ups (not done here)
+
+- **`packages/minimal-shell` has NO CI coverage** until its `@nube/ext-ui-sdk` dependency
+  stops being `link:../../../lb-ext-ui-sdk`. `MIGRATION.md` says lb consumes that SDK at a
+  published **tag** (`ui-v0.4.1`); the live link is a dev-convenience override that got
+  committed to the lockfile. Switching it is a cross-repo release decision (release order
+  SDK → lb → rubix-ai), deliberately not made inside a CI-fix change. Until then the job
+  skips the package rather than pretend it is covered.
 
 - **Pay down the 114-file backlog.** The ratchet stops it growing; it does not split
   anything. Highest-value targets are the source (not test) files:
