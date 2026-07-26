@@ -25,21 +25,23 @@ pub async fn write(
     id: &str,
     value: &Value,
 ) -> Result<(), StoreError> {
-    let db = store.use_ws(ws).await?;
     // `rev` is derived server-side from the record's own prior rev so it is monotonic without a
     // separate read: `(rev OR 0) + 1`. A brand-new record has no prior `rev`, so it lands at 1.
-    db.query(
-        "UPSERT type::thing($tb, $id) CONTENT { \
-            data: $data, \
-            rev: (type::thing($tb, $id).rev ?? ($first - 1)) + 1 \
-         } RETURN NONE",
-    )
-    .bind(("tb", table.to_string()))
-    .bind(("id", id.to_string()))
-    .bind(("data", value.clone()))
-    .bind(("first", FIRST_REV))
-    .await?
-    .check()?;
+    store
+        .query_ws(
+            ws,
+            "UPSERT type::thing($tb, $id) CONTENT { \
+                data: $data, \
+                rev: (type::thing($tb, $id).rev ?? ($first - 1)) + 1 \
+             } RETURN NONE",
+            vec![
+                ("tb".into(), Value::String(table.to_string())),
+                ("id".into(), Value::String(id.to_string())),
+                ("data".into(), value.clone()),
+                ("first".into(), Value::from(FIRST_REV)),
+            ],
+        )
+        .await?;
     // Taint the in-flight dispatch (if any) as having mutated the store, so the undo seam can tell
     // a non-capturable *mutation* (not-undoable) from a pure read (don't journal). No-op outside a
     // taint scope, so the raw store path is unaffected.

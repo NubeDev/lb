@@ -25,28 +25,32 @@ pub async fn create(
     id: &str,
     value: &Value,
 ) -> Result<(), StoreError> {
-    let db = store.use_ws(ws).await?;
-    let result = db
-        .query("CREATE type::thing($tb, $id) CONTENT { data: $data }")
-        .bind(("tb", table.to_string()))
-        .bind(("id", id.to_string()))
-        .bind(("data", value.clone()))
-        .await?
-        .check();
+    let result = store
+        .query_ws(
+            ws,
+            "CREATE type::thing($tb, $id) CONTENT { data: $data }",
+            vec![
+                ("tb".into(), Value::String(table.to_string())),
+                ("id".into(), Value::String(id.to_string())),
+                ("data".into(), value.clone()),
+            ],
+        )
+        .await;
     match result {
         Ok(_) => Ok(()),
-        // SurrealDB reports a duplicate-id CREATE as an "already exists" record error. We translate
-        // it to the typed `Conflict` so a first-settle caller can branch on it cleanly, rather than
-        // string-matching a backend message at the call site.
+        // SurrealDB reports a duplicate-id CREATE as an "already exists" record error (surfaced here
+        // through `query_ws`'s internal `check` as a `Backend` error carrying that phrase). We
+        // translate it to the typed `Conflict` so a first-settle caller can branch on it cleanly,
+        // rather than string-matching a backend message at the call site.
         Err(e) if is_already_exists(&e) => Err(StoreError::Conflict),
-        Err(e) => Err(e.into()),
+        Err(e) => Err(e),
     }
 }
 
-/// Whether a SurrealDB error is the "record already exists" outcome of a duplicate-id `CREATE`.
+/// Whether a [`StoreError`] is the "record already exists" outcome of a duplicate-id `CREATE`.
 /// SurrealDB does not expose a stable typed variant for this across versions, so we match on the
 /// message — pinned to the phrase SurrealDB uses (`already exists`). Kept in one place so a version
 /// bump that changes the wording is a one-line fix, not a hunt across call sites.
-fn is_already_exists(e: &surrealdb::Error) -> bool {
+fn is_already_exists(e: &StoreError) -> bool {
     e.to_string().contains("already exists")
 }

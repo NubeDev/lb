@@ -9,13 +9,13 @@
 //! LOAD-BEARING feature set verified — see `docs/scope/store/persistent-backend-scope.md`).
 //! Log compaction (boot-time and online) lives in `compact.rs`.
 
-use std::ops::Deref;
 use std::sync::Arc;
 
+use serde::de::DeserializeOwned;
 use surrealdb::engine::local::{Db, Mem, SurrealKv};
 use surrealdb::Surreal;
 use thiserror::Error;
-use tokio::sync::{Mutex, OwnedMutexGuard};
+use tokio::sync::RwLock;
 
 use crate::compact::{compact_log, CompactionRecord};
 
@@ -40,28 +40,32 @@ impl From<surrealdb::Error> for StoreError {
 
 /// A handle to the embedded datastore. Cloneable; cheap to pass around the host.
 ///
-/// **Session-namespace safety.** Every clone shares ONE embedded SurrealDB connection, and that
-/// connection carries a single mutable session (its selected namespace + database). Selecting a
-/// workspace's namespace (`use_ns(ws)`) is therefore a *global* mutation of that shared session,
-/// not a per-operation scoping — and it is a distinct `await` from the query it is meant to guard.
-/// On a multi-thread runtime (every node) two operations targeting different workspaces would
-/// otherwise interleave (`use_ns(A)` … `use_ns(B)` … A's query runs against B's namespace),
-/// breaking the workspace wall non-deterministically (it surfaced as the flaky login "not a member
-/// of any workspace" — a bootstrap membership written into one namespace, read back from another;
-/// see debugging/store/concurrent-use-ns-namespace-race.md). The [`session`](Store::session) mutex
-/// makes the `use_ns` + query pair a critical section: only one namespace-scoped operation touches
-/// the shared session at a time, so a query always runs against the namespace *it* selected.
+/// **Session-namespace safety — WITHOUT serializing every operation** (store-concurrency scope).
+/// The embedded SurrealDB connection carries one mutable session (its selected namespace + database).
+/// Mutating it with `use_ns(ws)` is a *global* change to the shared session, distinct from the query
+/// it guards, so two ops for different workspaces could interleave (`use_ns(A)` … `use_ns(B)` … A's
+/// query runs against B's namespace) — the flaky-login workspace-wall race
+/// (debugging/store/concurrent-use-ns-namespace-race.md). The OLD fix serialized every store op
+/// behind one session mutex held across the whole query. That made a single slow scan (a reactor's
+/// unbounded `SELECT`) block EVERY other store op node-wide — foreground reads stalled ~400ms behind
+/// continuous background scans (debugging/store/single-mutex-serializes-all-ops.md; the dashboard-12s
+/// report). The engine itself executes concurrent queries in parallel — only that mutex serialized us.
 ///
-/// **The mutex CARRIES the handle** (online-compaction scope): the `Surreal<Db>` lives *inside*
-/// the session mutex, so the same critical section that guards `use_ns`+query also guards the
-/// handle swap the online compaction pass performs (drop → compact on disk → reopen → swap back).
-/// Holding the lock means holding the one true handle; there is no window where a query can run
-/// against a half-open engine.
+/// The fix: **never mutate the session.** Each op prepends `USE NS <ws> DB main;` to its own query
+/// ([`scope_sql`]), so the namespace is scoped PER QUERY CALL — SurrealDB isolates it to that call's
+/// execution even under concurrency (proven: cross-ns concurrent reads never contaminate). No shared
+/// session state, so no mutex is needed for the wall, and ops run concurrently.
+///
+/// **The handle still needs an exclusive swap** for online compaction (drop → compact on disk →
+/// reopen → swap back). An `RwLock` gives both: every data op takes the READ guard (shared — all
+/// concurrent) and holds it across its query, so the engine can't be swapped mid-query; compaction
+/// takes the WRITE guard (exclusive), which waits for in-flight ops to finish, swaps, and releases.
 #[derive(Clone)]
 pub struct Store {
-    /// The ONE shared connection, behind the ONE session lock. Held (via [`WsGuard`]) from
-    /// `use_ws` until the caller's query completes. See the type-level note above.
-    session: Arc<Mutex<Surreal<Db>>>,
+    /// The ONE shared connection, behind an `RwLock`. Data ops hold the READ guard across their
+    /// query (concurrent); compaction holds the WRITE guard to swap the handle. No `use_ns` mutation
+    /// — the namespace is scoped per query via [`scope_sql`]. See the type-level note above.
+    handle: Arc<RwLock<Surreal<Db>>>,
     /// The on-disk directory for a persistent store; `None` for `memory()` (which cannot
     /// compact — there is no log). Used by `compact`/`status`, never by the data verbs.
     path: Option<Arc<str>>,
@@ -70,19 +74,76 @@ pub struct Store {
     last_compaction: Arc<std::sync::Mutex<Option<CompactionRecord>>>,
 }
 
-/// The namespace-scoped session, held for the duration of one store operation. Owning this guard
-/// means the shared connection's session is bound to *this* operation's workspace and cannot be
-/// re-pointed by a concurrent task until the guard drops — and (since the mutex carries the
-/// handle) that the engine cannot be swapped out from under the query either. Deref to
-/// `&Surreal<Db>` so callers run their query exactly as before.
-pub(crate) struct WsGuard {
-    guard: OwnedMutexGuard<Surreal<Db>>,
+/// A workspace id is a slug — validate it before interpolating into `USE NS <ws>`, so a `ws` can
+/// never carry SurrealQL past the namespace position (the per-query USE is the workspace wall; it
+/// must be uninjectable). Accepts `[A-Za-z0-9_.-]+`, the shape every real workspace/id uses; anything
+/// else is refused rather than escaped, keeping the wall a bright line.
+fn scope_sql(ws: &str, sql: &str) -> Result<String, StoreError> {
+    if ws.is_empty()
+        || !ws
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+    {
+        return Err(StoreError::Decode(format!("invalid workspace id: {ws:?}")));
+    }
+    // Backtick-quote the ns so a legal slug that isn't a bare SurrealQL ident still parses — e.g.
+    // `ws-a` bare is read as `ws - a`. The validated charset above excludes the backtick, so the
+    // quoting cannot be broken out of (the per-query USE is the workspace wall; it must be uninjectable).
+    Ok(format!("USE NS `{ws}` DB main;\n{sql}"))
 }
 
-impl Deref for WsGuard {
-    type Target = Surreal<Db>;
-    fn deref(&self) -> &Self::Target {
-        &self.guard
+/// A statement selector for [`ScopedResponse::take`], shifted by one to skip the injected `USE` at
+/// real index 0. Mirrors the selectors SurrealDB's `Response::take` accepts — a statement index
+/// (`usize`), a field of the first statement (`&str`), or a field of statement N (`(usize, &str)`) —
+/// so every existing caller idiom works verbatim while the caller's index 0 maps to real index 1.
+pub trait ScopedIndex {
+    /// The real (USE-inclusive) selector this caller-facing one maps to.
+    type Shifted;
+    fn shift(self) -> Self::Shifted;
+}
+impl ScopedIndex for usize {
+    type Shifted = usize;
+    fn shift(self) -> usize {
+        self + 1
+    }
+}
+impl<'a> ScopedIndex for &'a str {
+    type Shifted = (usize, &'a str);
+    fn shift(self) -> (usize, &'a str) {
+        // `take("field")` means "field of the caller's FIRST statement" — real statement 1.
+        (1, self)
+    }
+}
+impl<'a> ScopedIndex for (usize, &'a str) {
+    type Shifted = (usize, &'a str);
+    fn shift(self) -> (usize, &'a str) {
+        (self.0 + 1, self.1)
+    }
+}
+
+/// The result of a scoped store query. Wraps SurrealDB's `Response` and hides the leading `USE`
+/// statement's result slot: `take(0)` returns the caller's FIRST statement (the USE lives at the
+/// real index 0), so every one of the ~140 `query_ws` callers keeps its existing selectors.
+pub struct ScopedResponse(surrealdb::Response);
+
+impl ScopedResponse {
+    /// Extract a result selected 0-based over the caller's OWN statements (the injected `USE` at real
+    /// index 0 is invisible here). Accepts the same selectors as `Response::take`, each shifted past
+    /// the USE by [`ScopedIndex`].
+    // The selector is an `impl ScopedIndex` ARGUMENT (a hidden generic), so `R` is the only turbofish
+    // param — `take::<Vec<Foo>>(0)` binds the result type exactly as `Response::take::<Vec<Foo>>(0)`
+    // does. The associated-type bound threads the shifted selector into SurrealDB's `QueryResult`.
+    pub fn take<R: DeserializeOwned>(
+        &mut self,
+        index: impl ScopedIndex<Shifted: surrealdb::opt::QueryResult<R>>,
+    ) -> Result<R, surrealdb::Error> {
+        self.0.take(index.shift())
+    }
+
+    /// Surface any statement error. `query_ws` already `check`s internally, so this is a no-op that
+    /// preserves the `…await?.check()?` caller idiom.
+    pub fn check(self) -> Result<Self, surrealdb::Error> {
+        Ok(self)
     }
 }
 
@@ -93,7 +154,7 @@ impl Store {
     pub async fn memory() -> Result<Self, StoreError> {
         let db = Surreal::new::<Mem>(()).await?;
         Ok(Self {
-            session: Arc::new(Mutex::new(db)),
+            handle: Arc::new(RwLock::new(db)),
             path: None,
             last_compaction: Arc::new(std::sync::Mutex::new(None)),
         })
@@ -117,30 +178,17 @@ impl Store {
             .ok();
         let db = Surreal::new::<SurrealKv>(path).await?;
         Ok(Self {
-            session: Arc::new(Mutex::new(db)),
+            handle: Arc::new(RwLock::new(db)),
             path: Some(Arc::from(path)),
             last_compaction: Arc::new(std::sync::Mutex::new(boot_pass)),
         })
     }
 
-    /// Bind the shared connection to a workspace's namespace (and a fixed database within it) and
-    /// return a guard that holds the session lock for the duration of the caller's query. Every
-    /// read/write calls this first, so an operation can only ever touch its own workspace's
-    /// namespace — the hard wall, structurally (README §7) — and, because the guard holds the lock
-    /// across the query, a concurrent operation for another workspace cannot re-point the shared
-    /// session mid-query (see the [`Store`] type note).
-    pub(crate) async fn use_ws(&self, ws: &str) -> Result<WsGuard, StoreError> {
-        // Acquire the session lock BEFORE selecting the namespace, and hold it (via the returned
-        // guard) across the caller's query. The guard owns the mutex that carries the handle, so
-        // the borrow-vs-return dance the old plain-field layout needed is gone.
-        let guard = Arc::clone(&self.session).lock_owned().await;
-        guard.use_ns(ws).use_db("main").await?;
-        Ok(WsGuard { guard })
-    }
-
-    /// The session mutex + handle cell, for the online compaction pass only (`compact.rs`).
-    pub(crate) fn session_cell(&self) -> Arc<Mutex<Surreal<Db>>> {
-        Arc::clone(&self.session)
+    /// The handle cell, for the online compaction pass only (`compact.rs`). Compaction takes the
+    /// WRITE guard to swap the engine; every data op takes the READ guard, so the swap waits for
+    /// in-flight ops and no query ever runs against a half-open engine.
+    pub(crate) fn session_cell(&self) -> Arc<RwLock<Surreal<Db>>> {
+        Arc::clone(&self.handle)
     }
 
     /// The on-disk directory (`None` for a memory store).
@@ -153,22 +201,33 @@ impl Store {
         &self.last_compaction
     }
 
-    /// Run a raw SurrealQL statement, returning the response for the caller to extract. The
-    /// **escape hatch** for the day-one capability spike and for callers (ingest, tags) that need
-    /// `RELATE`/`DEFINE`/composite-ID statements the generic key-value verbs do not express. The
-    /// namespace is selected from `ws` first — the same hard wall as every other verb. This is a
-    /// raw verb run *after* `caps::check`; it is not an authorization point.
+    /// Run a workspace-scoped SurrealQL statement, returning a [`ScopedResponse`] the caller extracts
+    /// with 0-based `take` over its OWN statements. The namespace is scoped to THIS query via a
+    /// prepended `USE NS <ws> DB main;` ([`scope_sql`]) — the hard workspace wall (README §7), now
+    /// per-query rather than via a global session mutation, so concurrent ops never race on the
+    /// session and never serialize behind one another. Also the escape hatch for `RELATE`/`DEFINE`/
+    /// composite-ID statements the generic verbs don't express. A raw verb run *after* `caps::check`;
+    /// not an authorization point.
+    ///
+    /// The READ guard is held across the query so the online-compaction WRITE swap can't run
+    /// mid-query (it waits for in-flight ops); concurrent readers share the guard and run in parallel.
     pub async fn query_ws(
         &self,
         ws: &str,
         sql: &str,
         bindings: Vec<(String, serde_json::Value)>,
-    ) -> Result<surrealdb::Response, StoreError> {
-        let db = self.use_ws(ws).await?;
-        let mut q = db.query(sql);
+    ) -> Result<ScopedResponse, StoreError> {
+        let scoped = scope_sql(ws, sql)?;
+        let guard = self.handle.read().await;
+        let mut q = guard.query(scoped);
         for (k, v) in bindings {
             q = q.bind((k, v));
         }
-        Ok(q.await?.check()?)
+        let resp = q.await?.check()?;
+        // `guard` (the RwLock read lock) is still held here — dropping it now, AFTER the query has
+        // executed and the response is materialized, is correct: compaction's WRITE guard could not
+        // have swapped the engine while this read guard was alive.
+        drop(guard);
+        Ok(ScopedResponse(resp))
     }
 }

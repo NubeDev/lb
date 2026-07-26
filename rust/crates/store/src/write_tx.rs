@@ -34,28 +34,30 @@ pub async fn write_tx(
     change: &Upsert<'_>,
     effect: &Upsert<'_>,
 ) -> Result<(), StoreError> {
-    let db = store.use_ws(ws).await?;
-    db.query(
-        "BEGIN TRANSACTION;
-         UPSERT type::thing($ct, $cid) CONTENT { \
-            data: $cdata, \
-            rev: (type::thing($ct, $cid).rev ?? ($first - 1)) + 1 \
-         } RETURN NONE;
-         UPSERT type::thing($et, $eid) CONTENT { \
-            data: $edata, \
-            rev: (type::thing($et, $eid).rev ?? ($first - 1)) + 1 \
-         } RETURN NONE;
-         COMMIT TRANSACTION;",
-    )
-    .bind(("ct", change.table.to_string()))
-    .bind(("cid", change.id.to_string()))
-    .bind(("cdata", change.value.clone()))
-    .bind(("et", effect.table.to_string()))
-    .bind(("eid", effect.id.to_string()))
-    .bind(("edata", effect.value.clone()))
-    .bind(("first", FIRST_REV))
-    .await?
-    .check()?;
+    store
+        .query_ws(
+            ws,
+            "BEGIN TRANSACTION;
+             UPSERT type::thing($ct, $cid) CONTENT { \
+                data: $cdata, \
+                rev: (type::thing($ct, $cid).rev ?? ($first - 1)) + 1 \
+             } RETURN NONE;
+             UPSERT type::thing($et, $eid) CONTENT { \
+                data: $edata, \
+                rev: (type::thing($et, $eid).rev ?? ($first - 1)) + 1 \
+             } RETURN NONE;
+             COMMIT TRANSACTION;",
+            vec![
+                ("ct".into(), Value::String(change.table.to_string())),
+                ("cid".into(), Value::String(change.id.to_string())),
+                ("cdata".into(), change.value.clone()),
+                ("et".into(), Value::String(effect.table.to_string())),
+                ("eid".into(), Value::String(effect.id.to_string())),
+                ("edata".into(), effect.value.clone()),
+                ("first".into(), Value::from(FIRST_REV)),
+            ],
+        )
+        .await?;
     // A two-record transaction also mutates the store (no-op outside a dispatch taint scope).
     mark_store_written();
     Ok(())

@@ -39,27 +39,29 @@ pub async fn write_journaled(
     change: &Value,
     journal: &JournalWrite<'_>,
 ) -> Result<(), StoreError> {
-    let db = store.use_ws(ws).await?;
-    db.query(
-        "BEGIN TRANSACTION;
-         UPSERT type::thing($ct, $cid) CONTENT { \
-            data: $cdata, \
-            rev: (type::thing($ct, $cid).rev ?? ($first - 1)) + 1 \
-         } RETURN NONE;
-         UPSERT type::thing($jt, $jid) CONTENT { \
-            data: $jdata, \
-            rev: (type::thing($jt, $jid).rev ?? ($first - 1)) + 1 \
-         } RETURN NONE;
-         COMMIT TRANSACTION;",
-    )
-    .bind(("ct", change_table.to_string()))
-    .bind(("cid", change_id.to_string()))
-    .bind(("cdata", change.clone()))
-    .bind(("jt", journal.table.to_string()))
-    .bind(("jid", journal.id.to_string()))
-    .bind(("jdata", journal.value.clone()))
-    .bind(("first", FIRST_REV))
-    .await?
-    .check()?;
+    store
+        .query_ws(
+            ws,
+            "BEGIN TRANSACTION;
+             UPSERT type::thing($ct, $cid) CONTENT { \
+                data: $cdata, \
+                rev: (type::thing($ct, $cid).rev ?? ($first - 1)) + 1 \
+             } RETURN NONE;
+             UPSERT type::thing($jt, $jid) CONTENT { \
+                data: $jdata, \
+                rev: (type::thing($jt, $jid).rev ?? ($first - 1)) + 1 \
+             } RETURN NONE;
+             COMMIT TRANSACTION;",
+            vec![
+                ("ct".into(), Value::String(change_table.to_string())),
+                ("cid".into(), Value::String(change_id.to_string())),
+                ("cdata".into(), change.clone()),
+                ("jt".into(), Value::String(journal.table.to_string())),
+                ("jid".into(), Value::String(journal.id.to_string())),
+                ("jdata".into(), journal.value.clone()),
+                ("first".into(), Value::from(FIRST_REV)),
+            ],
+        )
+        .await?;
     Ok(())
 }
