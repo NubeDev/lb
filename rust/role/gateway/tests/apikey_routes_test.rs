@@ -13,28 +13,24 @@ use lb_role_gateway::router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-/// The admin cap set: `apikey.manage` + the built-in role cap bundles + the read probe cap. The dev
-/// admin HOLDS the role caps so the no-widening guard lets it mint keys under either built-in role.
-const ADMIN_CAPS: &[&str] = &[
-    "mcp:apikey.manage:call",
-    "store:*:read",
-    "store:*:write",
-    "mcp:*.get:call",
-    "mcp:*.list:call",
-    "mcp:*.write:call",
-    "mcp:*.create:call",
-    "mcp:*.update:call",
-    "mcp:*.delete:call",
-    "mcp:*.post:call",
-    "mcp:outbox.status:call",
-];
+/// PART of the admin cap set — `admin()` adds the built-in role bundles on top. The broad
+/// `mcp:*.<verb>:call` / `store:*:*` wildcards this used to carry existed only to cover those
+/// bundles; deriving them makes the wildcards redundant, so what is left is what is genuinely
+/// admin-only: key management, plus the `outbox.status` probe some tests grant to a minted key.
+const ADMIN_CAPS: &[&str] = &["mcp:apikey.manage:call", "mcp:outbox.status:call"];
 
 /// A non-admin cap set (lacks `apikey.manage`) — for the deny tests.
 const NO_MANAGE: &[&str] = &["bus:chan/*:pub"];
 
-/// Mint an admin JWT for `ws`.
+/// Mint an admin JWT for `ws` = the wildcards above PLUS the built-in role bundles, DERIVED from
+/// `lb_apikey` rather than re-listed. The admin must hold every cap it grants or no-widening
+/// refuses the create, so a hand-listed set drifts the moment a bundle grows — it did, silently,
+/// behind the red CI (debugging/build/ci-red-baseline-disk-exhaustion-and-deleted-ui.md).
 fn admin(key: &lb_auth::SigningKey, ws: &str) -> String {
-    token(key, "user:admin", ws, ADMIN_CAPS)
+    let mut caps: Vec<String> = lb_apikey::apikey_write_caps(); // superset of apikey_read_caps()
+    caps.extend(ADMIN_CAPS.iter().map(|s| s.to_string()));
+    let refs: Vec<&str> = caps.iter().map(String::as_str).collect();
+    token(key, "user:admin", ws, &refs)
 }
 
 /// Create a key as the admin, returning the one-time bearer string.

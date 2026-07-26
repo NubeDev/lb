@@ -4,8 +4,12 @@
 # this listener — that's why we bind plain `:8080`, not `https://`. `deploy/fly/Caddyfile.local`
 # puts a SECOND Caddy in front locally (mkcert TLS) to mimic that edge for the HTTPS pre-flight.
 #
-# The SPA is a browser build with VITE_GATEWAY_URL="" (same-origin) — every API call the app makes
-# is a RELATIVE path (`/login`, `/mcp/call`, `/channels/…/stream`, …). So the split here is
+# The lb image itself ships NO SPA (lb is a library; `ui/` was deleted — see the Dockerfile header).
+# The SPA handle below is kept because a product host drops its own bundle into
+# /usr/share/lazybones/web; with the dir empty it simply 404s and every path falls to the gateway.
+#
+# A product SPA is expected to be a same-origin build (empty gateway base URL) — every API call it
+# makes is a RELATIVE path (`/login`, `/mcp/call`, `/channels/…/stream`, …). So the split here is
 # "explicit SPA paths; everything else is the gateway" — a NEW gateway route never needs a Caddyfile
 # change (the dev-pulse `try_files`-eats-the-API lesson: keep the SPA match narrow and explicit, the
 # gateway match broad, and use `handle` blocks so the first match wins instead of falling through
@@ -26,8 +30,8 @@
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
 	header /index.html Cache-Control "no-cache"
 
-	# The SPA shell + its static assets/shims (ui-federation ships /shims/*.mjs re-exporters and
-	# popout.html alongside index.html — see ui/vite.config.ts).
+	# The SPA shell + its static assets/shims (a federated product shell ships /shims/*.mjs
+	# re-exporters and popout.html alongside index.html).
 	@spa {
 		path / /index.html /popout.html /favicon.ico /robots.txt /manifest.json
 		path /assets/* /shims/*

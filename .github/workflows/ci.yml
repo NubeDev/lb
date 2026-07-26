@@ -18,10 +18,75 @@ jobs:
       - name: FILE-LAYOUT size check (≤400 lines)
         run: bash rust/scripts/check-file-size.sh
 
-  build-and-test:
+  # Cheap and independent of the heavy build, so it reports in seconds instead of riding on a
+  # 25-minute job that may die before ever reaching it.
+  fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format check
+        working-directory: rust
+        run: cargo fmt --all --check
+
+  # SHARDED ON PURPOSE — do not collapse this back into one `cargo test --workspace`.
+  #
+  # The workspace has **324 integration test binaries** (152 in lb-host, 49 in lb-role-gateway),
+  # and every one statically links the full polars + datafusion + surrealdb + typst graph. A
+  # single `cargo test --workspace` therefore needs well over 100 GB of `target/` and ran the
+  # runner's disk to zero — twice. The second time it killed the runner PROCESS itself
+  # (`System.IO.IOException: No space left on device` writing the runner's own diag log), which
+  # is why that job showed `Test` stuck "in progress" and uploaded no log at all.
+  #
+  # Measured on ubuntu-latest, from the `Free runner disk space` step below:
+  #     before: /dev/root 145G  58G used   88G avail
+  #     after:  /dev/root 145G  36G used  109G avail
+  # i.e. 109 GB free was still not enough. Freeing disk is necessary but CANNOT fix this on its
+  # own — the fix is to stop linking all 324 binaries into one target dir. Each shard links only
+  # its own slice; shared dependency rlibs are rebuilt per shard (cached) but the test binaries,
+  # which are the bulk, are not.
+  #
+  # The earlier symptom that made this look like a runner flake for weeks: `ld` dying with
+  # `signal 7 [Bus error]`. SIGBUS is what you get when a writable mmap can no longer be backed —
+  # the actual `No space left on device` sat one line above it and never reached the job summary.
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      # Report every shard's real result; one shard failing must not hide the others.
+      fail-fast: false
+      matrix:
+        include:
+          - shard: host           # 152 test binaries — the heaviest slice by far
+            test-args: "-p lb-host"
+          - shard: gateway        # 49 test binaries
+            test-args: "-p lb-role-gateway"
+          - shard: rest           # the other 49 crates, ~123 test binaries between them
+            test-args: "--workspace --exclude lb-host --exclude lb-role-gateway"
+    name: build-and-test (${{ matrix.shard }})
+    env:
+      # No debug info and no incremental artifacts in CI. Backtraces are not read here; the
+      # `[profile.dev]` line-tables-only setting in rust/Cargo.toml is tuned for developer
+      # machines and stays as it is. `strip` drops the symbol tables that survive debug=0 —
+      # meaningful when the artifact count is in the hundreds.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_PROFILE_DEV_STRIP: "symbols"
+      CARGO_PROFILE_TEST_STRIP: "symbols"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v4
+      # Reclaim ~22 GB of preinstalled toolchains this job never touches. Necessary but not
+      # sufficient on its own — see the header comment for the measured numbers.
+      - name: Free runner disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/powershell /usr/share/swift || true
+          sudo docker image prune -af || true
+          df -h /
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
@@ -29,50 +94,85 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+          # Distinct key per shard: the shards hold different target dirs and would otherwise
+          # overwrite each other's cache entry.
+          key: ${{ matrix.shard }}
       - name: Build the wasm guest (the S1 hello component)
         working-directory: rust/extensions/hello
         run: cargo build --target wasm32-wasip2 --release
       - name: Build the wasm guest v2 (the S2 hot-reload swap target)
         working-directory: rust/extensions/hello-v2
         run: cargo build --target wasm32-wasip2 --release
+      # Every shard needs the real binaries on disk, not just its own crate: the tests spawn a
+      # real node and real sidecars (rule 9 — nothing that can run in-process gets mocked), e.g.
+      # lb-host's native_test needs the echo-sidecar binary built.
       - name: Build the host workspace
         working-directory: rust
         run: cargo build --workspace
-      - name: Test
+      # `--no-fail-fast` is load-bearing, not a nicety. `cargo test` stops at the FIRST failing
+      # test binary, so a single broken target hides every failure behind it: fixing
+      # apikey_routes_test immediately revealed datasources_routes_test in the very next run,
+      # which had been invisible until then. Discovering a backlog one 25-minute CI cycle at a
+      # time is how a suite stays broken. Report everything, every run.
+      - name: Test (${{ matrix.shard }})
         working-directory: rust
-        run: cargo test --workspace
+        run: cargo test ${{ matrix.test-args }} --no-fail-fast
+      # Leaves the numbers in the log so the next person sizing this has data, not a guess.
+      - name: Report disk + target size
+        if: always()
+        working-directory: rust
+        run: |
+          df -h /
+          du -sh target 2>/dev/null || true
       - name: Pack toolchain stays publishable
         # The stable published core (sign/key/trust-line) must build without `devkit-full`, and the
         # lb-pack dependency chain must stay publish-able — the gap that broke cc-app's `make dev`.
+        # Only on the `rest` shard: lb-pack/lb-devkit live there, and it need not run three times.
+        if: matrix.shard == 'rest'
         working-directory: rust
         run: |
           cargo check -p lb-devkit --no-default-features
           cargo test -p lb-pack --test pack_verify_test
-      - name: Format check
-        working-directory: rust
-        run: cargo fmt --all --check
 
-  ui:
+  # Was `ui:` — it installed and tested `ui/`, the React shell DELETED in commit 678503f. It had
+  # been failing at setup-node ("Some specified paths were not resolved") on a cache key pointing
+  # at ui/pnpm-lock.yaml ever since, so the repo's frontend had NO CI coverage at all. lb's
+  # frontend is now `packages/*` (the reusable libraries product hosts consume) plus `app/sdk`;
+  # this job covers those, from the ROOT lockfile. Do not point this back at ui/ — see
+  # CLAUDE.md § "Never recreate ui/".
+  packages:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # 11, not the 9 the old ui job pinned: pnpm-workspace.yaml uses keys that only pnpm 10+
+          # understands (`allowBuilds`, `onlyBuiltDependencies`) and relies on pnpm 11's
+          # minimumReleaseAge guard — which is why `overrides.electron-to-chromium` is pinned
+          # there. Installing under 9 would validate a workspace nobody actually develops against.
+          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: ui/pnpm-lock.yaml
-      - name: Install UI deps
-        working-directory: ui
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install deps
         run: pnpm install --frozen-lockfile
-      - name: Type-check + build
-        working-directory: ui
-        run: pnpm build
+      # `!@nube/minimal-shell`: it declares `"@nube/ext-ui-sdk": "link:../../../lb-ext-ui-sdk"` — a
+      # filesystem link to a SIBLING REPO CHECKOUT (NubeDev/lb-ext-ui-sdk) that exists only on a
+      # developer box that cloned it next to lb. CI resolves it to nothing and vitest dies with
+      # `Failed to resolve import "@nube/ext-ui-sdk"`. It is un-CI-able as wired, and it is the only
+      # such package in the workspace. MIGRATION.md says lb should consume that SDK at a published
+      # TAG (ui-v0.4.1), not a live link — switching it is a cross-repo release decision, not a CI
+      # change, so this job skips the package and flags it rather than pretending it is covered.
       - name: Test (Vitest)
-        working-directory: ui
-        run: pnpm test
+        run: pnpm -r --filter "./packages/*" --filter "!@nube/minimal-shell" run test
+      # app/sdk's suite is `test:gateway` — it spawns a REAL node (rule 9, no fakes), so it needs
+      # the Rust build and belongs with build-and-test, not here. Type-checking it is still a
+      # real contract check against the generated client and costs nothing.
+      - name: Type-check app/sdk
+        working-directory: app/sdk
+        run: pnpm typecheck
 
   deploy-image:
     # Proves the shared deploy image (deploy/common/Dockerfile — the SAME file local Docker and
@@ -81,5 +181,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Same disk headroom as build-and-test. Until now this job died at `COPY ui` within seconds
+      # and never reached a compile, so it has NEVER actually exercised the release build of the
+      # node + federation on a runner. Give it the room up front rather than discover the same
+      # No-space-left-on-device the hard way.
+      - name: Free runner disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/powershell /usr/share/swift || true
+          df -h /
       - name: Build deploy/common/Dockerfile
         run: docker build -f deploy/common/Dockerfile --tag lazybones:ci-deploy-check .
