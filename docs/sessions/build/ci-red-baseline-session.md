@@ -133,6 +133,27 @@ Rust source edits when they appeared):
 3. `host_catalog_covers_dispatch_prefixes` — `forms.` dispatched but missing from `HOST_TOOLS`.
    Real product gap. Fix written and verified green, then **reverted** — see follow-ups.
 
+## The real inventory — 36 failing tests across 12 files
+
+`--no-fail-fast` (added after `cargo test`'s first-failing-binary abort was caught hiding
+work) turned a misleading trickle into the actual number. **Under fail-fast the three shards
+reported 1 + 1 + 1 failures. They actually hold 36.**
+
+| Shard | Files | Tests | Detail |
+|---|---|---|---|
+| host | 8 | **31** | `proof_panel_test` 17, `agent_persona_catalog_test` 6, `agent_persona_coding_test` 2, `system/catalog.rs` 1 (the `forms.` gap), `document_store_test` 1, `federation_test` 1, `flows_run_test` 1, `rules_test` 1, `rules_buildings_examples_test` 1 |
+| rest | 3 | **3** | `result_cache_test` 1 (the CI-deterministic timing one), `online_compaction_test::boot_dividend_compacted_copy_opens_leaner` 1, `cli/reminder_test::create_ls_show_update_rm_round_trips_over_the_real_gateway` 1 |
+| gateway | 1 | **2** | `datasources_routes_test` — `add_without_a_dsn_is_accepted_over_the_gateway` (403≠200), `add_then_list_round_trip_over_the_gateway` |
+
+The gateway count was cross-validated: a local `--no-fail-fast` sweep of that crate produced
+**exactly** the same 206-passed/2-failed result as CI, so the enumeration method is sound and
+these are not CI-hardware artifacts (the `result_cache` one is the sole exception — see above).
+
+None of these were introduced here. This is the backlog the red baseline was hiding: for weeks,
+"CI is red" was indistinguishable from "36 tests are broken". **Triaging them is a separate
+project** — deliberately not attempted in a CI-plumbing change, since it spans the agent persona
+catalog, proof-panel, federation, the store's compaction path, and the CLI.
+
 ## Follow-ups (not done here)
 
 - **`forms.*` is missing from the host tool catalog** — `forms.get/list/save/delete` are

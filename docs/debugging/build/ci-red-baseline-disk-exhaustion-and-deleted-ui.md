@@ -180,6 +180,21 @@ no Rust source edits at all when they appeared.
    `system/catalog.rs` past its own ratchet baseline (1366 → 1388), and the honest resolution is
    the split that file needs, not the first bypass of a gate introduced in the same change.
 
+## The number the red baseline was hiding: 36
+
+`cargo test` aborts at the FIRST failing test binary. With the shards finally running, that
+turned into active misinformation: the three shards reported **1 + 1 + 1** failures, and after
+adding `--no-fail-fast` the same commits reported **31 + 3 + 2 = 36 failing tests across 12
+files** (host: `proof_panel_test` 17, `agent_persona_catalog_test` 6, `agent_persona_coding_test`
+2, `system/catalog.rs`, `document_store_test`, `federation_test`, `flows_run_test`, `rules_test`,
+`rules_buildings_examples_test`; rest: `result_cache_test`, `online_compaction_test`,
+`cli/reminder_test`; gateway: `datasources_routes_test` ×2).
+
+Fixing `apikey_routes_test` is what exposed the mechanism — `datasources_routes_test` appeared
+in the very next run having been completely invisible, because apikey aborted the run before it.
+Without `--no-fail-fast`, paying down this backlog would have cost one 25-minute CI cycle per
+*discovery*, before any fix.
+
 ## Lesson
 
 **A stack's fatal line is not always its causal line.** `ld` dying of SIGBUS is the
