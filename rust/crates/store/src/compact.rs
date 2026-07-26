@@ -152,10 +152,11 @@ const RELEASE_FAST_PATH: std::time::Duration = std::time::Duration::from_secs(5)
 /// unchanged (size, mtime) across this span before the pass may proceed.
 const QUIESCE_WINDOW: std::time::Duration = std::time::Duration::from_millis(2000);
 
-/// Run an **online** compaction pass: quiesce writes (the session mutex), swap the handle out,
-/// compact the log on disk (shared with boot), reopen, swap back in. Concurrent store
-/// operations block on the mutex for the duration — exactly as they would behind any long
-/// transaction — and land after the swap; none are lost.
+/// Run an **online** compaction pass: quiesce writes (the handle WRITE guard), swap the handle out,
+/// compact the log on disk (shared with boot), reopen, swap back in. Concurrent store operations
+/// (each holding the READ guard across its query) drain before the write guard is granted, then
+/// block on it for the duration — exactly as they would behind any long transaction — and land
+/// after the swap; none are lost.
 ///
 /// Whole-log I/O with no upper bound: callers MUST treat this as a job (`store.compact`),
 /// never a tick. Errors leave the log valid; the handle is always restored (a fresh open) even
@@ -166,10 +167,11 @@ pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
         .ok_or_else(|| StoreError::Backend("memory store has no commit log to compact".into()))?
         .to_string();
 
-    // 1. Quiesce: hold the session mutex. No store operation can run while we hold it, and
-    //    acquiring it means none is in flight (every verb holds it across its query).
+    // 1. Quiesce: hold the handle WRITE guard. No store operation can run while we hold it, and
+    //    acquiring it means none is in flight (every verb holds the READ guard across its query, and
+    //    the write guard waits for all readers to drain).
     let cell = store.session_cell();
-    let mut guard = cell.lock_owned().await;
+    let mut guard = cell.write_owned().await;
 
     // 2. Swap the live handle out for an unconnected placeholder and drop it. The local engine
     //    shuts down asynchronously after the last clone drops (router drain + kvs.shutdown), so

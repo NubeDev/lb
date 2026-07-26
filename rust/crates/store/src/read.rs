@@ -17,13 +17,16 @@ pub async fn read(
     table: &str,
     id: &str,
 ) -> Result<Option<Value>, StoreError> {
-    let db = store.use_ws(ws).await?;
-    let mut response = db
-        .query("SELECT data FROM ONLY type::thing($tb, $id)")
-        .bind(("tb", table.to_string()))
-        .bind(("id", id.to_string()))
-        .await?
-        .check()?;
+    let mut response = store
+        .query_ws(
+            ws,
+            "SELECT data FROM ONLY type::thing($tb, $id)",
+            vec![
+                ("tb".into(), Value::String(table.to_string())),
+                ("id".into(), Value::String(id.to_string())),
+            ],
+        )
+        .await?;
     let record: Option<Record> = response
         .take(0)
         .map_err(|e| StoreError::Decode(e.to_string()))?;

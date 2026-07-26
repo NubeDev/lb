@@ -66,7 +66,6 @@ pub async fn increment(
     let lock = key_lock(ws, table, id);
     let _guard = lock.lock().await;
 
-    let db = store.use_ws(ws).await?;
     let mut attempt = 0;
     loop {
         // The accumulate is server-side: `count` is derived from the record's OWN prior `data.count`
@@ -75,8 +74,9 @@ pub async fn increment(
         // `RETURN VALUE data.count` projects just the post-write scalar — never the record's `id`
         // (a RecordId that can't deserialize to a plain JSON value), and it is THIS statement's
         // committed total (not a re-read a concurrent firing could have moved).
-        let res = db
-            .query(
+        let res = store
+            .query_ws(
+                ws,
                 "UPSERT type::thing($tb, $id) CONTENT { \
                     data: { \
                         count: (IF $reset THEN 0 ELSE (type::thing($tb, $id).data.count ?? 0) END) + $by, \
@@ -84,26 +84,25 @@ pub async fn increment(
                     }, \
                     rev: (type::thing($tb, $id).rev ?? ($first - 1)) + 1 \
                  } RETURN VALUE data.count",
+                vec![
+                    ("tb".into(), serde_json::Value::String(table.to_string())),
+                    ("id".into(), serde_json::Value::String(id.to_string())),
+                    ("by".into(), serde_json::Value::from(by)),
+                    ("reset".into(), serde_json::Value::Bool(reset)),
+                    ("ts".into(), serde_json::Value::from(ts)),
+                    ("first".into(), serde_json::Value::from(FIRST_REV)),
+                ],
             )
-            .bind(("tb", table.to_string()))
-            .bind(("id", id.to_string()))
-            .bind(("by", by))
-            .bind(("reset", reset))
-            .bind(("ts", ts))
-            .bind(("first", FIRST_REV))
             .await;
 
         let outcome = match res {
-            Ok(response) => match response.check() {
-                Ok(mut checked) => {
-                    let row: Option<i64> = checked
-                        .take(0)
-                        .map_err(|e| StoreError::Decode(e.to_string()))?;
-                    Ok(row.unwrap_or(by))
-                }
-                Err(e) => Err(StoreError::from(e)),
-            },
-            Err(e) => Err(StoreError::from(e)),
+            Ok(mut checked) => {
+                let row: Option<i64> = checked
+                    .take(0)
+                    .map_err(|e| StoreError::Decode(e.to_string()))?;
+                Ok(row.unwrap_or(by))
+            }
+            Err(e) => Err(e),
         };
 
         match outcome {

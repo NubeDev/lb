@@ -37,14 +37,17 @@ pub async fn list(
             "invalid field identifier: {field:?}"
         )));
     }
-    let db = store.use_ws(ws).await?;
     let query = format!("SELECT data FROM type::table($tb) WHERE data.{field} = $value");
-    let mut response = db
-        .query(query)
-        .bind(("tb", table.to_string()))
-        .bind(("value", value.to_string()))
-        .await?
-        .check()?;
+    let mut response = store
+        .query_ws(
+            ws,
+            &query,
+            vec![
+                ("tb".into(), Value::String(table.to_string())),
+                ("value".into(), Value::String(value.to_string())),
+            ],
+        )
+        .await?;
     let records: Vec<Record> = response
         .take(0)
         .map_err(|e| StoreError::Decode(e.to_string()))?;

@@ -9,15 +9,21 @@
 //! Unlike [`write`](crate::write), a delete does NOT bump `rev` (there is no record left to carry
 //! a revision); an undo of a delete restores the prior value via the journaled write path.
 
+use serde_json::Value;
+
 use crate::open::{Store, StoreError};
 
 /// Erase `table:id` from workspace `ws`. No-op (still `Ok`) if the record is already absent.
 pub async fn delete(store: &Store, ws: &str, table: &str, id: &str) -> Result<(), StoreError> {
-    let db = store.use_ws(ws).await?;
-    db.query("DELETE type::thing($tb, $id) RETURN NONE")
-        .bind(("tb", table.to_string()))
-        .bind(("id", id.to_string()))
-        .await?
-        .check()?;
+    store
+        .query_ws(
+            ws,
+            "DELETE type::thing($tb, $id) RETURN NONE",
+            vec![
+                ("tb".into(), Value::String(table.to_string())),
+                ("id".into(), Value::String(id.to_string())),
+            ],
+        )
+        .await?;
     Ok(())
 }

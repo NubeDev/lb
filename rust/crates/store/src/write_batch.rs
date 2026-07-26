@@ -55,7 +55,6 @@ pub async fn write_batch(
         )));
     }
 
-    let db = store.use_ws(ws).await?;
     // Build one BEGIN/COMMIT with the upserts then the deletes. Each upsert bumps its record's
     // `rev` server-side (same expression `write` uses); deletes carry no rev. All params are bound
     // by position; the query text is assembled from caller-controlled `table`/`id` only via
@@ -72,19 +71,17 @@ pub async fn write_batch(
     }
     sql.push_str(" COMMIT TRANSACTION;");
 
-    let mut q = db.query(sql).bind(("first", FIRST_REV));
+    let mut bindings: Vec<(String, Value)> = vec![("first".into(), Value::from(FIRST_REV))];
     for (i, u) in upserts.iter().enumerate() {
-        q = q
-            .bind((format!("ut{i}"), u.table.to_string()))
-            .bind((format!("ui{i}"), u.id.to_string()))
-            .bind((format!("ud{i}"), u.value.clone()));
+        bindings.push((format!("ut{i}"), Value::String(u.table.to_string())));
+        bindings.push((format!("ui{i}"), Value::String(u.id.to_string())));
+        bindings.push((format!("ud{i}"), u.value.clone()));
     }
     for (j, d) in deletes.iter().enumerate() {
-        q = q
-            .bind((format!("dt{j}"), d.table.to_string()))
-            .bind((format!("dj{j}"), d.id.to_string()));
+        bindings.push((format!("dt{j}"), Value::String(d.table.to_string())));
+        bindings.push((format!("dj{j}"), Value::String(d.id.to_string())));
     }
-    q.await?.check()?;
+    store.query_ws(ws, &sql, bindings).await?;
     // A multi-record transaction also mutates the store (no-op outside a dispatch taint scope).
     mark_store_written();
     Ok(())
