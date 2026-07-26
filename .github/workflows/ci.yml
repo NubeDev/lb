@@ -109,9 +109,14 @@ jobs:
       - name: Build the host workspace
         working-directory: rust
         run: cargo build --workspace
+      # `--no-fail-fast` is load-bearing, not a nicety. `cargo test` stops at the FIRST failing
+      # test binary, so a single broken target hides every failure behind it: fixing
+      # apikey_routes_test immediately revealed datasources_routes_test in the very next run,
+      # which had been invisible until then. Discovering a backlog one 25-minute CI cycle at a
+      # time is how a suite stays broken. Report everything, every run.
       - name: Test (${{ matrix.shard }})
         working-directory: rust
-        run: cargo test ${{ matrix.test-args }}
+        run: cargo test ${{ matrix.test-args }} --no-fail-fast
       # Leaves the numbers in the log so the next person sizing this has data, not a guess.
       - name: Report disk + target size
         if: always()
