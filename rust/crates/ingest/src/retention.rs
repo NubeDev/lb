@@ -7,14 +7,23 @@
 use lb_store::{Store, StoreError};
 use serde_json::{json, Value};
 
+use crate::filter::Filter;
+use crate::method::Method;
+
 /// The retention-policy table; one row per series-name prefix (id = prefix).
 pub const RETENTION_TABLE: &str = "series_retention";
 
-/// One rollup tier: bucket width and how long the tier's rows are kept (`0` = keep forever).
+/// One rollup tier: bucket width, how long the tier's rows are kept (`0` = keep forever), and
+/// optionally the single `method` value the tier reads as (series-normalize scope).
+///
+/// `method` is `None` by default, which is exactly today's behaviour: a bucketed read returns the
+/// full stat row and no `value` column. Setting it adds the column — it never removes one.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Tier {
     pub width_ms: u64,
     pub keep_for_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<Method>,
 }
 
 /// A retention policy for every series whose name starts with `prefix`.
@@ -27,7 +36,10 @@ pub struct Tier {
 /// Both default to `0` (unbounded), so a policy row written before either axis existed keeps its
 /// exact meaning. Time does not bound bytes — **rate** does, and rate is the producer's choice, not
 /// the operator's; that is why the count axis exists (issue #65).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// A third, INDEPENDENT axis arrived with series-normalize: `filter` bounds what is ever *stored*,
+/// where the two above bound how long what was stored *lives*. Absent (the default) = store
+/// everything, so every policy row written before this slice keeps its exact meaning.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Policy {
     pub prefix: String,
     pub raw_for_ms: u64,
@@ -36,6 +48,30 @@ pub struct Policy {
     pub max_samples: u64,
     #[serde(default)]
     pub tiers: Vec<Tier>,
+    /// Write-time predicates applied at COMMIT (never at staging append). `None` = store everything.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<Filter>,
+}
+
+impl Policy {
+    /// The tier at exactly `width_ms`, if the policy declares one — how a bucketed read finds the
+    /// `method` that governs the width it is reading at.
+    pub fn tier_at(&self, width_ms: u64) -> Option<&Tier> {
+        self.tiers.iter().find(|t| t.width_ms == width_ms)
+    }
+}
+
+/// The policy governing `series`: the LONGEST matching prefix, or `None` if no policy covers it.
+///
+/// One series is governed by exactly ONE policy. Without this rule a series under both `fleet.` and
+/// `fleet.eu.` would be processed twice and the tighter bound would win *by accident* — with a
+/// filter or a count cap in play, that ambiguity silently discards real samples. The GC pass and the
+/// commit filter resolve precedence through this one function so they can never disagree.
+pub fn resolve_policy<'a>(policies: &'a [Policy], series: &str) -> Option<&'a Policy> {
+    policies
+        .iter()
+        .filter(|p| series.starts_with(&p.prefix))
+        .max_by_key(|p| p.prefix.len())
 }
 
 /// Upsert the policy at its prefix (one policy per prefix; a re-set overwrites).
@@ -62,7 +98,7 @@ pub async fn list_policies(store: &Store, ws: &str) -> Result<Vec<Policy>, Store
             // list reads back as its serde default forever (the closed-struct trap: the row on disc
             // is correct, the struct in memory silently isn't).
             &format!(
-                "SELECT prefix, raw_for_ms, max_samples, tiers FROM {RETENTION_TABLE} \
+                "SELECT prefix, raw_for_ms, max_samples, tiers, filter FROM {RETENTION_TABLE} \
                  ORDER BY prefix ASC"
             ),
             vec![],

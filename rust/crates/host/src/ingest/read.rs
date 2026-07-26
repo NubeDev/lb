@@ -12,8 +12,9 @@
 
 use lb_auth::Principal;
 use lb_ingest::{
-    latest as series_latest, latest_many as series_latest_many_read, read as series_read,
-    read_buckets, read_page, Bucket, BucketQuery, Page, PageError, PageQuery, Sample,
+    apply_method, latest as series_latest, latest_many as series_latest_many_read, list_policies,
+    read as series_read, read_buckets, read_page, resolve_policy, Bucket, BucketQuery, Method,
+    Page, PageError, PageQuery, Sample,
 };
 use lb_store::Store;
 
@@ -48,6 +49,16 @@ pub async fn series_read_page(
 }
 
 /// Bucketed decimation of `series` over a wall-clock window. Same cap as the row read.
+///
+/// Returns `(buckets, method)`. When a `method` governs the read, every bucket carries its `value`
+/// column and the resolved method is reported back so the caller never has to guess which one it
+/// got (series-normalize scope).
+///
+/// Method precedence: the caller's explicit `override_method` wins; otherwise the retention tier at
+/// exactly this width, under the policy whose prefix is the LONGEST match for `series` — the same
+/// `resolve_policy` the GC and the commit filter use, so a state series on its own longer prefix
+/// reads as `last` while its analog neighbours ride the parent's `avg`. No policy, no tier at this
+/// width, and no override → `None`, which is today's exact behaviour: the full stat row, no `value`.
 pub async fn series_read_buckets(
     store: &Store,
     principal: &Principal,
@@ -55,11 +66,25 @@ pub async fn series_read_buckets(
     series: &str,
     q: &BucketQuery,
     width_ms: u64,
-) -> Result<Vec<Bucket>, IngestError> {
+    override_method: Option<Method>,
+) -> Result<(Vec<Bucket>, Option<Method>), IngestError> {
     authorize_ingest(principal, ws, "series.read")?;
-    read_buckets(store, ws, series, q, width_ms)
+    let mut buckets = read_buckets(store, ws, series, q, width_ms)
         .await
-        .map_err(page_err)
+        .map_err(page_err)?;
+
+    let method = match override_method {
+        Some(m) => Some(m),
+        None => resolve_policy(&list_policies(store, ws).await?, series)
+            .and_then(|p| p.tier_at(width_ms))
+            .and_then(|t| t.method),
+    };
+    if let Some(m) = method {
+        // A method whose representative this tier never stored is a `BadInput` naming the fix —
+        // never a silently-approximated neighbour (series-normalize open question, decided).
+        apply_method(&mut buckets, m).map_err(IngestError::BadInput)?;
+    }
+    Ok((buckets, method))
 }
 
 fn page_err(e: PageError) -> IngestError {

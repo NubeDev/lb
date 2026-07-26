@@ -5,6 +5,7 @@
 //! applied to ONE workspace. This crate owns everything about that which is a *decision*:
 //!
 //!   - [`manifest`] — the `pack.yaml` shape (`deny_unknown_fields`, line-numbered errors)
+//!   - [`manifest_retention`] — its `retention:` block, mirroring the `series.retention.set` args
 //!   - [`bundle`]   — a pack over the wire, resolved to a [`bundle::Pack`] (no filesystem)
 //!   - [`plan`]     — the ordered object plan + the checksums drift is measured by
 //!   - [`validate`] — the dry-run linter (errors gate, dialect warnings don't)
@@ -19,13 +20,17 @@ pub mod binding;
 pub mod bundle;
 pub mod decision;
 pub mod manifest;
+pub mod manifest_retention;
 pub mod plan;
 pub mod receipt;
 pub mod validate;
+pub mod validate_retention;
 
 pub use bundle::{Bundle, LoadedDashboard, LoadedRule, Pack, MAX_BUNDLE_BYTES};
 pub use decision::{decide, Decision};
-pub use manifest::{Manifest, RetentionPolicy, RetentionTier};
+pub use manifest::{
+    Manifest, RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange, RetentionTier,
+};
 pub use plan::{checksum, content_checksum, plan, Kind, PlannedObject};
 pub use receipt::{ObjectReceipt, Receipt};
 pub use validate::{has_errors, validate, Finding};

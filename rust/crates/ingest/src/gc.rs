@@ -16,7 +16,7 @@ use crate::bucket::{read_buckets, BucketQuery};
 use crate::cap::{cap_cutoff_ms, cap_series, over_cap_warning, sample_count};
 use crate::meta::series_names;
 use crate::page::PageError;
-use crate::retention::{list_policies, Policy};
+use crate::retention::{list_policies, resolve_policy, Policy};
 use crate::rollup::{evict_rollups, write_rollups, RollupRow};
 use crate::staging::SERIES_TABLE;
 
@@ -97,10 +97,11 @@ pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, Stor
 }
 
 /// Does the policy at `prefix` govern `series` — i.e. is it the LONGEST matching prefix?
+///
+/// Delegates to [`resolve_policy`] so the GC and the commit-time filter can never disagree about
+/// which policy owns a series (they used to hold separate copies of this rule).
 fn governs(policies: &[Policy], prefix: &str, series: &str) -> bool {
-    !policies
-        .iter()
-        .any(|p| p.prefix.len() > prefix.len() && series.starts_with(&p.prefix))
+    resolve_policy(policies, series).is_some_and(|p| p.prefix == prefix)
 }
 
 /// Apply one policy's count cap to one series: roll the over-cap rows into the tiers FIRST (so
@@ -206,6 +207,12 @@ async fn rollup_series(
                 count: b.count,
                 last: b.last.clone(),
                 last_ts: b.last_ts,
+                // Keep the bucket's first representative so the tier can answer `first`/`nearest`
+                // after the raw samples beneath it are gone. `None` when the bucket itself was built
+                // from a pre-normalize rollup row — the missing provenance propagates rather than
+                // being invented (series-normalize scope).
+                first: b.first.clone(),
+                first_ts: b.has_first.then_some(b.first_ts),
             })
             .collect();
         written += rows.len();

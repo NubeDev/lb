@@ -28,9 +28,13 @@ use super::error::IngestError;
 pub const COMMIT_BATCH: usize = 256;
 
 /// Outcome of a full drain pass for one workspace.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DrainPass {
     pub committed: usize,
+    /// What the policies' write-time filters discarded across the pass, per reason
+    /// (series-normalize scope). Reported rather than swallowed: an operator who set a deadband and
+    /// sees `committed` collapse must be able to see WHERE the samples went.
+    pub filtered: lb_ingest::FilterCounts,
 }
 
 /// Drain ALL currently-staged samples in `ws`, committing in batches until staging is empty.
@@ -83,13 +87,23 @@ async fn drain_at_most(
     ws: &str,
     max_batches: usize,
 ) -> Result<DrainPass, IngestError> {
-    let mut total = 0;
+    let mut out = DrainPass::default();
     for _ in 0..max_batches {
         let pass = commit_batch(store, ws, COMMIT_BATCH).await?;
-        if pass.committed == 0 {
+        // Stop on "nothing was DEQUEUED", not on "nothing was committed". A batch the operator's own
+        // filter discarded entirely commits zero rows while consuming a full 256 — stopping there
+        // would abandon the rest of the backlog and re-create the drain-backpressure stall through a
+        // new door (`debugging/ingest/filtered-batch-stops-the-drain-loop.md`).
+        if pass.drained() == 0 {
             break;
         }
-        total += pass.committed;
+        out.committed += pass.committed;
+        let f = &mut out.filtered;
+        f.muted += pass.filtered.muted;
+        f.range += pass.filtered.range;
+        f.min_interval += pass.filtered.min_interval;
+        f.deadband += pass.filtered.deadband;
+        f.clamped += pass.filtered.clamped;
     }
-    Ok(DrainPass { committed: total })
+    Ok(out)
 }

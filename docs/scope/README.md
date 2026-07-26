@@ -501,6 +501,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   and a **safe default bound** (today: no policy = keep forever). Measured ~700 bytes/sample →
   50 series @ 1/sec ≈ 3GB/day; the existing series *cardinality* cap bounds series COUNT, not samples
   each. All three needed together or a disc still fills,
+  `series-normalize-scope.md` — **SHIPPED 2026-07-26**: **write-time filters**
+  (deadband/min-interval/range/mute, applied at commit, counted never silent) + a **`method` per
+  rollup tier** (`avg|min|max|last|first|nearest|sum|count`) so a downsampled tier reads as one value
+  per bucket boundary; additive fields on the retention policy (no new verb/cap). The #65 reactor it
+  depends on turned out to be already merged and boot-wired, and was proven live on a real product
+  node during this slice. One deliberate deviation: `nearest` is derived from `first` + the previous
+  bucket's `last` rather than stored, because a within-bucket `nearest` column would duplicate
+  `first` byte-for-byte. First consumer: the modbus extension's poll-to-grid retention
+  (rubix-ai-extensions),
   and `drain-backpressure-scope.md` — **shipped 2026-07-15**: `ingest.write` drained the WHOLE
   workspace backlog inside the caller's call (one sample → 18.5s against a 4.6k-row backlog, and
   self-sustaining — a caller that timed out left the rows staged). Root cause was the **missing

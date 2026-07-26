@@ -74,6 +74,7 @@ async fn the_retention_reactor_caps_a_series_with_nobody_calling_the_verb() {
             raw_for_ms: 0, // the TIME axis is off — this proves the COUNT cap ran on its own
             max_samples: 10,
             tiers: vec![],
+            filter: None,
         },
     )
     .await
@@ -121,6 +122,7 @@ async fn the_retention_reactor_only_gcs_its_configured_workspace() {
                 raw_for_ms: 0,
                 max_samples: 10,
                 tiers: vec![],
+                filter: None,
             },
         )
         .await

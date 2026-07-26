@@ -25,7 +25,7 @@ pub struct ObjectReceipt {
 }
 
 /// The record of one pack applied to one workspace. One receipt per pack per workspace.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Receipt {
     pub pack: String,
     /// The manifest title, denormalized so a roster read needs no bundle.

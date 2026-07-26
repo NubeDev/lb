@@ -31,6 +31,7 @@ mod apply;
 mod authorize;
 mod error;
 mod read;
+mod retention_policy;
 mod run;
 mod sqlite;
 mod store;

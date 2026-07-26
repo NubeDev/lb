@@ -13,13 +13,17 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::manifest_retention::{
+    RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange, RetentionTier,
+};
+
 /// One pack manifest as authored. `deny_unknown_fields` turns a typo'd key into a loud parse error
 /// instead of a silently-ignored line — pack authors run `pack.validate` in CI, and a swallowed key
 /// is exactly the bug that survives to production.
 ///
 /// `Serialize` as well as `Deserialize`: `pack.get` hands the manifest back to a reader (the
 /// embedder's Packs pages render it), so the shape must round-trip.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// The pack id — the stable name (`bas`, `ems`, …). The receipt is keyed by it.
@@ -295,37 +299,6 @@ pub struct Sidebar {
     /// The refs to hide (full set — LWW replaces, empty clears).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden: Vec<String>,
-}
-
-/// One series retention policy to seed (`pack-retention-scope.md`). The field shape MIRRORS the
-/// `series.retention.set` verb args byte-for-byte (`lb_ingest::Policy`) so a policy that validates in
-/// the verb deserializes here and back — the apply arm converts this straight into that `Policy`.
-/// Keyed by `prefix` (its natural id): the retention policy for a series-name prefix.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct RetentionPolicy {
-    /// The series-name PREFIX this policy governs (e.g. `modbus.`). The longest matching prefix wins
-    /// (series-retention scope). Also the receipt object id (`retention:<prefix>`).
-    pub prefix: String,
-    /// Keep raw samples this many ms before rolling them up + evicting. `0` disables the time horizon.
-    #[serde(default)]
-    pub raw_for_ms: u64,
-    /// FIFO count cap on raw samples per series (`0` = unbounded). The oldest over the cap are evicted.
-    #[serde(default)]
-    pub max_samples: u64,
-    /// Downsample tiers: what falls off `raw_for_ms` rolls into these, each kept for its own horizon.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tiers: Vec<RetentionTier>,
-}
-
-/// One downsample tier of a [`RetentionPolicy`] — mirrors `lb_ingest::Tier`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct RetentionTier {
-    /// Bucket width (ms) this tier rolls raw into.
-    pub width_ms: u64,
-    /// How long (ms) this tier's rollup rows are kept before eviction.
-    pub keep_for_ms: u64,
 }
 
 impl Manifest {

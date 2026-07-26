@@ -48,10 +48,24 @@ pub async fn call_ingest_tool(
             // subsequent push blocked again. The bound is the caller's own sample count: enough to
             // commit what it just wrote (preserving the round-trip), never the workspace's backlog.
             // The background ingest reactor drains the remainder off every caller's path.
-            drain_workspace_bounded(store, ws, own_batches(n))
+            let pass = drain_workspace_bounded(store, ws, own_batches(n))
                 .await
                 .map_err(ingest_to_tool)?;
-            Ok(json!({ "accepted": n }))
+            // `accepted` counts what reached STAGING — acceptance is deliberately unfiltered (the
+            // filter is a commit-time decision, drain-backpressure scope). So a producer whose
+            // samples the operator's own policy discards would otherwise see `accepted: 4` and find
+            // two rows, with nothing on the wire explaining the gap. The per-reason counts of the
+            // drain this call performed ride back with it — present only when something WAS
+            // filtered, so every existing caller's reply shape is byte-for-byte unchanged.
+            //
+            // Bounded honesty: this drain commits oldest-first across the workspace, so on a node
+            // with a backlog the counts may include other producers' rows. That is the same bound
+            // `accepted` already lives under, and it is still the only view a writer gets.
+            let mut out = json!({ "accepted": n });
+            if !pass.filtered.is_zero() {
+                out["filtered"] = json!(pass.filtered);
+            }
+            Ok(out)
         }
         "series.read" => {
             let series = str_arg(input, "series")?;
@@ -199,10 +213,23 @@ async fn read_buckets_mode(
         budget: u64_arg(input, "budget").map(|n| n as usize),
     };
     let width = lb_ingest::effective_width(&q).map_err(ToolError::BadInput)?;
-    let buckets = super::series_read_buckets(store, principal, ws, series, &q, width)
-        .await
-        .map_err(ingest_to_tool)?;
-    Ok(json!({ "buckets": buckets, "width_ms": width }))
+    // Optional per-read override of the tier's method. Absent → the governing tier decides; absent
+    // there too → the full stat row and no `value` column, exactly as before this slice.
+    let method = match input.get("method").and_then(|v| v.as_str()) {
+        Some(name) => Some(lb_ingest::Method::parse(name).map_err(ToolError::BadInput)?),
+        None => None,
+    };
+    let (buckets, resolved) =
+        super::series_read_buckets(store, principal, ws, series, &q, width, method)
+            .await
+            .map_err(ingest_to_tool)?;
+    // Report the method back: a caller that relied on the tier's default should never have to guess
+    // which one produced the `value` column it is charting.
+    Ok(json!({
+        "buckets": buckets,
+        "width_ms": width,
+        "method": resolved.map(|m| m.as_str()),
+    }))
 }
 
 /// Wall-clock now in epoch ms — ONLY the fallback for an omitted `series.retention.gc now_ms`.

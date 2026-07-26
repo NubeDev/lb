@@ -68,6 +68,11 @@ a series by **time**; three gaps remain that mean a disc can still fill:
 3. **Keep-forever default.** No policy → nothing evicts, ever. A fresh node fills its disc with zero
    config and zero warning.
 
+A second follow-up, [`series-normalize-scope.md`](series-normalize-scope.md) *(scoped 2026-07-26)*,
+adds **write-time filters** (`filter` block: deadband / min-interval / range / mute, applied at
+commit) and a **`method` per tier** (`avg|min|max|last|first|nearest|sum|count`) so a rollup tier
+reads as a plain series of one value per bucket boundary.
+
 ## Open questions
 
 - ~~A scheduled GC (jobs/rules integration) vs the current caller-cadence verb.~~ **Answered:** the

@@ -428,11 +428,47 @@ namespace with I/O fns. `f.sql` registers ONLY `self`; never register a table pr
 (verbs only); the generic `job.*` family ([job-control-scope](scope/jobs/job-control-scope.md)) should route
 kind `rule-run` to these same owner hooks when it lands.
 
-**In flight — [#65](https://github.com/NubeDev/lb/issues/65): a series grows until the disc is full.**
-**Code complete on a branch, TESTING INCOMPLETE — not merged, not shipped.**
+**Shipped 2026-07-26 — series normalize: the operator controls WHAT is stored, not just how long it
+lives.** [scope](scope/ingest/series-normalize-scope.md) ·
+[session](sessions/ingest/series-normalize-session.md) ·
+[debug](debugging/ingest/filtered-batch-stops-the-drain-loop.md) ·
+[public](../doc-site/content/public/ingest/ingest.md).
+
+Two additive fields on the existing `series_retention` policy — **no new verb, no new cap**.
+(1) A **`filter` block** applied at COMMIT (never at staging append, which would re-couple producer
+rate to store queries): `drop` → `range` → `min_interval_ms` → `deadband`, in that order.
+Non-numeric payloads skip the numeric predicates; the last-committed anchor is per
+`(series, producer)` and durable on `series_meta`, so a restart does not re-open a deadband; every
+discard is counted per reason and rides back on `ingest.write`/the drain pass — **counted, never
+silent**. (2) A **`method` per rollup tier** (`avg|min|max|sum|count|last|first|nearest`) so a
+downsampled tier reads as one plain value per bucket boundary; `avg` is exact from `sum/num_count`
+even across a two-pass re-aggregation, `nearest` snaps across the boundary, and a method the tier
+never stored is a clear `BadInput` rather than an approximation. The closed set is bounded by
+exactness — percentiles stay out, so rollups never become approximate.
+
+**Verified:** `lb-ingest` 67/67, `lb-host` ingest suites 28/28, and **10/10 revert-checks** (each
+fix sabotaged, its test confirmed red, restored). **Live on the real rubix-ai product node** against
+its actual `modbus.plant-a.*` history: the tier method resolves and adds the `value` column with the
+full stat row intact, per-read overrides give genuinely different values, an unknown method is a
+clean 400, and a real 2 s producer's stored rows plateau at the declared grid instead of growing.
+
+**One regression caught pre-merge:** the drain loop's `committed == 0` stop condition stopped meaning
+"staging is empty" once a third outcome (dequeued-but-stored-nowhere) existed — a muted prefix
+drained **0** of 700 staged rows. Fixed with `CommitPass::drained()`; regression test stages three
+batches, because a one-batch test passes against the bug.
+
+**Shipped — [#65](https://github.com/NubeDev/lb/issues/65): a series grows until the disc is full.**
 [scope](scope/ingest/series-sample-cap-scope.md) ·
-[session](sessions/ingest/series-sample-cap-session.md) ← **read this before picking it up; it lists
-exactly what is unverified.**
+[session](sessions/ingest/series-sample-cap-session.md).
+
+**The 2026-07-26 correction:** this section long said "code complete on a branch, not merged, not
+shipped". That was stale — `feat/series-sample-cap-65` has **zero commits ahead of `master`**; the
+cap, `cap.rs`, the `run_gc` cap step, longest-prefix-wins and `spawn_retention_reactors` are all on
+master, and the reactor **is** wired at `node/src/reactors.rs:86` on a 300 s cadence. The
+"NOT verified — the live-node run was never done" item below was closed by the series-normalize
+slice, which ran the whole retention plane on a real product node with a real producer and nobody
+calling `series.retention.gc`. Release 2 (flipping `DEFAULT_MAX_SAMPLES` from advisory to enforced)
+is still open and is still part of that slice's definition of done.
 
 Nothing bounds the **committed** series plane on any axis. Retention (#58) shipped a *time* horizon,
 but (1) there is no **count** bound — time doesn't bound bytes, **rate** does, and rate is the
@@ -448,15 +484,22 @@ processed twice). `DEFAULT_MAX_SAMPLES = 100_000` is **advisory only** — warns
 without an explicit policy. **Release 2 flips the default, and is part of this slice's definition of
 done** (forgetting it is how gap #3 was born).
 
-**Verified:** `lb-ingest` 16/16, `lb-host --test series_cap_reactor_test` 4/4, and 3 revert-checks
-(a `seq`-ordered cap, a reactor that never calls `run_gc`, and dropped prefix precedence each fail
-their test as they must).
-**NOT verified — required before merge:** the full workspace sweep never completed (killed by
-harness timeouts, never `--workspace`); **the live-node run was never done**; disc-growth plateau
-unmeasured; the 300s cadence is a guess, not a measurement (the scope says measure it).
-**Known hole:** deleting the boot wiring from `node/src/reactors.rs` breaks **no test** — the one
-line that makes the feature real on a node is as untested as it was for the drain bug and for
-retention itself. This bug class is repeating at the meta level; the live run is the only proof.
+**Verified:** `lb-ingest` 67/67 (was 16/16), `lb-host --test series_cap_reactor_test` 4/4, plus the
+series-normalize suites and its 10 revert-checks. **The live-node run is now DONE** (2026-07-26,
+series-normalize slice): a real rubix-ai product node on its real persistent store, a real 2 s
+producer, and nobody calling `series.retention.gc` — the stored rows plateau at the declared grid
+instead of growing linearly, and the per-reason counters account for every sample exactly.
+
+**Still open on this slice:** **release 2** — flipping `DEFAULT_MAX_SAMPLES` from advisory to
+enforced. And the **300 s cadence is still a guess, not a measurement** (the scope asks for one);
+it is comfortably fast enough for a 15-minute grid, but nobody has measured a pass against a deep
+workspace.
+
+**Known hole (unchanged):** deleting the boot wiring from `node/src/reactors.rs` breaks **no test**
+— the one line that makes the feature real on a node is still untested, exactly as it was for the
+drain bug and for retention itself. The live run is the only proof, and it is a manual one. This
+bug class keeps repeating at the meta level; a boot-wiring assertion is the standing fix nobody has
+written yet.
 
 **Load-bearing:** eviction orders by **`ts`, never `seq`** (`seq` is per-`(series,producer)` —
 ordering by it is exactly what caused #63); `seq` is a tiebreak within an equal `ts` only.

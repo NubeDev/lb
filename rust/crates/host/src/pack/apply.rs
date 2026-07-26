@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_packs::{Decision, Kind, Pack, PlannedObject, Receipt, RetentionPolicy};
+use lb_packs::{Decision, Kind, Pack, PlannedObject, Receipt};
 use serde_json::Value;
 
 use super::error::PackError;
@@ -495,31 +495,17 @@ async fn apply_retention(
     let Some(policy) = pack.manifest.retention.iter().find(|p| p.prefix == id) else {
         return FAILED.to_string();
     };
-    match crate::ingest::series_retention_set(&node.store, principal, ws, &to_ingest_policy(policy))
-        .await
+    match crate::ingest::series_retention_set(
+        &node.store,
+        principal,
+        ws,
+        &super::retention_policy::to_ingest_policy(policy),
+    )
+    .await
     {
         Ok(_) => APPLIED.to_string(),
         Err(crate::ingest::IngestError::Denied) => DENIED.to_string(),
         Err(_) => FAILED.to_string(),
-    }
-}
-
-/// Convert the pack manifest's [`RetentionPolicy`] into the ingest [`lb_ingest::Policy`] the setter
-/// takes. The two share field names by design (the manifest struct is the verb's mirror), so this is
-/// a field-for-field move — the one place a shape drift between them would surface.
-fn to_ingest_policy(p: &RetentionPolicy) -> lb_ingest::Policy {
-    lb_ingest::Policy {
-        prefix: p.prefix.clone(),
-        raw_for_ms: p.raw_for_ms,
-        max_samples: p.max_samples,
-        tiers: p
-            .tiers
-            .iter()
-            .map(|t| lb_ingest::Tier {
-                width_ms: t.width_ms,
-                keep_for_ms: t.keep_for_ms,
-            })
-            .collect(),
     }
 }
 

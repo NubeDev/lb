@@ -27,6 +27,16 @@ pub struct RollupRow {
     pub count: u64,
     pub last: Value,
     pub last_ts: u64,
+    /// The bucket's chronologically FIRST payload — the kept representative the `first` and
+    /// `nearest` tier methods read (series-normalize scope).
+    ///
+    /// `first_ts` is `Option` on purpose: it is the PROVENANCE flag. A row folded before this slice
+    /// has none, and a bucket built from such a row must refuse `first`/`nearest` with a clear
+    /// `BadInput` rather than approximate. Defaults keep every pre-existing row readable.
+    #[serde(default)]
+    pub first: Value,
+    #[serde(default)]
+    pub first_ts: Option<u64>,
 }
 
 /// Upsert rollup rows at their deterministic id `[series, width_ms, t]` — a re-run GC pass over the
@@ -63,7 +73,11 @@ pub async fn read_rollups(
         .query_ws(
             ws,
             &format!(
-                "SELECT series, width_ms, t, min, max, sum, num_count, count, last, last_ts \
+                // Every column is projected explicitly — one added to `RollupRow` but missing here
+                // reads back as its serde default forever (the closed-struct trap; the same note
+                // guards `list_policies`).
+                "SELECT series, width_ms, t, min, max, sum, num_count, count, last, last_ts, \
+                 first, first_ts \
                  FROM {ROLLUP_TABLE} WHERE series = $series AND t >= $from AND t < $to \
                  ORDER BY t ASC"
             ),

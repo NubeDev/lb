@@ -144,7 +144,9 @@ pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
             });
         }
     }
-
+    out.extend(crate::validate_retention::lint_retention(
+        &pack.manifest.retention,
+    ));
     // ERROR — a dangling entity parent makes the vocabulary tree unrenderable.
     for (name, ent) in &pack.manifest.entities {
         if let Some(parent) = &ent.parent {

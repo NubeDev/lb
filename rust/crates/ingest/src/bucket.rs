@@ -46,6 +46,14 @@ pub struct Bucket {
     pub avg: Option<f64>,
     pub last: Value,
     pub count: u64,
+    /// The chronologically FIRST payload by `(ts, seq)` — the `first` method's value, and half of
+    /// what `nearest` needs (series-normalize scope). On the wire because a caller reading the full
+    /// stat row wants both ends of the bucket, not just the last.
+    pub first: Value,
+    /// The tier method's single value, when a method governs this read. Absent = today's exact
+    /// behaviour: the full stat row and no `value` column (`method.rs`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
     /// Exact-re-aggregation carriers (GC stores these on rollup rows); not part of the wire shape.
     #[serde(skip_serializing)]
     pub sum: f64,
@@ -53,6 +61,12 @@ pub struct Bucket {
     pub num_count: u64,
     #[serde(skip_serializing)]
     pub last_ts: u64,
+    #[serde(skip_serializing)]
+    pub first_ts: u64,
+    /// Is `first` real? A rollup row folded before the column existed carries none, and `first` /
+    /// `nearest` must then be a clear error rather than a plausible substitute (`method.rs`).
+    #[serde(skip_serializing)]
+    pub has_first: bool,
 }
 
 /// A bucketed-read request: a required half-open window `[from_ts, to_ts)` (epoch ms) and either an
@@ -93,6 +107,13 @@ struct Acc {
     count: u64,
     last_key: (u64, u64), // (ts, seq) — "last" is exact, not scan-order luck
     last: Value,
+    /// `(ts, seq)` of the chronologically first sample, and its payload. `None` until something
+    /// contributes one.
+    first_key: Option<(u64, u64)>,
+    first: Value,
+    /// Set when a contributing rollup row predates the `first` column — the bucket then cannot
+    /// answer `first`/`nearest` at all, no matter what else merged into it.
+    first_missing: bool,
 }
 
 impl Acc {
@@ -101,6 +122,14 @@ impl Acc {
         self.max = Some(self.max.map_or(v, |m| m.max(v)));
         self.sum += v;
         self.num_count += 1;
+    }
+
+    /// Offer a `first` candidate; the chronologically earliest `(ts, seq)` wins.
+    fn fold_first(&mut self, key: (u64, u64), payload: &Value) {
+        if self.first_key.is_none_or(|cur| key < cur) {
+            self.first_key = Some(key);
+            self.first = payload.clone();
+        }
     }
 }
 
@@ -159,6 +188,7 @@ pub async fn read_buckets_fold(
                 acc.last_key = (s.ts, s.seq);
                 acc.last = s.payload.clone();
             }
+            acc.fold_first((s.ts, s.seq), &s.payload);
         }
         match page.next_cursor {
             Some(c) => cursor = Some(c),
@@ -192,7 +222,8 @@ async fn raw_bucket_query(
          FROM {SERIES_TABLE} \
          WHERE series = $s AND type::is::number(payload) \
            AND ts >= time::from::millis($from) AND ts < time::from::millis($to) GROUP BY b; \
-         SELECT b, count() AS count, array::last(p) AS last, array::last(t) AS last_ts \
+         SELECT b, count() AS count, array::last(p) AS last, array::last(t) AS last_ts, \
+           array::first(p) AS first, array::first(t) AS first_ts \
          FROM (SELECT math::floor(time::millis(ts)/$width) AS b, payload AS p, \
                  time::millis(ts) AS t, seq FROM {SERIES_TABLE} \
                WHERE series = $s \
@@ -234,6 +265,9 @@ async fn raw_bucket_query(
         acc.count = r.count;
         acc.last = r.last;
         acc.last_key = (r.last_ts, 0); // ts only; the ordered subquery already broke the seq tie
+                                       // Same ordered subquery, opposite end: `array::first` over `ORDER BY t, seq` is the
+                                       // chronologically first payload, exactly what the fold oracle's `(ts, seq)` minimum is.
+        acc.fold_first((r.first_ts, 0), &r.first);
     }
     Ok(accs)
 }
@@ -258,6 +292,9 @@ struct CountRow {
     #[serde(default)]
     last: Value,
     last_ts: u64,
+    #[serde(default)]
+    first: Value,
+    first_ts: u64,
 }
 
 /// Merge the finest stored rollup tier into buckets raw didn't cover (post-GC history). Shared by
@@ -290,9 +327,13 @@ fn finish(accs: BTreeMap<u64, Acc>) -> Vec<Bucket> {
             avg: (a.num_count > 0).then(|| a.sum / a.num_count as f64),
             last: a.last,
             count: a.count,
+            first: a.first,
+            value: None,
             sum: a.sum,
             num_count: a.num_count,
             last_ts: a.last_key.0,
+            first_ts: a.first_key.map(|k| k.0).unwrap_or(t),
+            has_first: a.first_key.is_some() && !a.first_missing,
         })
         .collect()
 }
@@ -311,5 +352,13 @@ fn fold_rollup(acc: &mut Acc, r: &RollupRow) {
     if (r.last_ts, 0) > acc.last_key {
         acc.last_key = (r.last_ts, 0);
         acc.last = r.last.clone();
+    }
+    // The `first` representative re-aggregates exactly: the first of a wider bucket is the earliest
+    // `first` among the tier rows it absorbs. A row folded BEFORE the column existed poisons the
+    // bucket's `has_first` — `first`/`nearest` then error rather than silently reporting a
+    // later-but-present sample as the bucket's first (`method.rs`).
+    match r.first_ts {
+        Some(ts) => acc.fold_first((ts, 0), &r.first),
+        None => acc.first_missing = true,
     }
 }

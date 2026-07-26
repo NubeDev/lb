@@ -24,10 +24,14 @@ mod cap;
 mod commit;
 mod cursor;
 mod delete;
+mod filter;
+mod filter_pass;
+mod filter_state;
 mod gc;
 mod labels;
 mod latest;
 mod meta;
+mod method;
 mod overflow;
 mod page;
 mod read;
@@ -48,17 +52,24 @@ pub use cap::{cap_series, over_cap_warning, sample_count, CAP_EVICT_BATCH, DEFAU
 pub use commit::{commit_batch, commit_batch_capped, CommitPass};
 pub use cursor::Cursor;
 pub use delete::delete_series;
+pub use filter::{
+    decide, Deadband, Decision, Filter, FilterCounts, LastCommitted, Range, RangeMode, Reason,
+};
+pub use filter_state::{read_filter_state, ProducerState, FILTER_STATE_FIELD};
 pub use gc::{run_gc, GcPass};
 pub use latest::{latest, latest_many};
 pub use meta::{series_names, DEFAULT_SERIES_CAP};
+pub use method::{apply_method, Method};
 pub use overflow::{enforce_bound, OverflowPolicy};
 pub use page::{
     read_page, Direction, Page, PageError, PageQuery, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
 pub use read::read;
 pub use rename::{rename_series, RenameError};
-pub use retention::{delete_policy, list_policies, set_policy, Policy, Tier, RETENTION_TABLE};
-pub use rollup::{read_rollups, RollupRow};
+pub use retention::{
+    delete_policy, list_policies, resolve_policy, set_policy, Policy, Tier, RETENTION_TABLE,
+};
+pub use rollup::{read_rollups, write_rollups, RollupRow};
 pub use sample::{Qos, Sample};
 pub use samples_delete::{delete_samples_by_keys, delete_samples_in_range, SampleKey};
 pub use samples_update::{update_samples, SampleUpdate};
