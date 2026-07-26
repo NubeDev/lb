@@ -115,7 +115,39 @@ context by `COPY rust`, because **`.dockerignore` is not `.gitignore`**. CI's fr
 checkout has no such file, so this never affected CI — but it meant a local build could
 not reproduce CI at all. Added `**/.cargo/config.toml` to `.dockerignore`.
 
+## What the working gate found (see the debugging entry for detail)
+
+Sharding cleared the disk wall on all three shards (host used ~49 GB, gateway ~33 GB, rest
+~27 GB, of 111–112 GB free). `cargo test` then reached code no CI run had reached in weeks
+and surfaced **three pre-existing failures**, none caused by this branch (which carried no
+Rust source edits when they appeared):
+
+1. `apikey_routes_test` — 6 × `create failed: 400`. **Fixed here.** The admin fixture drifted
+   when `b27c0bd1` grew `APIKEY_READ_CAPS`; the no-widening guard was correctly refusing. Now
+   derived from `lb_apikey::apikey_write_caps()` so it cannot drift again. Both escalation-deny
+   tests still pass — that is what shows the guard was not papered over. Verified 8/8, and the
+   file ends up 476 lines (**below** its 480 ratchet baseline).
+2. `result_cache_test::an_accepting_caller_…` — the **known** pre-existing timing flake (2.09 s
+   against a 350 ms bound on a 4-core runner; the test is written for a 16-worker box). Left
+   alone deliberately — see follow-ups.
+3. `host_catalog_covers_dispatch_prefixes` — `forms.` dispatched but missing from `HOST_TOOLS`.
+   Real product gap. Fix written and verified green, then **reverted** — see follow-ups.
+
 ## Follow-ups (not done here)
+
+- **`forms.*` is missing from the host tool catalog** — `forms.get/list/save/delete` are
+  dispatched but absent from `HOST_TOOLS`, so the family is invisible in the console and in the
+  agent's `tools.catalog` menu. The fix is 4 catalog rows and was **written and verified green
+  in this session**, then reverted: it pushes `system/catalog.rs` from 1366 to 1388 lines, past
+  its own ratchet baseline. Doing it properly means splitting that file (it is the repo's
+  largest) in the same change — worth its own PR, and de-risked by the fact that the catalog
+  edit is known to work.
+
+- **Decide what to do about the `result_cache_test` timing flake.** It will make CI red
+  intermittently, which is how a trustworthy gate decays back into an ignored one. Two honest
+  options: raise the bound with a rationale for 4-core CI hardware, or constrain test
+  parallelism for that crate in CI. Deliberately NOT chosen here — raising a bound can mask a
+  genuine slot-rule-1 violation, and that is a federation call, not a CI-plumbing one.
 
 - **`packages/minimal-shell` has NO CI coverage** until its `@nube/ext-ui-sdk` dependency
   stops being `link:../../../lb-ext-ui-sdk`. `MIGRATION.md` says lb consumes that SDK at a

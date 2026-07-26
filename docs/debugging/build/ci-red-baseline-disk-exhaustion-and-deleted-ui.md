@@ -141,6 +141,45 @@ tag is a cross-repo release decision, not a CI change.
 Worth noting on its own: this failure had been latent for as long as the `ui` job was
 red. Restoring the gate surfaced it within minutes.
 
+## What the restored gate found immediately (the point of the exercise)
+
+With the shards actually running, `cargo test` reached code no CI run had reached in weeks.
+Disk was no longer the failure — all three shards finished comfortably:
+
+| shard | free after cleanup | free after tests | used |
+|---|---|---|---|
+| host    | 111 GB | 62 GB | ~49 GB |
+| gateway | 111 GB | 79 GB | ~33 GB |
+| rest    | 112 GB | 86 GB | ~27 GB |
+
+Three **pre-existing** failures surfaced. None was caused by this change — the branch carried
+no Rust source edits at all when they appeared.
+
+1. **`apikey_routes_test` — 6 failures, `create failed: 400`.** FIXED here. The test's admin
+   fixture hand-listed caps including `mcp:*.get:call`-style wildcards, but `b27c0bd1`
+   ("updated admin caps") added `series.read` / `series.latest` / `series.find` / `query.run`
+   to `APIKEY_READ_CAPS` — which **no `mcp:*.<verb>:call` wildcard covers** — and never touched
+   the test. The admin therefore no longer held every cap it was granting, and the no-widening
+   guard correctly refused every create with a `Widen` → 400. The guard was right; the fixture
+   had drifted. Fixed by DERIVING the admin's caps from `lb_apikey::apikey_write_caps()` (a
+   superset of the read bundle) instead of re-listing them, so the same drift cannot recur. The
+   two escalation-deny tests still pass, which is what proves the fix did not simply paper over
+   the guard.
+2. **`result_cache_test::an_accepting_caller_never_waits_on_a_stricter_callers_refresh`** —
+   the known pre-existing timing flake, already documented in
+   `federation/direct-path-broke-result-cache-tests.md` as "flakes at base too under load …
+   left untouched". It waited 2.09 s against a 350 ms bound on a 4-core runner, while the
+   test's own comments are written for a 16-worker box. NOT fixed here: raising the bound could
+   mask a genuine slot-rule-1 violation, and choosing between that and constraining CI test
+   parallelism is a real call, not a CI-plumbing decision.
+3. **`host_catalog_covers_dispatch_prefixes` — `host catalog has no entry for dispatched prefix
+   forms.`** A genuine product gap: `forms.get/list/save/delete` are dispatched but absent from
+   `HOST_TOOLS`, so the whole family is invisible in the console and in the agent's
+   `tools.catalog`-derived menu — exactly the regression that drift test exists to catch. NOT
+   fixed here, though the fix was written and verified green (4 catalog rows): adding them grows
+   `system/catalog.rs` past its own ratchet baseline (1366 → 1388), and the honest resolution is
+   the split that file needs, not the first bypass of a gate introduced in the same change.
+
 ## Lesson
 
 **A stack's fatal line is not always its causal line.** `ld` dying of SIGBUS is the
