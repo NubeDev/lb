@@ -105,7 +105,17 @@ a slow drift cross the deadband one invisible step at a time.
 otherwise see `accepted: 4` and find two rows with nothing on the wire explaining the gap. Present
 only when non-zero, so every existing caller's reply shape is unchanged.
 
-**7. The pack manifest mirror gained the fields too.** `lb-packs` is a dependency-free mirror of the
+**7. A tier's method governs a bucketed read at ANY width, not only the tier's own.** First shipped
+as an exact width match, which the live modbus integration immediately disproved: the global
+`modbus.` tier is 900 s, a dashboard reads at 60 s, and the read resolved **no method at all** — so a
+coil configured `last` would read as a step chart at exactly 15 minutes and silently fall back to
+averaging the moment anyone zoomed. A method describes how the SERIES reads; the tier's width only
+decides what is physically stored, and every method here is exact at any width. `Policy::method_for`
+takes the tier at exactly the width, else the finest tier that declares one.
+*Rejected:* exact-match-only (a method that stops applying when you zoom is worse than no method).
+Guarded by `the_tiers_method_still_governs_a_read_at_a_different_width`.
+
+**8. The pack manifest mirror gained the fields too.** `lb-packs` is a dependency-free mirror of the
 verb args with `deny_unknown_fields`, so *not* adding them would have made `method:` a hard parse
 error for pack authors. Held as `String` (no new crate dep) with a `validate` lint that names the
 closed set — loud at validate time rather than silently dropped at apply. This is the
@@ -119,16 +129,28 @@ No mocks, no fakes.
 | Suite | What it covers |
 |---|---|
 | `crates/ingest/tests/filter_predicate_test.rs` (9) | Each predicate in isolation; evaluation order; `abs` precedence; serde defaults. |
-| `crates/ingest/tests/series_filter_test.rs` (11) | Store-backed: counters exact, clamp stores the bound, **per-producer anchors** (`sample_at()`, independent ts/seq), **anchor survives a restart**, non-numeric untouched, muted prefix registers nothing, `latest` never reports a discarded sample, longest-prefix-wins, **workspace isolation**, absent-filter compatibility. |
-| `crates/ingest/tests/series_method_test.rs` (8) | Every method over real folded tiers; `avg` exact across a two-pass re-aggregation; `nearest` across a boundary; `last` for a coil; a pre-normalize row refusing `first`/`nearest`; idempotent second GC pass; **multi-producer ordering by (ts, seq)**; pushdown↔fold-oracle parity on `first`. |
-| `crates/host/tests/series_normalize_test.rs` (9) | **Capability deny** (filter refused without the admin cap, and nothing half-applied), deny on the bucketed read, **workspace isolation** across policies/filters/methods, method resolution + override + reported-back, unknown method → `BadInput` not `Denied`, policy round-trip through the projection, legacy-row compatibility, `ingest.write` filtered counts, and the drain-stall regression. |
+| `crates/ingest/tests/series_filter_test.rs` (6) | Store-backed per-batch behaviour: counters exact, clamp stores the bound, `min_interval` thinning, non-numeric untouched, muted prefix registers nothing and still drains, `latest` never reports a discarded sample. |
+| `crates/ingest/tests/series_filter_state_test.rs` (5) | The durable half: **per-producer anchors** (`sample_at()`, independent ts/seq), **anchor survives a restart**, longest-prefix-wins, **workspace isolation**, absent-filter compatibility. |
+| `crates/ingest/tests/series_method_test.rs` (6) | Every method over real folded tiers; `avg` exact across a two-pass re-aggregation; `nearest` across a boundary; `last` for a coil; a pre-normalize row refusing `first`/`nearest`; idempotent second GC pass. |
+| `crates/ingest/tests/series_method_ordering_test.rs` (2) | **Multi-producer ordering by (ts, seq)** over live raw *and* after the fold; pushdown↔fold-oracle parity on `first`. |
+| `crates/host/tests/series_normalize_caps_test.rs` (3) | **Capability deny** (filter refused without the admin cap, nothing half-applied; deny on the bucketed read) and **workspace isolation** across policies/filters/methods. |
+| `crates/host/tests/series_normalize_test.rs` (7) | Method resolution + override + reported-back, unknown method → `BadInput` not `Denied`, policy round-trip through the projection, legacy-row compatibility, `ingest.write` filtered counts, the method surviving a zoom to any width, and the drain-stall regression. |
 | `crates/ingest/src/method.rs` (6 unit) | Method selection, `nearest` tie rule, missing-representative error. |
 
 ```
-lb-ingest:      67 passed, 0 failed
-lb-host ingest: 28 passed, 0 failed   (series_normalize, series_cap_reactor, ingest,
-                                       ingest_isolation, ingest_drain_bound)
+lb-ingest + lb-packs: 116 passed, 0 failed
+lb-host:              (full suite — see below)
+FILE-LAYOUT gate:     OK — 2391 files checked, 114 grandfathered
 ```
+
+**FILE-LAYOUT.** Every new source file is well under 400 lines. The ratchet caught four *baseline*
+files this slice had grown (`pack/apply.rs`, `packs/manifest.rs`, `packs/validate.rs`,
+`series_plane_test.rs`) — growing a grandfathered file is exactly what the ratchet forbids, so each
+addition was extracted instead: `pack/retention_policy.rs`, `packs/manifest_retention.rs`,
+`packs/validate_retention.rs`, and `series_plane_test.rs` split into
+`series_retention_test.rs` + `series_sample_cap_test.rs` (1066 → 576 / 244 / 332, so the backlog
+*shrank*). The three new test files that had themselves crossed 400 were split by scenario per
+FILE-LAYOUT §Tests.
 
 ### Revert-check (every fix, sabotaged then restored — 10/10 caught)
 
@@ -180,21 +202,65 @@ rows-mode read still works: 50 samples (609ms)
 
 **B — write-time filter + plateau, real 2s producer, nobody calling any verb.** Policy on a scoped
 `prove.` prefix: raw 60s, one 60s `avg` tier, `filter {min_interval_ms: 10000, range: {-40..120,
-drop}}`. A real producer POSTs one sample every 2s for 8 minutes, emitting a −9999 error frame every
-30th sample.
+drop}}`. A real producer POSTs one sample every 2s for 9 minutes, emitting a −9999 error frame every
+30th sample. Retryable store conflicts are retried, as a real client does.
 
 ```
-t= 1m  raw rows stored=6      (producer has sent ~30 samples)
-t= 2m  raw rows stored=12     (producer has sent ~60 samples)
+t= 1.0m  stored=6    sent=30   filtered={range:1, min_interval:23}   conflict_retries=1
+t= 2.0m  stored=12   sent=60   filtered={range:2, min_interval:46}   conflict_retries=1
+t= 3.0m  stored=18   sent=89   filtered={range:2, min_interval:69}   conflict_retries=2
+t= 4.0m  stored=24   sent=119  filtered={range:3, min_interval:92}   conflict_retries=2
+t= 5.0m  stored=30   sent=149  filtered={range:4, min_interval:115}  conflict_retries=2
+t= 6.0m  stored=7    sent=178  filtered={range:5, min_interval:137}  ← the reactor's own tick
+t= 7.0m  stored=13   sent=208  filtered={range:6, min_interval:160}
+t= 8.0m  stored=19   sent=238  filtered={range:7, min_interval:183}
+t= 9.0m  stored=25   sent=267  filtered={range:8, min_interval:206}
+
+bucketed history read: method=avg  buckets=10
+   t=1785058740000  value=23.312  count=5
+   t=1785058800000  value=19.745  count=6
+   …one avg per 60s boundary, over history whose raw is gone…
+raw rows now=25   out-of-range rows stored=0
 ```
 
-→ **6 stored rows per minute against 30 sent** — exactly the 10s grid the `min_interval_ms` filter
-declares, on a live node, with no verb being called. Full run output in §Product-test results below.
+Three things this proves that no unit test can:
 
-**Honest note on read latency:** 1469ms for 332 buckets over 6h is a *debug build* on a shared box;
-it is the known host/debug-build wall time, not a regression from this slice (the rows-mode read on
-the same node is 609ms). The slice adds one small `list_policies` read per bucketed call and one per
-commit batch. What this test proves is the *plateau* and the *correctness*, not a latency win.
+1. **The store plateaus.** Rows climb 6→30 at exactly 6/min, then the retention reactor's own tick
+   fires between t=5m and t=6m and drops them to 7 — a sawtooth around ~30, not linear growth.
+   **267 samples sent, 25 raw rows held.** Nobody called `series.retention.gc`.
+2. **The counters are exact.** Every minute, 30 sent = 6 stored + 1 range + 23 min_interval, and the
+   `filtered` object rides back on `ingest.write` itself.
+3. **History survives the eviction.** The bucketed read returns one `avg` per 60s boundary over a
+   window whose raw samples no longer exist, and **zero** of the eight −9999 error frames ever
+   reached the store.
+
+**The control, same node and same producer, on an UNFILTERED prefix** — this is what isolates the
+slice's effect from everything else on the box:
+
+```
+t= 1.0m  stored=30   sent=30   filtered={}  conflict_retries=0
+t= 5.0m  stored=149  sent=149  filtered={}  conflict_retries=0
+bucketed history read: method=None  buckets=6   value=None on every bucket
+raw rows now=149   out-of-range rows stored=4
+```
+
+**149 sent, 149 stored, linear, no `value` column, error frames kept** — byte-for-byte the
+pre-slice behaviour, on the same binary. The additive fields really are inert when unset.
+
+**Honest notes, neither of them wins:**
+
+- **Read latency.** 1469ms for 332 buckets over 6h is a *debug build* on a shared box — the known
+  host/debug-build wall time, not a regression (the rows-mode read on the same node is 609ms). The
+  slice adds one small `list_policies` read per bucketed call and one per commit batch. This test
+  proves the plateau and the correctness, not a latency win.
+- **Store write conflicts.** The node logs retryable SurrealKV conflicts ("This transaction can be
+  retried") under concurrent ingest. The producer saw **5 retries in 267 writes (1.9%), 0 given up**
+  on the filtered prefix and **0 in 149** on the unfiltered one — consistent with the filtered path
+  adding an `UPDATE series_meta SET filter_state` to the commit transaction on a row `register` also
+  touches. The *background* modbus pushes conflict at the same rate either way (≈4.2/min during the
+  filtered run vs ≈5.0/min during the control), so that pre-existing contention is **not** caused by
+  this slice — it is what a second concurrent writer costs on this store. Filtered writers pay a
+  small, recoverable retry rate; worth knowing, not a blocker.
 
 ## Debugging
 

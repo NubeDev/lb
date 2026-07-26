@@ -214,6 +214,7 @@ async fn oq4_bloat_composition_experiment() {
             raw_for_ms: 0,
             max_samples: 100,
             tiers: vec![],
+            filter: None,
         },
     )
     .await

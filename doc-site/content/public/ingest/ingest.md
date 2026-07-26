@@ -68,6 +68,10 @@ one value per bucket boundary (13:00, 13:15, 13:30 …) instead of a stat row yo
   `first`.
 - **`last` is what a coil or state point wants.** Averaging a coil produces a value the point can
   never physically hold.
+- **The method applies at whatever width you read at**, not only the tier's own — it describes how
+  the series reads, and every method here is exact at any width. So a coil set to `last` stays a step
+  chart when a dashboard zooms in. (The tier at exactly the requested width wins; otherwise the
+  finest tier that names a method.)
 - The method **adds** a `value` column; the full stat row stays on the wire. Omitting it is exactly
   today's behaviour. A per-read `method` argument overrides the tier's, and the response reports
   which method produced the value.

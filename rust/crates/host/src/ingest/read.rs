@@ -54,11 +54,12 @@ pub async fn series_read_page(
 /// column and the resolved method is reported back so the caller never has to guess which one it
 /// got (series-normalize scope).
 ///
-/// Method precedence: the caller's explicit `override_method` wins; otherwise the retention tier at
-/// exactly this width, under the policy whose prefix is the LONGEST match for `series` — the same
-/// `resolve_policy` the GC and the commit filter use, so a state series on its own longer prefix
-/// reads as `last` while its analog neighbours ride the parent's `avg`. No policy, no tier at this
-/// width, and no override → `None`, which is today's exact behaviour: the full stat row, no `value`.
+/// Method precedence: the caller's explicit `override_method` wins; otherwise the governing policy's
+/// method for this width ([`Policy::method_for`] — the tier at exactly this width, else the finest
+/// tier that declares one), under the policy whose prefix is the LONGEST match for `series` — the
+/// same `resolve_policy` the GC and the commit filter use, so a state series on its own longer prefix
+/// reads as `last` while its analog neighbours ride the parent's `avg`. No policy and no override →
+/// `None`, which is today's exact behaviour: the full stat row, no `value`.
 pub async fn series_read_buckets(
     store: &Store,
     principal: &Principal,
@@ -76,8 +77,7 @@ pub async fn series_read_buckets(
     let method = match override_method {
         Some(m) => Some(m),
         None => resolve_policy(&list_policies(store, ws).await?, series)
-            .and_then(|p| p.tier_at(width_ms))
-            .and_then(|t| t.method),
+            .and_then(|p| p.method_for(width_ms)),
     };
     if let Some(m) = method {
         // A method whose representative this tier never stored is a `BadInput` naming the fix —

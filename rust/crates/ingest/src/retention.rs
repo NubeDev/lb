@@ -54,10 +54,32 @@ pub struct Policy {
 }
 
 impl Policy {
-    /// The tier at exactly `width_ms`, if the policy declares one — how a bucketed read finds the
-    /// `method` that governs the width it is reading at.
+    /// The tier at exactly `width_ms`, if the policy declares one.
     pub fn tier_at(&self, width_ms: u64) -> Option<&Tier> {
         self.tiers.iter().find(|t| t.width_ms == width_ms)
+    }
+
+    /// The method a bucketed read at `width_ms` should use: the tier at exactly that width, else the
+    /// FINEST tier that declares one.
+    ///
+    /// **Why not exact-match only.** A method says how a bucket's samples become one value — it is a
+    /// property of the SERIES' meaning, not of a particular width. A tier's width only decides what
+    /// is physically stored. Requiring an exact match means a coil configured `last` reads as a step
+    /// chart at exactly 15 min and, the moment a dashboard zooms to 1 min, resolves no method at all
+    /// and the caller falls back to `avg` — averaging a coil, which is precisely the nonsense `last`
+    /// exists to prevent. Every method here is exact at any width (they re-aggregate from stored
+    /// stats or a kept representative), so applying the configured one at the read's width is both
+    /// safe and what the operator asked for. Verified live: a 60 s read of a 900 s `avg` tier
+    /// returned no `value` at all before this.
+    pub fn method_for(&self, width_ms: u64) -> Option<Method> {
+        if let Some(m) = self.tier_at(width_ms).and_then(|t| t.method) {
+            return Some(m);
+        }
+        self.tiers
+            .iter()
+            .filter(|t| t.method.is_some())
+            .min_by_key(|t| t.width_ms)
+            .and_then(|t| t.method)
     }
 }
 

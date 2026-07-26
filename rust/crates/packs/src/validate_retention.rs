@@ -16,7 +16,7 @@ pub const METHODS: [&str; 8] = [
 ];
 
 /// Lint every retention policy's `method` / `range.mode` names.
-pub fn lint_retention(policies: &[RetentionPolicy]) -> Vec<Finding> {
+pub fn lint(policies: &[RetentionPolicy]) -> Vec<Finding> {
     let mut out = Vec::new();
     // ERROR — an unknown retention tier `method` or range `mode`. The manifest is a dependency-free
     // MIRROR of the verb args (both are held as `String`), so this lint is the only thing standing

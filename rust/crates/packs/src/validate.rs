@@ -126,7 +126,8 @@ pub struct Finding {
 
 /// Lint a resolved pack against its own plan.
 pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
-    let mut out = Vec::new();
+    // Start from the retention lint (`validate_retention`), then add this file's own checks.
+    let mut out = crate::validate_retention::lint(&pack.manifest.retention);
 
     // ERROR — a duplicate (kind, id) means two objects would write the same target, and the receipt
     // could not tell them apart.
@@ -144,9 +145,6 @@ pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
             });
         }
     }
-    out.extend(crate::validate_retention::lint_retention(
-        &pack.manifest.retention,
-    ));
     // ERROR — a dangling entity parent makes the vocabulary tree unrenderable.
     for (name, ent) in &pack.manifest.entities {
         if let Some(parent) = &ent.parent {
