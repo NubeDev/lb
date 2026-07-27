@@ -239,6 +239,7 @@ mod tests {
             display: display.map(String::from),
             backend: None,
             geo: None,
+            charts: vec![],
         }
     }
 
