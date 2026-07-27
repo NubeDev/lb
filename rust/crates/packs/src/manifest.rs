@@ -565,7 +565,11 @@ entities:
         assert_eq!(charts[0].key, "energy");
         assert_eq!(charts[0].window.as_deref(), Some("7d"));
         assert_eq!(charts[0].var.as_deref(), Some("site"));
-        assert!(charts[0].query.as_deref().unwrap().contains("${site:sqlstring}"));
+        assert!(charts[0]
+            .query
+            .as_deref()
+            .unwrap()
+            .contains("${site:sqlstring}"));
         assert_eq!(charts[0].table, None);
 
         // The derive form: no `query`, so the consumer builds the read from table + columns + kind.
@@ -619,7 +623,9 @@ entities:
 
         // An entity with no charts must NOT materialize an empty `charts: []` into the receipt — the
         // skip-if-empty wire contract every other additive field here keeps.
-        let plain = Manifest::parse("pack: p\ntitle: P\nversion: 1\nentities:\n  site: { label: Site }\n").unwrap();
+        let plain =
+            Manifest::parse("pack: p\ntitle: P\nversion: 1\nentities:\n  site: { label: Site }\n")
+                .unwrap();
         assert!(!serde_json::to_string(&plain).unwrap().contains("charts"));
     }
 
