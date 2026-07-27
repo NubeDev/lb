@@ -1,6 +1,7 @@
 # Ingest scope — series statistics and a readable retention status
 
-Status: scope (the ask). Promotes to `doc-site/content/public/ingest/ingest.md` once shipped.
+Status: **BUILT — `series.stats`, `series.retention.status` and `series.producer.health`**, the last
+added 2026-07-27 and proven against a real published extension. Released in `node-v0.12.0`.
 
 Retention ships a policy mechanism, a GC pass, and (since issue #65) a reactor that ticks it.
 What it does **not** ship is any way to read back what happened. `run_gc` returns a pass
@@ -26,6 +27,10 @@ is why this scope treats observability as part of the retention feature rather t
 2. **`series.retention.status`** — for one series or prefix: the **effective** policy after
    longest-prefix resolution (with the winning prefix named), plus the last GC pass for the
    workspace: when it ran, how many samples it evicted, how many it rolled up.
+2b. **`series.producer.health`** (added 2026-07-27) — for one series: what each of its PRODUCERS
+   reports about its own ingest, for the producers that are extensions and choose to say. The host
+   answers "who writes this and when" from its own rows; only the producer knows that its link is
+   reconnecting or that it has timed out eleven times running.
 3. **Persist the pass the reactor already computes** — one upserted record per workspace, so
    "last run" survives a restart and is readable by a UI rather than being a log line.
 4. **Resolve the winning policy server-side.** Longest-prefix-wins is host semantics; every
@@ -233,3 +238,50 @@ Every question this scope opened is resolved below, with the reasoning, as built
   policy model (issue #58) whose resolution this scope exposes.
 - Downstream consumer: `NubeIO/rubix-ai` → `docs/scope/ingest/ingest-observability-scope.md`
   (the Ingest health panel) — the product-side reason this is being asked for.
+
+
+## Decisions — `series.producer.health` (added 2026-07-27)
+
+14. **Discovery is a TOOL-NAME CONVENTION over the live registry, not `ext.list`.** The downstream
+    scope had recorded that `ext.list` "returns `tools: Vec<String>` per installed extension". It
+    does not: `ExtRow` (`host/src/ext/row.rs`) has no tool list, and the manifest's `tools` is never
+    persisted onto `Install`. The real seam is `node.registry.descriptor_entries()` — the same walk
+    `agent::exfil::tainted_tools` uses for `emits_external` — keeping extensions that declare a
+    descriptor named `ingest.health`. The registry is also the honest source: it lists what is
+    dispatchable *now*, so a declared-but-unloaded extension reads "not reported" rather than
+    erroring on a call that cannot land. **No SDK and no manifest mechanism is involved** — an
+    extension contributes by declaring one ordinary tool. That was verified, not assumed, before the
+    design was committed to.
+
+15. **Producer → extension id is recovered from the IDENTITY GRAMMAR, never from a name.**
+    `ingest.write` roots every producer at `{principal.sub()}/{declared}` with at most one separator
+    (`root_producer` collapses a declared `/` to `-`, so the depth cannot be forged), and an
+    extension's sub is `ext:{id}`. `producer_ext_id` therefore recovers the id by shape;
+    `user:ada/gw-alpha` yields `None`, which is a first-class answer. The reader lives in
+    `ingest/write.rs` beside the writer ON PURPOSE — these two are one grammar, and split across
+    modules a writer and a reader eventually disagree. The same file's tests assert the reader
+    inverts the writer for every shape the writer can emit.
+
+16. **The host models three fields and refuses to model a fourth.** `state`, `last_write_ms`,
+    `last_accepted` are true of anything that writes samples. Domain facts (timeout runs, poll
+    duration, device counts) ride an open `details: [{label, value}]` list carried through verbatim.
+    A host field called `consecutive_timeouts` would have encoded "a producer is a polling device"
+    into the core — subtler than an `if ext == "modbus"` and just as much a rule-10 leak, because a
+    webhook or a flow has no ticks.
+
+17. **The fan-out runs under the CALLER's principal, at depth+1.** `mcp:series.producer.health:call`
+    is a data-plane grant beside `series.stats`; it deliberately grants NO reach into an extension
+    tool the caller could not already call. Each row re-checks `mcp:{ext}.ingest.health:call`, so a
+    forbidden extension reads `denied` (naming the missing cap) while a permitted one beside it
+    reports — asserted in both directions, because a single-direction deny test passes just as
+    happily against a gate wired to the wrong capability.
+
+18. **Four ways of not-knowing are kept apart, by name.** `not-an-extension` / `not-reported` /
+    `denied` / `error` are distinct states, and one producer's failure never fails the read. The
+    whole point of the feature is that a refusal must not look like silence and silence must not
+    look healthy; a test that merely checked "not Reported" would pass against a verb that collapsed
+    them, so each is asserted individually.
+
+19. **The extension is handed its LEAF, not the rooted producer.** It never saw the `ext:<id>/` root
+    the host stamped on, and an extension feeding many streams needs to know which one is being
+    asked about — otherwise it must guess or answer for all of them.

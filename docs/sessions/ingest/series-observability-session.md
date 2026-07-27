@@ -113,3 +113,104 @@ Nothing here is released yet: **the git tree was deliberately left dirty and unt
 requesting session owns all git). The rubix-ai side is developed against the local `[patch]` in that
 repo's git-ignored `.cargo/config.toml`, which must be dropped as step 3 of the release, never as a
 tidy-up.
+
+---
+
+# Session addendum — `series.producer.health` (slice D), 2026-07-27
+
+Status: **BUILT, green, and proven against a real published extension.** Released in `node-v0.12.0`.
+
+The first pass deferred slice D because nothing would exercise it, and said "revisit when a producer
+extension is in scope in the same session". That condition was met, so it was built.
+
+## The false premise that had been written down
+
+The handover recorded the seam as: *`ext.list` already returns `tools: Vec<String>` per installed
+extension (`host/src/system/model.rs`)*. **That is not true and never was.** `ExtRow`
+(`host/src/ext/row.rs`) carries `ext`/`version`/`tier`/`enabled`/`running`/`health`/`restart_count`/
+`ui`/`widgets` and no tool list; the manifest's `tools` is never persisted onto `Install`; and
+`system/model.rs` holds the `system.*` observability shapes, not `ExtRow` at all. Anyone starting
+from that sentence would have built on a mechanism that does not exist.
+
+The conclusion survived the correction — a tool-name convention is still right — but the mechanism
+changed to `node.registry.descriptor_entries()`, mirroring `agent::exfil::tainted_tools`. Recorded in
+the scope as Decision 14 so it is not re-derived a third time.
+
+## What was built
+
+| File | Job |
+|---|---|
+| `crates/host/src/ingest/producer_health.rs` | the verb: discover by convention, map producer→ext by grammar, fan out at depth+1 |
+| `crates/host/src/ingest/write.rs` (edited) | `producer_root` / `producer_leaf` / `producer_ext_id` — the INVERSE of `root_producer`, in the same file |
+| `crates/ingest/src/stats.rs` (edited) | `series_producers` made public — the producer list without dragging three `count()`s along |
+| `crates/host/src/tool_call.rs` (edited) | one dispatch arm; it lives here, not in `call_ingest_tool`, because it needs the registry and the depth |
+
+Plus the usual six touchpoints: `ingest/mod.rs`, `host/lib.rs`, `system/catalog.rs`,
+`authz/builtin_roles.rs` (VIEWER tier), `apikey/roles.rs`.
+
+**No `lb-ext-sdk` change**, which was checked before designing rather than assumed — an extension
+contributes by declaring one ordinary tool, so there is no coordinated tag across every consumer.
+
+## Testing
+
+`crates/host/tests/series_producer_health_test.rs` — **13 tests, all green.** Real `Node::boot()`,
+real store, real samples through `lb_ingest::write` + `drain_workspace`, the real registry, and the
+real `call_tool` chokepoint. The reporting extension is a real `LocalDispatch` — the same trait a
+wasm instance and a native sidecar implement, and the same one `routed_host_entry_test.rs` uses.
+
+```
+running 13 tests
+test a_series_with_no_samples_is_an_empty_list_not_an_error ... ok
+test a_missing_report_field_stays_absent_and_is_never_defaulted_to_zero ... ok
+test the_producer_is_handed_its_own_stream_id_not_the_rooted_form ... ok
+test a_refusal_names_the_missing_grant_and_never_looks_like_silence ... ok
+test a_reply_in_a_shape_we_cannot_read_is_an_error_not_a_plausible_blank ... ok
+test without_the_verb_cap_the_whole_read_is_refused_opaquely ... ok
+test an_extension_that_declares_no_health_tool_reports_nothing_and_is_not_an_error ... ok
+test a_principal_cannot_read_producer_health_across_the_workspace_wall ... ok
+test holding_the_verb_cap_grants_no_reach_into_an_extension_it_could_not_call ... ok
+test one_broken_producer_does_not_blank_the_healthy_one_beside_it ... ok
+test a_producer_in_another_workspace_is_never_reported ... ok
+test a_declaring_extension_is_asked_and_its_report_is_carried_verbatim ... ok
+test a_producer_that_is_not_an_extension_says_so_and_nothing_is_wrong ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+```
+
+Plus 7 grammar unit tests in `ingest::write::tests` (`the_reader_inverts_the_writer` is the
+load-bearing one — if the reader and writer disagree the strip attributes a stream to the wrong
+extension, or to none).
+
+Mandatory categories: **capability-deny in BOTH directions** (the outer verb gate, and the inner
+per-extension gate — the latter asserted as a privilege-escalation question, with a permitted and a
+forbidden extension in the same response), **workspace isolation** (twice: a foreign producer never
+appears, and a cross-ws read is refused — the registry is node-wide, so the wall has to come from the
+SAMPLES, which is exactly why that test matters).
+
+## What only the live run could prove
+
+See the rubix-ai session doc for the full stack. The short version: `modbus` was built, signed,
+published to a scratch node (HTTP 204) and left polling a real Modbus simulator; the host recorded
+the producer `ext:modbus/modbus.sim-net@1000004`, recovered `modbus` from it by grammar, discovered
+`ingest.health` by convention and called it. That is the rule-9 proof the first pass could not get.
+
+## Notes for whoever picks this up
+
+- **A gap I found and did NOT close, deliberately.** `ws_drain_lock`
+  (`crates/host/src/ingest/drain_lock.rs`, added in `94a8b789`) has **no test coverage**: a grep for
+  `ws_drain_lock` finds only its declaration, its two use-sites in `drain.rs`, and a comment in
+  `ingest_conflict_storm_test.rs` explaining that the test *mirrors* it with a locally-declared
+  mutex because the real lock lives in `lb_host` and cannot be imported into `lb-ingest`. **Deleting
+  the lock acquisition in `drain_at_most` would break no test** — the same boot-wiring blind spot
+  that issue #108 was created to close, reintroduced two commits later. It is another session's
+  in-flight slice and the debugging doc says WS-B is load-bearing (WS-A's 16-retry bound was observed
+  to exhaust), so it is named here rather than quietly patched. It is the first thing I would fix
+  next in this area.
+- **A live/durable producer mismatch, also not fixed here.** `tool_call.rs`'s motion publish and
+  `role/gateway/src/routes/ingest.rs` both stamp `sample.producer = principal.sub()` — the BARE sub —
+  while `ingest_write` commits `root_producer(sub, declared)`. So a sample committed as
+  `ext:modbus/modbus.sim-net@1000004` is published on the bus as `ext:modbus`. Both call sites carry
+  a comment claiming they match what `ingest_write` commits; they do not. Nothing in this slice reads
+  the bus, so it is out of scope here, but anything correlating the SSE feed's producer with
+  `series.stats().producers` will mismatch — and a future producer strip driven off live motion
+  would silently attribute every stream to the extension root.
