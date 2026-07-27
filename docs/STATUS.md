@@ -495,12 +495,18 @@ enforced. And the **300 s cadence is still a guess, not a measurement** (the sco
 it is comfortably fast enough for a 15-minute grid, but nobody has measured a pass against a deep
 workspace.
 
-**Known hole (unchanged):** deleting the boot wiring from `node/src/reactors.rs` breaks **no test**
-— the one line that makes the feature real on a node is still untested, exactly as it was for the
-drain bug and for retention itself. The live run is the only proof, and it is a manual one. This
-bug class keeps repeating at the meta level; a boot-wiring assertion is the standing fix nobody has
-written yet — now tracked, with the other blind spots, in
-[#108](https://github.com/NubeDev/lb/issues/108).
+**Known hole — CLOSED 2026-07-27 ([#108](https://github.com/NubeDev/lb/issues/108)).** Deleting the
+boot wiring from `node/src/reactors.rs` used to break **no test**: the one line that makes the feature
+real on a node was untested, exactly as it was for the drain bug and for retention itself, and the
+manual live run was the only proof. There is now `node/tests/boot_wiring_test.rs`, which drives the real
+`reactors::spawn` — never the individual spawners, since re-listing them in a test *is* the bug — and
+asserts each reactor's property with nobody calling its verb. Revert-checked: commenting out
+`spawn_ingest_reactors` fails the drain assertion and only that one; commenting out
+`spawn_retention_reactors` fails the GC assertion and only that one. The other three blind spots are
+closed in the same pass (prior-state fixture, multi-batch counts, axis sweeps) — see
+`sessions/testing/blind-spots-track-{a,b}-session.md` and `scope/testing/testing-scope.md` §3.2. The
+prior-state fixture immediately found a real upgrade bug:
+`debugging/ingest/pre-cap-policy-row-aborts-the-retention-pass.md`.
 
 **Load-bearing:** eviction orders by **`ts`, never `seq`** (`seq` is per-`(series,producer)` —
 ordering by it is exactly what caused #63); `seq` is a tiebreak within an equal `ts` only.

@@ -120,7 +120,19 @@ seed *feeds* it.
 
 ### 3.2 The blind spots a green suite has
 
-Standing work to close these in CI: [#108](https://github.com/NubeDev/lb/issues/108).
+Standing work to close these in CI: [#108](https://github.com/NubeDev/lb/issues/108) — **the four
+structural gaps below are now closed** (2026-07-27, `sessions/testing/blind-spots-track-{a,b}-session.md`).
+What is closed is the *mechanism*, not the whole tree: the fixture, the boot-wiring assertions, the
+multi-batch counts and the axis sweeps exist and are revert-checked, but they cover the ingest / viz /
+retention paths that motivated them. Applying each shape to a new area is still per-slice work — that is
+what the table is for.
+
+| Shape | Now in the tree |
+|---|---|
+| Prior-state | `crates/host/tests/support/prior_state.rs` (`PriorRetention` / `PriorSeries`), shared via `#[path]`. Mandatory category 6 above. It found a real upgrade bug on its first run — `debugging/ingest/pre-cap-policy-row-aborts-the-retention-pass.md`. |
+| Boot wiring | `node/tests/boot_wiring_test.rs`, asserting through `reactors::spawn` itself — deleting a `spawn_*_reactors` line now fails a test. |
+| Multi-batch | Drain/paging/eviction loops driven past `COMMIT_BATCH` (256) / `CAP_EVICT_BATCH` (5 000) / the insights page. |
+| Axis | `crates/ingest/tests/series_width_axis_test.rs`, `crates/host/tests/viz_resolution_axis_test.rs`. |
 
 Real bugs that shipped past a **fully green** suite, each because the tests all shared one
 unstated assumption. These are the shapes to go looking for; they are cheap to test once named.

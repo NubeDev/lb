@@ -434,6 +434,16 @@ test: test-be test-ui
 # an unrelated reason. On clean master everything is green EXCEPT one pre-existing failure
 # (agent_routed_test). Real-world verification of the RUNNING system (drive a live node, not
 # re-run this suite) is a separate thing: docs/testing/e2e-backend.md.
+# Bound every test binary so a HANG becomes a FAILURE (issue #109). Integration tests here can
+# deadlock rather than fail; `cargo test` then waits forever AND the binary outlives the run
+# holding its listening sockets — six such ghosts were found on a dev box, the oldest 4d15h old,
+# together holding 50,771 FDs and 76 LISTEN sockets. A later test binding a fixed port then races
+# a days-old ghost of itself. The runner wraps each test binary, dumps per-thread diagnostics and
+# kills the process tree. Absolute path: cargo runs a test binary with cwd = its PACKAGE root, so
+# a relative path would not resolve. `LB_TEST_TIMEOUT_SECS=0` disables; default 900s.
+TEST_RUNNER := $(abspath $(BE_DIR)/scripts/test-timeout-runner.sh)
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER = $(TEST_RUNNER)
+
 test-be:
 	cd $(BE_DIR) && cargo test --workspace
 

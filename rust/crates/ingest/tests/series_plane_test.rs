@@ -302,15 +302,18 @@ async fn pushdown_handles_an_unaligned_from() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn pushdown_is_o_buckets_not_o_rows() {
     let store = Store::memory().await.unwrap();
-    // 10 k samples across a 10 k-second window, 1 s cadence.
-    let samples: Vec<Sample> = (0..10_000u64)
+    // 12 k samples across a 12 k-second window, 1 s cadence. Over `SCAN_CHUNK` (10 000), so the
+    // fold oracle's keyset loop must fetch a SECOND NON-EMPTY chunk — at exactly 10 000 the second
+    // page came back empty and no row was ever folded across a chunk boundary, the single-page
+    // blind spot from testing-scope §3.2.
+    let samples: Vec<Sample> = (0..12_000u64)
         .map(|i| sample("big", "p", i + 1, i * 1000, json!((i % 50) as f64)))
         .collect();
     seed(&store, "acme", samples).await;
 
     let q = BucketQuery {
         from_ts: 0,
-        to_ts: 10_000_000,
+        to_ts: 12_000_000,
         width_ms: None,
         budget: Some(240),
     };
@@ -320,7 +323,7 @@ async fn pushdown_is_o_buckets_not_o_rows() {
         .unwrap();
     assert!(
         buckets.len() <= 240,
-        "decimated to the budget, not 10k rows"
+        "decimated to the budget, not 12k rows"
     );
     // Parity with the fold on the large seed — the pushdown didn't cut a corner to be fast.
     let folded = read_buckets_fold(&store, "acme", "big", &q, width)

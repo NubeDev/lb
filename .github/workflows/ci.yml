@@ -75,6 +75,19 @@ jobs:
       CARGO_PROFILE_DEV_STRIP: "symbols"
       CARGO_PROFILE_TEST_STRIP: "symbols"
       CARGO_INCREMENTAL: "0"
+      # Turn a HUNG test binary into a FAILED one (issue #109). Integration tests here can
+      # deadlock instead of failing; `cargo test` then waits until the 6h job ceiling and reports
+      # NOTHING — `--no-fail-fast` cannot report a test that never finishes. The runner bounds
+      # each test binary, dumps per-thread /proc diagnostics naming the tests still in flight,
+      # kills the process tree and exits 124, so the shard fails in minutes with evidence.
+      #
+      # Absolute path because cargo runs a test binary with cwd = its PACKAGE root, not `rust/`.
+      # Only test binaries are bounded (the script ignores anything outside `target/**/deps/`),
+      # so `cargo run` is untouched. Set to 0 to disable.
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "${{ github.workspace }}/rust/scripts/test-timeout-runner.sh"
+      # Tighter than the 900s local default: the whole sharded run is ~25 min, so a binary still
+      # alive after 10 is already pathological here.
+      LB_TEST_TIMEOUT_SECS: "600"
     steps:
       - uses: actions/checkout@v4
       # Reclaim ~22 GB of preinstalled toolchains this job never touches. Necessary but not

@@ -51,6 +51,10 @@ anyhow.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+# The boot-wiring test (`tests/boot_wiring_test.rs`, issue #108) seeds and counts real series rows to
+# prove each reactor's property holds with nobody calling its verb. Test-only: the node binary itself
+# reaches the series plane through `lb-host`.
+lb-ingest.workspace = true
 # The embedder-credential-mode integration test drives the REAL gateway `boot_full` builds (its
 # `router()` via a tower oneshot — no HTTP port), proving `BootConfig::credential_mode` reaches the
 # gateway's login check. Same harness the gateway crate's route tests use (no mocks, testing §0).

@@ -49,3 +49,43 @@ pub async fn scan_all(store: &Store, ws: &str, table: &str) -> Result<Vec<Value>
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lb_store::write;
+
+    /// The paging loop must go ROUND: seed more rows than one [`MAX_SCAN_LIMIT`] page and assert
+    /// every one comes back, unwrapped, exactly once.
+    ///
+    /// A seed under the page size lets `page.next` be `None` on the first pass, so the cursor
+    /// advance is never executed and a broken termination condition (or a dropped cursor) passes
+    /// green — the loop blind spot in `docs/scope/testing/testing-scope.md` §3.2. Real embedded
+    /// store, real rows through the real `write` path (testing §0).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn scan_all_drains_every_page_not_just_the_first() {
+        let store = Store::memory().await.unwrap();
+        let n = MAX_SCAN_LIMIT + 50; // 250 — one full page plus a remainder
+        for i in 0..n {
+            write(
+                &store,
+                "acme",
+                "scan_probe",
+                &format!("r{i:04}"),
+                &serde_json::json!({ "i": i }),
+            )
+            .await
+            .unwrap();
+        }
+
+        let rows = scan_all(&store, "acme", "scan_probe").await.unwrap();
+        assert_eq!(rows.len(), n, "every page drained, not just the first");
+        let mut seen: Vec<u64> = rows.iter().filter_map(|r| r["i"].as_u64()).collect();
+        seen.sort_unstable();
+        assert_eq!(
+            seen,
+            (0..n as u64).collect::<Vec<_>>(),
+            "each row exactly once — no gap at the page boundary, no duplicate"
+        );
+    }
+}

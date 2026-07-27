@@ -5,6 +5,7 @@
 //! `series.retention.*` verbs in the host.
 
 use lb_store::{Store, StoreError};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::filter::Filter;
@@ -44,13 +45,33 @@ pub struct Policy {
     pub prefix: String,
     pub raw_for_ms: u64,
     /// FIFO cap on retained raw samples per series. `0` = unbounded.
-    #[serde(default)]
+    ///
+    /// `#[serde(default)]` alone is NOT enough: the projection in [`list_policies`] names the column
+    /// explicitly, so a row written **before this field existed** comes back as `max_samples: NONE`
+    /// — a present-but-null value, which `default` never sees and `u64` refuses ("expected a 64-bit
+    /// unsigned integer, found None"). The failure is not local: `run_gc` opens with
+    /// `list_policies`, so ONE pre-cap row on an upgraded node aborted that workspace's entire
+    /// retention pass. Coalescing NONE to the unbounded default keeps an older row meaning exactly
+    /// what it meant when it was written. Pinned by `host/tests/series_prior_state_test`.
+    #[serde(default, deserialize_with = "none_as_default")]
     pub max_samples: u64,
-    #[serde(default)]
+    /// Same NONE-vs-absent hazard as `max_samples` above, for the same reason.
+    #[serde(default, deserialize_with = "none_as_default")]
     pub tiers: Vec<Tier>,
     /// Write-time predicates applied at COMMIT (never at staging append). `None` = store everything.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<Filter>,
+}
+
+/// Deserialize a field that may arrive as `NONE` (a column an older row never wrote, projected by
+/// name) as its type's default. `#[serde(default)]` covers an ABSENT key; this covers a PRESENT null
+/// one — the two are different bugs and only one of them survives an upgrade.
+fn none_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
 }
 
 impl Policy {

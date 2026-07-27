@@ -44,11 +44,16 @@ async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     let store = Store::memory().await.unwrap();
-    // 200 samples at 1s cadence starting at t=0; value = seq.
+    // 700 samples at 1s cadence starting at t=0; value = seq.
+    //
+    // 700, not 200: `seed` above is a LOOP over `commit_batch(…, 256)`, and a backlog under one
+    // batch never makes it iterate — the blind spot that let the fully-filtered-batch stall ship
+    // green (`debugging/ingest/filtered-batch-stops-the-drain-loop.md`, testing-scope §3.2). Three
+    // batches force the loop round, so a broken termination condition is visible here too.
     seed(
         &store,
         "acme",
-        (0..200u64)
+        (0..700u64)
             .map(|i| sample("hist", "p", i + 1, i * 1000, json!(i as f64)))
             .collect(),
     )
@@ -73,25 +78,25 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     .await
     .unwrap();
 
-    let now = 200_000u64; // raw cutoff = 100_000, already tier-aligned
+    let now = 700_000u64; // raw cutoff = 600_000, already tier-aligned
     let pass = run_gc(&store, "acme", now).await.unwrap();
     assert_eq!(
-        pass.evicted_raw, 100,
+        pass.evicted_raw, 600,
         "raw older than the horizon is evicted"
     );
-    assert_eq!(pass.rollup_rows, 10, "10× 10s rollup buckets stored");
+    assert_eq!(pass.rollup_rows, 60, "60× 10s rollup buckets stored");
 
-    // Raw reads no longer see the evicted half…
+    // Raw reads no longer see the evicted history…
     let page = read_page(&store, "acme", "hist", &PageQuery::default())
         .await
         .unwrap();
     assert_eq!(page.rows.len(), 100);
-    assert_eq!(page.rows[0].seq, 101);
+    assert_eq!(page.rows[0].seq, 601);
 
     // …but a bucketed read over the FULL window still covers it via the rollup tier.
     let q = BucketQuery {
         from_ts: 0,
-        to_ts: 200_000,
+        to_ts: 700_000,
         width_ms: Some(20_000),
         budget: None,
     };
@@ -100,7 +105,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
         .unwrap();
     assert_eq!(
         buckets.len(),
-        10,
+        35,
         "full window: rollup-backed history + live raw"
     );
     let first = &buckets[0]; // t=0..20s, values 0..=19 — served entirely from rollups
@@ -126,7 +131,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
             max_samples: 0,
             tiers: vec![Tier {
                 width_ms: 10_000,
-                keep_for_ms: 150_000, // rollup rows with t < 50_000 evict at now=200_000
+                keep_for_ms: 150_000, // rollup rows with t < 550_000 evict at now=700_000
                 method: None,
             }],
             filter: None,
@@ -136,7 +141,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     .unwrap();
     let pass3 = run_gc(&store, "acme", now).await.unwrap();
     assert_eq!(
-        pass3.evicted_rollup, 5,
+        pass3.evicted_rollup, 55,
         "tier horizon evicts stale rollup rows"
     );
 }

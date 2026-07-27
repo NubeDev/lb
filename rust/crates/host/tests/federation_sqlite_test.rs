@@ -75,8 +75,15 @@ fn federation_dir() -> String {
 }
 
 /// Seed a REAL `.db` fixture with the demo-shaped tables (small — the test's rows, not the seeder's).
-fn seed_db() -> String {
-    let path = std::env::temp_dir().join(format!("lb-fed-sqlite-{}.db", std::process::id()));
+///
+/// `who` MUST be unique per test. The path was previously keyed on `process::id()` alone, but cargo
+/// runs a binary's tests as THREADS OF ONE PROCESS — so both tests here derived the *same* path, and
+/// whichever started second `remove_file`d the fixture the first was still using. That surfaced as
+/// `attempt to write a readonly database` / `disk I/O error` in whichever test lost the race, and it
+/// passed or failed on machine timing alone. Determinism is a hard rule (`testing-scope.md` §3): a
+/// test that can flake is a bug.
+fn seed_db(who: &str) -> String {
+    let path = std::env::temp_dir().join(format!("lb-fed-sqlite-{}-{who}.db", std::process::id()));
     let _ = std::fs::remove_file(&path);
     let conn = rusqlite::Connection::open(&path).expect("open sqlite fixture");
     // `point_reading.site_id` is a REAL foreign key (the `federation.sample` relationships read),
@@ -141,7 +148,7 @@ async fn add_source(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn federation_end_to_end_sqlite() {
     let dir = federation_dir();
-    let db = seed_db();
+    let db = seed_db("end-to-end");
     let ws = "acme";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
@@ -408,7 +415,7 @@ async fn federation_end_to_end_sqlite() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn federation_delete_removes_a_row_by_key() {
     let dir = federation_dir();
-    let db = seed_db();
+    let db = seed_db("delete-by-key");
     let ws = "acme-del";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);

@@ -39,11 +39,22 @@ fn crash_at(path: &str, phase: &str) {
     assert!(!status.success(), "crash_ingest {phase} must die uncleanly");
 }
 
+/// Samples the crash helper stages before dying, and the batch it commits in `commit-then-kill`.
+/// Kept in step with `examples/crash_ingest.rs`; both are deliberately MULTI-batch (see below).
+const STAGED: usize = 700;
+const ONE_BATCH: usize = 256;
+
+/// Recovery's drain loop, as a caller would write it.
+///
+/// Terminates on what the pass **DEQUEUED**, not on what it committed — `committed == 0` also means
+/// "the whole batch was filtered", and stopping there strands the rest of the backlog
+/// (`debugging/ingest/filtered-batch-stops-the-drain-loop.md`). This helper carried the old,
+/// latent form; a sub-256 seed meant the loop never had to iterate, so it could never have said so.
 async fn drain_all(store: &Store, ws: &str) -> usize {
     let mut total = 0;
     loop {
-        let pass = commit_batch(store, ws, 256).await.unwrap();
-        if pass.committed == 0 {
+        let pass = commit_batch(store, ws, ONE_BATCH).await.unwrap();
+        if pass.drained() == 0 {
             break;
         }
         total += pass.committed;
@@ -53,21 +64,23 @@ async fn drain_all(store: &Store, ws: &str) -> usize {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn restart_redrains_staged_samples_exactly_once() {
-    // A node stages 5 must-deliver samples then is KILLED before the worker commits. On restart the
-    // cloud re-drains staging and each sample commits exactly once.
+    // A node stages 700 must-deliver samples — THREE `COMMIT_BATCH`es, so the recovery drain is
+    // required to loop — then is KILLED before the worker commits. On restart the cloud re-drains
+    // staging and each sample commits exactly once. At the old 5-sample seed the loop broke on its
+    // first pass, so any loop-termination bug in recovery was invisible (testing-scope §3.2).
     let path = temp_path("stage-kill");
     cleanup(&path);
     crash_at(&path, "stage-then-kill");
 
     let store = Store::open(&path).await.expect("reopen after kill");
     let committed = drain_all(&store, "acme").await;
-    assert_eq!(committed, 5, "all staged samples drain on restart");
+    assert_eq!(committed, STAGED, "all staged samples drain on restart");
 
     let got = read(&store, "acme", "m", None, None).await.unwrap();
     assert_eq!(
         got.len(),
-        5,
-        "exactly-once: five distinct samples, no dupes"
+        STAGED,
+        "exactly-once: {STAGED} distinct samples, no dupes"
     );
 
     // A SECOND drain after restart must commit nothing (staging emptied atomically with commit).
@@ -81,16 +94,32 @@ async fn restart_redrains_staged_samples_exactly_once() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn committed_batch_survives_kill_without_double_commit() {
-    // The node commits a batch then is killed AFTER the commit returned. On restart the batch is
-    // present exactly once and staging is empty — no re-commit, no loss.
+    // The node commits ONE batch out of a 700-row backlog then is killed AFTER that commit
+    // returned. The kill therefore lands MID-backlog: on restart the committed batch is present
+    // exactly once, the remainder is still staged, and the re-drain finishes the job without
+    // re-committing what already landed. (A single-batch backlog could not express "mid-backlog"
+    // at all — the kill was always at a boundary with nothing behind it.)
     let path = temp_path("commit-kill");
     cleanup(&path);
     crash_at(&path, "commit-then-kill");
 
     let store = Store::open(&path).await.expect("reopen after kill");
     let got = read(&store, "acme", "m", None, None).await.unwrap();
-    assert_eq!(got.len(), 5, "committed batch survives the kill");
-    // Staging was drained inside the commit tx, so nothing remains to re-commit.
+    assert_eq!(
+        got.len(),
+        ONE_BATCH,
+        "the committed batch survives the kill — and only it"
+    );
+    assert_eq!(
+        staged_count(&store, "acme").await as usize,
+        STAGED - ONE_BATCH,
+        "the uncommitted remainder is still durably staged"
+    );
+
+    // The re-drain commits exactly the remainder — no re-commit of the surviving batch.
+    assert_eq!(drain_all(&store, "acme").await, STAGED - ONE_BATCH);
+    let got = read(&store, "acme", "m", None, None).await.unwrap();
+    assert_eq!(got.len(), STAGED, "exactly-once across the kill boundary");
     assert_eq!(drain_all(&store, "acme").await, 0, "no double-commit");
     cleanup(&path);
 }
