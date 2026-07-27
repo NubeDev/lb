@@ -285,3 +285,21 @@ Every question this scope opened is resolved below, with the reasoning, as built
 19. **The extension is handed its LEAF, not the rooted producer.** It never saw the `ext:<id>/` root
     the host stamped on, and an extension feeding many streams needs to know which one is being
     asked about — otherwise it must guess or answer for all of them.
+
+20. **Rollup rows at an undeclared width are DRAINED, not destroyed (`node-v0.12.1`).** Eviction is
+    keyed by an exact `width_ms` once per declared tier, so narrowing a policy stranded the old
+    width's rows: nothing wrote to them again and no tier matched them, and they were retained
+    forever — unbounded growth inside the feature whose job is bounding growth. Found by this scope's
+    own per-tier occupancy on a live node (`1 min × 270 · 5 min × 115 · 15 min × 75` under a policy
+    declaring only the 1-minute tier), which is the strongest argument yet that the read-back was
+    worth building.
+
+    The fix ages stranded rows out on the policy's **most generous declared horizon** rather than
+    deleting them at the moment of the edit: raw is long gone by then and cannot rebuild them, so an
+    ordinary policy narrowing must not silently destroy history. A policy that keeps ANY tier forever
+    (`keep_for_ms: 0`) states an intent to keep rollups indefinitely, so its orphans are left alone
+    rather than held to a horizon it never declared.
+
+    Implemented by diffing `rollup_widths()` against the policy and reusing the SAME narrow per-width
+    delete the declared tiers use. A single `width_ms NOT IN [...]` statement would read better and
+    was rejected deliberately: a deletion whose predicate is subtly wrong takes the whole table.
