@@ -153,6 +153,76 @@ pub struct Entity {
     /// Absent ⇒ the entity is not mappable (today's shape). See [`GeoHint`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub geo: Option<GeoHint>,
+    /// Optional CHART recipes: what is worth plotting about ONE row of this entity. The exact sibling of
+    /// `geo:` one step on — `geo:` says which columns place a row on a map, this says which reads chart
+    /// it. A *projection* in the same sense: core stores nothing, derives nothing, and runs none of these
+    /// queries. A downstream authoring surface reads them off the receipt to offer an author
+    /// "☑ Energy · last 7 days" instead of asking for a dashboard id and a variable binding, and what it
+    /// compiles is ordinary widget config — so a node that never applied the pack renders the result
+    /// identically (rule 10). Absent ⇒ the entity offers no charts (today's shape). See [`ChartHint`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub charts: Vec<ChartHint>,
+}
+
+/// One `charts:` recipe on an [`Entity`]. A named, windowed read parameterised by the ROW — never a
+/// rendered chart: the recipe says which rows and over what window, and the downstream surface decides
+/// how to draw them.
+///
+/// The `var` + `query` pair is the load-bearing contract, and it is a **trust surface**: the row's id
+/// must enter the query as a *variable reference* the consumer's own interpolator resolves
+/// (`${site:sqlstring}`), never as a literal the pack author spliced or concatenated in. Core does not
+/// and cannot enforce that — it never parses SQL — so the discipline is stated here and *checked by the
+/// consumer*, which drops a recipe whose template does not reference its declared `var`. Keeping the
+/// field pair explicit (rather than inferring the variable name) is what makes that check possible.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChartHint {
+    /// Stable key within the entity — `energy`, `water`. What a downstream tick is addressed by, so it
+    /// must not change once authored.
+    pub key: String,
+    /// Human label for the offered row.
+    pub label: String,
+    /// Default time window as a duration string (`7d`, `24h`). Interpreted downstream; absent ⇒ the
+    /// consumer's own default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<String>,
+    /// The variable name the query parameterises the row id on. Absent ⇒ the consumer defaults it to the
+    /// entity key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub var: Option<String>,
+    /// Override datasource (a `datasource`-backed read). Absent ⇒ routed by the entity's `backend`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// The read, with the row id as a variable reference (see the type docs). Absent ⇒ the consumer
+    /// derives it from `table` + `columns` below.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    /// Table to derive the read from when `query` is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
+    /// Which columns of that table carry the series. Optional — each falls back downstream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub columns: Option<ChartColumns>,
+    /// Optional `kind`-style discriminator for a table holding several series side by side (the
+    /// denormalised-readings shape). Opaque to core.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
+/// Which columns of a [`ChartHint`]'s table carry the series. Every key optional — the consumer's own
+/// defaults apply, exactly as they do for [`GeoColumns`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChartColumns {
+    /// The timestamp column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<String>,
+    /// The measured value column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// The column carrying the parent entity's id — what the recipe filters on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity: Option<String>,
 }
 
 /// The `geo:` map hint on an [`Entity`] (`map-widget-scope` Phase 2). Backend-agnostic: for a
@@ -482,6 +552,102 @@ entities:
         )
         .unwrap_err();
         assert!(err.to_string().contains("colums"), "{err}");
+    }
+
+    #[test]
+    fn parses_entity_chart_recipes_and_rejects_a_typo() {
+        // `charts:` is `geo:`'s sibling — the same projection discipline, one step on. Core parses and
+        // carries it; it never runs the query.
+        let yaml = r#"
+pack: p
+title: P
+version: 1
+entities:
+  site:
+    label: Site
+    table: site
+    pk: id
+    backend: store
+    geo:
+      columns: { id: id, label: name, lat: lat, lng: lng }
+    charts:
+      - key: energy
+        label: Energy
+        window: 7d
+        var: site
+        query: SELECT data.ts AS time, data.val AS v FROM reading WHERE data.site_id = ${site:sqlstring}
+      - key: water
+        label: Water
+        table: reading
+        kind: water
+        columns: { time: ts, value: val, entity: site_id }
+"#;
+        let m = Manifest::parse(yaml).unwrap();
+        let charts = &m.entities["site"].charts;
+        assert_eq!(charts.len(), 2);
+
+        // The explicit-template form: the row id enters as a VARIABLE REFERENCE, which is the whole
+        // trust contract. Core does not check it (it never parses SQL) — it carries it verbatim so the
+        // consumer can.
+        assert_eq!(charts[0].key, "energy");
+        assert_eq!(charts[0].window.as_deref(), Some("7d"));
+        assert_eq!(charts[0].var.as_deref(), Some("site"));
+        assert!(charts[0].query.as_deref().unwrap().contains("${site:sqlstring}"));
+        assert_eq!(charts[0].table, None);
+
+        // The derive form: no `query`, so the consumer builds the read from table + columns + kind.
+        assert_eq!(charts[1].table.as_deref(), Some("reading"));
+        assert_eq!(charts[1].kind.as_deref(), Some("water"));
+        let cols = charts[1].columns.as_ref().unwrap();
+        assert_eq!(cols.time.as_deref(), Some("ts"));
+        assert_eq!(cols.entity.as_deref(), Some("site_id"));
+        assert_eq!(charts[1].query, None);
+
+        // ABSENT is the today-shape and must stay legal + empty (not an error, not an Option dance).
+        let bare = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, table: site, pk: id, backend: store }\n",
+        )
+        .unwrap();
+        assert!(bare.entities["site"].charts.is_empty());
+
+        // A typo'd KEY inside a recipe fails loudly (deny_unknown_fields on ChartHint) — the same
+        // contract `geo:` keeps, so a mis-typed `windwo:` cannot silently mean "no window".
+        let err = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, charts: [{ key: e, label: E, windwo: 7d }] }\n",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("windwo"), "{err}");
+
+        // …and so does a MISSING required field: `key`/`label` are what a downstream tick addresses, so
+        // a recipe without them is not a partially-useful recipe, it is unaddressable.
+        let missing = Manifest::parse(
+            "pack: p\ntitle: P\nversion: 1\n\
+             entities:\n  site: { label: Site, charts: [{ label: E }] }\n",
+        )
+        .unwrap_err();
+        assert!(missing.to_string().contains("key"), "{missing}");
+    }
+
+    #[test]
+    fn a_manifest_round_trips_its_chart_recipes() {
+        // The receipt is what a downstream surface actually reads, and it is SERIALIZED on the way out.
+        // A field that parses but does not re-serialize would reach the consumer as "no charts" — the
+        // silent failure this asserts against.
+        let yaml = "pack: p\ntitle: P\nversion: 1\n\
+                    entities:\n  site: { label: Site, charts: [{ key: energy, label: Energy, var: site, query: 'SELECT 1 WHERE id = ${site}' }] }\n";
+        let m = Manifest::parse(yaml).unwrap();
+        let out = serde_json::to_string(&m).unwrap();
+        assert!(out.contains("\"charts\""), "{out}");
+        let back: Manifest = serde_json::from_str(&out).unwrap();
+        assert_eq!(back, m);
+        assert_eq!(back.entities["site"].charts[0].label, "Energy");
+
+        // An entity with no charts must NOT materialize an empty `charts: []` into the receipt — the
+        // skip-if-empty wire contract every other additive field here keeps.
+        let plain = Manifest::parse("pack: p\ntitle: P\nversion: 1\nentities:\n  site: { label: Site }\n").unwrap();
+        assert!(!serde_json::to_string(&plain).unwrap().contains("charts"));
     }
 
     #[test]
