@@ -499,7 +499,8 @@ workspace.
 — the one line that makes the feature real on a node is still untested, exactly as it was for the
 drain bug and for retention itself. The live run is the only proof, and it is a manual one. This
 bug class keeps repeating at the meta level; a boot-wiring assertion is the standing fix nobody has
-written yet.
+written yet — now tracked, with the other blind spots, in
+[#108](https://github.com/NubeDev/lb/issues/108).
 
 **Load-bearing:** eviction orders by **`ts`, never `seq`** (`seq` is per-`(series,producer)` —
 ordering by it is exactly what caused #63); `seq` is a tiebreak within an equal `ts` only.

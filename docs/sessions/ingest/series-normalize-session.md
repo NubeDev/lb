@@ -289,6 +289,9 @@ fields, not a page (as the scope says).
 
 ## Follow-ups (not this slice)
 
+All of the below, plus the three "suite could not see it" bugs as a class, are tracked in
+[#108](https://github.com/NubeDev/lb/issues/108).
+
 - **Per-series filter counters.** Currently per-pass/per-reason, as decided. Per-series granularity
   ships with the "series.list shows sizes" observability slice.
 - **Remove the rubix-ai `[patch]`** once this is merged, tagged, and pinned — it is a trap left

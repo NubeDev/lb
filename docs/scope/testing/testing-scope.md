@@ -81,6 +81,10 @@ not done until these exist where they apply:
    durable state is lost (stateless-extension principle).
 5. **Regression tests.** Every bug fix adds a test that **fails before the fix and
    passes after** (see the debug system).
+6. **Prior-state / upgrade tests.** For anything that changes a **default**, a **stored
+   shape**, or a **precedence rule**: seed the state a PREVIOUS version would have left
+   behind, then assert the new behaviour actually takes effect. A suite whose every test
+   starts from a bare host cannot see an upgrade bug — see §3.2.
 
 ---
 
@@ -113,6 +117,25 @@ seed *feeds* it.
   isolation test still proves workspace B can't see it.
 - **Test names state the behavior:** `denies_get_without_read_grant`, not `test_get_2`.
 - **Generated code is exempt** from authoring tests by hand (FILE-LAYOUT §4).
+
+### 3.2 The blind spots a green suite has
+
+Standing work to close these in CI: [#108](https://github.com/NubeDev/lb/issues/108).
+
+Real bugs that shipped past a **fully green** suite, each because the tests all shared one
+unstated assumption. These are the shapes to go looking for; they are cheap to test once named.
+
+| Blind spot | What it looks like | The test that catches it |
+|---|---|---|
+| **Every test starts from a bare host.** | A changed default is correct on a fresh install and dead on every existing one — the old value is still on disc, and if it sits at a *higher-precedence* key it wins forever. The new code reports success; the old data reports nothing. | Seed the previous version's rows/config, run boot convergence, assert the new default governs. A migration is **part of** a defaults change, not a follow-up. |
+| **A loop enumerates the outcomes that existed when it was written.** | Adding a third terminal outcome for a unit of work silently breaks every loop-termination condition that listed the old two — including ones in other crates the change never touched. | Drive **more than one batch/page** through the loop. A single-batch test passes against the bug. Grep for the counters, not the call sites. |
+| **One configuration is exercised, not the axis.** | A behaviour keyed on an exact match (a width, a version, a size) works at the tested value and silently degrades everywhere else — often falling back to something plausible and wrong. | Assert across the axis, not at one point: loop the widths/sizes and assert the property holds at each. |
+| **The boot wiring itself.** | Deleting the one line that spawns a reactor breaks **no test**. The mechanism is covered; its heartbeat is not. | Assert the property with nobody calling the verb (see the retention/drain reactors), and treat "it runs" as part of the feature. |
+
+The common thread: **a test that shares the bug's assumption cannot see the bug.** When a change
+alters a default, a precedence rule, or a set of outcomes, the first question is "what does the
+suite assume that this change just made untrue?" — and the honest answer usually needs a live run
+against a system with history on it (`verify-in-product-not-suite`).
 
 ---
 

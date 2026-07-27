@@ -83,3 +83,7 @@ code, since the bug is invisible until the loop is required to iterate. Revert-c
 When a code path gains a new terminal outcome for a unit of work, every **loop-termination
 condition** that enumerated the old outcomes is now wrong — even the ones in other crates that the
 change never touched. Grep for the counters, not for the call sites.
+
+Tracked as a class — with the two sibling bugs from the same session — in
+[#108](https://github.com/NubeDev/lb/issues/108); the shapes are catalogued in
+`scope/testing/testing-scope.md` §3.2.
