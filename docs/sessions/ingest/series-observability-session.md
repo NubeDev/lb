@@ -214,3 +214,29 @@ the producer `ext:modbus/modbus.sim-net@1000004`, recovered `modbus` from it by 
   the bus, so it is out of scope here, but anything correlating the SSE feed's producer with
   `series.stats().producers` will mismatch — and a future producer strip driven off live motion
   would silently attribute every stream to the extension root.
+
+## Released — `node-v0.12.0` (2026-07-28)
+
+Tagged from master `cce4f404` and pushed. The tag carries this slice plus three work-streams that
+were already committed-but-untagged since `node-v0.11.0` (series-normalize; the #108 testing
+hardening and its pre-cap policy-row deserialization fix; the ingest-conflict-storm retry primitive
+and per-ws drain lock), and lb #110 (`charts:`) merged into the same release.
+
+Tagging master was chosen over a cherry-picked release branch: the streams are interleaved across
+`gc.rs`, `ingest/tool.rs` and `ingest/lib.rs`, so a pick would fork history to re-resolve conflicts
+for no gain, and each stream's session doc already marks it done.
+
+Downstream: `NubeIO/rubix-ai` bumped its `lb-node` pin to this tag and dropped **two** `[patch]`
+stanzas — the expected machine-local one and a **committed** one in its `Cargo.toml` that
+`WORKFLOW-LB.md` §5 forbids and that overrode the pin regardless.
+
+Verification is recorded in full in the rubix-ai session doc. The short version: lb's **recorded
+36-test baseline** means green was never available, so all 29 observed failures were attributed
+individually — 9 missing fixture binaries (green once built), 18 baseline, 2 proved pre-existing in a
+worktree at `94a8b789`/`15f157f7`. **None attributable to this work.**
+
+One correction worth carrying forward: `flows_plc_reliability::concurrent_same_run_id` looked like a
+regression introduced by the conflict-storm commit on a single run per side, and is in fact **flaky**
+(base 3/3 fail, HEAD 2/3 pass) — consistent with this repo's own note that the 16-retry bound "was
+observed to exhaust, flakily". Worth a stabilisation pass; it will read as a regression to the next
+person who diffs it with one run.
