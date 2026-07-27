@@ -95,6 +95,36 @@ pub async fn read_rollups(
     resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))
 }
 
+/// The distinct bucket widths that actually EXIST under `prefix`, ascending.
+///
+/// Needed because a policy's declared tiers and the widths on disc can disagree: editing a policy
+/// (5-minute buckets -> 1-minute buckets) leaves the old width's rows behind, and nothing writes to
+/// that width again. Eviction is keyed by an exact `width_ms`, so those rows match no declared tier
+/// and would otherwise be retained FOREVER — unbounded growth in the feature whose job is bounding
+/// growth. `run_gc` diffs this against the policy to find them.
+///
+/// `GROUP BY` over the projected column with the ordering done in Rust — the store's aggregate rules
+/// allow grouping a projected column but ordering by it in-engine is the fragile half (same shape as
+/// `stats::producers`).
+pub async fn rollup_widths(store: &Store, ws: &str, prefix: &str) -> Result<Vec<u64>, StoreError> {
+    let mut resp = store
+        .query_ws(
+            ws,
+            &format!(
+                "SELECT width_ms FROM {ROLLUP_TABLE} \
+                 WHERE string::starts_with(series, $prefix) GROUP BY width_ms"
+            ),
+            vec![("prefix".into(), Value::String(prefix.to_string()))],
+        )
+        .await?;
+    let mut widths: Vec<u64> = resp
+        .take("width_ms")
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
+    widths.sort_unstable();
+    widths.dedup();
+    Ok(widths)
+}
+
 /// Evict a tier's rows older than `before_ts` for every series matching `prefix`. Returns evicted count.
 pub async fn evict_rollups(
     store: &Store,

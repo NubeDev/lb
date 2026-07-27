@@ -74,7 +74,7 @@ pub use rename::{rename_series, RenameError};
 pub use retention::{
     delete_policy, list_policies, resolve_policy, set_policy, Policy, Tier, RETENTION_TABLE,
 };
-pub use rollup::{read_rollups, write_rollups, RollupRow};
+pub use rollup::{read_rollups, rollup_widths, write_rollups, RollupRow};
 pub use sample::{Qos, Sample};
 pub use samples_delete::{delete_samples_by_keys, delete_samples_in_range, SampleKey};
 pub use samples_update::{update_samples, SampleUpdate};

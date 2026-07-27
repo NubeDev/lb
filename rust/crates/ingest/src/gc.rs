@@ -18,7 +18,7 @@ use crate::meta::series_names;
 use crate::page::PageError;
 use crate::pass_record::{record_pass, GcPassRecord};
 use crate::retention::{list_policies, resolve_policy, Policy};
-use crate::rollup::{evict_rollups, write_rollups, RollupRow};
+use crate::rollup::{evict_rollups, rollup_widths, write_rollups, RollupRow};
 use crate::staging::SERIES_TABLE;
 
 /// Outcome of one GC pass over a workspace.
@@ -88,6 +88,41 @@ pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, Stor
                     now_ms - tier.keep_for_ms,
                 )
                 .await?;
+            }
+        }
+
+        // ...and the widths the policy NO LONGER declares. Eviction above is keyed by an exact
+        // `width_ms`, so editing a policy (5-minute buckets -> 1-minute buckets) strands the old
+        // width's rows: nothing writes to them again and no tier ever matches them, so they were
+        // retained forever. That is unbounded growth in the feature whose entire job is bounding
+        // growth, and it is invisible until someone reads the per-tier occupancy — which is exactly
+        // how it was found (a live series showed 5-min and 15-min rows under a policy declaring only
+        // 1-min).
+        //
+        // They are DRAINED, not destroyed. Deleting them the moment a tier is dropped would make an
+        // ordinary policy edit silently destroy history that raw can no longer regenerate, so they
+        // age out on the policy's most generous declared horizon instead: bounded, and never a
+        // surprise deletion at the instant of the edit. A policy that keeps ANY tier forever states
+        // an intent to keep rollups indefinitely, so its orphans are left alone rather than being
+        // held to a horizon the policy never declared.
+        let keeps_a_tier_forever = policy.tiers.iter().any(|t| t.keep_for_ms == 0);
+        let longest_keep = policy
+            .tiers
+            .iter()
+            .map(|t| t.keep_for_ms)
+            .max()
+            .unwrap_or(0);
+        if !keeps_a_tier_forever && longest_keep > 0 && longest_keep <= now_ms {
+            let declared: Vec<u64> = policy.tiers.iter().map(|t| t.width_ms).collect();
+            let before = now_ms - longest_keep;
+            for width in rollup_widths(store, ws, &policy.prefix).await? {
+                if !declared.contains(&width) {
+                    // The SAME narrow, tested delete the declared tiers use — one exact width at a
+                    // time. A single `width_ms NOT IN [...]` statement would be tidier and is not
+                    // worth it: a deletion whose predicate is subtly wrong takes the whole table.
+                    pass.evicted_rollup +=
+                        evict_rollups(store, ws, &policy.prefix, width, before).await?;
+                }
             }
         }
     }
