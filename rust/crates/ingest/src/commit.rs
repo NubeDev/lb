@@ -227,7 +227,15 @@ pub async fn commit_batch_capped(
 
     sql.push_str("COMMIT TRANSACTION;");
 
-    store.query_ws(ws, &sql, bindings).await?;
+    // Bounded retry-on-conflict (`store::query_ws_retrying`): with ≥2 producers pushing every couple
+    // of seconds, two inline drains grab the same head-of-queue staged rows and their `BEGIN…COMMIT`
+    // blocks race on the shared `series`/`series_latest` rows — SurrealDB's optimistic MVCC aborts one
+    // with `read or write conflict … can be retried`, and the GC pass evicting raw from `series` adds a
+    // second collision surface. Retrying the WHOLE transaction is safe: it is atomic (a conflict aborts
+    // and fully rolls back — never a partial commit to reconcile) and idempotent (the samples UPSERT is
+    // keyed on `[series, producer, seq]` and it deletes exactly the staged rows it read), so a retry
+    // re-applies the batch exactly once — the same guarantee the exactly-once drain already relies on.
+    store.query_ws_retrying(ws, &sql, bindings).await?;
 
     // Label→tag conversion, once per series (post-tx: edges are derived truth, re-derivable).
     let mut labeled: HashSet<&str> = HashSet::new();

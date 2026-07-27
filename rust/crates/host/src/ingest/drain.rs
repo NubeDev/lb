@@ -21,6 +21,7 @@
 use lb_ingest::commit_batch;
 use lb_store::Store;
 
+use super::drain_lock::ws_drain_lock;
 use super::error::IngestError;
 
 /// The batch size one commit transaction drains. Kept modest so a single tx stays bounded; the
@@ -87,9 +88,28 @@ async fn drain_at_most(
     ws: &str,
     max_batches: usize,
 ) -> Result<DrainPass, IngestError> {
+    // Serialize each commit batch per workspace (WS-B, `drain_lock.rs`). Without this, a concurrent
+    // inline `ingest.write` drain and the background reactor both `SELECT` the same oldest-256 staged
+    // rows and then race to commit-delete them — one always loses with `read or write conflict`
+    // (the *continuous* storm). `commit_batch` reads its head and commits in two separate store
+    // round-trips, so holding this lock across ONE `commit_batch` makes that read+commit atomic w.r.t.
+    // other drains: no two drains ever grab the same head, so the racing pair never forms.
+    //
+    // The lock is taken PER BATCH, not across the whole pass, ON PURPOSE: the reactor's drain is
+    // unbounded (O(backlog)), and holding the lock across it would make a concurrent inline caller
+    // wait for the entire backlog — re-coupling caller latency to backlog, the exact regression the
+    // drain-backpressure fix removed (`debugging/ingest/write-drains-whole-workspace-backlog.md`). At
+    // batch granularity the reactor releases between batches, so an inline caller waits at most ONE
+    // batch. This does NOT move commits off the caller path (the write-then-read round-trip still runs
+    // inline). WS-A's retry still covers the drain-vs-GC collision this lock does not see.
+    let lock = ws_drain_lock(ws);
+
     let mut out = DrainPass::default();
     for _ in 0..max_batches {
-        let pass = commit_batch(store, ws, COMMIT_BATCH).await?;
+        let pass = {
+            let _guard = lock.lock().await;
+            commit_batch(store, ws, COMMIT_BATCH).await?
+        };
         // Stop on "nothing was DEQUEUED", not on "nothing was committed". A batch the operator's own
         // filter discarded entirely commits zero rows while consuming a full 256 — stopping there
         // would abandon the rest of the backlog and re-create the drain-backpressure stall through a

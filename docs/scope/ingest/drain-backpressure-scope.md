@@ -148,6 +148,18 @@ explicit bound, don't hide it.
   **safe by the existing design** — the staged row is deleted in the same transaction as the series
   upsert, so the loser of a race commits nothing and re-reads next pass. Prove this, don't assume it
   (see testing plan).
+
+  > **Update 2026-07-27 (ingest-conflict-storm).** "Safe" held for *exactly-once* but not for the
+  > loser's *error*: SurrealDB aborts the losing tx with a retryable `read or write conflict` that
+  > the ingest path did not retry, so it surfaced as a live 502 storm and dropped that batch
+  > (a permanent raw-series gap). Two changes make the race a non-event: (WS-A) `series`-family
+  > mutations now run through `store::query_ws_retrying`, which re-runs a retryable conflict — the
+  > commit tx is atomic + idempotent, so a retry re-applies exactly once; (WS-B) drains are now
+  > **serialized per workspace, per commit batch** (`host/src/ingest/drain_lock.rs`), so a write's
+  > bounded drain and the reactor tick no longer grab the same staging head at all. The lock is taken
+  > per batch, not per pass, so the reactor's unbounded drain never blocks an inline caller for more
+  > than one batch (the backpressure guarantee above is preserved). See
+  > `debugging/ingest/2026-07-27-ingest-write-conflict-storm.md`.
 - **Secrets:** N/A.
 - **One responsibility per file:** `ingest/drain.rs` grows `drain_workspace_bounded` beside
   `drain_workspace` (one verb, two bounds — same responsibility); the driver is its own

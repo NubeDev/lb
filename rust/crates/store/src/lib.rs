@@ -9,6 +9,7 @@
 
 mod capped;
 mod compact;
+mod conflict;
 mod create;
 mod delete;
 mod graph;

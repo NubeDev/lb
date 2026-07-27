@@ -228,8 +228,12 @@ async fn evict_raw(
     series: &str,
     cutoff: u64,
 ) -> Result<usize, StoreError> {
+    // Retry-on-conflict: this DELETE over `series` races the inline drains' `series` upserts under
+    // SurrealDB's optimistic MVCC (drain-vs-GC — the periodic collision surface WS-B's per-ws drain
+    // lock does NOT cover). The count+delete is a single idempotent pass, so a retried run evicts the
+    // same rows exactly once.
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT count() FROM {SERIES_TABLE} WHERE series = $series \

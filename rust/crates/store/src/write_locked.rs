@@ -26,6 +26,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use serde_json::Value;
 use tokio::sync::Mutex as AsyncMutex;
 
+use crate::conflict::{conflict_backoff, is_retryable_conflict, MAX_CONFLICT_RETRIES};
 use crate::open::{Store, StoreError};
 use crate::write::write;
 
@@ -40,19 +41,6 @@ fn key_lock(ws: &str, table: &str, id: &str) -> Arc<AsyncMutex<()>> {
         .entry(composite)
         .or_insert_with(|| Arc::new(AsyncMutex::new(())))
         .clone()
-}
-
-/// How many times a conflicting rev-bump is retried before surfacing the error. High enough that a
-/// realistic contention burst lands; low enough to never spin.
-const MAX_CONFLICT_RETRIES: usize = 16;
-
-/// True when a [`StoreError`] is SurrealDB's retryable optimistic-transaction conflict. Matched on the
-/// message because SurrealDB exposes no typed variant through this surface (same matcher as `capped`).
-fn is_retryable_conflict(e: &StoreError) -> bool {
-    let m = e.to_string();
-    m.contains("can be retried")
-        || m.contains("read or write conflict")
-        || m.contains("Invalid revision")
 }
 
 /// Conflict-safe upsert of `value` at `table:id` in workspace `ws`. Serializes same-record writers
@@ -76,10 +64,7 @@ pub async fn write_locked(
             Ok(()) => return Ok(()),
             Err(e) if is_retryable_conflict(&e) && attempt < MAX_CONFLICT_RETRIES => {
                 attempt += 1;
-                // Escalating sub-millisecond backoff so a burst desynchronizes rather than livelocks
-                // (a bare retry lets the same two re-collide on the next tick). Same shape as capped.
-                let backoff = std::time::Duration::from_micros(50 * (1 << attempt.min(6)) as u64);
-                tokio::time::sleep(backoff).await;
+                tokio::time::sleep(conflict_backoff(attempt)).await;
             }
             Err(e) => return Err(e),
         }

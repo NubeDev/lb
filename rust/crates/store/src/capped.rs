@@ -49,6 +49,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use serde_json::Value;
 use tokio::sync::Mutex as AsyncMutex;
 
+use crate::conflict::{conflict_backoff, is_retryable_conflict, MAX_CONFLICT_RETRIES};
 use crate::open::{Store, StoreError};
 use crate::taint::mark_store_written;
 
@@ -151,11 +152,7 @@ pub async fn capped_insert(
             Ok(_) => break,
             Err(e) if is_retryable_conflict(&e) && attempt < MAX_CONFLICT_RETRIES => {
                 attempt += 1;
-                // Escalating backoff so a burst of conflicting transactions DESYNCHRONIZES rather than
-                // livelocking (a bare yield lets the same two re-collide on the next tick). The sleep
-                // is sub-millisecond at first and stays small; a capped write is off the hot path.
-                let backoff = std::time::Duration::from_micros(50 * (1 << attempt.min(6)) as u64);
-                tokio::time::sleep(backoff).await;
+                tokio::time::sleep(conflict_backoff(attempt)).await;
             }
             Err(e) => return Err(e),
         }
@@ -163,19 +160,6 @@ pub async fn capped_insert(
     // A capped write mutates the store (no-op outside a dispatch taint scope).
     mark_store_written();
     Ok(())
-}
-
-/// How many times a conflicting insert+trim is retried before giving up. A telemetry write is
-/// fire-and-forget, so a give-up drops one sampled row (acceptable); this bound is high enough that a
-/// realistic contention burst lands and low enough to never spin.
-const MAX_CONFLICT_RETRIES: usize = 16;
-
-/// True when a [`StoreError`] is SurrealDB's retryable optimistic-transaction conflict (the engine
-/// explicitly says "This transaction can be retried"). Matched on the message because SurrealDB does
-/// not expose a typed variant for it through this surface.
-fn is_retryable_conflict(e: &StoreError) -> bool {
-    let m = e.to_string();
-    m.contains("can be retried") || m.contains("read or write conflict")
 }
 
 /// Mint a fresh ULID string — the recommended record id + FIFO ordering key for a capped table.

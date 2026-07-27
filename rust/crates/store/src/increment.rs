@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use tokio::sync::Mutex as AsyncMutex;
 
+use crate::conflict::{conflict_backoff, is_retryable_conflict, MAX_CONFLICT_RETRIES};
 use crate::open::{Store, StoreError};
 use crate::record::FIRST_REV;
 use crate::taint::mark_store_written;
@@ -35,18 +36,6 @@ fn key_lock(ws: &str, table: &str, id: &str) -> Arc<AsyncMutex<()>> {
         .entry(composite)
         .or_insert_with(|| Arc::new(AsyncMutex::new(())))
         .clone()
-}
-
-/// How many times a conflicting accumulate is retried before surfacing the error (matches
-/// `write_locked`). With the per-key lock held this is only a cross-key/reader conflict the lock can't
-/// see; a short bounded retry absorbs it.
-const MAX_CONFLICT_RETRIES: usize = 16;
-
-fn is_retryable_conflict(e: &StoreError) -> bool {
-    let m = e.to_string();
-    m.contains("can be retried")
-        || m.contains("read or write conflict")
-        || m.contains("Invalid revision")
 }
 
 /// Atomically add `by` to `table:id`'s `data.count` in workspace `ws`, returning the new total. When
@@ -112,8 +101,7 @@ pub async fn increment(
             }
             Err(e) if is_retryable_conflict(&e) && attempt < MAX_CONFLICT_RETRIES => {
                 attempt += 1;
-                let backoff = std::time::Duration::from_micros(50 * (1 << attempt.min(6)) as u64);
-                tokio::time::sleep(backoff).await;
+                tokio::time::sleep(conflict_backoff(attempt)).await;
             }
             Err(e) => return Err(e),
         }

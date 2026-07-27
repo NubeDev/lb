@@ -230,4 +230,41 @@ impl Store {
         drop(guard);
         Ok(ScopedResponse(resp))
     }
+
+    /// [`query_ws`] wrapped in the crate's bounded retry-on-conflict (`conflict.rs`). Identical
+    /// signature and result on success; the ONLY difference is that a SurrealDB **retryable**
+    /// optimistic-transaction abort (`read or write conflict … can be retried`) is re-run — up to
+    /// [`MAX_CONFLICT_RETRIES`](crate::conflict) times, with the shared jittered backoff so two
+    /// collided writers desynchronize rather than re-collide — instead of surfacing. A non-retryable
+    /// error returns immediately, unchanged.
+    ///
+    /// Use this for a `series`-table MUTATION that runs concurrently with other writers or the GC
+    /// pass (ingest `commit_batch`, raw/rollup eviction). It is safe to wrap a whole `BEGIN…COMMIT`
+    /// here because a retried transaction is **atomic** (a conflict aborts and fully rolls back — no
+    /// partial state to reconcile) and the ingest writes are **idempotent** (the commit UPSERTs keyed
+    /// on `[series, producer, seq]` and deletes exactly the staged rows it read), so a retry
+    /// re-applies the batch exactly once — the same exactly-once guarantee the drain already relies
+    /// on. A plain read (e.g. the drain `SELECT`) does not need this.
+    pub async fn query_ws_retrying(
+        &self,
+        ws: &str,
+        sql: &str,
+        bindings: Vec<(String, serde_json::Value)>,
+    ) -> Result<ScopedResponse, StoreError> {
+        use crate::conflict::{conflict_backoff, is_retryable_conflict, MAX_CONFLICT_RETRIES};
+
+        let mut attempt = 0;
+        loop {
+            // `bindings` is consumed by `query_ws`, so re-clone per attempt. Cheap next to a store
+            // round-trip, and only paid on the rare retry path.
+            match self.query_ws(ws, sql, bindings.clone()).await {
+                Ok(resp) => return Ok(resp),
+                Err(e) if is_retryable_conflict(&e) && attempt < MAX_CONFLICT_RETRIES => {
+                    attempt += 1;
+                    tokio::time::sleep(conflict_backoff(attempt)).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
 }

@@ -19,6 +19,7 @@
 mod authorize;
 mod delete;
 mod drain;
+mod drain_lock;
 mod drain_reactor;
 mod error;
 mod find;
