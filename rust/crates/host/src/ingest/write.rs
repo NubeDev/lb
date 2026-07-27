@@ -51,6 +51,44 @@ fn root_producer(principal_sub: &str, declared: &str) -> String {
     }
 }
 
+/// The principal-sub prefix an extension acts under. `tool_call::build_call_context` derives every
+/// extension call's principal as `ext:{ext_id}`, so a sample written BY an extension is stamped with
+/// a producer rooted there. This constant is the grammar, not a name: the host learns "this producer
+/// is an extension, and its id is X" without ever knowing which extensions exist.
+const EXT_ROOT: &str = "ext:";
+
+/// The authenticated root of a stored producer id — everything before the one separator.
+///
+/// The inverse of [`root_producer`], and deliberately in the same file: these two are one grammar,
+/// and splitting them across modules is how a writer and a reader come to disagree. `root_producer`
+/// guarantees at most ONE separator (it collapses declared `/` to `-`), so a plain `split_once` is
+/// exact — there is no ambiguity about which slash is the root boundary.
+pub fn producer_root(producer: &str) -> &str {
+    producer
+        .split_once(NS_SEP)
+        .map_or(producer, |(root, _)| root)
+}
+
+/// The caller-declared leaf beneath the principal root, or `""` when the caller declared nothing.
+///
+/// This is the producer's OWN id for its stream (modbus writes e.g. `modbus.plant-b@7`), which is
+/// what a producer needs handed back to it to answer a question about that specific stream — it
+/// never saw the root the host stamped on.
+pub fn producer_leaf(producer: &str) -> &str {
+    producer.split_once(NS_SEP).map_or("", |(_, leaf)| leaf)
+}
+
+/// The extension id a producer is rooted at, or `None` when it is not an extension's stream.
+///
+/// A producer rooted at `user:ada` or an api key has no extension behind it to ask anything of, and
+/// that is a first-class answer, not a failure — most series in a workspace are written by humans,
+/// flows, or webhooks. Rule 10: the id is READ OUT of the principal grammar, never matched against a
+/// list of known extensions.
+pub fn producer_ext_id(producer: &str) -> Option<&str> {
+    let ext = producer_root(producer).strip_prefix(EXT_ROOT)?;
+    (!ext.is_empty()).then_some(ext)
+}
+
 /// Append `samples` to `ws`'s staging as `principal`. Authorizes `ingest.write` first, then stamps
 /// the authenticated producer root onto every sample (preserving any caller-declared sub-namespace
 /// beneath it). Returns the count accepted (committed later by the drain worker / `commit_batch`).
@@ -114,6 +152,52 @@ mod tests {
                 "{forged:?} forged extra namespace depth -> {got}"
             );
         }
+    }
+
+    /// The reader is the exact inverse of the writer, for every shape the writer can emit. If these
+    /// two ever disagree the producer strip attributes a stream to the wrong extension — or to none.
+    #[test]
+    fn the_reader_inverts_the_writer() {
+        for (sub, declared) in [
+            ("ext:modbus", "modbus.sim-net@1784031000"),
+            ("ext:modbus", ""),
+            ("user:ada", "gw-alpha"),
+            ("user:ada", ""),
+            ("apikey:gw-1", "shed-3"),
+        ] {
+            let stored = root_producer(sub, declared);
+            assert_eq!(producer_root(&stored), sub, "root of {stored}");
+        }
+    }
+
+    #[test]
+    fn the_leaf_is_what_the_producer_itself_declared() {
+        let stored = root_producer("ext:modbus", "modbus.sim-net@1784031000");
+        // What we hand back to the extension: its OWN id for the stream. It never saw the root.
+        assert_eq!(producer_leaf(&stored), "modbus.sim-net@1784031000");
+        // A caller that declared nothing has no leaf — and "" is not a stream id, it is absence.
+        assert_eq!(producer_leaf("ext:modbus"), "");
+    }
+
+    /// Rule 10: the id is read OUT of the identity grammar. There is no list of known extensions
+    /// anywhere in this function, so a new extension needs no core change to be recognised.
+    #[test]
+    fn only_an_extension_rooted_producer_yields_an_ext_id() {
+        assert_eq!(
+            producer_ext_id("ext:modbus/modbus.sim-net@1"),
+            Some("modbus")
+        );
+        assert_eq!(producer_ext_id("ext:modbus"), Some("modbus"));
+        assert_eq!(producer_ext_id("ext:weather"), Some("weather"));
+        // Humans, agents and api keys write series too — "not an extension" is a first-class answer.
+        assert_eq!(producer_ext_id("user:ada/gw-alpha"), None);
+        assert_eq!(producer_ext_id("agent:reporter"), None);
+        assert_eq!(producer_ext_id("apikey:gw-1/shed-3"), None);
+        // The prefix ANCHORS — a principal that merely contains "ext:" is not an extension.
+        assert_eq!(producer_ext_id("user:ext:sneaky"), None);
+        // A bare prefix names no extension.
+        assert_eq!(producer_ext_id("ext:"), None);
+        assert_eq!(producer_ext_id("ext:/leaf"), None);
     }
 
     /// The regression this fixes: two epochs of ONE extension must be DIFFERENT producers, so a

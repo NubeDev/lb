@@ -16,6 +16,7 @@ use crate::bucket::{read_buckets, BucketQuery};
 use crate::cap::{cap_cutoff_ms, cap_series, over_cap_warning, sample_count};
 use crate::meta::series_names;
 use crate::page::PageError;
+use crate::pass_record::{record_pass, GcPassRecord};
 use crate::retention::{list_policies, resolve_policy, Policy};
 use crate::rollup::{evict_rollups, write_rollups, RollupRow};
 use crate::staging::SERIES_TABLE;
@@ -48,6 +49,7 @@ pub struct GcPass {
 /// bound win *by accident*; with a count cap that ambiguity evicts real rows, so the precedence is
 /// specified here rather than left emergent (a latent bug in the shipped GC, fixed with this slice).
 pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, StoreError> {
+    let started = std::time::Instant::now();
     let mut pass = GcPass::default();
     let policies = list_policies(store, ws).await?;
     for policy in &policies {
@@ -93,6 +95,18 @@ pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, Stor
     // Series no policy covers: unbounded, and in this release only WARNED about (see
     // `DEFAULT_MAX_SAMPLES`) — release 2 flips them to bounded-by-default.
     pass.warnings = warn_unpoliced(store, ws, &policies).await?;
+
+    // Record the pass — UNCONDITIONALLY, even when it evicted nothing. `run_gc` (not the reactor)
+    // owns this write so the on-demand `series.retention.gc` verb and the periodic reactor record
+    // through ONE path; recording in the reactor would let a manual GC leave the status stale.
+    //
+    // Do NOT make this conditional on `evicted_raw > 0` (or any other "did something" test): a
+    // healthy idle node would then show a frozen `last_run_ms` and be indistinguishable from a node
+    // whose reactor died. That is the single behaviour in this feature that is easiest to implement
+    // backwards, and `idle_pass_still_stamps_last_run_ms` is the test that holds it.
+    let elapsed = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+    record_pass(store, ws, &GcPassRecord::new(&pass, now_ms, elapsed)).await?;
+
     Ok(pass)
 }
 

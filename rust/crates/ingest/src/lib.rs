@@ -34,6 +34,7 @@ mod meta;
 mod method;
 mod overflow;
 mod page;
+mod pass_record;
 mod read;
 mod rename;
 mod retention;
@@ -43,6 +44,7 @@ mod samples_delete;
 mod samples_update;
 mod schema;
 mod staging;
+mod stats;
 mod write;
 
 pub use bucket::{
@@ -64,6 +66,9 @@ pub use overflow::{enforce_bound, OverflowPolicy};
 pub use page::{
     read_page, Direction, Page, PageError, PageQuery, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
+pub use pass_record::{
+    last_pass, record_pass, GcPassRecord, GC_PASS_ID, GC_PASS_TABLE, MAX_STORED_WARNINGS,
+};
 pub use read::read;
 pub use rename::{rename_series, RenameError};
 pub use retention::{
@@ -75,4 +80,5 @@ pub use samples_delete::{delete_samples_by_keys, delete_samples_in_range, Sample
 pub use samples_update::{update_samples, SampleUpdate};
 pub use schema::{ensure_series_schema, ROLLUP_TABLE, SERIES_META_TABLE};
 pub use staging::{DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
+pub use stats::{series_producers, series_stats, SeriesStats, TierRows};
 pub use write::write;

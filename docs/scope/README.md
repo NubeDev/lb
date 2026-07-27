@@ -495,6 +495,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
   emitting an ingest `Sample`, wrapped by a generic flow `webhook` source node; no provider nodes),
+  and `series-observability-scope.md` — the **read-back half** of retention: `series.stats` (per-series
+  raw/rolled-up counts, first/last ts, producer set) and `series.retention.status` (the **effective**
+  policy after longest-prefix resolution, with `matched_prefix` named, plus the last GC pass). Today
+  the whole retention plane's only observable surface is `eprintln!` — `run_gc` returns a pass summary
+  that the reactor logs and **drops**, so a downstream product can prove retention in a test but cannot
+  show an operator it is working on their node. Persists the pass as ONE upserted row per ws (written
+  by `run_gc`, so the on-demand verb and the reactor record through one path), and an **idle pass still
+  stamps the time** or a healthy node reads as a dead reactor. Single-subject by design: an all-series
+  count mode is the fan-out that caused the `node-v0.11.0` stall. Consumer: rubix-ai's Ingest health panel,
   and `series-sample-cap-scope.md` — a **per-series FIFO sample cap** (`max_samples` on the retention
   policy, evict-oldest-by-`ts`), the **missing GC driver** (`run_gc` is called only by tests and the
   on-demand verb — nothing ticks it at boot, so shipped time-based retention never actually runs),

@@ -34,7 +34,7 @@ pub async fn call_ingest_tool(
                 .map_err(|e| ToolError::BadInput(format!("samples: {e}")))?;
             let n = ingest_write(store, principal, ws, samples)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             // Drain staging → the committed `series` table so the just-written sample is visible to
             // the very next `series.latest`/`read` over THIS same bridge — the round-trip the
             // proof-panel page proves; the gateway's own `POST /ingest` route drains for the same
@@ -50,7 +50,7 @@ pub async fn call_ingest_tool(
             // The background ingest reactor drains the remainder off every caller's path.
             let pass = drain_workspace_bounded(store, ws, own_batches(n))
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             // `accepted` counts what reached STAGING — acceptance is deliberately unfiltered (the
             // filter is a commit-time decision, drain-backpressure scope). So a producer whose
             // samples the operator's own policy discards would otherwise see `accepted: 4` and find
@@ -80,20 +80,36 @@ pub async fn call_ingest_tool(
                 .map_err(|e| ToolError::BadInput(format!("policy: {e}")))?;
             super::series_retention_set(store, principal, ws, &policy)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!({ "ok": true }))
         }
         "series.retention.list" => {
             let policies = super::series_retention_list(store, principal, ws)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!({ "policies": policies }))
+        }
+        "series.stats" => {
+            let series = str_arg(input, "series")?;
+            let stats = super::series_stats_get(store, principal, ws, series)
+                .await
+                .map_err(ingest_error_to_tool)?;
+            Ok(json!(stats))
+        }
+        "series.retention.status" => {
+            // ONE subject arg, which may be a full series id OR a bare prefix — longest-prefix
+            // resolution is the same operation either way, so both callers share one code path.
+            let series = str_arg(input, "series")?;
+            let status = super::series_retention_status(store, principal, ws, series)
+                .await
+                .map_err(ingest_error_to_tool)?;
+            Ok(json!(status))
         }
         "series.retention.delete" => {
             let prefix = str_arg(input, "prefix")?;
             super::series_retention_delete(store, principal, ws, prefix)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!({ "ok": true }))
         }
         "series.retention.gc" => {
@@ -101,21 +117,21 @@ pub async fn call_ingest_tool(
             let now_ms = u64_arg(input, "now_ms").unwrap_or_else(now_wall_ms);
             let pass = super::series_retention_gc(store, principal, ws, now_ms)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!(pass))
         }
         "series.latest" => {
             let series = str_arg(input, "series")?;
             let last = series_latest_value(store, principal, ws, series)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!({ "sample": last }))
         }
         "series.latest_many" => {
             let names = string_arr(input, "series")?;
             let pairs = series_latest_many(store, principal, ws, &names)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             // `{ latest: { name: Sample|null } }` — every requested name present, absent → null, so
             // the caller reconciles nothing (parity with single series.latest's null contract).
             let latest: serde_json::Map<String, Value> = pairs
@@ -128,7 +144,7 @@ pub async fn call_ingest_tool(
             let series = str_arg(input, "series")?;
             super::series_delete(store, principal, ws, series)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!({ "ok": true }))
         }
         "series.rename" => {
@@ -136,14 +152,14 @@ pub async fn call_ingest_tool(
             let to = str_arg(input, "to")?;
             super::series_rename(store, principal, ws, from, to)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!({ "ok": true }))
         }
         "series.find" => {
             let facets = facets(input)?;
             let hits = super::series_find(store, principal, ws, &facets)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!({ "series": hits }))
         }
         "series.list" => {
@@ -151,7 +167,7 @@ pub async fn call_ingest_tool(
             let prefix = input.get("prefix").and_then(|v| v.as_str()).unwrap_or("");
             let names = super::series_list(store, principal, ws, prefix)
                 .await
-                .map_err(ingest_to_tool)?;
+                .map_err(ingest_error_to_tool)?;
             Ok(json!({ "series": names }))
         }
         _ => Err(ToolError::NotFound),
@@ -187,7 +203,7 @@ async fn read_rows(
     };
     let page = super::series_read_page(store, principal, ws, series, &q)
         .await
-        .map_err(ingest_to_tool)?;
+        .map_err(ingest_error_to_tool)?;
     Ok(json!({
         "samples": page.rows,
         "next_cursor": page.next_cursor,
@@ -222,7 +238,7 @@ async fn read_buckets_mode(
     let (buckets, resolved) =
         super::series_read_buckets(store, principal, ws, series, &q, width, method)
             .await
-            .map_err(ingest_to_tool)?;
+            .map_err(ingest_error_to_tool)?;
     // Report the method back: a caller that relied on the tier's default should never have to guess
     // which one produced the `value` column it is charting.
     Ok(json!({
@@ -242,7 +258,10 @@ fn now_wall_ms() -> u64 {
 
 /// Map the ingest gate's outcome onto the MCP tool error. `Denied` stays `Denied` (no existence
 /// signal); a store/input error surfaces as `Extension`/`BadInput`.
-fn ingest_to_tool(e: IngestError) -> ToolError {
+/// Map the ingest service's error onto the MCP one. `pub(crate)` because `series.producer.health`
+/// is dispatched from `tool_call` (it needs the node, not just the store) and must map its denial
+/// through the SAME function — a second mapper is how "denied" comes to mean two things.
+pub(crate) fn ingest_error_to_tool(e: IngestError) -> ToolError {
     match e {
         IngestError::Denied => ToolError::Denied,
         IngestError::BadInput(m) => ToolError::BadInput(m),

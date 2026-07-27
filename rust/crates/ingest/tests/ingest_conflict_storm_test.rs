@@ -108,7 +108,11 @@ async fn serialized_drains_are_exactly_once() {
 
     let rows = read(&store, WS, SERIES, None, None).await.unwrap();
     let expected = (PRODUCERS * PER_PRODUCER) as usize;
-    assert_eq!(rows.len(), expected, "no gap and no duplicate in the series");
+    assert_eq!(
+        rows.len(),
+        expected,
+        "no gap and no duplicate in the series"
+    );
     for p in 0..PRODUCERS {
         let producer = format!("p{p}");
         let mut seqs: Vec<u64> = rows

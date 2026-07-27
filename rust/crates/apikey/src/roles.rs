@@ -38,6 +38,14 @@ const APIKEY_READ_CAPS: &[&str] = &[
     "mcp:series.read:call",
     "mcp:series.latest:call",
     "mcp:series.find:call",
+    // How much of its own data a series actually holds — the same data-plane read tier as the four
+    // above, so a polling appliance can see its own retention sawtooth without an admin cap
+    // (series-observability scope). Deliberately NOT `series.retention.status`: that is admin-plane.
+    "mcp:series.stats:call",
+    // ...and what the producers of that series say about themselves. Same tier, same reasoning; the
+    // per-extension fan-out is re-gated under the key's own caps, so this cannot reach an extension
+    // tool the key could not already call.
+    "mcp:series.producer.health:call",
     // dashboards / panels / reports the key renders (a LENS; sources re-check per call).
     "mcp:dashboard.get:call",
     "mcp:dashboard.list:call",

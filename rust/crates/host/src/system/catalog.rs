@@ -731,9 +731,28 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "list the workspace's series retention policies",
     },
     HostTool {
+        tool: "series.retention.status",
+        group: "series",
+        description: "the retention policy in force for ONE series or prefix after longest-prefix \
+                      resolution (with the winning prefix named), plus the workspace's last GC pass",
+    },
+    HostTool {
         tool: "series.retention.delete",
         group: "series",
         description: "delete a series retention policy (revert to keep-forever)",
+    },
+    HostTool {
+        tool: "series.stats",
+        group: "series",
+        description: "what ONE series holds: raw vs rolled-up counts, first/last sample time, and \
+                      the producers writing to it (single-subject — never fan this out)",
+    },
+    HostTool {
+        tool: "series.producer.health",
+        group: "series",
+        description: "ask the producers of ONE series what they report about their own ingest \
+                      (discovered by tool-name convention; a producer that is not an extension, or \
+                      declares no health tool, says so rather than looking healthy)",
     },
     HostTool {
         tool: "series.retention.gc",

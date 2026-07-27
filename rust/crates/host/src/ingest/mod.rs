@@ -25,12 +25,15 @@ mod error;
 mod find;
 mod list;
 mod motion;
+mod producer_health;
 mod read;
 mod rename;
 mod retention;
 mod retention_reactor;
+mod retention_status;
 mod samples_delete;
 mod samples_update;
+mod stats;
 mod tool;
 mod write;
 
@@ -42,6 +45,10 @@ pub use error::IngestError;
 pub use find::series_find;
 pub use list::{series_list, MAX_SERIES_LIST};
 pub use motion::{publish_sample, subscribe_series, SeriesSub};
+pub use producer_health::{
+    series_producer_health, HealthState, ProducerDetail, ProducerHealth, ProducerReport,
+    SeriesProducerHealth, PRODUCER_HEALTH_TOOL,
+};
 pub use read::{
     series_latest_many, series_latest_value, series_read_buckets, series_read_page,
     series_read_range,
@@ -51,9 +58,12 @@ pub use retention::{
     series_retention_delete, series_retention_gc, series_retention_list, series_retention_set,
 };
 pub use retention_reactor::{spawn_retention_reactors, RETENTION_PERIOD};
+pub use retention_status::{series_retention_status, RetentionStatus};
 pub use samples_delete::series_samples_delete;
 pub use samples_update::series_samples_update;
+pub use stats::series_stats_get;
 pub use tool::call_ingest_tool;
+pub(crate) use tool::ingest_error_to_tool;
 pub use write::{ingest_write, DEFAULT_STAGING_BOUND};
 
 // Re-export the wire envelope so host callers / tests use one `Sample`/`Qos` type.

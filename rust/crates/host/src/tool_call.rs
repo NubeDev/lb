@@ -797,6 +797,20 @@ pub(crate) async fn run_host_verb(
         || qualified_tool.starts_with("history.")
     {
         call_undo_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "series.producer.health" {
+        // The one `series.*` verb that is NOT a pure store read, so it is dispatched HERE rather
+        // than in `call_ingest_tool` (which holds only a `&Store`): it needs the registry to
+        // discover which extensions declare the health convention, and it RE-ENTERS this dispatcher
+        // once per producing extension under the caller's own authority — so `depth` is threaded
+        // through exactly as the `viz.` resolver does. Its own gate runs inside the verb.
+        let series = input
+            .get("series")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::BadInput("missing/!string arg: series".into()))?;
+        let health = crate::ingest::series_producer_health(node, principal, ws, series, depth)
+            .await
+            .map_err(crate::ingest::ingest_error_to_tool)?;
+        serde_json::to_value(health).map_err(|e| ToolError::Extension(e.to_string()))?
     } else if qualified_tool.starts_with("cache.") {
         // response-cache scope: the `cache.stats` / `cache.purge` admin verbs, reached over the
         // one MCP bridge like every host-native verb. The outer gate ran `mcp:cache.<verb>:call`;

@@ -106,6 +106,9 @@ pub const RESERVED_TABLES: &[&str] = &[
     "series_meta",
     "series_rollup",
     "series_retention",
+    // The last retention GC pass, one row per workspace — host bookkeeping written by `run_gc`
+    // alone, read by `series.retention.status` (series-observability scope).
+    "series_gc_pass",
     "ingest_staging",
     "ingest_dead_letter",
     // -- durable motion (inbox/outbox/jobs) + reminders --

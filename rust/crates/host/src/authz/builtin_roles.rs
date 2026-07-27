@@ -194,6 +194,18 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:series.find:call",
     "mcp:series.list:call",
     "mcp:series.watch:call",
+    // Sample statistics for ONE series (counts, extent, producers) — a data-plane READ about the
+    // samples a viewer can already read, so it sits on this tier and NOT with retention
+    // administration. That split is deliberate: it is what lets a client degrade per fact and still
+    // show counts + freshness when the admin-plane `series.retention.status` is refused
+    // (series-observability scope).
+    "mcp:series.stats:call",
+    // What the PRODUCERS of a series report about their own ingest. Same data-plane tier and the
+    // same argument as `series.stats`: it is a read about samples the viewer can already see, and
+    // the fan-out it performs is re-gated per extension under the CALLER's own principal, so this
+    // grant widens nothing on its own — a viewer without `mcp:<ext>.ingest.health:call` gets rows
+    // that say `denied`, which is the honest answer (series-observability scope, slice D).
+    "mcp:series.producer.health:call",
     // documents READ (a viewer reads shared docs; put_doc is author).
     "mcp:assets.get_doc:call",
     "mcp:assets.list_docs:call",
@@ -591,6 +603,10 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // administration, never an author privilege (series-retention scope).
     "mcp:series.retention.set:call",
     "mcp:series.retention.list:call",
+    // Reading the policy in force + the last GC pass is the READ half of that same administration
+    // (it reveals the workspace's retention configuration and bookkeeping), so it is granted here
+    // alongside `.list` rather than on the viewer tier (series-observability scope).
+    "mcp:series.retention.status:call",
     "mcp:series.retention.gc:call",
     // series lifecycle — destroying or renaming a whole series (across every producer's history) is
     // the same workspace-data-administration privilege as retention, never an author one.

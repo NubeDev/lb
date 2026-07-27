@@ -47,6 +47,7 @@ pub const RESERVED_CORE_TABLES: &[&str] = &[
     "role",
     "rule",
     "secret",
+    "series_gc_pass",
     "series_retention",
     "tag",
     "tagged",
