@@ -49,6 +49,7 @@ async fn tiered(
                 width_ms: width,
                 keep_for_ms: 0,
                 method,
+                ..Default::default()
             }],
             filter: None,
             ..Default::default()
@@ -71,6 +72,7 @@ async fn buckets(
         to_ts: to,
         width_ms: Some(width),
         budget: None,
+        ..Default::default()
     };
     read_buckets(store, ws, series, &q, width).await.unwrap()
 }

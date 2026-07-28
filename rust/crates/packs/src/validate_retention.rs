@@ -24,6 +24,20 @@ pub fn lint(policies: &[RetentionPolicy]) -> Vec<Finding> {
     // closed-struct trap. Named here, at validate time, where the author is still looking.
     for policy in policies {
         for tier in &policy.tiers {
+            // ERROR — a zero-width tier describes no bucket at all, so nothing can ever fold into
+            // it and its grid arithmetic is a division by zero. `series.retention.set` refuses one;
+            // catching it here means the author sees it while they are still looking, rather than
+            // the apply failing opaquely on a line they cannot see.
+            if tier.width_ms == 0 {
+                out.push(Finding {
+                    error: true,
+                    message: format!(
+                        "retention '{}': a tier's width_ms must be > 0 — a zero-width tier \
+                         describes no bucket",
+                        policy.prefix
+                    ),
+                });
+            }
             if let Some(m) = &tier.method {
                 if !METHODS.contains(&m.as_str()) {
                     out.push(Finding {

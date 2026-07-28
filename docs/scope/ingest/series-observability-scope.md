@@ -303,3 +303,75 @@ Every question this scope opened is resolved below, with the reasoning, as built
     Implemented by diffing `rollup_widths()` against the policy and reusing the SAME narrow per-width
     delete the declared tiers use. A single `width_ms NOT IN [...]` statement would read better and
     was rejected deliberately: a deletion whose predicate is subtly wrong takes the whole table.
+
+21. **A rollup tier can declare WHERE its buckets start, and the anchor is a fixed offset — not a
+    timezone (`node-v0.14.0`, issue #111).** Bucket boundaries were `ts / width_ms * width_ms`:
+    anchored to the UTC epoch and nothing else. That is *correct* for every width that divides a day
+    — epoch 0 IS midnight UTC, so 1/5/15-minute and hourly tiers already land on clean wall-clock
+    boundaries, and since every real UTC offset is a whole number of quarter-hours they land cleanly
+    in local time too. This decision does not touch that; a tier with no `align` is byte-identical to
+    what shipped.
+
+    What was not expressible: a daily tier at LOCAL midnight (on a UTC+10 site a "daily" bucket ran
+    10:00→10:00 local), a shift boundary, and any meaningful grid for a width whose phase the epoch
+    cannot produce. And the guarantee itself was undocumented — folklore that happened to be right.
+
+    `Tier.align = Option<Align { origin_ms: i64 }>`, and a bucket containing `ts` starts at
+    `origin_ms + floor((ts - origin_ms) / width_ms) * width_ms`.
+
+    **DST was the real fork, and it is decided: fixed offset only.** A fixed `origin_ms` cannot follow
+    a daylight-saving jump, so a "daily" bucket in a DST zone drifts by an hour twice a year. The
+    alternative is a real IANA zone, which means a **variable-width grid** — a DST day is 23 or 25
+    hours — and that is not this model at all: `origin + k*width` stops holding, the rollup row id
+    `[series, width_ms, t]` stops being derivable from a width, and `lb-ingest` acquires a timezone
+    database it is dependency-light on purpose. So: ship the fixed offset, SAY it does not follow DST
+    (in the panel and in `doc-site`), and re-open only against a stated need. `Align` is a struct
+    rather than a bare `i64` precisely so a `tz` field can be added additively if that need arrives.
+
+    Consequences worth stating, because each removes a rule someone would otherwise write:
+      - **Only `origin_ms mod width_ms` is observable.** Two anchors a whole width apart are one grid,
+        so there is no "plausible instant" range to police and a negative anchor needs no special
+        case. A 06:00 anchor on an HOURLY tier is the epoch grid, and the panel says so rather than
+        implying a difference nobody can observe.
+      - **Absent ≠ zero.** They name the same grid and are not the same value; keeping them apart is
+        what lets an untouched policy round-trip untouched through an editor.
+      - **`align_for` resolves like `method_for`** — exact tier, else the finest tier declaring one.
+        An anchor describes what the SERIES means, not one stored width; and it is safe to inherit
+        because an anchor collapses to the epoch grid at any width that divides it.
+      - **The anchor is inherited across a width change**, exactly as the method is, and for the same
+        reason. Dropping it would re-grid a retuned tier back onto UTC midnight silently — the
+        method-drop bug wearing a third hat.
+
+22. **`snap_cutoff` became PER TIER, and raw follows the least-advanced one (issue #111).** One
+    cutoff floored by the widest width could only ever be a boundary on one tier's grid; with
+    per-tier anchors it is wrong by construction, and it was already subtly wrong for widths that do
+    not divide each other. Now each tier folds up to its own boundary (`tier_cutoff`) and raw is
+    evicted no further than the LEAST-advanced tier reached (`evict_cutoff`), which is what makes
+    "every tier has seen this data" true before it is deleted.
+
+23. **A tier is folded from RAW ONLY, over the window raw still covers (issue #111).** Two real bugs,
+    both found by the idempotence assertion in `series_align_grid_test` and both PRE-DATING alignment:
+
+    - **The double count.** `rollup_series` folded `[0, cutoff)` through `read_buckets`, which merges
+      stored rollup rows. Within one pass every tier folds BEFORE any raw is evicted, so a two-tier
+      policy had the finer tier's rows on disc while the coarser tier was still reading the raw
+      underneath them — doubling the coarse tier's `count`/`sum` on the first pass over any series.
+      Self-healing on the next pass and wrong on every read in between. Fixed at the merge: a rollup
+      row whose range overlaps surviving raw is REDUNDANT with it, not complementary, and is skipped.
+    - **The re-derivation drift.** Once raw is gone, re-deriving a tier from another tier is exact
+      only when the grids NEST — and with independent anchors they need not. Measured: a coarse bucket
+      holding 30 samples re-derived itself as 37 on the next pass, then stayed there.
+
+    So the fold now starts at the oldest surviving raw sample rather than at `0`. Every stored row is
+    the exact fold of complete raw, written once while that raw existed. It is also O(new data)
+    instead of O(all history) per pass, which the 5-minute reactor was paying on every series.
+
+    **What this gives up, stated rather than discovered: adding a tier to an existing policy does not
+    backfill it.** It takes effect from the current raw window forward. Backfilling would mean
+    re-deriving history from a grid that may not nest — writing numbers that are wrong in a way
+    nothing downstream could detect.
+
+24. **A zero-width tier is refused at the verb.** It describes no bucket, nothing can fold into it,
+    and its grid arithmetic is a division by zero. `series.retention.set` rejects it, `pack.validate`
+    lints it where the author can still see it, and the GC skips one defensively for a row an older
+    node may already hold.

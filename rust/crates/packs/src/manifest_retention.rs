@@ -52,6 +52,25 @@ pub struct RetentionTier {
     /// a typo is a loud lint rather than a silent no-op.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
+    /// Where this tier's buckets START. Absent = the UTC epoch, which is what every tier meant
+    /// before this field existed and still means without it.
+    ///
+    /// Mirrors `lb_ingest::Align`. It carries no enum, so unlike `method` there is nothing for
+    /// `validate` to lint — any integer is a legitimate anchor (only `origin_ms mod width_ms` is
+    /// observable). Without this field a pack author could not express an alignment AT ALL:
+    /// `deny_unknown_fields` would reject the block with a line number, which is the loud half of
+    /// the mirror's contract working as designed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<RetentionAlign>,
+}
+
+/// Where a tier's rollup buckets start — mirrors `lb_ingest::Align`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetentionAlign {
+    /// The anchor, epoch ms. Signed: a west-of-Greenwich or pre-epoch anchor is ordinary, and only
+    /// `origin_ms mod width_ms` is observable, so "06:00 on any day" all name one grid.
+    pub origin_ms: i64,
 }
 
 /// The `filter` block of a [`RetentionPolicy`] — mirrors `lb_ingest::Filter`. Every field defaults

@@ -71,6 +71,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
                 width_ms: 10_000,
                 keep_for_ms: 0,
                 method: None,
+                ..Default::default()
             }],
             filter: None,
             ..Default::default()
@@ -100,6 +101,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
         to_ts: 700_000,
         width_ms: Some(20_000),
         budget: None,
+        ..Default::default()
     };
     let buckets = read_buckets(&store, "acme", "hist", &q, 20_000)
         .await

@@ -143,6 +143,7 @@ async fn rollup_rows_break_down_per_tier_after_a_real_gc() {
                     width_ms: 10_000,
                     keep_for_ms: 0,
                     method: None,
+                    ..Default::default()
                 },
             ],
             filter: None,

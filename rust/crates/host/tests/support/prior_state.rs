@@ -94,6 +94,7 @@ impl PriorRetention {
                 width_ms,
                 keep_for_ms,
                 method: None,
+                ..Default::default()
             });
         }
         self

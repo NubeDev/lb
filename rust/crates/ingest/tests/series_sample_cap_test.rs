@@ -273,6 +273,7 @@ async fn cap_rolls_up_before_evicting_so_bucket_reads_survive() {
         to_ts: 100_000,
         width_ms: Some(10_000),
         budget: None,
+        ..Default::default()
     };
     let buckets = read_buckets(&store, "acme", "roll", &q, 10_000)
         .await

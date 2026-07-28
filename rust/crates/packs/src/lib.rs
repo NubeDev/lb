@@ -29,7 +29,8 @@ pub mod validate_retention;
 pub use bundle::{Bundle, LoadedDashboard, LoadedRule, Pack, MAX_BUNDLE_BYTES};
 pub use decision::{decide, Decision};
 pub use manifest::{
-    Manifest, RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange, RetentionTier,
+    Manifest, RetentionAlign, RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange,
+    RetentionTier,
 };
 pub use plan::{checksum, content_checksum, plan, Kind, PlannedObject};
 pub use receipt::{ObjectReceipt, Receipt};

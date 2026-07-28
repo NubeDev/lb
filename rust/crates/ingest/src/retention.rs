@@ -8,6 +8,7 @@ use lb_store::{Store, StoreError};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::align::Align;
 use crate::filter::Filter;
 use crate::method::Method;
 
@@ -15,7 +16,8 @@ use crate::method::Method;
 pub const RETENTION_TABLE: &str = "series_retention";
 
 /// One rollup tier: bucket width, how long the tier's rows are kept (`0` = keep forever), and
-/// optionally the single `method` value the tier reads as (series-normalize scope).
+/// optionally the single `method` value the tier reads as (series-normalize scope) and where its
+/// buckets START (series-observability scope, Decision 21).
 ///
 /// `method` is `None` by default, which is exactly today's behaviour: a bucketed read returns the
 /// full stat row and no `value` column. Setting it adds the column — it never removes one.
@@ -25,6 +27,15 @@ pub struct Tier {
     pub keep_for_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub method: Option<Method>,
+    /// Where this tier's buckets start. `None` = the UTC epoch — the grid this crate has always
+    /// used, and still uses byte-for-byte when the field is absent ([`crate::align`]).
+    ///
+    /// It is `Option<Align>` rather than a bare `Align` with a zero default for the reason the
+    /// sentinels taught this feature: absent and "anchored at 0" would then be indistinguishable on
+    /// the wire, and a UI could not round-trip an untouched policy without writing a value the
+    /// operator never chose. They happen to MEAN the same grid; they do not mean the same intent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<Align>,
 }
 
 /// A retention policy for every series whose name starts with `prefix`.
@@ -125,6 +136,31 @@ impl Policy {
             .min_by_key(|t| t.width_ms)
             .and_then(|t| t.method)
     }
+
+    /// The bucket alignment a read at `width_ms` should floor onto: the tier at exactly that width,
+    /// else the FINEST tier that declares one. `None` = the UTC epoch grid.
+    ///
+    /// **Deliberately the same precedence as [`Policy::method_for`]**, and for the same reason. An
+    /// anchor says where this SERIES' days (or shifts, or hours) begin — it is a property of what the
+    /// data means, not of one stored width. Resolving it exact-match-only would mean a daily tier
+    /// anchored at 06:00 reads correctly at exactly 1 day and, the moment a dashboard zooms, reads on
+    /// the epoch grid instead: the same class of surprise as a coil silently reverting to `avg`.
+    ///
+    /// Inheriting is safe as well as consistent, because only the phase is observable
+    /// ([`crate::align`]): an anchor declared for a daily tier is a whole number of minutes from the
+    /// epoch, so it collapses to the epoch grid at any width that divides it. A 06:00 daily anchor
+    /// inherited by a 1-minute read is EXACTLY today's behaviour — it can only change a read whose
+    /// width the anchor does not divide, which is the case it was declared for.
+    pub fn align_for(&self, width_ms: u64) -> Option<Align> {
+        if let Some(a) = self.tier_at(width_ms).and_then(|t| t.align) {
+            return Some(a);
+        }
+        self.tiers
+            .iter()
+            .filter(|t| t.align.is_some())
+            .min_by_key(|t| t.width_ms)
+            .and_then(|t| t.align)
+    }
 }
 
 /// The policy governing `series`: the LONGEST matching prefix, or `None` if no policy covers it.
@@ -163,6 +199,11 @@ pub async fn list_policies(store: &Store, ws: &str) -> Result<Vec<Policy>, Store
             // Every policy field is projected explicitly — a field added to `Policy` but NOT to this
             // list reads back as its serde default forever (the closed-struct trap: the row on disc
             // is correct, the struct in memory silently isn't).
+            //
+            // A field added to `Tier` needs NO change here: `tiers` is projected as a whole column,
+            // so the objects inside it arrive intact (that is how `method`, and now `align`, ride
+            // back). The trap is per-POLICY-field. `series_align_test::an_aligned_tier_round_trips`
+            // is the revert-check that keeps that claim honest rather than assumed.
             &format!(
                 "SELECT prefix, raw_for_ms, max_samples, tiers, filter, updated_by, updated_ms \
                  FROM {RETENTION_TABLE} \

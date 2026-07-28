@@ -26,8 +26,10 @@ use std::collections::BTreeMap;
 
 use lb_store::Store;
 
+use crate::align::{bucket_start, phase_of, start_of_index, Align};
+use crate::bucket_acc::{finish, fold_rollup, Acc};
 use crate::page::{read_page, Direction, PageError, PageQuery};
-use crate::rollup::{read_rollups, RollupRow};
+use crate::rollup::read_rollups;
 use crate::staging::SERIES_TABLE;
 use serde_json::Value;
 
@@ -71,12 +73,24 @@ pub struct Bucket {
 
 /// A bucketed-read request: a required half-open window `[from_ts, to_ts)` (epoch ms) and either an
 /// explicit `width_ms` or a target point `budget` the width is derived from.
-#[derive(Debug, Clone)]
+///
+/// `Default` is derived so the NEXT additive field costs no call-site churn — every construction
+/// site can spread `..Default::default()` (the argument `Policy` already makes). The default window
+/// is empty, which [`effective_width`] rejects loudly; that is the right failure for a query nobody
+/// filled in.
+#[derive(Debug, Clone, Default)]
 pub struct BucketQuery {
     pub from_ts: u64,
     pub to_ts: u64,
     pub width_ms: Option<u64>,
     pub budget: Option<usize>,
+    /// Where the read's buckets START. `None` = the UTC epoch grid — this crate's behaviour since it
+    /// shipped, unchanged.
+    ///
+    /// **This must be the SAME alignment the GC folded the tier on** or the read mixes two griddings
+    /// and nothing errors ([`crate::align`]). The host read verb resolves it from the governing
+    /// policy for exactly that reason; `run_gc` sets it from the tier it is folding.
+    pub align: Option<Align>,
 }
 
 /// Derive the effective bucket width: explicit width wins; else `span / budget` (ceil), clamped so
@@ -95,42 +109,6 @@ pub fn effective_width(q: &BucketQuery) -> Result<u64, String> {
         return Err(format!("window/width yields > {MAX_BUCKETS} buckets"));
     }
     Ok(width)
-}
-
-/// Running aggregate for one bucket.
-#[derive(Debug, Clone, Default)]
-struct Acc {
-    min: Option<f64>,
-    max: Option<f64>,
-    sum: f64,
-    num_count: u64,
-    count: u64,
-    last_key: (u64, u64), // (ts, seq) — "last" is exact, not scan-order luck
-    last: Value,
-    /// `(ts, seq)` of the chronologically first sample, and its payload. `None` until something
-    /// contributes one.
-    first_key: Option<(u64, u64)>,
-    first: Value,
-    /// Set when a contributing rollup row predates the `first` column — the bucket then cannot
-    /// answer `first`/`nearest` at all, no matter what else merged into it.
-    first_missing: bool,
-}
-
-impl Acc {
-    fn fold_num(&mut self, v: f64) {
-        self.min = Some(self.min.map_or(v, |m| m.min(v)));
-        self.max = Some(self.max.map_or(v, |m| m.max(v)));
-        self.sum += v;
-        self.num_count += 1;
-    }
-
-    /// Offer a `first` candidate; the chronologically earliest `(ts, seq)` wins.
-    fn fold_first(&mut self, key: (u64, u64), payload: &Value) {
-        if self.first_key.is_none_or(|cur| key < cur) {
-            self.first_key = Some(key);
-            self.first = payload.clone();
-        }
-    }
 }
 
 /// Decimate `series` in `ws` over the window into sparse, time-ordered buckets (empty buckets are
@@ -158,7 +136,7 @@ pub async fn read_buckets_fold(
     q: &BucketQuery,
     width_ms: u64,
 ) -> Result<Vec<Bucket>, PageError> {
-    let floor = |ts: u64| ts / width_ms * width_ms;
+    let floor = |ts: u64| bucket_start(ts, width_ms, q.align);
     let mut accs: BTreeMap<u64, Acc> = BTreeMap::new();
 
     // Chunked keyset scan of the raw window — O(SCAN_CHUNK) memory regardless of window size.
@@ -201,11 +179,16 @@ pub async fn read_buckets_fold(
 }
 
 /// Push the raw-window decimation into SurrealDB: two `GROUP BY` reads of one committed snapshot,
-/// both O(buckets) out. Keys buckets on the **absolute** floor `floor(ts/width)` — exactly the fold's
-/// key — so `t = b*width` lands on the same absolute width grid regardless of whether `from` is
-/// width-aligned. (Keying on `floor((ts-from)/width)` would group by offset-from-`from` and split an
-/// absolute bucket across two `from`-relative ones whenever `from` is unaligned — the seam the
-/// `pushdown_handles_an_unaligned_from` test guards.)
+/// both O(buckets) out. Keys buckets on the **absolute** floor `floor((ts - phase)/width)` — exactly
+/// the fold's key — so the reconstructed `t` lands on the same absolute grid regardless of whether
+/// `from` is aligned to it. (Keying on `floor((ts-from)/width)` would group by offset-from-`from` and
+/// split an absolute bucket across two `from`-relative ones whenever `from` is unaligned — the seam
+/// the `pushdown_handles_an_unaligned_from` test guards.)
+///
+/// `phase` is the tier's alignment reduced modulo the width ([`crate::align`]); it is `0` for an
+/// unaligned read, which makes this statement character-for-character the one that shipped, minus a
+/// `- 0`. The reconstruction `t = index*width + phase` goes through [`start_of_index`] — the same
+/// function the Rust floor uses — so the SQL grid and the fold grid cannot drift even in the join.
 async fn raw_bucket_query(
     store: &Store,
     ws: &str,
@@ -216,15 +199,16 @@ async fn raw_bucket_query(
     // One statement, two result sets → one snapshot (a concurrent commit can't split N from L).
     // Query N: numeric aggregates only (predicate makes `num_count` the numeric count → exact avg).
     // Query L: total count + ordered `last` (subquery ORDER BY makes `array::last` chronological).
+    let phase = phase_of(q.align, width_ms);
     let sql = format!(
-        "SELECT math::floor(time::millis(ts)/$width) AS b, count() AS num_count, \
+        "SELECT math::floor((time::millis(ts) - $phase)/$width) AS b, count() AS num_count, \
            math::min(payload) AS min, math::max(payload) AS max, math::sum(payload) AS sum \
          FROM {SERIES_TABLE} \
          WHERE series = $s AND type::is::number(payload) \
            AND ts >= time::from::millis($from) AND ts < time::from::millis($to) GROUP BY b; \
          SELECT b, count() AS count, array::last(p) AS last, array::last(t) AS last_ts, \
            array::first(p) AS first, array::first(t) AS first_ts \
-         FROM (SELECT math::floor(time::millis(ts)/$width) AS b, payload AS p, \
+         FROM (SELECT math::floor((time::millis(ts) - $phase)/$width) AS b, payload AS p, \
                  time::millis(ts) AS t, seq FROM {SERIES_TABLE} \
                WHERE series = $s \
                  AND ts >= time::from::millis($from) AND ts < time::from::millis($to) \
@@ -239,6 +223,7 @@ async fn raw_bucket_query(
                 ("from".into(), q.from_ts.into()),
                 ("to".into(), q.to_ts.into()),
                 ("width".into(), width_ms.into()),
+                ("phase".into(), phase.into()),
             ],
         )
         .await
@@ -251,17 +236,22 @@ async fn raw_bucket_query(
         .map_err(|e| PageError::Store(lb_store::StoreError::Decode(e.to_string())))?;
 
     // Join the two result sets by bucket index — O(buckets), never O(rows). `b` is the absolute
-    // width-multiple index, so `t = b*width` is the fold's `floor(ts)` bucket start exactly.
+    // index on the `(width, phase)` grid, so `start_of_index` is the fold's `bucket_start(ts)`
+    // exactly — the SAME function, not a re-derivation of it.
     let mut accs: BTreeMap<u64, Acc> = BTreeMap::new();
     for r in num {
-        let acc = accs.entry(r.b * width_ms).or_default();
+        let acc = accs
+            .entry(start_of_index(r.b as i128, width_ms, phase))
+            .or_default();
         acc.min = r.min;
         acc.max = r.max;
         acc.sum = r.sum.unwrap_or(0.0);
         acc.num_count = r.num_count;
     }
     for r in cnt {
-        let acc = accs.entry(r.b * width_ms).or_default();
+        let acc = accs
+            .entry(start_of_index(r.b as i128, width_ms, phase))
+            .or_default();
         acc.count = r.count;
         acc.last = r.last;
         acc.last_key = (r.last_ts, 0); // ts only; the ordered subquery already broke the seq tie
@@ -276,7 +266,10 @@ async fn raw_bucket_query(
 /// it (`type::is::number` predicate), so `num_count` is the numeric count and `avg = sum/num_count`.
 #[derive(serde::Deserialize)]
 struct NumRow {
-    b: u64,
+    /// SIGNED: a phase-shifted grid puts `ts < phase` in bucket `-1`. Unreachable for real data (the
+    /// whole of that bucket predates 2 January 1970) but `u64` would fail the DECODE rather than
+    /// clamp, taking the read down instead of returning a short first bucket.
+    b: i64,
     num_count: u64,
     min: Option<f64>,
     max: Option<f64>,
@@ -287,7 +280,8 @@ struct NumRow {
 /// count (numeric + non-numeric); `last`/`last_ts` are the chronologically last `(ts, seq)` payload.
 #[derive(serde::Deserialize)]
 struct CountRow {
-    b: u64,
+    /// Signed for the same reason as [`NumRow::b`].
+    b: i64,
     count: u64,
     #[serde(default)]
     last: Value,
@@ -299,6 +293,20 @@ struct CountRow {
 
 /// Merge the finest stored rollup tier into buckets raw didn't cover (post-GC history). Shared by
 /// both the pushdown and the fold oracle so the tail is aggregated identically.
+///
+/// **"Raw didn't cover" is enforced, not assumed.** A rollup row describes a COMPLETE bucket, so a
+/// row whose range overlaps raw that is still on disc is REDUNDANT with that raw, not complementary
+/// to it — folding both counts every sample twice. `rollup.rs` states the invariant that makes this
+/// normally moot ("rollup rows exist only where retention has evicted the raw beneath them"), but
+/// the GC can transiently break it: within one pass every tier folds BEFORE any raw is evicted, so
+/// a policy with two tiers has the finer tier's rows on disc while the coarser tier is still reading
+/// the raw underneath them. That doubled the coarse tier's `count`/`sum` on the first pass over any
+/// series — self-healing on the next pass (which re-folds from the rollups alone) and wrong on every
+/// read in between. Found by the idempotence assertion in `series_align_grid_test`; it predates
+/// alignment, and per-tier fold cutoffs would have widened the window it is wrong in.
+///
+/// The guard is one comparison against the oldest raw instant this read already folded — `accs`
+/// holds nothing but raw when this runs, so `first_key` is a raw timestamp by construction.
 async fn merge_rollups(
     store: &Store,
     ws: &str,
@@ -307,58 +315,16 @@ async fn merge_rollups(
     width_ms: u64,
     accs: &mut BTreeMap<u64, Acc>,
 ) -> Result<(), PageError> {
-    let floor = |ts: u64| ts / width_ms * width_ms;
+    let floor = |ts: u64| bucket_start(ts, width_ms, q.align);
     let tiers = read_rollups(store, ws, series, q.from_ts, q.to_ts).await?;
+    let oldest_raw = accs.values().filter_map(|a| a.first_key).map(|k| k.0).min();
     if let Some(finest) = tiers.iter().map(|r| r.width_ms).min() {
         for r in tiers.iter().filter(|r| r.width_ms == finest) {
+            if oldest_raw.is_some_and(|raw| r.t.saturating_add(r.width_ms) > raw) {
+                continue; // the raw beneath this row is still here — it is the same samples
+            }
             fold_rollup(accs.entry(floor(r.t)).or_default(), r);
         }
     }
     Ok(())
-}
-
-/// Finalize the bucket map into the sparse, time-ordered wire shape (empty buckets already absent).
-fn finish(accs: BTreeMap<u64, Acc>) -> Vec<Bucket> {
-    accs.into_iter()
-        .map(|(t, a)| Bucket {
-            t,
-            min: a.min,
-            max: a.max,
-            avg: (a.num_count > 0).then(|| a.sum / a.num_count as f64),
-            last: a.last,
-            count: a.count,
-            first: a.first,
-            value: None,
-            sum: a.sum,
-            num_count: a.num_count,
-            last_ts: a.last_key.0,
-            first_ts: a.first_key.map(|k| k.0).unwrap_or(t),
-            has_first: a.first_key.is_some() && !a.first_missing,
-        })
-        .collect()
-}
-
-/// Re-aggregate one stored rollup row into a (wider or equal) requested bucket — exact for
-/// min/max/avg because the row carries `sum` and `count`, not just the mean.
-fn fold_rollup(acc: &mut Acc, r: &RollupRow) {
-    acc.count += r.count;
-    if let (Some(min), Some(max)) = (r.min, r.max) {
-        acc.min = Some(acc.min.map_or(min, |m| m.min(min)));
-        acc.max = Some(acc.max.map_or(max, |m| m.max(max)));
-        acc.sum += r.sum;
-        acc.num_count += r.num_count;
-    }
-    // Rollups only ever cover data OLDER than surviving raw, so a raw `last` (higher ts) wins.
-    if (r.last_ts, 0) > acc.last_key {
-        acc.last_key = (r.last_ts, 0);
-        acc.last = r.last.clone();
-    }
-    // The `first` representative re-aggregates exactly: the first of a wider bucket is the earliest
-    // `first` among the tier rows it absorbs. A row folded BEFORE the column existed poisons the
-    // bucket's `has_first` — `first`/`nearest` then error rather than silently reporting a
-    // later-but-present sample as the bucket's first (`method.rs`).
-    match r.first_ts {
-        Some(ts) => acc.fold_first((ts, 0), &r.first),
-        None => acc.first_missing = true,
-    }
 }

@@ -4,21 +4,32 @@
 //! are deleted, then each tier's own horizon evicts its stale rollup rows. The table stops growing
 //! forever; coarse history survives eviction.
 //!
-//! The eviction cutoff is **snapped down to the widest tier's bucket boundary**, so a bucket is
-//! only ever rolled up once, complete — a later pass never re-aggregates a half-evicted bucket
-//! (that would silently shrink its min/max/count). `now_ms` is caller-injected (determinism §3):
-//! the host verb stamps wall-clock; tests stamp a constant.
+//! Cutoffs are **snapped down to a bucket boundary**, so a bucket is only ever rolled up once,
+//! complete — a later pass never re-aggregates a half-evicted bucket (that would silently shrink its
+//! min/max/count). `now_ms` is caller-injected (determinism §3): the host verb stamps wall-clock;
+//! tests stamp a constant.
+//!
+//! **The snap is PER TIER** ([`tier_cutoff`]), not one cutoff floored by the widest width. Each tier
+//! has its own grid now that a tier can declare an [`crate::Align`], and "complete bucket" is a
+//! question about the grid the tier is folded on — a single shared cutoff can only be a boundary on
+//! one of them. Raw is then evicted no further than the LEAST-advanced tier has folded
+//! ([`evict_cutoff`]), which is what makes "every tier has seen this data" true before it is deleted.
+//! The old one-cutoff rule was already subtly wrong for widths that do not divide each other (an
+//! hourly floor is not a 7-minute boundary); alignment made the hole reachable rather than creating
+//! it.
 
 use lb_store::{Store, StoreError};
 use serde_json::Value;
 
+use crate::align::bucket_start;
 use crate::bucket::{read_buckets, BucketQuery};
 use crate::cap::{cap_cutoff_ms, cap_series, over_cap_warning, sample_count};
 use crate::meta::series_names;
 use crate::page::PageError;
 use crate::pass_record::{record_pass, GcPassRecord};
 use crate::retention::{list_policies, resolve_policy, Policy};
-use crate::rollup::{evict_rollups, rollup_widths, write_rollups, RollupRow};
+use crate::rollup::{evict_rollups, read_rollups, rollup_widths, write_rollups, RollupRow};
+use crate::rollup_window::{evict_cutoff, oldest_raw_ts, tier_cutoff};
 use crate::staging::SERIES_TABLE;
 
 /// Outcome of one GC pass over a workspace.
@@ -61,12 +72,14 @@ pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, Stor
             .filter(|s| governs(&policies, &policy.prefix, s))
             .collect();
 
-        // The TIME horizon: roll up then evict what is older than it.
+        // The TIME horizon: roll up then evict what is older than it. Each tier folds up to its own
+        // grid boundary; raw goes only as far as the least-advanced tier reached.
         if policy.raw_for_ms > 0 && policy.raw_for_ms <= now_ms {
-            let cutoff = snap_cutoff(policy, now_ms - policy.raw_for_ms);
+            let horizon = now_ms - policy.raw_for_ms;
+            let evict_to = evict_cutoff(policy, horizon);
             for series in &owned {
-                pass.rollup_rows += rollup_series(store, ws, series, policy, cutoff).await?;
-                pass.evicted_raw += evict_raw(store, ws, series, cutoff).await?;
+                pass.rollup_rows += rollup_series(store, ws, series, policy, horizon).await?;
+                pass.evicted_raw += evict_raw(store, ws, series, evict_to).await?;
             }
         }
 
@@ -177,11 +190,12 @@ async fn cap_pass(
         // that window into the tiers first. Rollup is idempotent (deterministic bucket ids), so an
         // overlap with the time horizon's earlier rollup re-upserts identical rows.
         //
-        // The cutoff is snapped DOWN to the widest tier boundary for the same reason the time
+        // The cutoff is snapped DOWN to each tier's own boundary for the same reason the time
         // horizon snaps: only COMPLETE buckets roll up, so a later pass never re-aggregates a
-        // half-evicted bucket and silently shrinks its min/max/count.
+        // half-evicted bucket and silently shrinks its min/max/count. `rollup_series` does that snap
+        // per tier, so this hands it the raw cap boundary.
         if let Some(cutoff) = cap_cutoff_ms(store, ws, series, policy.max_samples).await? {
-            rolled = rollup_series(store, ws, series, policy, snap_cutoff(policy, cutoff)).await?;
+            rolled = rollup_series(store, ws, series, policy, cutoff).await?;
         }
     }
     Ok((
@@ -211,29 +225,55 @@ async fn warn_unpoliced(
     Ok(warnings)
 }
 
-/// Snap the raw cutoff DOWN to the widest tier's bucket boundary — only complete buckets roll up.
-fn snap_cutoff(policy: &Policy, cutoff: u64) -> u64 {
-    match policy.tiers.iter().map(|t| t.width_ms).max() {
-        Some(w) if w > 0 => cutoff / w * w,
-        _ => cutoff,
-    }
-}
-
-/// Fold one series' raw samples in `[0, cutoff)` into each tier and store the rows.
+/// Fold one series' RAW samples into each tier, each up to ITS OWN [`tier_cutoff`], and store the
+/// rows. `horizon` is the unsnapped boundary (the raw time horizon, or the count cap's oldest-kept
+/// timestamp); the snap happens per tier because the grids differ.
+///
+/// The window is `[oldest surviving raw, cutoff)` — never `[0, cutoff)`. A tier is derived from RAW
+/// and only from raw: re-deriving it from another tier's rows is exact only when the two grids nest,
+/// which per-tier anchors no longer guarantee ([`crate::rollup_window`] carries the full reasoning
+/// and the measurement). Buckets older than the window keep the rows they were written with, back
+/// when their raw was whole.
 async fn rollup_series(
     store: &Store,
     ws: &str,
     series: &str,
     policy: &Policy,
-    cutoff: u64,
+    horizon: u64,
 ) -> Result<usize, StoreError> {
+    // No raw at all → nothing to fold, and nothing to overwrite. A fully-evicted series keeps the
+    // rows it already has rather than re-deriving them from a coarser substitute.
+    let Some(oldest_raw) = oldest_raw_ts(store, ws, series).await? else {
+        return Ok(0);
+    };
     let mut written = 0;
     for tier in &policy.tiers {
+        let cutoff = tier_cutoff(tier, horizon);
+        let from = bucket_start(oldest_raw, tier.width_ms, tier.align);
+        if cutoff == 0 || cutoff <= from {
+            continue; // nothing complete to fold yet (or a width-0 non-tier)
+        }
+        // The bucket CONTAINING the oldest surviving raw may have had older raw evicted beneath it
+        // on an earlier pass — it was folded whole then. Re-folding it from what is left would
+        // shrink a correct row, so an existing row at that start wins. Every later bucket starts at
+        // or after `oldest_raw` and is therefore wholly raw-backed.
+        let partial = if from < oldest_raw {
+            read_rollups(store, ws, series, from, from + tier.width_ms)
+                .await?
+                .iter()
+                .any(|r| r.width_ms == tier.width_ms && r.t == from)
+        } else {
+            false
+        };
         let q = BucketQuery {
-            from_ts: 0,
+            from_ts: from,
             to_ts: cutoff,
             width_ms: Some(tier.width_ms),
             budget: None,
+            // The fold's grid IS the tier's grid. Reads resolve the same alignment through
+            // `Policy::align_for`, and `series_align_grid_test` folds-then-reads to prove they agree
+            // — a disagreement here mixes two griddings inside one tier and nothing errors.
+            align: tier.align,
         };
         let buckets = read_buckets(store, ws, series, &q, tier.width_ms)
             .await
@@ -243,8 +283,9 @@ async fn rollup_series(
             })?;
         let rows: Vec<RollupRow> = buckets
             .iter()
-            // A bucket that is itself rollup-backed (count from a prior pass) re-upserts the same
-            // row — idempotent; only buckets with data are stored (sparse).
+            .filter(|b| !(partial && b.t == from))
+            // Re-folding the same raw lands the same row at the same deterministic id — idempotent;
+            // only buckets with data are stored (sparse).
             .map(|b| RollupRow {
                 series: series.to_string(),
                 width_ms: tier.width_ms,

@@ -171,6 +171,7 @@ async fn buckets_bound_budget_and_spikes_survive() {
         to_ts: 600_000,
         width_ms: Some(60_000), // 1-minute buckets → 10 buckets
         budget: None,
+        ..Default::default()
     };
     let buckets = read_buckets(&store, "acme", "temp", &q, 60_000)
         .await
@@ -218,6 +219,7 @@ async fn pushdown_buckets_are_byte_identical_to_the_fold() {
         to_ts: 180_000,
         width_ms: Some(60_000),
         budget: None,
+        ..Default::default()
     };
     let pushed = read_buckets(&store, "acme", "m", &q, 60_000).await.unwrap();
     let folded = read_buckets_fold(&store, "acme", "m", &q, 60_000)
@@ -283,6 +285,7 @@ async fn pushdown_handles_an_unaligned_from() {
         to_ts: 299_000,
         width_ms: Some(60_000),
         budget: None,
+        ..Default::default()
     };
     let pushed = read_buckets(&store, "acme", "m", &q, 60_000).await.unwrap();
     let folded = read_buckets_fold(&store, "acme", "m", &q, 60_000)
@@ -316,6 +319,7 @@ async fn pushdown_is_o_buckets_not_o_rows() {
         to_ts: 12_000_000,
         width_ms: None,
         budget: Some(240),
+        ..Default::default()
     };
     let width = lb_ingest::effective_width(&q).unwrap();
     let buckets = read_buckets(&store, "acme", "big", &q, width)

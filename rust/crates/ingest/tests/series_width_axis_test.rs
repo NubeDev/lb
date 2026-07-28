@@ -93,6 +93,7 @@ fn q(width: u64) -> BucketQuery {
         to_ts: WINDOW_MS,
         width_ms: Some(width),
         budget: None,
+        ..Default::default()
     }
 }
 
@@ -213,11 +214,13 @@ async fn a_multi_tier_policy_resolves_its_method_at_every_width() {
                 width_ms: 60_000,
                 keep_for_ms: 0,
                 method: None,
+                ..Default::default()
             },
             Tier {
                 width_ms: 900_000,
                 keep_for_ms: 0,
                 method: Some(Method::Last), // only the coarsest tier says how it reads
+                ..Default::default()
             },
         ],
         filter: None,

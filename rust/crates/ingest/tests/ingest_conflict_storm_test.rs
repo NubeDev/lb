@@ -213,6 +213,7 @@ async fn serialized_drains_vs_gc_lose_no_samples() {
         to_ts: PER_PRODUCER * TS_STEP + 1,
         width_ms: Some(10_000),
         budget: None,
+        ..Default::default()
     };
     let a_buckets = read_buckets(&store, WS, SERIES, &q, 10_000).await.unwrap();
     let a_total: u64 = a_buckets.iter().map(|b| b.count).sum();

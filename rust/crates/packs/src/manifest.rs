@@ -14,7 +14,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub use crate::manifest_retention::{
-    RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange, RetentionTier,
+    RetentionAlign, RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange,
+    RetentionTier,
 };
 
 /// One pack manifest as authored. `deny_unknown_fields` turns a typo'd key into a loud parse error

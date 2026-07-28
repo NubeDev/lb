@@ -40,6 +40,16 @@ pub async fn series_retention_set(
             "prefix must not be empty — an empty prefix silently governs every series".into(),
         ));
     }
+    // A zero-width tier describes no bucket at all: nothing can be folded into it, and the grid
+    // arithmetic it implies is a division by zero. The GC skips one defensively (`gc::tier_cutoff`)
+    // so a row an older node already holds cannot abort a pass; refusing it here is what stops a new
+    // one being written. Surfaced now because alignment made the grid explicit — the hole was
+    // always there.
+    if policy.tiers.iter().any(|t| t.width_ms == 0) {
+        return Err(IngestError::BadInput(
+            "a tier's width_ms must be > 0 — a zero-width tier describes no bucket".into(),
+        ));
+    }
     stamp(&mut policy, principal, now_ms);
     set_policy(store, ws, &policy).await?;
     Ok(policy)
@@ -167,6 +177,21 @@ fn merge_tier(stored: &[Tier], supplied: &Value) -> Result<Tier, IngestError> {
                     .filter(|t| t.method.is_some())
                     .min_by_key(|t| t.width_ms)
                     .and_then(|t| t.method),
+                // The bucket ALIGNMENT is inherited across a width change for the same reason and by
+                // the same rule (`Policy::align_for`): an anchor says where this series' days or
+                // shifts begin, which does not stop being true because the bucket size changed.
+                // Dropping it would silently re-grid a retuned tier back onto UTC midnight — the
+                // method-drop bug with a third hat.
+                //
+                // Note what this does NOT do: rollup rows already stored at the OLD width keep their
+                // old `t` values. They are a different `(series, width)` row set, they drain on the
+                // policy's horizon like any other orphaned width, and re-gridding them would mean
+                // re-folding raw that no longer exists.
+                align: stored
+                    .iter()
+                    .filter(|t| t.align.is_some())
+                    .min_by_key(|t| t.width_ms)
+                    .and_then(|t| t.align),
                 ..Default::default()
             }
         });
@@ -182,6 +207,19 @@ fn merge_tier(stored: &[Tier], supplied: &Value) -> Result<Tier, IngestError> {
             Some(
                 serde_json::from_value(v.clone())
                     .map_err(|e| IngestError::BadInput(format!("method: {e}")))?,
+            )
+        };
+    }
+    // Same three-way distinction as `method` and `filter`: absent PRESERVES, `null` CLEARS (back to
+    // the UTC epoch grid), an object SETS. An editor that models alignment must be able to remove it
+    // again, and only an explicit null says so.
+    if let Some(v) = obj.get("align") {
+        tier.align = if v.is_null() {
+            None
+        } else {
+            Some(
+                serde_json::from_value(v.clone())
+                    .map_err(|e| IngestError::BadInput(format!("align: {e}")))?,
             )
         };
     }

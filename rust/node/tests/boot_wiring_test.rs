@@ -120,6 +120,11 @@ async fn boot_spawns_the_retention_gc_so_a_capped_series_shrinks_with_nobody_cal
             max_samples: 10,
             tiers: vec![],
             filter: None,
+            // `Policy` derives `Default` precisely so an additive field costs no call-site churn.
+            // This literal stopped compiling when `updated_by`/`updated_ms` landed with policy
+            // provenance — a pre-existing break that took the whole workspace test run down with
+            // it — and the spread is what stops the next field breaking it again.
+            ..Default::default()
         },
     )
     .await

@@ -72,6 +72,7 @@ async fn buckets(
         to_ts: to,
         width_ms: Some(width),
         budget: None,
+        ..Default::default()
     };
     read_buckets(store, ws, series, &q, width).await.unwrap()
 }
@@ -144,6 +145,7 @@ async fn the_pushdown_and_the_fold_oracle_agree_on_the_first_representative() {
         to_ts: 20_000,
         width_ms: Some(10_000),
         budget: None,
+        ..Default::default()
     };
     let pushed = read_buckets(&store, "acme", "p.v", &q, 10_000)
         .await

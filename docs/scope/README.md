@@ -117,6 +117,18 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   state, compensate motion* — `undo-scope.md` is the shipped mechanism; `undo-exposure-scope.md` is
   the follow-on slice that makes it product-reachable: role grants + typed gateway routes + the
   shell affordance). See "The shared seam" in `observability/observability-scope.md`.
+- `versions/` — **generic entity version history + restore** (`entity-version-history-scope.md`,
+  the ask): the fourth projection of the dispatch chokepoint — keep the newest N (default 20,
+  admin-adjustable) full after-image snapshots per dashboard/flow/rule in a `capped_insert` ring
+  (`entity_version`, `cap_key = "{kind}:{id}"`), captured automatically on every successful save
+  via a `versions_capture` sibling of `undo_capture`. `versions.list/get/restore` +
+  `versions.config.get/set`; **restore is a forward action** — it re-dispatches the kind's own
+  `*.save` (validators, caps, audit, cache invalidation, undo all inherited; no-escalation: the
+  caller must hold the save cap) and works after delete (the ring outlives the entity). Kinds are
+  plan-table rows (rule 10); flows keep their `version` counter for run-pinning — history lives
+  here. Prerequisite: the structural `Secret<T>` never-in-a-snapshot guard from
+  `undo-exposure-scope.md`. Explicitly NOT undo (per-entity addressable ring vs per-actor
+  conditional stack). Consumer UI: `NubeIO/rubix-ai` `frontend/version-history-scope.md`.
 - `auth-caps/` — the capability grammar, token, and grant delegation; plus `edge-trust-scope.md` (node
   enrollment/cert + mTLS + token-on-the-bus), `authz-grants-scope.md` (durable roles/grants/teams —
   restricted user/team access), `admin-crud-scope.md` (the destructive half — workspace/user/team/

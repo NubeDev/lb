@@ -19,7 +19,9 @@
 //! is the capability chokepoint, capability-first §3.5). Engine is config (`Store::open` vs
 //! `memory()`), never a role branch.
 
+mod align;
 mod bucket;
+mod bucket_acc;
 mod cap;
 mod commit;
 mod cursor;
@@ -39,6 +41,7 @@ mod read;
 mod rename;
 mod retention;
 mod rollup;
+mod rollup_window;
 mod sample;
 mod samples_delete;
 mod samples_update;
@@ -47,6 +50,7 @@ mod staging;
 mod stats;
 mod write;
 
+pub use align::{bucket_start, Align};
 pub use bucket::{
     effective_width, read_buckets, read_buckets_fold, Bucket, BucketQuery, MAX_BUCKETS,
 };

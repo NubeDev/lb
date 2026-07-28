@@ -227,6 +227,12 @@ async fn read_rows(
 
 /// `series.read {mode:"buckets"}` — server-side decimation (decimation scope, slice C). Requires a
 /// wall-clock window `{from, to}` (epoch ms) and `width_ms` or `budget`.
+///
+/// `origin_ms` (optional, signed) pins where the buckets START, overriding the governing tier's own
+/// alignment for this one read. Omit it — as every existing caller does — and the grid comes from the
+/// policy, which is what makes a read agree with the way the GC folded (series-observability
+/// Decision 21). It exists so a caller can PREVIEW a grid before committing it to a policy, and so a
+/// chart can state its own day boundary without one.
 async fn read_buckets_mode(
     store: &Store,
     principal: &Principal,
@@ -241,6 +247,15 @@ async fn read_buckets_mode(
             .ok_or_else(|| ToolError::BadInput("buckets mode needs to (epoch ms)".into()))?,
         width_ms: u64_arg(input, "width_ms"),
         budget: u64_arg(input, "budget").map(|n| n as usize),
+        align: input
+            .get("origin_ms")
+            .filter(|v| !v.is_null())
+            .map(|v| {
+                v.as_i64()
+                    .map(|origin_ms| lb_ingest::Align { origin_ms })
+                    .ok_or_else(|| ToolError::BadInput("origin_ms must be an integer".into()))
+            })
+            .transpose()?,
     };
     let width = lb_ingest::effective_width(&q).map_err(ToolError::BadInput)?;
     // Optional per-read override of the tier's method. Absent → the governing tier decides; absent
@@ -249,16 +264,19 @@ async fn read_buckets_mode(
         Some(name) => Some(lb_ingest::Method::parse(name).map_err(ToolError::BadInput)?),
         None => None,
     };
-    let (buckets, resolved) =
+    let (buckets, resolved, align) =
         super::series_read_buckets(store, principal, ws, series, &q, width, method)
             .await
             .map_err(ingest_error_to_tool)?;
-    // Report the method back: a caller that relied on the tier's default should never have to guess
-    // which one produced the `value` column it is charting.
+    // Report the method AND the grid back: a caller that relied on the tier's defaults should never
+    // have to guess which method produced the `value` column it is charting, nor where the `t`
+    // values it is plotting begin. `origin_ms` is `null` on the epoch grid — the same "absent means
+    // today's behaviour" posture `method` already takes, so no existing caller sees a new number.
     Ok(json!({
         "buckets": buckets,
         "width_ms": width,
         "method": resolved.map(|m| m.as_str()),
+        "origin_ms": align.map(|a| a.origin_ms),
     }))
 }
 

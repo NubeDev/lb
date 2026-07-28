@@ -13,8 +13,8 @@
 use lb_auth::Principal;
 use lb_ingest::{
     apply_method, latest as series_latest, latest_many as series_latest_many_read, list_policies,
-    read as series_read, read_buckets, read_page, resolve_policy, Bucket, BucketQuery, Method,
-    Page, PageError, PageQuery, Sample,
+    read as series_read, read_buckets, read_page, resolve_policy, Align, Bucket, BucketQuery,
+    Method, Page, PageError, PageQuery, Sample,
 };
 use lb_store::Store;
 
@@ -50,16 +50,24 @@ pub async fn series_read_page(
 
 /// Bucketed decimation of `series` over a wall-clock window. Same cap as the row read.
 ///
-/// Returns `(buckets, method)`. When a `method` governs the read, every bucket carries its `value`
-/// column and the resolved method is reported back so the caller never has to guess which one it
-/// got (series-normalize scope).
+/// Returns `(buckets, method, align)` — the data plus BOTH resolved read parameters, so a caller
+/// never has to guess which method produced the `value` column it is charting, or which grid the
+/// `t` values it is plotting fall on.
 ///
-/// Method precedence: the caller's explicit `override_method` wins; otherwise the governing policy's
-/// method for this width ([`Policy::method_for`] — the tier at exactly this width, else the finest
-/// tier that declares one), under the policy whose prefix is the LONGEST match for `series` — the
-/// same `resolve_policy` the GC and the commit filter use, so a state series on its own longer prefix
-/// reads as `last` while its analog neighbours ride the parent's `avg`. No policy and no override →
-/// `None`, which is today's exact behaviour: the full stat row, no `value`.
+/// Both are resolved from the SAME governing policy — `resolve_policy`'s longest prefix match, the
+/// one the GC and the commit filter use, so a state series on its own longer prefix reads as `last`
+/// while its analog neighbours ride the parent's `avg`.
+///
+/// - **Method precedence:** the caller's explicit `override_method` wins; else the policy's
+///   [`Policy::method_for`]. Neither → `None`: the full stat row, no `value`, as before.
+/// - **Alignment precedence:** an explicit `q.align` wins; else the policy's [`Policy::align_for`].
+///   Neither → `None`: the UTC epoch grid, as before.
+///
+/// **Resolving the alignment here is not a convenience — it is the correctness seam.** The GC folded
+/// each tier on that tier's own grid; a read that floored on the epoch grid instead would merge
+/// those stored rows into buckets whose boundaries it invented, mixing two griddings with nothing
+/// raised. Read and fold agree because both ask the policy (`series_align_grid_test` folds through a
+/// real GC pass and reads back through both read paths to hold it).
 pub async fn series_read_buckets(
     store: &Store,
     principal: &Principal,
@@ -68,23 +76,37 @@ pub async fn series_read_buckets(
     q: &BucketQuery,
     width_ms: u64,
     override_method: Option<Method>,
-) -> Result<(Vec<Bucket>, Option<Method>), IngestError> {
+) -> Result<(Vec<Bucket>, Option<Method>, Option<Align>), IngestError> {
     authorize_ingest(principal, ws, "series.read")?;
-    let mut buckets = read_buckets(store, ws, series, q, width_ms)
+
+    // ONE policy read serves both axes. Skipped entirely when the caller has pinned both — the read
+    // then needs nothing from the policy, and this is the hot dashboard path.
+    let governing = if q.align.is_none() || override_method.is_none() {
+        // `resolve_policy` — the LONGEST matching prefix, the same rule the GC and the commit filter
+        // use. Cloned because the list is dropped here; a policy is a handful of small fields.
+        resolve_policy(&list_policies(store, ws).await?, series).cloned()
+    } else {
+        None
+    };
+
+    let mut effective = q.clone();
+    if effective.align.is_none() {
+        effective.align = governing.as_ref().and_then(|p| p.align_for(width_ms));
+    }
+    let mut buckets = read_buckets(store, ws, series, &effective, width_ms)
         .await
         .map_err(page_err)?;
 
     let method = match override_method {
         Some(m) => Some(m),
-        None => resolve_policy(&list_policies(store, ws).await?, series)
-            .and_then(|p| p.method_for(width_ms)),
+        None => governing.as_ref().and_then(|p| p.method_for(width_ms)),
     };
     if let Some(m) = method {
         // A method whose representative this tier never stored is a `BadInput` naming the fix —
         // never a silently-approximated neighbour (series-normalize open question, decided).
         apply_method(&mut buckets, m).map_err(IngestError::BadInput)?;
     }
-    Ok((buckets, method))
+    Ok((buckets, method, effective.align))
 }
 
 fn page_err(e: PageError) -> IngestError {

@@ -31,6 +31,13 @@ pub(super) fn to_ingest_policy(p: &RetentionPolicy) -> lb_ingest::Policy {
                     .method
                     .as_deref()
                     .and_then(|m| lb_ingest::Method::parse(m).ok()),
+                // Where the tier's buckets start. Absent stays absent — the UTC epoch grid — so a
+                // pack.yaml written before this field existed applies to exactly the policy it
+                // always did. Unlike `method` there is no lint on the way through: the mirror holds
+                // it as the same integer the verb takes, so there is no name to get wrong.
+                align: t.align.map(|a| lb_ingest::Align {
+                    origin_ms: a.origin_ms,
+                }),
             })
             .collect(),
         filter: p.filter.as_ref().map(to_ingest_filter),
