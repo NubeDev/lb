@@ -25,27 +25,29 @@ use crate::routes::{
     get_dashboard, get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history,
     get_identity, get_insight, get_layout, get_media, get_nav, get_nav_hidden, get_nav_pref,
     get_outbox_status, get_panel, get_prefs, get_report, get_rule, get_undo_compensations,
-    get_undo_history, get_webhook, grant_skill, health, identity_workspaces_route,
-    import_dashboard, inject_flow, insight_events, latest_sample, lifecycle_flow, link_doc,
-    list_apikeys, list_brands, list_channels, list_dashboards, list_datasources, list_defs,
-    list_docs, list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants,
-    list_identities, list_inbox, list_insights, list_members, list_navs, list_occurrences,
-    list_panels, list_reports, list_roles, list_rules, list_series, list_shares_nav, list_tables,
-    list_team_members, list_teams, list_users, list_webhooks, list_workspaces, load_skill, login,
-    mcp_call, mcp_catalog, native_call, panel_usage, patch_flow_run, pin_dashboards, post_message,
-    post_redo, post_undo, post_webhook, publish_extension, publish_message, purge_workspace,
-    put_asset_bin, put_doc, put_media_chunk, put_skill, read_graph, read_samples, read_schema,
-    refresh_run_token, remove_datasource, remove_member, remove_team_member, rename_series_route,
-    rename_team, rename_workspace, render_catalog_message, reset_extension, resolve_caps,
-    resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant,
-    revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control, run_flow,
-    run_query, run_rule, run_stream, save_brand, save_dashboard, save_flow, save_nav, save_panel,
-    save_report, save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route,
-    set_catalog, set_default_nav, set_default_prefs, set_layout, set_nav_hidden, set_nav_pref,
-    set_prefs, share_dashboard, share_doc, share_nav, share_panel, share_report, start_extension,
-    surface_reach, system_acp, system_overview, system_subsystem, system_tools, system_topology,
-    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav,
-    update_def, update_flow_node, update_series_samples_route, write_samples,
+    get_undo_history, get_version, get_versions, get_versions_config, get_webhook, grant_skill,
+    health, identity_workspaces_route, import_dashboard, inject_flow, insight_events,
+    latest_sample, lifecycle_flow, link_doc, list_apikeys, list_brands, list_channels,
+    list_dashboards, list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes,
+    list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_insights,
+    list_members, list_navs, list_occurrences, list_panels, list_reports, list_roles, list_rules,
+    list_series, list_shares_nav, list_tables, list_team_members, list_teams, list_users,
+    list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call,
+    panel_usage, patch_flow_run, pin_dashboards, post_message, post_redo, post_undo,
+    post_version_restore, post_webhook, publish_extension, publish_message, purge_workspace,
+    put_asset_bin, put_doc, put_media_chunk, put_skill, put_versions_config, read_graph,
+    read_samples, read_schema, refresh_run_token, remove_datasource, remove_member,
+    remove_team_member, rename_series_route, rename_team, rename_workspace, render_catalog_message,
+    reset_extension, resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs,
+    revoke_apikey, revoke_grant, revoke_tokens_route, revoke_webhook, rotate_apikey,
+    rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream, save_brand,
+    save_dashboard, save_flow, save_nav, save_panel, save_report, save_rule, scan_table,
+    series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
+    set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs, share_dashboard,
+    share_doc, share_nav, share_panel, share_report, start_extension, surface_reach, system_acp,
+    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
+    test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
+    update_flow_node, update_series_samples_route, write_samples,
 };
 use crate::state::Gateway;
 
@@ -487,6 +489,20 @@ pub fn router(gw: Gateway) -> Router {
         .route(
             "/undo/history/{seq}/compensations",
             get(get_undo_compensations),
+        )
+        // entity version history (versions scope, #112) — list / inspect / restore the newest N
+        // snapshots of a dashboard, flow, or rule. `kind` is an OPAQUE path segment: the host's kind
+        // plan table decides what exists, so a future kind needs no route change. `/versions/config`
+        // is two segments and the list is three, so they cannot shadow each other.
+        .route(
+            "/versions/config",
+            get(get_versions_config).put(put_versions_config),
+        )
+        .route("/versions/{kind}/{id}", get(get_versions))
+        .route("/versions/{kind}/{id}/{version_id}", get(get_version))
+        .route(
+            "/versions/{kind}/{id}/{version_id}/restore",
+            post(post_version_restore),
         )
         // bus (widget-config-vars "Platform fix") — generic workspace-walled pub/sub. `POST /bus/publish`
         // is the fire-and-forget motion sink; `GET /bus/{subject}/stream?token=` is the live subscribe

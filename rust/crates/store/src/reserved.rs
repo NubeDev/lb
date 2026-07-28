@@ -122,6 +122,12 @@ pub const RESERVED_TABLES: &[&str] = &[
     "undo_stack",
     "undo_seq",
     "undo_live",
+    // -- entity version history (versions scope) --
+    // The per-entity snapshot ring + its per-workspace cap override. Host-owned like the undo
+    // journal beside it: a `store.write` holder must not be able to forge or blank a version row
+    // (a forged snapshot is a write to the real entity the moment someone restores it).
+    "entity_version",
+    "versions_config",
     // -- prefs / i18n --
     "user_prefs",
     "workspace_prefs",

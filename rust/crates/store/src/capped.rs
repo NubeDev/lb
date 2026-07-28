@@ -162,6 +162,16 @@ pub async fn capped_insert(
     Ok(())
 }
 
+/// The millisecond timestamp encoded in a ULID's first 48 bits, or `0` for an id that is not a
+/// ULID. Kept beside [`new_ulid`] so exactly one crate knows the id format: a caller that needs
+/// "when was this ring row written?" reads it back out of the id the ring already minted, rather
+/// than adding a clock call (and a second, disagreeable ordering) of its own.
+pub fn ulid_timestamp_ms(id: &str) -> u64 {
+    ulid::Ulid::from_string(id)
+        .map(|u| u.timestamp_ms())
+        .unwrap_or(0)
+}
+
 /// Mint a fresh ULID string — the recommended record id + FIFO ordering key for a capped table.
 /// Monotonic-ish and lexicographically sortable with no clock and no counter row (the resolved open
 /// question). Kept here so every capped caller mints ids the same way.

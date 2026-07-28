@@ -109,6 +109,10 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "docs.",
     "telemetry.",
     "history.",
+    // versions scope (#112): the generic entity version-history family (list/get/restore +
+    // config.get/set). Host-native like the undo journal beside it, reached over the one MCP bridge
+    // so an agent, the palette, and the gateway route all use the same path (rule 7).
+    "versions.",
     "tools.",
     // login-hardening scope: the admin credential-management verb (`identity.set_credential`) rides
     // the one MCP bridge like every other admin action, gated `mcp:identity.manage:call`. The other
@@ -418,7 +422,7 @@ pub async fn call_tool_at_depth_on_node(
             .get("undo_group")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        return crate::undo_capture::capture_dispatch(
+        let out = crate::undo_capture::capture_dispatch(
             &node.store,
             principal,
             ws,
@@ -437,6 +441,21 @@ pub async fn call_tool_at_depth_on_node(
             ),
         )
         .await;
+        // Entity version history (versions scope, #112) — the AFTER-image half of this same
+        // chokepoint. Undo journals what the record looked like BEFORE; history keeps what it looks
+        // like AFTER, because "restore version 7" means "what it looked like once that save landed".
+        //
+        // Sequenced AFTER the capture wrapper rather than nested inside it, for two reasons: the
+        // after-image only exists once the dispatch has committed, and running outside the taint
+        // scope means a history write can never contribute taint that would re-classify the user's
+        // own step. A failed call captures nothing (there is no new version of anything).
+        //
+        // Best-effort by contract: `capture_version` swallows and LOGS its own failures, so a
+        // history problem can never turn a successful save into a failed one.
+        if out.is_ok() {
+            crate::versions::capture_version(node, principal, ws, qualified_tool, &input).await;
+        }
+        return out;
     }
     dispatch_at_depth(
         node,
@@ -810,6 +829,11 @@ pub(crate) async fn run_host_verb(
         || qualified_tool.starts_with("history.")
     {
         call_undo_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("versions.") {
+        // versions scope (#112): entity version history. `depth` is threaded through because
+        // `versions.restore` RE-ENTERS this dispatcher to run the kind's own save verb under the
+        // caller's authority — the same shape the `viz.` resolver uses.
+        crate::call_versions_tool(node, principal, ws, qualified_tool, &input, depth).await?
     } else if qualified_tool == "series.producer.health" {
         // The one `series.*` verb that is NOT a pure store read, so it is dispatched HERE rather
         // than in `call_ingest_tool` (which holds only a `&Store`): it needs the registry to

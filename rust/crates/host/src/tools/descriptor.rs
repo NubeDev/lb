@@ -94,6 +94,11 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // `mcp:docs.extract:call` gate decides its visibility — no new cap, no `if` in the catalog.
         crate::extract_descriptor(),
     ];
+    // The entity version-history family (versions scope, #112). Real schemas so a model can form
+    // `{kind, id, version_id}` — and so a bad `kind` is a typed argument error at the validator
+    // rather than an empty list that reads as "this entity has no history". Gated by each verb's own
+    // cap in the catalog (no `if`), exactly like every other host-native descriptor.
+    out.extend(crate::versions_descriptors());
     out.extend(crate::host_tools::secret_descriptors());
     out
 }

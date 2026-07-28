@@ -45,6 +45,7 @@ mod system;
 mod telemetry;
 mod template;
 mod undo;
+mod versions;
 mod viz;
 mod workflow;
 
@@ -93,6 +94,7 @@ const FAMILIES: &[&[HostTool]] = &[
     telemetry::TELEMETRY,
     template::TEMPLATE,
     undo::UNDO,
+    versions::VERSIONS,
     viz::VIZ,
     workflow::WORKFLOW,
 ];
