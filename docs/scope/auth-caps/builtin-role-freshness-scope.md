@@ -95,8 +95,26 @@ step, no version bump, no release note about "refresh your dev store." The regre
 > definition is authoritative, it must be authoritative in both directions — otherwise the stored row
 > stays load-bearing for exactly the changes that matter most: the ones that take power away.
 
+## Sibling problem: the TOKEN going stale (distinct axis, fixed separately)
+
+This scope is about the stored **role row** going stale against newly-added built-in caps, fixed by
+resolving built-ins live (`LiveBuiltinRoleCaps` / `resolve_caps_live`).
+
+There is a second, easily-confused staleness on a different axis: a **session token** is a cached
+projection of `resolve_caps` taken at login, so a grant written *afterwards* never reaches it until
+it expires. That one bites on a routine action — `grant_ui_scope_to_admin` runs on every extension
+install — and its live symptom was an extension upgrade leaving already-logged-in admins denied the
+new verbs for up to the 12h token lifetime.
+
+Its fix (`refresh_grants_if_denied`, re-resolving **only** on the path that was about to return
+`Denied`) existed but was never wired to a gate until
+`docs/sessions/auth-caps/stale-grant-repair-session.md`. Noted here because the two are one question
+apart — "is the ROW fresh?" vs "is the TOKEN fresh?" — and a reader who finds only this scope will
+reasonably assume both are covered.
+
 ## Related
 
+- Sibling session: `docs/sessions/auth-caps/stale-grant-repair-session.md` (the token axis).
 - Debug entry: `docs/debugging/authz/builtin-role-row-frozen-stale-on-new-caps.md` (the live
   symptom + root cause + the regression note).
 - Session: `docs/sessions/reports/reports-finish-session.md` (Task C).

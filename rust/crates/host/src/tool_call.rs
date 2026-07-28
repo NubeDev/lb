@@ -172,6 +172,23 @@ pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
 ///   read grant its verb re-checks; curating which nav you use is part of resolving your own menu.
 /// - `nav.set_default` — nav scope: the workspace-default pointer is an authoring action — it gates
 ///   on the `mcp:nav.save:call` grant that creates the navs it points at. Re-checked inside.
+/// The capability name the dispatcher's gate will ACTUALLY check for `qualified_tool`, across both
+/// tiers — a host-native verb resolves through the [`gate_tool_for`] alias table, while an
+/// `<ext>.<tool>` is gated on its own qualified name by `lb_mcp`'s `authorize`.
+///
+/// It exists so the stale-grant repair asks the gate's own question rather than a near-miss of it.
+/// Getting this wrong is silent in the worst way: ask about the wrong cap and the repair either
+/// never fires (the bug stays) or fires on a verb the caller still cannot reach (a wasted store read
+/// and a `Some` that the gate immediately rejects). The `format.`/`convert.` tier is deliberately
+/// absent — it is grant-free and returns before this is ever reached.
+fn gate_for(qualified_tool: &str) -> &str {
+    if is_host_native(qualified_tool) {
+        gate_tool_for(qualified_tool)
+    } else {
+        qualified_tool
+    }
+}
+
 pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
     if qualified_tool == "federation.schema" || qualified_tool == "federation.sample" {
         "federation.query"
@@ -537,6 +554,36 @@ async fn dispatch_at_depth(
             )));
         }
     }
+
+    // STALE-GRANT REPAIR, immediately before the gates (builtin-role-freshness scope's sibling
+    // problem). A session token is a cached projection of `resolve_caps` taken at login, so a grant
+    // written AFTERWARDS is invisible to it until it expires. One such write happens on a completely
+    // routine action: `grant_ui_scope_to_admin` runs on every extension install. The observed
+    // failure — `modbus` 0.1.7 → 0.1.8 added `device.status`/`point.status`, the install granted
+    // both, and every already-logged-in admin was refused both for up to the 12h token lifetime,
+    // with the page silently rendering `unknown` and nothing in any log to explain it.
+    //
+    // Placed HERE, once, rather than in each branch, because this is the one point both tiers pass
+    // through: the host-native gate below and `lb_mcp`'s own `authorize` inside the extension path
+    // are two different gates, and the bug shows up on the EXTENSION side. Shadowing `principal`
+    // threads the repaired identity through BOTH — which is load-bearing, because host verbs
+    // re-check their own cap internally: refreshing only the outer gate would pass it and then be
+    // denied inside.
+    //
+    // `refresh_grants_if_denied` is the whole policy and it is conservative by construction: it
+    // consults the cached caps FIRST (an allowed call never touches the store, so the hot path costs
+    // nothing), refuses delegated and run-scoped principals, and returns `Some` ONLY when
+    // re-resolving actually flips the verdict — so a genuine denial still denies, under the caller's
+    // original identity, with the identical error. It can hand out no authority a re-login would
+    // not, and it never narrows (revocation rides the `token_revoke` tombstone, deliberately).
+    let refreshed = crate::authz::refresh_grants_if_denied(
+        &node.store,
+        principal,
+        ws,
+        gate_for(qualified_tool),
+    )
+    .await;
+    let principal = refreshed.as_ref().unwrap_or(principal);
 
     if is_host_native(qualified_tool) {
         // Same MCP gate as any tool (workspace-first, then `mcp:<tool>:call`) so a denied bridged
