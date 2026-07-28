@@ -150,7 +150,26 @@ fn merge_tier(stored: &[Tier], supplied: &Value) -> Result<Tier, IngestError> {
         .iter()
         .find(|t| t.width_ms == width_ms)
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            // No stored tier at this width — the caller is WIDENING or NARROWING an existing tier,
+            // which changes its identity. Found live: patching a 5-minute tier to 1 minute dropped
+            // its `method`, i.e. the reported bug wearing a different hat.
+            //
+            // The method is inherited rather than lost, and the rule is not invented for this: a
+            // method "is a property of the SERIES' meaning, not of a particular width"
+            // (`Policy::method_for`), which is already how a bucketed READ resolves one — the finest
+            // tier that declares it. Applying the same rule on write keeps read and write agreeing;
+            // dropping it here would mean a coil configured `last` silently becomes an average the
+            // moment someone retunes the bucket size.
+            Tier {
+                method: stored
+                    .iter()
+                    .filter(|t| t.method.is_some())
+                    .min_by_key(|t| t.width_ms)
+                    .and_then(|t| t.method),
+                ..Default::default()
+            }
+        });
     tier.width_ms = width_ms;
 
     if let Some(v) = obj.get("keep_for_ms") {

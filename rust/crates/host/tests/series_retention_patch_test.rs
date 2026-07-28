@@ -325,3 +325,61 @@ async fn patch_is_refused_without_the_set_capability() {
     .unwrap_err();
     assert!(matches!(err, ToolError::Denied), "got {err:?}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn changing_a_tier_width_inherits_the_method_rather_than_losing_it() {
+    // Found on a LIVE node, not in review: width is the merge identity, so retuning a tier from 5
+    // minutes to 1 minute has no stored counterpart to merge with — and the method vanished. That is
+    // the reported bug in a different hat.
+    //
+    // The inheritance rule is lb's own: a method is a property of the SERIES' meaning, not of a
+    // width (`Policy::method_for`), which is already how a bucketed READ resolves one. A coil
+    // configured `last` must not silently become an average because someone retuned the bucket size.
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", &[SET, LIST]);
+    seed(&store, &ada).await; // one 60s tier, method avg
+
+    call(
+        &store,
+        &ada,
+        "series.retention.patch",
+        json!({ "prefix": PREFIX, "tiers": [{ "width_ms": 300_000, "keep_for_ms": 604_800_000 }] }),
+    )
+    .await
+    .expect("patch");
+
+    let p = policy(&store, &ada).await;
+    assert_eq!(p["tiers"][0]["width_ms"], 300_000);
+    assert_eq!(
+        p["tiers"][0]["method"], "avg",
+        "retuning the bucket width silently dropped the method"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_new_tier_on_a_policy_with_no_method_anywhere_stays_method_less() {
+    // Inheritance must not INVENT a method: if nothing in the policy declares one, the new tier has
+    // none either. Fabricating `avg` would be the fabricated-healthy class of bug all over again.
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", &[SET, LIST]);
+    call(
+        &store,
+        &ada,
+        "series.retention.set",
+        json!({ "prefix": PREFIX, "raw_for_ms": 60_000, "max_samples": 0,
+                "tiers": [{ "width_ms": 60_000, "keep_for_ms": 1 }] }),
+    )
+    .await
+    .expect("set");
+
+    call(
+        &store,
+        &ada,
+        "series.retention.patch",
+        json!({ "prefix": PREFIX, "tiers": [{ "width_ms": 900_000, "keep_for_ms": 1 }] }),
+    )
+    .await
+    .expect("patch");
+
+    assert_eq!(policy(&store, &ada).await["tiers"][0].get("method"), None);
+}
