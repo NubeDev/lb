@@ -302,7 +302,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   and the CLI drive CE identically to the UI. Live COV rides the generic `extensions/extension-watch-scope.md`
   primitive (`ce.watch`), the only — and generic — core addition it implies.
 - `core/`, `crate-layout/`, `extensions/`, `mcp/`, `node-roles/`, `registry/`, `secrets/`,
-  `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `store/` also holds
+  `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `mcp/` also holds
+  `ext-tool-descriptors-scope.md` — **extension tool descriptors over the init handshake**: widen the
+  lb-ext-sdk `InitReply` from bare tool names to the full `ToolDescriptor` (title/group/`input_schema`/
+  `emits_external`/`result`) the registry already models, fold them in at `native/install.rs` (which can
+  only `name_only` today), carry them over routed registration, and close the `forms.*` catalog-row gap —
+  so `tools.catalog` serves real schemas for extension tools and every form-rendering consumer (channel
+  palette, forms builder, rubix-ai's dashboard write-action builder) gets typed forms. Additive, no
+  `PROTOCOL_MAJOR` bump; owning repos lb-ext-sdk (`sdk-v*`) + lb (`node-v*`). `store/` also holds
   `session-concurrency-scope.md` — a **tracking** scope (not a green light) for the global session
   mutex that serializes every query node-wide: measured, 18 concurrent writers each in their OWN
   workspace take 7.0ms = 18 × 0.4ms (zero parallelism). Deliberate — it makes `use_ns` + query one

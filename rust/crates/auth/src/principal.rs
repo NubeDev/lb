@@ -144,6 +144,41 @@ impl Principal {
         }
     }
 
+    /// Union freshly-resolved **durable grant** caps onto this principal — the one sanctioned way to
+    /// widen a verified principal, and the reason the type-level "never widen" rule above says
+    /// "*by accident*".
+    ///
+    /// **Why this must exist.** A session token is a CACHED PROJECTION of `resolve_caps` taken at
+    /// login (`mint_session`), so a grant written afterwards — notably `grant_ui_scope_to_admin`,
+    /// which runs on every extension install — never reaches an already-issued token. The holder is
+    /// denied a capability they demonstrably hold until their token expires (12h). Re-resolving from
+    /// the durable store closes that window.
+    ///
+    /// **Why widening here is sound.** `resolved` is resolved SERVER-SIDE, from the durable grant
+    /// store, for this principal's OWN `(sub, ws)`. The result is therefore bounded by exactly what a
+    /// fresh login would mint — this can hand out no authority a re-login would not. It is a
+    /// freshness fix, never a privilege grant.
+    ///
+    /// **The two refusals, enforced here rather than at the call site** so no caller can get them
+    /// wrong:
+    /// - a **delegated** principal (`constraint.is_some()`) — its caps were deliberately narrowed to
+    ///   an agent's own set and bounded by `agent ∩ caller`; re-widening from the human's grant store
+    ///   would let an agent outgrow the delegation it was created with;
+    /// - a **run-scoped** principal (`run_id.is_some()`) — a run token is scoped to that run's
+    ///   authority for its lifetime, which is the whole point of scoping it.
+    ///
+    /// Both return `self` untouched. `constraint`, `delegator` and `run_id` are preserved in every
+    /// case, so no path through here can drop a bound.
+    pub fn with_live_grants(mut self, resolved: Vec<String>) -> Principal {
+        if self.constraint.is_some() || self.run_id.is_some() {
+            return self;
+        }
+        self.caps.extend(resolved);
+        self.caps.sort();
+        self.caps.dedup();
+        self
+    }
+
     /// The global identity (`user:…` / `key:…`).
     pub fn sub(&self) -> &str {
         &self.sub

@@ -14,7 +14,7 @@
 
 use lb_assets::{read_install, record_install, Install};
 use lb_ext_loader::{grant, Manifest};
-use lb_mcp::ToolDescriptor;
+
 use lb_supervisor::{Launcher, Sidecar};
 
 use super::error::NativeServiceError;
@@ -130,6 +130,10 @@ pub async fn install_native<L: Launcher>(
         gateway_url.as_deref(),
     );
     let sidecar = Sidecar::spawn(spec, launcher).await?;
+    // Read the child's self-declaration off the live handle BEFORE it moves into the runtime map.
+    // Cloned rather than borrowed: the map takes ownership, and re-reading it through the map would
+    // mean taking the sidecar's lock on the install path for data we already have.
+    let declared = sidecar.declared().cloned();
     node.sidecars.insert(ws, &manifest.id, sidecar);
 
     // Make the native sidecar first-class in the ONE MCP routing registry (Tier-agnostic): register
@@ -142,16 +146,17 @@ pub async fn install_native<L: Launcher>(
     // The registry matches on BARE tool names (the `<ext>.` prefix is the host's routing concern —
     // `dispatch`/`serve_call` unqualify before calling the target, exactly as for a wasm ext). A
     // native manifest MAY declare its tools already-qualified (`<ext>.<tool>`, the sidecar's own ABI
-    // shape); strip that prefix here so `resolve` matches the unqualified name the call path passes.
+    // shape); strip that prefix so `resolve` matches the unqualified name the call path passes.
     // The adapter re-qualifies with `ext_id` before handing the name to the child (its ABI expects
     // the qualified form). A bare-name manifest is unaffected.
-    let descriptors = tools
-        .iter()
-        .map(|t| {
-            let bare = t.strip_prefix(&format!("{}.", manifest.id)).unwrap_or(t);
-            ToolDescriptor::name_only(bare)
-        })
-        .collect();
+    //
+    // The manifest says WHICH tools exist (it is the capability source — a child cannot widen its
+    // own surface); the child's `init` reply says what each one LOOKS like (title, group, input
+    // schema, external-effect flag), because only the running child can generate a schema from the
+    // struct its tool actually parses. `join_descriptors` folds the two, and falls back to the
+    // name-only descriptors this line built before when the child declares nothing — every
+    // extension built against an older SDK, unchanged (ext-tool-descriptors scope).
+    let descriptors = super::descriptors::join_descriptors(&manifest.id, &tools, declared.as_ref());
     let adapter = super::call::SidecarDispatch::new(node.sidecars.clone(), manifest.id.clone());
     node.registry.register_local_dispatch(
         manifest.id.clone(),

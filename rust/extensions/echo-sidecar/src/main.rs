@@ -12,7 +12,9 @@
 //! test triggers (reply-then-exit, so "induce the crash" is observable and separate from "verify the
 //! restart": the supervisor's NEXT call sees the dead child and restarts it). No env-var/kill racing.
 
-use lb_supervisor::{read_frame, write_frame, CallParams, Method, Reply, Request};
+use lb_supervisor::{
+    read_frame, write_frame, CallParams, InitReply, Method, Reply, Request, ToolDescriptor,
+};
 use tokio::io::{stdin, stdout};
 
 #[tokio::main(flavor = "current_thread")]
@@ -36,7 +38,7 @@ async fn main() {
 
         let mut crash_after_reply = false;
         let reply = match req.method {
-            Method::Init => Reply::ok(req.id, format!(r#"{{"ready":true,"ext":"{ext_id}"}}"#)),
+            Method::Init => Reply::ok(req.id, init_reply(&ext_id)),
             Method::Health => Reply::ok(req.id, "ok"),
             Method::Shutdown => {
                 // Acknowledge, then break so the process exits cooperatively.
@@ -60,6 +62,37 @@ async fn main() {
             std::process::exit(7);
         }
     }
+}
+
+/// Build the `init` reply body: the protocol major, the tools served, and a **partial** descriptor
+/// declaration (ext-tool-descriptors scope).
+///
+/// Deliberately partial, and that is the point. `echo` declares a full contract (title, group, input
+/// schema); `whoami` declares nothing. One real child therefore exercises BOTH halves of the host's
+/// manifest↔`init` join in a single spawn: the enriched path for `echo` and the `name_only` fallback
+/// for `whoami`. A child that declared everything would leave the fallback — the path every
+/// already-published extension takes — proven only against a fake.
+///
+/// `ext_id` still rides along as `ready`/`ext` did, so anything reading the old shape is unaffected.
+fn init_reply(ext_id: &str) -> String {
+    let init = InitReply {
+        protocol_major: 0,
+        tools: vec!["echo".into(), "whoami".into()],
+        descriptors: vec![ToolDescriptor {
+            name: "echo".into(),
+            title: "Echo".into(),
+            group: "probes".into(),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": { "message": { "type": "string" } },
+                "required": ["message"],
+            })),
+            // Echoing a value back down the same line leaves no effect off the node.
+            emits_external: false,
+            result: None,
+        }],
+    };
+    serde_json::to_string(&init).unwrap_or_else(|_| format!(r#"{{"ready":true,"ext":"{ext_id}"}}"#))
 }
 
 /// Handle a `call`: parse the tool + input. `crash` replies then signals the caller to exit (the

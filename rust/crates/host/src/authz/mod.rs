@@ -35,7 +35,7 @@ pub use grant_ui::grant_ui_scope_to_admin;
 pub use grants::{grants_assign, grants_list, grants_list_scoped, grants_revoke};
 pub use hold::holds_cap;
 pub use resolve::authz_resolve;
-pub use resolve_live::{resolve_caps_live, resolve_subject_caps_live};
+pub use resolve_live::{refresh_grants_if_denied, resolve_caps_live, resolve_subject_caps_live};
 pub use revoke_tokens::revoke_tokens;
 pub use roles::{roles_define, roles_delete, roles_list};
 pub use scoped::{authz_check_scoped, authz_scope_filter};

@@ -29,6 +29,26 @@ pub fn register_remote_extension(node_handle: &Node, ext_id: &str, host: NodeId,
         .register_remote(ext_id, host, tools.to_vec());
 }
 
+/// [`register_remote_extension`] carrying the extension's **full descriptors** rather than bare
+/// names — titles, groups, input schemas, external-effect flags.
+///
+/// The hosting node learns these from its child's `init` handshake (`native::descriptors`). Without
+/// this entry point they were dropped at the node boundary: `register_remote` maps every name
+/// through `ToolDescriptor::name_only`, so a remote node's `tools.catalog` served schema-less rows
+/// for an extension whose schemas the hosting node had all along. Symmetric nodes means the same
+/// catalog either side of the bus (ext-tool-descriptors scope), so an announce that has descriptors
+/// should carry them; one that only has names keeps using the sibling above.
+pub fn register_remote_descriptors(
+    node_handle: &Node,
+    ext_id: &str,
+    host: NodeId,
+    tools: Vec<lb_mcp::ToolDescriptor>,
+) {
+    node_handle
+        .registry
+        .register_remote_descriptors(ext_id, host, tools);
+}
+
 /// Forget the remote target for `ext_id` on `host` — the reaction to a hosting announce being
 /// retracted (the node dropped, or stopped hosting the ext). An ext that drops back to a single
 /// host stops refusing untargeted calls, with no restart needed.

@@ -13,6 +13,7 @@
 //! One responsibility per file (FILE-LAYOUT):
 //!   - `spec`     — the supervision recipe ([`Spec`], [`RestartPolicy`], [`Backoff`]).
 //!   - `rpc`      — the child wire protocol shapes (`init`/`health`/`call`/`shutdown`).
+//!   - `init`     — the `init` reply BODY: what a child declares about itself at spawn.
 //!   - `frame`    — `Content-Length` JSON-RPC framing over the child's stdio.
 //!   - `launcher` — the [`Launcher`] seam + [`Channel`]/[`Kill`] (spawn behind a trait, testable).
 //!   - `os`       — the real OS launcher ([`OsLauncher`], the one process-boundary file).
@@ -23,6 +24,7 @@
 mod conn;
 mod error;
 mod frame;
+mod init;
 mod launcher;
 mod os;
 mod rpc;
@@ -33,6 +35,7 @@ mod spec;
 pub use conn::Conn;
 pub use error::SupervisorError;
 pub use frame::{read_frame, write_frame, MAX_FRAME};
+pub use init::{InitReply, ToolDescriptor};
 pub use launcher::{Channel, ChildRead, ChildWrite, Kill, Launcher};
 pub use os::OsLauncher;
 pub use rpc::{CallParams, Caller, Method, Reply, Request};

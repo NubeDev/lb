@@ -3328,6 +3328,37 @@ pages, this slice) (+ `public/SCOPE.md`).
 
 ---
 
+## 2026-07-28 — extension tool descriptors over the `init` handshake (BUILT, unreleased)
+
+Scope [`mcp/ext-tool-descriptors-scope.md`](scope/mcp/ext-tool-descriptors-scope.md) · session
+[`mcp/ext-tool-descriptors-session.md`](sessions/mcp/ext-tool-descriptors-session.md).
+
+A native extension can now **self-declare each tool's contract** (title, group, input JSON Schema,
+`emits_external`) in the `init` handshake, and `tools.catalog` serves it. Previously the handshake
+carried bare names — `supervisor`'s `handshake()` discarded the reply body entirely — so every
+extension tool reached every UI schema-less and each schema consumer degraded to a free-text arg box.
+Additive on every axis: `PROTOCOL_MAJOR` unchanged, parsing fail-open, and a child that declares
+nothing produces a **byte-identical** frame and bit-identical registry state (pinned by test). The
+manifest remains the dispatch allowlist and the capability source; the declaration only enriches.
+
+- New: `supervisor/src/init.rs` (the wire body, mirrored host-side — lb still has no SDK dep),
+  `host/src/native/descriptors.rs` (the manifest↔declaration join), `remote.rs`
+  `register_remote_descriptors` (routed carriage), `host/tests/native_descriptors_test.rs` (5 tests,
+  real `echo-sidecar` child, incl. the mandatory cap-deny + workspace-isolation cases).
+- **`system/catalog.rs` (1394 lines) split into `system/catalog/` (33 files, largest 175)** — which
+  is what let the `forms.*` rows finally land after the previous attempt was reverted over the
+  file-size ratchet. `host_catalog_covers_dispatch_prefixes()` was **red on master**; now green.
+- **Catalog audit: 42 dispatched-but-uncataloged verbs added** (247 → 289 rows), incl. the entire
+  `agent.*` config/persona/memory surface (19 verbs) that was invisible to the agent's own menu.
+- Companion repos: lb-ext-sdk (the wire + `Tools::descriptors()` + a `schemars` helper),
+  rubix-ai-extensions/modbus (first real declarer, 37 descriptors), rubix-ai (the write-action
+  builder that consumes them).
+
+**Awaiting release: `sdk-v*` then `node-v*`, then downstream pin bumps — do not push/tag without the
+user.** `file-size-baseline.txt` needs one stale line deleted (`system/catalog.rs`, now gone).
+
+---
+
 ## How to keep this current
 
 Every session that changes state updates the relevant cell here as its **last step**

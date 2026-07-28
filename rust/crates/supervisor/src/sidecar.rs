@@ -24,6 +24,7 @@ use std::sync::Arc;
 use crate::conn::Conn;
 use crate::error::SupervisorError;
 use crate::frame::{read_frame, write_frame};
+use crate::init::InitReply;
 use crate::launcher::{Channel, Launcher};
 use crate::rpc::{CallParams, Caller, Method, Reply, Request};
 use crate::spec::{RestartPolicy, Spec};
@@ -46,6 +47,9 @@ pub struct Sidecar {
     /// the child and fails fast instead of re-attempting against the same corpse (Risk 7 — serially
     /// that cost one wasted retry, multiplexed it costs N).
     generation: u64,
+    /// What the child declared in its `init` reply — see [`Sidecar::declared`]. Runtime-only, like
+    /// `conn`: it is re-read from the live child on every generation, never persisted.
+    declared: Option<InitReply>,
 }
 
 impl Sidecar {
@@ -54,13 +58,24 @@ impl Sidecar {
     /// by the host before this is called.
     pub async fn spawn<L: Launcher>(spec: Spec, launcher: &L) -> Result<Self, SupervisorError> {
         let channel = launcher.launch(&spec.exec, &spec.args, &spec.env).await?;
-        let conn = handshake(channel).await?;
+        let (conn, declared) = handshake(channel).await?;
         Ok(Self {
             spec,
             conn: Some(Arc::new(conn)),
             restarts: 0,
             generation: 0,
+            declared,
         })
+    }
+
+    /// What the child declared about itself in its `init` reply, if anything readable arrived.
+    ///
+    /// `None` for every child that predates the descriptor handshake (and for one whose reply this
+    /// host cannot parse) — the caller falls back to the manifest, which is what it did before this
+    /// existed. Re-read on every generation: a `restart` re-handshakes, so an upgraded binary's new
+    /// declaration replaces the old one rather than going stale behind a live process.
+    pub fn declared(&self) -> Option<&InitReply> {
+        self.declared.as_ref()
     }
 
     /// How many times this sidecar has been restarted (the host projects this into `native_status`).
@@ -202,7 +217,12 @@ impl Sidecar {
         let channel = launcher
             .launch(&self.spec.exec, &self.spec.args, &self.spec.env)
             .await?;
-        self.conn = Some(Arc::new(handshake(channel).await?));
+        let (conn, declared) = handshake(channel).await?;
+        self.conn = Some(Arc::new(conn));
+        // The new generation's declaration replaces the old one — a restart may have launched an
+        // upgraded binary declaring a different tool set, and a stale declaration behind a live
+        // process is worse than none.
+        self.declared = declared;
         self.generation += 1;
         Ok(())
     }
@@ -238,7 +258,7 @@ impl Sidecar {
 /// then hand the channel to [`Conn::start`] — keeps the handshake trivially correct and means the
 /// reader task never races the frame that proves the child is alive. Every subsequent request goes
 /// through the multiplexer.
-async fn handshake(mut channel: Channel) -> Result<Conn, SupervisorError> {
+async fn handshake(mut channel: Channel) -> Result<(Conn, Option<InitReply>), SupervisorError> {
     let req = Request {
         id: 0,
         method: Method::Init,
@@ -259,7 +279,10 @@ async fn handshake(mut channel: Channel) -> Result<Conn, SupervisorError> {
         if let Some(err) = reply.error {
             return Err(SupervisorError::Child(err));
         }
-        break;
+        // What the child DECLARED about itself, if it declared anything readable (`init` module:
+        // best-effort by design). Liveness is the envelope above; this is only enrichment, so an
+        // unparseable body is `None` and the host keeps its manifest-derived behaviour.
+        let declared = reply.result.as_deref().and_then(InitReply::parse);
+        return Ok((Conn::start(channel), declared));
     }
-    Ok(Conn::start(channel))
 }

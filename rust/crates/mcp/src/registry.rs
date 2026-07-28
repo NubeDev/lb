@@ -31,7 +31,11 @@ use tokio::sync::Mutex;
 /// catalog and dispatches — the palette renders a single free-text arg (an old extension needs no
 /// rebuild). This widening of the registry from bare names (`Vec<String>`) to descriptors is the
 /// SDK/manifest-adjacent change; it is versioned by absence (old manifests simply omit the field).
-#[derive(Debug, Clone, Serialize)]
+// `PartialEq` (not `Eq` — the schema fields hold `serde_json::Value`) so a caller that BUILDS
+// descriptors can assert on the result: the native tier's manifest↔`init` join proves its fallback
+// is bit-identical to the name-only descriptors this host built before descriptors existed, and
+// that proof needs to compare two of these.
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ToolDescriptor {
     /// The tool name. For an extension tool this is the BARE name (the `<ext>.` prefix is added by
     /// the catalog); for a host-native descriptor it is the qualified name (`federation.query`).
