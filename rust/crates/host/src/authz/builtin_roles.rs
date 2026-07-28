@@ -316,6 +316,16 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:dbschema.list:call",
     "mcp:device.list:call",
     "mcp:history.list:call",
+    // versions scope (#112): a viewer READS an entity's version history. Seeing what a dashboard
+    // looked like last week is the same tier as seeing the dashboard — and a viewer holding these
+    // still cannot restore: `versions.restore` is author-tier AND re-checks the kind's save cap, so
+    // a mis-granted restore would still refuse. `versions.get` is named separately from `.list`
+    // because a snapshot is the full record content while the list is provenance.
+    "mcp:versions.list:call",
+    "mcp:versions.get:call",
+    // Reading how many versions the workspace keeps is a plain fact about the surface a viewer uses;
+    // CHANGING it (`versions.config.set`) is admin-only, below.
+    "mcp:versions.config.get:call",
     "mcp:media.list:call",
     "mcp:nav.hidden.get:call",
     "mcp:nav.pref.get:call",
@@ -497,6 +507,12 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:undo:call",
     "mcp:redo:call",
     "mcp:history.compensations:call",
+    // versions scope (#112): restoring a version IS performing that entity's own save, so it sits at
+    // the same author tier as the save — and the verb's no-escalation check re-demands the kind's
+    // save cap before it re-dispatches, so this grant can never reach a mutation the caller could
+    // not perform directly. The named deny the scope requires: a viewer holding `versions.list` but
+    // not `mcp:dashboard.save:call` is refused `versions.restore`.
+    "mcp:versions.restore:call",
     // media scope: a member uploads/reads/deletes their own media.
     "mcp:media.upload:call",
     "mcp:media.get:call",
@@ -558,6 +574,10 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // one of those re-checks its own capability under the caller — a pack cannot smuggle in a write
     // its caller could not perform directly. (validate/list/get are viewer reads, above.)
     "mcp:pack.apply:call",
+    // versions scope (#112): the ring cap decides how much of EVERY member's work history the
+    // workspace keeps, so lowering it destroys other people's recoverability — workspace
+    // administration, not a member preference. The read (`versions.config.get`) is viewer-tier.
+    "mcp:versions.config.set:call",
     // destructive / creating workspace ops.
     "mcp:workspace.create:call",
     "mcp:workspace.delete:call",

@@ -22,6 +22,7 @@ mod record;
 pub mod reserved;
 mod scan;
 mod scan_all;
+mod snapshot_guard;
 mod status;
 mod tables;
 mod taint;
@@ -31,7 +32,7 @@ mod write_journaled;
 mod write_locked;
 mod write_tx;
 
-pub use capped::{capped_insert, new_ulid};
+pub use capped::{capped_insert, new_ulid, ulid_timestamp_ms};
 pub use compact::{compact, CompactionRecord};
 pub use create::create;
 pub use delete::delete;
@@ -45,6 +46,7 @@ pub use record::{Versioned, FIRST_REV};
 pub use reserved::{is_reserved, RESERVED_TABLES};
 pub use scan::{scan, Page, Row, MAX_SCAN_LIMIT};
 pub use scan_all::scan_all;
+pub use snapshot_guard::{snapshot_safety, SnapshotRefusal};
 pub use status::{status, StoreStatus};
 pub use tables::{tables, TableCount};
 pub use taint::{

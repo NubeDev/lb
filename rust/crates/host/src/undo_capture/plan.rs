@@ -88,6 +88,28 @@ pub(crate) fn plan_capture(qualified_tool: &str, input: &Value) -> CapturePlan {
             _ => CapturePlan::NotMutating,
         },
 
+        // versions scope (#112): a `versions.restore` rewrites ONE entity record — the same
+        // reversible floor as the save it re-dispatches, so Ctrl+Z after a restore returns the
+        // pre-restore record. The inner save runs at depth+1 and is therefore NOT captured itself
+        // (capture is depth-0 only), which is exactly why the restore CALL has to name the record.
+        //
+        // The `(table, id)` comes from the versions KIND PLAN TABLE — the same data rows the
+        // versions subsystem itself reads — so this arm never matches on a kind name and a new
+        // versioned kind becomes undoable without touching this file.
+        crate::versions::RESTORE_TOOL => {
+            match (
+                str_arg(input, "kind").and_then(crate::versions::table_for_kind),
+                str_arg(input, "id"),
+            ) {
+                (Some(table), Some(id)) => CapturePlan::Reversible {
+                    table: table.to_string(),
+                    id: id.to_string(),
+                },
+                // An unknown kind or a missing id: the restore will fail anyway, nothing to capture.
+                _ => CapturePlan::NotMutating,
+            }
+        }
+
         // document-store sharing/links: these write ONLY relation edges (a different table, and
         // a `unrelate` is the reverse — not yet a captured verb). Marked non-generic so a save
         // that also shares is still captured by its doc upsert above; a pure share is journaled
@@ -135,6 +157,11 @@ fn is_read_only(tool: &str) -> bool {
             | "assets.backlinks"
             | "assets.load_skill"
             | "assets.list_granted_skills"
+            // versions scope: the history READS. `versions.restore` is deliberately absent — it is
+            // the one mutating verb of the family and is captured by its own arm above.
+            | "versions.list"
+            | "versions.get"
+            | "versions.config.get"
     ) || tool.starts_with("series.")
         || tool.starts_with("host.")
         || tool.starts_with("dashboard.") && tool.ends_with(".get")

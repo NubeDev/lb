@@ -78,6 +78,7 @@ mod ui_decl;
 mod undo;
 mod undo_capture;
 mod users;
+mod versions;
 mod viz;
 mod webhook;
 mod workspaces;
@@ -420,6 +421,10 @@ pub use undo::{history_compensations, history_list, redo, undo, UndoSvcError};
 pub use users::{
     call_users_tool, user_create, user_delete, user_disable, user_enable, user_list,
     user_login_check, UserView, UsersError,
+};
+pub use versions::{
+    call_versions_tool, descriptors as versions_descriptors, VersionsError, DEFAULT_VERSION_CAP,
+    ENTITY_VERSION_TABLE,
 };
 pub use viz::{call_viz_tool, viz_query, VizError};
 /// The **webhook** service — a first-class inbound-HTTP surface, keyed and mediated (webhooks

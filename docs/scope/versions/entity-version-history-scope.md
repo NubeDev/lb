@@ -185,7 +185,20 @@ Real infra (`mem://` store, real dispatch), seeded data. Mandatory categories:
 
 ## Open questions
 
-None — the user asked for a decision-complete scope. Decisions that would otherwise be
+Two raised by the build + live verification (2026-07-28), neither blocking what shipped:
+
+- **Should `versions.list` return a per-entity `can_restore`?** `dashboard.save` is owner-gated
+  *underneath* its capability, while the no-escalation check re-demands only the capability — so a
+  member restoring a colleague's board passes both versions gates and is refused by ownership at the
+  nested save. The refusal is correct and non-silent, but a client cannot predict it without
+  modelling per-kind ownership, which is exactly the knowledge the generic seam keeps out of clients.
+  The node already knows the answer. **Recommendation: add it**, as an additive field.
+- **Should the ring row carry the kind's `hash_ignore`?** The client diff currently shows save
+  metadata (a dashboard's `updated_ts`) beside real changes, because only the node knows which fields
+  are stamped by the act of saving. Returning them (e.g. `meta_fields`) would let a diff sort them
+  last without any per-kind client knowledge. Small, additive, cosmetic.
+
+Otherwise none — the user asked for a decision-complete scope. Decisions that would otherwise be
 questions, made above: after-image (not before) snapshots; no capture on delete; delete keeps
 the ring (enables recreate); restore = re-dispatch save (never raw write); LWW on restore vs
 undo's refuse-on-drift; cap = const 20 + per-workspace/per-kind admin override clamped 1..=100;
