@@ -153,8 +153,10 @@ async fn serialized_drains_vs_gc_lose_no_samples() {
                 width_ms: 10_000,
                 keep_for_ms: 0,
                 method: None,
+                ..Default::default()
             }],
             filter: None,
+            ..Default::default()
         },
     )
     .await

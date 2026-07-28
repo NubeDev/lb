@@ -55,6 +55,7 @@ impl PriorRetention {
             max_samples: 0,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         });
         self
     }
@@ -75,6 +76,7 @@ impl PriorRetention {
             max_samples,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         });
         self
     }

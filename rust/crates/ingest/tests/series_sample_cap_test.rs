@@ -171,6 +171,7 @@ async fn gc_applies_the_cap_reports_it_and_is_idempotent() {
             max_samples: 10,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         },
     )
     .await
@@ -215,6 +216,7 @@ async fn cap_composes_with_the_time_horizon() {
             max_samples: 10,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         },
     )
     .await
@@ -251,8 +253,10 @@ async fn cap_rolls_up_before_evicting_so_bucket_reads_survive() {
                 width_ms: 10_000,
                 keep_for_ms: 0, // rollups kept forever
                 method: None,
+                ..Default::default()
             }],
             filter: None,
+            ..Default::default()
         },
     )
     .await
@@ -303,6 +307,7 @@ async fn the_cap_never_crosses_the_workspace_wall() {
             max_samples: 5,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         },
     )
     .await

@@ -19,7 +19,7 @@ pub const RETENTION_TABLE: &str = "series_retention";
 ///
 /// `method` is `None` by default, which is exactly today's behaviour: a bucketed read returns the
 /// full stat row and no `value` column. Setting it adds the column — it never removes one.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Tier {
     pub width_ms: u64,
     pub keep_for_ms: u64,
@@ -40,7 +40,11 @@ pub struct Tier {
 /// A third, INDEPENDENT axis arrived with series-normalize: `filter` bounds what is ever *stored*,
 /// where the two above bound how long what was stored *lives*. Absent (the default) = store
 /// everything, so every policy row written before this slice keeps its exact meaning.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// `Default` is derived so an ADDITIVE field costs no call-site churn: every construction site can
+/// spread `..Default::default()` and keep compiling the next time this struct grows. Adding
+/// `updated_by`/`updated_ms` broke a dozen struct literals across the suite, which is a poor tax to
+/// pay twice.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Policy {
     pub prefix: String,
     pub raw_for_ms: u64,
@@ -61,6 +65,25 @@ pub struct Policy {
     /// Write-time predicates applied at COMMIT (never at staging append). `None` = store everything.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<Filter>,
+    /// PROVENANCE: the principal that last wrote this row, and when (epoch ms).
+    ///
+    /// Stamped host-side from the authenticated caller and **never caller-supplied** — the same
+    /// posture as the producer root on `ingest.write`, and for the same reason: a field a caller can
+    /// forge answers nothing. `None` on every row written before this existed, which is honest —
+    /// "we do not know" is the truth for those, and inventing an author would be worse.
+    ///
+    /// This exists because "who set this policy, and did they mean to drop the tier method?" was
+    /// asked of a live node and could only be answered by ELIMINATING every writer in three repos.
+    /// A policy is a data-lifecycle decision; it should say who made it.
+    ///
+    /// `Option` rather than `#[serde(default)]` on a bare value: the explicit projection in
+    /// [`list_policies`] returns a column an older row never wrote as a PRESENT null, which
+    /// `Option` deserializes to `None` correctly — the `none_as_default` dance the non-Option
+    /// fields need does not apply here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_ms: Option<u64>,
 }
 
 /// Deserialize a field that may arrive as `NONE` (a column an older row never wrote, projected by
@@ -141,7 +164,8 @@ pub async fn list_policies(store: &Store, ws: &str) -> Result<Vec<Policy>, Store
             // list reads back as its serde default forever (the closed-struct trap: the row on disc
             // is correct, the struct in memory silently isn't).
             &format!(
-                "SELECT prefix, raw_for_ms, max_samples, tiers, filter FROM {RETENTION_TABLE} \
+                "SELECT prefix, raw_for_ms, max_samples, tiers, filter, updated_by, updated_ms \
+                 FROM {RETENTION_TABLE} \
                  ORDER BY prefix ASC"
             ),
             vec![],

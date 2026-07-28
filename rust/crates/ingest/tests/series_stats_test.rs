@@ -137,6 +137,7 @@ async fn rollup_rows_break_down_per_tier_after_a_real_gc() {
                     width_ms: 60_000,
                     keep_for_ms: 0,
                     method: None,
+                    ..Default::default()
                 },
                 Tier {
                     width_ms: 10_000,
@@ -145,6 +146,7 @@ async fn rollup_rows_break_down_per_tier_after_a_real_gc() {
                 },
             ],
             filter: None,
+            ..Default::default()
         },
     )
     .await

@@ -75,6 +75,7 @@ async fn the_retention_reactor_caps_a_series_with_nobody_calling_the_verb() {
             max_samples: 10,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         },
     )
     .await
@@ -123,6 +124,7 @@ async fn the_retention_reactor_only_gcs_its_configured_workspace() {
                 max_samples: 10,
                 tiers: vec![],
                 filter: None,
+                ..Default::default()
             },
         )
         .await

@@ -737,6 +737,15 @@ const HOST_TOOLS: &[HostTool] = &[
                       resolution (with the winning prefix named), plus the workspace's last GC pass",
     },
     HostTool {
+        tool: "series.retention.patch",
+        group: "series",
+        description: "change SOME fields of a retention policy, keeping the rest — read-modify-write \
+                      in one call. Absent keys keep their stored value, and a supplied tier is merged \
+                      field-wise with the stored tier of the same width, so re-sending a tier without \
+                      its method does not silently drop the method (which `set`, a whole-row replace, \
+                      does by design)",
+    },
+    HostTool {
         tool: "series.retention.delete",
         group: "series",
         description: "delete a series retention policy (revert to keep-forever)",

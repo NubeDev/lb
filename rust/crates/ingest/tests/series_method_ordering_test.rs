@@ -49,8 +49,10 @@ async fn tiered(
                 width_ms: width,
                 keep_for_ms: 0,
                 method,
+                ..Default::default()
             }],
             filter: None,
+            ..Default::default()
         },
     )
     .await

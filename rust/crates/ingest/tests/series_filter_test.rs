@@ -60,6 +60,7 @@ async fn policy(store: &Store, ws: &str, prefix: &str, filter: Filter) {
             max_samples: 0,
             tiers: vec![],
             filter: Some(filter),
+            ..Default::default()
         },
     )
     .await

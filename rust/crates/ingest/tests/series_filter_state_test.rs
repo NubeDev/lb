@@ -60,6 +60,7 @@ async fn policy(store: &Store, ws: &str, prefix: &str, filter: Filter) {
             max_samples: 0,
             tiers: vec![],
             filter: Some(filter),
+            ..Default::default()
         },
     )
     .await
@@ -307,8 +308,10 @@ async fn an_absent_filter_block_is_byte_for_byte_todays_behaviour() {
                 width_ms: 60_000,
                 keep_for_ms: 0,
                 method: None,
+                ..Default::default()
             }],
             filter: None,
+            ..Default::default()
         },
     )
     .await

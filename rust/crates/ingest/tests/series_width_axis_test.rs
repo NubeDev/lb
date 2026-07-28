@@ -73,8 +73,10 @@ async fn seeded_store(method: Option<Method>) -> Store {
                 width_ms: TIER_MS,
                 keep_for_ms: 0,
                 method,
+                ..Default::default()
             }],
             filter: None,
+            ..Default::default()
         },
     )
     .await
@@ -205,6 +207,7 @@ async fn a_multi_tier_policy_resolves_its_method_at_every_width() {
                 width_ms: 10_000,
                 keep_for_ms: 0,
                 method: None, // an EXACT hit that declares nothing
+                ..Default::default()
             },
             Tier {
                 width_ms: 60_000,
@@ -218,6 +221,7 @@ async fn a_multi_tier_policy_resolves_its_method_at_every_width() {
             },
         ],
         filter: None,
+        ..Default::default()
     };
     for &w in WIDTHS {
         assert_eq!(

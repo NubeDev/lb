@@ -51,6 +51,7 @@ async fn tiered(
                 method,
             }],
             filter: None,
+            ..Default::default()
         },
     )
     .await

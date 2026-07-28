@@ -249,11 +249,11 @@ pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, drain_workspace_bounded, ingest_write,
     own_batches, publish_sample, series_delete, series_find, series_latest_value, series_list,
-    series_producer_health, series_read_range, series_rename, series_retention_status,
-    series_samples_delete, series_samples_update, series_stats_get, spawn_ingest_reactors,
-    spawn_retention_reactors, subscribe_series, DrainPass, HealthState, IngestError,
-    ProducerDetail, ProducerHealth, ProducerReport, Qos, RetentionStatus, Sample, SampleKey,
-    SampleUpdate, SeriesProducerHealth, SeriesSub, COMMIT_BATCH, DEFAULT_STAGING_BOUND,
+    series_producer_health, series_read_range, series_rename, series_retention_patch,
+    series_retention_status, series_samples_delete, series_samples_update, series_stats_get,
+    spawn_ingest_reactors, spawn_retention_reactors, subscribe_series, DrainPass, HealthState,
+    IngestError, ProducerDetail, ProducerHealth, ProducerReport, Qos, RetentionStatus, Sample,
+    SampleKey, SampleUpdate, SeriesProducerHealth, SeriesSub, COMMIT_BATCH, DEFAULT_STAGING_BOUND,
     MAX_SERIES_LIST, PRODUCER_HEALTH_TOOL, RETENTION_PERIOD,
 };
 /// The **insights** service — the capability-gated surface over `lb_insights` (insights umbrella

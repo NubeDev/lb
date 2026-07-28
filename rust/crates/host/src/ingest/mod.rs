@@ -55,7 +55,8 @@ pub use read::{
 };
 pub use rename::series_rename;
 pub use retention::{
-    series_retention_delete, series_retention_gc, series_retention_list, series_retention_set,
+    series_retention_delete, series_retention_gc, series_retention_list, series_retention_patch,
+    series_retention_set,
 };
 pub use retention_reactor::{spawn_retention_reactors, RETENTION_PERIOD};
 pub use retention_status::{series_retention_status, RetentionStatus};

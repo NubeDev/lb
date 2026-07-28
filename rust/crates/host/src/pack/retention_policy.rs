@@ -34,6 +34,12 @@ pub(super) fn to_ingest_policy(p: &RetentionPolicy) -> lb_ingest::Policy {
             })
             .collect(),
         filter: p.filter.as_ref().map(to_ingest_filter),
+        // Provenance is stamped by `series_retention_set` from the APPLYING principal. A converter
+        // has no author to name, and the manifest cannot supply one (`lb_packs::RetentionPolicy` is
+        // `deny_unknown_fields`, so `updated_by:` in a pack.yaml is a line-numbered error) — which is
+        // the correct outcome for a field that must never be caller-supplied.
+        updated_by: None,
+        updated_ms: None,
     }
 }
 

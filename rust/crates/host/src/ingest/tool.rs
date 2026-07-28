@@ -78,10 +78,24 @@ pub async fn call_ingest_tool(
         "series.retention.set" => {
             let policy: lb_ingest::Policy = serde_json::from_value(input.clone())
                 .map_err(|e| ToolError::BadInput(format!("policy: {e}")))?;
-            super::series_retention_set(store, principal, ws, &policy)
+            // `now_ms` caller-injectable (determinism §3); absent -> wall-clock, same as `.gc`.
+            let now_ms = u64_arg(input, "now_ms").unwrap_or_else(now_wall_ms);
+            let stored = super::series_retention_set(store, principal, ws, policy, now_ms)
                 .await
                 .map_err(ingest_error_to_tool)?;
-            Ok(json!({ "ok": true }))
+            // The STORED policy, not `{ok:true}`. A set REPLACES the row, so returning what landed
+            // is what lets a caller see a field their body omitted — the failure that started this.
+            Ok(json!({ "ok": true, "policy": stored }))
+        }
+        "series.retention.patch" => {
+            // Read-modify-write in ONE call: absent keys keep their stored value, and a supplied
+            // tier is merged field-wise with the stored tier of the same width.
+            let prefix = str_arg(input, "prefix")?;
+            let now_ms = u64_arg(input, "now_ms").unwrap_or_else(now_wall_ms);
+            let stored = super::series_retention_patch(store, principal, ws, prefix, input, now_ms)
+                .await
+                .map_err(ingest_error_to_tool)?;
+            Ok(json!({ "ok": true, "policy": stored }))
         }
         "series.retention.list" => {
             let policies = super::series_retention_list(store, principal, ws)

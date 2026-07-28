@@ -53,8 +53,10 @@ fn policy(width: u64, keep_for_ms: u64) -> Policy {
             width_ms: width,
             keep_for_ms,
             method: None,
+            ..Default::default()
         }],
         filter: None,
+        ..Default::default()
     }
 }
 

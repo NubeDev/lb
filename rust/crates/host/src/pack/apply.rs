@@ -151,7 +151,7 @@ async fn apply_object(
         Kind::Channel => apply_channel(node, principal, ws, &obj.id, ts).await,
         Kind::Agent => apply_agent(node, principal, ws, pack, ts).await,
         Kind::Sidebar => apply_sidebar(node, principal, ws, pack, ts).await,
-        Kind::Retention => apply_retention(node, principal, ws, pack, &obj.id).await,
+        Kind::Retention => apply_retention(node, principal, ws, pack, &obj.id, ts).await,
     }
 }
 
@@ -487,6 +487,9 @@ async fn apply_retention(
     ws: &str,
     pack: &Pack,
     id: &str,
+    // The apply's logical clock, already threaded to every other `apply_*` — it stamps the policy's
+    // provenance, so a pack-applied row records WHEN it was applied, not when the row is read.
+    ts: u64,
 ) -> String {
     // `id` is the policy's PREFIX (its plan key). Find the inline policy and set it via the SAME
     // `series.retention.set` the public verb dispatches to — which re-checks
@@ -499,7 +502,8 @@ async fn apply_retention(
         &node.store,
         principal,
         ws,
-        &super::retention_policy::to_ingest_policy(policy),
+        super::retention_policy::to_ingest_policy(policy),
+        ts,
     )
     .await
     {

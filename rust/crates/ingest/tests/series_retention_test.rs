@@ -73,6 +73,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
                 method: None,
             }],
             filter: None,
+            ..Default::default()
         },
     )
     .await
@@ -133,8 +134,10 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
                 width_ms: 10_000,
                 keep_for_ms: 150_000, // rollup rows with t < 550_000 evict at now=700_000
                 method: None,
+                ..Default::default()
             }],
             filter: None,
+            ..Default::default()
         },
     )
     .await
@@ -175,6 +178,7 @@ async fn the_longest_matching_prefix_governs_a_series() {
             max_samples: 5,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         },
     )
     .await
@@ -188,6 +192,7 @@ async fn the_longest_matching_prefix_governs_a_series() {
             max_samples: 20,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         },
     )
     .await

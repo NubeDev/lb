@@ -95,6 +95,7 @@ async fn the_gc_pass_reports_a_multi_slice_cap_eviction_in_full() {
             max_samples: CAP,
             tiers: vec![],
             filter: None,
+            ..Default::default()
         },
     )
     .await
