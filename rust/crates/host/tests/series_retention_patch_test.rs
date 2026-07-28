@@ -10,10 +10,11 @@
 //! `call_ingest_tool`. No mocks.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::call_ingest_tool;
+use lb_host::{call_ingest_tool, call_tool, Node};
 use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 const SET: &str = "mcp:series.retention.set:call";
 const LIST: &str = "mcp:series.retention.list:call";
@@ -382,4 +383,48 @@ async fn a_new_tier_on_a_policy_with_no_method_anywhere_stays_method_less() {
     .expect("patch");
 
     assert_eq!(policy(&store, &ada).await["tiers"][0].get("method"), None);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn delete_is_reachable_through_the_real_dispatcher() {
+    // REGRESSION, found by driving it on a live node. `series_retention_delete` deliberately mints
+    // no cap of its own — its service layer re-checks `series.retention.set` — but the OUTER gate in
+    // `tool_call` was demanding `mcp:series.retention.delete:call`, which no role bundle grants. The
+    // verb was therefore unreachable for EVERY caller since it shipped.
+    //
+    // Every existing test called the host fn or `call_ingest_tool` directly and so never crossed the
+    // outer gate, which is exactly why nothing caught it. This one goes through `call_tool`.
+    let node = Arc::new(Node::boot().await.unwrap());
+    let ada = principal("user:ada", &[SET, LIST]);
+
+    call_tool(
+        &node,
+        &ada,
+        "acme",
+        "series.retention.set",
+        &json!({ "prefix": PREFIX, "raw_for_ms": 60_000, "max_samples": 0, "tiers": [] })
+            .to_string(),
+    )
+    .await
+    .expect("set through the real dispatcher");
+
+    call_tool(
+        &node,
+        &ada,
+        "acme",
+        "series.retention.delete",
+        &json!({ "prefix": PREFIX }).to_string(),
+    )
+    .await
+    .expect("delete must be reachable with the SET capability");
+
+    let out = call_tool(&node, &ada, "acme", "series.retention.list", "{}")
+        .await
+        .expect("list");
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        v["policies"].as_array().unwrap().len(),
+        0,
+        "the policy survived delete"
+    );
 }

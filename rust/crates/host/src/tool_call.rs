@@ -196,13 +196,18 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // bundle, so without this alias the outer gate denies the batch verb for every caller —
         // the shipped-but-unusable state the scope's "reuses the grant" clause intended to avoid.
         "series.latest"
-    } else if qualified_tool == "series.retention.patch" {
-        // The merge-preserving write is the SAME administrative privilege as the replacing one —
-        // anything `patch` can do, `set` could already do by sending a full body. It rides
-        // `mcp:series.retention.set:call` (the cap its service layer re-checks), exactly as
-        // `series_retention_delete` already does. Without the alias the outer gate would demand a
-        // per-verb grant no role carries, and the safe verb would be the one nobody could call —
-        // leaving the footgun as the only reachable path.
+    } else if qualified_tool == "series.retention.patch"
+        || qualified_tool == "series.retention.delete"
+    {
+        // Both are the SAME administrative privilege as the replacing write — anything `patch` can
+        // do, `set` could already do by sending a full body, and `series_retention_delete`'s own doc
+        // says outright that "deleting a policy is the same administrative privilege as setting one;
+        // no separate cap is minted". Its SERVICE layer re-checks `series.retention.set`
+        // accordingly — but the OUTER gate was still demanding `mcp:series.retention.delete:call`,
+        // which appears in no role bundle, so **delete has been unreachable for every caller since
+        // it shipped**. Found by driving it on a live node; every test called the host fn directly
+        // and so never crossed the outer gate. This is the shipped-but-unusable state the
+        // `viz.query_batch` / `series.latest_many` aliases below already exist to prevent.
         "series.retention.set"
     } else if qualified_tool == "outbox.enqueue_held" {
         "outbox.enqueue"
