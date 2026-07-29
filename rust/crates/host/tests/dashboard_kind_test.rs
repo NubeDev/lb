@@ -10,7 +10,7 @@
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     dashboard_get, dashboard_list, dashboard_save, dashboard_save_meta, Cell, CellSource,
-    CellTarget, DashboardError,
+    CellTarget, DashboardError, PageMeta,
 };
 use lb_store::Store;
 use serde_json::json;
@@ -97,15 +97,10 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
         ws,
         "energy",
         "Monthly Energy Report",
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some("report".into()),
-        None,
+        PageMeta {
+            kind: Some("report".into()),
+            ..PageMeta::default()
+        },
         vec![chart_cell("meter.kwh")],
         vec![],
         20,
@@ -152,15 +147,10 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
         ws,
         "energy",
         "Monthly Energy Report",
-        None,
-        Some("file-text".into()),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        PageMeta {
+            icon: Some("file-text".into()),
+            ..PageMeta::default()
+        },
         got.cells.clone(),
         vec![],
         40,
@@ -178,15 +168,10 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
         ws,
         "energy",
         "Monthly Energy Report",
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some("dashboard".into()),
-        None,
+        PageMeta {
+            kind: Some("dashboard".into()),
+            ..PageMeta::default()
+        },
         got.cells.clone(),
         vec![],
         50,
@@ -205,15 +190,10 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
         ws,
         "typo",
         "Typo",
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some("reprot".into()),
-        None,
+        PageMeta {
+            kind: Some("reprot".into()),
+            ..PageMeta::default()
+        },
         vec![],
         vec![],
         60,
@@ -250,15 +230,10 @@ async fn bound_report_ids_round_trip_preserve_on_omit_and_clear_on_empty() {
                 ws,
                 "meters",
                 "Meter Detail",
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                ids,
+                PageMeta {
+                    report_ids: ids,
+                    ..PageMeta::default()
+                },
                 vec![chart_cell("meter.kwh")],
                 vec![],
                 now,

@@ -430,39 +430,35 @@ async fn apply_dashboard(
         None => Vec::new(),
     };
 
+    // A pack declares page settings with the SAME keys the settings dialog sends, and with the same
+    // preserve-on-omit meaning: an absent key keeps the stored value, so re-applying a pack never
+    // blanks page chrome an author has since set (nor silently demotes a report back to a dashboard).
+    let str_key = |k: &str| d.json.get(k).and_then(Value::as_str).map(String::from);
     match crate::dashboard::dashboard_save_meta(
         &node.store,
         principal,
         ws,
         id,
         &title,
-        d.json
-            .get("description")
-            .and_then(Value::as_str)
-            .map(String::from),
-        d.json.get("icon").and_then(Value::as_str).map(String::from),
-        d.json
-            .get("color")
-            .and_then(Value::as_str)
-            .map(String::from),
-        d.json
-            .get("timezone")
-            .and_then(Value::as_str)
-            .map(String::from),
-        d.json.get("cacheTtlS").and_then(Value::as_u64),
-        None,
-        d.json
-            .get("width")
-            .and_then(Value::as_str)
-            .map(String::from),
-        // A pack may declare a report-kind board exactly as it declares any other page setting; an
-        // absent key preserves the stored kind (the host validates the value).
-        d.json.get("kind").and_then(Value::as_str).map(String::from),
-        d.json.get("reportIds").and_then(Value::as_array).map(|r| {
-            r.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        }),
+        crate::dashboard::PageMeta {
+            description: str_key("description"),
+            heading: str_key("heading"),
+            heading_size: str_key("headingSize"),
+            show_heading: d.json.get("showHeading").and_then(Value::as_bool),
+            icon: str_key("icon"),
+            color: str_key("color"),
+            timezone: str_key("timezone"),
+            cache_ttl_s: d.json.get("cacheTtlS").and_then(Value::as_u64),
+            toolbar: None,
+            width: str_key("width"),
+            vars_display: str_key("varsDisplay"),
+            kind: str_key("kind"),
+            report_ids: d.json.get("reportIds").and_then(Value::as_array).map(|r| {
+                r.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            }),
+        },
         cells,
         variables,
         ts,

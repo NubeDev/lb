@@ -18,7 +18,7 @@ use lb_authz::Subject;
 use super::model::{Cell, Toolbar, Visibility};
 use super::{
     dashboard_access_check, dashboard_delete, dashboard_get, dashboard_list, dashboard_pin,
-    dashboard_save_meta, dashboard_share, dashboard_share_closure, DashboardError,
+    dashboard_save_meta, dashboard_share, dashboard_share_closure, DashboardError, PageMeta,
 };
 
 /// Dispatch a `dashboard.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the
@@ -59,15 +59,21 @@ pub async fn call_dashboard_tool(
                 ws,
                 str_arg(input, "id")?,
                 str_arg(input, "title")?,
-                opt_str_arg(input, "description"),
-                opt_str_arg(input, "icon"),
-                opt_str_arg(input, "color"),
-                opt_str_arg(input, "timezone"),
-                opt_u64_arg(input, "cacheTtlS"),
-                opt_toolbar_arg(input),
-                opt_str_arg(input, "width"),
-                opt_str_arg(input, "kind"),
-                opt_str_vec_arg(input, "reportIds"),
+                PageMeta {
+                    description: opt_str_arg(input, "description"),
+                    heading: opt_str_arg(input, "heading"),
+                    heading_size: opt_str_arg(input, "headingSize"),
+                    show_heading: opt_bool_arg(input, "showHeading"),
+                    icon: opt_str_arg(input, "icon"),
+                    color: opt_str_arg(input, "color"),
+                    timezone: opt_str_arg(input, "timezone"),
+                    cache_ttl_s: opt_u64_arg(input, "cacheTtlS"),
+                    toolbar: opt_toolbar_arg(input),
+                    width: opt_str_arg(input, "width"),
+                    vars_display: opt_str_arg(input, "varsDisplay"),
+                    kind: opt_str_arg(input, "kind"),
+                    report_ids: opt_str_vec_arg(input, "reportIds"),
+                },
                 cells,
                 variables,
                 u64_arg(input, "now")?,
@@ -241,6 +247,15 @@ fn opt_str_vec_arg(input: &Value, key: &str) -> Option<Vec<String>> {
 fn opt_u64_arg(input: &Value, key: &str) -> Option<u64> {
     let v = input.get(key)?;
     v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+}
+
+/// An OPTIONAL bool arg, same preserve-on-omit contract as [`opt_str_arg`]: `Some` when present and a
+/// boolean (or the lenient `"true"`/`"false"` string form AI callers emit), `None` when absent, null,
+/// or unparseable. Used for `showHeading`. Never fails a save.
+fn opt_bool_arg(input: &Value, key: &str) -> Option<bool> {
+    let v = input.get(key)?;
+    v.as_bool()
         .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
 }
 

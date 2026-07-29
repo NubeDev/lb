@@ -45,6 +45,10 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "id": { "type": "string", "x-lb": { "label": "Dashboard id", "description": "Fresh id creates; existing id updates (owner-only, or an admin holding dashboard.save_any)" } },
                 "title": { "type": "string", "x-lb": { "label": "Title" } },
                 "description": { "type": "string", "x-lb": { "label": "Description", "description": "Optional one-line subtitle for the page (omit to keep the existing one)" } },
+                "heading": { "type": "string", "x-lb": { "label": "Heading", "description": "Optional display heading for the page — the human name, distinct from the id/title; empty falls back to the title (omit to keep the existing one)" } },
+                "headingSize": { "type": "string", "enum": ["small", "medium", "large"], "x-lb": { "label": "Heading size", "description": "Optional in-body heading size: 'small', 'medium' (default) or 'large' (omit to keep the existing one)" } },
+                "showHeading": { "type": "boolean", "x-lb": { "label": "Show heading", "description": "Optional: show the in-body heading block (icon + heading + description) above the first widget row; default true (omit to keep the existing one)" } },
+                "varsDisplay": { "type": "string", "enum": ["chips", "bar", "inline", "filters"], "x-lb": { "label": "Variables display", "description": "Optional presentation for the dashboard's variable controls: 'chips' (default, compact chip pickers), 'bar' (labelled select bar), 'inline' (one condensed summary line that expands on click) or 'filters' (collapsed behind a counted Filters button in the toolbar) (omit to keep the existing one)" } },
                 "icon": { "type": "string", "x-lb": { "label": "Icon", "description": "Optional icon-lib name for the page, e.g. 'activity' (omit to keep the existing one)" } },
                 "color": { "type": "string", "x-lb": { "label": "Colour", "description": "Optional CSS accent colour for the page icon (omit to keep the existing one)" } },
                 "timezone": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional dashboard timezone — an IANA name like 'Australia/Sydney' or 'browser' (omit to keep the existing one)" } },
@@ -55,8 +59,9 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "toolbar": { "type": "object", "properties": {
                     "dateSelect": { "type": "boolean" },
                     "refreshRate": { "type": "boolean" },
-                    "share": { "type": "boolean" }
-                }, "x-lb": { "label": "Toolbar", "description": "Optional header-chrome flags (all hidden by default): dateSelect, refreshRate, share (omit to keep the existing ones)" } },
+                    "share": { "type": "boolean" },
+                    "cached": { "type": "boolean" }
+                }, "x-lb": { "label": "Toolbar", "description": "Optional header-chrome flags (all hidden by default): dateSelect, refreshRate, share, cached (omit to keep the existing ones)" } },
                 "cells": { "type": "array", "items": { "type": "object" }, "x-lb": { "label": "Cells", "description": "A JSON ARRAY of cell objects (never a JSON-encoded string). Each cell: { i, x, y, w, h, view, title?, sources?, options?, fieldConfig? } — view names come from dashboard.catalog; read an existing dashboard with dashboard.get for a template" } },
                 "variables": { "type": "array", "items": { "type": "object" }, "x-lb": { "label": "Variables", "description": "Optional dashboard variables (omit if none)" } },
                 "now": { "type": "integer", "x-lb": { "label": "Timestamp", "description": "Logical time of the save — unix epoch seconds" } }
@@ -65,6 +70,34 @@ pub fn save_descriptor() -> ToolDescriptor {
         })),
         result: None,
     }
+}
+
+/// The page-presentation fields of a save, gathered into ONE struct (dashboard page-settings).
+///
+/// Every field is `Option<_>` with the same meaning: **`None` preserves** the stored value across the
+/// save, `Some` sets it (on create, `None` means the type's empty/default). That is the
+/// preserve-on-omit discipline `visibility` established — a layout or variable save carries
+/// [`PageMeta::default()`] and can never blank the page chrome.
+///
+/// This is a struct rather than a positional argument list because the list reached seventeen
+/// parameters: at that width every new page setting was a churn of ~10 call sites and a real risk of
+/// two same-typed `Option<String>`s being transposed silently. Adding a setting is now one field here
+/// plus one line in the constructor below.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PageMeta {
+    pub description: Option<String>,
+    pub heading: Option<String>,
+    pub heading_size: Option<String>,
+    pub show_heading: Option<bool>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub timezone: Option<String>,
+    pub cache_ttl_s: Option<u64>,
+    pub toolbar: Option<Toolbar>,
+    pub width: Option<String>,
+    pub vars_display: Option<String>,
+    pub kind: Option<String>,
+    pub report_ids: Option<Vec<String>>,
 }
 
 /// Upsert dashboard `id` in `ws` with `title` + `cells`, as `principal`, at logical time `now`.
@@ -85,8 +118,15 @@ pub async fn dashboard_save(
     // preserved. The settings dialog is the only writer of icon/colour/subtitle; it calls
     // `dashboard_save_meta` directly.
     dashboard_save_meta(
-        store, principal, ws, id, title, None, None, None, None, None, None, None, None, None,
-        cells, variables, now,
+        store,
+        principal,
+        ws,
+        id,
+        title,
+        PageMeta::default(),
+        cells,
+        variables,
+        now,
     )
     .await
 }
@@ -107,11 +147,9 @@ fn check_kind(kind: &str) -> Result<(), DashboardError> {
     }
 }
 
-/// `dashboard.save` with the page-presentation fields (dashboard page-settings). `description`/`icon`/
-/// `color`/`timezone` are each `None` = preserve the stored value across the save (the same preserve-on-omit
-/// discipline `visibility` uses, so a layout/variable save never blanks the page chrome), `Some` = set
-/// it. On create, `None` means empty. This is the full form; [`dashboard_save`] is the presentation-
-/// preserving wrapper every layout/variable caller uses.
+/// `dashboard.save` with the page-presentation fields (dashboard page-settings). See [`PageMeta`] for
+/// the preserve-on-omit contract every one of them follows. This is the full form; [`dashboard_save`]
+/// is the presentation-preserving wrapper every layout/variable caller uses.
 #[allow(clippy::too_many_arguments)]
 pub async fn dashboard_save_meta(
     store: &Store,
@@ -119,15 +157,7 @@ pub async fn dashboard_save_meta(
     ws: &str,
     id: &str,
     title: &str,
-    description: Option<String>,
-    icon: Option<String>,
-    color: Option<String>,
-    timezone: Option<String>,
-    cache_ttl_s: Option<u64>,
-    toolbar: Option<Toolbar>,
-    width: Option<String>,
-    kind: Option<String>,
-    report_ids: Option<Vec<String>>,
+    meta: PageMeta,
     mut cells: Vec<Cell>,
     variables: Vec<Variable>,
     now: u64,
@@ -136,7 +166,7 @@ pub async fn dashboard_save_meta(
     if id.is_empty() {
         return Err(DashboardError::BadInput("empty dashboard id".into()));
     }
-    if let Some(k) = kind.as_deref() {
+    if let Some(k) = meta.kind.as_deref() {
         check_kind(k)?;
     }
     // Lenient-args normalization BEFORE validation: an AI writer regularly sends `options.genui.ir`
@@ -174,76 +204,56 @@ pub async fn dashboard_save_meta(
     // Preserve owner + visibility + the managed marker across an update; only the owner (or an admin
     // holding `dashboard.save_any`) may update. A tombstoned record is treated as absent — a save
     // with that id resurrects it under the new owner (create).
-    let (
-        owner,
-        managed_by,
-        visibility,
-        prev_desc,
-        prev_icon,
-        prev_color,
-        prev_timezone,
-        prev_cache_ttl_s,
-        prev_toolbar,
-        prev_width,
-        prev_kind,
-        prev_report_ids,
-    ) = match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
-        Some(existing) => {
-            // Owner first, admin override strictly SECOND (`&&` short-circuits, so a non-admin never
-            // pays the second check's cost) — the exact shape `dashboard.delete`'s `delete_any` uses.
-            // Its own capability, never an ambient "is this caller an admin" role test.
-            if existing.owner != principal.owner_sub()
-                && authorize_dashboard(principal, ws, "dashboard.save_any").is_err()
-            {
-                return Err(managed_denial(store, principal, ws, &existing).await);
+    // The PREVIOUS record is the preserve-on-omit baseline for every page-settings field at once.
+    // Carrying the whole `Dashboard` (rather than a widening tuple of its fields) is what keeps a new
+    // setting a one-line change: `prev` already has it.
+    let (prev, owner, managed_by, visibility) =
+        match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
+            Some(existing) => {
+                // Owner first, admin override strictly SECOND (`&&` short-circuits, so a non-admin never
+                // pays the second check's cost) — the exact shape `dashboard.delete`'s `delete_any` uses.
+                // Its own capability, never an ambient "is this caller an admin" role test.
+                if existing.owner != principal.owner_sub()
+                    && authorize_dashboard(principal, ws, "dashboard.save_any").is_err()
+                {
+                    return Err(managed_denial(store, principal, ws, &existing).await);
+                }
+                let owner = existing.owner.clone();
+                let managed_by = existing.managed_by.clone();
+                let visibility = existing.visibility;
+                (existing, owner, managed_by, visibility)
             }
-            (
-                existing.owner,
-                existing.managed_by,
-                existing.visibility,
-                existing.description,
-                existing.icon,
-                existing.color,
-                existing.timezone,
-                existing.cache_ttl_s,
-                existing.toolbar,
-                existing.width,
-                existing.kind,
-                existing.report_ids,
-            )
-        }
-        None => (
-            principal.owner_sub().to_string(),
-            // CREATE — the marker is derived from the saving principal, never from the args.
-            managed_by_of(principal).unwrap_or_default(),
-            Visibility::Private,
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            0,
-            Toolbar::default(),
-            String::new(),
-            String::new(),
-            Vec::new(),
-        ),
-    };
+            None => (
+                Dashboard::default(),
+                principal.owner_sub().to_string(),
+                // CREATE — the marker is derived from the saving principal, never from the args.
+                managed_by_of(principal).unwrap_or_default(),
+                Visibility::Private,
+            ),
+        };
 
     let dashboard = Dashboard {
         id: id.to_string(),
         title: title.to_string(),
         // Preserve on omit (None), set on Some — page presentation never gets blanked by a layout save.
-        description: description.unwrap_or(prev_desc),
-        icon: icon.unwrap_or(prev_icon),
-        color: color.unwrap_or(prev_color),
-        timezone: timezone.unwrap_or(prev_timezone),
-        cache_ttl_s: cache_ttl_s.unwrap_or(prev_cache_ttl_s),
-        toolbar: toolbar.unwrap_or(prev_toolbar),
-        width: width.unwrap_or(prev_width),
+        description: meta.description.unwrap_or(prev.description),
+        heading: meta.heading.unwrap_or(prev.heading),
+        heading_size: meta.heading_size.unwrap_or(prev.heading_size),
+        // Both sides are `Option<bool>` but they mean different things: `meta.show_heading` is
+        // preserve-on-omit, the stored one is the tri-state (absent ⇒ shown). So `None` in the ARG
+        // means "keep whatever the record had", including keeping it absent.
+        show_heading: meta.show_heading.or(prev.show_heading),
+        icon: meta.icon.unwrap_or(prev.icon),
+        color: meta.color.unwrap_or(prev.color),
+        timezone: meta.timezone.unwrap_or(prev.timezone),
+        cache_ttl_s: meta.cache_ttl_s.unwrap_or(prev.cache_ttl_s),
+        toolbar: meta.toolbar.unwrap_or(prev.toolbar),
+        width: meta.width.unwrap_or(prev.width),
+        vars_display: meta.vars_display.unwrap_or(prev.vars_display),
         // Preserve-on-omit like every other page-settings field: a layout save (which sends no `kind`)
         // must never silently turn a report back into a dashboard.
-        kind: kind.unwrap_or(prev_kind),
-        report_ids: report_ids.unwrap_or(prev_report_ids),
+        kind: meta.kind.unwrap_or(prev.kind),
+        report_ids: meta.report_ids.unwrap_or(prev.report_ids),
         owner,
         managed_by,
         visibility,

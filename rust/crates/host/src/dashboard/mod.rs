@@ -60,7 +60,7 @@ pub use model::{
     Action, Cell, Dashboard, QueryOptions, Source, Target, Toolbar, Variable, Visibility,
 };
 pub use pin::{dashboard_pin, mint_cell_from_envelope, pin_descriptor};
-pub use save::{dashboard_save, dashboard_save_meta, save_descriptor};
+pub use save::{dashboard_save, dashboard_save_meta, save_descriptor, PageMeta};
 pub use seed::{seed_iot_demo, SeedReport};
 pub use share::{dashboard_share, share_descriptor};
 pub use share_closure::{

@@ -453,6 +453,9 @@ pub struct Toolbar {
     /// Show the share button + the private/team/workspace visibility control. Default off.
     #[serde(default, deserialize_with = "null_default")]
     pub share: bool,
+    /// Show a "cached · Ns" freshness chip when the board serves cached reads. Default off.
+    #[serde(default, deserialize_with = "null_default")]
+    pub cached: bool,
 }
 
 /// A dashboard record. The persisted layout + sharing metadata (dashboard scope, "Data").
@@ -467,6 +470,38 @@ pub struct Dashboard {
     /// blurb when empty. Opaque to the host beyond serde.
     #[serde(default, deserialize_with = "null_default")]
     pub description: String,
+    /// The page's display HEADING — the human name, distinct from the slug-ish `title`. Shown in the
+    /// in-body heading block and as the breadcrumb label. Empty ⇒ the UI falls back to `title`.
+    ///
+    /// Typed for the reason `kind`/`reportIds` are: this struct DROPS unknown top-level keys, so the
+    /// client's `heading` vanished on the first save. Opaque to the host beyond serde.
+    #[serde(default, deserialize_with = "null_default")]
+    pub heading: String,
+    /// How large the in-body heading block renders — `"small" | "medium" | "large"`, empty ⇒ medium.
+    /// Additive/defaulted, host-opaque (an unknown value degrades to the UI's default size).
+    #[serde(default, deserialize_with = "null_default", rename = "headingSize")]
+    pub heading_size: String,
+    /// Whether the in-body heading block (icon + heading + description) shows above the first widget
+    /// row. Stored as an explicit tri-state via `Option` because ABSENT means *shown* (the default a
+    /// pre-heading dashboard must keep) while `Some(false)` is the author's deliberate hide — a bare
+    /// `bool` would default to `false` and silently hide every existing board's heading.
+    #[serde(
+        default,
+        rename = "showHeading",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub show_heading: Option<bool>,
+    /// How the dashboard's VARIABLE controls present themselves above the board (dashboard
+    /// variable-display) — `"chips"` (the default: compact "＋ Label · value" chip pickers on one
+    /// wrapping row), `"bar"` (the classic labelled-select bar), `"inline"` (a single condensed
+    /// summary line that expands on click), or `"filters"` (the row collapses behind a counted
+    /// "Filters" button in the toolbar). Empty ⇒ chips.
+    ///
+    /// Additive/defaulted and host-opaque beyond serde: the host neither renders nor validates the
+    /// vocabulary (an unknown value degrades to the default presentation and is visible on screen —
+    /// the same reasoning that leaves `width` opaque while `kind` is checked).
+    #[serde(default, deserialize_with = "null_default", rename = "varsDisplay")]
+    pub vars_display: String,
     /// A stable icon-lib name (e.g. `"layout-dashboard"`, `"activity"`) painted in the roster row and
     /// the page header (dashboard page-settings). Opaque to the host — additive/defaulted; the UI
     /// resolves it (with a fallback) and ignores an unknown name.

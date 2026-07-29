@@ -7,14 +7,19 @@
 //! file does three things and nothing else: band the cells into pages by row, turn each cell's grid
 //! rect into a page rect, and pair it with the client's PNG capture for that cell.
 //!
-//! Two rules make the output honest rather than merely plausible:
+//! Three rules make the output honest rather than merely plausible:
 //!   - **A cell with no snapshot is still placed**, as an error tile naming it. A scheduled render
 //!     whose browser could not capture one panel produces a PDF with a visible hole, never a PDF
 //!     that quietly omits a panel and looks complete.
 //!   - **Empty pages between occupied ones are kept.** If an author leaves page 2 blank, page 3 is
 //!     still page 3 — the paginated document matches what they laid out.
+//!   - **A panel is drawn at the size it was authored, or it moves.** Paging is by
+//!     [`paginate`](lb_render::geometry::paginate), which asks whether a row band FITS rather than
+//!     only where it starts, so a tall panel straddling a page boundary flows whole onto the next
+//!     page instead of being clamped into the sliver left at the bottom. Squashing is reserved for a
+//!     panel genuinely taller than one page, where no page could hold it.
 
-use lb_render::geometry::{cell_rect_mm, page_of_row};
+use lb_render::geometry::{a4_rows_per_page, cell_rect_mm_on_page, page_of_row, paginate};
 use lb_render::Placement;
 
 use crate::dashboard::Cell;
@@ -42,11 +47,19 @@ pub fn compose_pages(
     let mut ordered: Vec<&Cell> = cells.iter().collect();
     ordered.sort_by_key(|c| (c.y, c.x));
 
-    let page_count = ordered
-        .iter()
-        .map(|c| page_of_row(c.y) + 1)
-        .max()
-        .unwrap_or(1) as usize;
+    // Assign pages by whether a row band FITS, not merely where it starts: a tall panel straddling a
+    // page boundary flows whole onto the next page instead of being clamped to the sliver that was
+    // left. Every cell on one board row shares that row's assignment, so side-by-side tiles stay
+    // together.
+    let paged = paginate(
+        &ordered
+            .iter()
+            .map(|c| (c.y, c.h))
+            .collect::<Vec<(u32, u32)>>(),
+    );
+    let page_for = |y: u32| paged.iter().find(|r| r.y == y);
+
+    let page_count = paged.iter().map(|r| r.page + 1).max().unwrap_or(1) as usize;
     let mut pages: Vec<ComposedPage> = (0..page_count)
         .map(|_| ComposedPage {
             placements: Vec::new(),
@@ -57,7 +70,16 @@ pub fn compose_pages(
     let mut images: Vec<(String, String, Vec<u8>)> = Vec::new();
 
     for cell in ordered {
-        let page = page_of_row(cell.y) as usize;
+        // Every cell's row was fed to `paginate`, so the lookup always hits; the fixed-band rule is a
+        // defensive fallback rather than an expected path.
+        let (page, page_start_y) = page_for(cell.y).map_or_else(
+            || {
+                let per_page = a4_rows_per_page().max(1);
+                (page_of_row(cell.y), cell.y - (cell.y % per_page))
+            },
+            |r| (r.page, r.page_start_y),
+        );
+        let page = page as usize;
         let src = format!("snapshot:{}", cell.i);
         let title = if cell.title.is_empty() {
             String::new()
@@ -84,7 +106,7 @@ pub fn compose_pages(
             src,
             title,
             note,
-            rect: cell_rect_mm(cell.x, cell.y, cell.w, cell.h),
+            rect: cell_rect_mm_on_page(cell.x, cell.y, cell.w, cell.h, page_start_y),
         });
     }
 

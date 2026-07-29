@@ -40,7 +40,7 @@ mod world;
 
 pub use convert::{image_sources, markdown_to_typst, markdown_to_typst_plain};
 pub use error::RenderError;
-pub use geometry::{RectMm, cell_rect_mm, page_of_row};
+pub use geometry::{PagedRow, RectMm, cell_rect_mm, cell_rect_mm_on_page, page_of_row, paginate};
 pub use model::{Assembled, Brand, Colors, Fonts, ImageAsset, Placement, RenderOptions};
 pub use pdf::render_pdf;
 

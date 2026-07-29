@@ -56,6 +56,19 @@ pub struct SaveDashboard {
     /// chrome); a present key sets it. Only the settings dialog sends these.
     #[serde(default)]
     pub description: Option<String>,
+    /// The page's display heading (the human name, distinct from the id/title) and how it renders —
+    /// additive & OPTIONAL, same preserve-on-omit discipline. `show_heading` is a tri-state: absent
+    /// preserves, `Some(false)` hides the in-body heading block.
+    #[serde(default)]
+    pub heading: Option<String>,
+    #[serde(default, rename = "headingSize")]
+    pub heading_size: Option<String>,
+    #[serde(default, rename = "showHeading")]
+    pub show_heading: Option<bool>,
+    /// How the dashboard's variable controls present themselves — `"chips"` (default), `"bar"` or
+    /// `"inline"`. Additive & OPTIONAL, same preserve-on-omit discipline.
+    #[serde(default, rename = "varsDisplay")]
+    pub vars_display: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
     #[serde(default)]
@@ -122,6 +135,18 @@ pub async fn save_dashboard(
     );
     if let Some(v) = &body.description {
         args.insert("description".into(), json!(v));
+    }
+    if let Some(v) = &body.heading {
+        args.insert("heading".into(), json!(v));
+    }
+    if let Some(v) = &body.heading_size {
+        args.insert("headingSize".into(), json!(v));
+    }
+    if let Some(v) = body.show_heading {
+        args.insert("showHeading".into(), json!(v));
+    }
+    if let Some(v) = &body.vars_display {
+        args.insert("varsDisplay".into(), json!(v));
     }
     if let Some(v) = &body.icon {
         args.insert("icon".into(), json!(v));
