@@ -7,9 +7,9 @@
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    brand_delete, brand_get, brand_list, brand_save, panel_save, report_delete, report_export,
-    report_get, report_list, report_save, seed_default_brand, BrandColors, BrandError, BrandFonts,
-    Cell, PanelSpec, ReportBlock, ReportError, MAX_BLOCKS,
+    brand_delete, brand_get, brand_list, brand_save, panel_save, report_delete, report_get,
+    report_list, report_save, seed_default_brand, BrandColors, BrandError, BrandFonts, Cell,
+    PanelSpec, ReportBlock, ReportError, MAX_BLOCKS,
 };
 use lb_store::Store;
 use serde_json::{json, Value};
@@ -97,7 +97,7 @@ fn series_spec() -> PanelSpec {
 #[tokio::test]
 async fn crud_round_trip() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws:acme";
+    let ws = "ws-acme";
     let ada = principal("user:ada", ws, ALL);
 
     // Seed a library panel so the panel block's ref resolves at save (validate) + get (hydrate).
@@ -156,7 +156,7 @@ async fn crud_round_trip() {
 #[tokio::test]
 async fn capability_deny_per_verb() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws:acme";
+    let ws = "ws-acme";
     let ada = principal("user:ada", ws, ALL);
 
     // Seed one report (with full caps) so export/get have a target.
@@ -181,12 +181,8 @@ async fn capability_deny_per_verb() {
         Err(ReportError::Denied)
     ));
 
-    // No report.export → Denied (view-without-export).
-    let no_export = principal("user:cid", ws, &[R_GET, R_SAVE]);
-    assert!(matches!(
-        report_export(&store, &no_export, ws, "r1", vec![], 1).await,
-        Err(ReportError::Denied)
-    ));
+    // (The `report.export` deny moved to `report_export_test.rs` with the rest of the export path —
+    // it now needs a report-KIND dashboard to export, and it is asserted there both ways.)
 
     // No brand.save → Denied.
     let no_brand = principal("user:dee", ws, &[R_GET, B_GET]);
@@ -212,8 +208,8 @@ async fn capability_deny_per_verb() {
 #[tokio::test]
 async fn workspace_isolation() {
     let store = Store::memory().await.unwrap();
-    let ws_a = "ws:aaa";
-    let ws_b = "ws:bbb";
+    let ws_a = "ws-aaa";
+    let ws_b = "ws-bbb";
     let ada = principal("user:ada", ws_a, ALL);
     let ben = principal("user:ben", ws_b, ALL);
 
@@ -262,7 +258,7 @@ async fn workspace_isolation() {
 #[tokio::test]
 async fn panel_ref_hydration_and_dangling_rejected() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws:acme";
+    let ws = "ws-acme";
     let ada = principal("user:ada", ws, ALL);
 
     panel_save(&store, &ada, ws, "real", "Real", series_spec(), 1)
@@ -305,7 +301,7 @@ async fn panel_ref_hydration_and_dangling_rejected() {
 #[tokio::test]
 async fn brand_seed_idempotent() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws:acme";
+    let ws = "ws-acme";
     let ada = principal("user:ada", ws, ALL);
 
     seed_default_brand(&store, ws, 1).await.unwrap();
@@ -326,7 +322,7 @@ async fn brand_seed_idempotent() {
 #[tokio::test]
 async fn system_owned_seed_is_adopted_on_write() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws:acme";
+    let ws = "ws-acme";
     let ada = principal("user:ada", ws, ALL);
     let ben = principal("user:ben", ws, ALL);
 
@@ -376,7 +372,7 @@ async fn system_owned_seed_is_adopted_on_write() {
 #[tokio::test]
 async fn system_owned_seed_can_be_deleted() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws:acme";
+    let ws = "ws-acme";
     let ada = principal("user:ada", ws, ALL);
 
     seed_default_brand(&store, ws, 1).await.unwrap();
@@ -392,41 +388,10 @@ async fn system_owned_seed_can_be_deleted() {
 #[tokio::test]
 async fn max_blocks_enforced() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws:acme";
+    let ws = "ws-acme";
     let ada = principal("user:ada", ws, ALL);
 
     let too_many: Vec<ReportBlock> = (0..=MAX_BLOCKS).map(|_| markdown_block("x")).collect();
     let res = report_save(&store, &ada, ws, "big", "Big", too_many, "", Value::Null, 1).await;
     assert!(matches!(res, Err(ReportError::BadInput(_))), "got {res:?}");
-}
-
-/// Export a markdown-only report → `%PDF`-prefixed bytes (the assembly path + a real Typst compile).
-/// If `lb-render` fails to compile in a given sandbox this test compiles but is the one to check.
-#[tokio::test]
-async fn export_markdown_only_yields_pdf() {
-    let store = Store::memory().await.unwrap();
-    let ws = "ws:acme";
-    let ada = principal("user:ada", ws, ALL);
-
-    report_save(
-        &store,
-        &ada,
-        ws,
-        "doc",
-        "Doc",
-        vec![
-            markdown_block("# Intro\n\nBody text."),
-            markdown_block("# Second\n\nMore."),
-        ],
-        "",
-        Value::Null,
-        1,
-    )
-    .await
-    .unwrap();
-
-    let pdf = report_export(&store, &ada, ws, "doc", vec![], 1)
-        .await
-        .expect("export ok");
-    assert!(pdf.starts_with(b"%PDF"), "expected PDF magic bytes");
 }

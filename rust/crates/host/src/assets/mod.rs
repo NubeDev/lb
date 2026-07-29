@@ -65,3 +65,6 @@ pub use put_skill::put_skill;
 pub use share_doc::share_doc;
 pub use tool::call_asset_tool;
 pub use unshare_doc::unshare_doc;
+
+/// The stored asset record — re-exported so a caller can name what `get_asset`/`put_asset` return.
+pub use lb_assets::Asset;

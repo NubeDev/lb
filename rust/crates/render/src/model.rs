@@ -36,6 +36,28 @@ pub struct Assembled {
     pub page_titles: Vec<String>,
     /// Layout options the author toggles (page numbers, table-of-contents index).
     pub options: RenderOptions,
+    /// **Placed** page content, positionally aligned with [`pages`](Assembled::pages).
+    ///
+    /// A page whose entry here is present and non-empty is laid out by absolute position
+    /// ([`crate::place`]) instead of by flowing its markdown — that is how a report composes its A4
+    /// pages from a dashboard's cell grid. Absent or empty ⇒ the markdown path, byte-identical to
+    /// what shipped, so every existing caller is untouched by this field's existence.
+    pub placements: Vec<Vec<Placement>>,
+}
+
+/// One positioned rectangle on a placed page: which image fills it, where it goes, and what to say
+/// if the image is missing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placement {
+    /// The image `src` this rectangle draws — resolved against [`Assembled::images`] exactly as a
+    /// markdown `![](src)` is.
+    pub src: String,
+    /// The panel's title, used for the error tile when `src` does not resolve.
+    pub title: String,
+    /// Why the image is missing, shown on the error tile. Empty ⇒ a generic "not captured".
+    pub note: String,
+    /// Where it sits on the page, in mm from the content box's top-left.
+    pub rect: crate::geometry::RectMm,
 }
 
 /// Author-facing layout toggles that affect both the PDF export and the HTML

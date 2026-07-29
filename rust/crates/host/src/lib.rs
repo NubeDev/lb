@@ -134,7 +134,7 @@ pub use assets::{
     add_member, backlinks, call_asset_tool, call_docs_tool, delete_asset, delete_doc,
     deprecate_skill, docs_extract, extract_descriptor, get_asset, get_doc, get_extraction,
     grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill, put_asset,
-    put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError, ExtractRequest,
+    put_doc, put_skill, revoke_skill, share_doc, unshare_doc, Asset, AssetError, ExtractRequest,
     ExtractResult, ExtractSvcError, Extraction, ItemOutcome, SkillCatalogEntry, SkillTier,
     DERIVED_FROM, EXTRACTION_TABLE, MAX_ASSET_BYTES,
 };
@@ -175,7 +175,8 @@ pub use dashboard::{
     ImportReport as GrafanaImportReport, SeedReport, ShareClosureItem, ShareClosureReport,
     Source as CellSource, Target as CellTarget, Toolbar as DashboardToolbar,
     Variable as DashboardVariable, Visibility as DashboardVisibility, WidgetCatalog,
-    MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES, MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
+    KIND_DASHBOARD, KIND_REPORT, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
+    MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,
@@ -334,13 +335,13 @@ pub use report::{
 /// A fresh sortable ULID (re-exported from `lb_store`) — the gateway's event-stream hub mints its
 /// per-connection `sid` with it, without taking a direct `lb-store` dependency (it already depends on
 /// `lb-host`). One id source for the whole node.
-pub use lb_store::new_ulid;
+pub use lb_store::{new_ulid, Store};
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
     enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
-    outbox_status, relay_outbox, spawn_relay_reactors, DynTarget, EmailMeta, EmailProvider,
-    EmailTarget, LoggingEmailProvider, OutboxError, OutboxStatus, RecordedEmail,
-    RecordingEmailProvider, RelayPass, RouterTarget, Target,
+    outbox_status, relay_outbox, spawn_relay_reactors, DynTarget, Effect as OutboxEffect,
+    EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, OutboxError, OutboxStatus,
+    RecordedEmail, RecordingEmailProvider, RelayPass, RouterTarget, Target,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,
@@ -361,8 +362,9 @@ pub use reload::reload_extension;
 pub use reminder::{
     call_reminder_tool, fire_job_id, fire_reminder, react_to_reminders, reminder_create,
     reminder_delete, reminder_fire, reminder_get, reminder_list, reminder_update,
-    Action as ReminderAction, ReactorPass as ReminderReactorPass, Reminder, ReminderError,
-    ReminderPatch, ReminderStatus, FIRE_KIND as REMINDER_FIRE_KIND,
+    spawn_reminder_reactors, Action as ReminderAction, ReactorPass as ReminderReactorPass,
+    Reminder, ReminderError, ReminderPatch, ReminderStatus, FIRE_KIND as REMINDER_FIRE_KIND,
+    REMINDER_PERIOD,
 };
 pub use remote::{forget_remote_extension, register_remote_descriptors, register_remote_extension};
 pub use render_templates::{

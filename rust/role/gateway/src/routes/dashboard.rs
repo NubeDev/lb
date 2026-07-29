@@ -76,6 +76,15 @@ pub struct SaveDashboard {
     /// OPTIONAL, same preserve-on-omit discipline; the settings dialog sends it.
     #[serde(default)]
     pub width: Option<String>,
+    /// Record kind — `"dashboard"` (default) or `"report"`. Additive & OPTIONAL, same preserve-on-omit
+    /// discipline: a layout save omits it and the stored kind survives. Sent by the create path
+    /// ("New report") and the settings dialog.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Report ids the Generate-report control offers. Additive & OPTIONAL, preserve-on-omit; an
+    /// EMPTY array is an explicit clear.
+    #[serde(default, rename = "reportIds")]
+    pub report_ids: Option<Vec<String>>,
     #[serde(default)]
     pub cells: Vec<Cell>,
     /// Variable definitions (widget-config-vars Slice 2) — additive; a pre-variables client omits it.
@@ -128,6 +137,12 @@ pub async fn save_dashboard(
     }
     if let Some(v) = &body.width {
         args.insert("width".into(), json!(v));
+    }
+    if let Some(v) = &body.kind {
+        args.insert("kind".into(), json!(v));
+    }
+    if let Some(v) = &body.report_ids {
+        args.insert("reportIds".into(), json!(v));
     }
     if let Some(v) = &body.toolbar {
         args.insert(

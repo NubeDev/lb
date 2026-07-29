@@ -23,6 +23,7 @@ mod fire;
 mod fire_now;
 mod get;
 mod react;
+mod spawn;
 mod tool;
 mod update;
 
@@ -33,6 +34,7 @@ pub use fire::{fire_job_id, fire_reminder, FIRE_KIND};
 pub use fire_now::reminder_fire;
 pub use get::{reminder_get, reminder_list};
 pub use react::{react_to_reminders, ReactorPass};
+pub use spawn::{spawn_reminder_reactors, REMINDER_PERIOD};
 pub use tool::call_reminder_tool;
 pub use update::{reminder_update, ReminderPatch};
 

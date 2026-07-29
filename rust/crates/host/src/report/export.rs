@@ -1,31 +1,33 @@
-//! `report.export(id, snapshots)` — the branded-PDF export (reports scope, "Branded PDF export").
-//! Gated by its **own** `mcp:report.export:call` (an admin can grant view-but-not-export; the PDF
-//! embeds data as pixels under the *exporter's* caps). This is a **gateway route**, not the JSON MCP
-//! bridge (binary response + snapshot payload don't fit the JSON envelope) — but it still authorizes
-//! through the one chokepoint here.
+//! `report.export(id, snapshots)` — the branded-PDF export (reports-as-dashboards scope, "PDF export
+//! follows the record"). Gated by its **own** `mcp:report.export:call` (an admin can grant
+//! view-but-not-export; the PDF embeds data as pixels under the *exporter's* caps). This is a
+//! **gateway route**, not the JSON MCP bridge (binary response + snapshot payload don't fit the JSON
+//! envelope) — but it still authorizes through the one chokepoint here.
 //!
-//! Assembly (keeping the `lb-render` crate pure): read + hydrate the report, resolve its brand, and
-//! turn each block IN ORDER into an `Assembled` page or image:
-//!   - **markdown** → its body markdown, each block its own page (the lazybones page semantics);
-//!   - **image** → resolve the `asset:{id}` bytes (`lb_host::get_asset`), add as an `ImageAsset`,
-//!     reference via a markdown image;
-//!   - **panel** → look up the client-supplied PNG snapshot for that block; add as an `ImageAsset`
-//!     and reference it, or render an honest titled placeholder line when no snapshot was supplied.
-//! Then `lb_render::render_pdf`.
+//! **`id` addresses a report-kind DASHBOARD**, not the retired `report:{id}` notebook. A report is a
+//! dashboard whose record says `kind: "report"`, so the exporter reads it with `dashboard_get` — the
+//! same three gates, the same `hydrate_cells`, the same lens — and lays its A4 pages out from the
+//! cell grid ([`super::compose`]). The wire contract is unchanged: the same route, the same cap, the
+//! same `{ snapshots: [{ cellId, png }] }` body, keyed on `cell.i` exactly as before.
+//!
+//! An ordinary dashboard is **refused**, not exported. A 12-column board authored for a wide screen
+//! laid onto a 166 mm page is not a report, it is a broken PDF; a loud refusal sends the author to
+//! "New report" instead of to a bug report.
 
 use lb_auth::Principal;
 use lb_render::{render_pdf, Assembled, Brand as RenderBrand, Colors, Fonts, ImageAsset};
 use lb_store::Store;
 
 use super::authorize::authorize_report;
+use super::compose::compose_pages;
 use super::error::ReportError;
-use super::get::report_get;
 use crate::brand::{brand_get, Brand};
+use crate::dashboard::{dashboard_get, DashboardError};
 
-/// Export report `id` in `ws` as `principal` to branded PDF bytes. `snapshots` are the client's
-/// per-panel-block PNG captures, each `(key, png_bytes)` where `key` is the block's `cell.i` (the
-/// stable cell key) — panel blocks whose key has no snapshot degrade to a titled placeholder. `now`
-/// is unused today (kept for signature symmetry / future cover-date). Returns `%PDF`-prefixed bytes.
+/// Export the report-kind dashboard `id` in `ws` as `principal` to branded PDF bytes. `snapshots` are
+/// the client's per-cell PNG captures, each `(cell.i, png_bytes)`; a cell with no capture is placed
+/// as an error tile rather than dropped. `now` is unused today (kept for signature symmetry / future
+/// cover-date). Returns `%PDF`-prefixed bytes.
 pub async fn report_export(
     store: &Store,
     principal: &Principal,
@@ -34,18 +36,29 @@ pub async fn report_export(
     snapshots: Vec<(String, Vec<u8>)>,
     _now: u64,
 ) -> Result<Vec<u8>, ReportError> {
-    // The export-specific gate (its own cap — view-without-export is a real posture).
+    // The export-specific gate (its own cap — view-without-export is a real posture). Checked FIRST,
+    // before the record read, so a caller without it learns nothing about what exists.
     authorize_report(principal, ws, "report.export")?;
 
-    // Read + hydrate (panel refs resolved under the exporter's gates — report_get re-gates on
-    // `report.get`, which the exporter also holds; export is a superset posture in the role bundle).
-    let report = report_get(store, principal, ws, id).await?;
+    // Read + hydrate through the dashboard verb — its own three gates re-run under this principal,
+    // so export grants no read it did not already have (the exporter also needs `dashboard.get`).
+    let report = dashboard_get(store, principal, ws, id)
+        .await
+        .map_err(dashboard_err)?;
+    if !report.is_report() {
+        return Err(ReportError::BadInput(format!(
+            "dashboard {id:?} is not a report (kind is {:?}) — only report-kind dashboards export to A4",
+            if report.kind.is_empty() { "dashboard" } else { &report.kind }
+        )));
+    }
 
-    // Resolve the brand (fall back to the neutral default when empty/missing/unreadable).
-    let brand = resolve_brand(store, principal, ws, &report.brand_id).await;
+    // Reports carry no brand id of their own, so the workspace's default brand applies. `resolve_brand`
+    // already treats an empty id as "the default", and a report's branding is a workspace decision,
+    // not a per-page one.
+    let brand = resolve_brand(store, principal, ws, "").await;
 
     let mut assembled = Assembled::default();
-    assembled.title = report.title.clone();
+    assembled.title.clone_from(&report.title);
     assembled.brand = render_brand(&brand);
 
     // Brand logo bytes → the render logo (best-effort; a missing/unreadable logo just drops it).
@@ -59,74 +72,28 @@ pub async fn report_export(
         }
     }
 
-    let mut page_titles: Vec<String> = Vec::new();
-    for (idx, block) in report.blocks.iter().enumerate() {
-        match block.kind.as_str() {
-            "markdown" => {
-                assembled.pages.push(block.body.clone());
-                page_titles.push(first_heading(&block.body));
-            }
-            "image" => {
-                let src = format!("asset:{}", block.asset_id);
-                // Resolve the bytes under the exporter's caps; a denied/missing asset drops the
-                // image but keeps a caption line so the page is honest, never a crash.
-                if let Ok(asset) = crate::get_asset(store, principal, ws, &block.asset_id).await {
-                    assembled.images.push(ImageAsset::new(
-                        src.clone(),
-                        asset_filename(&block.asset_id, &asset.mime),
-                        asset.bytes,
-                    ));
-                    assembled.pages.push(image_markdown(&src, &block.caption));
-                } else {
-                    assembled
-                        .pages
-                        .push(format!("_image unavailable_ {}", block.caption));
-                }
-                page_titles.push(if block.caption.is_empty() {
-                    format!("Image {}", idx + 1)
-                } else {
-                    block.caption.clone()
-                });
-            }
-            "panel" => {
-                let key = &block.cell.i;
-                let title = if block.cell.title.is_empty() {
-                    format!("Panel {}", idx + 1)
-                } else {
-                    block.cell.title.clone()
-                };
-                match snapshots.iter().find(|(k, _)| k == key) {
-                    Some((_, png)) if !png.is_empty() => {
-                        let src = format!("snapshot:{key}");
-                        assembled.images.push(ImageAsset::new(
-                            src.clone(),
-                            format!("{key}.png"),
-                            png.clone(),
-                        ));
-                        assembled.pages.push(image_markdown(&src, &title));
-                    }
-                    _ => {
-                        // No snapshot → honest placeholder (an extension widget in a sandboxed tier
-                        // may not be capturable; the export is honest, not failed).
-                        assembled
-                            .pages
-                            .push(format!("**{title}**\n\n_panel snapshot not available_"));
-                    }
-                }
-                page_titles.push(title);
-            }
-            other => {
-                // Unknown kind — keep the report exportable, never fail on a future block kind.
-                assembled
-                    .pages
-                    .push(format!("_unsupported block kind: {other}_"));
-                page_titles.push(format!("Block {}", idx + 1));
-            }
-        }
+    let (pages, images) = compose_pages(&report.cells, &snapshots);
+    for (src, filename, bytes) in images {
+        assembled.images.push(ImageAsset::new(src, filename, bytes));
     }
-    assembled.page_titles = page_titles;
+    // `pages` (markdown) stays parallel to `placements`; a placed page's markdown is never read, but
+    // the renderer iterates `pages`, so one empty entry per page is what makes the page exist.
+    assembled.pages = vec![String::new(); pages.len()];
+    assembled.page_titles = pages.iter().map(|p| p.title.clone()).collect();
+    assembled.placements = pages.into_iter().map(|p| p.placements).collect();
 
     render_pdf(&assembled).map_err(|e| ReportError::Render(e.to_string()))
+}
+
+/// Map a dashboard read failure onto the report error. `Denied`/`NotFound` stay opaque exactly as
+/// they were — the exporter must not become a probe for which dashboards exist.
+fn dashboard_err(e: DashboardError) -> ReportError {
+    match e {
+        DashboardError::NotFound => ReportError::NotFound,
+        DashboardError::BadInput(m) => ReportError::BadInput(m),
+        DashboardError::Store(e) => ReportError::Store(e),
+        _ => ReportError::Denied,
+    }
 }
 
 /// Resolve the report's brand, falling back to the neutral default when the id is empty or the
@@ -157,29 +124,6 @@ fn render_brand(b: &Brand) -> RenderBrand {
         header_text: b.header_text.clone(),
         footer_text: b.footer_text.clone(),
     }
-}
-
-/// A markdown image reference with an optional caption line.
-fn image_markdown(src: &str, caption: &str) -> String {
-    if caption.is_empty() {
-        format!("![]({src})")
-    } else {
-        format!("![{caption}]({src})\n\n_{caption}_")
-    }
-}
-
-/// The first `# heading` text of a markdown body, for the index label. Empty when none.
-fn first_heading(md: &str) -> String {
-    md.lines()
-        .find_map(|l| l.trim_start().strip_prefix('#'))
-        .map(|h| h.trim_start_matches('#').trim().to_string())
-        .unwrap_or_default()
-}
-
-/// Pick a virtual filename (extension drives Typst's format detection) from an asset id + mime.
-fn asset_filename(id: &str, mime: &str) -> String {
-    let ext = ext_for_mime(mime);
-    format!("{id}.{ext}")
 }
 
 fn logo_filename(mime: &str) -> String {

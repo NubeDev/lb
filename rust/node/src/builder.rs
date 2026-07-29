@@ -70,6 +70,42 @@ pub struct RunningNode {
 }
 
 impl RunningNode {
+    /// Mint a **short-lived session token** for `principal_sub` in `workspace`, carrying exactly that
+    /// principal's live capabilities.
+    ///
+    /// This is the seam for driving the node's own gateway from a non-interactive worker — a headless
+    /// browser rendering a page, a job that has to call a route rather than a host fn. Such a worker
+    /// needs a real bearer token, and the alternatives were all wrong: a password login is
+    /// interactive and yields a 12-hour token, an API key carries no `reach:` caps (so the UI 403s at
+    /// page entry) and dies on restart, and hand-rolling `Claims` re-implements the cap fold.
+    ///
+    /// **It grants nothing.** The caps come from `principal_sub`'s durable grants at mint time, so the
+    /// worker sees precisely what that principal sees and a revoked grant takes effect on the next
+    /// mint. `ttl` should be minutes, not hours — the token is minted for one job and thrown away.
+    ///
+    /// Returns `None` when the node was booted headless ([`GatewayMode::Off`]): with no gateway there
+    /// is nothing for a token to authenticate against.
+    pub async fn mint_service_session(
+        &self,
+        principal_sub: &str,
+        workspace: &str,
+        now: u64,
+        ttl: std::time::Duration,
+    ) -> Option<lb_role_gateway::MintedSession> {
+        let (gw, _) = self.gateway.as_ref()?;
+        Some(
+            lb_role_gateway::mint_full_session_with_ttl(
+                &self.node,
+                &gw.key,
+                principal_sub,
+                workspace,
+                now,
+                ttl.as_secs(),
+            )
+            .await,
+        )
+    }
+
     /// Serve the gateway, blocking until it stops (never, in normal operation). A no-op that returns
     /// `Ok(())` immediately when the gateway is off — the embedder is driving the node in-process. The
     /// `agent_server` is held for the duration so routed invocations keep serving.

@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use lb_outbox::Effect;
 
@@ -42,7 +43,7 @@ where
 /// The composite target: `effect.target` string → registered adapter. Built once at boot.
 #[derive(Default)]
 pub struct RouterTarget {
-    routes: HashMap<String, Box<dyn DynTarget>>,
+    routes: HashMap<String, Arc<dyn DynTarget>>,
 }
 
 impl RouterTarget {
@@ -52,7 +53,15 @@ impl RouterTarget {
 
     /// Register `target` (e.g. the email/push adapter) under the opaque `target_str`. Builder-style.
     pub fn route(mut self, target_str: &str, target: impl Target + Send + Sync + 'static) -> Self {
-        self.routes.insert(target_str.to_string(), Box::new(target));
+        self.routes.insert(target_str.to_string(), Arc::new(target));
+        self
+    }
+
+    /// Register an ALREADY-ERASED adapter under `target_str`. The twin of [`route`](Self::route) for
+    /// a caller that cannot name the concrete type — notably an embedder handing targets in through
+    /// `BootConfig`, where the whole point is that the core does not know what they are.
+    pub fn route_dyn(mut self, target_str: &str, target: Arc<dyn DynTarget>) -> Self {
+        self.routes.insert(target_str.to_string(), target);
         self
     }
 }

@@ -66,6 +66,8 @@ pub async fn call_dashboard_tool(
                 opt_u64_arg(input, "cacheTtlS"),
                 opt_toolbar_arg(input),
                 opt_str_arg(input, "width"),
+                opt_str_arg(input, "kind"),
+                opt_str_vec_arg(input, "reportIds"),
                 cells,
                 variables,
                 u64_arg(input, "now")?,
@@ -219,6 +221,18 @@ fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
 /// non-string is coerced to `None` too (lenient — no reason to fail a whole save over it).
 fn opt_str_arg(input: &Value, key: &str) -> Option<String> {
     input.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// An OPTIONAL string-ARRAY arg, same preserve-on-omit contract as [`opt_str_arg`]: absent or `null`
+/// ⇒ `None` ⇒ keep the stored list. A present array keeps only its string members (a malformed entry
+/// is dropped, not a whole-save failure) — an EMPTY array is `Some(vec![])`, i.e. an explicit clear,
+/// which is how an admin unbinds every report.
+fn opt_str_vec_arg(input: &Value, key: &str) -> Option<Vec<String>> {
+    input.get(key).and_then(Value::as_array).map(|rows| {
+        rows.iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect()
+    })
 }
 
 /// An OPTIONAL u64 arg: `Some` when present and a number (or a numeric string, the lenient form AI

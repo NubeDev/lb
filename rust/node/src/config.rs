@@ -82,11 +82,9 @@ pub struct AgentModelConfig {
     pub base_url: Option<String>,
 }
 
-/// The **outbox delivery providers** an embedder injects at boot (release scope, gap 1 — the
-/// provider-injection seam). Each is the one sanctioned external behind its host trait; `None`
-/// falls back to the logging no-op provider so boot never crashes and the relay still drains
-/// (the send is logged, not performed). The `node` binary leaves both `None` today; a product
-/// host fills them with its real SMTP/WebPush/FCM adapters.
+/// The **outbox delivery providers + targets** an embedder injects at boot (release scope, gap 1).
+/// A `None` provider falls back to the logging no-op, so boot never crashes and the relay still
+/// drains (the send is logged, not performed); the `node` binary leaves both `None`.
 #[derive(Clone, Default)]
 #[non_exhaustive]
 pub struct OutboxProviders {
@@ -94,6 +92,9 @@ pub struct OutboxProviders {
     pub email: Option<std::sync::Arc<dyn lb_host::EmailProvider>>,
     /// The push delivery provider (`PushTarget`'s external). `None` ⇒ logging no-op.
     pub push: Option<std::sync::Arc<dyn lb_host::PushProvider>>,
+    /// Embedder-registered targets keyed by the opaque `effect.target`, folded in AFTER the
+    /// built-ins so a host may add one or replace one. Names nothing (rule 10).
+    pub targets: Vec<(String, std::sync::Arc<dyn lb_host::DynTarget>)>,
 }
 
 /// Everything the boot ritual needs. Filled at the binary boundary (env today, via [`from_env`]) or by
