@@ -41,3 +41,7 @@ pub use relay_reactor::spawn_relay_reactors;
 pub use router_target::{DynTarget, RouterTarget};
 pub use status::{outbox_status, OutboxStatus};
 pub use target::Target;
+
+/// The outbox effect a [`Target`] is handed. Re-exported here (and ALIASED at the crate root, where
+/// `Effect` is already the agent's) so an embedder implementing `Target` can name it.
+pub use lb_outbox::Effect;

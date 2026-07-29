@@ -29,15 +29,19 @@
 //! - `pulldown-cmark = "0.13"`
 //! - toolchain: Rust 1.96 (workspace `rust-version = 1.93`, edition 2024)
 
+mod chrome;
 mod convert;
 mod error;
+pub mod geometry;
 mod model;
 mod pdf;
+mod place;
 mod world;
 
 pub use convert::{image_sources, markdown_to_typst, markdown_to_typst_plain};
 pub use error::RenderError;
-pub use model::{Assembled, Brand, Colors, Fonts, ImageAsset, RenderOptions};
+pub use geometry::{RectMm, cell_rect_mm, page_of_row};
+pub use model::{Assembled, Brand, Colors, Fonts, ImageAsset, Placement, RenderOptions};
 pub use pdf::render_pdf;
 
 #[cfg(test)]

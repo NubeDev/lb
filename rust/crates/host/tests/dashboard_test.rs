@@ -161,8 +161,9 @@ async fn page_settings_round_trip_and_preserve() {
             refresh_rate: false,
             share: true,
         }),
-        // Page content width (dashboard page-settings) — a centred column, not full-bleed.
-        Some("centered".into()),
+        Some("centered".into()), // page width — a centred column, not full-bleed
+        None,                    // kind — see dashboard_kind_test.rs
+        None,                    // reportIds — see dashboard_kind_test.rs
         vec![chart_cell("cooler.temp")],
         vec![],
         10,
@@ -222,6 +223,8 @@ async fn page_settings_round_trip_and_preserve() {
         "Ops v2",
         None,
         Some("gauge".into()),
+        None,
+        None,
         None,
         None,
         None,

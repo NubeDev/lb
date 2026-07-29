@@ -26,7 +26,9 @@ pub use credentials::dev_claims;
 pub use global_credential::{
     global_credential_check_from_env, GlobalCredentialCheck, GlobalDevTrustAny, GlobalPasswordHash,
 };
-pub use mint_session::{mint_full_session, MintedSession, SESSION_TTL_SECS};
+pub use mint_session::{
+    mint_full_session, mint_full_session_with_ttl, MintedSession, SESSION_TTL_SECS,
+};
 pub use reach::require_reach;
 pub use select_token::{is_select_token, mint_select_token, SELECT_TTL_SECS, WS_SELECT_CONSTRAINT};
 pub use trusted::trusted_from_env;

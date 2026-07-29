@@ -98,21 +98,10 @@ mod tests {
         Dashboard {
             id: "d".into(),
             title: "D".into(),
-            description: String::new(),
-            icon: String::new(),
-            color: String::new(),
-            toolbar: Default::default(),
-            timezone: String::new(),
-            cache_ttl_s: 0,
-            width: String::new(),
             owner: "user:ada".into(),
-            managed_by: String::new(),
-            visibility: Default::default(),
             cells,
-            variables: Vec::new(),
             schema_version: 3,
-            updated_ts: 0,
-            deleted: false,
+            ..Default::default()
         }
     }
 

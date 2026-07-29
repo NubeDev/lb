@@ -33,6 +33,7 @@ mod state;
 pub use routes::{INVITE_ACCEPT_MAX_PER_WINDOW, INVITE_ACCEPT_WINDOW_SECS};
 pub use server::{router, serve, serve_listener};
 pub use session::{authenticate, dev_claims, verify_token, AuthRejection};
+pub use session::{mint_full_session, mint_full_session_with_ttl, MintedSession, SESSION_TTL_SECS};
 // The credential-check seam (login-hardening) — re-exported at the crate root so an embedder
 // (via `lb-node`'s builder, embedder-credential-mode scope) can name the two impls without
 // reaching into `session::credential`.

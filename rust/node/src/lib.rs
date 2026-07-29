@@ -49,3 +49,33 @@ pub use lb_host::Node;
 /// `BrowserSessionConfig` precedent). Always available; the LIVE cache is `page-cache`-gated.
 pub use lb_host::CacheConfig;
 pub use lb_role_gateway::BrowserSessionConfig;
+
+// ---- The embedder seam ------------------------------------------------------------------------
+//
+// Everything below exists for the same reason `SigningKey`/`Node`/`BrowserSessionConfig` do: a host
+// binary that deps ONLY on `lb-node` must be able to NAME the types it needs. Without these, an
+// embedder wanting to plug in an outbox target, enqueue an effect, or store an asset had to add
+// direct git-deps on `lb-host` and `lb-auth` pinned in lockstep with this crate — which is not a
+// supported configuration, it is just a leak that happened to compile.
+//
+// These re-export the GENERIC seams only. Nothing here names a product, a workspace or an extension.
+
+/// The in-process caller identity every host verb takes. An embedder building an outbox target or
+/// calling a verb off the request path needs to construct one.
+pub use lb_auth::Principal;
+/// The workspace-scoped durable store — `RunningNode::node.store`. Re-exported so an embedder can
+/// spell it in its own function signatures rather than only pass it through.
+pub use lb_host::Store;
+
+/// Stage an effect on the outbox — what a target calls to enqueue the RESULT of its own work.
+pub use lb_host::enqueue_outbox;
+/// The workspace asset store — where a host puts bytes it produced (a rendered PDF) so an outbox row
+/// can reference them instead of carrying them.
+pub use lb_host::{get_asset, put_asset, Asset, AssetError, MAX_ASSET_BYTES};
+/// The outbox delivery contract an embedder implements to register a target on
+/// [`BootConfig::outbox_providers`]'s `targets` list, plus the effect it is handed.
+pub use lb_host::{DynTarget, OutboxEffect, Target};
+
+/// Mint a short-lived session token for a real principal — see
+/// [`RunningNode::mint_service_session`], which is the ergonomic form and the one to prefer.
+pub use lb_role_gateway::{mint_full_session_with_ttl, MintedSession, SESSION_TTL_SECS};

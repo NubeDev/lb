@@ -21,6 +21,7 @@ use lb_store::Store;
 
 use super::authorize::authorize_dashboard;
 use super::error::DashboardError;
+use super::kind::{KIND_DASHBOARD, KIND_REPORT};
 use super::managed::managed_by_of;
 use super::model::{Cell, Dashboard, Toolbar, Variable, Visibility};
 use super::store::{read_dashboard, write_dashboard};
@@ -49,6 +50,8 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "timezone": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional dashboard timezone — an IANA name like 'Australia/Sydney' or 'browser' (omit to keep the existing one)" } },
                 "cacheTtlS": { "type": "integer", "x-lb": { "label": "Freshness (cache TTL)", "description": "Optional per-dashboard viz.query cache TTL in seconds; 0 = live (omit to keep the existing one)" } },
                 "width": { "type": "string", "x-lb": { "label": "Page width", "description": "Optional page content width: 'wide' (full-bleed, default) or 'centered' (constrained centred column) (omit to keep the existing one)" } },
+                "kind": { "type": "string", "enum": ["dashboard", "report"], "x-lb": { "label": "Kind", "description": "Optional record kind: 'dashboard' (default) or 'report' (a paper-shaped board report.export composes A4 pages from) (omit to keep the existing one)" } },
+                "reportIds": { "type": "array", "items": { "type": "string" }, "x-lb": { "label": "Bound reports", "description": "Optional report-kind dashboard ids this page's Generate-report control offers (omit to keep the existing ones)" } },
                 "toolbar": { "type": "object", "properties": {
                     "dateSelect": { "type": "boolean" },
                     "refreshRate": { "type": "boolean" },
@@ -82,10 +85,26 @@ pub async fn dashboard_save(
     // preserved. The settings dialog is the only writer of icon/colour/subtitle; it calls
     // `dashboard_save_meta` directly.
     dashboard_save_meta(
-        store, principal, ws, id, title, None, None, None, None, None, None, None, cells,
-        variables, now,
+        store, principal, ws, id, title, None, None, None, None, None, None, None, None, None,
+        cells, variables, now,
     )
     .await
+}
+
+/// Validate a supplied [`Dashboard::kind`]. Empty is legal (and means `"dashboard"`); anything other
+/// than the two known kinds is a LOUD refusal rather than a stored typo.
+///
+/// `width` is deliberately opaque and this is deliberately not, because the two fields fail
+/// differently: an unknown `width` degrades to the default layout and is visible on screen, whereas a
+/// mistyped `kind` drops the record out of BOTH the dashboards roster and the reports roster — a
+/// record that saved "successfully" and then cannot be found anywhere.
+fn check_kind(kind: &str) -> Result<(), DashboardError> {
+    match kind {
+        "" | KIND_DASHBOARD | KIND_REPORT => Ok(()),
+        other => Err(DashboardError::BadInput(format!(
+            "unknown dashboard kind {other:?} (expected {KIND_DASHBOARD:?} or {KIND_REPORT:?})"
+        ))),
+    }
 }
 
 /// `dashboard.save` with the page-presentation fields (dashboard page-settings). `description`/`icon`/
@@ -107,6 +126,8 @@ pub async fn dashboard_save_meta(
     cache_ttl_s: Option<u64>,
     toolbar: Option<Toolbar>,
     width: Option<String>,
+    kind: Option<String>,
+    report_ids: Option<Vec<String>>,
     mut cells: Vec<Cell>,
     variables: Vec<Variable>,
     now: u64,
@@ -114,6 +135,9 @@ pub async fn dashboard_save_meta(
     authorize_dashboard(principal, ws, "dashboard.save")?;
     if id.is_empty() {
         return Err(DashboardError::BadInput("empty dashboard id".into()));
+    }
+    if let Some(k) = kind.as_deref() {
+        check_kind(k)?;
     }
     // Lenient-args normalization BEFORE validation: an AI writer regularly sends `options.genui.ir`
     // as a JSON-encoded string; parse it into the object the validator and renderer expect.
@@ -161,6 +185,8 @@ pub async fn dashboard_save_meta(
         prev_cache_ttl_s,
         prev_toolbar,
         prev_width,
+        prev_kind,
+        prev_report_ids,
     ) = match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
         Some(existing) => {
             // Owner first, admin override strictly SECOND (`&&` short-circuits, so a non-admin never
@@ -182,6 +208,8 @@ pub async fn dashboard_save_meta(
                 existing.cache_ttl_s,
                 existing.toolbar,
                 existing.width,
+                existing.kind,
+                existing.report_ids,
             )
         }
         None => (
@@ -196,6 +224,8 @@ pub async fn dashboard_save_meta(
             0,
             Toolbar::default(),
             String::new(),
+            String::new(),
+            Vec::new(),
         ),
     };
 
@@ -210,6 +240,10 @@ pub async fn dashboard_save_meta(
         cache_ttl_s: cache_ttl_s.unwrap_or(prev_cache_ttl_s),
         toolbar: toolbar.unwrap_or(prev_toolbar),
         width: width.unwrap_or(prev_width),
+        // Preserve-on-omit like every other page-settings field: a layout save (which sends no `kind`)
+        // must never silently turn a report back into a dashboard.
+        kind: kind.unwrap_or(prev_kind),
+        report_ids: report_ids.unwrap_or(prev_report_ids),
         owner,
         managed_by,
         visibility,

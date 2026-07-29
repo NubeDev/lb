@@ -28,6 +28,7 @@ mod error;
 pub(crate) mod genui;
 mod get;
 mod grafana;
+mod kind;
 mod list;
 mod managed;
 mod model;
@@ -37,6 +38,7 @@ mod seed;
 mod share;
 mod share_closure;
 mod store;
+mod summary;
 mod tool;
 mod views;
 mod visibility;
@@ -51,11 +53,11 @@ pub use grafana::{
     call_dashboard_grafana_tool, dashboard_export, dashboard_import, export_descriptor,
     import_descriptor, DatasourceRemap, DegradedItem, ImportReport,
 };
+pub use kind::{KIND_DASHBOARD, KIND_REPORT};
 pub use list::dashboard_list;
 pub use managed::managed_by_of;
 pub use model::{
-    Action, Cell, Dashboard, DashboardSummary, QueryOptions, Source, Target, Toolbar, Variable,
-    Visibility,
+    Action, Cell, Dashboard, QueryOptions, Source, Target, Toolbar, Variable, Visibility,
 };
 pub use pin::{dashboard_pin, mint_cell_from_envelope, pin_descriptor};
 pub use save::{dashboard_save, dashboard_save_meta, save_descriptor};
@@ -66,6 +68,7 @@ pub use share_closure::{
     ShareClosureReport,
 };
 pub use store::scan_dashboards;
+pub use summary::DashboardSummary;
 pub use tool::call_dashboard_tool;
 pub use views::{builtin_view_ids, check_view_cells};
 pub use visibility::may_read_dashboard;

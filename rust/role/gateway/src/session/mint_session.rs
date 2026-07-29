@@ -38,7 +38,29 @@ pub async fn mint_full_session(
     workspace: &str,
     now: u64,
 ) -> MintedSession {
-    let mut claims = dev_claims(principal_sub, workspace, now, SESSION_TTL_SECS);
+    mint_full_session_with_ttl(node, key, principal_sub, workspace, now, SESSION_TTL_SECS).await
+}
+
+/// [`mint_full_session`] with an explicit lifetime.
+///
+/// Same issuance, same caps, same directory register — the ONLY difference is `ttl_secs`. It exists
+/// for **non-interactive** callers: a headless worker that has to authenticate as a real principal
+/// needs a token measured in minutes, not the 12-hour human session, and there was previously no way
+/// to ask for one short of re-implementing the cap fold (viewer floor ∪ durable grants ∪ nav reach) —
+/// which is exactly the sort of copy that drifts and quietly over-grants.
+///
+/// This mints **no authority of its own**: `principal_sub`'s live grants bound the result, so a
+/// worker sees precisely what that principal sees, and a revoked grant takes effect on the next mint.
+/// The caller decides whether it may mint at all — holding the node's signing key IS that decision.
+pub async fn mint_full_session_with_ttl(
+    node: &Arc<Node>,
+    key: &SigningKey,
+    principal_sub: &str,
+    workspace: &str,
+    now: u64,
+    ttl_secs: u64,
+) -> MintedSession {
+    let mut claims = dev_claims(principal_sub, workspace, now, ttl_secs);
 
     // Fold the DURABLE grant store into the token (authz-grants scope): the token is a cached
     // projection of `resolve_caps`. Grants are stored under the BARE user name, so resolve with the

@@ -8,8 +8,8 @@ use lb_store::Store;
 
 use super::authorize::authorize_dashboard;
 use super::error::DashboardError;
-use super::model::DashboardSummary;
 use super::store::scan_dashboards;
+use super::summary::DashboardSummary;
 use super::visibility::may_read_dashboard;
 
 /// List the dashboards in `ws` that `principal` may read. Tombstoned dashboards are excluded.
