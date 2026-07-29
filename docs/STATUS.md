@@ -30,7 +30,35 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-29 (backend only) — PACK ENTITY `refs:` + THE `charts.source` UNLOCK
+**Just shipped 2026-07-29 (backend only) — A PACK AS ONE `.zip`: `POST /packs/upload`
+(upstream ask **U-pack-upload**, downstream [NubeIO/rubix-ai#57](https://github.com/NubeIO/rubix-ai/issues/57),
+[`pack-upload-scope`](scope/packs/pack-upload-scope.md)).** A pack is *distributed* as one file but
+could only be *installed* as a hand-assembled `{manifest, files}` JSON bundle, so every embedder
+wanting a drop-zone re-implemented the unzip in its client. Now the archive is a first-class
+transport envelope, unpacked ONCE in core: new pure `packs/src/zip.rs` — `bundle_from_zip(bytes)`,
+zero I/O — plus `role/gateway/src/routes/packs.rs`, a multipart `POST /packs/upload`
+(`?verb=validate|apply`, default the SAFE one, `&ts=`) that authenticates, inflates, and dispatches
+through the **same** `lb_host::call_tool_on_node` chokepoint `/mcp/call` uses. **No new verb, no new
+cap, no envelope change** — it is transport, and it grants nothing `/mcp/call` doesn't (the
+validate-only token still gets a `403` on apply, proven not asserted). Every archive rejection names
+the offending member: zip-slip (via `enclosed_name`, restated by name), a non-UTF-8 member, the
+**total inflated** budget enforced *while* inflating (the zip-bomb guard — a 4 KB archive that
+expands to a gigabyte dies against the budget, not after), a single top-level folder stripped only
+when unambiguous, `__MACOSX/`/`.DS_Store` dropped first, a required root `pack.yaml`. The real bug
+fixed is an **inverted ceiling**: `/mcp/call`'s 2 MiB axum default against an 8 MiB engine cap
+refused packs at the *transport* with a bare 413 before any handler ran — so `MAX_BUNDLE_BYTES` is
+now **32 MiB** (doctrine unmoved: a big seed is still a generator script) and the route's limit is
+**DERIVED** from it (+1 MiB framing margin) with a test asserting the inequality. Route-scoped
+(rule 10): `/mcp/call` keeps its deliberate 2 MiB blast-radius cap — the rejected alternative was
+raising it globally. **Tests (real node + real router, hand-built multipart pinning the exact
+`curl -F` wire, no mocks):** `lb-packs` **80**, `pack_upload_test` **7** (validate→apply→noop, the
+caps deny, `401`, ws-A-invisible-to-ws-B, zip-slip/binary/no-archive `400`s), gateway lib **41**
+(incl. 3 new `routes::packs::tests`), `lb-host --test pack_test` **19** (3 pre-existing ignored);
+`cargo fmt --all --check` clean. **NOT released:** no `node-v*` tag cut, rubix-ai has **not** bumped
+its pin — the downstream drop-zone UI + browser-side `readZip.ts` pre-check are blocked on that tag.
+Session: [`sessions/packs/pack-upload-session.md`](sessions/packs/pack-upload-session.md).
+
+**Shipped 2026-07-29 (backend only) — PACK ENTITY `refs:` + THE `charts.source` UNLOCK
 ([#115](https://github.com/NubeDev/lb/issues/115),
 [`entity-source-refs-scope`](scope/packs/entity-source-refs-scope.md)).** A store-backed pack entity
 can now **declare its twin in a federation datasource** — `refs: [{source, table, fk?, label?}]` on

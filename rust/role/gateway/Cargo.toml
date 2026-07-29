@@ -42,7 +42,11 @@ lb-flows = { workspace = true, optional = true }
 # Only the `test_gateway` harness uses lb-telemetry (the `TelemetryRecord` shape the telemetry seed
 # writes so the console reads real rows over `telemetry.query`/`tail`). Optional, test-only.
 lb-telemetry = { workspace = true, optional = true }
-axum.workspace = true
+axum = { workspace = true, features = ["multipart"] }
+# The pack zip transport envelope: `/packs/upload` inflates an archive into the ordinary `Bundle`
+# before dispatching to the pack verbs. The route needs the reader + the engine's byte cap it
+# derives its own body limit from — no other pack internals.
+lb-packs.workspace = true
 tower-http.workspace = true
 tower.workspace = true
 tokio.workspace = true
@@ -66,6 +70,12 @@ name = "test_gateway"
 required-features = ["test-harness"]
 
 [dev-dependencies]
+# Query-string parsing in the `/packs/upload` unit tests — the same crate axum itself uses for
+# `Query<T>`, so the test asserts the REAL parse, not a lookalike.
+serde_urlencoded = "0.7"
+# Build REAL archives in the `/packs/upload` integration test — an upload test that hand-rolled a
+# zip container would be testing its own encoder, not the route.
+zip = { workspace = true }
 # The Grafana import/export round-trip test (viz import-export scope, Phase 4) asserts the exported
 # `schemaVersion` matches the pin the mapper targets — reads `grafana_map::PINNED_SCHEMA_VERSION`.
 grafana-map.workspace = true

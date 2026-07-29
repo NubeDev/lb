@@ -28,6 +28,8 @@ pub mod receipt;
 pub mod validate;
 pub mod validate_refs;
 pub mod validate_retention;
+// The zip transport envelope — one archive in, the SAME `Bundle` the JSON verb path takes out.
+pub mod zip;
 
 pub use bundle::{Bundle, LoadedDashboard, LoadedRule, Pack, MAX_BUNDLE_BYTES};
 pub use decision::{decide, Decision};
@@ -38,3 +40,4 @@ pub use manifest::{
 pub use plan::{checksum, content_checksum, plan, Kind, PlannedObject};
 pub use receipt::{ObjectReceipt, Receipt};
 pub use validate::{has_errors, validate, Finding};
+pub use zip::{bundle_from_zip, MANIFEST_FILENAME};

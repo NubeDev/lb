@@ -852,6 +852,7 @@ dependencies = [
  "matchit",
  "memchr",
  "mime",
+ "multer",
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
@@ -5738,6 +5739,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2 0.10.9",
+ "zip",
 ]
 
 [[package]]
@@ -5876,6 +5878,7 @@ dependencies = [
  "lb-mcp",
  "lb-mcp-shim",
  "lb-outbox",
+ "lb-packs",
  "lb-prefs",
  "lb-registry",
  "lb-run-events",
@@ -5889,10 +5892,12 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sha2 0.10.9",
  "tokio",
  "tower",
  "tower-http",
+ "zip",
 ]
 
 [[package]]

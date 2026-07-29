@@ -174,6 +174,12 @@ Per `scope/testing/testing-scope.md` — real store, seeded real series, no mock
   work being merged AND stable; its commits are on master (`27ae3708`) but still stabilizing, and a
   concurrent session is active in the checkout. Deferred to its own focused session per this scope's
   own sequencing ("land v1 host-side first"). v1's macro path already delivers federated decimation.
+  **Follow-up scoped:** the engine-aware **function** macros (`$__timeFilter(col)` /
+  `$__timeGroup(col,'$__interval')` and the rest of the Grafana SQL macro set, expanded per
+  source `kind` in the federation child at query time — the piece a no-SQL client needs) are
+  their own ask: [`sql-time-macros-scope.md`](sql-time-macros-scope.md). Sibling of v1.5, not a
+  replacement; it also **retires the import-time macro translator**
+  (`host/src/dashboard/grafana/macros.rs`) so lb has exactly one macro layer.
 
 ## Related
 

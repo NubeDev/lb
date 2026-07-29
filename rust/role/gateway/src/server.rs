@@ -47,7 +47,7 @@ use crate::routes::{
     share_doc, share_nav, share_panel, share_report, start_extension, surface_reach, system_acp,
     system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
     test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
-    update_flow_node, update_series_samples_route, write_samples,
+    update_flow_node, update_series_samples_route, upload_body_limit, upload_pack, write_samples,
 };
 use crate::state::Gateway;
 
@@ -295,6 +295,16 @@ pub fn router(gw: Gateway) -> Router {
         .route("/extensions/{ext}", delete(uninstall_extension))
         .route("/extensions/{ext}/ui/{*path}", get(serve_ext_ui))
         .route("/mcp/call", post(mcp_call))
+        // A pack as ONE `.zip` (pack-upload scope, U-pack-upload). Pure transport: it inflates the
+        // archive and dispatches to the SAME `pack.validate`/`pack.apply` verbs `/mcp/call` reaches,
+        // through the same chokepoint and the same caps wall. The body limit is DERIVED from the
+        // engine's `MAX_BUNDLE_BYTES` so the transport can never again admit less than the engine
+        // accepts — the inverted ceiling (2 MiB transport vs an 8 MiB engine cap) this route fixes.
+        // ROUTE-scoped (rule 10): `/mcp/call` keeps its deliberate 2 MiB blast-radius cap.
+        .route(
+            "/packs/upload",
+            post(upload_pack).layer(axum::extract::DefaultBodyLimit::max(upload_body_limit())),
+        )
         // native-tier bridge: a browser page drives its extension's sidecar tools (ros.*, point.write,
         // …), the peer of /mcp/call for the native tier (native-tier scope).
         .route("/native/call", post(native_call))
