@@ -43,6 +43,7 @@ mod query;
 mod results;
 mod sample;
 mod source;
+mod sql_macros;
 mod validate;
 mod write;
 
@@ -121,10 +122,20 @@ async fn federation_query(id: u64, input: &Value) -> Reply {
     // `source` is the host-side datasource NAME — an opaque label used only to make the emitted
     // query event readable. Optional: older callers omit it, and it is never a DSN.
     let source_name = str_of(input, "source");
+    // ONE macro layer, query-time and engine-aware (viz sql-time-macros scope): expand the Grafana
+    // function macros for THIS source's kind BEFORE validation/caching, using the additive
+    // `resolution` window `viz.query` attaches. Un-macro'd SQL comes back byte-identical. Expansion
+    // runs before `run_query_cached` on purpose: the cache key hashes the RAW input (sql +
+    // resolution both participate), and expansion is a pure function of exactly those — so the key
+    // stays honest and two widths can never collide on one entry.
+    let sql = match sql_macros::expand(sql, kind, input.get("resolution")) {
+        Ok(s) => s,
+        Err(e) => return Reply::err(id, e),
+    };
     // The WHOLE input is handed to the cached path: it is what the result-cache key is computed from
     // (minus `cache` and `dsn`), so any field the child receives participates in identity. With no
     // `cache: {ttl_s}` this is exactly the uncached call it always was.
-    match query::run_query_cached(kind, dsn, sql, source_name, input).await {
+    match query::run_query_cached(kind, dsn, &sql, source_name, input).await {
         Ok(r) => {
             let out = json!({ "columns": r.columns, "rows": r.rows });
             Reply::ok(id, out.to_string())

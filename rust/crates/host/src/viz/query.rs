@@ -26,7 +26,7 @@ use super::error::VizError;
 use super::frame::{detect_time_field, result_to_rows};
 use super::macros::substitute_macros;
 use super::reach::{apply_entity_reach, EntityReach};
-use super::resolution::{maybe_inject_buckets, resolution_for};
+use super::resolution::{attach_resolution, maybe_inject_buckets, resolution_for};
 use super::time_override::apply_time_override;
 use crate::boot::Node;
 use crate::dashboard::QueryOptions;
@@ -374,6 +374,10 @@ async fn dispatch_target(
         "federation.query" => {
             if let Some(res) = resolution_for(&args, query_options) {
                 substitute_macros(&mut args, &res);
+                // The FUNCTION macros ($__timeFilter/$__timeGroup/…) expand in the federation
+                // child, per engine (sql-time-macros scope) — hand it the same derived window,
+                // additively, and only when a macro actually remains in the sql.
+                attach_resolution(&mut args, &res);
             }
         }
         _ => {}

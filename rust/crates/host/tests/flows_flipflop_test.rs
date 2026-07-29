@@ -198,6 +198,38 @@ async fn flipflop_re_scan_is_idempotent_no_double_flip() {
     );
 }
 
+/// **The unbounded-drift regression** (interval-source-clock scope, defect 2). A scan that arrives
+/// LATE — the production sweep always does for any period below its tick, and any stall does for the
+/// rest — must advance the cursor to the next period-grid slot strictly after `now` in ONE firing.
+/// The old `scheduled + period` advance left the cursor in the past, so it gained one period per
+/// scan and slid further behind the wall clock forever (observed ~60s adrift on a live node).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn flipflop_late_scan_fires_once_and_lands_the_cursor_in_the_future() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    save(&node, &p, "ws", &flipflop_flow("drift", "ff", 10, true)).await;
+    react_to_flows_interval(&node, &p, "ws", 100).await.unwrap(); // prime: due at 100
+
+    // The scan arrives at 157 — 5.7 periods late. Fire-once-then-skip: exactly one firing (for the
+    // due instant 100), and the cursor lands on the next grid slot strictly after 157 (160) — never
+    // 110, which would leave it permanently behind and due again on every subsequent scan.
+    let pass = react_to_flows_interval(&node, &p, "ws", 157).await.unwrap();
+    assert_eq!(pass.fired, 1, "one firing for the missed window, no backfill");
+    assert_eq!(
+        fired_value(&node, &p, "ws", &flipflop_run_id("drift", "ff", 100)).await,
+        json!(true)
+    );
+    assert_eq!(
+        cursor(&node, "ws", "drift", "ff").await["next_attempt_ts"],
+        160,
+        "the cursor must skip to the next FUTURE slot in one step (was: +period per scan = drift)"
+    );
+
+    // A re-scan at the same late instant is a no-op — the cursor is already in the future.
+    let pass2 = react_to_flows_interval(&node, &p, "ws", 157).await.unwrap();
+    assert_eq!(pass2.fired, 0, "no double-fire after the skip");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn flipflop_value_survives_a_store_round_trip() {
     // Restart parity: fire twice, then a fresh reactor pass (the cursor is the only durable state)

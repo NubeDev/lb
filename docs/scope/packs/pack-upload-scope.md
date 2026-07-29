@@ -7,8 +7,8 @@ upstream half of the downstream ask **U-pack-upload** (NubeIO/rubix-ai#57, consu
 refusal matrix are NOT touched here — they are `docs/scope/packs/pack-core-scope.md`, unchanged.
 
 > **Not released.** No `node-v*` tag has been cut for this work and rubix-ai has NOT bumped its
-> `lb-node` pin — and it is not merged either: everything below is a working tree in this checkout,
-> green locally (see the session doc's test block), unreviewed and un-CI'd. No consumer can see it yet.
+> `lb-node` pin. It is committed on this checkout's `main` (`208ef00a`), green locally (see the
+> session doc's test block), but unreviewed, un-CI'd and untagged — so no consumer can see it yet.
 > The downstream drop-zone UI is blocked on that tag (`docs/WORKFLOW-LB.md` §4).
 
 A pack is *distributed* as one file. A customer is handed `ems.zip`; an author downloads a repo as

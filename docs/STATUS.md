@@ -30,7 +30,20 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-29 (backend only) — A PACK AS ONE `.zip`: `POST /packs/upload`
+**Just shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — ONE Grafana SQL macro
+layer, query-time and engine-aware
+([`sql-time-macros-scope`](scope/viz/sql-time-macros-scope.md),
+session [`sessions/viz/sql-time-macros-session.md`](sessions/viz/sql-time-macros-session.md)).**
+New `federation/src/sql_macros.rs` expands `$__timeFilter`/`$__timeGroup`/`$__timeGroupAlias`/
+`$__time`/`$__timeFrom()`/`$__timeTo()` per source `kind` in the federation child; `viz.query`
+attaches an additive `resolution: {from_ms,to_ms,width_ms}` to macro'd `federation.query` targets;
+the import-time translator (`host/src/dashboard/grafana/macros.rs`) is **deleted** — imported
+Grafana SQL panels store their macros verbatim and run live + zoom-coarsening. Unsupported macros
+and missing-resolution fail with named errors; un-macro'd SQL byte-identical. Real-SQLite
+integration + deny/isolation green (`host/tests/viz_sql_time_macros_test.rs`). Downstream:
+rubix-ai's Quick Chart builder emits the macro form and bumps the pin at the next `node-v*` tag.
+
+**Also shipped 2026-07-29 (backend only) — A PACK AS ONE `.zip`: `POST /packs/upload`
 (upstream ask **U-pack-upload**, downstream [NubeIO/rubix-ai#57](https://github.com/NubeIO/rubix-ai/issues/57),
 [`pack-upload-scope`](scope/packs/pack-upload-scope.md)).** A pack is *distributed* as one file but
 could only be *installed* as a hand-assembled `{manifest, files}` JSON bundle, so every embedder

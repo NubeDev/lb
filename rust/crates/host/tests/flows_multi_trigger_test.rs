@@ -259,10 +259,14 @@ async fn counter_node_increments_across_firings() {
     save(&node, &p, "ws", &f).await.unwrap();
 
     react_to_flows_cron(&node, &p, "ws", 100).await.unwrap(); // prime
-                                                              // Three due firings → the counter's running total reaches 3.
+                                                              // Three due firings → the counter's running total reaches 3. A firing is SPAWNED
+                                                              // (seed-then-detached-drive), so await each run's terminal snapshot before
+                                                              // reading the durable memory — the reactor pass returning no longer means the
+                                                              // subgraph ran.
     for _ in 0..3 {
         let due = cursor_next(&node, "ws", "tick", "t").await;
         react_to_flows_cron(&node, &p, "ws", due).await.unwrap();
+        run_snapshot(&node, &p, "ws", &lb_host::cron_run_id("tick", "t", due)).await;
     }
     let mem = store_read(&node.store, "ws", "flow_node_memory", "tick:c")
         .await

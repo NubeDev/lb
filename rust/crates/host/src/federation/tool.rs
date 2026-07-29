@@ -42,11 +42,15 @@ pub async fn call_federation_tool(
             // is built by enumeration, so an unparsed field validates against the schema and is then
             // silently dropped — a caching request that quietly does nothing.
             let cache = input.get("cache");
+            // The derived render window `viz.query` attaches for macro'd SQL (sql-time-macros
+            // scope) — same enumeration rule as `cache`: an unparsed field would be silently
+            // dropped before the child, and the function macros would fail "no resolution".
+            let resolution = input.get("resolution");
             // Trace id for correlating sub-queries of one dashboard panel refresh. Absent on
             // non-dashboard paths (query.run, mirror, query worker); empty string = no trace.
             let trace_id = input.get("trace_id").and_then(|v| v.as_str()).unwrap_or("");
             let out = federation_query(
-                node, &launcher, principal, ws, source, sql, cache, ts, trace_id,
+                node, &launcher, principal, ws, source, sql, cache, resolution, ts, trace_id,
             )
             .await?;
             Ok(out)

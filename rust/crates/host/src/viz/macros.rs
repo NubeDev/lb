@@ -51,10 +51,32 @@ pub fn substitute_macros(args: &mut Value, res: &Resolution) -> bool {
 
 /// The pure substitution — exposed for the un-macro'd byte-identity test.
 pub fn apply(sql: &str, res: &Resolution) -> String {
-    sql.replace(INTERVAL_MS, &res.width_ms.to_string())
-        .replace(INTERVAL, &interval_to_grafana(res.width_ms))
-        .replace(TIME_FROM, &res.from.to_string())
-        .replace(TIME_TO, &res.to.to_string())
+    let sql = sql
+        .replace(INTERVAL_MS, &res.width_ms.to_string())
+        .replace(INTERVAL, &interval_to_grafana(res.width_ms));
+    let sql = replace_bare(&sql, TIME_FROM, &res.from.to_string());
+    replace_bare(&sql, TIME_TO, &res.to.to_string())
+}
+
+/// Replace `token` only where it is NOT a function-macro call (`$__timeFrom()`): the bare token is
+/// this host value pass; the call form is Grafana's function macro, expanded per engine in the
+/// federation child (sql-time-macros scope) and must reach it untouched. Without this the plain
+/// `replace` would corrupt `$__timeFrom()` into `1699…()` — the two passes could never compose.
+fn replace_bare(sql: &str, token: &str, value: &str) -> String {
+    let mut out = String::with_capacity(sql.len());
+    let mut rest = sql;
+    while let Some(idx) = rest.find(token) {
+        out.push_str(&rest[..idx]);
+        let after = &rest[idx + token.len()..];
+        if after.trim_start().starts_with('(') {
+            out.push_str(token); // the call form — the child's macro, not ours
+        } else {
+            out.push_str(value);
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Format a width in ms as a Grafana-style duration string (`secondsToHms`): the largest whole unit
@@ -144,6 +166,19 @@ mod tests {
             interval_to_grafana(90_000),
             "90s",
             "non-round-minute stays seconds"
+        );
+    }
+
+    /// The two passes compose: bare `$__timeFrom`/`$__timeTo` substitute (value macros), while the
+    /// Grafana FUNCTION forms `$__timeFrom()`/`$__timeTo()` pass through untouched for the
+    /// federation child's engine-aware expansion (sql-time-macros scope).
+    #[test]
+    fn function_forms_pass_through_bare_tokens_substitute() {
+        let sql = "WHERE ts >= $__timeFrom() AND ts < $__timeTo() AND raw BETWEEN $__timeFrom AND $__timeTo";
+        let out = apply(sql, &res(1_000, 2_000, 30_000));
+        assert_eq!(
+            out, "WHERE ts >= $__timeFrom() AND ts < $__timeTo() AND raw BETWEEN 1000 AND 2000",
+            "call forms intact, bare tokens substituted"
         );
     }
 

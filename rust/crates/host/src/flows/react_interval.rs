@@ -4,10 +4,13 @@
 //! no input, one output, flipping `true`/`false` every `period_secs`.
 //!
 //! One durable record per node ([`super::record::FlowTriggerState`]) holds BOTH the clock cursor
-//! (`next_attempt_ts`, advanced by `period_secs`) AND the last emitted value (`flop`) — so value and
-//! clock move together and both survive restart. Idempotency: a scheduled instant derives a
-//! deterministic run id and is skipped if its job already exists (an at-least-once re-scan never
-//! double-flips). Missed-firing policy — fire-once-then-skip-to-next-future-slot (no backfill storm).
+//! (`next_attempt_ts`, advanced by [`next_slot_after`] — the next period-grid slot strictly after
+//! `now`, NEVER a blind `+period` which drifts unboundedly behind a slow scan) AND the last emitted
+//! value (`flop`) — so value and clock move together and both survive restart. Idempotency: a
+//! scheduled instant derives a deterministic run id and is skipped if its job already exists (an
+//! at-least-once re-scan never double-flips). Missed-firing policy — fire-once-then-skip-to-next-
+//! future-slot (no backfill storm). A firing is SPAWNED (seed-durably-then-drive-detached, the
+//! `flows_run_async` seam) so N due nodes fire independently — the scan never blocks on a subgraph.
 //!
 //! Workspace-walled at the scan (the flow directory is ws-scoped); a ws-B reactor never sees/fires a
 //! ws-A flip-flop. `now` is the INJECTED clock (never wall-clock) — deterministic under test.
@@ -40,7 +43,17 @@ pub async fn react_to_flows_interval(
             continue;
         }
         for trig in flipflop_triggers(flow) {
-            fire_one_flipflop(node, principal, ws, flow, &trig, now, &mut pass).await?;
+            // Per-node isolation: one broken node/flow must not starve every other trigger this pass
+            // (a `?` here aborted the rest of the workspace scan for the tick — interval-source-clock
+            // scope, defect 3). Log and keep scanning; the next tick retries the failed one.
+            if let Err(e) =
+                fire_one_flipflop(node, principal, ws, flow, &trig, now, &mut pass).await
+            {
+                tracing::warn!(
+                    ws = %ws, flow = %flow.id, node = %trig.node_id, error = %e,
+                    "flip-flop firing failed; continuing the pass"
+                );
+            }
         }
     }
     Ok(pass)
@@ -88,7 +101,7 @@ async fn fire_one_flipflop(
         .map_err(|e| FlowsError::Internal(e.to_string()))?
         .is_some()
     {
-        let next = scheduled_ts + trig.period_secs;
+        let next = next_slot_after(scheduled_ts, trig.period_secs, now);
         persist_cursor(
             node,
             ws,
@@ -103,10 +116,12 @@ async fn fire_one_flipflop(
         return Ok(());
     }
     // Fire one run FROM this node (entry = node_id → only its subgraph). The trigger leg reads its value
-    // from params under the node id, exactly as the cron leg reads `cron_ts`.
+    // from params under the node id, exactly as the cron leg reads `cron_ts`. SPAWNED, not awaited: the
+    // run seeds durably (job + run record exist on return, so the idempotency check above holds) and
+    // drives on a detached task — ten due flip-flops fire this pass, not one per slow subgraph.
     let mut params = serde_json::Map::new();
     params.insert(node_id.to_string(), serde_json::json!(value));
-    run::flows_run(
+    run::flows_run_async(
         node,
         principal,
         ws,
@@ -117,8 +132,10 @@ async fn fire_one_flipflop(
         Some(node_id),
     )
     .await?;
-    // Advance the clock to the next slot AND persist the value just emitted (so the next firing flips it).
-    let next = scheduled_ts + trig.period_secs;
+    // Advance the clock to the next FUTURE slot AND persist the value just emitted (so the next firing
+    // flips it). `next_slot_after`, never `+period`: a scan later than the slot (the 5s sweep, a stall)
+    // must not leave the cursor in the past, or it gains one period per scan and drifts without bound.
+    let next = next_slot_after(scheduled_ts, trig.period_secs, now);
     persist_cursor(
         node,
         ws,
@@ -136,6 +153,60 @@ async fn fire_one_flipflop(
 /// A deterministic run id for a flip-flop firing: stable per (flow, node, scheduled instant).
 pub fn flipflop_run_id(flow_id: &str, node_id: &str, scheduled_ts: u64) -> String {
     format!("{flow_id}-flip-{node_id}-{scheduled_ts}")
+}
+
+/// The next slot on the period grid anchored at `scheduled_ts` that lies **strictly after** `now` —
+/// the interval counterpart of `react_cron`'s `next_after(schedule, now)`. This is what makes
+/// fire-once-then-skip true: a scan arriving late (the sweep floor, a stall, an outage) advances the
+/// cursor past `now` in ONE step, instead of one period per scan (which left the cursor permanently
+/// behind the wall clock, sliding further adrift every tick). Pure + clock-injected — deterministic
+/// under test.
+fn next_slot_after(scheduled_ts: u64, period_secs: u64, now: u64) -> u64 {
+    // A zero period cannot reach here (descriptor `minimum` rejects it at save); guard anyway so a
+    // corrupt record can never divide by zero or spin the cursor in place.
+    let period = period_secs.max(1);
+    if scheduled_ts > now {
+        return scheduled_ts;
+    }
+    let elapsed = now - scheduled_ts;
+    scheduled_ts + (elapsed / period + 1) * period
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_slot_after;
+
+    /// The on-time scan: firing exactly at the slot advances by exactly one period.
+    #[test]
+    fn on_time_scan_advances_one_period() {
+        assert_eq!(next_slot_after(100, 10, 100), 110);
+    }
+
+    /// **The drift regression** (interval-source-clock scope, defect 2): a scan later than the slot
+    /// lands the cursor strictly in the future in one step — never `scheduled + period` (which at
+    /// `period=1` under a 5s sweep slid 4s further behind every tick, observed ~60s adrift live).
+    #[test]
+    fn late_scan_skips_to_the_next_future_slot() {
+        // Slot was 100, period 1, the sweep arrives at 157: next is 158, NOT 101.
+        assert_eq!(next_slot_after(100, 1, 157), 158);
+        // Period 10, scan at 157: the grid is 100,110,…,150,160 → 160.
+        assert_eq!(next_slot_after(100, 10, 157), 160);
+        // Exactly on a later grid slot: strictly after, so the NEXT one.
+        assert_eq!(next_slot_after(100, 10, 160), 170);
+    }
+
+    /// A not-yet-due slot is returned unchanged (the caller's `scheduled_ts > now` early-return
+    /// normally prevents this path; the function stays total anyway).
+    #[test]
+    fn future_slot_is_kept() {
+        assert_eq!(next_slot_after(200, 10, 150), 200);
+    }
+
+    /// A corrupt zero period neither divides by zero nor pins the cursor in the past.
+    #[test]
+    fn zero_period_still_advances() {
+        assert_eq!(next_slot_after(100, 0, 100), 101);
+    }
 }
 
 async fn persist_cursor(

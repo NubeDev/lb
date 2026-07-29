@@ -50,8 +50,10 @@ pub async fn react_to_flows_cron(
             continue;
         }
         // Each cron trigger node is independent: its own schedule (its `config.cron`) + its own cursor.
+        // Per-node isolation: one broken node/flow must not starve every other trigger this pass (a `?`
+        // here aborted the rest of the workspace scan for the tick). Log and keep scanning.
         for trig in cron_triggers(flow) {
-            fire_one_trigger(
+            if let Err(e) = fire_one_trigger(
                 node,
                 principal,
                 ws,
@@ -61,7 +63,13 @@ pub async fn react_to_flows_cron(
                 now,
                 &mut pass,
             )
-            .await?;
+            .await
+            {
+                tracing::warn!(
+                    ws = %ws, flow = %flow.id, node = %trig.node_id, error = %e,
+                    "cron trigger firing failed; continuing the pass"
+                );
+            }
         }
     }
     Ok(pass)
@@ -111,14 +119,16 @@ async fn fire_one_trigger(
         return Ok(());
     }
     // Fire one run FROM this trigger node (entry = node_id → only its subgraph). Payload names the
-    // scheduled instant; the trigger node emits it as its output.
+    // scheduled instant; the trigger node emits it as its output. SPAWNED, not awaited (the
+    // `flows_run_async` seam: job + run record seed synchronously, the drive detaches) — N due
+    // triggers all fire this pass instead of queueing behind one slow subgraph.
     let mut params = serde_json::Map::new();
     params.insert("__cron_ts".into(), serde_json::json!(scheduled_ts));
     params.insert(
         node_id.to_string(),
         serde_json::json!({ "cron_ts": scheduled_ts }),
     );
-    run::flows_run(
+    run::flows_run_async(
         node,
         principal,
         ws,

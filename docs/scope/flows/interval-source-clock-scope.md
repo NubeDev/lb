@@ -41,10 +41,27 @@ Two distinct defects fall out of one cause:
    further behind every tick (observed ~60s adrift). The module doc already promised
    *"fire-once-then-skip-to-next-future-slot"*; the code never skipped.
 
-Defect 2 is a straight bug against the documented policy and is **already fixed** in this session
-(`next_slot_after`, matching `react_cron`'s `next_after(schedule, now)`). Defect 1 is the design
-question this scope exists for — the fix makes the clock *honest* (no drift) but still cannot make
-`period_secs: 1` mean one second.
+Defect 2 is a straight bug against the documented policy. An earlier session claimed to have fixed it
+(`next_slot_after`, matching `react_cron`'s `next_after(schedule, now)`) — **peer review 2026-07-29
+found that fix never landed**: `next_slot_after` exists nowhere in the tree, `git log` on
+`react_interval.rs` shows no fix commit, and both the fire path and the idempotent-skip path still
+advance `scheduled_ts + period_secs`. The fix is small and correct; it must be (re)written, and the
+**no-drift regression test must land in the same change** so a claimed fix can never silently
+un-land again. Defect 1 is the design question this scope exists for — even with drift fixed, the
+clock cannot make `period_secs: 1` mean one second.
+
+3. **Serial inline firing (found in peer review — the third defect, and likely the main "feels
+   off").** A reactor-fired run executes **inline and to completion inside the sweep**:
+   `fire_one_flipflop` → `flows_run` → `run_flow_to_completion(...).await`, node after node, flow
+   after flow, and the whole cron → interval → source → approval chain runs sequentially per
+   workspace per tick ([`reactor_loop.rs`](../../../rust/crates/host/src/flows/reactor_loop.rs)
+   `tick_once`). Ten trigger nodes therefore do not fire independently even at 5s granularity: one
+   slow subgraph (an `ext-call`, a store-heavy branch) delays every other trigger's firing, and if a
+   pass exceeds the sweep period, `MissedTickBehavior::Skip` drops ticks outright — everyone's
+   period stretches. Contrast the *manual* path, which already has the right shape:
+   `flows_run_async` seeds the run durably and `tokio::spawn`s `drive_run_task`. Related: both
+   reactors propagate a single node's error with `?`, aborting the rest of the workspace pass for
+   that tick — one broken flow starves every other trigger until the next sweep.
 
 The original scope saw this coming and wrote it down: *"the reactor scans every few seconds —
 sub-second resolution is impossible, so seconds is the honest unit."* That reasoning is sound for the
@@ -115,10 +132,29 @@ engine honest — but permanently caps interval nodes at 5s, and hard-codes a *d
 per second per workspace to emulate a timer — and it merely moves the floor from 5s to 1s while
 multiplying steady-state load on every node, including those with no interval triggers at all.
 
-**Recommendation: A, with B's schema honesty as the interim.** Ship the `minimum` clamp now so the UI
-stops accepting periods the engine cannot serve (a one-line, shippable truth), and scope A as the
-real fix. If the answer to Open Q1 is "5s is fine forever", B alone is a legitimate end state — but say
-so deliberately rather than by accident.
+**Recommendation: A, with B's schema honesty as the interim — and defect 3 fixed FIRST, because it
+is required under every option.** Decoupling firing from running (reactor/timer firings take the
+`flows_run_async` seed-durably-then-spawn path instead of `run_flow_to_completion` inline, plus
+log-and-continue instead of `?` per node) is a prerequisite: without it, Option A's timers would
+still contend on completed runs, and even Option B's honest 5s floor is not actually honoured when
+one subgraph is slow. Then ship B's `minimum` clamp so the UI stops accepting periods the engine
+cannot serve, and build A as the real fix. If the answer to Open Q1 is "5s is fine forever", B alone
+is a legitimate end state — but say so deliberately rather than by accident.
+
+**The staged plan:**
+
+1. **Phase 0 — make the sweep honest (small, ships now):** re-apply the drift fix for real
+   (`next_slot_after(scheduled_ts, period, now)` — smallest slot strictly after `now`, used in both
+   the fire and the idempotent-skip paths, pure + clock-injected) **with the no-drift regression
+   test in the same change**; per-node error isolation in both reactors; descriptor `minimum` clamp
+   at the sweep floor.
+2. **Phase 1 — decouple firing from running:** every reactor firing seeds durably and spawns
+   (reuse the `drive_run_task` seam). Ten triggers now fire independently at ≥5s cadence — the
+   Node-RED feel at the current resolution.
+3. **Phase 2 — Option A:** the interval-timer reconciler (one owner module), timers per enabled
+   interval node, cron untouched, lifecycle + orphan tests per the Testing plan.
+4. **Phase 3 — hardening:** `flows.node_state` parity with live timers, load/retention policy for
+   fast periods, the E2E canvas countdown.
 
 ## How it fits the core
 
@@ -214,21 +250,34 @@ Key cases:
   both must be accepted. Prefer additive: keep `period_secs`, add finer granularity as a separate
   field or accept fractional seconds.
 
-## Open questions
+## Open questions — RESOLVED (owner decision, 2026-07-29)
 
-1. **Do interval sources need to be genuinely sub-second, or just fast-and-honest?** BAS point
-   control implies yes and selects Option A; heartbeat/demo pulses imply Option B is sufficient
-   forever. **This single answer picks the option** — it is the question to settle first.
-2. If Option A: what is the **lowest permitted period**, and is it enforced by schema, by config, or
-   by a per-workspace policy? (A hard schema minimum is simplest; a deployment constant in a schema
-   is a smell.)
-3. Does the unit change to milliseconds (`period_ms`), or stay seconds with fractional values? Names
-   the migration story for already-saved flows.
-4. Should the timer own only `flipflop`, or a general **`interval` trigger kind** that future
-   self-driving nodes (pulse, sampler, poller) inherit? Scoping the seam once is cheaper than
-   retrofitting it per node.
-5. Does the 5s flow-reactor sweep stay at 5s for cron once intervals leave it? (Probably yes — cron
-   is minute-granular — but it should be a decision, not an inherited constant.)
+The owner answered Q1 and widened the target: *"it needs to be like Node-RED — a node can take many
+inputs, fire its output many times, many nodes all firing at once and when they need, with no
+restrictions — and loopbacks must be handled in a smart way without race conditions."* That answer
+settles every question below and adds one new scope.
+
+1. **Sub-second? YES — full Node-RED trigger semantics.** **Option A is selected.** Interval sources
+   get real timers; "all fire at once, when they need" also makes Phase 1 (decoupled, spawned
+   firings) mandatory, not optional — concurrency is the requirement, the clock is only half of it.
+2. **Lowest permitted period:** a schema `minimum` as the hard floor (start at `1s`, drop to `100ms`
+   only once the run-retention policy for high-frequency sources exists — see Risks "Load at small
+   periods"). Per-workspace policy can lower/raise it later; the schema floor is the safety net.
+3. **Unit:** keep `period_secs`, accept **fractional seconds** (additive — saved flows stay valid;
+   no `period_ms` migration).
+4. **Seam:** a general **`interval` trigger kind** owned by the timer reconciler; `flipflop` is its
+   first tenant, pulse/sampler/poller inherit it. Scope the seam once.
+5. **Cron sweep:** stays at 5s (deliberate — cron is minute-granular; the sweep is invisible there).
+
+**New requirement this answer adds — loopbacks.** "Many inputs / many outputs, all firing at once"
+is already the shipped per-trigger model
+([`flow-multi-trigger-reactive-scope.md`](./flow-multi-trigger-reactive-scope.md)) plus the envelope
+fan-in/fan-out ([`flow-message-envelope-scope.md`](./flow-message-envelope-scope.md)) — the blocker
+is defect 3 above, not the model. **Cycles are different**: the graph is a validated DAG (Kahn
+rejects a cycle at save, `crates/flows/src/model.rs`), and `flows-scope.md` deferred loops to
+"retained inputs". That deferral is now overridden by the owner — loopbacks get their own scope:
+[`flow-loopback-scope.md`](./flow-loopback-scope.md) (feedback edges as new-firing enqueues with a
+hop budget — never re-entering a live run, which is what keeps races impossible by construction).
 
 ## Skill doc
 

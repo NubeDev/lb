@@ -1,6 +1,12 @@
 # Viz scope — ONE Grafana-compatible SQL macro layer, query-time and engine-aware
 
-Status: scope (the ask). Decisions final — no open questions. Consumer half: rubix-ai
+Status: **IMPLEMENTED (2026-07-29, unreleased — needs the next `node-v*` tag)** — session
+[`../../sessions/viz/sql-time-macros-session.md`](../../sessions/viz/sql-time-macros-session.md).
+All goals landed in one slice (expansion table + `resolution` attach + translator deletion), full
+test plan green incl. the real-SQLite integration + deny/isolation re-asserts. One addendum: the
+host value pass gained a function-form-aware `replace_bare` so bare `$__timeFrom` and the call form
+`$__timeFrom()` compose (see session). Originally: scope (the ask). Decisions final — no open
+questions. Consumer half: rubix-ai
 `docs/scope/frontend/dashboard/quick-chart-builder-scope.md` (the no-SQL Quick Chart builder —
 its datasource-track time bucketing is gated on this). Promotes to
 `doc-site/content/public/datasources/` beside the resolution contract once shipped.
