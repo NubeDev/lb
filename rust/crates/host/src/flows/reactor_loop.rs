@@ -20,8 +20,8 @@ use lb_auth::Principal;
 use crate::boot::Node;
 use crate::Role;
 
+use super::interval_timers::{reconcile_interval_timers, IntervalTimers};
 use super::react_cron::react_to_flows_cron;
-use super::react_interval::react_to_flows_interval;
 use super::reconcile::reconcile_flows;
 use super::retention_sweep::{should_sweep, sweep_retention};
 
@@ -70,6 +70,11 @@ fn reactor_caps() -> Vec<String> {
 /// sub-minute tick so a due instant is caught promptly (a few seconds is plenty and cheap: each tick
 /// is a ws-scoped store scan).
 pub fn spawn_flow_reactors(node: Arc<Node>, workspaces: Vec<String>, role: Role, period: Duration) {
+    // The node's live interval timers (interval-source-clock scope, Phase 2). Owned by this loop and
+    // reconciled on every tick — the tick is the CONVERGENCE cadence (how fast an enable/disable takes
+    // effect), no longer the FIRING cadence (which each timer now owns exactly). This is what makes
+    // `period_secs: 1` mean one second: the sweep interval is no longer a floor on any interval node.
+    let timers = Arc::new(IntervalTimers::new());
     tokio::spawn(async move {
         // First tick after one period (boot bring-up already armed start_on_boot flows elsewhere).
         let mut ticker = tokio::time::interval(period);
@@ -85,7 +90,7 @@ pub fn spawn_flow_reactors(node: Arc<Node>, workspaces: Vec<String>, role: Role,
             let sweep = should_sweep(tick_count);
             for ws in &workspaces {
                 let principal = Principal::routed("node:reactor", ws.clone(), reactor_caps());
-                tick_once(&node, &principal, ws, role, now).await;
+                tick_once(&timers, &node, &principal, ws, role, now).await;
                 // Bounded retention for the tables that grow from routine reactor traffic — trimmed on
                 // the same ws-scoped tick as the drain, throttled to every Nth tick (see
                 // `retention_sweep`). Keeps `job`/`flow_run`/`flow_step_output` finite so even a naïve
@@ -101,7 +106,14 @@ pub fn spawn_flow_reactors(node: Arc<Node>, workspaces: Vec<String>, role: Role,
 
 /// One reactor pass for one workspace: reconcile sources/boot, then fire due cron. Errors are logged,
 /// never fatal — a single bad flow must not stop the node's heartbeat (the next tick retries).
-async fn tick_once(node: &Arc<Node>, principal: &Principal, ws: &str, role: Role, now: u64) {
+async fn tick_once(
+    timers: &Arc<IntervalTimers>,
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    role: Role,
+    now: u64,
+) {
     if let Err(e) = reconcile_flows(node, principal, ws, role, now).await {
         tracing::warn!(ws = %ws, error = %e, "flow reconcile pass failed");
     }
@@ -112,12 +124,19 @@ async fn tick_once(node: &Arc<Node>, principal: &Principal, ws: &str, role: Role
         Ok(_) => {}
         Err(e) => tracing::warn!(ws = %ws, error = %e, "flow cron reactor pass failed"),
     }
-    match react_to_flows_interval(node, principal, ws, now).await {
-        Ok(pass) if pass.fired > 0 => {
-            tracing::info!(ws = %ws, fired = pass.fired, "flow flip-flop reactor fired");
+    // INTERVAL SOURCES: converge the per-node timers, do NOT fire here. A timer fires the same
+    // deterministic run id this sweep would, so running both would race the idempotency read — the
+    // timers own every flip-flop exclusively (interval-source-clock scope, Phase 2). The tick is now
+    // only how fast an enable/disable/period-edit takes effect, never how often a node can fire.
+    match reconcile_interval_timers(timers, node, principal, ws).await {
+        Ok(pass) if pass.started > 0 || pass.stopped > 0 => {
+            tracing::info!(
+                ws = %ws, started = pass.started, stopped = pass.stopped,
+                "flow interval timers reconciled"
+            );
         }
         Ok(_) => {}
-        Err(e) => tracing::warn!(ws = %ws, error = %e, "flow flip-flop reactor pass failed"),
+        Err(e) => tracing::warn!(ws = %ws, error = %e, "flow interval timer reconcile failed"),
     }
     // Fire a run per new webhook hit on each `webhook` source node's series (slice 5).
     match super::react_source::react_to_flow_sources(node, principal, ws, now).await {

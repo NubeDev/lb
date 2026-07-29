@@ -200,11 +200,12 @@ pub use federation::{
 };
 pub use flows::error::FlowsError;
 pub use flows::{
-    arm_source, cron_is_valid, cron_run_id, disarm_source, flipflop_run_id, placement_matches,
-    react_to_flow_approvals, react_to_flow_sources, react_to_flows_cron, react_to_flows_interval,
-    reconcile_flows, source_run_id, source_series, spawn_flow_reactors, watch_flow_debug,
-    watch_flow_run, FlowApprovalPass, FlowDebugWatch, FlowReactorPass, FlowReconcilePass,
-    FlowWatch, SourceReactorPass,
+    arm_source, cron_is_valid, cron_run_id, disarm_source, fire_flipflop_node, flipflop_run_id,
+    placement_matches, react_to_flow_approvals, react_to_flow_sources, react_to_flows_cron,
+    react_to_flows_interval, reconcile_flows, reconcile_interval_timers, source_run_id,
+    source_series, spawn_flow_reactors, watch_flow_debug, watch_flow_run, FlowApprovalPass,
+    FlowDebugWatch, FlowReactorPass, FlowReconcilePass, FlowWatch, IntervalTimers,
+    SourceReactorPass, TimerKey, TimerReconcilePass,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
 pub use forms::{

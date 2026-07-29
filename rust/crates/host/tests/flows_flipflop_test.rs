@@ -214,7 +214,10 @@ async fn flipflop_late_scan_fires_once_and_lands_the_cursor_in_the_future() {
     // due instant 100), and the cursor lands on the next grid slot strictly after 157 (160) — never
     // 110, which would leave it permanently behind and due again on every subsequent scan.
     let pass = react_to_flows_interval(&node, &p, "ws", 157).await.unwrap();
-    assert_eq!(pass.fired, 1, "one firing for the missed window, no backfill");
+    assert_eq!(
+        pass.fired, 1,
+        "one firing for the missed window, no backfill"
+    );
     assert_eq!(
         fired_value(&node, &p, "ws", &flipflop_run_id("drift", "ff", 100)).await,
         json!(true)

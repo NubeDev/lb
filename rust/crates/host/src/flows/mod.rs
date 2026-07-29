@@ -15,6 +15,7 @@ pub mod concurrency;
 pub mod coordinator;
 pub mod error;
 pub mod execute_node;
+pub mod interval_timers;
 pub mod lifecycle;
 pub mod node_config;
 pub mod node_state;
@@ -41,11 +42,14 @@ pub mod trigger_store;
 pub mod triggers;
 pub mod watch;
 
+pub use interval_timers::{
+    reconcile_interval_timers, IntervalTimers, TimerKey, TimerReconcilePass,
+};
 pub use react_approval::{react_to_flow_approvals, FlowApprovalPass};
 pub use react_cron::{
     cron_is_valid, cron_run_id, react_to_flows_cron, ReactorPass as FlowReactorPass,
 };
-pub use react_interval::{flipflop_run_id, react_to_flows_interval};
+pub use react_interval::{fire_flipflop_node, flipflop_run_id, react_to_flows_interval};
 pub use react_source::{react_to_flow_sources, source_run_id, SourceReactorPass};
 pub use reactor_loop::spawn_flow_reactors;
 pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};

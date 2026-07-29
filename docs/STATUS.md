@@ -30,7 +30,37 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — ONE Grafana SQL macro
+**Just shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — FLOWS TRIGGERS: `period_secs: 1`
+finally means one second ([`interval-source-clock-scope`](scope/flows/interval-source-clock-scope.md),
+sessions [`interval-clock-phase0-1`](sessions/flows/interval-clock-phase0-1-session.md) +
+[`interval-timers-phase2`](sessions/flows/interval-timers-phase2-session.md)).** The months-old
+"flows feel off/buggy" report was **three defects behind one category error** — an interval source had
+no clock of its own, it was a durable row noticed by one 5s workspace sweep. Fixed in three phases:
+(0) **unbounded drift** — the cursor advanced `scheduled + period`, one period per sweep regardless of
+how far behind, so `period_secs: 1` slid 4s further adrift every tick; now a pure clock-injected
+`next_slot_after` lands it strictly in the future in one step, in both the fire and idempotent-skip
+paths. (1) **serial inline firing** — reactor firings ran to completion *inside* the sweep, so N
+triggers never fired independently and one node's `?` aborted the whole workspace pass; every firing
+now takes the `flows_run_async` seed-durably-then-spawn seam, with per-node log-and-continue.
+(2) **the 5s floor itself** — new `flows/interval_timers.rs`, a per-node timer reconciler converging
+live tasks against the durable enabled graph; each timer sleeps to the durable cursor and calls the
+**same** idempotent fire path, so the sweep's interval leg is deleted (both running would race the
+idempotency read on the shared deterministic run id). Cron keeps the 5s sweep (minute granularity).
+The tick is now the *convergence* cadence, never a firing floor; descriptor `minimum` back to 1.
+Rule-4 exception argued in the open: an oscillator's **value** is state (unchanged, durable) and its
+**cadence** is motion. **Tests (rule 9, real `mem://` store + real jobs + real caps):** new
+`flows_interval_timers_test` (7) incl. the regression that cannot pass under the sweep, `lb-host`
+lib 379, flipflop 9, multi_trigger 5, triggers 19, flows_run 49, `lb-flows` 100; caps-deny and
+ws-isolation pass **verbatim** — the firing mechanism grants nothing. Two debugging entries, one of
+them a **testing** lesson worth reading: the orphan/leak test
+[passed 7/7 against deliberately-leaking teardown](debugging/flows/timer-leak-test-passes-against-leaking-teardown.md)
+because an inner `enabled` gate and run-id idempotency both mask the effect — assert the resource
+(`num_alive_tasks`), and revert-check every regression test. **Still not possible: sub-second
+periods** — needs a millisecond field on the closed `FlowTriggerState` struct *and* a run-retention
+policy for high-frequency sources (Phase 2b). Next: loopbacks
+([`flow-loopback-scope`](scope/flows/flow-loopback-scope.md)), whose prerequisite is now met.
+
+**Also shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — ONE Grafana SQL macro
 layer, query-time and engine-aware
 ([`sql-time-macros-scope`](scope/viz/sql-time-macros-scope.md),
 session [`sessions/viz/sql-time-macros-session.md`](sessions/viz/sql-time-macros-session.md)).**

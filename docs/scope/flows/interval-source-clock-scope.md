@@ -143,18 +143,29 @@ is a legitimate end state — but say so deliberately rather than by accident.
 
 **The staged plan:**
 
-1. **Phase 0 — make the sweep honest (small, ships now):** re-apply the drift fix for real
+1. **Phase 0 — make the sweep honest — SHIPPED 2026-07-29:** the drift fix for real
    (`next_slot_after(scheduled_ts, period, now)` — smallest slot strictly after `now`, used in both
    the fire and the idempotent-skip paths, pure + clock-injected) **with the no-drift regression
    test in the same change**; per-node error isolation in both reactors; descriptor `minimum` clamp
    at the sweep floor.
-2. **Phase 1 — decouple firing from running:** every reactor firing seeds durably and spawns
-   (reuse the `drive_run_task` seam). Ten triggers now fire independently at ≥5s cadence — the
-   Node-RED feel at the current resolution.
-3. **Phase 2 — Option A:** the interval-timer reconciler (one owner module), timers per enabled
-   interval node, cron untouched, lifecycle + orphan tests per the Testing plan.
-4. **Phase 3 — hardening:** `flows.node_state` parity with live timers, load/retention policy for
-   fast periods, the E2E canvas countdown.
+2. **Phase 1 — decouple firing from running — SHIPPED 2026-07-29:** every reactor firing seeds
+   durably and spawns (reuse the `drive_run_task` seam). Ten triggers now fire independently — the
+   Node-RED feel.
+3. **Phase 2 — Option A — SHIPPED 2026-07-29:** the interval-timer reconciler
+   (`flows/interval_timers.rs`, one owner module), one timer per enabled interval node, cron
+   untouched on the 5s sweep, lifecycle + orphan tests per the Testing plan. **The sweep's interval
+   leg is gone** — a timer fires the same deterministic run id the sweep would, so running both
+   would race the idempotency read; timers own every flip-flop exclusively. The 5s tick is now the
+   *convergence* cadence (how fast an enable/disable takes effect), never a floor on firing.
+   Schema `minimum` dropped `5 → 1`. **Sub-second is NOT yet possible** — see Phase 2b.
+4. **Phase 2b — fractional seconds (not built):** the durable cursor `next_attempt_ts` is whole
+   seconds, so `period_secs` below 1 needs a **millisecond field on `FlowTriggerState`** (additive
+   and nullable — it is a closed struct; a new axis is silently dropped until the Rust struct carries
+   it) **and** a run-retention policy for high-frequency sources first: a 100ms oscillator is 10 real
+   runs/sec of store writes. Do not lower the schema floor before both exist.
+5. **Phase 3 — loopbacks + hardening:** [`flow-loopback-scope.md`](./flow-loopback-scope.md);
+   `flows.node_state` parity is already free (the timer advances the same durable cursor
+   `node_state` reads), the E2E canvas countdown remains.
 
 ## How it fits the core
 
