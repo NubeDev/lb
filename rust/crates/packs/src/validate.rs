@@ -129,6 +129,10 @@ pub struct Finding {
 pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
     // Start from the retention lint (`validate_retention`), then add this file's own checks.
     let mut out = crate::validate_retention::lint(&pack.manifest.retention);
+    // …and the entity `refs:` lint (`entity-source-refs-scope.md`): shape-only, manifest-only, so
+    // every finding it makes is an error of the dangling-parent class. It deliberately does NOT check
+    // that a ref's `source` is registered — that is a workspace fact resolved late, never a pack fact.
+    out.extend(crate::validate_refs::lint(&pack.manifest.entities));
 
     // ERROR — a duplicate (kind, id) means two objects would write the same target, and the receipt
     // could not tell them apart.

@@ -108,9 +108,15 @@ pub async fn flows_node_state(
         }
     }
 
-    // Per-trigger armed state: each cron trigger node owns its own schedule + cursor (N independent
-    // triggers). Attach `{cron, nextAttemptTs, armed}` to that node's entry, and compute a flow-level
-    // summary (the SOONEST upcoming fire across all triggers) for the existing armed banner.
+    // Per-trigger armed state: each trigger node owns its own schedule + cursor (N independent
+    // triggers). Attach the node's schedule + `{nextAttemptTs, armed}` to its entry, and compute a
+    // flow-level summary (the SOONEST upcoming fire across all triggers) for the existing armed banner.
+    //
+    // BOTH self-driving trigger kinds are walked. Scanning only `cron_triggers` here left a flip-flop
+    // flow reporting `nextAttemptTs: 0` even while the reactor was advancing its cursor every period,
+    // so the canvas countdown rendered "—" no matter what `period_secs` was set to — the schedule was
+    // durable and correct, just never surfaced. A flip-flop's cadence is an interval, not a cron spec,
+    // so it reports `periodSecs` on its entry; `cron` stays null for it (there is no spec to show).
     let mut soonest: Option<u64> = None;
     let mut summary_cron: Option<String> = None;
     for trig in super::trigger_store::cron_triggers(&flow) {
@@ -124,6 +130,21 @@ pub async fn flows_node_state(
         }
         if let Some(entry) = nodes.iter_mut().find(|e| e["node"] == json!(trig.node_id)) {
             entry["cron"] = json!(trig.cron);
+            entry["nextAttemptTs"] = json!(next_ts);
+            entry["armed"] = json!(flow.enabled);
+        }
+    }
+    for trig in super::trigger_store::flipflop_triggers(&flow) {
+        let cursor = super::trigger_store::read_cursor(store, ws, flow_id, &trig.node_id)
+            .await
+            .map_err(FlowsError::Internal)?;
+        let next_ts = cursor.as_ref().map(|c| c.next_attempt_ts).unwrap_or(0);
+        // The summary is "when does this flow next fire", regardless of which trigger kind wins it.
+        if flow.enabled && next_ts > 0 && soonest.map(|s| next_ts < s).unwrap_or(true) {
+            soonest = Some(next_ts);
+        }
+        if let Some(entry) = nodes.iter_mut().find(|e| e["node"] == json!(trig.node_id)) {
+            entry["periodSecs"] = json!(trig.period_secs);
             entry["nextAttemptTs"] = json!(next_ts);
             entry["armed"] = json!(flow.enabled);
         }

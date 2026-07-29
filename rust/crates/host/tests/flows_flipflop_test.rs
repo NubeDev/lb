@@ -314,3 +314,53 @@ async fn flipflop_capability_deny_no_run_no_state() {
         .unwrap()
         .is_none());
 }
+
+/// **The canvas-countdown regression.** `flows.node_state` is what the canvas paints its "next fire in
+/// N" banner from, and it used to walk ONLY `cron_triggers` — so a flip-flop flow reported
+/// `nextAttemptTs: 0` (and its node entry carried no schedule at all) even while the reactor was
+/// advancing that node's cursor every `period_secs`. The countdown rendered "—" no matter what period
+/// the author set: the schedule was durable and correct, just never surfaced. This pins both halves —
+/// the per-node `{periodSecs, nextAttemptTs, armed}` and the flow-level soonest-fire summary.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn node_state_surfaces_the_flipflop_schedule() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let mut caps: Vec<&str> = FULL.to_vec();
+    caps.push("mcp:flows.node_state:call");
+    let p = principal("ws", &caps);
+    save(&node, &p, "ws", &flipflop_flow("sched", "ff", 25, true)).await;
+
+    // Prime the cursor at t=100 → the node is due at 100 and advances by its period from there.
+    react_to_flows_interval(&node, &p, "ws", 100).await.unwrap();
+
+    let out = call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.node_state",
+        &json!({ "id": "sched" }).to_string(),
+    )
+    .await
+    .unwrap();
+    let state: Value = serde_json::from_str(&out).unwrap();
+
+    // The flow-level summary the banner reads — non-zero, so the countdown renders a real instant.
+    assert_eq!(
+        state["nextAttemptTs"], json!(100),
+        "a flip-flop's cursor must reach the flow-level summary (this returned 0 → banner showed '—')"
+    );
+    // A flip-flop's cadence is an interval, not a cron spec — `cron` stays null, `periodSecs` carries it.
+    assert_eq!(state["cron"], Value::Null);
+    let entry = state["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["node"] == json!("ff"))
+        .expect("the flip-flop node has a node_state entry");
+    assert_eq!(
+        entry["periodSecs"],
+        json!(25),
+        "the configured period surfaces verbatim"
+    );
+    assert_eq!(entry["nextAttemptTs"], json!(100));
+    assert_eq!(entry["armed"], json!(true));
+}

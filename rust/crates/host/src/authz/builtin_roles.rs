@@ -209,6 +209,15 @@ const VIEWER_CAPS: &[&str] = &[
     // documents READ (a viewer reads shared docs; put_doc is author).
     "mcp:assets.get_doc:call",
     "mcp:assets.list_docs:call",
+    // binary assets READ (document-store scope move 2) — a viewer's screen may RENDER a shared
+    // binary asset (a scene's glTF stage model, an image underlay), the same tier as reading the
+    // doc that references it. put/delete are author, below. The inner gate needs the store-surface
+    // cap too: `store:asset/*` is named concretely because the generic `store:*:read` wildcard is
+    // single-segment and does not span the `asset/{id}` resource path (same reason `store:doc/*`
+    // is named above).
+    "mcp:assets.get_asset:call",
+    "mcp:assets.list_assets:call",
+    "store:asset/*:read",
     // skills catalog reads.
     "mcp:assets.list_skills:call",
     "mcp:assets.load_skill:call",
@@ -380,6 +389,13 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:ingest.write:call",
     // documents WRITE (a member's own shared docs).
     "mcp:assets.put_doc:call",
+    // binary assets WRITE (document-store scope move 2) — a member uploads/deletes their OWN
+    // shared binary assets (glTF models, image underlays), the same tier as `put_doc`; ownership
+    // still gates WHICH asset (delete_asset re-checks owner). `store:asset/*:write` is the inner
+    // store-surface half — named concretely, the `store:*:write` wildcard does not span it.
+    "mcp:assets.put_asset:call",
+    "mcp:assets.delete_asset:call",
+    "store:asset/*:write",
     // doc extraction (doc-extraction scope): a member derives docs from their own media. The verb
     // re-gates per-item media read + doc write, so this grant alone can't widen reach — it only
     // opens the surface, exactly like `assets.put_doc` above.

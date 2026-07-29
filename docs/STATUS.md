@@ -30,7 +30,32 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-25 (backend + rubix-ai/ui) — THE EXT & STORE NODE PACK + THE RESERVED-TABLE
+**Just shipped 2026-07-29 (backend only) — PACK ENTITY `refs:` + THE `charts.source` UNLOCK
+([#115](https://github.com/NubeDev/lb/issues/115),
+[`entity-source-refs-scope`](scope/packs/entity-source-refs-scope.md)).** A store-backed pack entity
+can now **declare its twin in a federation datasource** — `refs: [{source, table, fk?, label?}]` on
+`Entity` — turning what was folklore (the EMS pack's 8 `ems_site` rows ARE `demo-buildings`' `site`
+rows, documented in a README and checked by nothing) into contract. Strictly an **address, not
+behavior**, the third sibling of `geo:`/`charts:`: core carries the block in the receipt, emits no
+SQL, joins no backends, and validates only shape. The payoff is goal 4 — a **store** entity may now
+give a `charts:` recipe a `source`, provided it names a declared ref, so EMS `site` can offer
+"Interval demand · 7d" over the sqlite twin's 15-minute data from a map pin with zero hand-written
+SQL; what compiles downstream is an ordinary `federation.query` cell parameterised by
+`${site:sqlstring}`, carrying no pack/ref residue (rule 10). New: `packs/src/manifest_refs.rs` +
+`packs/src/validate_refs.rs` (both beside their parents, the `*_retention.rs` precedent). Receipt
+carriage needed **no code** — `Receipt.manifest` already carries the whole manifest. The lint gates
+only manifest-readable defects (ref on an unbound entity, non-identifier `table`/`fk`, duplicate
+`{source, table}`, a store chart naming an undeclared ref) and pointedly does **not** check that a
+`source` is registered: that is a workspace fact resolved late, and gating it would refuse a valid
+pack on every node but the author's. Declaring a ref **grants nothing** — the federation caps wall is
+untouched, asserted directly. **Tests (rule 9, real node + real sqlite twin):** `lb-packs` unit
+(68 green) + `crates/host/tests/pack_refs_test.rs` (3) — receipt carriage through the real verbs, id
+parity proven by reading the twin *through the address the receipt carries*, the dangling-source
+gate, and the two negatives. **No new verb, no envelope change; every existing pack parses and
+validates byte-identically.** Downstream consumer (readers, the parity probe, EMS content) is
+rubix-ai's `docs/scope/packs/entity-source-refs-ui-scope.md` and is NOT done here.
+
+**Shipped 2026-07-25 (backend + rubix-ai/ui) — THE EXT & STORE NODE PACK + THE RESERVED-TABLE
 WALL (flows, [`ext-store-nodes-scope`](scope/flows/ext-store-nodes-scope.md)).** Five new built-in
 flow nodes over the platform's own MCP surface — `ext-list` (installed extensions), one generic
 `ext-call` (pick ext → pick tool from `tools.catalog` → args form rendered from the tool's own

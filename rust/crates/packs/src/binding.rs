@@ -240,6 +240,7 @@ mod tests {
             backend: None,
             geo: None,
             charts: vec![],
+            refs: vec![],
         }
     }
 
