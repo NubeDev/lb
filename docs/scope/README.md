@@ -646,6 +646,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   notice) consumed by `dashboard.import` and the downstream converter. Backend-only — the typed
   option shapes/editors/renderers are the downstream consumer's UI scope (rubix-ai
   `frontend/dashboard/viz/grafana-parity-ui-scope.md`).
+  **`query-export-scope.md`** makes the 10 000-row read ceiling honest and raisable: today
+  `MAX_ROWS_PER_FRAME` (`viz.query`) and `ROW_CAP` (`federation.query`) drop rows with no way for a
+  caller to know, so an *export* is quietly wrong. Additive `truncated`/`row_limit` on the result
+  (ship first — it alone unblocks the consumer's warning) plus an optional `max_rows` on the request,
+  clamped by a `BootConfig` ceiling (`viz_export_max_rows`, default 250 000, env only at the binary
+  boundary). No new verb and **no new capability** — a bigger budget is not a bigger authority.
+  Explicitly the *interim* for `datasources/page-chaining-scope.md`; it must never grow an `offset`.
+  Consumer: rubix-ai `frontend/dashboard/data-export-scope.md`.
   **`panel-resolution-scope.md`** closes the resolution gap: `viz.query` finally consumes the
   panel's `maxDataPoints`/`minInterval` + time range (authored + carried today, then dropped),
   derives a snapped bucket width (`range/budget` — the Grafana model, not a fixed range ladder),
