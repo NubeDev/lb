@@ -50,7 +50,7 @@ pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
         Some(p) => Box::new(p.clone()),
         None => Box::new(lb_host::LoggingPushProvider),
     };
-    let router = lb_host::RouterTarget::new()
+    let mut router = lb_host::RouterTarget::new()
         .route(
             lb_host::EMAIL_TARGET,
             lb_host::EmailTarget::new(email_provider),
@@ -59,6 +59,11 @@ pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
             lb_host::PUSH_TARGET,
             lb_host::PushTarget::new(push_provider, node.store.clone()),
         );
+    // Embedder-registered targets, folded in LAST so a host can replace a built-in as well as add to
+    // it. The core still routes on the opaque string and knows nothing about what it just registered.
+    for (name, target) in &providers.targets {
+        router = router.route_dyn(name, target.clone());
+    }
     lb_host::spawn_relay_reactors(
         node.clone(),
         vec![ws.to_string()],
@@ -99,6 +104,13 @@ pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
         vec![ws.to_string()],
         lb_host::STORE_COMPACT_PERIOD,
     );
+
+    // REMINDER REACTOR TICK (previously NEVER BOOTED): fire due reminders on their cron. Without it
+    // `react_to_reminders` was reachable only from a test and the manual `reminder.fire` verb, so an
+    // authored schedule listed a "next run" it would never reach — the same missing-driver class as
+    // the ingest drain and retention GC above. Cadence must be well under a minute: cron granularity
+    // is one minute and a missed slot is SKIPPED, not backfilled.
+    lb_host::spawn_reminder_reactors(node.clone(), vec![ws.to_string()], lb_host::REMINDER_PERIOD);
 
     // INSIGHT DIGEST REACTOR TICK: digest the anti-spam ladder — one message per (sub, window), decay
     // quiet keys, post under each sub's stored principal. 30s cadence (windows are hours/days).

@@ -198,6 +198,38 @@ async fn flipflop_re_scan_is_idempotent_no_double_flip() {
     );
 }
 
+/// **The unbounded-drift regression** (interval-source-clock scope, defect 2). A scan that arrives
+/// LATE — the production sweep always does for any period below its tick, and any stall does for the
+/// rest — must advance the cursor to the next period-grid slot strictly after `now` in ONE firing.
+/// The old `scheduled + period` advance left the cursor in the past, so it gained one period per
+/// scan and slid further behind the wall clock forever (observed ~60s adrift on a live node).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn flipflop_late_scan_fires_once_and_lands_the_cursor_in_the_future() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    save(&node, &p, "ws", &flipflop_flow("drift", "ff", 10, true)).await;
+    react_to_flows_interval(&node, &p, "ws", 100).await.unwrap(); // prime: due at 100
+
+    // The scan arrives at 157 — 5.7 periods late. Fire-once-then-skip: exactly one firing (for the
+    // due instant 100), and the cursor lands on the next grid slot strictly after 157 (160) — never
+    // 110, which would leave it permanently behind and due again on every subsequent scan.
+    let pass = react_to_flows_interval(&node, &p, "ws", 157).await.unwrap();
+    assert_eq!(pass.fired, 1, "one firing for the missed window, no backfill");
+    assert_eq!(
+        fired_value(&node, &p, "ws", &flipflop_run_id("drift", "ff", 100)).await,
+        json!(true)
+    );
+    assert_eq!(
+        cursor(&node, "ws", "drift", "ff").await["next_attempt_ts"],
+        160,
+        "the cursor must skip to the next FUTURE slot in one step (was: +period per scan = drift)"
+    );
+
+    // A re-scan at the same late instant is a no-op — the cursor is already in the future.
+    let pass2 = react_to_flows_interval(&node, &p, "ws", 157).await.unwrap();
+    assert_eq!(pass2.fired, 0, "no double-fire after the skip");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn flipflop_value_survives_a_store_round_trip() {
     // Restart parity: fire twice, then a fresh reactor pass (the cursor is the only durable state)
@@ -313,4 +345,54 @@ async fn flipflop_capability_deny_no_run_no_state() {
         .await
         .unwrap()
         .is_none());
+}
+
+/// **The canvas-countdown regression.** `flows.node_state` is what the canvas paints its "next fire in
+/// N" banner from, and it used to walk ONLY `cron_triggers` — so a flip-flop flow reported
+/// `nextAttemptTs: 0` (and its node entry carried no schedule at all) even while the reactor was
+/// advancing that node's cursor every `period_secs`. The countdown rendered "—" no matter what period
+/// the author set: the schedule was durable and correct, just never surfaced. This pins both halves —
+/// the per-node `{periodSecs, nextAttemptTs, armed}` and the flow-level soonest-fire summary.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn node_state_surfaces_the_flipflop_schedule() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let mut caps: Vec<&str> = FULL.to_vec();
+    caps.push("mcp:flows.node_state:call");
+    let p = principal("ws", &caps);
+    save(&node, &p, "ws", &flipflop_flow("sched", "ff", 25, true)).await;
+
+    // Prime the cursor at t=100 → the node is due at 100 and advances by its period from there.
+    react_to_flows_interval(&node, &p, "ws", 100).await.unwrap();
+
+    let out = call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.node_state",
+        &json!({ "id": "sched" }).to_string(),
+    )
+    .await
+    .unwrap();
+    let state: Value = serde_json::from_str(&out).unwrap();
+
+    // The flow-level summary the banner reads — non-zero, so the countdown renders a real instant.
+    assert_eq!(
+        state["nextAttemptTs"], json!(100),
+        "a flip-flop's cursor must reach the flow-level summary (this returned 0 → banner showed '—')"
+    );
+    // A flip-flop's cadence is an interval, not a cron spec — `cron` stays null, `periodSecs` carries it.
+    assert_eq!(state["cron"], Value::Null);
+    let entry = state["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["node"] == json!("ff"))
+        .expect("the flip-flop node has a node_state entry");
+    assert_eq!(
+        entry["periodSecs"],
+        json!(25),
+        "the configured period surfaces verbatim"
+    );
+    assert_eq!(entry["nextAttemptTs"], json!(100));
+    assert_eq!(entry["armed"], json!(true));
 }

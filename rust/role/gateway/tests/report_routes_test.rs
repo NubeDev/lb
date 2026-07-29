@@ -16,9 +16,12 @@ use lb_role_gateway::{router, Gateway};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-/// The full report cap bundle (author + read + export). Export re-gates `report.get` internally, so
-/// an exporter needs both `report.export` and `report.get`.
+/// The full report cap bundle (author + read + export). Export addresses a report-kind DASHBOARD and
+/// re-gates `dashboard.get` internally, so an exporter needs both `report.export` and `dashboard.get`.
 const REPORT_CAPS: &[&str] = &[
+    "mcp:dashboard.get:call",
+    "mcp:dashboard.save:call",
+    "mcp:dashboard.list:call",
     "mcp:report.get:call",
     "mcp:report.list:call",
     "mcp:report.save:call",
@@ -86,26 +89,40 @@ async fn save_then_get_round_trips_three_block_kinds_in_order() {
     assert!(rows.iter().any(|r| r["id"] == "r1"), "report in roster");
 }
 
-/// The binary export returns a real `application/pdf` payload with the `%PDF-` magic bytes.
+/// The binary export returns a real `application/pdf` payload with the `%PDF-` magic bytes — now
+/// addressed at a **report-kind dashboard**, saved over the ordinary `POST /dashboards` route with
+/// `kind: "report"`. The wire contract is unchanged: same export route, same `{cellId, png}` body.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn export_returns_pdf_bytes() {
     let (gw, key) = gateway().await;
     let t = token(&key, "user:ada", "acme", REPORT_CAPS);
 
-    let blocks = json!([
-        { "kind": "markdown", "body": "# Report" },
-        { "kind": "panel", "cell": { "i": "p1", "x": 0, "y": 0, "w": 6, "h": 4, "view": "stat", "title": "Temp" } },
+    let cells = json!([
+        { "i": "p1", "x": 0, "y": 0, "w": 6, "h": 5, "view": "stat", "title": "Temp" },
+        { "i": "p2", "x": 6, "y": 0, "w": 6, "h": 5, "view": "stat", "title": "Load" },
     ]);
     let resp = post(
         &gw,
         &t,
-        "/reports",
-        json!({ "id": "r2", "title": "Export", "blocks": blocks }),
+        "/dashboards",
+        json!({ "id": "r2", "title": "Export", "kind": "report", "cells": cells, "now": 1 }),
     )
     .await;
-    assert_eq!(resp.status(), StatusCode::OK, "save 200");
+    assert_eq!(resp.status(), StatusCode::OK, "dashboard save 200");
 
-    // A 1x1 PNG (valid image bytes), base64-encoded, keyed to the panel block's cell.i.
+    // The kind round-trips over REST (the field the whole re-addressing hangs on).
+    let resp = get(&gw, &t, "/dashboards/r2").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["kind"], "report", "kind survives the REST round-trip");
+
+    // A 1x1 PNG (valid image bytes), base64-encoded, keyed to the cell's `i`. Only p1 is captured —
+    // p2 must still produce a page, as an error tile.
     let png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
     let resp = post(
         &gw,
@@ -129,6 +146,53 @@ async fn export_returns_pdf_bytes() {
         bytes.starts_with(b"%PDF-"),
         "PDF magic bytes, got {:?}",
         &bytes[..bytes.len().min(8)]
+    );
+}
+
+/// An ORDINARY dashboard is refused at the export route — 400, not a silently broken PDF.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn exporting_a_plain_dashboard_is_refused() {
+    let (gw, key) = gateway().await;
+    let t = token(&key, "user:ada", "acme", REPORT_CAPS);
+    let resp = post(
+        &gw,
+        &t,
+        "/dashboards",
+        json!({ "id": "ops", "title": "Ops", "cells": [], "now": 1 }),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = post(
+        &gw,
+        &t,
+        "/reports/ops/export.pdf",
+        json!({ "snapshots": [] }),
+    )
+    .await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "a plain dashboard is not a report"
+    );
+}
+
+/// An unknown `kind` is refused at save — 400, never a record that vanishes from both rosters.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn an_unknown_dashboard_kind_is_refused_at_save() {
+    let (gw, key) = gateway().await;
+    let t = token(&key, "user:ada", "acme", REPORT_CAPS);
+    let resp = post(
+        &gw,
+        &t,
+        "/dashboards",
+        json!({ "id": "typo", "title": "Typo", "kind": "reprot", "cells": [], "now": 1 }),
+    )
+    .await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "unknown kind is 400"
     );
 }
 

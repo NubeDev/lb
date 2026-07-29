@@ -26,3 +26,7 @@ serde_yaml.workspace = true
 serde_json.workspace = true
 # The manifest + per-object checksums (the drift signal the refusal matrix keys off).
 sha2.workspace = true
+# The zip transport envelope (`zip.rs`): a pack is DISTRIBUTED as one `.zip`, inflated here into the
+# ordinary `Bundle`. Deflate only — no encryption, no zstd/bzip2 — because a pack archive is a
+# handful of text files and every extra codec is attack surface for zero benefit.
+zip = { workspace = true }

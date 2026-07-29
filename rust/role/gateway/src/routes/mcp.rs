@@ -141,7 +141,7 @@ pub async fn mcp_call(
 /// - `NodeTooOld` → **502 Bad Gateway**: the node answered for itself but cannot speak targeted
 ///   dispatch. An upstream capability fault, not a transient one — retrying will not help; an
 ///   upgrade will. Kept distinct from `503` precisely so a rolling upgrade is diagnosable.
-fn tool_error_status(e: lb_mcp::ToolError) -> (StatusCode, String) {
+pub(crate) fn tool_error_status(e: lb_mcp::ToolError) -> (StatusCode, String) {
     use lb_mcp::ToolError;
     let status = match &e {
         // `DeniedBecause` is a `403` like the opaque denial; the body is its `Display`, which

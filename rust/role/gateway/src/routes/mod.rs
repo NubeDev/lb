@@ -41,6 +41,7 @@ mod invite_accept;
 mod layout;
 mod login;
 mod mcp;
+// `POST /packs/upload` — a pack `.zip` as transport, dispatched to the ordinary pack verbs.
 mod mcp_catalog;
 mod media;
 mod members;
@@ -49,6 +50,7 @@ mod message;
 mod native;
 mod nav;
 mod outbox;
+mod packs;
 mod panel;
 mod post;
 mod prefs;
@@ -154,6 +156,7 @@ pub use nav::{
     save_nav, set_default_nav, set_nav_hidden, set_nav_pref, share_nav, unshare_nav,
 };
 pub use outbox::get_outbox_status;
+pub use packs::{upload_body_limit, upload_pack};
 pub use panel::{delete_panel, get_panel, list_panels, panel_usage, save_panel, share_panel};
 pub use post::post_message;
 pub use prefs::{

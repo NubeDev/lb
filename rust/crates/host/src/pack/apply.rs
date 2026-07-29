@@ -455,6 +455,14 @@ async fn apply_dashboard(
             .get("width")
             .and_then(Value::as_str)
             .map(String::from),
+        // A pack may declare a report-kind board exactly as it declares any other page setting; an
+        // absent key preserves the stored kind (the host validates the value).
+        d.json.get("kind").and_then(Value::as_str).map(String::from),
+        d.json.get("reportIds").and_then(Value::as_array).map(|r| {
+            r.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        }),
         cells,
         variables,
         ts,

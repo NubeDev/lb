@@ -24,7 +24,6 @@ use serde_json::{Map, Value};
 
 use crate::dashboard::model::{Cell, Target};
 
-use super::macros::translate_sql;
 use super::DegradedItem;
 
 /// The MCP tool a bound target dispatches to. A bound ref is either one of the two reserved
@@ -61,8 +60,7 @@ fn bound_name(datasource: &Value) -> Option<&str> {
 
 /// Fill one target's `tool` + executable args from its bound datasource. Returns the degrade notices
 /// for this target: a "no SQL" line when it is bound but carries nothing to run (that panel WILL render
-/// empty — say so, don't claim a clean import), and one `macro` line per Grafana macro we could not
-/// translate (left verbatim, per the honesty contract).
+/// empty — say so, don't claim a clean import).
 fn bind_target(target: &mut Target, cell_key: &str, bound: &[String]) -> Vec<DegradedItem> {
     // Only bind what the caller actually mapped. An unmapped ref keeps its Grafana uid and already
     // degrades in `datasources::apply` — binding it would invent a source the caller never chose.
@@ -96,27 +94,19 @@ fn bind_target(target: &mut Target, cell_key: &str, bound: &[String]) -> Vec<Deg
         }];
     };
 
-    // Translate the Grafana macro dialect to the host `$__from`/`$__to` window BEFORE handing the tool
-    // its `sql` — an untranslated `$__timeFilter` leaves the scan unbounded (the measured 30 s cancel).
-    // Unknown macros ride through verbatim and each earns a report line.
-    let translated = translate_sql(&raw_sql);
-    let degraded: Vec<DegradedItem> = translated
-        .unsupported
-        .iter()
-        .map(|m| DegradedItem {
-            kind: "macro".to_string(),
-            cell: cell_key.to_string(),
-            detail: format!("unsupported SQL macro {m} in target '{ref_id}' — left verbatim"),
-        })
-        .collect();
-
+    // The SQL is stored VERBATIM, Grafana macros included (sql-time-macros scope — the ONE macro
+    // layer). `viz.query` value-substitutes and the federation child expands `$__timeFilter`/
+    // `$__timeGroup`/… per engine at query time, so the panel is LIVE and zoom-coarsening, not a
+    // frozen one-dialect translation; an unsupported macro surfaces as a named error at first
+    // render. The retired import-time translator is exactly the second layer this replaces.
+    //
     // ADD our arg names alongside Grafana's (which `to_grafana` re-emits). `entry` keeps a
     // caller-supplied value if the target already speaks our shape.
     args.entry("source".to_string())
         .or_insert_with(|| Value::String(name.clone()));
     args.entry("sql".to_string())
-        .or_insert_with(|| Value::String(translated.sql));
-    degraded
+        .or_insert_with(|| Value::String(raw_sql));
+    Vec::new()
 }
 
 /// Bind every target in `cells` that the caller mapped, in place. `bound` is the set of datasource
@@ -219,33 +209,27 @@ mod tests {
         assert_eq!(t.args["sql"], json!("SELECT 2"));
     }
 
+    /// Grafana macros pass through BYTE-IDENTICAL (sql-time-macros scope: ONE macro layer, at query
+    /// time in the federation child) — import no longer rewrites target SQL, so the panel stays live
+    /// and re-expands per engine on every render. This is the import pass-through invariant.
     #[test]
-    fn grafana_macros_are_translated_when_the_sql_is_wired() {
+    fn grafana_macros_pass_through_verbatim_at_bind() {
+        let raw = "SELECT $__time(ts), value FROM h WHERE $__timeFilter(ts) \
+                   GROUP BY $__timeGroup(ts,'5m')";
         let mut cells = [cell_with(
-            json!({"refId": "A", "rawSql": "SELECT $__time(ts), value FROM h WHERE $__timeFilter(ts)"}),
+            json!({"refId": "A", "rawSql": raw}),
             json!({"uid": "demo"}),
         )];
         let degraded = bind_cells(&mut cells, &["demo".to_string()]);
-        let sql = cells[0].sources[0].args["sql"].as_str().unwrap();
-        // no Grafana macro survives; the bounded host window is present
-        assert!(!sql.contains("$__time("));
-        assert!(!sql.contains("$__timeFilter("));
-        assert!(sql.contains("to_timestamp($__from / 1000.0)"));
-        assert!(degraded.is_empty());
-    }
-
-    #[test]
-    fn an_unknown_macro_is_left_verbatim_and_reported_at_bind() {
-        let mut cells = [cell_with(
-            json!({"refId": "A", "rawSql": "SELECT $__unixEpochFilter(ts) FROM h"}),
-            json!({"uid": "demo"}),
-        )];
-        let degraded = bind_cells(&mut cells, &["demo".to_string()]);
-        let sql = cells[0].sources[0].args["sql"].as_str().unwrap();
-        assert!(sql.contains("$__unixEpochFilter(ts)")); // untouched
-        assert_eq!(degraded.len(), 1);
-        assert_eq!(degraded[0].kind, "macro");
-        assert!(degraded[0].detail.contains("$__unixEpochFilter"));
+        assert_eq!(
+            cells[0].sources[0].args["sql"],
+            json!(raw),
+            "stored verbatim"
+        );
+        assert!(
+            degraded.is_empty(),
+            "no macro notices at import — errors surface at render"
+        );
     }
 
     #[test]

@@ -188,6 +188,10 @@ pub async fn dashboard_import(
         None,
         toolbar,
         None,
+        // An imported Grafana dashboard is always an ordinary board; `None` preserves the stored
+        // kind (and report bindings) on re-import so nothing is silently demoted or unbound.
+        None,
+        None,
         cells,
         variables,
         now,

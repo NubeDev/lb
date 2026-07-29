@@ -21,6 +21,7 @@
 //!   - the MCP bridge ([`call_report_tool`]) — get/list/save/delete/share (NOT export).
 
 mod authorize;
+mod compose;
 mod delete;
 mod error;
 mod export;

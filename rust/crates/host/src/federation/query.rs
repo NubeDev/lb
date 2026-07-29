@@ -42,6 +42,7 @@ pub async fn federation_query<L: Launcher>(
     source: &str,
     sql: &str,
     cache: Option<&Value>,
+    resolution: Option<&Value>,
     ts: u64,
     trace_id: &str,
 ) -> Result<Value, FederationError> {
@@ -76,6 +77,13 @@ pub async fn federation_query<L: Launcher>(
     // across refresh ticks rather than missing on every one.
     if let Some(cache) = cache {
         input["cache"] = cache.clone();
+    }
+    // The derived render window (`{from_ms, to_ms, width_ms}`, attached by `viz.query` when the sql
+    // carries a `$__` macro) — the child's query-time function-macro expansion reads it
+    // (sql-time-macros scope). Additive and deliberately IN the child input, so it participates in
+    // the result-cache key: two widths of the same macro'd sql are two different queries.
+    if let Some(resolution) = resolution {
+        input["resolution"] = resolution.clone();
     }
     let input = input.to_string();
 

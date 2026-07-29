@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::manifest_refs::EntityRef;
 pub use crate::manifest_retention::{
     RetentionAlign, RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange,
     RetentionTier,
@@ -167,6 +168,16 @@ pub struct Entity {
     /// identically (rule 10). Absent ⇒ the entity offers no charts (today's shape). See [`ChartHint`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub charts: Vec<ChartHint>,
+    /// Optional SOURCE REFS (`entity-source-refs-scope.md`): this entity's rows also exist, under the
+    /// same ids, in a federation datasource — the high-resolution twin the store seed does not
+    /// duplicate. The third sibling of `geo:`/`charts:` and the same projection discipline: an
+    /// *address*, never behavior. Core carries it in the receipt, emits no SQL from it, and joins
+    /// nothing across backends; a downstream surface resolves `source` by NAME against the viewer's
+    /// registered datasources at read time and builds an ordinary `federation.query`. Declaring a ref
+    /// grants nothing — the federation caps wall is unchanged. Absent ⇒ the entity has no declared
+    /// twin (today's shape). See [`EntityRef`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refs: Vec<EntityRef>,
 }
 
 /// One `charts:` recipe on an [`Entity`]. A named, windowed read parameterised by the ROW — never a
@@ -196,6 +207,14 @@ pub struct ChartHint {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub var: Option<String>,
     /// Override datasource (a `datasource`-backed read). Absent ⇒ routed by the entity's `backend`.
+    ///
+    /// On a `backend: store` entity this is legal IFF it names one of the entity's declared
+    /// [`EntityRef`]s (`entity-source-refs-scope.md` §4) — the payoff of `refs:`. The recipe's
+    /// derive-path (`table`/`columns`/`kind`) then addresses the *datasource* table, and what compiles
+    /// downstream is an ordinary `federation.query` cell parameterised by `${<var>:sqlstring}`. A
+    /// dangling in-manifest reference (a `source` no ref declares) is the author's bug and gates at
+    /// validate; whether the source exists in a given workspace is a late-bound *workspace* fact and
+    /// never gates.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     /// The read, with the row id as a variable reference (see the type docs). Absent ⇒ the consumer

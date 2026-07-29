@@ -185,6 +185,32 @@ pub fn maybe_inject_buckets(args: &mut Value, qo: &QueryOptions) -> bool {
     true
 }
 
+/// Attach the derived window to a `federation.query` target's args as the additive
+/// `resolution: {from_ms, to_ms, width_ms}` — the handoff the federation child's query-time
+/// function-macro expansion reads (`$__timeFilter`/`$__timeGroup`/…, sql-time-macros scope).
+///
+/// Attached ONLY when the `sql` still carries a `$__` token after the host value pass: the child
+/// needs the window exactly then, while a macro-free target's args stay byte-for-byte — its child
+/// result-cache key must not start varying with the window (the un-macro'd invariant, args edition).
+/// Returns `true` when it attached.
+pub fn attach_resolution(args: &mut Value, res: &Resolution) -> bool {
+    let Value::Object(map) = args else {
+        return false;
+    };
+    let has_macro = map
+        .get("sql")
+        .and_then(Value::as_str)
+        .is_some_and(|s| s.contains("$__"));
+    if !has_macro {
+        return false;
+    }
+    map.insert(
+        "resolution".into(),
+        json!({ "from_ms": res.from, "to_ms": res.to, "width_ms": res.width_ms }),
+    );
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -235,6 +235,9 @@ argon2 = "0.5"
 # (key-stack listed it TBD; resolved here). tower-http adds permissive CORS for the dev UI and
 # `ServeDir` (the `fs` feature) for the optional gateway static-root fallback (static-root scope).
 axum = "0.8"
+# The pack zip transport envelope (lb-packs `zip.rs`, the `/packs/upload` route). `deflate` only:
+# a pack archive is text, and every extra codec is attack surface.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
 # The gateway's SPA method-mismatch fallback drives `ServeFile` as a one-shot `Service` (so the shell
 # is served by the SAME code path as the static fallback — one mime/ETag/range implementation, not a

@@ -30,7 +30,73 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-25 (backend + rubix-ai/ui) — THE EXT & STORE NODE PACK + THE RESERVED-TABLE
+**Just shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — ONE Grafana SQL macro
+layer, query-time and engine-aware
+([`sql-time-macros-scope`](scope/viz/sql-time-macros-scope.md),
+session [`sessions/viz/sql-time-macros-session.md`](sessions/viz/sql-time-macros-session.md)).**
+New `federation/src/sql_macros.rs` expands `$__timeFilter`/`$__timeGroup`/`$__timeGroupAlias`/
+`$__time`/`$__timeFrom()`/`$__timeTo()` per source `kind` in the federation child; `viz.query`
+attaches an additive `resolution: {from_ms,to_ms,width_ms}` to macro'd `federation.query` targets;
+the import-time translator (`host/src/dashboard/grafana/macros.rs`) is **deleted** — imported
+Grafana SQL panels store their macros verbatim and run live + zoom-coarsening. Unsupported macros
+and missing-resolution fail with named errors; un-macro'd SQL byte-identical. Real-SQLite
+integration + deny/isolation green (`host/tests/viz_sql_time_macros_test.rs`). Downstream:
+rubix-ai's Quick Chart builder emits the macro form and bumps the pin at the next `node-v*` tag.
+
+**Also shipped 2026-07-29 (backend only) — A PACK AS ONE `.zip`: `POST /packs/upload`
+(upstream ask **U-pack-upload**, downstream [NubeIO/rubix-ai#57](https://github.com/NubeIO/rubix-ai/issues/57),
+[`pack-upload-scope`](scope/packs/pack-upload-scope.md)).** A pack is *distributed* as one file but
+could only be *installed* as a hand-assembled `{manifest, files}` JSON bundle, so every embedder
+wanting a drop-zone re-implemented the unzip in its client. Now the archive is a first-class
+transport envelope, unpacked ONCE in core: new pure `packs/src/zip.rs` — `bundle_from_zip(bytes)`,
+zero I/O — plus `role/gateway/src/routes/packs.rs`, a multipart `POST /packs/upload`
+(`?verb=validate|apply`, default the SAFE one, `&ts=`) that authenticates, inflates, and dispatches
+through the **same** `lb_host::call_tool_on_node` chokepoint `/mcp/call` uses. **No new verb, no new
+cap, no envelope change** — it is transport, and it grants nothing `/mcp/call` doesn't (the
+validate-only token still gets a `403` on apply, proven not asserted). Every archive rejection names
+the offending member: zip-slip (via `enclosed_name`, restated by name), a non-UTF-8 member, the
+**total inflated** budget enforced *while* inflating (the zip-bomb guard — a 4 KB archive that
+expands to a gigabyte dies against the budget, not after), a single top-level folder stripped only
+when unambiguous, `__MACOSX/`/`.DS_Store` dropped first, a required root `pack.yaml`. The real bug
+fixed is an **inverted ceiling**: `/mcp/call`'s 2 MiB axum default against an 8 MiB engine cap
+refused packs at the *transport* with a bare 413 before any handler ran — so `MAX_BUNDLE_BYTES` is
+now **32 MiB** (doctrine unmoved: a big seed is still a generator script) and the route's limit is
+**DERIVED** from it (+1 MiB framing margin) with a test asserting the inequality. Route-scoped
+(rule 10): `/mcp/call` keeps its deliberate 2 MiB blast-radius cap — the rejected alternative was
+raising it globally. **Tests (real node + real router, hand-built multipart pinning the exact
+`curl -F` wire, no mocks):** `lb-packs` **80**, `pack_upload_test` **7** (validate→apply→noop, the
+caps deny, `401`, ws-A-invisible-to-ws-B, zip-slip/binary/no-archive `400`s), gateway lib **41**
+(incl. 3 new `routes::packs::tests`), `lb-host --test pack_test` **19** (3 pre-existing ignored);
+`cargo fmt --all --check` clean. **NOT released:** no `node-v*` tag cut, rubix-ai has **not** bumped
+its pin — the downstream drop-zone UI + browser-side `readZip.ts` pre-check are blocked on that tag.
+Session: [`sessions/packs/pack-upload-session.md`](sessions/packs/pack-upload-session.md).
+
+**Shipped 2026-07-29 (backend only) — PACK ENTITY `refs:` + THE `charts.source` UNLOCK
+([#115](https://github.com/NubeDev/lb/issues/115),
+[`entity-source-refs-scope`](scope/packs/entity-source-refs-scope.md)).** A store-backed pack entity
+can now **declare its twin in a federation datasource** — `refs: [{source, table, fk?, label?}]` on
+`Entity` — turning what was folklore (the EMS pack's 8 `ems_site` rows ARE `demo-buildings`' `site`
+rows, documented in a README and checked by nothing) into contract. Strictly an **address, not
+behavior**, the third sibling of `geo:`/`charts:`: core carries the block in the receipt, emits no
+SQL, joins no backends, and validates only shape. The payoff is goal 4 — a **store** entity may now
+give a `charts:` recipe a `source`, provided it names a declared ref, so EMS `site` can offer
+"Interval demand · 7d" over the sqlite twin's 15-minute data from a map pin with zero hand-written
+SQL; what compiles downstream is an ordinary `federation.query` cell parameterised by
+`${site:sqlstring}`, carrying no pack/ref residue (rule 10). New: `packs/src/manifest_refs.rs` +
+`packs/src/validate_refs.rs` (both beside their parents, the `*_retention.rs` precedent). Receipt
+carriage needed **no code** — `Receipt.manifest` already carries the whole manifest. The lint gates
+only manifest-readable defects (ref on an unbound entity, non-identifier `table`/`fk`, duplicate
+`{source, table}`, a store chart naming an undeclared ref) and pointedly does **not** check that a
+`source` is registered: that is a workspace fact resolved late, and gating it would refuse a valid
+pack on every node but the author's. Declaring a ref **grants nothing** — the federation caps wall is
+untouched, asserted directly. **Tests (rule 9, real node + real sqlite twin):** `lb-packs` unit
+(68 green) + `crates/host/tests/pack_refs_test.rs` (3) — receipt carriage through the real verbs, id
+parity proven by reading the twin *through the address the receipt carries*, the dangling-source
+gate, and the two negatives. **No new verb, no envelope change; every existing pack parses and
+validates byte-identically.** Downstream consumer (readers, the parity probe, EMS content) is
+rubix-ai's `docs/scope/packs/entity-source-refs-ui-scope.md` and is NOT done here.
+
+**Shipped 2026-07-25 (backend + rubix-ai/ui) — THE EXT & STORE NODE PACK + THE RESERVED-TABLE
 WALL (flows, [`ext-store-nodes-scope`](scope/flows/ext-store-nodes-scope.md)).** Five new built-in
 flow nodes over the platform's own MCP surface — `ext-list` (installed extensions), one generic
 `ext-call` (pick ext → pick tool from `tools.catalog` → args form rendered from the tool's own

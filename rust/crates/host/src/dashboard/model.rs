@@ -456,7 +456,8 @@ pub struct Toolbar {
 }
 
 /// A dashboard record. The persisted layout + sharing metadata (dashboard scope, "Data").
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Derives `Default` so the next additive field costs no call-site churn (the `Policy` precedent).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Dashboard {
     /// Stable slug, unique per workspace (the record id `dashboard:{id}`).
     pub id: String,
@@ -499,6 +500,19 @@ pub struct Dashboard {
     /// serde; the UI reads it and clamps the board container.
     #[serde(default, deserialize_with = "null_default")]
     pub width: String,
+    /// What this record IS — see [`super::kind`] for the vocabulary and why it is typed.
+    #[serde(default, deserialize_with = "null_default")]
+    pub kind: String,
+    /// Report-kind dashboard ids this page's **Generate report** control offers (page-settings,
+    /// admin-set). One id renders a direct button, several a menu; empty ⇒ no control.
+    ///
+    /// Typed for the same reason `kind` is: this struct DROPS unknown top-level keys, so an untyped
+    /// `reportIds` would vanish on the first save. Opaque to the host beyond serde — it neither
+    /// resolves the ids nor gates on them; the launcher's gate is the viewer's ability to READ the
+    /// bound report, which the roster answers. A dangling id is therefore not an error here: it
+    /// simply does not appear in a roster the viewer can see.
+    #[serde(default, deserialize_with = "null_default", rename = "reportIds")]
+    pub report_ids: Vec<String>,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
     /// The BARE id of the extension that generates this board (`"modbus"`), or empty for an
@@ -534,41 +548,6 @@ pub struct Dashboard {
     /// Tombstone (soft-delete, §6.8 idempotent). A deleted dashboard is hidden from `list`/`get`.
     #[serde(default, deserialize_with = "null_default")]
     pub deleted: bool,
-}
-
-/// The cheap roster row `list` returns — id/title/visibility/updated_ts, **no cell bodies** (the
-/// roster stays cheap; dashboard scope, "Get / list").
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DashboardSummary {
-    pub id: String,
-    pub title: String,
-    /// Roster affordances (dashboard page-settings) — carried on the cheap summary so the switcher
-    /// can paint the icon/colour without a full `get`. Additive/defaulted.
-    #[serde(default)]
-    pub icon: String,
-    #[serde(default)]
-    pub color: String,
-    /// The managing extension's bare id, or empty (ext-managed-dashboards D3). Relayed on the CHEAP
-    /// summary so a roster paints the "managed by X" badge — and filters/groups on it — without a
-    /// full `dashboard.get` per row. Additive/defaulted; see [`Dashboard::managed_by`].
-    #[serde(default, rename = "managedBy")]
-    pub managed_by: String,
-    pub visibility: Visibility,
-    pub updated_ts: u64,
-}
-
-impl From<&Dashboard> for DashboardSummary {
-    fn from(d: &Dashboard) -> Self {
-        Self {
-            id: d.id.clone(),
-            title: d.title.clone(),
-            icon: d.icon.clone(),
-            color: d.color.clone(),
-            managed_by: d.managed_by.clone(),
-            visibility: d.visibility,
-            updated_ts: d.updated_ts,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -711,11 +690,6 @@ mod tests {
         assert_eq!(out["description"], "Fleet health at a glance");
         assert_eq!(out["icon"], "activity");
         assert_eq!(out["color"], "#3b82f6");
-
-        // The summary carries icon + colour so the roster paints them without a full get.
-        let sum = DashboardSummary::from(&d);
-        assert_eq!(sum.icon, "activity");
-        assert_eq!(sum.color, "#3b82f6");
     }
 
     /// A pre-page-settings dashboard (no description/icon/color) still deserializes — the fields

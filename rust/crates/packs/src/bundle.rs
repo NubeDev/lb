@@ -19,7 +19,16 @@ use crate::manifest::Manifest;
 /// The declared ceiling on a bundle's total file bytes (pack-core-scope §Risks: "cap the bundle,
 /// honest error", with "big seed = generator script, not pack payload" the standing doctrine).
 /// Counted over the manifest text plus every file body.
-pub const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
+///
+/// **32 MiB since the zip transport landed** (was 8 MiB). The old number predated packs carrying
+/// their own schema + structured seed, and a real product pack now runs past it while still being
+/// nothing but text. The doctrine has NOT moved — a multi-hundred-MiB seed still belongs in a
+/// generator script, and the error says so — the ceiling just stopped being the thing authors hit
+/// first. Every transport that carries a bundle must admit at least this much (see the
+/// `/packs/upload` route, whose body limit is DERIVED from this constant so the two can never invert
+/// again: the old `/mcp/call` 2 MiB against an 8 MiB engine cap was exactly that inversion, and it
+/// surfaced as a bare 413 with nothing to act on).
+pub const MAX_BUNDLE_BYTES: usize = 32 * 1024 * 1024;
 
 /// A pack as sent by a caller: the manifest text plus its referenced files, keyed by the
 /// bundle-relative path the manifest names them by.

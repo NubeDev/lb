@@ -85,23 +85,15 @@ pub async fn dashboard_pin(
                 Dashboard {
                     id: id.to_string(),
                     title: title.to_string(),
-                    description: String::new(),
-                    icon: String::new(),
-                    color: String::new(),
-                    timezone: String::new(),
-                    cache_ttl_s: 0,
-                    toolbar: Default::default(),
-                    width: String::new(),
                     owner: principal.owner_sub().to_string(),
                     // Same rule as `dashboard.save`'s create path: the managed marker is derived
                     // from the saving principal in the ONE helper, never from input (D1).
                     managed_by: super::managed::managed_by_of(principal).unwrap_or_default(),
                     visibility: Visibility::Private,
-                    cells: Vec::new(),
-                    variables: Vec::new(),
                     schema_version: SCHEMA_VERSION,
                     updated_ts: now,
-                    deleted: false,
+                    // Page presentation, cells and variables are empty on a fresh pinned board.
+                    ..Default::default()
                 },
                 true,
             ),

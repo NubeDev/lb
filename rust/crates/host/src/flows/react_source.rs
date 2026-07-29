@@ -98,8 +98,10 @@ async fn fire_new_hits(
         // inject its scheduled instant — cron wraps a `{cron_ts}` object; a webhook emits the raw hit).
         let mut params = serde_json::Map::new();
         params.insert(trig.node_id.clone(), sample.payload.clone());
-        // Fire FROM the source node (entry) so only its downstream subgraph runs.
-        run::flows_run(
+        // Fire FROM the source node (entry) so only its downstream subgraph runs. SPAWNED (the
+        // `flows_run_async` seam): the deterministic run id + durable seed keep re-scan idempotency;
+        // the drive detaches so a burst of hits fires concurrently, never serially through the sweep.
+        run::flows_run_async(
             node,
             principal,
             ws,
