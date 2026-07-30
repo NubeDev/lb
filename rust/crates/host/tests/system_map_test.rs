@@ -69,7 +69,9 @@ async fn dead_letter(node: &Node, ws: &str) {
     enqueue(&node.store, ws, "change", "c1", &json!({"k": "v"}), &effect)
         .await
         .unwrap();
-    mark_failed(&node.store, ws, "e1", 1).await.unwrap();
+    mark_failed(&node.store, ws, "e1", 1, "target refused")
+        .await
+        .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

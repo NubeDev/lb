@@ -353,9 +353,30 @@ async fn effect_missing_workspace_fails_instead_of_guessing() {
     let (provider, target) = push_target(&store);
     let pass = relay_outbox(&store, "acme", &target, 200).await.unwrap();
     assert_eq!(pass.delivered, 0, "no delivery without a workspace");
-    assert_eq!(pass.failed, 1);
+    // PARKED, not retried (email-transport scope, the honest-outcome contract): a payload with no
+    // workspace will never grow one, so five attempts with backoff only delay the dead-letter row an
+    // operator needs to see. Before the outbox had a permanent-failure path this was `failed: 1`.
+    assert_eq!(pass.dead_lettered, 1);
+    assert_eq!(pass.failed, 0);
     assert!(
         provider.sends().is_empty(),
         "nothing sent to a guessed workspace"
+    );
+
+    // And the reason is on the row — the relay used to drop it on the floor.
+    let parked = lb_outbox::dead_lettered(&store, "acme").await.unwrap();
+    assert_eq!(parked.len(), 1);
+    assert_eq!(
+        parked[0].attempts, 1,
+        "no retry ladder for a permanent failure"
+    );
+    assert!(
+        parked[0]
+            .last_error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("workspace"),
+        "{:?}",
+        parked[0].last_error
     );
 }

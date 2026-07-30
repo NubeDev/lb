@@ -74,7 +74,9 @@ async fn a_failed_delivery_stays_schedulable_and_redelivers() {
     // Pass 1 at now=1: the target is down → mark failed. The effect is still owed.
     let p1 = pending(&store, ws).await.unwrap();
     assert_eq!(p1.len(), 1);
-    let status = mark_failed(&store, ws, "e1", 1).await.unwrap();
+    let status = mark_failed(&store, ws, "e1", 1, "target refused")
+        .await
+        .unwrap();
     assert_eq!(
         status,
         EffectStatus::Failed,
@@ -126,7 +128,9 @@ async fn a_failed_effect_waits_out_its_backoff_before_it_is_due() {
     let ws = "outbox-backoff";
     enqueue_pr(&store, ws, "e1", "pr:2451", 10).await;
 
-    mark_failed(&store, ws, "e1", 10).await.unwrap();
+    mark_failed(&store, ws, "e1", 10, "target refused")
+        .await
+        .unwrap();
     let gate = 10 + backoff(1); // the earliest ts the relay may retry
 
     // Still schedulable (owed)…
@@ -155,11 +159,15 @@ async fn an_effect_dead_letters_after_exhausting_max_attempts() {
 
     // Two failures: still Failed (schedulable), backoff each time.
     assert_eq!(
-        mark_failed(&store, ws, "e1", 1).await.unwrap(),
+        mark_failed(&store, ws, "e1", 1, "target refused")
+            .await
+            .unwrap(),
         EffectStatus::Failed
     );
     assert_eq!(
-        mark_failed(&store, ws, "e1", 100).await.unwrap(),
+        mark_failed(&store, ws, "e1", 100, "target refused")
+            .await
+            .unwrap(),
         EffectStatus::Failed
     );
     assert_eq!(
@@ -170,7 +178,9 @@ async fn an_effect_dead_letters_after_exhausting_max_attempts() {
 
     // The third failure hits max_attempts → dead-lettered (terminal).
     assert_eq!(
-        mark_failed(&store, ws, "e1", 200).await.unwrap(),
+        mark_failed(&store, ws, "e1", 200, "target refused")
+            .await
+            .unwrap(),
         EffectStatus::DeadLettered
     );
     assert!(

@@ -68,6 +68,16 @@ export interface Insight {
   first_ts: number;
   last_ts: number;
   producer: string;
+  /** The insight's tag facets, **echoed** — the dimension plane (building, asset type, priority, …)
+   *  as a flat map, present on BOTH `insight.get` and `insight.list` rows. The deliberate
+   *  divergence from `evidence`: dimensions exist to be roster COLUMNS, so a list-driven view
+   *  renders them with no follow-up `tags.find` per row and needs no tag capability.
+   *
+   *  Read-only: the tag graph is the source of truth and the raise path writes this projection.
+   *  Never send it back, and never filter on it client-side across pages — `ListFilter.tags`
+   *  resolves through the graph server-side and is correct even while an echo is briefly behind.
+   *  Empty/absent on records raised before the field landed, until their next raise. */
+  tags?: Record<string, string>;
 }
 
 /** One firing in the per-insight occurrence ring. Mirrors `lb_insights::Occurrence`. */

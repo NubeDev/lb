@@ -60,11 +60,30 @@ pub async fn insight_raise(
     // 2. Tags — apply each {k: v} to `insight:<id>` with Producer provenance (the host owns the
     //    tag graph; the crate is tag-agnostic). Best-effort: a tag hiccup must not fail the raise
     //    (the durable record already landed).
+    //
+    //    Applied RAW (`lb_tags::add`, still under the per-workspace tag-node cap) rather than
+    //    through the `mcp:tags.add:call`-gated host verb: `tags` is a declared field of THIS verb's
+    //    input, on an entity this call just minted, so `mcp:insight.raise:call` is the authority —
+    //    the same reasoning `insight_list` uses to resolve its facet filter through the raw graph.
+    //    Under the old gate a producer holding only `insight.raise` (every rule that isn't also a
+    //    tag author) had its declared tags swallowed by `let _ =` and never reached the graph at
+    //    all, which the echo would then have faithfully reported as "no dimensions".
     let entity = format!("insight:{}", outcome.id);
     for (k, v) in &tags {
         let tag = lb_tags::Tag::new(k.clone(), serde_json::Value::String(v.clone()));
         let prov = lb_tags::Provenance::new(now, principal.sub(), lb_tags::Source::Producer);
-        let _ = crate::tags::tags_add(&node.store, principal, ws, &entity, &tag, &prov).await;
+        if let Err(e) = lb_tags::add(
+            &node.store,
+            ws,
+            &entity,
+            &tag,
+            &prov,
+            lb_tags::DEFAULT_TAG_NODE_CAP,
+        )
+        .await
+        {
+            tracing::warn!(ws, entity = %entity, key = %k, error = ?e, "insight tag not applied");
+        }
     }
 
     // 3. Bus event — fire-and-forget live-UI motion on the ws subject (best-effort, §3.3).
@@ -82,14 +101,31 @@ pub async fn insight_raise(
         let _ = lb_bus::publish(&node.bus, ws, "insight/events", &payload).await;
     }
 
-    // 4. Matcher + notify. Materialize the insight's tag facets for the matcher (the raise input's
-    //    tags ARE the facets — no need to re-query the graph for the just-applied set).
+    // 4. Tag echo — materialize the insight's FULL facet set from the graph and persist it onto the
+    //    record (`insight-tag-echo-scope.md`). Unconditional: it used to run only when the
+    //    workspace had subscriptions, which would leave the roster's dimension columns blank in
+    //    every workspace that notifies nobody. The cost is one `tags.of` per raise, and the read is
+    //    reused below for both the matcher's facets and the record's `origin_ref` — so the raise
+    //    path gains one indexed graph read and one conditional write, not a second record read.
+    let facets = materialize_facets(node, ws, &entity, &tags).await;
+    let stored = match lb_insights::set_tags_echo(&node.store, ws, &outcome.id, &facets).await {
+        Ok(stored) => stored,
+        Err(e) => {
+            // Loud skip, never silent truncation (the echo's size guard) — and never a failed
+            // raise: the durable record already landed, so an unwritable echo is a stale
+            // projection, which is precisely the state the graph heals on the next firing.
+            tracing::warn!(ws, id = %outcome.id, error = %e, "insight tag echo not written");
+            lb_insights::read_insight(&node.store, ws, &outcome.id)
+                .await
+                .ok()
+                .flatten()
+        }
+    };
+
+    // 5. Matcher + notify.
     let subs = load_subs(&node.store, ws).await;
     if !subs.is_empty() {
-        // The insight's full tag facets from the graph (covers tags applied on PRIOR raises of the
-        // same dedup_key, not just this firing's). Falls back to this raise's tags on any error.
-        let facets = materialize_facets(node, principal, ws, &entity, &tags).await;
-        let origin_ref = origin_ref_of(node, ws, &outcome.id).await;
+        let origin_ref = stored.map(|i| i.origin.reference).unwrap_or_default();
         let view = InsightView {
             insight_id: &outcome.id,
             dedup_key: &outcome.dedup_key,
@@ -157,17 +193,24 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Materialize the insight's tag facets as `{ k: v }` for the matcher's subset check. Reads the tag
-/// graph (`tags.of`, stringifying each value); on any error falls back to this raise's declared
-/// tags so a tag-graph hiccup can't silently drop a match.
+/// Materialize the insight's tag facets as `{ k: v }` — the matcher's subset check AND the record's
+/// tag echo (`insight-tag-echo-scope.md`). Reads the tag graph (`tags.of`, stringifying each value);
+/// on any error falls back to this raise's declared tags so a tag-graph hiccup can't silently drop a
+/// match or blank a dimension column.
+///
+/// Reads the graph RAW (`lb_tags::of`, not the `mcp:tags.of:call`-gated host verb) for the same
+/// reason `insight_list` resolves its facet filter raw: `mcp:insight.raise:call` already authorized
+/// this workspace's insight write, and reading back the tags of the entity this very call just
+/// created is not a second privilege. Gating it on `tags.of` would mean a producer without tag caps
+/// silently gets an echo built from its own declaration instead of the union — the exact bug the
+/// scope exists to prevent, in the failure mode hardest to see.
 async fn materialize_facets(
     node: &Arc<Node>,
-    principal: &Principal,
     ws: &str,
     entity: &str,
     fallback: &BTreeMap<String, String>,
 ) -> BTreeMap<String, String> {
-    match crate::tags::tags_of(&node.store, principal, ws, entity).await {
+    match lb_tags::of(&node.store, ws, entity).await {
         Ok(applied) if !applied.is_empty() => applied
             .into_iter()
             .map(|a| {
@@ -179,15 +222,6 @@ async fn materialize_facets(
             })
             .collect(),
         _ => fallback.clone(),
-    }
-}
-
-/// Read the origin ref off the just-written insight (the matcher's `origin_ref` axis). Cheap single
-/// read; keeps the raise outcome lean (origin isn't echoed there).
-async fn origin_ref_of(node: &Arc<Node>, ws: &str, id: &str) -> String {
-    match lb_insights::get(&node.store, ws, id).await {
-        Ok(Some(insight)) => insight.origin.reference,
-        _ => String::new(),
     }
 }
 

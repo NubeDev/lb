@@ -59,6 +59,37 @@ pub async fn react_to_flows_interval(
     Ok(pass)
 }
 
+/// Fire **one named** flip-flop node, if it is still a live trigger on a still-enabled flow. This is
+/// the seam [`super::interval_timers`] drives: a per-node timer owns the CADENCE, but the firing
+/// itself stays here — one owner for the fire logic, so a timer-driven firing and a sweep-driven one
+/// are the same code (same idempotency, same cursor, same caps wall).
+///
+/// Returns the pass tally. A disabled/deleted flow, or a node that is no longer a flip-flop, is a
+/// silent no-op tally — the reconciler will retire the timer on its next pass; racing that teardown
+/// must not error.
+pub async fn fire_flipflop_node(
+    node: &Arc<Node>,
+    principal: &lb_auth::Principal,
+    ws: &str,
+    flow_id: &str,
+    node_id: &str,
+    now: u64,
+) -> Result<ReactorPass, FlowsError> {
+    let mut pass = ReactorPass::default();
+    let flows = flows_list_internal(&node.store, ws).await?;
+    let Some(flow) = flows.iter().find(|f| f.id == flow_id && f.enabled) else {
+        return Ok(pass);
+    };
+    let Some(trig) = flipflop_triggers(flow)
+        .into_iter()
+        .find(|t| t.node_id == node_id)
+    else {
+        return Ok(pass);
+    };
+    fire_one_flipflop(node, principal, ws, flow, &trig, now, &mut pass).await?;
+    Ok(pass)
+}
+
 /// Drive a single flip-flop node's cursor one pass: init on first sight / on a period change, fire when
 /// due (entry = this node → only its subgraph runs), flip the value, advance fire-once-then-skip.
 async fn fire_one_flipflop(

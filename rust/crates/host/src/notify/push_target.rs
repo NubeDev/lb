@@ -20,7 +20,7 @@ use std::sync::Mutex;
 
 use super::delivered::{delivered_check, delivered_mark};
 use super::device::{device_disable_raw, device_list_raw, Device};
-use crate::outbox::Target;
+use crate::outbox::{DeliveryError, Target};
 
 /// The outbox target string for push delivery.
 pub const PUSH_TARGET: &str = "push";
@@ -93,7 +93,7 @@ impl Target for PushTarget {
     fn deliver(
         &self,
         effect: &Effect,
-    ) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    ) -> impl std::future::Future<Output = Result<(), DeliveryError>> + Send {
         let payload_str = effect.payload.clone();
         let effect_id = effect.id.clone();
         let idempotency_key = effect.idempotency_key.clone();
@@ -101,8 +101,10 @@ impl Target for PushTarget {
         let provider = &self.provider;
         let store = self.store.clone();
         async move {
-            let payload: PushPayload = serde_json::from_str(&payload_str)
-                .map_err(|e| format!("push target: bad payload: {e}"))?;
+            let payload: PushPayload = serde_json::from_str(&payload_str).map_err(|e| {
+                // A payload that is not JSON will never become JSON — no retry (outbox permanent path).
+                DeliveryError::permanent(format!("push target: bad payload: {e}"))
+            })?;
 
             // The workspace is embedded in the payload by `notify.send` at enqueue time (the same
             // pattern as the email target). Absent ⇒ fail the effect — never guess a ws (rule 6).
@@ -110,7 +112,12 @@ impl Target for PushTarget {
                 .workspace
                 .as_deref()
                 .filter(|w| !w.is_empty())
-                .ok_or("push target: payload missing workspace — refusing to guess (rule 6)")?
+                .ok_or_else(|| {
+                    DeliveryError::permanent(
+                        "push target: payload missing workspace — refusing to guess (rule 6)"
+                            .to_string(),
+                    )
+                })?
                 .to_string();
 
             // Retry-dedup key: the outbox's own idempotency handle (falls back to the effect id).
@@ -127,7 +134,11 @@ impl Target for PushTarget {
                 match lb_authz::membership_is_member(&store, &ws, sub).await {
                     Ok(true) => {}
                     Ok(false) => continue,
-                    Err(e) => return Err(format!("push target: membership check: {e}")),
+                    Err(e) => {
+                        return Err(DeliveryError::transient(format!(
+                            "push target: membership check: {e}"
+                        )))
+                    }
                 }
 
                 // Check quiet-hours prefs (whole-fold axis on Prefs).
@@ -168,9 +179,9 @@ impl Target for PushTarget {
                 };
 
                 // Resolve the recipient's live devices.
-                let devices = device_list_raw(&store, &ws, sub)
-                    .await
-                    .map_err(|e| format!("push target: device list: {e}"))?;
+                let devices = device_list_raw(&store, &ws, sub).await.map_err(|e| {
+                    DeliveryError::transient(format!("push target: device list: {e}"))
+                })?;
 
                 for device in devices {
                     if device.disabled {
@@ -181,13 +192,21 @@ impl Target for PushTarget {
                     match delivered_check(&store, &ws, &dedup_key, &device.id).await {
                         Ok(true) => continue,
                         Ok(false) => {}
-                        Err(e) => return Err(format!("push target: delivered check: {e}")),
+                        Err(e) => {
+                            return Err(DeliveryError::transient(format!(
+                                "push target: delivered check: {e}"
+                            )))
+                        }
                     }
                     match provider.send(&device, &localized).await {
                         Ok(()) => {
                             delivered_mark(&store, &ws, &dedup_key, &device.id, effect_ts)
                                 .await
-                                .map_err(|e| format!("push target: delivered mark: {e}"))?;
+                                .map_err(|e| {
+                                    DeliveryError::transient(format!(
+                                        "push target: delivered mark: {e}"
+                                    ))
+                                })?;
                         }
                         Err(PushError::TokenGone) => {
                             // Auto-disable the device — terminal for this device, not an error
@@ -203,7 +222,9 @@ impl Target for PushTarget {
             if errors.is_empty() {
                 Ok(())
             } else {
-                Err(errors.join("; "))
+                // Per-device transient failures: the outbox retries, and `delivered.rs` means only the
+                // failures are re-sent.
+                Err(DeliveryError::transient(errors.join("; ")))
             }
         }
     }

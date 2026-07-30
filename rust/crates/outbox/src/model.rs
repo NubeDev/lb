@@ -71,6 +71,18 @@ pub struct Effect {
     pub next_attempt_ts: u64,
     /// Caller-injected logical timestamp (no wall-clock — testing §3).
     pub ts: u64,
+    /// Why the last attempt failed — the operator-readable reason, recorded by
+    /// [`mark_failed`](super::mark_failed) / [`mark_dead_lettered`](super::mark_dead_lettered).
+    ///
+    /// Added because the relay used to *drop* the target's reason on the floor (`Err(_reason)`), so a
+    /// dead-lettered effect said only "it failed 5 times". For email that was the difference between
+    /// "the relay is refusing our credentials" and "that domain does not exist" — an operator could
+    /// read neither. Sanitized by the target before it gets here (a mail library will happily hand you
+    /// an SMTP transcript containing the AUTH line).
+    ///
+    /// `#[serde(default)]` so effect rows written before this field existed still deserialize.
+    #[serde(default)]
+    pub last_error: Option<String>,
 }
 
 /// The default retry ceiling before an effect is dead-lettered. Chosen small enough that a poison
@@ -110,6 +122,7 @@ impl Effect {
             max_attempts: DEFAULT_MAX_ATTEMPTS,
             next_attempt_ts: 0,
             ts,
+            last_error: None,
         }
     }
 

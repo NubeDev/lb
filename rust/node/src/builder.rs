@@ -189,7 +189,13 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
 
     // REACTORS (gated): flow / agent / approval / insight-digest scans + the one-shot insight-ts heal.
     if cfg.reactors {
-        crate::reactors::spawn(&node, &ws, &cfg.outbox_providers).await;
+        crate::reactors::spawn(
+            &node,
+            &ws,
+            &cfg.outbox_providers,
+            cfg.email_transport.as_ref(),
+        )
+        .await;
     }
 
     // GATEWAY + ROLES block. Mount the native roles + agent AFTER the gateway installs its signing key

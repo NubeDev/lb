@@ -30,7 +30,7 @@ impl Target for RecordingTarget {
     fn deliver(
         &self,
         effect: &OutboxEffect,
-    ) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    ) -> impl std::future::Future<Output = Result<(), lb_host::DeliveryError>> + Send {
         let effect = effect.clone();
         let seen = &self.seen;
         async move {

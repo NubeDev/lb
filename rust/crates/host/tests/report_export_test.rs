@@ -7,7 +7,7 @@
 //! ratchet's baseline.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{dashboard_save_meta, report_export, Cell, ReportError};
+use lb_host::{dashboard_save_meta, report_export, Cell, PageMeta, ReportError};
 use lb_store::Store;
 
 /// A principal `sub` in workspace `ws` holding `caps`.
@@ -199,15 +199,10 @@ async fn save_dashboard_of_kind(
         ws,
         id,
         title,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        kind,
-        None,
+        PageMeta {
+            kind: kind,
+            ..PageMeta::default()
+        },
         cells,
         vec![],
         1,

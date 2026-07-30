@@ -30,7 +30,120 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — ONE Grafana SQL macro
+**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE INSIGHT ROSTER GREW ITS
+DIMENSION COLUMNS ([`insight-tag-echo-scope`](scope/insights/insight-tag-echo-scope.md), issue
+[#119](https://github.com/NubeDev/lb/issues/119) slice 1, session
+[`insight-tag-echo`](sessions/insights/insight-tag-echo-session.md)).** Tags were an insight's
+dimension plane and were *not on the record*: a caller could ask for "every open insight in Chullora"
+and get rows, then had no way to *display* which building each row was in without an N+1 `tags.find`
+per row — plus `mcp:tags.of:call`, a capability a read-only viewer otherwise never needs. Shipped:
+**`Insight.tags`**, a read-only `{k: v}` echo of the resolved facets, returned by **both
+`insight.get` and `insight.list`** (the deliberate divergence from `evidence`, which is `get`-only —
+the boundary rule is "does the roster render it"). Written only by the raise path, from the **tag
+graph** (`lb_tags::of`), so it is the **union across all raises** of the `dedup_key` and self-heals
+after an out-of-band `tags.*` change on the next firing; materialization is now **unconditional**
+(it used to run only when the workspace had subscriptions, which would have left the columns blank
+in every workspace that notifies nobody). New verb `lb_insights::set_tags_echo` — idempotent, skips
+the write when unchanged, and returns the post-write record, which the matcher's `origin_ref` now
+reuses, so the net hot-path cost is **one indexed `tags.of`**, not an extra record read. **Filtering
+deliberately still resolves through the graph** (`lb_tags::find`), never the echo: a filter over a
+projection returns wrong rows whenever the projection is behind. No new verb, no new capability, no
+new table; the echo is host-computed and never caller-writable (the `producer` precedent), and it is
+a net *narrowing* — a roster now needs `mcp:insight.list:call` and nothing else. Over its 2 KB cap
+the echo is **skipped whole with a warning**, never truncated and never a failed raise. **A bug found
+while building it, in code that shipped months ago:** a raise's declared `tags` never reached the
+graph at all unless the producer *also* held `mcp:tags.add:call` — denied and swallowed by a
+best-effort `let _ =`, invisible because the matcher's fallback to `RaiseInput.tags` papered over it
+([debugging entry](debugging/insights/producer-tags-never-reached-the-graph.md)). **Tests (rule 9):**
+`insight_tag_echo_test` 11 on a real booted node (real store, real tag graph, real caps, the real
+`call_tool` bridge) + 2 unit + 3 Vitest; mandatory deny (incl. real-id vs fictional-id → identical
+error) and ws-isolation with ws-A and ws-B sharing the same tag key AND value. **Six revert-checks**,
+including the finding that the deny is enforced at *two* independent layers so a single-layer revert
+proves nothing. **Live-verified in the running product** (rubix-ai on the local `[patch]`): two raises
+with disjoint tag maps → one `insight.list` returns the union on the row, under a token with no
+`tags.of` grant. Still owed: the **backfill job** for pre-field records (scoped, sequenced after the
+field — a resolved insight that never fires again keeps a blank echo until it runs), the `tags.*`
+verbs having no wire door (`call_tags_tool` is gated but not in the dispatcher table), and a rule for
+same-key multi-source edges before the triage slice lets humans re-classify. Downstream (out of tree):
+rubix-ai's roster still renders a fixed 5-column header — the data is there, the column is not.
+
+**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — EMAIL ACTUALLY GETS SENT
+([`email-transport-scope`](scope/inbox-outbox/email-transport-scope.md), issue
+[#118](https://github.com/NubeDev/lb/issues/118), session
+[`email-transport`](sessions/inbox-outbox/email-transport-session.md)).** Every email the platform sent
+went nowhere: the seam was fully built and booted — durable outbox effect, `RouterTarget` on the opaque
+`"email"` string, `EmailTarget`, catalog-rendered i18n — and the only non-test provider **logged the send
+and acked it**. An admin invited a colleague, the outbox drained clean, and the colleague was never told;
+no failed row existed for an operator to find, because nothing had failed. Shipped: **`lb-mail`**
+(`crates/mail/`, the send half over `mail-send` + `mail-builder`) — MIME with an always-present text
+alternative, implicit-TLS/STARTTLS/none as *config* (never inferred from the port, and `starttls`
+**requires** the upgrade rather than continuing in the clear), `PLAIN`/`LOGIN`/**`XOAUTH2` with token
+refresh** because Gmail/M365 reject passwords and an access token lives an hour — plus
+**`SmtpEmailProvider`** and **`PostmarkEmailProvider`** behind the unchanged trait, and
+`BootConfig::email_transport` selecting one **by name** (`smtp | postmark | logging`), so a host gets
+working email from configuration alone. Credentials are **paths, never values**, resolved per send in the
+**effect's** workspace via `lb_secrets::get_workspace` (sealed → env → unset, the `resolve_key.rs`
+precedence): a ws-A effect can never resolve ws-B's secret, rotation needs no redeploy, and the config
+struct is `Debug`-safe by construction. Unset transport still boots and drains — with a **loud warning**,
+since silence is what let this live for months. **The outbox learned to fail honestly**, which the scope
+asked for and the substrate could not express: `Target::deliver` now returns
+`DeliveryError { reason, permanent }` (`From<String>` ⇒ transient, so adoption was a signature change and
+not a semantic one), `Effect` gained `last_error`, and `mark_dead_lettered` parks a permanent failure at
+`attempts: 1` — the relay used to **throw the target's reason away** (`Err(_reason)`), so a parked effect
+could only say "failed 5 times", and a `550 no such mailbox` burned five attempts with backoff.
+`outbox.mark_failed` gained optional `reason`/`permanent` for sidecar relays (omitting both = old
+behaviour); "no route registered" deliberately stayed **transient** (a sidecar-driven target has no
+in-process route by design). **Tests (rule 9):** `lb-mail` 27 — 7 against a **real SMTP server** on a real
+socket asserting bytes on a wire (the exact `AUTH PLAIN` blob, the exact `AUTH XOAUTH2` framing, a
+multipart message **parsed back with `mail-parser`**, `550` permanent vs `421` retryable, a relay that
+echoes the AUTH blob producing an error carrying neither the password nor its base64, `starttls` refusing
+to send in the clear) and 6 against a **real HTTP token endpoint** (the RFC 6749 grant, five sends sharing
+one refresh, rotation invalidating the cache, `invalid_grant` permanent vs `503` transient); `lb-host`
+`email_transport_test` 6 (cap-deny writing **no outbox row**, ws-isolation via sealed-in-globex vs acme,
+missing-workspace parked, re-drain exactly once, permanent parked at attempt 1); `relay_boot_test` gained
+a node booted against an unreachable relay whose effect stays **owed**. **Two bugs found by the new
+tests**, both in the new code: a cleartext SMTP session **ignored its own timeout** (`mail-send`'s
+`connect_plain` reads the greeting unbounded) and would have stalled the whole relay tick — push included
+— on a wedged LAN relay ([debugging entry](debugging/inbox-outbox/smtp-plaintext-greeting-unbounded.md));
+and the token-cache fingerprint **collided** for two same-length refresh tokens sharing a suffix, so a
+rotated grant silently reused the old bearer (now a SHA-256 prefix; the fixture keeps the colliding
+shape). All four security-critical tests **revert-checked**. Operator runbook:
+[`skills/email-transport/SKILL.md`](skills/email-transport/SKILL.md) — the credential ceremony, the
+`last_error` → what-to-do table, and the honest note that **deliverability is not a code problem**.
+Still owed: the docker-gated real-TLS test, Postmark's wire, and the pre-existing relative invite link.
+Downstream: `rubix-ai`'s `ReportTarget` needed the one-line `DeliveryError` signature change (done).
+
+**Just shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — FLOWS TRIGGERS: `period_secs: 1`
+finally means one second ([`interval-source-clock-scope`](scope/flows/interval-source-clock-scope.md),
+sessions [`interval-clock-phase0-1`](sessions/flows/interval-clock-phase0-1-session.md) +
+[`interval-timers-phase2`](sessions/flows/interval-timers-phase2-session.md)).** The months-old
+"flows feel off/buggy" report was **three defects behind one category error** — an interval source had
+no clock of its own, it was a durable row noticed by one 5s workspace sweep. Fixed in three phases:
+(0) **unbounded drift** — the cursor advanced `scheduled + period`, one period per sweep regardless of
+how far behind, so `period_secs: 1` slid 4s further adrift every tick; now a pure clock-injected
+`next_slot_after` lands it strictly in the future in one step, in both the fire and idempotent-skip
+paths. (1) **serial inline firing** — reactor firings ran to completion *inside* the sweep, so N
+triggers never fired independently and one node's `?` aborted the whole workspace pass; every firing
+now takes the `flows_run_async` seed-durably-then-spawn seam, with per-node log-and-continue.
+(2) **the 5s floor itself** — new `flows/interval_timers.rs`, a per-node timer reconciler converging
+live tasks against the durable enabled graph; each timer sleeps to the durable cursor and calls the
+**same** idempotent fire path, so the sweep's interval leg is deleted (both running would race the
+idempotency read on the shared deterministic run id). Cron keeps the 5s sweep (minute granularity).
+The tick is now the *convergence* cadence, never a firing floor; descriptor `minimum` back to 1.
+Rule-4 exception argued in the open: an oscillator's **value** is state (unchanged, durable) and its
+**cadence** is motion. **Tests (rule 9, real `mem://` store + real jobs + real caps):** new
+`flows_interval_timers_test` (7) incl. the regression that cannot pass under the sweep, `lb-host`
+lib 379, flipflop 9, multi_trigger 5, triggers 19, flows_run 49, `lb-flows` 100; caps-deny and
+ws-isolation pass **verbatim** — the firing mechanism grants nothing. Two debugging entries, one of
+them a **testing** lesson worth reading: the orphan/leak test
+[passed 7/7 against deliberately-leaking teardown](debugging/flows/timer-leak-test-passes-against-leaking-teardown.md)
+because an inner `enabled` gate and run-id idempotency both mask the effect — assert the resource
+(`num_alive_tasks`), and revert-check every regression test. **Still not possible: sub-second
+periods** — needs a millisecond field on the closed `FlowTriggerState` struct *and* a run-retention
+policy for high-frequency sources (Phase 2b). Next: loopbacks
+([`flow-loopback-scope`](scope/flows/flow-loopback-scope.md)), whose prerequisite is now met.
+
+**Also shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — ONE Grafana SQL macro
 layer, query-time and engine-aware
 ([`sql-time-macros-scope`](scope/viz/sql-time-macros-scope.md),
 session [`sessions/viz/sql-time-macros-session.md`](sessions/viz/sql-time-macros-session.md)).**

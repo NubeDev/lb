@@ -13,7 +13,7 @@ use lb_host::{
     add_member, dashboard_delete, dashboard_get, dashboard_list, dashboard_save,
     dashboard_save_meta, dashboard_share, seed_iot_demo, series_find, series_read_range, Cell,
     CellSource, CellTarget, DashboardError, DashboardToolbar as Toolbar, DashboardVisibility,
-    DASHBOARD_MAX_OVERRIDES, DASHBOARD_MAX_TRANSFORMS,
+    PageMeta, DASHBOARD_MAX_OVERRIDES, DASHBOARD_MAX_TRANSFORMS,
 };
 use lb_store::Store;
 use lb_tags::Facet;
@@ -149,21 +149,29 @@ async fn page_settings_round_trip_and_preserve() {
         ws,
         "ops",
         "Ops",
-        Some("Fleet health at a glance".into()),
-        Some("activity".into()),
-        Some("#3b82f6".into()),
-        None,
-        // Per-dashboard freshness (dashboard-query-acceleration §C) — the viz.query cache TTL.
-        Some(120),
-        // Opt the date-select + share controls into the header (toolbar-settings); refresh stays hidden.
-        Some(Toolbar {
-            date_select: true,
-            refresh_rate: false,
-            share: true,
-        }),
-        Some("centered".into()), // page width — a centred column, not full-bleed
-        None,                    // kind — see dashboard_kind_test.rs
-        None,                    // reportIds — see dashboard_kind_test.rs
+        PageMeta {
+            description: Some("Fleet health at a glance".into()),
+            icon: Some("activity".into()),
+            color: Some("#3b82f6".into()),
+            // The in-body heading block: a display name distinct from the id, rendered large.
+            heading: Some("Fleet Operations".into()),
+            heading_size: Some("large".into()),
+            show_heading: Some(true),
+            // Per-dashboard freshness (dashboard-query-acceleration §C) — the viz.query cache TTL.
+            cache_ttl_s: Some(120),
+            // Opt the date-select + share controls into the header (toolbar-settings); refresh stays hidden.
+            toolbar: Some(Toolbar {
+                date_select: true,
+                refresh_rate: false,
+                share: true,
+                cached: false,
+            }),
+            width: Some("centered".into()), // page width — a centred column, not full-bleed
+            // How the variable controls present themselves (dashboard variable-display).
+            vars_display: Some("bar".into()),
+            // kind / reportIds — see dashboard_kind_test.rs
+            ..PageMeta::default()
+        },
         vec![chart_cell("cooler.temp")],
         vec![],
         10,
@@ -180,6 +188,13 @@ async fn page_settings_round_trip_and_preserve() {
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
     // Page width persists through save → get (dashboard page-settings).
     assert_eq!(got.width, "centered");
+    // The heading block + the variable presentation persist too. These were CLIENT-ONLY keys before
+    // they were typed here — the struct drops unknown top-level keys, so every one of them was
+    // silently discarded on the first save. This is the pin that they are stored now.
+    assert_eq!(got.heading, "Fleet Operations");
+    assert_eq!(got.heading_size, "large");
+    assert_eq!(got.show_heading, Some(true));
+    assert_eq!(got.vars_display, "bar");
 
     // The cheap summary carries icon + colour (roster paints them without a full get).
     let roster = dashboard_list(&store, &ada, ws).await.unwrap();
@@ -212,6 +227,11 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.cache_ttl_s, 120);
     // Page width is page chrome too — a plain layout save preserves it.
     assert_eq!(got.width, "centered");
+    // …as are the heading block and the variable presentation.
+    assert_eq!(got.heading, "Fleet Operations");
+    assert_eq!(got.heading_size, "large");
+    assert_eq!(got.show_heading, Some(true));
+    assert_eq!(got.vars_display, "bar");
 
     // Setting one field via meta preserves the others (Some on icon, None on the rest — incl. toolbar
     // and the freshness TTL).
@@ -221,15 +241,10 @@ async fn page_settings_round_trip_and_preserve() {
         ws,
         "ops",
         "Ops v2",
-        None,
-        Some("gauge".into()),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        PageMeta {
+            icon: Some("gauge".into()),
+            ..PageMeta::default()
+        },
         got.cells.clone(),
         vec![],
         30,
@@ -242,6 +257,11 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.color, "#3b82f6");
     // `None` toolbar on the meta save preserved the opted-in flags (never re-hidden by a partial edit).
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
+    // …and a partial meta save preserves the heading block + the variable presentation.
+    assert_eq!(got.heading, "Fleet Operations");
+    assert_eq!(got.heading_size, "large");
+    assert_eq!(got.show_heading, Some(true));
+    assert_eq!(got.vars_display, "bar");
     // `None` cacheTtlS on the meta save preserved the freshness window (the preserve-on-omit path).
     assert_eq!(got.cache_ttl_s, 120);
     // `None` width on the meta save preserved the page width (preserve-on-omit).

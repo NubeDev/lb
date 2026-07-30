@@ -172,8 +172,8 @@ pub use dashboard::{
     DashboardSummary, DatasourceRemap as GrafanaDatasourceRemap,
     DegradedItem as GrafanaDegradedItem, DepKind, DepVerdict,
     Disposition as ShareClosureDisposition, ExtWidget as DashboardExtWidget,
-    ImportReport as GrafanaImportReport, SeedReport, ShareClosureItem, ShareClosureReport,
-    Source as CellSource, Target as CellTarget, Toolbar as DashboardToolbar,
+    ImportReport as GrafanaImportReport, PageMeta, SeedReport, ShareClosureItem,
+    ShareClosureReport, Source as CellSource, Target as CellTarget, Toolbar as DashboardToolbar,
     Variable as DashboardVariable, Visibility as DashboardVisibility, WidgetCatalog,
     KIND_DASHBOARD, KIND_REPORT, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
     MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
@@ -200,11 +200,12 @@ pub use federation::{
 };
 pub use flows::error::FlowsError;
 pub use flows::{
-    arm_source, cron_is_valid, cron_run_id, disarm_source, flipflop_run_id, placement_matches,
-    react_to_flow_approvals, react_to_flow_sources, react_to_flows_cron, react_to_flows_interval,
-    reconcile_flows, source_run_id, source_series, spawn_flow_reactors, watch_flow_debug,
-    watch_flow_run, FlowApprovalPass, FlowDebugWatch, FlowReactorPass, FlowReconcilePass,
-    FlowWatch, SourceReactorPass,
+    arm_source, cron_is_valid, cron_run_id, disarm_source, fire_flipflop_node, flipflop_run_id,
+    placement_matches, react_to_flow_approvals, react_to_flow_sources, react_to_flows_cron,
+    react_to_flows_interval, reconcile_flows, reconcile_interval_timers, source_run_id,
+    source_series, spawn_flow_reactors, watch_flow_debug, watch_flow_run, FlowApprovalPass,
+    FlowDebugWatch, FlowReactorPass, FlowReconcilePass, FlowWatch, IntervalTimers,
+    SourceReactorPass, TimerKey, TimerReconcilePass,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
 pub use forms::{
@@ -338,10 +339,13 @@ pub use report::{
 pub use lb_store::{new_ulid, Store};
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
-    enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
-    outbox_status, relay_outbox, spawn_relay_reactors, DynTarget, Effect as OutboxEffect,
-    EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, OutboxError, OutboxStatus,
-    RecordedEmail, RecordingEmailProvider, RelayPass, RouterTarget, Target,
+    delivery_check, delivery_mark, enqueue_held_outbox, enqueue_outbox, outbox_due,
+    outbox_mark_delivered, outbox_mark_failed, outbox_status, relay_outbox, spawn_relay_reactors,
+    AuthMechanism as MailAuthMechanism, DeliveryError, DynTarget, Effect as OutboxEffect,
+    EmailMessage, EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, OutboxError,
+    OutboxStatus, PostmarkConfig, PostmarkEmailProvider, RecordedEmail, RecordingEmailProvider,
+    RelayPass, RouterTarget, SmtpEmailProvider, SmtpOauthConfig, SmtpTransportConfig, Target,
+    TlsMode, DEFAULT_SEND_TIMEOUT_SECS, OUTBOX_DELIVERED_TABLE,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,

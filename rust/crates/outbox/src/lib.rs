@@ -16,7 +16,9 @@
 //! Verbs, one per file (FILE-LAYOUT §3):
 //! - [`enqueue`] — write a domain change AND its effect in one transaction (the seam).
 //! - [`pending`] — scan the workspace's undelivered effects (the relay's durable backstop).
-//! - [`mark_delivered`] / [`mark_failed`] — record the outcome of a delivery attempt.
+//! - [`mark_delivered`] / [`mark_failed`] / [`mark_dead_lettered`] — record the outcome of a delivery
+//!   attempt. A *transient* failure backs off and retries; a **permanent** one parks the effect at once
+//!   with its reason (a `550 no such mailbox` is not worth five attempts).
 //! - [`release`] / [`discard`] — the approval reactor's guarded `held → pending`/`held → discarded`
 //!   transitions (rules-approvals scope).
 
@@ -27,7 +29,7 @@ mod pending;
 mod release;
 
 pub use enqueue::enqueue;
-pub use mark::{mark_delivered, mark_failed};
+pub use mark::{mark_dead_lettered, mark_delivered, mark_failed};
 pub use model::{backoff, Effect, EffectStatus, DEFAULT_MAX_ATTEMPTS};
 pub use pending::{dead_lettered, delivered, due, held, pending};
 pub use release::{discard, release};

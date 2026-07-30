@@ -17,13 +17,18 @@ use std::future::Future;
 
 use lb_outbox::Effect;
 
+use super::delivery_error::DeliveryError;
+
 /// A delivery sink for outbox effects. `deliver` performs the external effect (whatever the target's
-/// adapter does with it) and returns whether the target acknowledged it. An `Err`/`false` is a transient
-/// failure — the relay leaves the effect schedulable and retries next pass (at-least-once). The
-/// implementation MUST dedup on `effect.idempotency_key`, so an at-least-once re-delivery is a
-/// no-op on the outside world (the at-least-once → effectively-once bridge, outbox scope).
+/// adapter does with it) and returns whether the target acknowledged it. An `Err` is by default a
+/// transient failure — the relay leaves the effect schedulable and retries next pass (at-least-once) —
+/// unless the target says otherwise with [`DeliveryError::permanent`]. The implementation MUST dedup on
+/// `effect.idempotency_key`, so an at-least-once re-delivery is a no-op on the outside world (the
+/// at-least-once → effectively-once bridge, outbox scope).
 pub trait Target {
     /// Attempt to deliver `effect`. `Ok(())` = acknowledged (the relay marks it delivered);
-    /// `Err(reason)` = failed (the relay marks it failed; it re-delivers next pass).
-    fn deliver(&self, effect: &Effect) -> impl Future<Output = Result<(), String>> + Send;
+    /// `Err(e)` = failed — the relay records `e.reason` on the row and either retries after backoff or,
+    /// when `e.permanent`, parks the effect immediately. A `String` converts into the retryable form, so
+    /// `.map_err(|e| format!(…))?` in an existing target keeps its exact old behaviour.
+    fn deliver(&self, effect: &Effect) -> impl Future<Output = Result<(), DeliveryError>> + Send;
 }

@@ -24,6 +24,9 @@ name = "node"
 path = "src/main.rs"
 
 [dependencies]
+# Boot-time diagnostics for the config-selected mail transport (`mail.rs`): "email is being DROPPED"
+# has to be a real log line, not a comment.
+tracing.workspace = true
 lb-host.workspace = true
 lb-telemetry.workspace = true
 lb-store.workspace = true
@@ -51,6 +54,10 @@ anyhow.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+# The relay-boot test (`tests/relay_boot_test.rs`) reads the durable outbox rows directly — status,
+# attempts, and the recorded failure reason — to prove an undeliverable email stays OWED rather than
+# being acked away (issue #118). Test-only: the binary reaches the outbox through `lb-host`.
+lb-outbox.workspace = true
 # The boot-wiring test (`tests/boot_wiring_test.rs`, issue #108) seeds and counts real series rows to
 # prove each reactor's property holds with nobody calling its verb. Test-only: the node binary itself
 # reaches the series plane through `lb-host`.

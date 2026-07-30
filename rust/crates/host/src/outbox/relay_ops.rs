@@ -19,7 +19,7 @@
 
 use lb_auth::Principal;
 use lb_mcp::authorize_tool;
-use lb_outbox::{due, mark_delivered, mark_failed, Effect};
+use lb_outbox::{due, mark_dead_lettered, mark_delivered, mark_failed, Effect};
 use lb_store::Store;
 
 use super::error::OutboxError;
@@ -55,16 +55,26 @@ pub async fn outbox_mark_delivered(
     Ok(())
 }
 
-/// `outbox.mark_failed {id, now}` — record a failed delivery attempt of effect `id` at logical `now`:
-/// count the attempt, then back off (push `next_attempt_ts`) or dead-letter (at `max_attempts`).
-/// Returns the resulting status so the relay can tally dead-letters without a re-read.
+/// `outbox.mark_failed {id, now, reason?, permanent?}` — record a failed delivery attempt of effect `id`
+/// at logical `now`: count the attempt, record `reason` on the row, then back off (push
+/// `next_attempt_ts`) or dead-letter (at `max_attempts`). Returns the resulting status so the relay can
+/// tally dead-letters without a re-read.
+///
+/// `permanent: true` parks the effect immediately with no further attempts — the same honest-outcome
+/// contract the in-process targets get (a `550 no such mailbox` is not worth five attempts). A driver
+/// that says nothing keeps the retry ladder, so this is additive for every existing sidecar relay.
 pub async fn outbox_mark_failed(
     store: &Store,
     principal: &Principal,
     ws: &str,
     id: &str,
     now: u64,
+    reason: &str,
+    permanent: bool,
 ) -> Result<lb_outbox::EffectStatus, OutboxError> {
     authorize_tool(principal, ws, "outbox.mark_failed").map_err(|_| OutboxError::Denied)?;
-    Ok(mark_failed(store, ws, id, now).await?)
+    if permanent {
+        return Ok(mark_dead_lettered(store, ws, id, reason).await?);
+    }
+    Ok(mark_failed(store, ws, id, now, reason).await?)
 }

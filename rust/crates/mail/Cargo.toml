@@ -1,0 +1,31 @@
+[package]
+name = "lb-mail"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lazybones mail transport — RFC 5322 message building + SMTP submission (the send half)."
+
+[dependencies]
+# The Stalwart suite (email-transport scope, "Crate choice"): natively async, so nothing here needs a
+# `spawn_blocking` bridge inside the relay reactor, and the receive half (`mail-source-scope.md`) gets
+# `mail-parser` from the same ecosystem. See the workspace manifest for the feature reasoning.
+mail-send = { workspace = true }
+mail-builder = { workspace = true }
+# The OAuth2 refresh-token exchange for XOAUTH2 (Gmail / Microsoft 365). Same client + rustls the
+# rest of the workspace uses.
+reqwest = { workspace = true }
+# The SASL blobs (AUTH PLAIN / XOAUTH2) whose exact bytes the redaction needles must cover.
+base64 = { workspace = true }
+serde = { workspace = true }
+# The refresh-token cache-key fingerprint (never the token itself).
+sha2 = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# The real-SMTP tests parse the bytes the in-test server actually received, rather than asserting our
+# own builder's output (testing-scope §0 — no mock of our own code).
+mail-parser = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }

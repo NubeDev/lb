@@ -13,7 +13,9 @@ use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_authz::membership_add_raw;
 use lb_host::{
     device_register, invite_create, notify_send, RecordingEmailProvider, RecordingPushProvider,
+    SmtpTransportConfig,
 };
+use lb_node::mail::EmailTransport;
 use lb_node::{boot_full, BootConfig};
 
 fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
@@ -169,5 +171,79 @@ async fn booted_node_without_providers_still_boots_and_drains() {
     assert!(
         ok,
         "the logging no-op provider must ack so the outbox drains"
+    );
+}
+
+/// A node configured with `kind: "smtp"` against an **unreachable** relay must still boot (never crash
+/// for lack of a mail server) and its effects must stay owed — retried, not acked and dropped.
+///
+/// This is the other half of issue #118's lesson: the old behaviour "acked" a send that never happened,
+/// so the effect left the pending set and nobody could tell. With a real transport the effect is still
+/// there afterwards, which is exactly what an operator needs to see.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_node_with_an_unreachable_smtp_relay_boots_and_keeps_its_effects_owed() {
+    let mut cfg = BootConfig::default();
+    cfg.seed_user = None;
+    cfg.hello_demo = false;
+    cfg.reactors = true;
+    cfg.email_transport = Some(EmailTransport::Smtp(SmtpTransportConfig {
+        // Port 1 on localhost: nothing listens, so every attempt fails fast with a connection error
+        // (transient) rather than hanging the relay tick.
+        host: "127.0.0.1".into(),
+        port: 1,
+        tls: lb_host::TlsMode::None,
+        auth: lb_host::MailAuthMechanism::None,
+        from_addr: "reports@acme.com".into(),
+        timeout: Duration::from_millis(500),
+        ..Default::default()
+    }));
+
+    let running = boot_full(cfg)
+        .await
+        .expect("boot with an unreachable relay");
+    let store = running.node.store.clone();
+
+    let admin = principal("user:alice", "acme", &["mcp:invite.create:call"]);
+    invite_create(
+        &store,
+        &admin,
+        "acme",
+        "sam@example.com",
+        "member",
+        "",
+        None,
+        None,
+        0,
+        100,
+    )
+    .await
+    .expect("invite.create");
+
+    // Give the relay reactor several ticks, then assert the effect was NOT acked away: it is still
+    // schedulable (failed-with-backoff), and its row records why.
+    let reader = principal("user:alice", "acme", &["mcp:outbox.due:call"]);
+    let mut attempted = None;
+    for _ in 0..100 {
+        let rows = lb_outbox::pending(&store, "acme").await.unwrap();
+        if let Some(row) = rows.into_iter().find(|e| e.attempts > 0) {
+            attempted = Some(row);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let row = attempted.expect("the relay must have attempted (and failed) the send");
+    assert_eq!(row.status, lb_outbox::EffectStatus::Failed);
+    let reason = row.last_error.as_deref().unwrap_or_default();
+    assert!(
+        reason.contains("smtp"),
+        "the failure reason must reach the row: {reason}"
+    );
+    // Still owed: `due` at a far-future `now` returns it, so no mail was silently lost.
+    let due = lb_host::outbox_due(&store, &reader, "acme", None, u64::MAX)
+        .await
+        .unwrap();
+    assert!(
+        due.iter().any(|e| e.id == row.id),
+        "an undeliverable email must stay owed, never be acked away"
     );
 }

@@ -17,10 +17,14 @@
 //! scope). They are provider-free (rule 10) and drive the outbox-sink flow node's outbound delivery
 //! plus the reminders/approval reactors.
 
+mod delivered;
+mod delivery_error;
 mod email_target;
 mod enqueue;
 mod enqueue_held;
 mod error;
+mod provider_postmark;
+mod provider_smtp;
 mod relay;
 mod relay_ops;
 mod relay_reactor;
@@ -28,13 +32,23 @@ mod router_target;
 mod status;
 mod target;
 
+pub use delivered::{delivery_check, delivery_mark, OUTBOX_DELIVERED_TABLE};
+pub use delivery_error::DeliveryError;
 pub use email_target::{
-    EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, RecordedEmail,
-    RecordingEmailProvider,
+    EmailMessage, EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, RecordedEmail,
+    RecordingEmailProvider, EMAIL_TARGET,
 };
 pub use enqueue::enqueue_outbox;
 pub use enqueue_held::enqueue_held_outbox;
 pub use error::OutboxError;
+/// The transport vocabulary a boot config needs to NAME a mailer (TLS mode, auth mechanism), re-exported
+/// so the binary that selects a transport depends on `lb-host` only — roles/binaries depend on the host,
+/// never sideways onto a leaf crate it happens to use.
+pub use lb_mail::{AuthMechanism, TlsMode};
+pub use provider_postmark::{PostmarkConfig, PostmarkEmailProvider};
+pub use provider_smtp::{
+    SmtpEmailProvider, SmtpOauthConfig, SmtpTransportConfig, DEFAULT_SEND_TIMEOUT_SECS,
+};
 pub use relay::{relay_outbox, RelayPass};
 pub use relay_ops::{outbox_due, outbox_mark_delivered, outbox_mark_failed};
 pub use relay_reactor::spawn_relay_reactors;

@@ -509,7 +509,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   node-claimed) running as a narrow per-source api-key principal, normalizing each message to the
   existing surfaces — raw `.eml` as media, body as a markdown doc, attachments through
   `docs.extract` — plus an arrival bus event; routing/tagging policy stays caller-side (rules),
-  sender allowlist/quarantine ships v1. Sending stays the outbox's job.
+  sender allowlist/quarantine ships v1. Sending stays the outbox's job — and
+  `email-transport-scope.md` was that job's missing half and is now **SHIPPED (send half, 2026-07-30,
+  issue #118)**: before it, the only non-test impl was `LoggingEmailProvider`, which logged every invite
+  email and *acked* it. Built: a `lb-mail` crate over `mail-send`/`mail-builder`, an `SmtpEmailProvider`
+  with TLS + **XOAUTH2 and token refresh** (Gmail/M365 reject passwords, so this is the whole "support
+  Gmail" story), a Postmark API impl behind the same trait, credentials by **secrets path** only —
+  resolved per send in the *effect's* workspace — boot config selecting the transport by name, and honest
+  4xx-retry/5xx-park outcome mapping, which required teaching the outbox a **permanent-failure path**
+  (a typed `DeliveryError` + `last_error` on the effect row; the relay used to discard the reason). No new
+  MCP verbs — a transport has no caller surface. See the scope's "Shipped (v1)" for the answered open
+  questions and the gaps still owed.
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
@@ -567,8 +577,20 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   config/extensions with zero core branches. `rule-raises-insight-scope.md` builds the **rule
   producer door**: a rule body raises/**acks**/**closes** an insight in one line via a new
   `insight` rhai handle over the existing verbs (no new verb, no new cap), deciding the
-  `route:false` read-only-panel suppression and the emit/alert boundary. Index:
-  `insights/README.md`.
+  `route:false` read-only-panel suppression and the emit/alert boundary. Three follow-up
+  scopes split the "more fields on an insight" ask by **who owns the field** —
+  `insight-tag-echo-scope.md` (the **dimensions**: echo the materialized tag facets onto the
+  record so a roster renders building/asset type/priority as columns from one `list` call
+  instead of an N+1 `tags.find`; a read-only projection, the graph stays the write *and*
+  filter path — **ship first**, the other two assume it), `insight-analysis-scope.md` (the
+  **producer's reasoning** — a closed, `get`-only `analysis` struct of trigger logic /
+  suspected cause / normalised metric / benchmark / deviation / estimated impact beside the
+  shipped `evidence` binding, with `deviation`/`estimated_impact` as a sortable `Quantity`
+  rather than prose), and `insight-triage-scope.md` (the **human plane** — an `assigned_to`
+  subject column + a non-evicting comment thread, `insight.assign|comment` with their own
+  member-grade caps, and the load-bearing rule that a re-raise never clears either). Per-asset
+  identity stays in `dedup_key`; the roster boundary across all three is "does a column need
+  it" — scalars and facets on `list`, payloads on `get` only. Index: `insights/README.md`.
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
   `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of
@@ -646,6 +668,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   notice) consumed by `dashboard.import` and the downstream converter. Backend-only — the typed
   option shapes/editors/renderers are the downstream consumer's UI scope (rubix-ai
   `frontend/dashboard/viz/grafana-parity-ui-scope.md`).
+  **`query-export-scope.md`** makes the 10 000-row read ceiling honest and raisable: today
+  `MAX_ROWS_PER_FRAME` (`viz.query`) and `ROW_CAP` (`federation.query`) drop rows with no way for a
+  caller to know, so an *export* is quietly wrong. Additive `truncated`/`row_limit` on the result
+  (ship first — it alone unblocks the consumer's warning) plus an optional `max_rows` on the request,
+  clamped by a `BootConfig` ceiling (`viz_export_max_rows`, default 250 000, env only at the binary
+  boundary). No new verb and **no new capability** — a bigger budget is not a bigger authority.
+  Explicitly the *interim* for `datasources/page-chaining-scope.md`; it must never grow an `offset`.
+  Consumer: rubix-ai `frontend/dashboard/data-export-scope.md`.
   **`panel-resolution-scope.md`** closes the resolution gap: `viz.query` finally consumes the
   panel's `maxDataPoints`/`minInterval` + time range (authored + carried today, then dropped),
   derives a snapped bucket width (`range/budget` — the Grafana model, not a fixed range ladder),

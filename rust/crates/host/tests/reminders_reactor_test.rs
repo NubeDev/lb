@@ -190,7 +190,7 @@ async fn outbox_firing_enqueues_a_real_effect_relayed_via_the_outbox() {
     use lb_outbox::Effect;
     struct Sink(std::sync::Mutex<Vec<String>>);
     impl lb_host::Target for Sink {
-        async fn deliver(&self, effect: &Effect) -> Result<(), String> {
+        async fn deliver(&self, effect: &Effect) -> Result<(), lb_host::DeliveryError> {
             self.0.lock().unwrap().push(effect.id.clone());
             Ok(())
         }

@@ -59,11 +59,13 @@ pub fn core_descriptors() -> Vec<NodeDescriptor> {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                        // `minimum: 5` is the reactor-sweep floor made honest (interval-source-clock
-                        // scope, Option B interim): the 5s scan is the finest cadence the engine can
-                        // serve today, so the schema refuses periods it would silently run at 5× slow.
-                        // Drops back toward 1 (then fractional) when the per-node timer (Option A) lands.
-                        "period_secs": {"type": "integer", "minimum": 5, "default": 10, "description": "how long each value is held before it flips, in seconds (10 → 10s true / 10s false). Minimum 5 — the engine's current scan resolution"},
+                        // `minimum: 1` — the per-node interval timer (interval-source-clock scope,
+                        // Phase 2 / Option A) has landed, so the 5s reactor-sweep floor is GONE: each
+                        // flip-flop owns a real timer and `period_secs: 1` means one second. The floor
+                        // is now the durable cursor's unit (whole seconds), not a deployment constant.
+                        // Sub-second (fractional) needs a millisecond cursor field AND a run-retention
+                        // policy for high-frequency sources — a 100ms oscillator is 10 real runs/sec.
+                        "period_secs": {"type": "integer", "minimum": 1, "default": 10, "description": "how long each value is held before it flips, in seconds (10 → 10s true / 10s false)"},
                         "start": {"type": "boolean", "default": true, "description": "the value emitted on the first firing"},
                         "topic": {"type": "string", "description": "the topic stamped on the firing envelope (D6)"}
                     }

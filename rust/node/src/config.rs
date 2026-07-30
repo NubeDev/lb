@@ -182,6 +182,21 @@ pub struct BootConfig {
     /// delivery config. An embedder fills these with real adapters.
     pub outbox_providers: OutboxProviders,
 
+    /// **Which mail transport this node sends through** (email-transport scope, issue #118) — an SMTP
+    /// relay, a provider API, or explicit log-only, selected *by name* so a host gets working email from
+    /// configuration alone instead of implementing a trait.
+    ///
+    /// `None` (the default) keeps prior behaviour — the relay drains through the logging provider — but
+    /// boot now **warns loudly** that every email is being dropped, because that silence is exactly what
+    /// let issue #118 live: an admin invited a colleague, the outbox drained clean, and the colleague was
+    /// never told. `Some(EmailTransport::Logging)` is the same behaviour chosen deliberately, and stays
+    /// quiet.
+    ///
+    /// [`outbox_providers.email`](OutboxProviders::email) still WINS over this: a host that handed us its
+    /// own `EmailProvider` meant it. Credentials are never in here — the config carries a secrets PATH and
+    /// an env NAME, resolved at send time in the effect's workspace. `from_env` reads `LB_MAIL_*`.
+    pub email_transport: Option<crate::mail::EmailTransport>,
+
     /// Which credential check `POST /login` runs before minting (embedder-credential-mode scope).
     /// Additive: `Default` is [`CredentialMode::DevTrustAny`] — today's `boot_full` password-less
     /// behaviour, so no existing embedder breaks. An embedder sets [`CredentialMode::PasswordHash`]
@@ -264,6 +279,9 @@ impl Default for BootConfig {
             // whose shell lb serves opts in (browser-session scope).
             browser_session: None,
             outbox_providers: OutboxProviders::default(),
+            // No mail transport by default — an embedder selects one (or hands in its own provider).
+            // Boot warns that email is being dropped; it does not crash (never strand effects).
+            email_transport: None,
             // Back-compat embed default: password-less. An embedder opts into `PasswordHash`
             // explicitly; `from_env()` (below) derives it from `LB_DEV_LOGIN` for the binary.
             credential_mode: CredentialMode::DevTrustAny,
@@ -335,6 +353,9 @@ impl BootConfig {
             // The binary configures no real delivery providers today — the relay drains through
             // the logging no-ops. Real adapters come from an embedder filling the struct.
             outbox_providers: OutboxProviders::default(),
+            // The standalone binary reads its mailer from `LB_MAIL_*` (the binary boundary is the ONE
+            // place env is read). Unset ⇒ None ⇒ the loud "email is being dropped" boot warning.
+            email_transport: crate::mail::email_transport_from_env(),
             // Mirror the standalone gateway's `credential_check_from_env`: `LB_DEV_LOGIN` set/
             // non-empty ⇒ `DevTrustAny` (password-less dev/CI), unset ⇒ `PasswordHash` (the real
             // argon2 check). This reproduces the `node` binary exactly — the binary's default is

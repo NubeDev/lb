@@ -5,7 +5,10 @@
 //! each through the [`Target`], and record the outcome — `mark_delivered` on ack, `mark_failed`
 //! otherwise. `mark_failed` applies backoff (push the next retry out) and dead-letters an effect
 //! that has exhausted `max_attempts` (a poison message stops retrying — the outbox scope's deferred
-//! backoff/dead-letter question, now answered). Kill the relay mid-pass and the next pass resumes
+//! backoff/dead-letter question, now answered). A target that reports its failure as
+//! [`permanent`](super::DeliveryError::permanent) skips the retry ladder entirely and is parked at once
+//! (`mark_dead_lettered`); either way the target's **reason is recorded on the row**, which is what makes
+//! a parked effect diagnosable instead of just "failed 5 times". Kill the relay mid-pass and the next pass resumes
 //! from the same durable set (an unmarked effect is still owed); re-delivery is safe because the
 //! target dedups on `idempotency_key`. So an effect is **never lost and never double-sent**, and a
 //! perpetually-failing one is parked rather than retried forever.
@@ -18,7 +21,7 @@
 //! scope): the outbox-sink flow node stages an effect; the generic relay reactor drives THIS loop on a
 //! tick to deliver it. The reminders + approval reactors and native extensions call it the same way.
 
-use lb_outbox::{due, mark_delivered, mark_failed, EffectStatus};
+use lb_outbox::{due, mark_dead_lettered, mark_delivered, mark_failed, EffectStatus};
 use lb_store::{Store, StoreError};
 
 use super::target::Target;
@@ -49,9 +52,22 @@ pub async fn relay_outbox<T: Target>(
                 mark_delivered(store, ws, &effect.id).await?;
                 pass.delivered += 1;
             }
-            Err(_reason) => {
-                // Failed: backoff + maybe dead-letter, recorded in one place by `mark_failed`.
-                match mark_failed(store, ws, &effect.id, now).await? {
+            Err(error) => {
+                // The target's verdict decides which transition runs — and the reason is RECORDED on
+                // the row either way. (It used to be dropped on the floor as `Err(_reason)`, which is
+                // why a dead-lettered effect could only say "failed 5 times".)
+                let status = if error.permanent {
+                    // Permanent: park it now. Retrying a `550 no such mailbox` or a revoked OAuth grant
+                    // cannot help, and the sooner the row is parked the sooner an operator sees why.
+                    tracing::warn!(
+                        effect = %effect.id, target = %effect.target, reason = %error.reason,
+                        "outbox relay: permanent delivery failure — parked without retry"
+                    );
+                    mark_dead_lettered(store, ws, &effect.id, &error.reason).await?
+                } else {
+                    mark_failed(store, ws, &effect.id, now, &error.reason).await?
+                };
+                match status {
                     EffectStatus::DeadLettered => pass.dead_lettered += 1,
                     _ => pass.failed += 1,
                 }

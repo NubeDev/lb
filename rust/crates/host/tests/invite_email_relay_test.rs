@@ -50,7 +50,7 @@ async fn invite_create_effect_delivers_through_real_relay() {
     // The REAL relay pass (what spawn_relay_reactors ticks) delivering through the real
     // EmailTarget adapter to the recording provider.
     let provider = Arc::new(RecordingEmailProvider::default());
-    let target = EmailTarget::new(Box::new(provider.clone()));
+    let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
     let pass = relay_outbox(&store, "acme", &target, 101).await.unwrap();
     assert_eq!(
         pass.delivered, 1,
@@ -73,7 +73,7 @@ async fn invite_create_effect_delivers_through_real_relay() {
 
     // Workspace wall: a ws-B relay pass never delivers ws-A's effect.
     let provider_b = Arc::new(RecordingEmailProvider::default());
-    let target_b = EmailTarget::new(Box::new(provider_b.clone()));
+    let target_b = EmailTarget::new(Box::new(provider_b.clone()), store.clone());
     let pass = relay_outbox(&store, "globex", &target_b, 103)
         .await
         .unwrap();

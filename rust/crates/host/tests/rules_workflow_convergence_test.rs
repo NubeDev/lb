@@ -479,7 +479,10 @@ struct RecordingTarget {
     fail_first: Arc<std::sync::atomic::AtomicBool>,
 }
 impl Target for RecordingTarget {
-    fn deliver(&self, effect: &Effect) -> impl Future<Output = Result<(), String>> + Send {
+    fn deliver(
+        &self,
+        effect: &Effect,
+    ) -> impl Future<Output = Result<(), lb_host::DeliveryError>> + Send {
         let delivered = self.delivered.clone();
         let fail_first = self.fail_first.clone();
         let id = effect.id.clone();

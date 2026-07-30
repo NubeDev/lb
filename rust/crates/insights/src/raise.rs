@@ -180,6 +180,12 @@ pub async fn raise(
                 first_ts: input.ts,
                 last_ts: input.ts,
                 producer: input.producer.clone(),
+                // The tag echo is NOT written here — `input.tags` is one raise's DECLARATION, and
+                // the echo must be the union across all raises, read back from the graph after the
+                // host applies them (`insight-tag-echo-scope.md` §"Resolved decisions" 2). The host
+                // layer writes it via `set_tags_echo` immediately after this call; on a dedup arm
+                // the prior echo is carried through by the `prior` clone above.
+                tags: std::collections::BTreeMap::new(),
             };
             (insight, true, IntentKind::Raise)
         }

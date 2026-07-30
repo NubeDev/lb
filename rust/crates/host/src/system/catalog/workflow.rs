@@ -53,6 +53,6 @@ pub(super) const WORKFLOW: &[HostTool] = &[
     HostTool {
         tool: "outbox.mark_failed",
         group: "outbox",
-        description: "record a delivery failure on one effect (schedules the next backoff attempt)",
+        description: "record a delivery failure on one effect with its reason (schedules the next backoff attempt; permanent:true parks it now, no retry)",
     },
 ];

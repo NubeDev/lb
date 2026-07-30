@@ -51,7 +51,7 @@ struct RecordingTarget {
     delivered: Mutex<Vec<String>>,
 }
 impl Target for RecordingTarget {
-    async fn deliver(&self, effect: &Effect) -> Result<(), String> {
+    async fn deliver(&self, effect: &Effect) -> Result<(), lb_host::DeliveryError> {
         self.delivered.lock().unwrap().push(effect.id.clone());
         Ok(())
     }

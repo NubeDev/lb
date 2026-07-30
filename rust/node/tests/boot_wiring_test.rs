@@ -32,7 +32,7 @@ const FIRST_TS_MS: u64 = 1_784_070_000_000;
 /// fails these tests. `OutboxProviders::default()` is the unconfigured embedder (the relay falls
 /// back to its logging no-ops), which is all these two properties need.
 async fn boot_wiring(node: &Arc<Node>, ws: &str) {
-    lb_node::reactors::spawn(node, ws, &OutboxProviders::default()).await;
+    lb_node::reactors::spawn(node, ws, &OutboxProviders::default(), None).await;
 }
 
 /// `n` samples STAGED for `series` — written, deliberately not drained, so the only thing that can

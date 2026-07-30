@@ -20,7 +20,7 @@ use lb_mcp::ToolDescriptor;
 use super::super::authorize::authorize_dashboard;
 use super::super::error::DashboardError;
 use super::super::model::{Cell, Dashboard, Toolbar, Variable};
-use super::super::save::dashboard_save_meta;
+use super::super::save::{dashboard_save_meta, PageMeta};
 use crate::boot::Node;
 
 use super::bind;
@@ -173,6 +173,7 @@ pub async fn dashboard_import(
         date_select: needs_picker,
         refresh_rate: has_refresh,
         share: false,
+        cached: false,
     });
 
     let dashboard = dashboard_save_meta(
@@ -181,17 +182,15 @@ pub async fn dashboard_import(
         ws,
         id,
         &title,
-        None,
-        None,
-        None,
-        timezone,
-        None,
-        toolbar,
-        None,
-        // An imported Grafana dashboard is always an ordinary board; `None` preserves the stored
-        // kind (and report bindings) on re-import so nothing is silently demoted or unbound.
-        None,
-        None,
+        // Only the two fields the Grafana JSON actually carries are set; every other page setting
+        // stays `None` — an imported board is an ordinary board, and on RE-import that preserves the
+        // stored kind, report bindings, heading and variable presentation rather than demoting or
+        // unbinding anything the author set here after the first import.
+        PageMeta {
+            timezone,
+            toolbar,
+            ..PageMeta::default()
+        },
         cells,
         variables,
         now,

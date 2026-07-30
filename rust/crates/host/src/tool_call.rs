@@ -1103,7 +1103,17 @@ async fn call_inbox_outbox_tool(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ToolError::BadInput("missing arg: id".into()))?;
             let now = input.get("now").and_then(|v| v.as_u64()).unwrap_or(0);
-            let status = outbox_mark_failed(&node.store, principal, ws, id, now)
+            // Optional on purpose: a driver that reports neither keeps exactly the old behaviour
+            // (retry with backoff, no recorded reason).
+            let reason = input
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("driver reported a failed delivery");
+            let permanent = input
+                .get("permanent")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let status = outbox_mark_failed(&node.store, principal, ws, id, now, reason, permanent)
                 .await
                 .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "status": status }))
