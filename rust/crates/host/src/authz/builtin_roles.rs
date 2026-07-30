@@ -174,6 +174,12 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:insight.watch:call",
     "mcp:insight.ack:call",
     "mcp:insight.resolve:call",
+    // Triage plane (insight-triage-scope.md): assigning an owner and leaving a note are member-ACT
+    // grade, exactly like ack/resolve — the operator who may ack a finding may say who owns it and
+    // write down what they found. They are two NARROW caps rather than one `insight.update`
+    // precisely so a producer holding only `mcp:insight.raise:call` gets zero triage write power.
+    "mcp:insight.assign:call",
+    "mcp:insight.comment:call",
     "mcp:insight.occurrences:call",
     "mcp:insight.sub.create:call",
     "mcp:insight.sub.list:call",

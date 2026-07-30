@@ -30,6 +30,49 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE FINDING NOW EXPLAINS
+ITSELF ([`insight-analysis-scope`](scope/insights/insight-analysis-scope.md), issue
+[#119](https://github.com/NubeDev/lb/issues/119) slice 2, session
+[`insight-analysis`](sessions/insights/insight-analysis-session.md)).** `evidence` said *where the
+data is*; nothing said what the producer **concluded** — that reasoning lived in free-form `body`
+(opaque, so no consumer rendered it consistently and the analyst persona sniffed JSON shapes) or in
+the one-line `title`. Shipped: **`Insight.analysis`**, an optional **closed** struct of six fields —
+`trigger_logic`, `suspected_cause`, `normalised_metric`, `benchmark_context`, `deviation`,
+`estimated_impact` — on `insight.raise`, echoed by `insight.get` and **stripped from `insight.list`**
+(the `evidence` boundary reused: six prose fields per row would bloat every roster page for data only
+the drawer reads, and `get`-only is what contains free text producers populate from anything in
+scope). Note the deliberate asymmetry with the tag echo below — the rule is *"does a column need
+it"*: tags exist to be columns, `analysis` exists to fill a drawer. `deviation`/`estimated_impact`
+are a **`Quantity`** (`{value?, unit?, note?}`), not prose, because those are the fields reports rank
+by and **prose cannot be backfilled into numbers** — a note-only quantity keeps the honest
+`"N/A (data quality)"` a bare `Option<f64>` would have forced producers to drop. Two shapes reject: a
+`value` with no `unit` (the seed of the cross-producer unit-mismatch bug) and an all-absent `{}`.
+The struct is **closed on purpose** — a seventh key is accepted and silently **dropped**, with `body`
+as the documented overflow; that is this repo's most-repeated failure mode, kept knowingly because a
+fixed vocabulary is the feature, so it is pinned by a test and named in the skill doc and the reject
+message. `suspected_cause`, never `root_cause` — a rule that saw one series has not diagnosed
+anything. Refreshes **on supply**, independently of `evidence` (omission means "leave it alone"); an
+oversize or malformed payload rejects the **whole raise** before any write, so no orphan row. **No new
+verb, no new capability, no new table**, and — verified — **no producer door needed changing**: every
+door funnels through the single `RaiseInput` deserialization in `host/src/insight/tool.rs`, so the
+rhai handle and flow sink carried the field for free. **Tests (rule 9):** `insight_analysis_test` 16
+on a real booted node (real store, real caps, the real `call_tool` bridge); mandatory deny (incl.
+real-id vs fictional-id → **identical** error) and ws-isolation; the `get`/`list` boundary asserted
+under a filter *and across a keyset page boundary*; **`value` asserted to decode as a number, not a
+stringified one** — the assertion the sortable corpus actually depends on. **Revert-check:** making
+the dedup arm unconditional turned exactly the two omit-arm tests red. **Live-verified** over the
+real `POST /mcp/call` wire on a node booted from this tree: refresh, the omit arm, both refusals
+leaving no orphan row, the unknown key dropped, and `180.0` arriving as type `"number"`. Filed rather
+than fixed inline (per the scope's decision 6):
+[`insight-prose-refresh-scope`](scope/insights/insight-prose-refresh-scope.md) — `title`/`body`
+should refresh too, which `analysis` existing is what makes indefensible (fresh reasoning above a
+firing-#1 narrative). Not verifiable here: the drawer's six labels and the *label*-level hedge on
+`suspected_cause` are a downstream `rubix-ai` change (lb is a library; the shell is out of tree).
+**Next up: slice 3, [`insight-triage-scope`](scope/insights/insight-triage-scope.md)** — `assigned_to`
++ an append-only comment thread, two new member-grade caps, and the load-bearing rule that a re-raise
+(including the re-open arm) leaves **both** untouched. It inherits slice 1's open question about
+same-key multi-source tag edges.
+
 **Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE INSIGHT ROSTER GREW ITS
 DIMENSION COLUMNS ([`insight-tag-echo-scope`](scope/insights/insight-tag-echo-scope.md), issue
 [#119](https://github.com/NubeDev/lb/issues/119) slice 1, session

@@ -264,11 +264,12 @@ pub use ingest::{
 /// the one contract every host-native `insight.*` verb routes through; each verb re-checks its
 /// own `mcp:insight.<verb>:call` gate inside.
 pub use insight::{
-    call_insight_tool, heal_insight_timestamps, insight_ack, insight_delete, insight_get,
-    insight_list, insight_occurrence_delete, insight_occurrences, insight_policy_get,
-    insight_policy_set, insight_raise, insight_resolve, insight_sub_create, insight_sub_delete,
-    insight_sub_get, insight_sub_list, insight_sub_mute, react_to_insight_digests,
-    spawn_insight_digest_reactors, subscribe_insight_events, InsightSvcError, InsightWatch,
+    call_insight_tool, heal_insight_timestamps, insight_ack, insight_assign, insight_comment,
+    insight_comments, insight_delete, insight_get, insight_list, insight_occurrence_delete,
+    insight_occurrences, insight_policy_get, insight_policy_set, insight_raise, insight_resolve,
+    insight_sub_create, insight_sub_delete, insight_sub_get, insight_sub_list, insight_sub_mute,
+    react_to_insight_digests, spawn_insight_digest_reactors, subscribe_insight_events,
+    AssignResult, InsightSvcError, InsightWatch, MAX_BULK_ASSIGN,
 };
 pub use install::install_extension;
 pub use installed::installed;

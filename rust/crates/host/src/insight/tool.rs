@@ -21,9 +21,10 @@ use serde_json::{json, Value};
 
 use super::error::InsightSvcError;
 use super::{
-    insight_ack, insight_delete, insight_get, insight_list, insight_occurrence_delete,
-    insight_occurrences, insight_policy_get, insight_policy_set, insight_raise, insight_resolve,
-    insight_sub_create, insight_sub_delete, insight_sub_get, insight_sub_list, insight_sub_mute,
+    insight_ack, insight_assign, insight_comment, insight_comments, insight_delete, insight_get,
+    insight_list, insight_occurrence_delete, insight_occurrences, insight_policy_get,
+    insight_policy_set, insight_raise, insight_resolve, insight_sub_create, insight_sub_delete,
+    insight_sub_get, insight_sub_list, insight_sub_mute,
 };
 use crate::boot::Node;
 
@@ -49,10 +50,27 @@ pub async fn call_insight_tool(
             Ok(serde_json::to_value(outcome).unwrap_or(Value::Null))
         }
         "insight.get" => {
-            let insight = insight_get(store, principal, ws, str_arg(input, "id")?)
+            let id = str_arg(input, "id")?;
+            let insight = insight_get(store, principal, ws, id)
                 .await
                 .map_err(svc_to_tool)?;
-            Ok(serde_json::to_value(insight).unwrap_or(Value::Null))
+            let Some(insight) = insight else {
+                return Ok(Value::Null);
+            };
+            let mut out = serde_json::to_value(insight).unwrap_or(Value::Null);
+            // Compose the comment thread into the record — `get` is the drawer's one round-trip
+            // (insight-triage-scope.md §"Get / list"). The thread is COMPLETE, not a recent window:
+            // comments don't evict, so there is no cursor to carry. `insight.list` never gets this.
+            let thread = insight_comments(store, principal, ws, id)
+                .await
+                .map_err(svc_to_tool)?;
+            if let Some(obj) = out.as_object_mut() {
+                obj.insert(
+                    "comments".into(),
+                    serde_json::to_value(thread).unwrap_or(Value::Null),
+                );
+            }
+            Ok(out)
         }
         "insight.list" => {
             let query: lb_insights::ListQuery = serde_json::from_value(input.clone())
@@ -87,6 +105,56 @@ pub async fn call_insight_tool(
             .await
             .map_err(svc_to_tool)?;
             Ok(json!({ "ok": true }))
+        }
+        "insight.assign" => {
+            // `id` (one) or `ids` (bulk) — the roster's checkbox gesture is bulk, and a single
+            // assign is just the one-element case, so one verb serves both.
+            let ids: Vec<String> = match input.get("ids") {
+                Some(Value::Array(arr)) => arr
+                    .iter()
+                    .map(|v| {
+                        v.as_str().map(str::to_string).ok_or_else(|| {
+                            ToolError::BadInput("every entry in `ids` must be a string".into())
+                        })
+                    })
+                    .collect::<Result<_, _>>()?,
+                Some(_) => return Err(ToolError::BadInput("`ids` must be an array".into())),
+                None => vec![str_arg(input, "id")?.to_string()],
+            };
+            // `assignee: null` CLEARS (un-assign); an absent `assignee` key is the same gesture —
+            // there is nothing else "assign with no assignee" could mean.
+            let assignee = input.get("assignee").and_then(|v| v.as_str());
+            let results = insight_assign(node, principal, ws, &ids, assignee)
+                .await
+                .map_err(svc_to_tool)?;
+            // Single-id calls answer in the singular (`{ assigned_to }`, the scope's shape); bulk
+            // answers with per-item results so 12 failures can never read as one green toast.
+            if input.get("ids").is_none() {
+                let first = results.first();
+                if let Some(r) = first {
+                    if !r.ok {
+                        return Err(ToolError::BadInput(
+                            r.error.clone().unwrap_or_else(|| "assign failed".into()),
+                        ));
+                    }
+                }
+                Ok(json!({ "assigned_to": assignee }))
+            } else {
+                Ok(json!({ "results": results }))
+            }
+        }
+        "insight.comment" => {
+            let seq = insight_comment(
+                node,
+                principal,
+                ws,
+                str_arg(input, "id")?,
+                str_arg(input, "text")?,
+                u64_arg(input, "ts")?,
+            )
+            .await
+            .map_err(svc_to_tool)?;
+            Ok(json!({ "seq": seq }))
         }
         "insight.delete" => {
             insight_delete(store, principal, ws, str_arg(input, "id")?)

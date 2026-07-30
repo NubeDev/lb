@@ -20,14 +20,19 @@ rules/flows/attention planes. Start with the umbrella; the rest compose onto it.
   `tags.find`. Echoes the materialized facet set (a value the raise path already computes for
   subscription matching and discards) onto the record, on **both** `get` and `list`. Read-only
   projection; the graph stays the write path and the filter path. **Ship this first** — the other
-  two assume it.
-- [`insight-analysis-scope.md`](insight-analysis-scope.md) — **the finding explains itself**: the
+  two assume it. **Shipped** (issue #119 slice 1); the backfill job remains open.
+- [`insight-analysis-scope.md`](insight-analysis-scope.md) — **SHIPPED** (issue #119 slice 2) — **the finding explains itself**: the
   other half of `evidence`. An optional closed `analysis` struct (trigger logic, suspected cause,
   normalised metric, benchmark context, deviation, estimated impact) so a drawer renders a stable
   labelled layout and the analyst persona reads named fields instead of sniffing `body`.
   `get`-only, refreshes on re-raise, no new cap. `deviation`/`estimated_impact` are a
   **`Quantity`** (number + unit + note), not prose — prose can't be backfilled into numbers.
-- [`insight-triage-scope.md`](insight-triage-scope.md) — **the human plane**: `assigned_to` as a
+- [`insight-prose-refresh-scope.md`](insight-prose-refresh-scope.md) — **`title`/`body` should
+  refresh on re-raise**, like every other producer-owned field. Filed by the `analysis` session per
+  that scope's resolved decision 6 (a behaviour change to shipped semantics, so filed rather than
+  fixed inline); collapses the record's three dedup classes to two — *producer refreshes, human
+  untouched*. Closes `insight-evidence-scope.md` Q1.
+- [`insight-triage-scope.md`](insight-triage-scope.md) — **NEXT UP** (issue #119 slice 3) — **the human plane**: `assigned_to` as a
   column (subjects incl. `team:`, filterable `"me"`/`"none"`, bulk assign) + an append-only
   comment thread, via `insight.assign`/`insight.comment` with their own member-grade caps.
   Decides the load-bearing dedup rule — a re-raise, including a re-open, never touches either —

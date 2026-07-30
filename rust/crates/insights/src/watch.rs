@@ -27,6 +27,14 @@ pub enum EventKind {
     Ack,
     /// An insight was resolved.
     Resolve,
+    /// An insight's owner changed — assigned, re-assigned, or un-assigned
+    /// (insight-triage-scope.md). Rides this EXISTING subject rather than a triage-specific one: a
+    /// roster page already holds this stream open, and a second subject per feature is the SSE-pool
+    /// mistake (one stream per surface, not per feature).
+    Assign,
+    /// A comment was appended to an insight's thread. The payload stays lite — a live drawer
+    /// re-reads `insight.get` for the text; the bus only says "something was said".
+    Comment,
 }
 
 /// The event payload published on `event_subject(ws)`. Lite — the UI fetches the full record via

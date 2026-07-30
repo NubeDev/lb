@@ -16,6 +16,7 @@
 
 use lb_store::{new_ulid, write, Store};
 
+use crate::analysis::{validate_analysis, Analysis};
 use crate::error::InsightsError;
 use crate::evidence::{validate_evidence_size, Evidence};
 use crate::insight::{Insight, OCC_TABLE};
@@ -55,6 +56,13 @@ pub struct RaiseInput {
     /// **overwrites** any stored evidence, and when absent the stored value is left alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Evidence>,
+    /// The producer's reasoning about the finding (`insight-analysis-scope.md`). Optional; when
+    /// present it **overwrites** any stored analysis, and when absent the stored value is left
+    /// alone. Refreshes independently of `evidence` — omission means "unchanged" for each, and a
+    /// producer that changes its query but not its prose is a producer bug, not a reason to couple
+    /// two fields whose lifetimes are unrelated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis: Option<Analysis>,
     pub origin: Origin,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub tags: std::collections::BTreeMap<String, String>,
@@ -125,6 +133,11 @@ pub async fn raise(
     if let Some(ev) = &input.evidence {
         validate_evidence_size(ev)?;
     }
+    // And for the analysis object — shape (a `value` needs a `unit`; an all-absent `Quantity` is
+    // refused) plus the whole-object cap, all before any write.
+    if let Some(an) = &input.analysis {
+        validate_analysis(an)?;
+    }
 
     let existing = dedup_lookup(store, ws, &input.dedup_key).await?;
     let (insight, created, kind) = match existing {
@@ -144,10 +157,29 @@ pub async fn raise(
             if input.evidence.is_some() {
                 prior.evidence = input.evidence.clone();
             }
+            // `analysis` refreshes on the same on-supply rule, for a stronger reason than evidence
+            // had: these fields exist to describe the CURRENT state of the finding, so a deviation
+            // of "-100%" computed at firing #1 sitting beside `count: 47` is worse than absent. An
+            // omitting raise leaves the stored value alone — the two fields refresh independently.
+            // SCOPE: docs/scope/insights/insight-analysis-scope.md §"Resolved decisions" (1, 4)
+            if input.analysis.is_some() {
+                prior.analysis = input.analysis.clone();
+            }
             let reopened = prior.status == Status::Resolved;
             if reopened {
                 // A resolved insight firing again re-opens (count continues). Status → open; the
                 // prior resolver/ts are cleared (a fresh open lifecycle).
+                //
+                // DO NOT clear `assigned_to` here, and do not touch the comment thread. This is the
+                // single most revert-prone line in the record: it looks inconsistent (we just
+                // cleared two other nullable fields) and it is not. `status_by`/`status_ts` describe
+                // the LIFECYCLE that just ended, so a fresh open discards them; `assigned_to` and
+                // the thread are HUMAN FACTS about the finding — the fault came back and it is still
+                // Priya's, and the note explaining last time's false alarm is the most valuable
+                // thing on this record at exactly this moment. Clearing them here is how a flapping
+                // sensor silently un-assigns the technician who took the job.
+                // SCOPE: docs/scope/insights/insight-triage-scope.md §"Intent / approach"
+                //        ("The dedup rule is the load-bearing decision") + §"Testing plan" §1
                 prior.status = Status::Open;
                 prior.status_by = None;
                 prior.status_ts = None;
@@ -172,10 +204,16 @@ pub async fn raise(
                 title: input.title.clone(),
                 body: input.body.clone(),
                 evidence: input.evidence.clone(),
+                analysis: input.analysis.clone(),
                 origin: input.origin.clone(),
                 status: Status::Open,
                 status_by: None,
                 status_ts: None,
+                // A brand-new finding is unassigned — it lands in the triage queue
+                // (`insight.list { assigned_to: "none" }`) for a human to pick up. There is
+                // deliberately no `assigned_to` on `RaiseInput`: a producer cannot reach the human
+                // triage plane at all (insight-triage-scope.md §"Intent / approach").
+                assigned_to: None,
                 count: 1,
                 first_ts: input.ts,
                 last_ts: input.ts,

@@ -39,6 +39,16 @@ pub(super) const INSIGHT: &[HostTool] = &[
         description: "resolve an insight (* → resolved; idempotent)",
     },
     HostTool {
+        tool: "insight.assign",
+        group: "insight",
+        description: "assign/re-assign/un-assign an insight's owner (subject: user: or team:; bulk via ids, max 100)",
+    },
+    HostTool {
+        tool: "insight.comment",
+        group: "insight",
+        description: "append a comment to an insight's thread (author host-stamped; append-only, never evicted)",
+    },
+    HostTool {
         tool: "insight.delete",
         group: "insight",
         description: "hard-delete an insight and cascade its occurrence ring (idempotent)",

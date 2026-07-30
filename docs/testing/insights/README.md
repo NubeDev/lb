@@ -229,6 +229,52 @@ curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{"tags":{"a
   it is denied at the `insight.raise` line even though the body is valid. `insight.close` maps to the
   **`insight.resolve`** verb/cap (hold `mcp:insight.resolve:call`, not `…close…`).
 
+### 2.5b `analysis` — the producer's reasoning, and the roster/drawer split
+
+```bash
+# raise WITH reasoning. Both quantities note-only: the producer computed no number and said WHY.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.raise","args":{
+  "dedup_key":"rule:no-water-1d:WM-CHU-01","severity":"warning",
+  "title":"Chullora — no water usage in 1 day",
+  "origin":{"kind":"rule","ref":"rule:no-water-1d"},
+  "tags":{"building":"chullora-dc","asset_type":"water-meter"},
+  "analysis":{"trigger_logic":"Zero water consumption for 24 consecutive hours",
+    "suspected_cause":"Meter offline or site unoccupied (weekend)",
+    "normalised_metric":"Daily water usage (kL)",
+    "benchmark_context":"vs expected minimum baseline",
+    "deviation":{"note":"N/A"},"estimated_impact":{"note":"N/A (data quality)"}},
+  "ts":1719800000000}}'
+
+# THE BOUNDARY — get carries the reasoning, list does NOT (but list DOES carry the tag echo):
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.get","args":{"id":"01K…"}}'  | jq '.analysis'
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{"limit":10}}' \
+  | jq '.items[0] | {tags, analysis: (.analysis // "ABSENT")}'
+# → {"tags":{"asset_type":"water-meter","building":"chullora-dc"},"analysis":"ABSENT"}
+
+# REFRESH — the rule learns a real baseline and re-raises; the drawer must stop showing "N/A"
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.raise","args":{
+  "dedup_key":"rule:no-water-1d:WM-CHU-01","severity":"warning","title":"…",
+  "origin":{"kind":"rule","ref":"rule:no-water-1d"},
+  "analysis":{"deviation":{"value":-100.0,"unit":"%"},
+              "estimated_impact":{"value":180.0,"unit":"AUD/day"}},"ts":1719800900000}}'
+curl -s … insight.get … | jq '.analysis.estimated_impact.value | type'   # → "number", NOT "string"
+
+# THE REFUSALS — each rejects the WHOLE raise before any write
+… "analysis":{"deviation":{"value":-100.0}}              # → BadInput: value requires a unit
+… "analysis":{"trigger_logic":"<5000 chars>"}            # → BadInput: …4096-byte cap … in `body`
+… "analysis":{"trigger_logic":"ok","confidence":0.9}     # → OK, and `confidence` is DROPPED
+```
+
+**Observe:** `analysis` is `get`-only while the `tags` echo rides `list` — the rule is *"does a column
+need it"*, not *"is it on the record"*. Check the boundary **under a filter and across a page
+boundary** too, not just on an unfiltered first page. `estimated_impact.value` must arrive as a JSON
+**number**: the whole point of the `Quantity` type is that a report can rank by it, and that dies
+silently if a producer's encoder quotes it. A re-raise **supplying** `analysis` overwrites; one
+**omitting** it leaves the stored value alone (and does not disturb `evidence`, which refreshes
+independently). After each refusal, `insight.list` must show **no orphan row**. The closed-struct
+**drop** is by design — a seventh key never errors and never stores, and `body` is the overflow; if a
+field you set is missing from `get`, that is why.
+
 ### 2.6 Live feed — `insight.watch` (SSE)
 
 ```bash

@@ -52,9 +52,9 @@ Capabilities — one per verb: `mcp:insight.raise:call` (producer-grade write),
 
 | Verb | Args | Result |
 |---|---|---|
-| `insight.raise` | `dedup_key, severity, title, body?, origin, tags?, occurrence?, ts` | `{id, status, count, created, reopened, dedup_key, severity, kind}` (idempotent on `(ws, dedup_key)`) |
-| `insight.get` | `id` | the full record (incl. `evidence` + the `tags` echo) |
-| `insight.list` | `status?, severity?, origin_ref?, tags?, range?, cursor?, limit?` | `{items:[Insight], next?}` (newest-first, keyset-paged; rows carry the `tags` echo, not `evidence`) |
+| `insight.raise` | `dedup_key, severity, title, body?, origin, tags?, occurrence?, evidence?, analysis?, ts` | `{id, status, count, created, reopened, dedup_key, severity, kind}` (idempotent on `(ws, dedup_key)`) |
+| `insight.get` | `id` | the full record (incl. `evidence`, `analysis`, + the `tags` echo) |
+| `insight.list` | `status?, severity?, origin_ref?, tags?, range?, cursor?, limit?` | `{items:[Insight], next?}` (newest-first, keyset-paged; rows carry the `tags` echo, **not** `evidence`/`analysis`) |
 | `insight.ack` | `id, ts` | `{ok:true}` (`open → acked`) |
 | `insight.resolve` | `id, note?, ts` | `{ok:true}` (`* → resolved`, idempotent) |
 | `insight.occurrences` | `insight_id, cursor?, limit?` | `{items:[Occurrence], next?}` (newest-first ring) |
@@ -72,6 +72,37 @@ Capabilities — one per verb: `mcp:insight.raise:call` (producer-grade write),
   monotone value. The gateway REST routes inject `gw.now()` so the browser passes none.
 - **No `update`/`delete` in v1** — it's an operational record; correction = resolve + raise; purge
   is the retention follow-up's admin batch job.
+- **`evidence`** is the finding's *data* binding (datasource + plottable series + threshold/window) —
+  a descriptor the node never executes. **`analysis`** is the producer's *reasoning* (§3b below).
+  Both are `get`-only and both **refresh on supply**, independently of each other.
+
+### The six `analysis` fields (and the closed-struct rule)
+
+`analysis` is the producer's own explanation, structured so every consumer renders the same labels in
+the same order and an agent can name them:
+
+| Field | What it says | Example |
+|---|---|---|
+| `trigger_logic` | why it fired, in the producer's words | `"Zero water consumption for 24 consecutive hours"` |
+| `suspected_cause` | the **hypothesis** — never a diagnosis | `"Meter offline or site unoccupied (weekend)"` |
+| `normalised_metric` | the metric judged | `"Daily water usage (kL)"` |
+| `benchmark_context` | what it was compared against | `"vs expected minimum baseline"` |
+| `deviation` | how far off — a `Quantity` | `{value: -100.0, unit: "%", note: "vs 1.8 kL baseline"}` |
+| `estimated_impact` | consequence if unaddressed — a `Quantity` | `{value: 180.0, unit: "AUD/day"}` |
+
+**⚠ The struct is CLOSED. A seventh key is accepted and SILENTLY DROPPED — put anything else in
+`body`.** That is deliberate (a fixed vocabulary is the whole feature, and a free map would give every
+producer a private one), but it means a field you invent will never error and never store. `body` is
+the documented overflow.
+
+A **`Quantity`** is `{value?, unit?, note?}` and exists so findings can be *ranked* ("show me today's
+findings by cost"). Three legal shapes: note-only (`{note: "N/A (data quality)"}` — the honest "we
+considered it and it doesn't apply", which a bare number would force you to drop), `value` + `unit`,
+or all three. Two are **refused**: a `value` with no `unit` (an uninterpretable number that breaks the
+cross-finding aggregation the type exists for) and an all-absent `{}` (which says less than omitting
+the field). `unit` is free text — a consumer summing across producers must **group by `unit`** and
+refuse to add unlike units, since nothing stops one rule writing `"AUD/day"` and another `"$/day"`.
+`suspected_cause` is named to hedge; a UI must carry that hedge in the **label** too.
 
 ## 3. Raise → dedup → list → ack → resolve
 
@@ -97,6 +128,28 @@ curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.raise","args":{
   "dedup_key":"fraud:card-4421","severity":"critical","title":"score above threshold",
   "origin":{"kind":"rule","ref":"rule:scorer"},"ts":1719800001000}}'
 # → {"id":"01H…"(same),"count":2,"created":false,…}
+
+# 2b. a raise carrying its own REASONING — the drawer renders these six labels; the roster never
+#     sees them. `deviation`/`estimated_impact` are Quantities so a report can RANK by the number.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.raise","args":{
+  "dedup_key":"rule:no-water-1d:WM-CHU-01",
+  "severity":"warning",
+  "title":"Chullora — no water usage in 1 day",
+  "origin":{"kind":"rule","ref":"rule:no-water-1d"},
+  "tags":{"building":"chullora-dc","asset_type":"water-meter"},
+  "analysis":{
+    "trigger_logic":"Zero water consumption for 24 consecutive hours",
+    "suspected_cause":"Meter offline or site unoccupied (weekend)",
+    "normalised_metric":"Daily water usage (kL)",
+    "benchmark_context":"vs expected minimum baseline",
+    "deviation":{"value":-100.0,"unit":"%","note":"vs 1.8 kL baseline"},
+    "estimated_impact":{"value":180.0,"unit":"AUD/day"}},
+  "ts":1719800000000}}'
+# → {"id":"01K…","count":1,"created":true,…}
+# A re-raise SUPPLYING analysis overwrites it (so a rule that learns a real baseline heals the
+# drawer); a re-raise OMITTING it leaves the stored reasoning alone. Refuses: a `value` with no
+# `unit`, an empty `{}` quantity, and an analysis over 4 KB — each rejects the WHOLE raise before
+# any write, so there is never an orphan record.
 
 # 3. list — open critical insights, keyset-paged. Rows carry their TAG ECHO, so a roster renders
 #    dimension columns from THIS call alone — no follow-up tags.find, no tags cap needed.
@@ -242,6 +295,14 @@ A user opens the dock on the Insights page and asks "why is AHU-2 hunting?" — 
 via `insight.get` → `series.read`/`federation.query` → `rules.get`, under `persona ∩ agent ∩ caller`.
 The persona is grounded by this `core.insights` skill.
 
+**Read `analysis` by name; do not paraphrase `body`.** When `insight.get` returns an `analysis`, the
+producer has already stated its trigger logic, hypothesis, metric, benchmark, deviation, and impact —
+answer from those named fields rather than sniffing the shape of free-form `body` JSON. Two rules when
+relaying it: `suspected_cause` is a **hypothesis**, so hedge it in the answer ("the rule suspects…")
+rather than reporting it as a diagnosis a site visit can skip; and `estimated_impact` is an
+unfalsifiable producer claim with no provenance on the record — attribute it ("the rule estimates
+$180/day"), never assert it as measured. When `analysis` is absent, `body` is still the fallback.
+
 ## Gotchas
 
 - **The record's `tags` are an ECHO — read-only, and the graph is the write path.** Every insight
@@ -254,6 +315,17 @@ The persona is grounded by this `core.insights` skill.
   **filtering never trusts it**: `insight.list {tags}` resolves through the graph. An echo over
   2 KB is skipped whole with a warning rather than truncated. A record raised before the echo
   shipped has none until it next fires — render that as "no dimensions", not as empty truth.
+- **`analysis` is a CLOSED struct — a seventh field is dropped without an error.** The six names are
+  the contract (§"The six `analysis` fields"); `body` is the overflow. This is the platform's
+  most-repeated failure mode, kept deliberately here because a fixed vocabulary is the point — so if
+  a field you set never appears in `get`, it is not in the struct, and no error will ever tell you.
+- **Three dedup behaviours coexist on one record.** A re-raise refreshes the *producer-owned*
+  projections (`severity`, `evidence`, `analysis`, the `tags` echo) **on supply** — omission means
+  "leave it alone", never "blank it". It freezes `title`/`body` (first-raise-wins — a known
+  inconsistency with a filed follow-up, `scope/insights/insight-prose-refresh-scope.md`). And it will
+  leave *human* facts untouched entirely once triage ships. When reading a long-lived finding, know
+  which class each field is in: the reasoning describes the latest firing, the narrative may describe
+  the first.
 - **Identity lives in `dedup_key`/`body`, NEVER the title or tags.** Tags are low-cardinality
   dimensions (site/equip/kind/rule-name) — per-transaction/card identities as tag values blow the
   tag-node cap. `dedup_key: "fraud:card-4421"`, not `tags: {card: "4421"}`.

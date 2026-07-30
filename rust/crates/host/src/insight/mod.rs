@@ -13,6 +13,8 @@
 //!   - `insight.list` ([`insight_list`]) — faceted, keyset-paged newest-first.
 //!   - `insight.ack` ([`insight_ack`]) — `open → acked` (status_by host-forced).
 //!   - `insight.resolve` ([`insight_resolve`]) — `* → resolved` (idempotent).
+//!   - `insight.assign` ([`insight_assign`]) — the triage OWNER axis (assignee validated, bulk-capable).
+//!   - `insight.comment` ([`insight_comment`]) — append to the thread (author host-forced).
 //!   - `insight.delete` ([`insight_delete`]) — hard-delete an insight + cascade its ring (idempotent).
 //!   - `insight.occurrences` ([`insight_occurrences`]) — read the per-insight occurrence ring.
 //!   - `insight.occurrence.delete` ([`insight_occurrence_delete`]) — delete one ring row (idempotent).
@@ -24,6 +26,10 @@
 //! reactor follows the flows/reminders owner-election precedent; both are stubbed).
 
 mod ack;
+mod assign;
+mod assignee;
+mod comment;
+mod comments;
 mod delete;
 mod error;
 mod get;
@@ -43,9 +49,13 @@ mod sub_get;
 mod sub_list;
 mod sub_mute;
 mod tool;
+mod triage_event;
 mod watch;
 
 pub use ack::insight_ack;
+pub use assign::{insight_assign, AssignResult, MAX_BULK_ASSIGN};
+pub use comment::insight_comment;
+pub use comments::insight_comments;
 pub use delete::insight_delete;
 pub use error::InsightSvcError;
 pub use get::insight_get;

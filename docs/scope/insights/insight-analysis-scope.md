@@ -1,6 +1,8 @@
 # Insights scope — `analysis`: the finding explains itself
 
-Status: scope (the ask). Promotes to `doc-site/content/public/insights/` once shipped.
+Status: **shipped** (2026-07-30, issue #119 slice 2). Session:
+[`sessions/insights/insight-analysis-session.md`](../../sessions/insights/insight-analysis-session.md).
+Public: [`doc-site/content/public/insights/insights.md`](../../../doc-site/content/public/insights/insights.md).
 
 The shipped `evidence` field says **where the data is** — datasource, plottable series,
 threshold, window. It does not say **what the producer concluded**: why this rule fired, what
@@ -351,8 +353,35 @@ Stated here rather than as open questions, so the implementing session has no am
    the field — a persona still reasoning over `body` while named fields exist is the stale-skill
    finding `SCOPE-WRITTING` §6 warns about, not a nicety.
 
+## Open questions after building
+
+All seven resolved decisions held as written; decision 3's drop and decision 4's independence are
+pinned by tests, and the dedup arm is **revert-checked**. Three notes the scope did not anticipate:
+
+1. **The guard is `validate_analysis`, not `validate_analysis_size`.** Two of the scope's demanded
+   rejections (test §1a) are *shape* rules, not size — a `value` with no `unit`, and an all-absent
+   `Quantity`. One guard enforces both plus the cap, called once at the raise boundary; the `_size`
+   name would have lied about what it checks. **Closed** (a naming decision, made and recorded).
+2. **The producer doors needed no change at all.** Every door — the rhai handle, the flow sink, the
+   MCP verb — funnels through the single `RaiseInput` deserialization in
+   `host/src/insight/tool.rs:44`, so `analysis` reached all of them for free. The scope's
+   "SDK/WIT impact: none" claim held literally, and `rule-raises-insight-scope.md`'s "must carry
+   `analysis` through unchanged" needed no work. **Closed.**
+3. **Scope §7's drawer check cannot be done in this repo.** The six-label layout, and the hedge in
+   the *label* ("Suspected cause") that §Risks says must not evaporate, are a downstream `rubix-ai`
+   change — lb is a library and the shell is out-of-tree (`MIGRATION.md`). The live run verified the
+   field arrives at the consumer boundary with the right shape (incl. `value` decoding as a number
+   over the wire), which is as far as this repo reaches. **Open downstream**, not open here.
+
+Decision 6 is discharged by **filing** [`insight-prose-refresh-scope.md`](insight-prose-refresh-scope.md)
+rather than fixing `title`/`body` inline, as instructed.
+
 ## Related
 
+- **The follow-up this scope creates:**
+  [`insight-prose-refresh-scope.md`](insight-prose-refresh-scope.md) — `title`/`body` should refresh
+  on re-raise. Filed by the implementing session per resolved decision 6; `analysis` existing is what
+  makes the old first-raise-wins behaviour indefensible.
 - Parent: [`insights-scope.md`](insights-scope.md) (the record, the tag rule, §"MCP surface")
 - **Direct sibling / the other half:** [`insight-evidence-scope.md`](insight-evidence-scope.md)
   — the data binding this reasoning sits beside; its size-guard, `get`-vs-`list` boundary,

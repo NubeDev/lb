@@ -320,7 +320,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   only append tombstones, so bytes (and next-boot replay) grow until restart (measured: ~65× bloat,
   13–14s boot). Ships `store.status` observability first; the compaction pass itself is a
   spike-decided handle-swap job behind the session mutex, with supervised restart-to-compact as the
-  honest fallback. `core/` also holds
+  honest fallback. `store/` also holds `disk-budget-scope.md` — the **byte** half of growth
+  bounding: everything shipped bounds *rows* (retention horizons, `max_samples`, `capped_insert`),
+  nothing knows how many bytes are on disk, and the one byte-level signal is a hardcoded warn-only
+  256 MiB const. Three slices: `LB_STORE_MAX_BYTES` on `BootConfig` (the operator states the
+  allowance, `None` ⇒ today's behaviour), the store-admin reactor auto-enqueueing the existing
+  `store.compact` job at a soft mark instead of only warning (reverses `online-compaction` OQ5),
+  and bounded-by-default series + `ingest_dead_letter` retention. Refusing writes at a hard ceiling
+  is deliberately deferred. `core/` also holds
   `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
   + a runnable `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs
   all speak one grammar the palette and `lb` CLI render mechanically; renames the outliers
@@ -590,7 +597,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   subject column + a non-evicting comment thread, `insight.assign|comment` with their own
   member-grade caps, and the load-bearing rule that a re-raise never clears either). Per-asset
   identity stays in `dedup_key`; the roster boundary across all three is "does a column need
-  it" — scalars and facets on `list`, payloads on `get` only. Index: `insights/README.md`.
+  it" — scalars and facets on `list`, payloads on `get` only. The first two are **shipped**
+  (issue #119 slices 1–2); triage is next. Shipping `analysis` filed
+  `insight-prose-refresh-scope.md` — `title`/`body` should **refresh on re-raise** like every
+  other producer-owned field, collapsing the record's three dedup classes to two (*producer
+  refreshes, human untouched*) and closing the evidence scope's Q1. Index: `insights/README.md`.
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
   `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of

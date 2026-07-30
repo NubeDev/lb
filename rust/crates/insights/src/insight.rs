@@ -13,6 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::analysis::Analysis;
 use crate::evidence::Evidence;
 use crate::origin::Origin;
 use crate::severity::Severity;
@@ -53,6 +54,22 @@ pub struct Insight {
     /// disclosure the narrower read already implies).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Evidence>,
+    /// The producer's own REASONING about this finding — why it fired, the metric judged, the
+    /// benchmark, the deviation, the estimated impact (`insight-analysis-scope.md`). The statement
+    /// beside `evidence`'s data binding; a closed struct so every consumer renders the same labels.
+    ///
+    /// Optional and additive: absent on every record written before the field landed and on every
+    /// producer that states none. **Refreshed on every raise that supplies one** (like `evidence`,
+    /// and for a stronger reason: a deviation of "-100%" from firing #1 displayed beside
+    /// `count: 47` is actively misleading — worse than absent). A raise that omits it leaves the
+    /// stored value alone.
+    ///
+    /// Echoed by `insight.get`; **omitted by `insight.list`** — the same boundary `evidence` holds,
+    /// for the same two reasons: six prose fields per row would bloat every page of a roster for
+    /// data only the drawer uses, and that `get`-only boundary is what contains the free text
+    /// producers will populate from anything in scope (site names, occupancy, tenant behaviour).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis: Option<Analysis>,
     /// Producer provenance — what raised it, from which run.
     pub origin: Origin,
     /// The lifecycle status.
@@ -63,6 +80,28 @@ pub struct Insight {
     /// Logical timestamp of the last status transition (no wall-clock — testing §3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_ts: Option<u64>,
+    /// Who OWNS this finding — the human triage plane's one axis
+    /// (`insight-triage-scope.md`). A **subject, not a user id**: `user:priya` or
+    /// `team:mechanical` are both legal, the same discipline [`Insight::status_by`] has, so
+    /// queue-style ownership ("the mechanical crew owns this") works without a breaking read-side
+    /// change later. `None` = unassigned (the triage queue's primary view).
+    ///
+    /// **Untouched by `raise`, forever.** This is neither producer-owned (like `title`/`body`,
+    /// first-raise-wins) nor transition-owned (like `status_by`): it is a *human fact about the
+    /// finding*, so there is no `assigned_to` on `RaiseInput` and no arm of the raise path may set,
+    /// clear, or read it. A flapping sensor re-raising every 15 minutes must never silently
+    /// un-assign the technician who took the job — **including on the re-open arm**, where
+    /// `status_by`/`status_ts` DO clear: the fault came back and it is still Priya's.
+    ///
+    /// Echoed by **both** `insight.get` and `insight.list` (the owner column) — the tag-echo
+    /// boundary, not the `evidence` one: the rule is "does a roster column need it", and this is the
+    /// 6th column operators ask for. The comment thread stays `get`-only for the opposite reason.
+    ///
+    /// A subject outlives its membership: an insight assigned to a removed member keeps the stale
+    /// subject (resolved decision 3) and a UI must render an unresolvable assignee as
+    /// "unknown (removed)" rather than blank, so an orphaned queue is visible instead of empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_to: Option<String>,
     /// Lifetime raise count (monotone — may exceed the occurrence ring's stored rows).
     pub count: u64,
     /// Logical timestamp of the first raise (monotone per insight).

@@ -12,6 +12,7 @@
 use lb_store::{delete as store_delete, Store};
 use serde_json::Value;
 
+use crate::comment::TABLE as COMMENT_TABLE;
 use crate::error::InsightsError;
 use crate::insight::OCC_TABLE;
 use crate::insight_id::record_id;
@@ -31,6 +32,22 @@ pub async fn delete(store: &Store, ws: &str, id: &str) -> Result<(), InsightsErr
             "DELETE FROM type::table($tb) WHERE insight_id = $iid",
             vec![
                 ("tb".into(), Value::String(OCC_ROW_TABLE.to_string())),
+                ("iid".into(), Value::String(id.to_string())),
+            ],
+        )
+        .await?;
+    // Cascade the comment thread on the same argument, and for one more: comments are retained for
+    // the LIFE OF THE INSIGHT and purged only WITH it (insight-triage-scope.md, resolved decision 4)
+    // — they have no retention schedule of their own, so if the parent's delete didn't take them,
+    // nothing ever would and human notes would accumulate as orphans outside every sweep. Comment
+    // rows are `write`-based (a `data` envelope), so the filter is `data.insight_id` — unlike the
+    // flat `capped_insert` occurrence rows above.
+    store
+        .query_ws(
+            ws,
+            "DELETE FROM type::table($tb) WHERE data.insight_id = $iid",
+            vec![
+                ("tb".into(), Value::String(COMMENT_TABLE.to_string())),
                 ("iid".into(), Value::String(id.to_string())),
             ],
         )

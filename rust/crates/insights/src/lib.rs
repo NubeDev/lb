@@ -22,6 +22,11 @@
 //! `docs/sessions/insights/insights-scaffold-session.md` for the punch-list.
 
 mod ack;
+mod analysis;
+mod assign;
+mod comment;
+mod comment_append;
+mod comments;
 mod delete;
 mod error;
 mod evidence;
@@ -60,6 +65,13 @@ mod insight;
 mod insight_id;
 
 pub use ack::ack;
+pub use analysis::{validate_analysis, Analysis, Quantity, MAX_ANALYSIS_BYTES};
+pub use assign::assign;
+pub use comment::{
+    validate_comment, Comment, MAX_COMMENTS_PER_INSIGHT, MAX_COMMENT_BYTES, TABLE as COMMENT_TABLE,
+};
+pub use comment_append::append_comment;
+pub use comments::comments;
 pub use delete::delete;
 pub use error::InsightsError;
 pub use evidence::{
@@ -69,7 +81,9 @@ pub use evidence::{
 pub use get::get;
 pub use intent::{Intent, IntentKind};
 pub use ladder::{ladder_step, Delivery, DeliveryReason, LadderInput, Level, WindowAccumulator};
-pub use list::{list, ListFilter, ListPage, ListQuery, PageCursor};
+pub use list::{
+    list, AssigneeFilter, ListFilter, ListPage, ListQuery, PageCursor, ASSIGNEE_ME, ASSIGNEE_NONE,
+};
 pub use match_subs::{match_subs, InsightView};
 pub use notify_apply::apply_intents;
 pub use notify_state::NotifyState;
