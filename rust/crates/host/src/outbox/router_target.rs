@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use lb_outbox::Effect;
 
+use super::delivery_error::DeliveryError;
 use super::target::Target;
 
 /// A dyn-compatible twin of [`Target`] (whose `deliver` returns `impl Future`, so `dyn Target`
@@ -25,7 +26,7 @@ pub trait DynTarget: Send + Sync {
     fn deliver_dyn<'a>(
         &'a self,
         effect: &'a Effect,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(), DeliveryError>> + Send + 'a>>;
 }
 
 impl<T> DynTarget for T
@@ -35,7 +36,7 @@ where
     fn deliver_dyn<'a>(
         &'a self,
         effect: &'a Effect,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), DeliveryError>> + Send + 'a>> {
         Box::pin(self.deliver(effect))
     }
 }
@@ -70,14 +71,19 @@ impl Target for RouterTarget {
     fn deliver(
         &self,
         effect: &Effect,
-    ) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    ) -> impl std::future::Future<Output = Result<(), DeliveryError>> + Send {
         async move {
             match self.routes.get(&effect.target) {
                 Some(t) => t.deliver_dyn(effect).await,
-                None => Err(format!(
+                // No route ⇒ TRANSIENT, deliberately, even though boot's route table never grows: an
+                // effect for a *sidecar-driven* target (`relay_ops`: the driver pulls its own effects
+                // via `outbox.due` and marks them itself) has no in-process route by design. Failing it
+                // permanently on the first tick would kill effects that were never this router's to
+                // deliver. So it keeps the pre-existing posture — retry, then dead-letter with a reason.
+                None => Err(DeliveryError::transient(format!(
                     "no delivery adapter registered for target '{}'",
                     effect.target
-                )),
+                ))),
             }
         }
     }

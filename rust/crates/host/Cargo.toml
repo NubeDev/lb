@@ -29,6 +29,10 @@ lb-telemetry.workspace = true
 lb-undo.workspace = true
 lb-viz.workspace = true
 grafana-map.workspace = true
+# The mail transport (email-transport scope, issue #118): the SMTP/MIME half of the real
+# `EmailProvider` impls in `outbox/provider_*.rs`. Core depends on a TRANSPORT, never on a named
+# provider service — the provider is still selected by boot config behind the trait.
+lb-mail.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
 # The pure half of the domain-pack engine (packs scope): manifest shape, object plan, checksums,

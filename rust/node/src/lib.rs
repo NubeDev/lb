@@ -18,6 +18,7 @@ pub mod config;
 // The ritual's verbs (folder-of-verbs per FILE-LAYOUT). `pub` so an advanced embedder can compose a
 // custom ritual, but the supported entry point is `boot_full`.
 pub mod hello_demo;
+pub mod mail;
 pub mod reactors;
 pub mod seed_identity;
 pub mod seeds;
@@ -73,8 +74,11 @@ pub use lb_host::enqueue_outbox;
 /// can reference them instead of carrying them.
 pub use lb_host::{get_asset, put_asset, Asset, AssetError, MAX_ASSET_BYTES};
 /// The outbox delivery contract an embedder implements to register a target on
-/// [`BootConfig::outbox_providers`]'s `targets` list, plus the effect it is handed.
-pub use lb_host::{DynTarget, OutboxEffect, Target};
+/// [`BootConfig::outbox_providers`]'s `targets` list, plus the effect it is handed and the error it
+/// returns. [`DeliveryError`](lb_host::DeliveryError) converts `From<String>`/`From<&str>` into its
+/// **retryable** form, so an embedder's target keeps its existing behaviour by changing only the
+/// signature; it opts into "park this now, do not retry" with `DeliveryError::permanent`.
+pub use lb_host::{DeliveryError, DynTarget, OutboxEffect, Target};
 
 /// Mint a short-lived session token for a real principal — see
 /// [`RunningNode::mint_service_session`], which is the ergonomic form and the one to prefer.

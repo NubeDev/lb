@@ -14,8 +14,10 @@ use serde_json::json;
 use super::error::InviteError;
 use super::token::{generate_token, hash_token};
 
-/// The outbox target string for email delivery (the `Target` adapter matches on this).
-pub const EMAIL_TARGET: &str = "email";
+/// The outbox target string for email delivery — owned by the target that matches on it
+/// (`outbox/email_target.rs`), re-exported here because this is where it is *enqueued* and callers
+/// import it from both places. One definition, so an enqueue and a route can never drift apart.
+pub use crate::outbox::EMAIL_TARGET;
 
 /// The outbox action for an invite email.
 pub const EMAIL_ACTION: &str = "send_invite";

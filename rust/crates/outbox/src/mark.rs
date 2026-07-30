@@ -27,23 +27,31 @@ pub async fn mark_delivered(store: &Store, ws: &str, id: &str) -> Result<(), Sto
     update(store, ws, id, |e| {
         e.status = EffectStatus::Delivered;
         e.attempts += 1;
+        // Clear a previous attempt's reason: the row's last_error must describe its CURRENT state, and
+        // a delivered effect with a stale error reads as a failure to whoever is triaging.
+        e.last_error = None;
     })
     .await
 }
 
-/// Record a failed delivery of effect `id` in workspace `ws` at logical time `now`. Counts the
-/// attempt, then dead-letters the effect if it has hit `max_attempts`, else schedules the next retry
-/// at `now + backoff(attempts)`. Errors if the effect is absent here. Returns the effect's status
-/// after the update (so the relay can tally dead-letters without a re-read).
+/// Record a **transient** failed delivery of effect `id` in workspace `ws` at logical time `now`.
+/// Counts the attempt, records `reason` on the row, then dead-letters the effect if it has hit
+/// `max_attempts`, else schedules the next retry at `now + backoff(attempts)`. Errors if the effect is
+/// absent here. Returns the effect's status after the update (so the relay can tally dead-letters
+/// without a re-read).
+///
+/// `reason` must already be sanitized by the caller — it is durable, operator-visible text.
 pub async fn mark_failed(
     store: &Store,
     ws: &str,
     id: &str,
     now: u64,
+    reason: &str,
 ) -> Result<EffectStatus, StoreError> {
     let mut resulting = EffectStatus::Failed;
     update(store, ws, id, |e| {
         e.attempts += 1;
+        e.last_error = Some(reason.to_string());
         if e.attempts >= e.max_attempts {
             e.status = EffectStatus::DeadLettered;
         } else {
@@ -54,6 +62,33 @@ pub async fn mark_failed(
     })
     .await?;
     Ok(resulting)
+}
+
+/// Record a **permanent** delivery failure of effect `id` — park it immediately, with no further
+/// attempts, and record `reason` for the operator.
+///
+/// The distinction from [`mark_failed`] is the whole point (email-transport scope, "Delivery outcome is
+/// honest"): a target that *knows* retrying cannot help — `550 no such mailbox`, a revoked OAuth grant,
+/// a message with no recipient — should not be retried five times with backoff. Retrying a permanent
+/// failure is not merely wasted work: it delays the dead-letter row that tells an operator to fix
+/// something, and against a rate-limiting relay it earns a reputation penalty for a mistake that will
+/// never resolve.
+///
+/// Terminal, exactly like an exhausted retry budget: [`pending`](super::pending) does not return a
+/// dead-lettered effect, and the row is kept for audit and manual replay.
+pub async fn mark_dead_lettered(
+    store: &Store,
+    ws: &str,
+    id: &str,
+    reason: &str,
+) -> Result<EffectStatus, StoreError> {
+    update(store, ws, id, |e| {
+        e.attempts += 1;
+        e.status = EffectStatus::DeadLettered;
+        e.last_error = Some(reason.to_string());
+    })
+    .await?;
+    Ok(EffectStatus::DeadLettered)
 }
 
 /// Load `outbox:{id}` in `ws`, apply `mutate`, and upsert it back. The one read-modify-write seam

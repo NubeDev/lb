@@ -54,7 +54,7 @@ async fn es_invite_email_renders_spanish_through_the_catalog() {
     .unwrap();
 
     let provider = Arc::new(RecordingEmailProvider::default());
-    let target = EmailTarget::new(Box::new(provider.clone()));
+    let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
     let pass = relay_outbox(&store, "acme", &target, 101).await.unwrap();
     assert_eq!(pass.delivered, 1);
 
@@ -93,7 +93,7 @@ async fn default_invite_email_renders_english() {
     .unwrap();
 
     let provider = Arc::new(RecordingEmailProvider::default());
-    let target = EmailTarget::new(Box::new(provider.clone()));
+    let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
     relay_outbox(&store, "acme", &target, 101).await.unwrap();
 
     let sends = provider.sends();

@@ -36,6 +36,7 @@ members = [
     "crates/ingest",
     "crates/insights",
     "crates/jobs",
+    "crates/mail",
     "crates/mcp",
     "crates/mcp-shim",
     "crates/outbox",
@@ -95,6 +96,7 @@ lb-inbox = { path = "crates/inbox" }
 lb-ingest = { path = "crates/ingest" }
 lb-insights = { path = "crates/insights" }
 lb-jobs = { path = "crates/jobs" }
+lb-mail = { path = "crates/mail" }
 lb-mcp = { path = "crates/mcp" }
 lb-mcp-shim = { path = "crates/mcp-shim" }
 lb-outbox = { path = "crates/outbox" }
@@ -250,6 +252,22 @@ futures = "0.3"
 # only a gateway dev-dep). `rustls` so there is no system OpenSSL dependency; `json` for the artifact
 # body. Lives in the `registry-host` role crate, never in core `lb-host` (roles depend on host).
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# The mail transport stack (email-transport scope, issue #118) — the Stalwart suite, pulled ONLY into
+# `lb-mail`. Chosen over `lettre` because it is natively async (no `spawn_blocking` bridge inside the
+# relay reactor) and shares an author with `mail-parser`, which the receive half
+# (`mail-source-scope.md`) wants for malformed-MIME tolerance: one mail ecosystem, not two.
+# `default-features = false` drops:
+#   - `dkim` (`mail-auth`) — signing in core is an explicit non-goal; the relay/provider signs with
+#     the domain key, so in-process signing would mean custody of a domain private key for no gain;
+#   - `cram-md5`/`digest-md5` — dead SASL mechanisms (and their `md5`/`rand` deps);
+#   - `aws_lc_rs` — `ring` is the rustls provider already compiled in by `reqwest`'s `rustls-tls`, so
+#     this adds no second crypto backend (and no aws-lc C build on a zig-only toolchain).
+# `mail-parser` is a DEV-dependency of `lb-mail` only: the transport tests parse the bytes the in-test
+# SMTP server actually received instead of re-asserting our own builder (testing §0).
+mail-send = { version = "0.6", default-features = false, features = ["ring", "tls12"] }
+mail-builder = "0.4"
+mail-parser = "0.11"
 
 # Operator CLI (`lb`) tooling (operator-cli scope, Risk "New external deps"). These are CLI ergonomics
 # — argument parsing + table rendering + the config-dir locator — NOT persistence/auth/bus libraries,

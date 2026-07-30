@@ -9,12 +9,20 @@ use std::time::Duration;
 use lb_host::Node;
 
 use crate::config::OutboxProviders;
+use crate::mail::EmailTransport;
 
 /// Spawn the background reactor loops for `ws` on `node`, and run the one-shot insight-ts heal. One
 /// detached owner per reactor per node, each scanning the configured workspace on its own cadence.
 /// `providers` is the boot provider-injection seam (release scope, gap 1): the relay reactor
 /// delivers email/push effects through them; unset providers fall back to the logging no-ops.
-pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
+/// `email_transport` is the config-selected mailer (email-transport scope, issue #118) used when the
+/// embedder supplied no `EmailProvider` of its own — so a host gets real email from configuration alone.
+pub async fn spawn(
+    node: &Arc<Node>,
+    ws: &str,
+    providers: &OutboxProviders,
+    email_transport: Option<&EmailTransport>,
+) {
     // FLOW REACTOR TICK: drive cron/reconcile scans so a `mode:"cron"` trigger actually fires. A
     // few-second period catches a minute-granularity cron promptly; each tick is a cheap ws scan.
     lb_host::spawn_flow_reactors(
@@ -42,10 +50,11 @@ pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
     // effect's opaque `target` string (rule 10): `email` → EmailTarget, `push` → PushTarget. A
     // provider the embedder didn't configure falls back to the logging no-op — the relay still
     // drains (never crash boot, never strand effects); the send is logged, not performed.
-    let email_provider: Box<dyn lb_host::EmailProvider> = match &providers.email {
-        Some(p) => Box::new(p.clone()),
-        None => Box::new(lb_host::LoggingEmailProvider),
-    };
+    // The email provider: embedder-supplied → the config-selected transport (smtp/postmark) → the
+    // logging no-op WITH A LOUD WARNING. Before issue #118 was fixed there was no third option: the
+    // logging provider was the only non-test impl, so every email a node "sent" was logged and dropped.
+    let email_provider =
+        crate::mail::build_email_provider(providers.email.as_ref(), email_transport, &node.store);
     let push_provider: Box<dyn lb_host::PushProvider> = match &providers.push {
         Some(p) => Box::new(p.clone()),
         None => Box::new(lb_host::LoggingPushProvider),
@@ -53,7 +62,7 @@ pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
     let mut router = lb_host::RouterTarget::new()
         .route(
             lb_host::EMAIL_TARGET,
-            lb_host::EmailTarget::new(email_provider),
+            lb_host::EmailTarget::new(email_provider, node.store.clone()),
         )
         .route(
             lb_host::PUSH_TARGET,

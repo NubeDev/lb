@@ -339,10 +339,13 @@ pub use report::{
 pub use lb_store::{new_ulid, Store};
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
-    enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
-    outbox_status, relay_outbox, spawn_relay_reactors, DynTarget, Effect as OutboxEffect,
-    EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, OutboxError, OutboxStatus,
-    RecordedEmail, RecordingEmailProvider, RelayPass, RouterTarget, Target,
+    delivery_check, delivery_mark, enqueue_held_outbox, enqueue_outbox, outbox_due,
+    outbox_mark_delivered, outbox_mark_failed, outbox_status, relay_outbox, spawn_relay_reactors,
+    AuthMechanism as MailAuthMechanism, DeliveryError, DynTarget, Effect as OutboxEffect,
+    EmailMessage, EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, OutboxError,
+    OutboxStatus, PostmarkConfig, PostmarkEmailProvider, RecordedEmail, RecordingEmailProvider,
+    RelayPass, RouterTarget, SmtpEmailProvider, SmtpOauthConfig, SmtpTransportConfig, Target,
+    TlsMode, DEFAULT_SEND_TIMEOUT_SECS, OUTBOX_DELIVERED_TABLE,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,

@@ -296,6 +296,11 @@ Three things the scope did not anticipate, recorded because they change the shap
    finding's displayed numbers are the *oldest* ones — arguably already a bug (the count says ×5 but
    the body describes firing #1). Deliberately out of scope here, but this scope's dedup decision
    makes the inconsistency explicit and someone should decide it.
+   **→ DECIDED (2026-07-30):** `insight-analysis-scope.md` resolved decision 6 settles the
+   direction — `title`/`body` **should** refresh, and `analysis` existing is what makes the old
+   behaviour indefensible (a drawer showing fresh reasoning above a firing-#1 narrative). It is
+   filed as its own small follow-up scope rather than fixed inline, because it changes shipped
+   semantics. This question is closed here; track it there.
 2. **Should `window` be relative rather than absolute?** Absolute epoch-ms pins the viewer to the
    moment judged, which is right for provenance; a rule that fires nightly would rather say "24h" so
    the panel follows. Possibly both (`window: {from,to}` and a `relative: "24h"`), possibly the
@@ -319,6 +324,18 @@ Three things the scope did not anticipate, recorded because they change the shap
   carries `evidence` through unchanged.
 - **Downstream consumer:** `NubeIO/rubix-ai` → `docs/scope/fdd/fdd-insight-viz-scope.md` §V3, which
   raised this ask and inherits the binding on a `node-v*` bump.
-- **Sibling gap (not this scope):** `tags` are persisted to the tag graph and drive `insight.list`
-  facet filtering, but are **not echoed** on the `Insight` record — so a UI cannot display or
-  client-side filter them without a separate `tags.find`. Worth its own small scope.
+- **The other half:** [`insight-analysis-scope.md`](insight-analysis-scope.md) — where this scope
+  made the finding state its **data**, that one makes it state its **reasoning** (a closed
+  `analysis` struct beside `evidence`). It reuses this scope's size-guard, `get`-vs-`list`
+  boundary, refresh-on-re-raise dedup rule, and no-new-capability argument — and its Q6 sharpens
+  Q1 above (a record with fresh `analysis` beside a firing-#1 `body` is a new inconsistency).
+- **The human plane:** [`insight-triage-scope.md`](insight-triage-scope.md) — ownership +
+  comments, which deliberately do **not** follow this scope's refresh-on-re-raise rule: human
+  facts are untouched by raise entirely.
+- **Sibling gap — now scoped:** `tags` are persisted to the tag graph and drive `insight.list`
+  facet filtering, but are **not echoed** on the `Insight` record, so a UI cannot display them
+  without a separate `tags.find`. That gap is the roster's blocker (the dimension columns —
+  building / asset type / data type / priority / classification — are exactly these tags) and now
+  has its own scope: [`insight-tag-echo-scope.md`](insight-tag-echo-scope.md). Note it
+  deliberately **diverges from this scope's `get`-only boundary**: tags ride `list` because they
+  exist to be columns, where `evidence` correctly does not.

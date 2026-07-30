@@ -30,6 +30,52 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — EMAIL ACTUALLY GETS SENT
+([`email-transport-scope`](scope/inbox-outbox/email-transport-scope.md), issue
+[#118](https://github.com/NubeDev/lb/issues/118), session
+[`email-transport`](sessions/inbox-outbox/email-transport-session.md)).** Every email the platform sent
+went nowhere: the seam was fully built and booted — durable outbox effect, `RouterTarget` on the opaque
+`"email"` string, `EmailTarget`, catalog-rendered i18n — and the only non-test provider **logged the send
+and acked it**. An admin invited a colleague, the outbox drained clean, and the colleague was never told;
+no failed row existed for an operator to find, because nothing had failed. Shipped: **`lb-mail`**
+(`crates/mail/`, the send half over `mail-send` + `mail-builder`) — MIME with an always-present text
+alternative, implicit-TLS/STARTTLS/none as *config* (never inferred from the port, and `starttls`
+**requires** the upgrade rather than continuing in the clear), `PLAIN`/`LOGIN`/**`XOAUTH2` with token
+refresh** because Gmail/M365 reject passwords and an access token lives an hour — plus
+**`SmtpEmailProvider`** and **`PostmarkEmailProvider`** behind the unchanged trait, and
+`BootConfig::email_transport` selecting one **by name** (`smtp | postmark | logging`), so a host gets
+working email from configuration alone. Credentials are **paths, never values**, resolved per send in the
+**effect's** workspace via `lb_secrets::get_workspace` (sealed → env → unset, the `resolve_key.rs`
+precedence): a ws-A effect can never resolve ws-B's secret, rotation needs no redeploy, and the config
+struct is `Debug`-safe by construction. Unset transport still boots and drains — with a **loud warning**,
+since silence is what let this live for months. **The outbox learned to fail honestly**, which the scope
+asked for and the substrate could not express: `Target::deliver` now returns
+`DeliveryError { reason, permanent }` (`From<String>` ⇒ transient, so adoption was a signature change and
+not a semantic one), `Effect` gained `last_error`, and `mark_dead_lettered` parks a permanent failure at
+`attempts: 1` — the relay used to **throw the target's reason away** (`Err(_reason)`), so a parked effect
+could only say "failed 5 times", and a `550 no such mailbox` burned five attempts with backoff.
+`outbox.mark_failed` gained optional `reason`/`permanent` for sidecar relays (omitting both = old
+behaviour); "no route registered" deliberately stayed **transient** (a sidecar-driven target has no
+in-process route by design). **Tests (rule 9):** `lb-mail` 27 — 7 against a **real SMTP server** on a real
+socket asserting bytes on a wire (the exact `AUTH PLAIN` blob, the exact `AUTH XOAUTH2` framing, a
+multipart message **parsed back with `mail-parser`**, `550` permanent vs `421` retryable, a relay that
+echoes the AUTH blob producing an error carrying neither the password nor its base64, `starttls` refusing
+to send in the clear) and 6 against a **real HTTP token endpoint** (the RFC 6749 grant, five sends sharing
+one refresh, rotation invalidating the cache, `invalid_grant` permanent vs `503` transient); `lb-host`
+`email_transport_test` 6 (cap-deny writing **no outbox row**, ws-isolation via sealed-in-globex vs acme,
+missing-workspace parked, re-drain exactly once, permanent parked at attempt 1); `relay_boot_test` gained
+a node booted against an unreachable relay whose effect stays **owed**. **Two bugs found by the new
+tests**, both in the new code: a cleartext SMTP session **ignored its own timeout** (`mail-send`'s
+`connect_plain` reads the greeting unbounded) and would have stalled the whole relay tick — push included
+— on a wedged LAN relay ([debugging entry](debugging/inbox-outbox/smtp-plaintext-greeting-unbounded.md));
+and the token-cache fingerprint **collided** for two same-length refresh tokens sharing a suffix, so a
+rotated grant silently reused the old bearer (now a SHA-256 prefix; the fixture keeps the colliding
+shape). All four security-critical tests **revert-checked**. Operator runbook:
+[`skills/email-transport/SKILL.md`](skills/email-transport/SKILL.md) — the credential ceremony, the
+`last_error` → what-to-do table, and the honest note that **deliverability is not a code problem**.
+Still owed: the docker-gated real-TLS test, Postmark's wire, and the pre-existing relative invite link.
+Downstream: `rubix-ai`'s `ReportTarget` needed the one-line `DeliveryError` signature change (done).
+
 **Just shipped 2026-07-29 (unreleased — needs the next `node-v*` tag) — FLOWS TRIGGERS: `period_secs: 1`
 finally means one second ([`interval-source-clock-scope`](scope/flows/interval-source-clock-scope.md),
 sessions [`interval-clock-phase0-1`](sessions/flows/interval-clock-phase0-1-session.md) +
