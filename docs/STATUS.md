@@ -3692,6 +3692,39 @@ user.** `file-size-baseline.txt` needs one stale line deleted (`system/catalog.r
 
 ---
 
+## 2026-07-30 — a node disk budget: bytes are bounded now (BUILT, unreleased)
+
+Scope [`store/disk-budget-scope.md`](scope/store/disk-budget-scope.md) · session
+[`store/disk-budget-session.md`](sessions/store/disk-budget-session.md) · issue
+[#122](https://github.com/NubeDev/lb/issues/122). **All three slices shipped.**
+
+Everything on this platform bounded *rows*; nothing bounded *bytes*. The only byte-level signal was
+a hardcoded, warn-only 256 MiB const. Now: `LB_STORE_MAX_BYTES` → `BootConfig::store_budget_bytes`
+→ marks at 80% / 95% of the allowance, `store.status` reporting `budget_bytes` / `headroom_bytes` /
+`free_disk_bytes`, and a reactor that **acts** instead of warning. **Unset ⇒ `None` ⇒ no marks and
+today's behaviour byte-for-byte**, so the upgrade is inert for anyone who does not opt in.
+
+- **The OQ5 deferral is reversed, on a measurement.** A real pass on a **2.06 GiB** log took
+  **`duration_ms: 771`** and reclaimed it to 16 MiB (128×). Sub-second at budget scale ⇒ the
+  auto-trigger is approved. Reproduce: `cargo test --release -p lb-store --test
+  compaction_pause_measure_test -- --ignored --nocapture`.
+- New: `host/src/store_admin/marks.rs` (pure mark arithmetic), `store_admin/budget.rs` (the driver:
+  one-hour minimum interval, hard mark **exempt** from it, and the **convergence condition** —
+  `after_bytes > 0.9 × before_bytes` ⇒ stop auto-enqueueing and log "budget too small for this
+  workload" at the soft mark). One crossing ⇒ **one** job in `BootConfig::workspace`,
+  `requested_by: "system:store-budget"`; never a fan-out.
+- **⚠️ Behaviour change on upgrade (slice 3):** series with **no** `series_retention` record are now
+  FIFO-evicted at `DEFAULT_MAX_SAMPLES` (100k) instead of kept forever; the opt-out is to *create* a
+  record with `max_samples: 0` **before** upgrading. `ingest_dead_letter` gains a 30-day horizon.
+  `lb_ingest::over_cap_warning` removed (`default_cap_notice` replaces it) — an embedder API break.
+  Release note written; see the session doc's "Upgrade impact".
+- **Open follow-up: `free_disk_bytes` ships as `None`** — no filesystem-stat crate is a direct
+  workspace dependency, and `Store::dir()` is `pub(crate)`. The field and its seam are in place;
+  filling it in is a one-function change. Until it lands, the "budget set close to the physical
+  disk" risk stays invisible.
+
+---
+
 ## How to keep this current
 
 Every session that changes state updates the relevant cell here as its **last step**

@@ -17,11 +17,15 @@ use crate::mail::EmailTransport;
 /// delivers email/push effects through them; unset providers fall back to the logging no-ops.
 /// `email_transport` is the config-selected mailer (email-transport scope, issue #118) used when the
 /// embedder supplied no `EmailProvider` of its own — so a host gets real email from configuration alone.
+/// `store_budget_bytes` is [`BootConfig::store_budget_bytes`] — the node's disk allowance. `None`
+/// (the default, and what `LB_STORE_MAX_BYTES` unset means) leaves the store-compact reactor
+/// warn-only, exactly as it shipped.
 pub async fn spawn(
     node: &Arc<Node>,
     ws: &str,
     providers: &OutboxProviders,
     email_transport: Option<&EmailTransport>,
+    store_budget_bytes: Option<u64>,
 ) {
     // FLOW REACTOR TICK: drive cron/reconcile scans so a `mode:"cron"` trigger actually fires. A
     // few-second period catches a minute-granularity cron promptly; each tick is a cheap ws scan.
@@ -108,10 +112,16 @@ pub async fn spawn(
     // and log the log-size advisory past the threshold. The tick itself is cheap (an indexed
     // pending scan + one file stat); a pass runs ONLY when an authorized admin enqueued one —
     // threshold-driven visibility, operator-triggered execution, never compaction-on-a-tick.
+    // …and, when the operator set `LB_STORE_MAX_BYTES`, drive the disk budget (disk-budget scope,
+    // issue #122): past the soft mark the same reactor enqueues ONE `store.compact` job in this
+    // workspace. Unset ⇒ `None` ⇒ inert, exactly the release-1 behaviour. The budget is config,
+    // never a code branch (rule 1).
     lb_host::spawn_store_compact_reactors(
         node.clone(),
         vec![ws.to_string()],
         lb_host::STORE_COMPACT_PERIOD,
+        store_budget_bytes,
+        ws.to_string(),
     );
 
     // REMINDER REACTOR TICK (previously NEVER BOOTED): fire due reminders on their cron. Without it

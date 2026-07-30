@@ -57,9 +57,20 @@ durable `store-compact` job; the reactor drains it off the request path and reco
 4. Crash-safe: a kill at any point leaves either the old or the new log, never a corrupt one;
    the next open completes or discards the interrupted pass.
 
-The driver is **threshold-informed, operator-triggered**: past 256 MiB of log the node logs an
-advisory (same posture as the sample-cap warnings) and `store.status` carries the same string —
-but a pass runs only when an authorized caller enqueues one. No compaction-on-a-tick.
+The driver is **threshold-driven, never compaction-on-a-tick**. Past the node's threshold it logs
+an advisory (same posture as the sample-cap warnings) and `store.status` carries the same string.
+What happens next depends on one piece of config:
+
+- **No `LB_STORE_MAX_BYTES`** (the default): threshold is a flat 256 MiB, and a pass runs **only**
+  when an authorized caller enqueues one. Advisory in, operator out — unchanged.
+- **A disk budget set**: the threshold becomes 80% of the allowance and the node enqueues **one**
+  `store.compact` job of its own when it is crossed (`requested_by: "system:store-budget"`), at most
+  once an hour, with the 95% hard mark exempt from that interval. If a pass stops reclaiming
+  (`after_bytes > 0.9 × before_bytes`) the node stops auto-compacting and says the budget is too
+  small for the workload rather than pausing writes for nothing.
+
+A pass on a 2.06 GiB log measured **771 ms** (reclaiming it to 16 MiB) — the number the automatic
+trigger was approved on. See [Upgrading](../upgrading/upgrading.md) and the disk-budget scope.
 
 ## The engine bug this work found (P0, fixed)
 

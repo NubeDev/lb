@@ -29,6 +29,11 @@ series.retention.set {
 Every field is optional and defaults to inert: a policy written before this shipped keeps its exact
 meaning.
 
+> **A series with NO policy record is capped at 100,000 raw samples.** Absence of a record is not
+> "unbounded" — the explicit opt-out is a record carrying `max_samples: 0`. This is a behaviour
+> change that deletes history on existing nodes: read [Upgrading](../upgrading/upgrading.md) before
+> you upgrade.
+
 ### Filters — store less, on purpose
 
 Predicates run **when a batch commits**, in a fixed cheap-to-stateful order: `drop` → `range` →

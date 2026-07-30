@@ -25,6 +25,7 @@ mod bucket_acc;
 mod cap;
 mod commit;
 mod cursor;
+mod dead_letter_gc;
 mod delete;
 mod filter;
 mod filter_pass;
@@ -54,9 +55,10 @@ pub use align::{bucket_start, Align};
 pub use bucket::{
     effective_width, read_buckets, read_buckets_fold, Bucket, BucketQuery, MAX_BUCKETS,
 };
-pub use cap::{cap_series, over_cap_warning, sample_count, CAP_EVICT_BATCH, DEFAULT_MAX_SAMPLES};
+pub use cap::{cap_series, default_cap_notice, sample_count, CAP_EVICT_BATCH, DEFAULT_MAX_SAMPLES};
 pub use commit::{commit_batch, commit_batch_capped, CommitPass};
 pub use cursor::Cursor;
+pub use dead_letter_gc::{prune_dead_letters, DEAD_LETTER_KEEP_MS};
 pub use delete::delete_series;
 pub use filter::{
     decide, Deadband, Decision, Filter, FilterCounts, LastCommitted, Range, RangeMode, Reason,

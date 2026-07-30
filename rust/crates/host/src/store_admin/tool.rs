@@ -11,7 +11,7 @@ use crate::boot::Node;
 
 use super::compact::store_compact_enqueue;
 use super::error::StoreAdminError;
-use super::status::store_status_run;
+use super::status::store_status_run_with_budget;
 
 /// Dispatch a store-admin MCP call. `store.status` takes no args; `store.compact` takes none
 /// either (there is one store per node — nothing to address).
@@ -24,7 +24,12 @@ pub async fn call_store_admin_tool(
 ) -> Result<Value, ToolError> {
     match qualified_tool {
         "store.status" => {
-            let report = store_status_run(&node.store, principal, ws).map_err(to_tool)?;
+            // The node's configured budget rides the report, so an operator sees allowance,
+            // headroom and free disk — the trend, not just the cliff. Unbudgeted ⇒ `None`
+            // everywhere and the flat advisory, exactly as it shipped.
+            let report =
+                store_status_run_with_budget(&node.store, principal, ws, node.store_budget())
+                    .map_err(to_tool)?;
             Ok(serde_json::to_value(report).unwrap_or(Value::Null))
         }
         "store.compact" => {

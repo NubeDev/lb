@@ -324,10 +324,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   bounding: everything shipped bounds *rows* (retention horizons, `max_samples`, `capped_insert`),
   nothing knows how many bytes are on disk, and the one byte-level signal is a hardcoded warn-only
   256 MiB const. Three slices: `LB_STORE_MAX_BYTES` on `BootConfig` (the operator states the
-  allowance, `None` ⇒ today's behaviour), the store-admin reactor auto-enqueueing the existing
-  `store.compact` job at a soft mark instead of only warning (reverses `online-compaction` OQ5),
-  and bounded-by-default series + `ingest_dead_letter` retention. Refusing writes at a hard ceiling
-  is deliberately deferred. `core/` also holds
+  allowance, `None` ⇒ today's behaviour and no marks), the store-admin reactor auto-enqueueing the
+  existing `store.compact` job at a soft mark instead of only warning — gated on the pause
+  measurement `online-compaction` OQ5 deferred on and which still does not exist, and guarded by a
+  convergence condition so a store whose *live set* exceeds the mark stops pausing writes forever
+  for zero reclaimed bytes — and bounded-by-default series + `ingest_dead_letter` retention. The
+  governing constraint is append-only: a delete *adds* bytes until the next compaction, so any
+  evicting pass must be followed by a compaction exempt from the minimum interval. Refusing writes
+  at a hard ceiling is deliberately out of scope. All open questions are resolved decisions.
+  `core/` also holds
   `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
   + a runnable `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs
   all speak one grammar the palette and `lb` CLI render mechanically; renames the outliers
