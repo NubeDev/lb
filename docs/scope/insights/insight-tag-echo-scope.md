@@ -1,6 +1,9 @@
 # Insights scope — tag echo: the record carries its own facets
 
-Status: scope (the ask). Promotes to `doc-site/content/public/insights/` once shipped.
+Status: **shipped** (2026-07-30, issue #119 slice 1 — the field + the raise-path write; the backfill
+job is still open, see §Backfill and "Open questions after building" below). Session:
+[`sessions/insights/insight-tag-echo-session.md`](../../sessions/insights/insight-tag-echo-session.md).
+Public: [`doc-site/content/public/insights/insights.md`](../../../doc-site/content/public/insights/insights.md).
 
 Tags are the insight's dimension plane — building, asset type, data type, priority, category,
 classification — persisted to the shipped tag graph on every raise and used to *filter*
@@ -254,6 +257,32 @@ Stated here rather than as open questions, so the implementing session has no am
 4. **No tag-write door on the insight** — one writer for one truth.
 5. **Refresh on every raise** — it's a projection of current truth (see the dedup table above).
 6. **Backfill is a job, shipped after the field** — never a blocking call, never a boot walk.
+
+## Open questions after building
+
+All six resolved decisions held as written and are pinned by tests (2, 3 and 6 by revert-check).
+The implementing session raised three things the scope did not anticipate:
+
+1. **The tag *write* at raise was gated on `mcp:tags.add:call`, not on `insight.raise`** — so an
+   ordinary producer's declared tags never reached the graph, silently, and the echo would have been
+   built from the matcher's declaration fallback (i.e. exactly the union bug decision 2 forbids).
+   Fixed in this slice by applying + reading the graph raw, host-internally, behind the already-passed
+   `mcp:insight.raise:call` gate — the `insight_list` precedent. **No capability was widened.** Full
+   write-up: [`debugging/insights/producer-tags-never-reached-the-graph.md`](../../debugging/insights/producer-tags-never-reached-the-graph.md).
+2. **`tags.*` has no wire door.** `call_tags_tool` is built and gated but has no entry in the
+   dispatcher's host-native table, so `{"tool":"tags.add"}` over `/mcp/call` returns `no such tool`
+   (verified live). The scope's step-3 story — "an admin re-classifies through the existing `tags.*`
+   verb" — therefore has no caller-reachable path today; the in-suite tests exercise the bridge
+   directly. Wiring a verb family into the dispatcher (+ a deny test per verb) is its own scope, not
+   a tag-echo change. **Open.**
+3. **Same-key, multi-source edges are undefined in a flat echo.** Edge identity is
+   `(entity, tag, source)`, so a `Producer` `classification=plumbing` and a `Human`
+   `classification=mechanical` coexist and the flat map keeps whichever `tags.of` returns last. In
+   contract (the echo is explicitly not provenance) but unchosen. Needs a rule before
+   [`insight-triage-scope.md`](insight-triage-scope.md) lets humans re-classify. **Open.**
+
+The **backfill job** remains as scoped and sequenced (§Backfill): `set_tags_echo` shipped idempotent,
+resumable and map-taking precisely so the job is a table walk plus a call. Not on a boot driver.
 
 ## Related
 

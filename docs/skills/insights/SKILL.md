@@ -53,8 +53,8 @@ Capabilities — one per verb: `mcp:insight.raise:call` (producer-grade write),
 | Verb | Args | Result |
 |---|---|---|
 | `insight.raise` | `dedup_key, severity, title, body?, origin, tags?, occurrence?, ts` | `{id, status, count, created, reopened, dedup_key, severity, kind}` (idempotent on `(ws, dedup_key)`) |
-| `insight.get` | `id` | the full record |
-| `insight.list` | `status?, severity?, origin_ref?, tags?, range?, cursor?, limit?` | `{items:[Insight], next?}` (newest-first, keyset-paged) |
+| `insight.get` | `id` | the full record (incl. `evidence` + the `tags` echo) |
+| `insight.list` | `status?, severity?, origin_ref?, tags?, range?, cursor?, limit?` | `{items:[Insight], next?}` (newest-first, keyset-paged; rows carry the `tags` echo, not `evidence`) |
 | `insight.ack` | `id, ts` | `{ok:true}` (`open → acked`) |
 | `insight.resolve` | `id, note?, ts` | `{ok:true}` (`* → resolved`, idempotent) |
 | `insight.occurrences` | `insight_id, cursor?, limit?` | `{items:[Occurrence], next?}` (newest-first ring) |
@@ -98,9 +98,17 @@ curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.raise","args":{
   "origin":{"kind":"rule","ref":"rule:scorer"},"ts":1719800001000}}'
 # → {"id":"01H…"(same),"count":2,"created":false,…}
 
-# 3. list — open critical insights, keyset-paged
+# 3. list — open critical insights, keyset-paged. Rows carry their TAG ECHO, so a roster renders
+#    dimension columns from THIS call alone — no follow-up tags.find, no tags cap needed.
 curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{
   "status":"open","severity":"critical","limit":50}}'
+# → {"items":[{"id":"01H…","dedup_key":"fraud:card-4421","severity":"critical","status":"open",
+#              "count":2,"last_ts":…,"tags":{"kind":"fraud"}},…],"next":…}
+
+# 3b. filter BY a facet — resolved through the tag GRAPH (not the echo), so it is correct even for
+#     a record whose echo hasn't caught up to an out-of-band tags.* change yet.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{
+  "tags":{"kind":"fraud"},"status":"open","limit":50}}'
 
 # 4. ack (open → acked) — "I know, investigating"
 curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.ack","args":{"id":"01H…","ts":1719800002000}}'
@@ -236,6 +244,16 @@ The persona is grounded by this `core.insights` skill.
 
 ## Gotchas
 
+- **The record's `tags` are an ECHO — read-only, and the graph is the write path.** Every insight
+  carries its resolved facets as a flat `{k: v}` map on BOTH `get` and `list` (that is what makes a
+  dimension column cheap). It is host-computed like `producer`: a `tags` projection in a raise body
+  is ignored, and there is no `insight.tag` verb. To change a finding's dimensions, re-raise with
+  the tags declared, or apply them through the `tags.*` verbs — the echo is recomputed from the
+  graph on the next raise, so it is the **union across all raises**, and an out-of-band change
+  self-heals. It carries no provenance (read `tags.of` for who applied what and when), and
+  **filtering never trusts it**: `insight.list {tags}` resolves through the graph. An echo over
+  2 KB is skipped whole with a warning rather than truncated. A record raised before the echo
+  shipped has none until it next fires — render that as "no dimensions", not as empty truth.
 - **Identity lives in `dedup_key`/`body`, NEVER the title or tags.** Tags are low-cardinality
   dimensions (site/equip/kind/rule-name) — per-transaction/card identities as tag values blow the
   tag-node cap. `dedup_key: "fraud:card-4421"`, not `tags: {card: "4421"}`.

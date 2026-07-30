@@ -71,4 +71,22 @@ pub struct Insight {
     pub last_ts: u64,
     /// Host-stamped raising principal (`user:…`/`key:…`/`ext:…`) — un-spoofable (ingest pattern).
     pub producer: String,
+    /// The insight's **tag facets, echoed** — a read-only projection of the tag graph
+    /// (`insight-tag-echo-scope.md`). The dimension plane (building, asset type, priority, …) as
+    /// flat `{k: v}`, so a roster renders dimension columns from `insight.list` alone instead of an
+    /// N+1 `tags.find` per row.
+    ///
+    /// **The graph is the source of truth.** This is written only by the raise path, from
+    /// `tags.of` on the insight entity (the union across ALL raises of the dedup key) — never from
+    /// one raise's declared `tags`, and never by a caller (host-computed like `producer`).
+    /// Refreshed on every raise, so an out-of-band `tags.*` change self-heals on the next firing.
+    /// Filtering (`insight.list { tags }`) deliberately keeps reading the graph, not this echo — a
+    /// filter over a projection returns wrong rows while the projection is behind.
+    ///
+    /// Echoed by **both** `insight.get` and `insight.list` — the deliberate divergence from
+    /// [`Insight::evidence`], whose boundary rule ("does the roster render it") puts it on `get`
+    /// only. Empty on every record written before the field landed; a reader ignoring it is
+    /// unaffected.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub tags: std::collections::BTreeMap<String, String>,
 }

@@ -52,6 +52,7 @@ mod sub_list;
 mod sub_mute;
 mod subscription;
 mod table_scan;
+mod tags_echo;
 mod watch;
 
 mod digest;
@@ -91,6 +92,7 @@ pub use sub_get::sub_get;
 pub use sub_list::sub_list;
 pub use sub_mute::sub_mute;
 pub use subscription::{DormantReason, SubFilter, SubSink, SubSinkKind, Subscription};
+pub use tags_echo::{set_tags_echo, validate_tags_echo_size, MAX_TAG_ECHO_BYTES};
 pub use watch::{event_subject, EventKind, RaiseEvent};
 
 // Re-exports of the record shapes + table-const helpers (the host service + tests reach them

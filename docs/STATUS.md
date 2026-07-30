@@ -30,6 +30,43 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE INSIGHT ROSTER GREW ITS
+DIMENSION COLUMNS ([`insight-tag-echo-scope`](scope/insights/insight-tag-echo-scope.md), issue
+[#119](https://github.com/NubeDev/lb/issues/119) slice 1, session
+[`insight-tag-echo`](sessions/insights/insight-tag-echo-session.md)).** Tags were an insight's
+dimension plane and were *not on the record*: a caller could ask for "every open insight in Chullora"
+and get rows, then had no way to *display* which building each row was in without an N+1 `tags.find`
+per row — plus `mcp:tags.of:call`, a capability a read-only viewer otherwise never needs. Shipped:
+**`Insight.tags`**, a read-only `{k: v}` echo of the resolved facets, returned by **both
+`insight.get` and `insight.list`** (the deliberate divergence from `evidence`, which is `get`-only —
+the boundary rule is "does the roster render it"). Written only by the raise path, from the **tag
+graph** (`lb_tags::of`), so it is the **union across all raises** of the `dedup_key` and self-heals
+after an out-of-band `tags.*` change on the next firing; materialization is now **unconditional**
+(it used to run only when the workspace had subscriptions, which would have left the columns blank
+in every workspace that notifies nobody). New verb `lb_insights::set_tags_echo` — idempotent, skips
+the write when unchanged, and returns the post-write record, which the matcher's `origin_ref` now
+reuses, so the net hot-path cost is **one indexed `tags.of`**, not an extra record read. **Filtering
+deliberately still resolves through the graph** (`lb_tags::find`), never the echo: a filter over a
+projection returns wrong rows whenever the projection is behind. No new verb, no new capability, no
+new table; the echo is host-computed and never caller-writable (the `producer` precedent), and it is
+a net *narrowing* — a roster now needs `mcp:insight.list:call` and nothing else. Over its 2 KB cap
+the echo is **skipped whole with a warning**, never truncated and never a failed raise. **A bug found
+while building it, in code that shipped months ago:** a raise's declared `tags` never reached the
+graph at all unless the producer *also* held `mcp:tags.add:call` — denied and swallowed by a
+best-effort `let _ =`, invisible because the matcher's fallback to `RaiseInput.tags` papered over it
+([debugging entry](debugging/insights/producer-tags-never-reached-the-graph.md)). **Tests (rule 9):**
+`insight_tag_echo_test` 11 on a real booted node (real store, real tag graph, real caps, the real
+`call_tool` bridge) + 2 unit + 3 Vitest; mandatory deny (incl. real-id vs fictional-id → identical
+error) and ws-isolation with ws-A and ws-B sharing the same tag key AND value. **Six revert-checks**,
+including the finding that the deny is enforced at *two* independent layers so a single-layer revert
+proves nothing. **Live-verified in the running product** (rubix-ai on the local `[patch]`): two raises
+with disjoint tag maps → one `insight.list` returns the union on the row, under a token with no
+`tags.of` grant. Still owed: the **backfill job** for pre-field records (scoped, sequenced after the
+field — a resolved insight that never fires again keeps a blank echo until it runs), the `tags.*`
+verbs having no wire door (`call_tags_tool` is gated but not in the dispatcher table), and a rule for
+same-key multi-source edges before the triage slice lets humans re-classify. Downstream (out of tree):
+rubix-ai's roster still renders a fixed 5-column header — the data is there, the column is not.
+
 **Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — EMAIL ACTUALLY GETS SENT
 ([`email-transport-scope`](scope/inbox-outbox/email-transport-scope.md), issue
 [#118](https://github.com/NubeDev/lb/issues/118), session
