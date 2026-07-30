@@ -33,6 +33,6 @@ pub async fn comments(
         .filter_map(|v| serde_json::from_value(v).ok())
         .collect();
     // Newest-first: `seq` is monotone per insight and nothing evicts, so it is a total order.
-    items.sort_by(|a, b| b.seq.cmp(&a.seq));
+    items.sort_by_key(|c| std::cmp::Reverse(c.seq));
     Ok(items)
 }

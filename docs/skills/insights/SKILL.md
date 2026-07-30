@@ -53,10 +53,12 @@ Capabilities — one per verb: `mcp:insight.raise:call` (producer-grade write),
 | Verb | Args | Result |
 |---|---|---|
 | `insight.raise` | `dedup_key, severity, title, body?, origin, tags?, occurrence?, evidence?, analysis?, ts` | `{id, status, count, created, reopened, dedup_key, severity, kind}` (idempotent on `(ws, dedup_key)`) |
-| `insight.get` | `id` | the full record (incl. `evidence`, `analysis`, + the `tags` echo) |
-| `insight.list` | `status?, severity?, origin_ref?, tags?, range?, cursor?, limit?` | `{items:[Insight], next?}` (newest-first, keyset-paged; rows carry the `tags` echo, **not** `evidence`/`analysis`) |
+| `insight.get` | `id` | the full record (incl. `evidence`, `analysis`, the `tags` echo, + the full `comments` thread) |
+| `insight.list` | `status?, severity?, origin_ref?, tags?, range?, assigned_to?, cursor?, limit?` | `{items:[Insight], next?}` (newest-first, keyset-paged; rows carry the `tags` echo + `assigned_to`, **not** `evidence`/`analysis`/`comments`) |
 | `insight.ack` | `id, ts` | `{ok:true}` (`open → acked`) |
 | `insight.resolve` | `id, note?, ts` | `{ok:true}` (`* → resolved`, idempotent) |
+| `insight.assign` | `id` \| `ids[≤100]`, `assignee?` (`null` clears) | `{assigned_to}` for `id`; `{results:[{id,ok,error?}]}` for `ids` |
+| `insight.comment` | `id, text, ts` | `{seq}` (append-only; author host-stamped) |
 | `insight.occurrences` | `insight_id, cursor?, limit?` | `{items:[Occurrence], next?}` (newest-first ring) |
 | `insight.sub.create` | `sink{kind,channel}, filter{…}, throttle_override?, now` | `{id}` |
 | `insight.sub.list` | `all?` | `{subs:[Subscription]}` (own; admin `all=true` ⇒ workspace) |
@@ -71,7 +73,10 @@ Capabilities — one per verb: `mcp:insight.raise:call` (producer-grade write),
 - **`ts`** / **`now`** are caller-supplied logical timestamps (determinism, README §3) — pass a real
   monotone value. The gateway REST routes inject `gw.now()` so the browser passes none.
 - **No `update`/`delete` in v1** — it's an operational record; correction = resolve + raise; purge
-  is the retention follow-up's admin batch job.
+  is the retention follow-up's admin batch job. The triage verbs are deliberately **two narrow
+  verbs, not one `update`**: each has its own cap, so a producer grant buys no triage write power.
+- **`assigned_to` is a SUBJECT, not a user id** — `user:priya` *or* `team:mechanical` (queue
+  ownership is legal from v1). Never assume a `user:` prefix when rendering or parsing.
 - **`evidence`** is the finding's *data* binding (datasource + plottable series + threshold/window) —
   a descriptor the node never executes. **`analysis`** is the producer's *reasoning* (§3b below).
   Both are `get`-only and both **refresh on supply**, independently of each other.
@@ -183,6 +188,56 @@ curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.raise","args":{
 - `POST /insights/{id}/ack` / `POST /insights/{id}/resolve` (optional `{"note":"…"}` body) —
   `ts` injected from the gateway clock.
 - `GET /insights/{id}/occurrences?cursor.seq=…&limit=50` — the per-firing ring.
+
+## 3c. Triage — who owns it, and what we found out
+
+The **human** plane beside the machine's record: one owner axis and an append-only note thread. Two
+verbs, two caps (`mcp:insight.assign:call`, `mcp:insight.comment:call`) — a producer holding only
+`insight.raise` gets **neither**, which is why there is no generic `insight.update`.
+
+```bash
+# The triage queue: what nobody owns yet.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{
+  "status":"open","assigned_to":"none"}}'
+# → rows carry `assigned_to` (absent = unassigned) — the owner column, no N+1
+
+# 1. Take it. `assignee` is a SUBJECT: user: or team: (both legal from v1).
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.assign","args":{
+  "id":"01H…","assignee":"user:priya"}}'
+# → {"assigned_to":"user:priya"}
+# Refused (opaquely) if the subject is not a member/team OF THIS WORKSPACE — the same error a
+# subject that doesn't exist gets, so a probe can't confirm someone exists in another tenant.
+
+# 2. Say what you found. `author` is host-stamped from your token — supplying one is ignored.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.comment","args":{
+  "id":"01H…","ts":1730000000000,
+  "text":"Site was shut for the long weekend — confirming with facilities before we roll a truck."}}'
+# → {"seq":1}
+
+# 3. The drawer: the record AND the whole thread, newest-first.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.get","args":{"id":"01H…"}}'
+# → {…,"assigned_to":"user:priya",
+#     "comments":[{"cseq":1,"text":"Site was shut…","author":"user:ada","ts":…}]}
+
+# 4. My work — resolves to your sub AND every team you're on.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{"assigned_to":"me"}}'
+
+# 5. Bulk: the roster's checkbox gesture. Max 100, PER-ITEM results.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.assign","args":{
+  "ids":["01H…","01J…","bad-id"],"assignee":"user:priya"}}'
+# → {"results":[{"id":"01H…","ok":true},{"id":"01J…","ok":true},
+#                {"id":"bad-id","ok":false,"error":"bad input: no such insight: bad-id"}]}
+# SURFACE THE FAILURES. A green toast over 12 failed rows is the no-silent-caps rule broken at
+# the last mile. Over 100 ids is an explicit error — nothing is assigned, nothing is truncated.
+
+# Un-assign: back to the queue.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.assign","args":{"id":"01H…","assignee":null}}'
+```
+
+**The rule that makes it trustworthy:** a re-raise **never** touches either field — including the
+re-open arm, where `status_by`/`status_ts` DO clear. A flapping sensor re-firing every 15 minutes
+cannot un-assign the technician who took the job, and when a resolved finding fires again months
+later, the note explaining last time's false alarm is the first thing the next responder reads.
 
 ## 4. Occurrences — the per-insight transaction ring
 
@@ -303,6 +358,20 @@ rather than reporting it as a diagnosis a site visit can skip; and `estimated_im
 unfalsifiable producer claim with no provenance on the record — attribute it ("the rule estimates
 $180/day"), never assert it as measured. When `analysis` is absent, `body` is still the fallback.
 
+**The comment thread is HUMAN testimony — the highest-value context on a re-opened finding, and the
+one thing on the record you must not treat as fact.** `insight.get` returns it; read it, because it
+is where "we checked this last quarter and it was a shut site" lives, and nothing else on the record
+carries that. But attribute every claim to its author and its time ("on the 3rd, Ada noted…") rather
+than restating it as the current state — a note is what one person believed then, it is never
+corrected in place (the thread is append-only, so a later comment may contradict an earlier one, and
+**both remain**), and the finding may have re-opened since. Where a comment and the producer's
+`analysis` disagree, say so rather than silently preferring either.
+
+The analyst persona reads triage state but **does not write it**: `insight.assign` and
+`insight.comment` are not in `builtin.insights-analyst`'s verb set, for the same reason
+`insight.raise` isn't — assigning work to a person and speaking in their operational log are human
+acts. Suggest an owner in prose if asked; don't call the verb.
+
 ## Gotchas
 
 - **The record's `tags` are an ECHO — read-only, and the graph is the write path.** Every insight
@@ -322,10 +391,28 @@ $180/day"), never assert it as measured. When `analysis` is absent, `body` is st
 - **Three dedup behaviours coexist on one record.** A re-raise refreshes the *producer-owned*
   projections (`severity`, `evidence`, `analysis`, the `tags` echo) **on supply** — omission means
   "leave it alone", never "blank it". It freezes `title`/`body` (first-raise-wins — a known
-  inconsistency with a filed follow-up, `scope/insights/insight-prose-refresh-scope.md`). And it will
-  leave *human* facts untouched entirely once triage ships. When reading a long-lived finding, know
-  which class each field is in: the reasoning describes the latest firing, the narrative may describe
-  the first.
+  inconsistency with a filed follow-up, `scope/insights/insight-prose-refresh-scope.md`). And it
+  leaves *human* facts (`assigned_to`, `comments`) untouched **entirely, forever** — there is no
+  `assigned_to` on the raise input at all. When reading a long-lived finding, know which class each
+  field is in: the reasoning describes the latest firing, the narrative may describe the first.
+- **Comments do NOT evict — unlike the occurrence ring they sit beside.** The thread you read is
+  complete, not a window, so there is no cursor and no "load older". Both bounds **refuse** instead:
+  a comment over 4 KB rejects the call, and appending past 200 comments errors with the existing
+  thread untouched (assert your oldest note is still there — it is). This is deliberate: evicting a
+  machine-generated firing is housekeeping; evicting a note a person wrote is a trust failure.
+  Comments are purged only **with** their insight.
+- **`assign`/`comment` do not notify anyone in v1.** The subscription ladder is subject-matched, not
+  assignee-matched, so assigning is a *roster fact* only — the assignee is not paged. A UI must not
+  imply otherwise. (An `assignee` match arm is the named first follow-up.)
+- **A subject outlives its membership.** Assign validates at write time; a member removed later
+  leaves insights owned by a subject that can no longer read them. The record deliberately keeps the
+  stale value — render an unresolvable assignee as **"unknown (removed)"**, never blank, or the
+  orphaned queue is invisible rather than merely stale.
+- **A multi-source tag key is currently non-deterministic in the echo.** Edge identity is
+  `(entity, tag, source)`, so a `Producer` and a `Human` value for one key coexist and the flat echo
+  keeps whichever the graph returned last. The decided rule is `Human` > `Producer`
+  (`scope/insights/insight-tag-precedence-scope.md`) but it is **not built** — so do not offer
+  re-classification of a producer-set key as if the correction will stick.
 - **Identity lives in `dedup_key`/`body`, NEVER the title or tags.** Tags are low-cardinality
   dimensions (site/equip/kind/rule-name) — per-transaction/card identities as tag values blow the
   tag-node cap. `dedup_key: "fraud:card-4421"`, not `tags: {card: "4421"}`.

@@ -275,6 +275,69 @@ independently). After each refusal, `insight.list` must show **no orphan row**. 
 **drop** is by design — a seventh key never errors and never stores, and `body` is the overflow; if a
 field you set is missing from `get`, that is why.
 
+### 2.5c Triage — the owner axis + the comment thread
+
+Note the wire envelope is `{tool, args}`. The `ts` values below are logical timestamps.
+
+```bash
+# The triage queue: what nobody owns yet. `assigned_to` absent on a row = unassigned.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{
+  "status":"open","assigned_to":"none"}}' | jq '.items[] | {dedup_key, assigned_to}'
+
+# MEMBERSHIP VALIDATION — and the opacity that makes it safe. These two must be BYTE-IDENTICAL:
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.assign","args":{
+  "id":"01K…","assignee":"user:not-a-member"}}'
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.assign","args":{
+  "id":"01K…","assignee":"user:does-not-exist-anywhere"}}'
+# → both: "assignee is not a member of this workspace — …"
+#   Try a REAL member of ANOTHER workspace too: same message, or assign is an existence oracle.
+
+# Assign (user: or team: — both legal), comment (author is host-stamped, not what you send):
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.assign","args":{
+  "id":"01K…","assignee":"team:mechanical"}}'                       # → {"assigned_to":"team:mechanical"}
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.comment","args":{
+  "id":"01K…","ts":1719801000000,"author":"user:someone-else",
+  "text":"Site shut for the long weekend — confirming with facilities."}}'   # → {"seq":1}
+
+# THE BOUNDARY — list carries the OWNER, get carries the THREAD:
+curl -s … insight.list … | jq '.items[0] | {assigned_to, comments: (.comments // "ABSENT")}'
+# → {"assigned_to":"team:mechanical","comments":"ABSENT"}
+curl -s … insight.get  … | jq '.comments[0] | {cseq, author}'   # → author is YOUR sub, not the body's
+
+# "me" — must include TEAM-assigned findings, not just your own sub:
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{"assigned_to":"me"}}'
+
+# THE LOAD-BEARING CHECK — resolve, then re-raise the same dedup_key (the RE-OPEN arm):
+curl -s … insight.resolve {"id":"01K…","ts":…}
+curl -s … insight.raise   {same dedup_key, ts:…}
+curl -s … insight.get     … | jq '{status, status_by, status_ts, assigned_to, n: (.comments|length)}'
+# → {"status":"open","status_by":null,"status_ts":null,"assigned_to":"team:mechanical","n":1}
+#   The LIFECYCLE clears; the HUMAN FACTS do not. If assigned_to went null, that is THE bug.
+
+# THE REFUSALS — each leaves the existing thread untouched
+… insight.comment {"text":"<5000 chars>"}   # → BadInput: …4096-byte cap…  (thread unchanged)
+… insight.comment {"text":"   "}            # → BadInput: comment text is empty
+… insight.assign  {"ids":[…101 ids…]}       # → BadInput: 101 ids exceeds the 100-id bulk cap
+… insight.assign  {"ids":[real,real,"bad"]} # → {"results":[{ok:true},{ok:true},{ok:false,error:…}]}
+```
+
+**Observe:** `assigned_to` rides `list` (it is the owner *column*) while `comments` is `get`-only —
+the same *"does a column need it"* rule as `analysis`, landing on the opposite side for each. The
+comment `author` must be **your** sub even when the body claims another: it is host-stamped like
+`status_by`. After an oversize/empty comment, `get` must show the thread **exactly as it was** — no
+truncated row, no partial write. Bulk assign must return **per-item** results, and >100 ids must
+error explicitly rather than silently assigning the first 100.
+
+**The two checks most worth doing by hand**, because both are decisions a future change is likely to
+"tidy" away:
+
+1. **The re-open arm** above. `status_by`/`status_ts` clearing while `assigned_to` survives looks
+   inconsistent and is not — one is the lifecycle, the other is a human fact.
+2. **The count cap refuses; it does not evict.** Fill a thread to 200 comments, append one more, and
+   assert the **oldest is still there** and the new one is not. Comments are not a ring: the
+   occurrence ring beside them evicts, and copying that here would silently delete what a person
+   wrote.
+
 ### 2.6 Live feed — `insight.watch` (SSE)
 
 ```bash
@@ -284,6 +347,10 @@ curl -N "http://127.0.0.1:8080/insights/events?token=$TOKEN"   # event: message 
 Query-param auth (EventSource can't send a bearer header); `401` on a bad token; `403` (opaque)
 without `mcp:insight.watch:call` or across workspaces. Fire a raise in another shell and watch the
 event arrive — a missed event is not data loss (`insight.list` is the durable truth).
+
+`assign` and `comment` emit on this **same** subject (`kind: "assign"` / `"comment"`) rather than a
+triage-specific one — one stream per surface, not per feature, so an open roster re-renders off the
+feed it already holds. Both payloads are lite: re-read the record for the new owner or note.
 
 ---
 

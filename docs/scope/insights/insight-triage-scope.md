@@ -1,6 +1,8 @@
 # Insights scope — triage: ownership + comments
 
-Status: scope (the ask). Promotes to `doc-site/content/public/insights/` once shipped.
+Status: **shipped** (slice 3 of issue #119) — session
+[`insight-triage-session.md`](../../sessions/insights/insight-triage-session.md), promoted to
+`doc-site/content/public/insights/insights.md`. See "Open questions after building" at the foot.
 
 The shipped record answers *what fired* and *who last moved the status*. It cannot answer
 **"who owns this"** or **"what did we find out"**. An operator triaging a roster of open
@@ -321,10 +323,41 @@ Stated here rather than as open questions, so the implementing session has no am
    are returned rather than folded into a success. The UI must surface partial failure — a green
    toast over 12 silent failures is the no-silent-caps rule broken at the last mile.
 
+## Open questions after building
+
+Written by the implementing session. Everything above is the ask as scoped; this is what shipping it
+exposed.
+
+1. **Assignment still notifies nobody, and that gap is now real rather than theoretical.** Resolved
+   decision 1 deferred it knowingly, but v1 now ships the ability to *give someone work* with no way
+   for them to hear about it — the same trust shape the umbrella flags for "0 subscribers". The
+   follow-up (an `assignee` match arm in `match_subs` + the subscription grammar, decisions 1 and 5)
+   should be sequenced next, before a vertical builds a workflow on top that assumes people are told.
+2. **The `unknown (removed)` rendering is unenforceable from this repo.** Resolved decision 3 keeps a
+   stale subject deliberately, and the visibility of the orphaned queue rests entirely on a
+   downstream UI choice lb cannot check (the shell is out-of-tree). If `rubix-ai` renders an
+   unresolvable assignee as blank, the record is honest and the product silently isn't. Worth an
+   explicit consumer contract test there.
+3. **A member who leaves can still be *newly* assigned to, briefly.** Validation is at assign time
+   and membership is read then; nothing re-validates later, which is the accepted trade — but a bulk
+   assign racing a removal writes a subject that was legal microseconds earlier. Harmless today
+   (the record keeps what it was told, by design), worth naming before anyone builds auto-assignment.
+4. **The comment count cap is per-insight, not per-workspace.** 200 comments × an unbounded insight
+   table is still unbounded; the cap bounds a *thread*, not the fleet. The umbrella's retention
+   follow-up now carries a second load-bearing requirement: it must delete comments **with** their
+   parent and must never sweep them independently.
+5. **Bulk assign is O(n) sequential store writes.** Fine at the 100-id cap on a human verb, and
+   deliberately not a job (the scope requires it stay synchronous) — but it is the shape that will
+   hurt first if the cap is ever raised. Raise the cap only with a batched write.
+
 ## Related
 
 - Parent: [`insights-scope.md`](insights-scope.md) (the record, the tag-cardinality rule, the
   no-`update` stance, §"Tags" and §"MCP surface")
+- Filed by the implementing session:
+  [`insight-tag-precedence-scope.md`](insight-tag-precedence-scope.md) — the resolution of slice 1's
+  multi-source tag question (`Human` > `Producer`), decided there because triage is where a human
+  first disagrees with the machine
 - Siblings: [`insight-occurrences-scope.md`](insight-occurrences-scope.md) (the child-list
   storage shape this reuses — **but not its eviction**, resolved decision 4);
   [`insight-analysis-scope.md`](insight-analysis-scope.md) (the producer's reasoning — where

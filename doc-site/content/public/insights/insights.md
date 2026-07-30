@@ -126,3 +126,81 @@ Tracked as [`insight-prose-refresh-scope.md`](../../../../docs/scope/insights/in
 
 Scope + rationale (including why the struct stays closed):
 [`insight-analysis-scope.md`](../../../../docs/scope/insights/insight-analysis-scope.md).
+
+## Triage — who owns it, and what we found out
+
+The record answered *what fired* and *who last moved the status*. It could not answer **"who owns
+this"** or **"what did we find out"** — so operators triaged in a spreadsheet beside the app. The
+triage plane adds the human half: one owner axis and an append-only note thread.
+
+```jsonc
+// insight.get — the drawer gets the record AND the whole thread
+{
+  "id": "01KYR…", "dedup_key": "rule:no-water-1d:WM-CHU-01", "status": "open",
+  "assigned_to": "user:priya",
+  "comments": [
+    { "cseq": 2, "text": "Facilities confirmed the shutdown.", "author": "user:priya", "ts": … },
+    { "cseq": 1, "text": "Site shut for the long weekend?",     "author": "user:ada",   "ts": … }
+  ]
+}
+```
+
+Two verbs, each with its **own capability** — `insight.assign` (`mcp:insight.assign:call`) and
+`insight.comment` (`mcp:insight.comment:call`), both member-act grade beside `ack`/`resolve`:
+
+```bash
+insight.assign  { id | ids[≤100], assignee? }   # assignee: null clears; team: subjects legal
+insight.comment { id, text, ts }                # → { seq }
+insight.list    { assigned_to: "me" | "none" | "user:…" | "team:…" }
+```
+
+There is deliberately **no `insight.update`**. One verb for "change any field" would mean a
+producer-grade `insight.raise` grant also buys the power to rewrite human triage state, and the deny
+path would stop being expressible. Two narrow verbs keep one capability per capability.
+
+### The rule that makes it trustworthy
+
+**A re-raise never touches either field — including the re-open arm.** When a resolved finding fires
+again, `status_by`/`status_ts` clear (a fresh lifecycle) but `assigned_to` and the thread do **not**:
+the fault came back and it is still Priya's, and the note explaining last time's false alarm is the
+most valuable thing on the record at that moment. A flapping sensor re-firing every 15 minutes can
+never silently un-assign the technician who took the job — there is no `assigned_to` on the raise
+input at all, so no producer can reach the plane.
+
+### The rules that come with it
+
+- **`assigned_to` is a subject, not a user id.** `user:priya` and `team:mechanical` are both legal
+  from v1, because queue-style ownership is how real triage works and retrofitting `team:` later
+  would retroactively break every consumer that parsed the field as a user. The assignee is
+  **validated** at assign time (it must be a member or team of this workspace) — and a subject from
+  another workspace is refused with the **same opaque error** as one that doesn't exist, so assign is
+  never a cross-tenant existence oracle.
+- **`assigned_to` rides `insight.list`; `comments` never does.** The boundary rule is again *"does a
+  column need it"* — the assignee is the 6th column operators ask for, and the thread is the first
+  thing that would make every roster page expensive. The thread is `get`-only.
+- **Comments do not evict.** This is the one place the thread diverges from the occurrence ring whose
+  storage shape it reuses, and it is deliberate: eviction is right for firings (machine-generated,
+  individually low-value) and a **trust failure** for human notes. Both bounds refuse instead — a
+  comment over 4 KB rejects the call, and appending past 200 comments errors with the existing thread
+  **unchanged**. A thread that long means the finding should have become a work item, and the
+  platform says so rather than quietly deleting the oldest note. Comments are purged only *with*
+  their insight.
+- **The author is host-stamped.** A comment's `author` is always the calling principal — a supplied
+  one is ignored, the same discipline `status_by` has. The thread is append-only: there is no edit or
+  delete in v1, so a correction is another comment and both remain.
+- **Bulk assign reports, never truncates.** Up to 100 ids with **per-item results**
+  (`{results:[{id, ok, error?}]}`); more than 100 is an explicit error and nothing is assigned. A UI
+  must surface the failures — a green toast over 12 silently failed rows is the same bug in a
+  friendlier costume.
+
+**Known gap — assigning notifies nobody.** The subscription ladder is subject-matched, not
+assignee-matched, so v1 assignment is a roster fact and the assignee is **not** paged. A UI must not
+imply a notification was sent. An `assignee` match arm is the sequenced follow-up.
+
+**Known gap — a subject outlives its membership.** A member removed from the workspace leaves
+insights assigned to a subject that can no longer read them. The record deliberately keeps the stale
+value rather than guessing an heir; render an unresolvable assignee as *"unknown (removed)"*, never
+blank, so the orphaned queue is visible rather than silently empty.
+
+Scope + rationale (including why comments are not a ring):
+[`insight-triage-scope.md`](../../../../docs/scope/insights/insight-triage-scope.md).

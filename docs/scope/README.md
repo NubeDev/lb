@@ -597,11 +597,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   subject column + a non-evicting comment thread, `insight.assign|comment` with their own
   member-grade caps, and the load-bearing rule that a re-raise never clears either). Per-asset
   identity stays in `dedup_key`; the roster boundary across all three is "does a column need
-  it" — scalars and facets on `list`, payloads on `get` only. The first two are **shipped**
-  (issue #119 slices 1–2); triage is next. Shipping `analysis` filed
+  it" — scalars and facets on `list`, payloads on `get` only. **All three are shipped**
+  (issue #119 slices 1–3), which is what the scope said was needed to finish the roster —
+  any one alone leaves a visible column blank. Shipping `analysis` filed
   `insight-prose-refresh-scope.md` — `title`/`body` should **refresh on re-raise** like every
   other producer-owned field, collapsing the record's three dedup classes to two (*producer
-  refreshes, human untouched*) and closing the evidence scope's Q1. Index: `insights/README.md`.
+  refreshes, human untouched*) and closing the evidence scope's Q1. Shipping triage filed
+  `insight-tag-precedence-scope.md` — a multi-source tag key resolves `Human` > `Producer`
+  (decided, not built), because triage is where a human first disagrees with the machine and
+  under today's last-write-wins their correction silently reverts on the next firing. Triage's
+  own named follow-up is assignee **notification**: v1 assignment pages nobody, since the
+  ladder is subject-matched. Index: `insights/README.md`.
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
   `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of

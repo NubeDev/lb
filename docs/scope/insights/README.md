@@ -32,11 +32,18 @@ rules/flows/attention planes. Start with the umbrella; the rest compose onto it.
   that scope's resolved decision 6 (a behaviour change to shipped semantics, so filed rather than
   fixed inline); collapses the record's three dedup classes to two — *producer refreshes, human
   untouched*. Closes `insight-evidence-scope.md` Q1.
-- [`insight-triage-scope.md`](insight-triage-scope.md) — **NEXT UP** (issue #119 slice 3) — **the human plane**: `assigned_to` as a
+- [`insight-triage-scope.md`](insight-triage-scope.md) — **SHIPPED** (issue #119 slice 3) — **the human plane**: `assigned_to` as a
   column (subjects incl. `team:`, filterable `"me"`/`"none"`, bulk assign) + an append-only
   comment thread, via `insight.assign`/`insight.comment` with their own member-grade caps.
   Decides the load-bearing dedup rule — a re-raise, including a re-open, never touches either —
-  and that comments **do not evict** (the occurrence ring's shape, not its retention).
+  and that comments **do not evict** (the occurrence ring's shape, not its retention). Assignee
+  notification is the named follow-up: v1 assignment is a roster fact and pages nobody.
+- [`insight-tag-precedence-scope.md`](insight-tag-precedence-scope.md) — **the rule for a
+  multi-source tag key** (`Human` > `Producer`), filed by the triage session as the resolution of
+  slice 1's open question. Tag edge identity is `(entity, tag, source)`, so a corrected
+  classification and the machine's original coexist and the flat echo currently keeps whichever the
+  graph returned last — under which an operator's correction silently reverts on the next firing.
+  Decided, **not built**: the fix changes the raise hot path's meaning for existing rows.
 - [`insight-subscriptions-scope.md`](insight-subscriptions-scope.md) — subscribe a channel to
   all / one rule / one identity / a tag facet / a severity floor; matched at raise time.
 - [`insight-notify-scope.md`](insight-notify-scope.md) — the anti-spam digest ladder

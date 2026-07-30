@@ -30,6 +30,56 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE FINDING NOW HAS AN OWNER
+AND A THREAD ([`insight-triage-scope`](scope/insights/insight-triage-scope.md), issue
+[#119](https://github.com/NubeDev/lb/issues/119) slice 3, session
+[`insight-triage`](sessions/insights/insight-triage-session.md)).** The record answered *what fired*
+and *who last moved the status*; it could not answer **"who owns this"** or **"what did we find
+out"** — so operators triaged in a spreadsheet beside the app (`status_by` is the acker, a fact about
+a transition; `body` is producer-owned JSON). Shipped: **`Insight.assigned_to`** (nullable, echoed on
+**both** `get` and `list` — it is the owner *column*, the tag-echo boundary rather than `evidence`'s)
+plus an **append-only comment thread** (`get`-only, the opposite side of the same *"does a column need
+it"* rule — the thread is the payload most able to make every roster page expensive). Two new
+**member-act caps**, `mcp:insight.assign:call` + `mcp:insight.comment:call`, deliberately **not** a
+generic `insight.update`: one verb for "change any field" would hand every producer holding
+`insight.raise` the power to rewrite human triage state, and the deny would stop being expressible —
+so "a producer grant buys zero triage write power" is now an executable test. **The load-bearing rule:
+a re-raise NEVER touches either field, including the re-open arm**, where `status_by`/`status_ts` DO
+clear — a flapping sensor cannot un-assign the technician who took the job, and there is no
+`assigned_to` on `RaiseInput` at all, so no producer can reach the plane. `assigned_to` is **a
+subject, not a user id** (`team:` legal from v1, so queue ownership works and no consumer breaks
+retroactively), **validated at assign time**, and a subject from another workspace is refused with the
+**same opaque error** as one that doesn't exist — assign is never a cross-tenant existence oracle.
+Comments **do not evict** — the one place the thread diverges from the occurrence ring whose storage
+shape it reuses: both bounds **refuse** (4 KB per comment; 200 per insight) with the existing thread
+untouched, because evicting a machine-generated firing is housekeeping and evicting a note a person
+wrote is a trust failure. Comments are purged only **with** their insight (the delete cascade). Bulk
+assign: 100 ids, **per-item results**, cap **reported** not truncated. `insight.list {assigned_to}`
+takes a subject, `"none"` (the triage queue), or `"me"` — resolved host-side to the principal **and
+every team they are on**, the case a naive sub-equality check silently drops. Both verbs emit on the
+**existing** `ws/{ws}/insight/events` subject (one stream per surface, not per feature). **Tests (rule
+9):** `insight_triage_test` **17** on a real booted node — real store, real bus, real caps, the real
+`call_tool` bridge, memberships/teams seeded as real rows; mandatory deny (incl. real-id vs
+fictional-id → **identical** error) and ws-isolation. **Both revert-checks the scope names performed:**
+clearing `assigned_to` on the re-open arm, and swapping the count cap for ring eviction — each turned
+**exactly one** test red, the right one. **Live-verified** over the real `POST /mcp/call` wire: the
+re-open arm preserving human facts while clearing the lifecycle, the byte-identical membership
+refusals, the host-stamped author, bulk per-item results, and every cap reporting rather than
+truncating. **Resolved slice 1's inherited open question** — a multi-source tag key is
+`Human` > `Producer` — and filed it as
+[`insight-tag-precedence-scope`](scope/insights/insight-tag-precedence-scope.md) rather than building
+it: the fix changes the raise hot path's meaning for existing rows, which does not belong in a slice
+whose load-bearing property is that the raise path doesn't touch triage. Until it lands, a
+multi-source key is **non-deterministic in the echo**, so a UI must not offer re-classification of a
+producer-set key as if it will stick. **Known gap, named loudly: assigning notifies nobody** (the
+ladder is subject-matched, not assignee-matched) — v1 assignment is a roster fact and a UI must not
+imply otherwise; the `assignee` match arm is the sequenced follow-up. Not verifiable here: the roster
+re-render, the owner column, and rendering a removed assignee as **"unknown (removed)"** are
+downstream `rubix-ai` changes (lb is a library; the shell is out of tree). **This completes the three
+slices of #119** — the roster's dimension columns (slice 1), the drawer's reasoning (slice 2), and the
+owner column + thread (slice 3) all land together, which is what the scope said was needed to stop the
+roster looking almost-done with a blank column.
+
 **Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE FINDING NOW EXPLAINS
 ITSELF ([`insight-analysis-scope`](scope/insights/insight-analysis-scope.md), issue
 [#119](https://github.com/NubeDev/lb/issues/119) slice 2, session
@@ -68,10 +118,7 @@ than fixed inline (per the scope's decision 6):
 should refresh too, which `analysis` existing is what makes indefensible (fresh reasoning above a
 firing-#1 narrative). Not verifiable here: the drawer's six labels and the *label*-level hedge on
 `suspected_cause` are a downstream `rubix-ai` change (lb is a library; the shell is out of tree).
-**Next up: slice 3, [`insight-triage-scope`](scope/insights/insight-triage-scope.md)** — `assigned_to`
-+ an append-only comment thread, two new member-grade caps, and the load-bearing rule that a re-raise
-(including the re-open arm) leaves **both** untouched. It inherits slice 1's open question about
-same-key multi-source tag edges.
+Slice 3 (triage) **shipped** — see the entry above.
 
 **Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE INSIGHT ROSTER GREW ITS
 DIMENSION COLUMNS ([`insight-tag-echo-scope`](scope/insights/insight-tag-echo-scope.md), issue
