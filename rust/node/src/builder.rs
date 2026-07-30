@@ -125,12 +125,116 @@ impl RunningNode {
                 .local_addr()
                 .map(|a| a.to_string())
                 .unwrap_or_else(|_| "?".into());
-            println!("gateway: serving on http://{addr}");
+            // Scheme-aware, for a node behind a TLS reverse proxy (rubix-fleet
+            // docs/rasp-pi/HTTPS.md §4, work item 7). This line is what an
+            // operator reads out of the journal and types, so once a node binds
+            // loopback behind Caddy, `http://127.0.0.1:8099` is a broken
+            // instruction — the front door is `https://ai.pi-07.local`.
+            //
+            // NOTE the deliberate asymmetry with `install_gateway_url` below:
+            // that one stays plaintext loopback forever (§3). What we PRINT and
+            // what sidecars CALL are different questions, and conflating them is
+            // how a sidecar ends up unable to verify a cert, reporting
+            // `health=ok`, and doing nothing.
+            println!("gateway: serving on {}", printed_gateway_url(&addr));
             lb_role_gateway::serve_listener(gw, listener).await?;
         }
         // Hold the agent server alive until serve returns (or forever, headless would drop here).
         drop(agent_server);
         Ok(())
+    }
+}
+
+/// The operator-facing gateway URL to PRINT — as opposed to the address the
+/// listener bound or the loopback URL sidecars call back on.
+///
+/// `LB_PUBLIC_URL` wins outright (`https://ai.pi-07.local`): a node behind a
+/// reverse proxy is reached at a hostname and scheme that its bind address
+/// simply does not contain. Otherwise `LB_SCHEME=https` upgrades the scheme on a
+/// non-loopback bind.
+///
+/// **A loopback address is never printed as `https://`.** The loopback listener
+/// is plaintext by design (rubix-fleet docs/rasp-pi/HTTPS.md §3) and no
+/// certificate carries a `127.0.0.1` SAN, so such a URL can neither connect nor
+/// verify — it is a broken instruction handed to someone reading a journal to
+/// find out why a box is unreachable.
+fn printed_gateway_url(addr: &str) -> String {
+    printed_gateway_url_from(
+        addr,
+        std::env::var("LB_PUBLIC_URL").ok().as_deref(),
+        std::env::var("LB_SCHEME").ok().as_deref(),
+    )
+}
+
+/// The pure core of [`printed_gateway_url`], split out so the rules are testable
+/// without mutating process env (which no parallel test suite can do safely).
+fn printed_gateway_url_from(addr: &str, public: Option<&str>, scheme: Option<&str>) -> String {
+    if let Some(public) = public {
+        let public = public.trim().trim_end_matches('/');
+        if !public.is_empty() {
+            return public.to_string();
+        }
+    }
+    let loopback =
+        addr.starts_with("127.") || addr.starts_with("localhost:") || addr.starts_with("[::1]");
+    let https = matches!(scheme, Some(s) if s.trim().eq_ignore_ascii_case("https"));
+    if https && !loopback {
+        format!("https://{addr}")
+    } else {
+        format!("http://{addr}")
+    }
+}
+
+#[cfg(test)]
+mod printed_url_tests {
+    use super::printed_gateway_url_from as url;
+
+    #[test]
+    fn the_default_is_unchanged() {
+        // Every node that has not opted in must print exactly what it printed
+        // before work item 7.
+        assert_eq!(url("127.0.0.1:8099", None, None), "http://127.0.0.1:8099");
+        assert_eq!(url("0.0.0.0:8099", None, None), "http://0.0.0.0:8099");
+    }
+
+    #[test]
+    fn a_loopback_bind_is_never_printed_as_https() {
+        // The guard rule. The loopback listener is plaintext by design
+        // (rubix-fleet docs/rasp-pi/HTTPS.md §3) and no certificate carries a
+        // 127.0.0.1 SAN, so https://127.0.0.1:8099 can neither connect nor
+        // verify — it is a broken instruction in a journal someone is reading to
+        // find out why a box is unreachable.
+        for addr in ["127.0.0.1:8099", "localhost:8099", "[::1]:8099"] {
+            assert!(
+                url(addr, None, Some("https")).starts_with("http://"),
+                "{addr} must not be printed as https"
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_loopback_bind_honours_the_scheme() {
+        assert_eq!(
+            url("192.168.1.40:8099", None, Some("https")),
+            "https://192.168.1.40:8099"
+        );
+        assert_eq!(url("192.168.1.40:8099", None, Some("HTTPS")).split(':').next(), Some("https"));
+    }
+
+    #[test]
+    fn public_url_expresses_the_reverse_proxy_case() {
+        // The node binds loopback; operators reach it at a hostname over TLS.
+        // Neither the scheme nor the authority of the bind address is what to
+        // print, which is why a scheme-only knob cannot express this.
+        assert_eq!(
+            url("127.0.0.1:8099", Some("https://ai.pi-07.local/"), None),
+            "https://ai.pi-07.local"
+        );
+    }
+
+    #[test]
+    fn an_empty_public_url_falls_through_rather_than_printing_nothing() {
+        assert_eq!(url("127.0.0.1:8099", Some("  "), None), "http://127.0.0.1:8099");
     }
 }
 
@@ -270,6 +374,15 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             // port-0 request to a concrete port). `install_native` reads it from here rather than
             // from a process-global `LB_GATEWAY_URL` that nothing guarantees is set by spawn time.
             let bound = listener.local_addr().unwrap_or(*addr);
+            // PLAINTEXT, ALWAYS — do not make this scheme-aware.
+            //
+            // This is the URL boot-spawned sidecars POST their config to, and it
+            // is in the plaintext-loopback set (rubix-fleet
+            // docs/rasp-pi/HTTPS.md §3) for a specific reason: a sidecar that
+            // cannot verify a certificate comes up with an empty runtime and
+            // reports `health=ok` forever, which is the exact failure the
+            // bind-here-not-in-serve() comment above exists to prevent. The
+            // PRINTED url (see `printed_gateway_url`) is a different question.
             node.install_gateway_url(format!("http://{bound}"));
             Some((gw, listener))
         }
