@@ -23,7 +23,10 @@ use serde_json::Value;
 
 use crate::align::bucket_start;
 use crate::bucket::{read_buckets, BucketQuery};
-use crate::cap::{cap_cutoff_ms, cap_series, over_cap_warning, sample_count};
+use crate::cap::{
+    cap_cutoff_ms, cap_series, default_cap_notice, sample_count, DEFAULT_MAX_SAMPLES,
+};
+use crate::dead_letter_gc::{prune_dead_letters, DEAD_LETTER_KEEP_MS};
 use crate::meta::series_names;
 use crate::page::PageError;
 use crate::pass_record::{record_pass, GcPassRecord};
@@ -42,8 +45,13 @@ pub struct GcPass {
     /// `evicted_raw`'s time horizon. Eviction is a policy decision, but it must be observable —
     /// never an invisible drop (issue #65).
     pub capped_raw: usize,
-    /// Advisory warnings for unpoliced series past the recommended cap — release 1 makes the need
-    /// for a policy visible while nothing is evicted by default (see `DEFAULT_MAX_SAMPLES`).
+    /// Dead-letter rows evicted by [`DEAD_LETTER_KEEP_MS`] — reported separately from `evicted_raw`
+    /// because they are a different table on a different horizon (disk-budget decision 7).
+    #[serde(default)]
+    pub evicted_dead_letters: usize,
+    /// Notices for unpoliced series the DEFAULT cap evicted from (see `DEFAULT_MAX_SAMPLES`). The
+    /// cap is enforced now rather than advisory, so these report what was deleted — an eviction is a
+    /// policy decision, but never an invisible one.
     ///
     /// Returned as DATA rather than logged here: `lb-ingest` is a primitives crate with no
     /// `tracing` dependency, and the caller (the retention reactor / the `series.retention.gc`
@@ -140,9 +148,13 @@ pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, Stor
         }
     }
 
-    // Series no policy covers: unbounded, and in this release only WARNED about (see
-    // `DEFAULT_MAX_SAMPLES`) — release 2 flips them to bounded-by-default.
-    pass.warnings = warn_unpoliced(store, ws, &policies).await?;
+    // Series NO policy covers: bounded by `DEFAULT_MAX_SAMPLES` (disk-budget slice 3). Policy-record
+    // EXISTENCE is what decides — a record saying `max_samples: 0` is handled by the loop above and
+    // left genuinely unbounded, which is the opt-out the previous release's warning promised.
+    cap_unpoliced(store, ws, &policies, &mut pass).await?;
+
+    // The dead-letter table, on its own 30-day horizon: the one ingest table nothing used to prune.
+    pass.evicted_dead_letters = prune_dead_letters(store, ws, now_ms, DEAD_LETTER_KEEP_MS).await?;
 
     // Record the pass — UNCONDITIONALLY, even when it evicted nothing. `run_gc` (not the reactor)
     // owns this write so the on-demand `series.retention.gc` verb and the periodic reactor record
@@ -204,25 +216,40 @@ async fn cap_pass(
     ))
 }
 
-/// One warning per registered series that NO policy covers and that has grown past the recommended
-/// cap. This is release 1's whole job on the default axis: make the need for a policy visible while
-/// nothing is evicted yet.
-async fn warn_unpoliced(
+/// FIFO-evict every registered series that NO policy covers down to [`DEFAULT_MAX_SAMPLES`], and
+/// report each eviction. This is what "bounded by default" means: a node whose operator set no
+/// policy at all still cannot grow a series forever.
+///
+/// **The predicate is `starts_with` on a policy's prefix — the same "is there a record covering this
+/// series" test the loop above uses, NOT `max_samples != 0`.** That distinction is the whole of
+/// disk-budget decision 9: a policy row that says `max_samples: 0` is covered here, skipped, and
+/// left unbounded exactly as written, while a series with no row at all is capped.
+///
+/// There are no tiers to fold into (a series with no policy has none), so this evicts raw history
+/// outright — which is why it is loud. The alternative is the shape this slice exists to end: a
+/// default that keeps everything until the disk decides for you.
+async fn cap_unpoliced(
     store: &Store,
     ws: &str,
     policies: &[Policy],
-) -> Result<Vec<String>, StoreError> {
-    let mut warnings = Vec::new();
+    pass: &mut GcPass,
+) -> Result<(), StoreError> {
     for series in series_names(store, ws, "").await? {
         if policies.iter().any(|p| series.starts_with(&p.prefix)) {
-            continue; // governed by a policy — its own bounds apply (possibly deliberately none)
+            continue; // governed by a policy record — its own bounds apply (possibly deliberately none)
         }
         let count = sample_count(store, ws, series.as_str()).await?;
-        if let Some(warning) = over_cap_warning(&series, count, 0) {
-            warnings.push(warning);
+        if count <= DEFAULT_MAX_SAMPLES {
+            continue;
+        }
+        let evicted = cap_series(store, ws, series.as_str(), DEFAULT_MAX_SAMPLES).await?;
+        if evicted > 0 {
+            pass.capped_raw += evicted;
+            pass.warnings
+                .push(default_cap_notice(&series, evicted, count));
         }
     }
-    Ok(warnings)
+    Ok(())
 }
 
 /// Fold one series' RAW samples into each tier, each up to ITS OWN [`tier_cutoff`], and store the

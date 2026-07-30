@@ -13,9 +13,13 @@ use crate::open::Store;
 pub struct StoreStatus {
     /// False for a `memory()` store (no log; the byte fields are zero).
     pub persistent: bool,
-    /// Total bytes across the commit-log segments (`clog/*.clog`) — what open replays at boot.
+    /// Total bytes of the store directory's log tree: the commit-log segments (`clog/*.clog`) —
+    /// what open replays at boot — plus the sibling `manifest` (disk-budget scope decision 4: the
+    /// `clog` tree measured 99.9% of two real store directories, and `manifest` is the only
+    /// sibling, so one cheap extra stat makes the number exact rather than merely honest).
     pub log_bytes: u64,
-    /// Number of commit-log segment files.
+    /// Number of commit-log segment files. Counts `.clog` segments only — `manifest` contributes
+    /// bytes, never a segment.
     pub segment_count: u32,
     /// Outcome of the most recent compaction pass (boot or online) in this process, if any.
     pub last_compaction: Option<CompactionRecord>,
@@ -36,10 +40,12 @@ pub fn status(store: &Store) -> StoreStatus {
     }
 }
 
-/// Sum the commit-log segment sizes under `path` → (bytes, segment file count). Zero for a
-/// path with no store yet.
+/// Sum the store's on-disk log bytes under `path` → (bytes, segment file count). Bytes are the
+/// `clog/*.clog` segments **plus the sibling `manifest`** (disk-budget scope decision 4); the count
+/// is segments only, so a manifest never inflates it. Zero for a path with no store yet.
 pub(crate) fn log_stats(path: impl AsRef<std::path::Path>) -> (u64, u32) {
-    let clog = path.as_ref().join("clog");
+    let path = path.as_ref();
+    let clog = path.join("clog");
     let mut bytes = 0u64;
     let mut count = 0u32;
     if let Ok(rd) = std::fs::read_dir(clog) {
@@ -51,5 +57,27 @@ pub(crate) fn log_stats(path: impl AsRef<std::path::Path>) -> (u64, u32) {
             }
         }
     }
+    bytes += manifest_bytes(&path.join("manifest"));
     (bytes, count)
+}
+
+/// Bytes of the store's `manifest`, whichever shape the engine wrote it in: a plain file (its
+/// length) or a directory (the sum of its immediate entries, which is all SurrealKV ever writes
+/// there). Missing ⇒ 0 — a memory store, or a directory with no store yet.
+fn manifest_bytes(manifest: &std::path::Path) -> u64 {
+    let Ok(meta) = std::fs::metadata(manifest) else {
+        return 0;
+    };
+    if meta.is_file() {
+        return meta.len();
+    }
+    std::fs::read_dir(manifest)
+        .map(|rd| {
+            rd.flatten()
+                .filter_map(|e| e.metadata().ok())
+                .filter(|m| m.is_file())
+                .map(|m| m.len())
+                .sum()
+        })
+        .unwrap_or(0)
 }

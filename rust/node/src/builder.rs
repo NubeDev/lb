@@ -144,6 +144,9 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // is not gateway-specific). A no-op when the `page-cache` feature is off OR `cfg.cache` is
     // `None`/disabled — the zero-cost seam. Symmetric: on/off/budget is config, never a role branch.
     node.install_response_cache(cfg.cache.clone());
+    // The disk budget (issue #122) — `LB_STORE_MAX_BYTES` reaches `store.status` and the
+    // store-compact reactor from here. Unset ⇒ `None` ⇒ the node behaves exactly as before.
+    node.install_store_budget(cfg.store_budget_bytes);
 
     // TELEMETRY sink selection: choose the tracing layers by config, right after boot so every
     // subsequent instrumented call is captured. Shares the node's OWN store + bus handles.
@@ -194,6 +197,7 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             &ws,
             &cfg.outbox_providers,
             cfg.email_transport.as_ref(),
+            cfg.store_budget_bytes,
         )
         .await;
     }

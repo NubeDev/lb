@@ -22,14 +22,18 @@ use serde_json::Value;
 
 use crate::staging::SERIES_TABLE;
 
-/// The recommended per-series sample cap (~70MB at the measured ~700 bytes/sample).
+/// The per-series sample cap applied to any series **no policy record covers** (~70MB at the
+/// measured ~700 bytes/sample).
 ///
-/// **Advisory in this release, not enforced.** A series past this bound is *warned* about
-/// ([`over_cap_warning`]); nothing is evicted unless a policy sets `max_samples` explicitly. The
-/// flip to enforcing this by default is release 2 — 100k is tight enough (~1.2 days at 1 sample/sec)
-/// that a silent flip would evict real history on the next boot of a node whose operator never read
-/// the release note. The window exists so policies can be set against a bound already visible in the
-/// logs.
+/// **ENFORCED as of the disk-budget slice 3** (it was advisory for one release, which is the window
+/// the release note promised). A series with no covering `series_retention` row is FIFO-evicted down
+/// to this bound by the GC, exactly as an explicit `max_samples` would be; [`default_cap_notice`]
+/// reports each eviction so it is never silent.
+///
+/// **The opt-out is a policy record, not the absence of one** (disk-budget decision 9): policy-record
+/// EXISTENCE decides. No record ⇒ this default applies. A record with `max_samples: 0` ⇒ genuinely
+/// unbounded, honoured as written — which is the promise the previous release's advisory warning
+/// already made to operators.
 ///
 /// Why 100k and not 1M: the bound that matters is `max_samples × DEFAULT_SERIES_CAP` (10k series) —
 /// the worst case an unattended workspace can actually reach. At 1M that is 7TB, a default bigger
@@ -189,17 +193,18 @@ async fn evict_older_than(
     Ok(n.unwrap_or(0).max(0) as usize)
 }
 
-/// The advisory warning for an unbounded series past [`DEFAULT_MAX_SAMPLES`] — release 1's job is to
-/// make the need for a policy VISIBLE before release 2's default starts evicting. `None` when the
-/// series is bounded by a policy or is under the recommended cap.
-pub fn over_cap_warning(series: &str, count: u64, max_samples: u64) -> Option<String> {
-    (max_samples == 0 && count > DEFAULT_MAX_SAMPLES).then(|| {
-        format!(
-            "series '{series}' holds {count} raw samples and is UNBOUNDED (no max_samples policy); \
-             past the recommended cap of {DEFAULT_MAX_SAMPLES} (~{}MB at ~700 bytes/sample). Set a \
-             retention policy: series.retention.set {{prefix, max_samples}}. A future release will \
-             apply {DEFAULT_MAX_SAMPLES} by default; max_samples:0 opts out explicitly.",
-            count * 700 / 1_000_000,
-        )
-    })
+/// The notice for a series the DEFAULT cap just evicted from — an unpoliced series past
+/// [`DEFAULT_MAX_SAMPLES`]. The advisory warning this replaces said "a future release will apply
+/// {DEFAULT_MAX_SAMPLES} by default"; this is that release, so the line has to say what was DELETED
+/// and how to opt out, not what might happen later. Eviction is a policy decision but it is never
+/// invisible (issue #65) — the GC returns these as `GcPass::warnings`, which the reactor logs and the
+/// `series.retention.gc` verb hands back to its caller.
+pub fn default_cap_notice(series: &str, evicted: usize, count: u64) -> String {
+    format!(
+        "series '{series}' has NO retention policy and held {count} raw samples, past the default \
+         cap of {DEFAULT_MAX_SAMPLES} (~{}MB at ~700 bytes/sample): FIFO-evicted the {evicted} \
+         oldest. Set a policy to choose your own bound (series.retention.set {{prefix, \
+         max_samples}}); a policy with max_samples:0 is the explicit opt-out and is kept unbounded.",
+        count * 700 / 1_000_000,
+    )
 }

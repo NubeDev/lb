@@ -58,9 +58,11 @@ pub fn spawn_retention_reactors(node: Arc<Node>, workspaces: Vec<String>, period
                                 "retention gc pass"
                             );
                         }
-                        // The advisory over-cap warnings: an unbounded series past the recommended
-                        // cap. This is release 1's job on the default axis — make the need for a
-                        // policy VISIBLE before a future release starts evicting by default.
+                        // The pass's notices, incl. the default-cap evictions: a series with NO
+                        // policy record is now FIFO-capped at `DEFAULT_MAX_SAMPLES` (disk-budget
+                        // scope slice 3 — the "release 2" flip). These lines are how an operator
+                        // learns their unpolicied series is being trimmed, and they name the
+                        // `max_samples: 0` opt-out.
                         for warning in &pass.warnings {
                             tracing::warn!(ws = %ws, "{warning}");
                         }

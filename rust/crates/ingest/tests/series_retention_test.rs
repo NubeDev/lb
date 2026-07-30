@@ -1,7 +1,9 @@
 //! The RETENTION half of the series plane, against the real store (series-retention scope #58 +
 //! series-sample-cap #65): rollup-then-evict on the time horizon, the `max_samples` FIFO count cap,
-//! how the two axes compose, longest-prefix-wins, the unpoliced-series warning, and the workspace
-//! wall around all of it.
+//! how the two axes compose, longest-prefix-wins, and the workspace wall around all of it.
+//!
+//! The DEFAULT cap for series no policy covers (disk-budget slice 3) is in
+//! `series_default_cap_test.rs` — it needs 100k rows, so it is kept out of this file.
 //!
 //! Paging, decimation, cardinality and the `series_latest` pointer stay in `series_plane_test.rs`;
 //! the write-time filters and tier methods this later grew are in `series_filter*_test.rs` /
@@ -11,8 +13,8 @@
 //! `(series, producer)` only, and ordering by it across producers is exactly what caused #63.
 
 use lb_ingest::{
-    commit_batch, over_cap_warning, read_buckets, read_page, run_gc, sample_count, set_policy,
-    write, BucketQuery, PageQuery, Policy, Qos, Sample, Tier, DEFAULT_MAX_SAMPLES,
+    commit_batch, read_buckets, read_page, run_gc, sample_count, set_policy, write, BucketQuery,
+    PageQuery, Policy, Qos, Sample, Tier, DEFAULT_MAX_SAMPLES,
 };
 use lb_store::Store;
 use serde_json::json;
@@ -214,22 +216,12 @@ async fn the_longest_matching_prefix_governs_a_series() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn an_unpoliced_series_is_warned_about_not_evicted() {
-    // The warning predicate itself — the 100k threshold is not exercised by seeding 100k rows.
-    assert!(
-        over_cap_warning("s", DEFAULT_MAX_SAMPLES + 1, 0).is_some(),
-        "unbounded + past the recommended cap → warn"
-    );
-    assert!(
-        over_cap_warning("s", DEFAULT_MAX_SAMPLES + 1, 50).is_none(),
-        "a series with a max_samples policy is bounded, not warned"
-    );
-    assert!(
-        over_cap_warning("s", DEFAULT_MAX_SAMPLES, 0).is_none(),
-        "at the cap, not past it"
-    );
-
-    // And the GC does not evict from an unpoliced series (release 1: advisory only).
+async fn an_unpoliced_series_under_the_default_cap_is_untouched() {
+    // The default cap ENFORCES now (disk-budget slice 3) — but only past `DEFAULT_MAX_SAMPLES`. A
+    // small unpoliced series must still come through a pass with every row intact, otherwise
+    // "bounded by default" would read as "lossy by default" on every quiet node.
+    //
+    // The enforcing half of this behaviour needs 100k rows and lives in `series_default_cap_test.rs`.
     let store = Store::memory().await.unwrap();
     seed(
         &store,
@@ -242,8 +234,14 @@ async fn an_unpoliced_series_is_warned_about_not_evicted() {
     let pass = run_gc(&store, "acme", 1_000_000).await.unwrap();
     assert_eq!(
         pass.capped_raw, 0,
-        "no policy → nothing evicted in release 1"
+        "30 samples is far under the default cap → nothing evicted"
     );
+    assert!(
+        pass.warnings.is_empty(),
+        "nothing was evicted, so there is nothing to report"
+    );
+    // The premise of this test, stated: 30 rows is far under the enforced default bound.
+    assert_eq!(DEFAULT_MAX_SAMPLES, 100_000);
     assert_eq!(sample_count(&store, "acme", "unpoliced").await.unwrap(), 30);
 }
 

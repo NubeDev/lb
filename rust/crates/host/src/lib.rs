@@ -389,9 +389,12 @@ pub use run_events::{
 };
 pub use serve::{serve_ext, ToolServer};
 pub use store_admin::{
-    authorize_store_compact, authorize_store_status, call_store_admin_tool, drain_compact_jobs,
-    over_threshold_advisory, spawn_store_compact_reactors, store_compact_enqueue, store_status_run,
-    StoreAdminError, StoreStatusReport, LOG_ADVISORY_BYTES, STORE_COMPACT_JOB_KIND,
+    authorize_store_compact, authorize_store_status, budget_marks, budget_tick,
+    call_store_admin_tool, drain_compact_jobs, is_productive, over_threshold_advisory,
+    spawn_store_compact_reactors, store_compact_enqueue, store_status_run,
+    store_status_run_with_budget, BudgetAction, BudgetDriver, BudgetMarks, StoreAdminError,
+    StoreStatusReport, AUTO_COMPACT_MIN_INTERVAL, BUDGET_REQUESTED_BY, HARD_MARK_PCT,
+    LOG_ADVISORY_BYTES, PRODUCTIVE_RECLAIM_RATIO, SOFT_MARK_PCT, STORE_COMPACT_JOB_KIND,
     STORE_COMPACT_PERIOD,
 };
 pub use store_mutate::{

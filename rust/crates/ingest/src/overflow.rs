@@ -86,7 +86,17 @@ async fn drop_oldest(store: &Store, ws: &str) -> Result<(), StoreError> {
 }
 
 /// Divert a must-deliver sample to the dead-letter table (keyed like staging, so idempotent).
+///
+/// Stamped with `dead_at` — WHEN the node diverted it, which is what
+/// [`crate::prune_dead_letters`] ages the row on. It is wall-clock rather than caller-injected
+/// because this is not a pass with a logical time: the divert happens inside one `ingest.write`, and
+/// the sample's own `ts` is the producer's untrusted clock (a skewed producer must not be able to
+/// make its dead letters immortal, nor expire them on arrival).
 async fn dead_letter(store: &Store, ws: &str, sample: &Sample) -> Result<(), StoreError> {
+    let dead_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis().min(u64::MAX as u128) as u64)
+        .unwrap_or(0);
     store
         .query_ws(
             ws,
@@ -97,7 +107,10 @@ async fn dead_letter(store: &Store, ws: &str, sample: &Sample) -> Result<(), Sto
                 ("series".into(), Value::String(sample.series.clone())),
                 ("producer".into(), Value::String(sample.producer.clone())),
                 ("seq".into(), Value::Number(sample.seq.into())),
-                ("row".into(), json!({ "sample": sample })),
+                (
+                    "row".into(),
+                    json!({ "sample": sample, "dead_at": dead_at }),
+                ),
             ],
         )
         .await?;

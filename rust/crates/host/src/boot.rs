@@ -123,6 +123,13 @@ pub struct Node {
     // Feature-off it is a `()` written at construction but never read — that is the point (zero cost).
     #[cfg_attr(not(feature = "page-cache"), allow(dead_code))]
     response_cache: crate::cache::CacheSlot,
+    /// The node's **disk budget** in bytes (disk-budget scope, issue #122), installed once at boot
+    /// from `BootConfig::store_budget_bytes` (`LB_STORE_MAX_BYTES`). It lives on the `Node` for the
+    /// same reason `gateway_url` and the signing `key` do: it is one fact about THIS node that a
+    /// verb (`store.status`) needs long after the boot layer that knew it returned. A `OnceLock` —
+    /// never installed, or installed as `None`, both mean **unbudgeted**: today's flat advisory and
+    /// no automatic pass, which is what makes the whole scope additive on upgrade.
+    store_budget: std::sync::OnceLock<Option<u64>>,
     pub role: Role,
 }
 
@@ -154,6 +161,7 @@ impl Node {
             gateway_url: Mutex::new(None),
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
+            store_budget: std::sync::OnceLock::new(),
             role: Role::Solo,
         })
     }
@@ -181,6 +189,7 @@ impl Node {
             gateway_url: Mutex::new(None),
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
+            store_budget: std::sync::OnceLock::new(),
             role,
         })
     }
@@ -207,6 +216,7 @@ impl Node {
             gateway_url: Mutex::new(None),
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
+            store_budget: std::sync::OnceLock::new(),
             role,
         })
     }
@@ -315,6 +325,17 @@ impl Node {
             .map(|c| Arc::new(crate::cache::ResponseCache::new(&c)));
         // Installed once at boot; a second call is a no-op (the boot layer owns this).
         let _ = self.response_cache.set(built);
+    }
+
+    /// Install the node's disk budget from boot config. Called once by the boot layer; a second
+    /// call is a no-op. `None` ⇒ unbudgeted (and never calling it means the same thing).
+    pub fn install_store_budget(&self, budget_bytes: Option<u64>) {
+        let _ = self.store_budget.set(budget_bytes);
+    }
+
+    /// This node's configured disk budget, or `None` when unbudgeted. Lock-free read.
+    pub fn store_budget(&self) -> Option<u64> {
+        self.store_budget.get().copied().flatten()
     }
 
     /// Feature-off: the response cache does not exist. This no-op keeps the ONE call site in the

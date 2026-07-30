@@ -249,6 +249,22 @@ pub struct BootConfig {
     /// embedder fills it directly (rubix-ai maps `RUBIX_CACHE_*` → here at its binary boundary);
     /// `from_env` maps `LB_CACHE_*` for the standalone binary.
     pub cache: Option<lb_host::CacheConfig>,
+
+    /// The node's **disk budget** for the store directory, in bytes (disk-budget scope, slice 1).
+    /// `None` (the default) ⇒ today's behaviour exactly: the flat
+    /// [`lb_host::LOG_ADVISORY_BYTES`] advisory (256 MiB) and **no marks** — nothing derives from a
+    /// budget that does not exist, so nothing new can trigger on upgrade (scope decision 2).
+    /// `Some(bytes)` ⇒ the advisory threshold and the soft/hard marks derive from it as percentages
+    /// ([`lb_host::SOFT_MARK_PCT`] / [`lb_host::HARD_MARK_PCT`], scope decision 1).
+    ///
+    /// The budget covers the **store directory** (the commit log + manifest), not the partition —
+    /// extension artifacts, sidecar binaries and OS logs sharing the filesystem are outside it.
+    /// That distinction is what `store.status`'s `free_disk_bytes` exists to keep visible.
+    ///
+    /// Config, never a code branch (rule 1): an edge node on an SD card and a cloud node on a volume
+    /// differ only in the number. An embedder fills the field; `from_env` reads
+    /// `LB_STORE_MAX_BYTES` at the binary boundary — the one place `LB_*` is read.
+    pub store_budget_bytes: Option<u64>,
 }
 
 impl Default for BootConfig {
@@ -297,6 +313,10 @@ impl Default for BootConfig {
             // No response cache by default — an embedder opts in (rubix-ai does, on by default in
             // ITS binary). `from_env` (below) turns it on for the standalone binary via `LB_CACHE_*`.
             cache: None,
+            // No disk budget by default (disk-budget scope decision 2): unset means today's flat
+            // 256 MiB advisory and no marks, forever. No auto-derivation from filesystem size — a
+            // node must not silently acquire a new behaviour on upgrade.
+            store_budget_bytes: None,
         }
     }
 }
@@ -365,6 +385,9 @@ impl BootConfig {
             // The `POST /extensions` upload ceiling from `LB_MAX_EXTENSION_UPLOAD_BYTES` (bytes);
             // unset/empty/unparseable ⇒ the 384 MiB default. Read only here, at the binary boundary.
             max_extension_upload_bytes: max_extension_upload_bytes_from_env(),
+            // The node's store disk budget from `LB_STORE_MAX_BYTES` (bytes); unset/empty/
+            // unparseable ⇒ `None` ⇒ today's flat 256 MiB advisory and no marks. Read only here.
+            store_budget_bytes: store_budget_bytes_from_env(),
             // Optional dev-admin seed password (`LB_SEED_PASSWORD`) — so a `PasswordHash` binary
             // has a first admin who can log in. Absent ⇒ no credential seeded (correct for a
             // `DevTrustAny` binary). Secret-class: read here, hashed at seed time, never logged.
@@ -448,6 +471,24 @@ fn max_extension_upload_bytes_from_env() -> u64 {
             DEFAULT_MAX_EXTENSION_UPLOAD_BYTES
         }),
         _ => DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
+    }
+}
+
+/// Parse `LB_STORE_MAX_BYTES` (a plain byte count) into the node's store disk budget
+/// (disk-budget scope, slice 1); unset/empty/unparseable ⇒ `None` ⇒ today's exact behaviour (the
+/// flat [`lb_host::LOG_ADVISORY_BYTES`] advisory, no marks — scope decisions 1 and 2). A malformed
+/// value warns and falls back rather than panicking (the "don't panic in boot config" posture,
+/// exactly as [`max_extension_upload_bytes_from_env`] does). Only this binary-boundary reader
+/// touches the env — the value rides `BootConfig` below the boot seam.
+fn store_budget_bytes_from_env() -> Option<u64> {
+    match std::env::var("LB_STORE_MAX_BYTES") {
+        Ok(v) if !v.trim().is_empty() => v.trim().parse().ok().or_else(|| {
+            eprintln!(
+                "bad LB_STORE_MAX_BYTES '{v}': not a byte count — running with no store disk budget"
+            );
+            None
+        }),
+        _ => None,
     }
 }
 
