@@ -27,6 +27,7 @@
 
 mod ack;
 mod assign;
+mod assign_notify;
 mod assignee;
 mod comment;
 mod comments;

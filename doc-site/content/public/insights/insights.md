@@ -193,10 +193,6 @@ input at all, so no producer can reach the plane.
   must surface the failures — a green toast over 12 silently failed rows is the same bug in a
   friendlier costume.
 
-**Known gap — assigning notifies nobody.** The subscription ladder is subject-matched, not
-assignee-matched, so v1 assignment is a roster fact and the assignee is **not** paged. A UI must not
-imply a notification was sent. An `assignee` match arm is the sequenced follow-up.
-
 **Known gap — a subject outlives its membership.** A member removed from the workspace leaves
 insights assigned to a subject that can no longer read them. The record deliberately keeps the stale
 value rather than guessing an heir; render an unresolvable assignee as *"unknown (removed)"*, never
@@ -204,3 +200,62 @@ blank, so the orphaned queue is visible rather than silently empty.
 
 Scope + rationale (including why comments are not a ring):
 [`insight-triage-scope.md`](../../../../docs/scope/insights/insight-triage-scope.md).
+
+## Assignee notification — telling someone their queue moved
+
+Triage shipped able to give someone work and tell them nothing. Subscriptions now understand
+**ownership**, which closes that from two directions:
+
+```bash
+# "Notify my crew's channel about anything assigned to us."
+insight.sub.create {
+  sink:   { kind: "channel", channel: "chan/mechanical" },
+  filter: { assignee: "me", severity_min: "warning" }
+}
+```
+
+`filter.assignee` takes a subject (`user:priya` / `team:mechanical`) or **`"me"`**, which resolves to
+the *subscription owner and every team they are on* — so a queue-assigned finding reaches the people
+on the queue. It does two jobs:
+
+- **at raise time** — an ordinary AND axis beside `tags`/`severity_min`: *"tell me when a finding my
+  crew owns fires again"*, throttled by the usual digest ladder;
+- **at assign time** — the **opt-in** for assignment notifications: *"tell me when something becomes
+  ours"*.
+
+### The rules that come with it
+
+- **Opt-in only.** A subscription hears about assignments **only** if it filters on `assignee`. A sub
+  without that axis is asking about *findings* and never becomes an assignment feed — which is why
+  adding this changed no existing subscription anywhere.
+- **Bulk coalesces to one notification.** "Assign these 12 to the crew" is one human gesture and
+  produces one message naming the count — and the count is what matched *that subscription's* full
+  filter, not the number of ids you passed. Twelve messages for one click is the spam the whole
+  notify plane exists to prevent.
+- **Assignment deliberately bypasses the digest ladder.** The ladder is per-finding anti-spam for
+  machine flapping; an assignment is a one-shot human act about *a person*. Sharing that state would
+  let a noisy finding's cooldown swallow *"this is now yours"* — the one message that must not be
+  suppressed. Everything that makes a delivery safe still applies: muted subs, the per-member kill
+  switch, dormancy, and the fire-time re-check of `bus:chan/{channel}:pub` (a revoked grant flips the
+  sub dormant and notes the owner's inbox rather than posting).
+- **Self-assignment is silent.** "I'll take this" does not notify you about your own action.
+  Assigning to a **team you are on** does notify — the assignee is the queue, and the crew needs to
+  know.
+- **Only a real change of owner is an event.** Re-assigning to the current owner writes nothing and
+  announces nothing, so a double-click or a retried bulk call cannot page a queue twice.
+  **Un-assignment notifies nobody** — losing work is not news worth a channel post.
+
+**No new verb and no new capability**: an additive optional field on the subscription filter, and a
+side effect of the `insight.assign` you already hold.
+
+**Known gap — the feature is invisible until someone subscribes.** Because it is opt-in, assigning
+work still silently tells nobody unless an assignee-filtered subscription exists. A UI should say so
+at the moment of assigning, or "I assigned it and they never heard" becomes the new version of the
+gap this closed.
+
+**Known gap — nothing throttles assignment.** Bulk coalescing bounds a single call; nothing bounds a
+caller making many. The blast radius is one channel. If it ever bites, the fix is a per-subscription
+cooldown on the assign path — deliberately *not* the firing ladder.
+
+Scope + rationale (including why the ladder is bypassed):
+[`insight-assignee-notify-scope.md`](../../../../docs/scope/insights/insight-assignee-notify-scope.md).

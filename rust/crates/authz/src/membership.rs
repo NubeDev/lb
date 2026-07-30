@@ -48,6 +48,17 @@ impl Membership {
     }
 }
 
+/// The `(table, id, value)` upsert row for a membership — for callers assembling an atomic
+/// [`lb_store::write_batch`] (workspace-provision scope: the bootstrap write set).
+pub fn membership_row(
+    sub: &str,
+    joined_ts: u64,
+) -> Result<(&'static str, String, serde_json::Value), StoreError> {
+    let membership = Membership::new(sub, joined_ts);
+    let value = serde_json::to_value(&membership).map_err(|e| StoreError::Decode(e.to_string()))?;
+    Ok((MEMBERSHIP_TABLE, sub.to_string(), value))
+}
+
 /// Add (or re-add) `sub` to workspace `ws`. Idempotent upsert — re-joining refreshes `joined_ts`.
 pub async fn membership_add_raw(
     store: &Store,

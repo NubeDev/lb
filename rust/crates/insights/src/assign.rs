@@ -19,26 +19,45 @@ use crate::error::InsightsError;
 use crate::insight::OCC_TABLE;
 use crate::insight_id::record_id;
 
-/// Assign insight `id` in workspace `ws` to `assignee` (`None` clears). Returns the stored value so
-/// the caller echoes what actually landed. Errors like `ack` does when the insight does not exist.
+/// What an [`assign`] call actually did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssignOutcome {
+    /// The stored value after the call — echoed so the caller reports what actually landed.
+    pub assigned_to: Option<String>,
+    /// `false` when the insight ALREADY had this assignee (an idempotent no-op: a double-click, a
+    /// retried bulk call, a re-assign to the same owner). Nothing was written.
+    ///
+    /// The host reads this to decide whether to notify: re-announcing an assignment that did not
+    /// change is the notification equivalent of a duplicate, and a retry must not page a queue twice.
+    pub changed: bool,
+}
+
+/// Assign insight `id` in workspace `ws` to `assignee` (`None` clears). Errors like `ack` does when
+/// the insight does not exist.
 // SCOPE: docs/scope/insights/insight-triage-scope.md §"How it fits the core" (MCP surface)
 pub async fn assign(
     store: &Store,
     ws: &str,
     id: &str,
     assignee: Option<&str>,
-) -> Result<Option<String>, InsightsError> {
+) -> Result<AssignOutcome, InsightsError> {
     let Some(mut insight) = crate::get::get(store, ws, id).await? else {
         return Err(InsightsError::BadInput(format!("no such insight: {id}")));
     };
     let next = assignee.map(|s| s.to_string());
     // Idempotent: assigning the current assignee (or clearing an already-clear one) writes nothing.
     if insight.assigned_to == next {
-        return Ok(next);
+        return Ok(AssignOutcome {
+            assigned_to: next,
+            changed: false,
+        });
     }
     insight.assigned_to = next.clone();
     let value = serde_json::to_value(&insight)
         .map_err(|e| InsightsError::Store(lb_store::StoreError::Decode(e.to_string())))?;
     write(store, ws, OCC_TABLE, &record_id(id), &value).await?;
-    Ok(next)
+    Ok(AssignOutcome {
+        assigned_to: next,
+        changed: true,
+    })
 }

@@ -33,7 +33,8 @@ pub use install::{
     Install, Tier,
 };
 pub use relation::{
-    list_related, list_related_inverse, list_skill_grants, relate, related, unrelate, Relation,
+    list_related, list_related_inverse, list_skill_grants, relate, related, relation_row, unrelate,
+    Relation,
 };
 pub use skill::{
     get_core_skill, get_skill, is_core, is_deprecated, list_core_skill_versions, list_skills,

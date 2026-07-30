@@ -70,6 +70,7 @@ mod undo;
 mod versions;
 mod webhook;
 mod workspace;
+mod workspace_provision;
 
 pub use admin_apikeys::{create_apikey, get_apikey, list_apikeys, revoke_apikey, rotate_apikey};
 pub use admin_grants::{
@@ -186,3 +187,4 @@ pub use versions::{
 };
 pub use webhook::post_webhook;
 pub use workspace::{create_workspace, list_workspaces};
+pub use workspace_provision::{provision_workspace, reconcile_workspace};

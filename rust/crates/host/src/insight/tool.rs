@@ -124,7 +124,13 @@ pub async fn call_insight_tool(
             // `assignee: null` CLEARS (un-assign); an absent `assignee` key is the same gesture —
             // there is nothing else "assign with no assignee" could mean.
             let assignee = input.get("assignee").and_then(|v| v.as_str());
-            let results = insight_assign(node, principal, ws, &ids, assignee)
+            // Optional: a deterministic caller passes one; a browser/CLI door omits it and the host
+            // backfills its wall-clock (the raise-door precedent — the crate stays clock-free).
+            let ts = input
+                .get("ts")
+                .and_then(|v| v.as_u64())
+                .unwrap_or_else(super::raise::now_ms);
+            let results = insight_assign(node, principal, ws, &ids, assignee, ts)
                 .await
                 .map_err(svc_to_tool)?;
             // Single-id calls answer in the singular (`{ assigned_to }`, the scope's shape); bulk

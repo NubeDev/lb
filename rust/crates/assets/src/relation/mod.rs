@@ -27,7 +27,7 @@ pub use grants::list_skill_grants;
 pub use inverse::list_related_inverse;
 pub use list::list_related;
 pub use model::Relation;
-pub use relate::{relate, related};
+pub use relate::{relate, related, relation_row};
 pub use unrelate::unrelate;
 
 /// The store table all relation edges live in, within a workspace namespace.

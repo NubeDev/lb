@@ -217,6 +217,26 @@ export interface ListFilter {
   assigned_to?: string;
 }
 
+/** A subscription's AND-composed filter. Mirrors `lb_insights::SubFilter`. */
+export interface SubFilter {
+  origin_ref?: string;
+  dedup_key?: string;
+  tags?: Record<string, string>;
+  severity_min?: Severity;
+  /** Filter by OWNER — a subject (`user:priya` / `team:mechanical`) or `"me"`, which the server
+   *  resolves to the **subscription owner and every team they are on** (not the caller — a sub fires
+   *  without one), re-resolved at every fire so team changes take effect.
+   *
+   *  Doing two jobs, and the second is the important one:
+   *    - **at raise time** — an ordinary AND axis: "notify us when a finding our crew owns fires";
+   *    - **at assign time** — the **opt-in** for assignment notifications. A subscription without
+   *      this field never receives an assignment event, which is what kept the feature additive.
+   *
+   *  So: assigning work notifies nobody unless such a subscription exists. Don't tell a user their
+   *  assignee was informed without checking that one does. */
+  assignee?: string;
+}
+
 /** The full list query (filter + paging + limit). Mirrors `lb_insights::ListQuery`. */
 export interface ListQuery extends ListFilter {
   cursor?: PageCursor;

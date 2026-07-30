@@ -600,8 +600,13 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // workspace keeps, so lowering it destroys other people's recoverability — workspace
     // administration, not a member preference. The read (`versions.config.get`) is viewer-tier.
     "mcp:versions.config.set:call",
-    // destructive / creating workspace ops.
+    // destructive / creating workspace ops. `provision` stands up a complete workspace (directory
+    // row + first admin, atomically) and `reconcile` repairs a memberless orphan — both grant an
+    // admin into a workspace the caller need not belong to, the definition of admin authority
+    // (workspace-provision scope; reconcile's super-admin-only question is tracked as OQ4).
     "mcp:workspace.create:call",
+    "mcp:workspace.provision:call",
+    "mcp:workspace.reconcile:call",
     "mcp:workspace.delete:call",
     "mcp:workspace.purge:call",
     // access console: resolved effective caps + live-token revoke.

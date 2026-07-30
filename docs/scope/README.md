@@ -606,8 +606,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `insight-tag-precedence-scope.md` — a multi-source tag key resolves `Human` > `Producer`
   (decided, not built), because triage is where a human first disagrees with the machine and
   under today's last-write-wins their correction silently reverts on the next firing. Triage's
-  own named follow-up is assignee **notification**: v1 assignment pages nobody, since the
-  ladder is subject-matched. Index: `insights/README.md`.
+  own named follow-up, assignee **notification**, has since shipped as
+  `insight-assignee-notify-scope.md` — `SubFilter.assignee` becomes both a raise-time match axis
+  and the **opt-in** for assignment notifications, deciding that assignment **bypasses the
+  ladder** (per-finding anti-spam must never swallow "this is yours") and that bulk **coalesces
+  to one delivery**. Comment notification stays unbuilt on purpose: comments want the ladder's
+  digesting, which is the opposite shape. Index: `insights/README.md`.
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
   `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of

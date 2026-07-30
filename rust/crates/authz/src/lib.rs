@@ -45,7 +45,7 @@ mod token_revoke;
 pub use check_scoped::{check_scoped, check_scoped_with, scope_filter, scope_filter_with};
 pub use grant::{
     grant_assign, grant_assign_scoped, grant_list, grant_list_scoped, grant_revoke,
-    grant_revoke_scoped, granted, Grant, GRANT_TABLE,
+    grant_revoke_scoped, grant_row, granted, Grant, GRANT_TABLE,
 };
 pub use identity::{
     fold_email, identity_by_email, identity_create, identity_create_with_email, identity_get,
@@ -63,7 +63,8 @@ pub use invite::{
 };
 pub use membership::{
     membership_add_raw, membership_get, membership_has_any, membership_is_member, membership_list,
-    membership_remove_raw, Membership, MEMBERSHIP_KIND, MEMBERSHIP_TABLE, MEMBERSHIP_TOMBSTONE,
+    membership_remove_raw, membership_row, Membership, MEMBERSHIP_KIND, MEMBERSHIP_TABLE,
+    MEMBERSHIP_TOMBSTONE,
 };
 pub use resolve::{
     resolve_caps, resolve_caps_with, resolve_subject_caps, resolve_subject_caps_with,

@@ -12,12 +12,15 @@
 //! workspace passed to the gate is the *session's* workspace (from the token) — a principal must hold
 //! the verb in its own workspace to read/extend the directory. One verb per file (FILE-LAYOUT §3).
 
+mod bootstrap;
 mod create;
 mod default_skills;
 mod delete;
 mod error;
 mod list;
 mod model;
+mod provision;
+mod reconcile;
 mod register;
 mod rename;
 mod tool;
@@ -30,6 +33,8 @@ pub use delete::{workspace_delete, workspace_purge};
 pub use error::WorkspacesError;
 pub use list::workspace_list;
 pub use model::{WorkspaceRecord, WorkspaceStatus, KIND, TABLE, WORKSPACES_NS};
+pub use provision::{workspace_provision, ProvisionReport};
+pub use reconcile::{workspace_reconcile, ReconcileReport};
 pub use register::workspace_register;
 pub use rename::workspace_rename;
 pub use tool::call_workspaces_tool;

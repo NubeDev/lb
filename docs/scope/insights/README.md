@@ -38,6 +38,14 @@ rules/flows/attention planes. Start with the umbrella; the rest compose onto it.
   Decides the load-bearing dedup rule — a re-raise, including a re-open, never touches either —
   and that comments **do not evict** (the occurrence ring's shape, not its retention). Assignee
   notification is the named follow-up: v1 assignment is a roster fact and pages nobody.
+- [`insight-assignee-notify-scope.md`](insight-assignee-notify-scope.md) — **SHIPPED** — **the
+  triage plane's missing arm**: triage could give someone work and tell them nothing, because the
+  ladder is subject-matched with no notion of who *owns* a finding. Adds `SubFilter.assignee` (a
+  subject or `"me"` = the sub owner **and their teams**) as both a raise-time AND axis and the
+  **opt-in** for assignment notifications. Decides that assignment **bypasses the ladder** (a
+  flapping finding's cooldown must never swallow "this is yours"), that bulk **coalesces to one
+  delivery**, and that self-assign / un-assign / idempotent re-assign are all silent. Closes
+  triage's resolved decisions 1 + 5. Comment notification stays unbuilt — it wants digesting.
 - [`insight-tag-precedence-scope.md`](insight-tag-precedence-scope.md) — **the rule for a
   multi-source tag key** (`Human` > `Producer`), filed by the triage session as the resolution of
   slice 1's open question. Tag edge identity is `(entity, tag, source)`, so a corrected

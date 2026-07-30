@@ -12,6 +12,7 @@
 
 use lb_assets::list_related;
 use lb_authz::{membership_is_member, team_list, MEMBER};
+use lb_insights::{OwnerSubjects, Subscription, SUB_ASSIGNEE_ME};
 use lb_store::Store;
 
 use super::error::InsightSvcError;
@@ -85,4 +86,29 @@ pub async fn me_subjects(store: &Store, ws: &str, sub: &str) -> Vec<String> {
             "insight assignee: team list unreadable; 'me' view narrowed to the caller's own sub"),
     }
     subjects
+}
+
+/// Build the [`OwnerSubjects`] map the matcher needs to resolve `assignee: "me"` — one entry per
+/// **distinct owner** of a subscription that actually uses `"me"`.
+///
+/// Deliberately lazy on two axes, because this runs on the raise *write* path: subs that name a
+/// concrete subject (or no assignee at all) need no expansion, and each owner is resolved once no
+/// matter how many subs they own. A workspace where nobody uses `"me"` does **zero** extra reads.
+///
+/// Resolved per call rather than cached across calls — see [`me_subjects`]; a cache that outlives a
+/// team change makes a subscription silently stop matching.
+// SCOPE: docs/scope/insights/insight-assignee-notify-scope.md §"Risks" (the per-fire read)
+pub async fn owner_subjects_for(store: &Store, ws: &str, subs: &[Subscription]) -> OwnerSubjects {
+    let mut map = OwnerSubjects::new();
+    for sub in subs {
+        if sub.filter.assignee.as_deref() != Some(SUB_ASSIGNEE_ME) {
+            continue;
+        }
+        if map.contains_key(&sub.owner) {
+            continue;
+        }
+        let subjects = me_subjects(store, ws, &sub.owner).await;
+        map.insert(sub.owner.clone(), subjects.into_iter().collect());
+    }
+    map
 }

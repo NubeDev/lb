@@ -30,7 +30,69 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE FINDING NOW HAS AN OWNER
+**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — A QUEUE CAN NOW SUBSCRIBE TO
+ITSELF ([`insight-assignee-notify-scope`](scope/insights/insight-assignee-notify-scope.md), session
+[`insight-assignee-notify`](sessions/insights/insight-assignee-notify-session.md)).** Triage (below)
+shipped able to **give someone work and tell them nothing** — the subscription ladder was
+subject-matched (origin/key/tags/severity) with no notion of who *owns* a finding, so "notify me about
+anything assigned to me" was unexpressible. This closes triage's resolved decisions **1** and **5**,
+which are the same missing match arm from two directions: **`SubFilter.assignee`** is now an AND axis
+at **raise** time ("a finding my crew owns fired again") **and** the **opt-in** at **assign** time
+("this just became ours"). It takes a subject or `"me"`, which resolves to the **subscription owner
+and every team they are on** — re-resolved at every fire, never frozen at create (a stored expansion
+silently stops matching when someone joins a team). **The load-bearing decision: assignment
+deliberately BYPASSES the ladder.** `ladder_step` is per-`(sub, dedup_key)` anti-spam for *machine
+flapping*; an assignment is a one-shot human act about *a person receiving work*. Routing it through
+the ladder keys it by the finding's `dedup_key`, so **a flapping finding's own cooldown would swallow
+"you have been assigned this"** — the one message that must not be suppressed. Everything that makes a
+delivery *safe* still applies (muted, per-member kill switch, dormancy, and the fire-time
+`bus:chan/{channel}:pub` re-check that flips a sub dormant instead of posting); only the throttling is
+skipped, because the throttle models the wrong thing. **Bulk coalesces to ONE delivery per
+subscription** naming the count that matched *that sub's* full filter — one human gesture, one
+notification; twelve messages for one click is the spam this plane exists to prevent, and the
+coalescing at the call site is what makes bypassing the ladder affordable. **Opt-in only**: a sub
+without an `assignee` axis is asking about *findings* and hears nothing, so **no existing subscription
+in any workspace changed behaviour**. Also: **self-assignment is silent** ("I'll take this" is your own
+action; assigning to a team you are on still notifies the queue), **only a real change of owner is an
+event** (`assign` now returns `AssignOutcome{assigned_to, changed}`, so a double-click or retried bulk
+call cannot double-page), and **un-assignment notifies nobody**. **No new verb, no new capability, no
+new table** — one additive optional filter field. **Tests (rule 9):** `insight_assignee_notify_test`
+**16** on a real booted node with real subs, real seeded teams, and real delivered inbox Items;
+mandatory deny (a denied assign notifies nobody; a revoked channel grant flips the sub dormant) and
+ws-isolation (a same-named team in another workspace must not widen `"me"`). **Both revert-checks
+initially FAILED TO BITE and exposed two tests that were green without testing their claim** — the
+opt-in was enforced twice (an incidental `unwrap_or_default()` made the real gate look removable), and
+the ladder-bypass test used two subscriptions so the flapping heated a *different* ladder key. Both
+the code and the tests were fixed until each revert turned exactly one test red; fixing the second is
+what surfaced the idempotent-re-assign rule. **Live-verified** over the real wire: 3 bulk assignments →
+**1** post, the plain findings sub → **0** assignment posts, idempotent re-assign ×3 → no new post,
+self-assign → silent, un-assign → silent. **Known gap, named:** the feature is **invisible until
+someone subscribes** — assigning still tells nobody unless an assignee-filtered sub exists, so a UI
+must not claim otherwise; and **nothing throttles assignment** beyond the bulk coalescing (if it
+bites, the fix is a per-`(sub, assignee)` cooldown at the assign path, *not* the firing ladder).
+**Comment notification remains unbuilt** and deliberately so — comments are chatty and per-thread, so
+they want the ladder's digesting, which is the opposite of assignment's shape.
+
+**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — ATOMIC WORKSPACE PROVISION
+([`workspace-provision-scope`](scope/workspace/workspace-provision-scope.md), issue
+[#121](https://github.com/NubeDev/lb/issues/121), session
+[`workspace-provision`](sessions/workspace/workspace-provision-session.md)).** `workspace_create`'s
+four best-effort `let _ =` writes (directory row FIRST) could orphan a listable-but-memberless,
+unreachable workspace — observed live as rubix-ai's `nube`. Shipped: **`workspace.provision`**
+(one atomic `write_batch` bootstrap — role seed, membership, admin grants, skill edges — then the
+directory row written LAST) + **`workspace.reconcile`** (repairs memberless orphans only; any live
+member ⇒ refused) + `workspace_create` as a thin delegation; caps
+`mcp:workspace.{provision,reconcile}:call` in `ADMIN_ONLY_CAPS`; gateway
+`POST /workspaces/{ws}/provision|reconcile`; row-builders `lb_authz::{grant_row,membership_row}` +
+`lb_assets::relation_row` so batched rows can't drift. Authorization is against the CALLER's
+workspace (target is the object — no `auth.switch`, reply carries no token). **No explicit store
+flush point exists** — flagged in `scope/store/store-scope.md`; the guarantee is atomic-bootstrap +
+ordered-directory-write + reconcile. Tests: host **8** (incl. crash-durability on real SurrealKV
+across an unclean drop, torn-intermediate-never-listable, revoked-role-not-regranted), gateway **3**
+(no-token reply, member-deny zero-residue, orphan repair over HTTP). Consumer: rubix-ai#64 wizard
+built against the local `[patch]` — the next `node-v*` tag unblocks its pin bump.
+
+**Also shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — THE FINDING NOW HAS AN OWNER
 AND A THREAD ([`insight-triage-scope`](scope/insights/insight-triage-scope.md), issue
 [#119](https://github.com/NubeDev/lb/issues/119) slice 3, session
 [`insight-triage`](sessions/insights/insight-triage-session.md)).** The record answered *what fired*

@@ -134,11 +134,21 @@ right shape; rendering the six labelled rows — and carrying the hedge in the *
 ("Suspected cause", scope §Risks) — is a `rubix-ai` change this session cannot make. Worth naming
 because the label is the one place that hedge can quietly evaporate.
 
+Filed downstream as **[NubeIO/rubix-ai#69](https://github.com/NubeIO/rubix-ai/issues/69)**, with the
+two facts that make it actionable rather than a vague hand-off, both verified in that tree: its
+vendored `ui/packages/insights/src/types.ts` carries `tags?` but **no `analysis`** (so the field is
+silently dropped before any component sees it), and `ui/src/features/insights/InsightDetail.tsx:177`
+renders `insight.body` under an **"Evidence"** heading via the shape-driven `EvidenceBody` — i.e. the
+producer's reasoning currently shows as a JSON dump, which is the exact problem this slice exists to
+fix. The issue carries the three rules the backend cannot enforce: the label-level hedge, attributing
+`estimated_impact` rather than asserting it, and preferring `note` when rendering a `Quantity`.
+
 ## Filed, not fixed
 
 Scope resolved-decision 6 says to **file** the `title`/`body` refresh change rather than fix it
 inline, because it alters shipped semantics. Filed as
-[`insight-prose-refresh-scope.md`](../../scope/insights/insight-prose-refresh-scope.md) — and this
+[`insight-prose-refresh-scope.md`](../../scope/insights/insight-prose-refresh-scope.md)
+(issue [#124](https://github.com/NubeDev/lb/issues/124)) — and this
 session is what makes the old behaviour indefensible: the drawer now shows *fresh* reasoning above a
 firing-#1 narrative. That also closes `insight-evidence-scope.md` Q1 as "decided elsewhere".
 

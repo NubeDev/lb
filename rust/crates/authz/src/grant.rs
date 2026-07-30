@@ -103,6 +103,18 @@ pub async fn grant_assign_scoped(
     .await
 }
 
+/// The `(table, id, value)` upsert row for a `Scope::All` grant — for callers assembling an
+/// atomic [`lb_store::write_batch`] (workspace-provision scope: the bootstrap write set). Keeps the
+/// grant id derivation in this file so a batched grant can never drift from [`grant_assign`].
+pub fn grant_row(
+    subject: &Subject,
+    cap: &str,
+) -> Result<(&'static str, String, serde_json::Value), StoreError> {
+    let grant = Grant::new(subject.clone(), cap);
+    let value = serde_json::to_value(&grant).map_err(|e| StoreError::Decode(e.to_string()))?;
+    Ok((GRANT_TABLE, grant_id(subject, cap, &Scope::All), value))
+}
+
 /// Revoke `cap` from `subject` in workspace `ws` (scope `All`). Idempotent; tombstoned (not
 /// deleted) so it replays cleanly under sync.
 pub async fn grant_revoke(

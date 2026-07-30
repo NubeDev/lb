@@ -49,6 +49,7 @@ pub async fn insight_assign(
     ws: &str,
     ids: &[String],
     assignee: Option<&str>,
+    ts: u64,
 ) -> Result<Vec<AssignResult>, InsightSvcError> {
     authorize_tool(principal, ws, "insight.assign").map_err(|_| InsightSvcError::Denied)?;
 
@@ -69,14 +70,26 @@ pub async fn insight_assign(
     }
 
     let mut results = Vec::with_capacity(ids.len());
+    // The records that actually changed hands — collected so the notify step below can coalesce a
+    // bulk call into ONE delivery per subscription and count against each sub's full filter.
+    let mut assigned = Vec::new();
     for id in ids {
         match lb_insights::assign(&node.store, ws, id, assignee).await {
-            Ok(_) => {
+            Ok(outcome) => {
                 results.push(AssignResult {
                     id: id.clone(),
                     ok: true,
                     error: None,
                 });
+                // Only a real CHANGE of owner is notification-worthy. An idempotent re-assign to the
+                // current owner (a double-click, a retried bulk call) wrote nothing and must not
+                // announce anything — a retry that pages a queue twice is a duplicate, not an event.
+                if outcome.changed {
+                    if let Ok(Some(insight)) = lb_insights::read_insight(&node.store, ws, id).await
+                    {
+                        assigned.push(insight);
+                    }
+                }
                 // Live-UI motion on the EXISTING insight subject — a new subject for triage would
                 // fragment a stream the roster already holds open (insight-triage-scope.md).
                 super::triage_event::publish_triage_event(node, ws, id, "assign").await;
@@ -88,5 +101,12 @@ pub async fn insight_assign(
             }),
         }
     }
+
+    // Notify the subscriptions that asked (`insight-assignee-notify-scope.md`). ONE delivery per
+    // sub for the whole call, deliberately outside the ladder, and only for subs that opted in by
+    // filtering on `assignee`. Failed items notify nobody — only `assigned` is passed. Best-effort:
+    // the assignments are durable already, so a notify hiccup must not fail the verb.
+    super::assign_notify::notify_assignment(node, principal, ws, assignee, &assigned, ts).await;
+
     Ok(results)
 }

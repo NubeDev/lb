@@ -66,7 +66,7 @@ mod insight_id;
 
 pub use ack::ack;
 pub use analysis::{validate_analysis, Analysis, Quantity, MAX_ANALYSIS_BYTES};
-pub use assign::assign;
+pub use assign::{assign, AssignOutcome};
 pub use comment::{
     validate_comment, Comment, MAX_COMMENTS_PER_INSIGHT, MAX_COMMENT_BYTES, TABLE as COMMENT_TABLE,
 };
@@ -84,7 +84,7 @@ pub use ladder::{ladder_step, Delivery, DeliveryReason, LadderInput, Level, Wind
 pub use list::{
     list, AssigneeFilter, ListFilter, ListPage, ListQuery, PageCursor, ASSIGNEE_ME, ASSIGNEE_NONE,
 };
-pub use match_subs::{match_subs, InsightView};
+pub use match_subs::{assignee_matches, match_subs, InsightView, OwnerSubjects};
 pub use notify_apply::apply_intents;
 pub use notify_state::NotifyState;
 pub use notify_store::{all_notify, notify_id, read_notify, write_notify};
@@ -105,7 +105,9 @@ pub use sub_delete::sub_delete;
 pub use sub_get::sub_get;
 pub use sub_list::sub_list;
 pub use sub_mute::sub_mute;
-pub use subscription::{DormantReason, SubFilter, SubSink, SubSinkKind, Subscription};
+pub use subscription::{
+    DormantReason, SubFilter, SubSink, SubSinkKind, Subscription, ASSIGNEE_ME as SUB_ASSIGNEE_ME,
+};
 pub use tags_echo::{set_tags_echo, validate_tags_echo_size, MAX_TAG_ECHO_BYTES};
 pub use watch::{event_subject, EventKind, RaiseEvent};
 

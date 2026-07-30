@@ -34,20 +34,21 @@ use crate::routes::{
     list_series, list_shares_nav, list_tables, list_team_members, list_teams, list_users,
     list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call,
     panel_usage, patch_flow_run, pin_dashboards, post_message, post_redo, post_undo,
-    post_version_restore, post_webhook, publish_extension, publish_message, purge_workspace,
-    put_asset_bin, put_doc, put_media_chunk, put_skill, put_versions_config, read_graph,
-    read_samples, read_schema, refresh_run_token, remove_datasource, remove_member,
-    remove_team_member, rename_series_route, rename_team, rename_workspace, render_catalog_message,
-    reset_extension, resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs,
-    revoke_apikey, revoke_grant, revoke_tokens_route, revoke_webhook, rotate_apikey,
-    rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream, save_brand,
-    save_dashboard, save_flow, save_nav, save_panel, save_report, save_rule, scan_table,
-    series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
-    set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs, share_dashboard,
-    share_doc, share_nav, share_panel, share_report, start_extension, surface_reach, system_acp,
-    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
-    test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
-    update_flow_node, update_series_samples_route, upload_body_limit, upload_pack, write_samples,
+    post_version_restore, post_webhook, provision_workspace, publish_extension, publish_message,
+    purge_workspace, put_asset_bin, put_doc, put_media_chunk, put_skill, put_versions_config,
+    read_graph, read_samples, read_schema, reconcile_workspace, refresh_run_token,
+    remove_datasource, remove_member, remove_team_member, rename_series_route, rename_team,
+    rename_workspace, render_catalog_message, reset_extension, resolve_caps, resolve_inbox,
+    resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant, revoke_tokens_route,
+    revoke_webhook, rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule,
+    run_stream, save_brand, save_dashboard, save_flow, save_nav, save_panel, save_report,
+    save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog,
+    set_default_nav, set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs,
+    share_dashboard, share_doc, share_nav, share_panel, share_report, start_extension,
+    surface_reach, system_acp, system_overview, system_subsystem, system_tools, system_topology,
+    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav,
+    update_def, update_flow_node, update_series_samples_route, upload_body_limit, upload_pack,
+    write_samples,
 };
 use crate::state::Gateway;
 
@@ -125,6 +126,8 @@ pub fn router(gw: Gateway) -> Router {
             )),
         )
         .route("/workspaces", get(list_workspaces).post(create_workspace))
+        .route("/workspaces/{ws}/provision", post(provision_workspace))
+        .route("/workspaces/{ws}/reconcile", post(reconcile_workspace))
         .route("/channels", get(list_channels).post(create_channel))
         .route(
             "/channels/{cid}/messages",

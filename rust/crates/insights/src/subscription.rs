@@ -52,7 +52,28 @@ pub struct SubFilter {
     /// Severity floor — the insight must be at least this severe.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub severity_min: Option<Severity>,
+    /// Subscribe by **owner** — the triage plane's match axis
+    /// (`insight-assignee-notify-scope.md`). A subject (`user:priya` / `team:mechanical`), or the
+    /// literal [`ASSIGNEE_ME`], which resolves to the **subscription owner and every team they
+    /// belong to** — so a queue-assigned finding reaches the people on the queue.
+    ///
+    /// Two distinct effects, both gated on this one field being present:
+    ///   - **at raise time** — an ordinary AND axis, like `tags`/`severity_min`: "tell me when a
+    ///     finding my crew owns fires again";
+    ///   - **at assign time** — this is the **opt-in** for assignment notifications. A sub without
+    ///     this axis is asking about *findings* and never receives an assignment event, so adding
+    ///     this feature changed no existing subscription's behaviour.
+    ///
+    /// `"me"` is resolved at **fire time, never at create time**: a stored expansion would silently
+    /// stop matching when the owner joins or leaves a team.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignee: Option<String>,
 }
+
+/// The wire literal meaning "this subscription's owner, and every team they are on" in
+/// [`SubFilter::assignee`]. The same spelling `insight.list { assigned_to: "me" }` uses, resolved
+/// against the SUB OWNER rather than the calling principal (a sub fires without a caller).
+pub const ASSIGNEE_ME: &str = "me";
 
 /// Why a subscription went dormant (fire-time deny). Surfaced to the owner via an inbox note so
 /// a sub never silently stops.

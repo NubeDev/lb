@@ -29,6 +29,8 @@ own verb and cap.
 - **Not notification.** Assigning does not page the assignee in v1 (resolved decision 1) — the
   shipped subscription/notify ladder is subject-matched, not assignee-matched, and adding an
   assignee arm is the named first follow-up.
+  → **That follow-up has since SHIPPED**: [`insight-assignee-notify-scope.md`](insight-assignee-notify-scope.md).
+  This non-goal describes *this* slice as scoped, not the current state of the product.
 - **No comment edit/delete in v1.** The thread is an append-only operational log. Correction =
   another comment. (Unlike the occurrence ring, it does **not** evict — resolved decision 4.)
 - **Not the producer's narrative.** Trigger logic / normalised metric / benchmark /
@@ -287,6 +289,9 @@ Stated here rather than as open questions, so the implementing session has no am
    roster fact, which is honest and useful on its own. But "assigned and nobody told them" is the
    same trust bug the umbrella flags for "0 subscribers", so this is filed as the **first
    follow-up**, not an open musing. The UI must not imply a notification was sent.
+   → **Shipped**: [`insight-assignee-notify-scope.md`](insight-assignee-notify-scope.md). A UI may
+   now say a notification was sent **only** when an assignee-filtered subscription exists — the
+   feature is opt-in per subscription, so silence is still the default.
 2. **The assignee must be a workspace member, validated at assign time, and `team:` subjects are
    legal from v1.** Two parts, both long-term calls:
    - *Validated:* assigning to a subject that cannot read the insight is never intentional. One
@@ -318,6 +323,7 @@ Stated here rather than as open questions, so the implementing session has no am
 5. **`assigned_to` becomes subscription-filterable in the same follow-up as decision 1** — it's
    the same missing match arm, and "notify me about anything assigned to me" is the version of
    that feature people actually want.
+   → **Shipped**: [`insight-assignee-notify-scope.md`](insight-assignee-notify-scope.md).
 6. **Bulk assign is capped at 100 ids with per-item results, and the cap is reported.** Never a
    silent truncation: a call passing more than 100 is an explicit error, and per-item failures
    are returned rather than folded into a success. The UI must surface partial failure — a green
@@ -328,11 +334,14 @@ Stated here rather than as open questions, so the implementing session has no am
 Written by the implementing session. Everything above is the ask as scoped; this is what shipping it
 exposed.
 
-1. **Assignment still notifies nobody, and that gap is now real rather than theoretical.** Resolved
-   decision 1 deferred it knowingly, but v1 now ships the ability to *give someone work* with no way
-   for them to hear about it — the same trust shape the umbrella flags for "0 subscribers". The
-   follow-up (an `assignee` match arm in `match_subs` + the subscription grammar, decisions 1 and 5)
-   should be sequenced next, before a vertical builds a workflow on top that assumes people are told.
+1. ~~**Assignment still notifies nobody.**~~ **CLOSED** — shipped as
+   [`insight-assignee-notify-scope.md`](insight-assignee-notify-scope.md) (resolved decisions 1 and
+   5): `SubFilter.assignee` is a raise-time axis, and an assignment now delivers into subscribed
+   channels. Note the shape it took: assignment deliberately **bypasses the ladder** (a flapping
+   finding's cooldown must not swallow "this is yours"), bulk **coalesces to one delivery**, and it
+   is **opt-in** — only subs that filter on `assignee` hear anything, so no existing subscription
+   changed. The residual gap is now the inverse: a member who assigns work may assume the assignee
+   was told, and they were not unless such a subscription exists.
 2. **The `unknown (removed)` rendering is unenforceable from this repo.** Resolved decision 3 keeps a
    stale subject deliberately, and the visibility of the orphaned queue rests entirely on a
    downstream UI choice lb cannot check (the shell is out-of-tree). If `rubix-ai` renders an

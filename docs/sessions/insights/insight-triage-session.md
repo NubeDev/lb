@@ -219,11 +219,10 @@ re-classification of a producer-set key as if it will stick. Named in the public
 
 - [`insight-tag-precedence-scope.md`](../../scope/insights/insight-tag-precedence-scope.md) — the
   above.
-- **Assignee notification** (resolved decisions 1 + 5): assigning does not page the assignee in v1.
-  The ladder is subject-matched, not assignee-matched, so this needs a new match arm in `match_subs`
-  + the subscription grammar. This is the scope's own named first follow-up, and it is now more
-  pressing than when it was written: v1 ships the ability to *give someone work* with no way for them
-  to hear about it, which is the same trust shape as the umbrella's "0 subscribers" flag.
+- ~~**Assignee notification** (resolved decisions 1 + 5)~~ — **since SHIPPED**, see
+  [`insight-assignee-notify-session.md`](insight-assignee-notify-session.md). `SubFilter.assignee` is
+  now a raise-time axis and an assignment delivers into subscribed channels — opt-in per
+  subscription, coalesced for bulk, and deliberately outside the ladder.
 - **The retention follow-up is now load-bearing for a second reason.** Comments are purged only with
   their parent, so "delete an insight" must stay the only path that removes them; a retention sweep
   that deletes parents without cascading would strand human notes permanently.

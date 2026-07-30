@@ -23,6 +23,19 @@ pub async fn relate(
     write(store, ws, TABLE, &rel_id(kind, a, b), &value).await
 }
 
+/// The `(table, id, value)` upsert row for the edge `a -[kind]-> b` — for callers assembling an
+/// atomic [`lb_store::write_batch`] (workspace-provision scope: the bootstrap write set). Keeps the
+/// edge id derivation here so a batched edge can never drift from [`relate`].
+pub fn relation_row(
+    kind: &str,
+    a: &str,
+    b: &str,
+) -> Result<(&'static str, String, serde_json::Value), StoreError> {
+    let rel = Relation::new(kind, a, b);
+    let value = serde_json::to_value(&rel).map_err(|e| StoreError::Decode(e.to_string()))?;
+    Ok((TABLE, rel_id(kind, a, b), value))
+}
+
 /// Does a *live* edge `a -[kind]-> b` exist in workspace `ws`? `false` for another workspace's
 /// edge (the namespace wall makes a cross-workspace edge invisible — README §7) and `false`
 /// for a revoked (tombstoned) edge (`unrelate`).

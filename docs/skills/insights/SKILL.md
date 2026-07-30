@@ -60,7 +60,7 @@ Capabilities — one per verb: `mcp:insight.raise:call` (producer-grade write),
 | `insight.assign` | `id` \| `ids[≤100]`, `assignee?` (`null` clears) | `{assigned_to}` for `id`; `{results:[{id,ok,error?}]}` for `ids` |
 | `insight.comment` | `id, text, ts` | `{seq}` (append-only; author host-stamped) |
 | `insight.occurrences` | `insight_id, cursor?, limit?` | `{items:[Occurrence], next?}` (newest-first ring) |
-| `insight.sub.create` | `sink{kind,channel}, filter{…}, throttle_override?, now` | `{id}` |
+| `insight.sub.create` | `sink{kind,channel}, filter{origin_ref?,dedup_key?,tags?,severity_min?,assignee?}, throttle_override?, now` | `{id}` |
 | `insight.sub.list` | `all?` | `{subs:[Subscription]}` (own; admin `all=true` ⇒ workspace) |
 | `insight.sub.get` / `.delete` / `.mute` | `id` (+`muted` for mute) | the sub / `{ok:true}` |
 | `insight.policy.get` / `.set` | (`Policy` for set) | the workspace policy (defaults if no record) |
@@ -239,6 +239,29 @@ re-open arm, where `status_by`/`status_ts` DO clear. A flapping sensor re-firing
 cannot un-assign the technician who took the job, and when a resolved finding fires again months
 later, the note explaining last time's false alarm is the first thing the next responder reads.
 
+### Getting told about your queue
+
+Assignment only reaches a person if a subscription asked for it — `filter.assignee` is the opt-in:
+
+```bash
+# "Notify the crew channel about anything assigned to us." `me` = the SUB OWNER + their teams.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.sub.create","args":{
+  "sink":{"kind":"channel","channel":"chan/mechanical"},
+  "filter":{"assignee":"me","severity_min":"warning"},"now":1}}'
+
+# Then a bulk assign posts ONCE, naming what matched THAT sub's filter:
+#   → "9 insights were assigned to team:mechanical [view]"
+# and a single assign names the finding:
+#   → "insight rule:no-water-1d:WM-CHU-01 — “Chullora …” was assigned to user:priya [view]"
+```
+
+Behaviour worth knowing before you build on it: **self-assignment is silent** (you are not told about
+your own action, though assigning to a team you are on still notifies the queue); **only a real change
+of owner is an event** (re-assigning the same owner announces nothing, so retries can't double-page);
+**un-assignment notifies nobody**; and assignment **bypasses the digest ladder** — a flapping
+finding's cooldown can never swallow "this is now yours". Muted subs, the per-member kill switch, and
+the fire-time channel-grant re-check all still apply.
+
 ## 4. Occurrences — the per-insight transaction ring
 
 Every raise appends **one occurrence row** into a capped ring under the insight (last N firings with
@@ -401,9 +424,11 @@ acts. Suggest an owner in prose if asked; don't call the verb.
   thread untouched (assert your oldest note is still there — it is). This is deliberate: evicting a
   machine-generated firing is housekeeping; evicting a note a person wrote is a trust failure.
   Comments are purged only **with** their insight.
-- **`assign`/`comment` do not notify anyone in v1.** The subscription ladder is subject-matched, not
-  assignee-matched, so assigning is a *roster fact* only — the assignee is not paged. A UI must not
-  imply otherwise. (An `assignee` match arm is the named first follow-up.)
+- **`assign` notifies — but ONLY into subscriptions that opted in; `comment` still notifies nobody.**
+  A sub whose `filter` names an `assignee` receives an assignment message; every other subscription
+  hears nothing (that opt-in is what kept the feature additive). So assigning work still tells nobody
+  unless such a sub exists — do not imply a notification was sent without checking. Comment
+  notification is unbuilt.
 - **A subject outlives its membership.** Assign validates at write time; a member removed later
   leaves insights owned by a subject that can no longer read them. The record deliberately keeps the
   stale value — render an unresolvable assignee as **"unknown (removed)"**, never blank, or the

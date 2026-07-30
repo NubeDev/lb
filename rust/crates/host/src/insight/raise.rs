@@ -125,16 +125,23 @@ pub async fn insight_raise(
     // 5. Matcher + notify.
     let subs = load_subs(&node.store, ws).await;
     if !subs.is_empty() {
-        let origin_ref = stored.map(|i| i.origin.reference).unwrap_or_default();
+        let (origin_ref, assigned_to) = stored
+            .map(|i| (i.origin.reference, i.assigned_to))
+            .unwrap_or_default();
         let view = InsightView {
             insight_id: &outcome.id,
             dedup_key: &outcome.dedup_key,
             severity: outcome.severity,
             origin_ref: &origin_ref,
             tags: &facets,
+            // The triage owner axis: a sub can filter "anything my crew owns". Read from the STORED
+            // record, not the raise input — `assigned_to` is a human fact the producer cannot set.
+            assigned_to: assigned_to.as_deref(),
             kind: outcome.kind,
         };
-        let intents = match_subs(&view, &subs);
+        // Resolve `assignee: "me"` per sub owner. Costs nothing when no sub uses it.
+        let owner_subjects = super::assignee::owner_subjects_for(&node.store, ws, &subs).await;
+        let intents = match_subs(&view, &subs, &owner_subjects);
         if !intents.is_empty() {
             let acked = matches!(outcome.status, lb_insights::Status::Acked);
             let kill_off = kill_off_owners(&node.store, ws, &subs).await;
@@ -185,8 +192,10 @@ fn normalize_ts(ts: u64) -> u64 {
 
 /// The host wall-clock as epoch milliseconds — the unit `insight.ts` is stored + rendered in
 /// (`InsightsList.timeAgo` does `Date.now() - ts`, `insight::reactor` stamps `as_millis`). Used to
-/// backfill a `ts` a producer door omitted (see the guard in [`insight_raise`]).
-fn now_ms() -> u64 {
+/// backfill a `ts` a producer door omitted (see the guard in [`insight_raise`]), and by
+/// `insight.assign` for the same reason — the crate stays wall-clock-free (testing §3), the host
+/// layer backfills.
+pub(super) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)

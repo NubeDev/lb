@@ -1,6 +1,12 @@
 # Workspace scope — atomic provision (a new workspace with its first admin, in one verb)
 
-Status: scope (the ask). Promotes to `public/workspace/` once shipped.
+Status: **IMPLEMENTED on master, 2026-07-30 — unreleased** (needs the next `node-v*` tag; the
+rubix-ai consumer is built against a local `[patch]`). See
+`../../sessions/workspace/workspace-provision-session.md` for what shipped and the answers to the
+blocking questions (short form: `write_batch` gives a real single-namespace transaction, there is NO
+explicit flush point — flagged in `../store/store-scope.md` — so the delivered shape is atomic
+in-namespace bootstrap + directory row LAST + reconcile). Promotes to `public/workspace/` once
+tagged.
 
 > Read with: `workspace-scope.md` (**shipped** — the directory record, `_lb_workspaces`, and the
 > `workspace_create` this scope repairs), `../auth-caps/global-identity-scope.md` (**shipped** —
@@ -227,8 +233,10 @@ Mandatory categories that apply: **capability-deny**, **workspace-isolation**, *
 
 ## Open questions
 
-1. Does `lb_store` expose a multi-row batched append with an explicit flush point? If not, is adding one
-   in scope here or a `../store/` prerequisite? (Blocks the atomicity guarantee — answer first.)
+1. ~~Does `lb_store` expose a multi-row batched append with an explicit flush point?~~ **ANSWERED
+   (2026-07-30):** batch yes (`write_batch`, one namespace, one transaction), flush no — flagged as a
+   `../store/` finding; the shipped guarantee is "atomic bootstrap + ordered directory write +
+   reconcile".
 2. Should `workspace.provision` supersede `workspace.create` in the MCP surface (deprecate create), or
    stay alongside it permanently as the richer verb? Recommendation: keep `create` as the thin
    caller-is-admin default and document provision as the primitive.

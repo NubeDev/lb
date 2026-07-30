@@ -1,6 +1,7 @@
 # Insights scope — `title`/`body` refresh on re-raise
 
-Status: scope (the ask). Filed 2026-07-30 by the `analysis` implementing session
+Status: scope (the ask) — tracked as issue
+[#124](https://github.com/NubeDev/lb/issues/124). Filed 2026-07-30 by the `analysis` implementing session
 ([`sessions/insights/insight-analysis-session.md`](../../sessions/insights/insight-analysis-session.md))
 per [`insight-analysis-scope.md`](insight-analysis-scope.md) resolved decision 6 — **filed, not fixed
 inline**, because it changes shipped semantics.

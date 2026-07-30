@@ -66,6 +66,7 @@ export type {
   Occurrence,
   InsightEvent,
   PageCursor,
+  SubFilter,
   ListFilter,
   ListQuery,
   ListPage,

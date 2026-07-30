@@ -338,6 +338,40 @@ error explicitly rather than silently assigning the first 100.
    occurrence ring beside them evicts, and copying that here would silently delete what a person
    wrote.
 
+### 2.5d Assignee notification — does the queue get told?
+
+```bash
+# Two subs: one OPTED IN (filters on assignee), one a plain findings feed.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.sub.create","args":{
+  "sink":{"kind":"channel","channel":"queue"},
+  "filter":{"assignee":"team:mechanical"},"now":1}}'
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.sub.create","args":{
+  "sink":{"kind":"channel","channel":"everything"},"filter":{},"now":1}}'
+
+# BULK assign 3 findings in ONE call.
+curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.assign","args":{
+  "ids":["01K…","01K…","01K…"],"assignee":"team:mechanical","ts":5000}}'
+
+curl -s … inbox.list {"channel":"queue"}      # → ONE post: "3 insights were assigned to …"
+curl -s … inbox.list {"channel":"everything"} # → the raise posts, ZERO assignment posts
+
+# The rest of the contract:
+… insight.assign {"id":X,"assignee":"team:mechanical"}  ×3   # → ONE post (idempotent ≠ event)
+… insight.assign {"id":X,"assignee":null}                    # → no post (un-assign is silent)
+… assign to YOURSELF with a {"assignee":"me"} sub of your own # → no post (self-assign is silent)
+```
+
+**Observe:** a bulk call posts **once** — twelve messages for one click is the spam the notify plane
+exists to prevent — and the count is what matched *that sub's* full filter (assign 5 warnings + 3
+infos to a `severity_min: warning` sub and it must say **5**, not 8). The plain findings sub must
+show **zero** assignment posts: the opt-in is what kept this additive, and a regression there
+silently turns every subscription in every workspace into an assignment feed.
+
+**The check most worth doing by hand** — the one that pins the design: flap a finding that an
+assignee-filtered sub also matches (assign it first, then raise it repeatedly) until its ladder is in
+cooldown, then change its owner. **The assignment must still arrive.** If it doesn't, assignment has
+been routed through the firing ladder, and a noisy finding is now able to swallow "this is yours".
+
 ### 2.6 Live feed — `insight.watch` (SSE)
 
 ```bash
