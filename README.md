@@ -117,6 +117,55 @@ Rust-native and embeddable: the host process *is* a bus peer (no separate broker
 - **Topology:** edge nodes run in peer mode and connect up to cloud nodes in router mode; peers can also talk directly on a LAN.
 - **Durability:** Zenoh is not a durable log. Anything that *must* be delivered goes through the outbox (§6.10), not raw pub/sub. Classify every message: fire-and-forget, must-deliver, or must-replay.
 
+### 6.2a LAN discovery — mDNS/DNS-SD (`lb-discovery`)
+
+How a node finds a peer's **endpoint before it has a bus**. Built on
+[`mdns-sd`](https://github.com/keepsimple1/mdns-sd) — pure Rust, responder *and* browser in one
+crate, no Avahi/Bonjour daemon, so a node stays self-contained on every platform target (§10).
+
+This is a **bootstrap** layer that sits *below* fleet presence, not an alternative to it:
+
+| | answers | needs | authoritative for |
+|---|---|---|---|
+| **`lb-discovery`** (here) | "what lb nodes are on this wire at all?" | nothing — no bus, no config | nothing; it yields an endpoint to dial |
+| **fleet presence** (§6.2 liveliness, `ws/{id}/nodes/{node_id}`) | "which nodes are in THIS workspace's roster?" | a live Zenoh session | workspace presence, online/offline |
+
+The handoff runs one way and ends: mDNS yields an endpoint → the node dials it → Zenoh connects →
+the liveliness roster takes over. Zenoh's own multicast scouting already covers the easy case (same
+subnet, multicast unfiltered); this earns its keep where scouting is filtered, and where operators
+want `avahi-browse -rt` / `dns-sd -B` to see the fleet with standard tooling.
+
+**What it advertises is reachability only** — node id, port, version, and an opaque operator fleet
+tag. Never a workspace, persona, capability or extension list: an mDNS record is readable by
+anything on the LAN segment, outside every wall the platform has (§3 rule 6). Discovery is not
+authorization — the caps wall and workspace isolation gate every byte after the dial, unchanged.
+The node id is the same `NodeId` fleet presence announces, re-validated on the way in so a hostile
+responder cannot smuggle a key-expression wildcard into a bus key.
+
+**Off by default, and product-agnostic.** A node advertises nothing unless an embedder sets
+`BootConfig::discovery` (or an operator sets `LB_DISCOVERY=1`, which additionally requires a
+gateway — a headless node has no endpoint worth publishing). The service type is supplied by the
+embedder and defaults to the generic `_lb._tcp`; the core never names a product (§3 rule 10), so a
+product host sets e.g. `_rubix-ai._tcp` itself. Failure is non-fatal: a network that refuses mDNS
+logs a warning and the node serves normally.
+
+```rust
+// Advertise (an embedder filling BootConfig at the binary boundary).
+cfg.discovery = Some(Advertisement {
+    service_type: ServiceType::new("_rubix-ai._tcp")?,
+    node: NodeId::new("node:gw-01")?,
+    port: 8099,
+    version: Some(env!("CARGO_PKG_VERSION").into()),
+    fleet: Some("floor-3".into()),
+});
+
+// Discover.
+let peers = lb_node::browse(&ServiceType::new("_rubix-ai._tcp")?)?;
+while let Some(Discovered::Found(p)) = peers.recv().await {
+    if let Some(endpoint) = p.endpoint() { /* dial, then let the roster take over */ }
+}
+```
+
 ### 6.3 Extension runtime
 
 Two tiers, both running on every node:
@@ -339,7 +388,7 @@ AI agents fit this model as workspace-scoped actors, not global super-users. A c
 
 One Cargo workspace.
 
-- **Core crates (compiled into every node):** `host`, `bus` (Zenoh wrapper), `store` (SurrealDB wrapper), `runtime` (wasmtime + native sidecar supervisor), `mcp` (rmcp), `auth`, `caps`, `tags`, `inbox`, `jobs`, `secrets`, `sync`, `ext-loader`, `prefs` (per-user/workspace preferences + localization/unit-conversion, canonical data in & localized presentation out).
+- **Core crates (compiled into every node):** `host`, `bus` (Zenoh wrapper), `discovery` (mDNS/DNS-SD LAN bootstrap, §6.2a), `store` (SurrealDB wrapper), `runtime` (wasmtime + native sidecar supervisor), `mcp` (rmcp), `auth`, `caps`, `tags`, `inbox`, `jobs`, `secrets`, `sync`, `ext-loader`, `prefs` (per-user/workspace preferences + localization/unit-conversion, canonical data in & localized presentation out).
 - **SDK crate (extension authors depend on this):** WIT bindings, capability traits, host-function interface. This is the public API surface — version it deliberately; breaking it breaks every extension.
 - **Role-only crates:** `gateway` (SSE/HTTP, cloud), `ai-gateway` (cloud model/provider gateway), `registry-host` (cloud), `bootstrap-ui` (cloud).
 - **`node` binary:** wires the crates together and reads config to select roles.

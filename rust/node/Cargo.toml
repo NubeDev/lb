@@ -29,6 +29,10 @@ path = "src/main.rs"
 tracing.workspace = true
 lb-host.workspace = true
 lb-telemetry.workspace = true
+# LAN discovery (`BootConfig::discovery`) — the mDNS bootstrap seam an embedder opts into.
+lb-discovery.workspace = true
+# `NodeId` for the discovery advertisement built in `from_env` at the binary boundary.
+lb-bus.workspace = true
 lb-store.workspace = true
 lb-auth.workspace = true
 lb-authz.workspace = true

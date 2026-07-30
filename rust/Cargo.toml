@@ -24,6 +24,7 @@ members = [
     "crates/bus",
     "crates/caps",
     "crates/devkit",
+    "crates/discovery",
     "crates/ext-loader",
     "crates/external-agent",
     "crates/extract",
@@ -88,6 +89,7 @@ lb-authz = { path = "crates/authz" }
 lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }
 lb-devkit = { path = "crates/devkit", default-features = false }
+lb-discovery = { path = "crates/discovery" }
 lb-ext-loader = { path = "crates/ext-loader" }
 lb-extract = { path = "crates/extract" }
 lb-frame = { path = "crates/frame" }

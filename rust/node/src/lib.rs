@@ -83,3 +83,21 @@ pub use lb_host::{DeliveryError, DynTarget, OutboxEffect, Target};
 /// Mint a short-lived session token for a real principal — see
 /// [`RunningNode::mint_service_session`], which is the ergonomic form and the one to prefer.
 pub use lb_role_gateway::{mint_full_session_with_ttl, MintedSession, SESSION_TTL_SECS};
+
+/// `NodeId` — the identity a discovery advertisement carries, shared with fleet-presence's bus
+/// roster so a discovered peer correlates with a roster entry once connected.
+pub use lb_bus::{NodeId, NodeIdError};
+/// The LAN-discovery seam an embedder fills on [`BootConfig::discovery`] — same reason
+/// `BrowserSessionConfig` is re-exported: a host that deps only on `lb-node` must be able to NAME
+/// the type. [`Advertisement`] is what this node publishes; [`ServiceType`] is the
+/// product-supplied DNS-SD type (lb's own default is the generic `_lb._tcp` — no core crate names
+/// a product). [`browse`]/[`Browse`]/[`Discovered`]/[`DiscoveredPeer`] are the discovering half,
+/// for a host that wants to FIND peers as well as be found.
+///
+/// This is the **bootstrap** layer only: it yields an endpoint to dial before a bus session
+/// exists, then hands off to Zenoh and the fleet-presence liveliness roster, which remains
+/// authoritative for workspace presence.
+pub use lb_discovery::{
+    advertise, browse, Advertised, Advertisement, Browse, Discovered, DiscoveredPeer,
+    DiscoveryError, ServiceType, DEFAULT_SERVICE_TYPE,
+};

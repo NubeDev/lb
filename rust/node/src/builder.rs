@@ -67,6 +67,10 @@ pub struct RunningNode {
     pub gateway: Option<(Gateway, tokio::net::TcpListener)>,
     /// The served in-house agent, kept alive here (dropping it stops serving routed `agent.invoke`).
     pub agent_server: Option<AgentServer>,
+    /// The live LAN-discovery advertisement, when [`BootConfig::discovery`] was set. Held here for
+    /// the same reason `agent_server` is: dropping it retracts the mDNS record, so the node stops
+    /// being discoverable exactly when it stops running. `None` = advertising nothing (the default).
+    pub advertised: Option<lb_discovery::Advertised>,
 }
 
 impl RunningNode {
@@ -296,10 +300,27 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     let agent_server =
         crate::agent::mount(node.clone(), &cfg.agent_model, cfg.agent_caps.clone()).await;
 
+    // LAN discovery: opt-in (`None` ⇒ advertise nothing) and NON-FATAL. A network that refuses
+    // mDNS must not take down an otherwise healthy node, so a failure warns and boot continues —
+    // the node simply is not discoverable. Advertising is the LAST boot step on purpose: a peer
+    // that finds this node should find one that is already serving, not one still coming up.
+    let advertised = match cfg.discovery.as_ref().map(lb_discovery::advertise) {
+        None => None,
+        Some(Ok(handle)) => Some(handle),
+        Some(Err(e)) => {
+            tracing::warn!(
+                error = %e,
+                "LAN discovery could not start — the node serves normally but is not discoverable"
+            );
+            None
+        }
+    };
+
     Ok(RunningNode {
         node,
         gateway,
         agent_server,
+        advertised,
     })
 }
 

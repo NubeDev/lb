@@ -1,0 +1,20 @@
+[package]
+name = "lb-discovery"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# The mDNS/DNS-SD responder + browser. Pure Rust — no Avahi/Bonjour daemon, so an embedded
+# node stays self-contained on every platform target (README §10).
+mdns-sd = "0.20"
+# `NodeId` — discovery advertises the SAME node identity fleet-presence announces. Minted in
+# `lb-bus`; this crate consumes it and does not fork it.
+lb-bus.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

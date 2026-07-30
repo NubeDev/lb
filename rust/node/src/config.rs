@@ -265,6 +265,30 @@ pub struct BootConfig {
     /// differ only in the number. An embedder fills the field; `from_env` reads
     /// `LB_STORE_MAX_BYTES` at the binary boundary — the one place `LB_*` is read.
     pub store_budget_bytes: Option<u64>,
+
+    /// Advertise this node on the local network over **mDNS/DNS-SD** so peers can discover an
+    /// endpoint to dial before they have a bus session (`lb-discovery`).
+    ///
+    /// `None` (the default) ⇒ **no advertisement at all**, today's unchanged behaviour: the node is
+    /// invisible to mDNS and nothing is broadcast. `Some(ad)` ⇒ the node publishes its id, port and
+    /// version under the configured service type for as long as it runs.
+    ///
+    /// This is the **bootstrap** layer, not the roster: it answers "what lb nodes are on this wire"
+    /// for a node that has no endpoint yet, and hands off to Zenoh + the fleet-presence liveliness
+    /// roster (`ws/{id}/nodes/{node_id}`), which stays authoritative for workspace presence. The two
+    /// compose; neither replaces the other. Zenoh's own multicast scouting already covers the plain
+    /// same-subnet case, so this earns its keep where scouting is filtered or where operators want
+    /// `avahi-browse`/`dns-sd` to see the fleet.
+    ///
+    /// **What it broadcasts is reachability only** — never a workspace, persona, capability or
+    /// extension list, because an mDNS record is readable by anything on the segment and sits
+    /// outside every wall the platform has (rule 6). Discovery is not authorization: the caps wall
+    /// and workspace isolation gate every byte after the dial, unchanged.
+    ///
+    /// The service type is embedder-supplied and product-agnostic (default `_lb._tcp`) — no core
+    /// crate names a product (rule 10). Opt-in and non-fatal: if the network refuses mDNS, boot logs
+    /// a warning and the node serves normally.
+    pub discovery: Option<lb_discovery::Advertisement>,
 }
 
 impl Default for BootConfig {
@@ -317,6 +341,11 @@ impl Default for BootConfig {
             // 256 MiB advisory and no marks, forever. No auto-derivation from filesystem size — a
             // node must not silently acquire a new behaviour on upgrade.
             store_budget_bytes: None,
+            // `None` ⇒ the node advertises NOTHING on the LAN (today's behaviour). Opting a node
+            // into being discoverable is an explicit act by the embedder, never a default: a
+            // network broadcast that switches itself on at upgrade is exactly the surprise this
+            // posture avoids.
+            discovery: None,
         }
     }
 }
@@ -326,6 +355,11 @@ impl BootConfig {
     /// is the ONLY place boot env vars are read; only binaries call it. Embedders construct [`BootConfig`]
     /// directly and never touch env.
     pub fn from_env() -> Self {
+        // Computed once: discovery advertises the port peers should DIAL, which is the gateway's.
+        // Deriving it here keeps the two from drifting — a node that advertised a port it does not
+        // serve on would be discoverable and unreachable, the worst of both.
+        let gateway = gateway_mode_from_env();
+        let discovery = discovery_from_env(&gateway);
         BootConfig {
             store_path: std::env::var("LB_STORE_PATH")
                 .ok()
@@ -333,7 +367,7 @@ impl BootConfig {
             signing_key: gateway_signing_key(),
             workspace: std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into()),
             seed_user: Some(std::env::var("LB_SEED_USER").unwrap_or_else(|_| "user:ada".into())),
-            gateway: gateway_mode_from_env(),
+            gateway,
             reactors: true,
             // The binary loads + calls the hello demo unconditionally today.
             hello_demo: true,
@@ -388,6 +422,9 @@ impl BootConfig {
             // The node's store disk budget from `LB_STORE_MAX_BYTES` (bytes); unset/empty/
             // unparseable ⇒ `None` ⇒ today's flat 256 MiB advisory and no marks. Read only here.
             store_budget_bytes: store_budget_bytes_from_env(),
+            // LAN discovery from `LB_DISCOVERY_*` — OFF unless `LB_DISCOVERY=1`, so the standalone
+            // binary broadcasts nothing until an operator asks for it. Read only here.
+            discovery,
             // Optional dev-admin seed password (`LB_SEED_PASSWORD`) — so a `PasswordHash` binary
             // has a first admin who can log in. Absent ⇒ no credential seeded (correct for a
             // `DevTrustAny` binary). Secret-class: read here, hashed at seed time, never logged.
@@ -455,6 +492,70 @@ fn gateway_mode_from_env() -> GatewayMode {
         },
         _ => GatewayMode::Off,
     }
+}
+
+/// Build the LAN-discovery advertisement from `LB_DISCOVERY_*`, or `None` to advertise nothing.
+///
+/// **Off unless `LB_DISCOVERY=1`.** A node broadcasting its existence on the local network is a
+/// posture change an operator must ask for; it must never arrive as a silent default on upgrade.
+///
+/// Requires a gateway: discovery advertises an endpoint to *dial*, and a headless node has none, so
+/// a headless node with `LB_DISCOVERY=1` warns and stays silent rather than advertising a port that
+/// refuses connections.
+///
+/// - `LB_DISCOVERY_NODE_ID` — the advertised id (default `node:<hostname>`); must be
+///   key-expression-safe, since it is the same `NodeId` fleet-presence puts in a bus key.
+/// - `LB_DISCOVERY_SERVICE_TYPE` — the DNS-SD type (default `_lb._tcp`); a product host sets its own.
+/// - `LB_DISCOVERY_FLEET` — an opaque grouping tag so unrelated fleets on one LAN ignore each other.
+///   Plaintext on the wire and trivially forged — it separates accidents, not adversaries.
+fn discovery_from_env(gateway: &GatewayMode) -> Option<lb_discovery::Advertisement> {
+    if std::env::var("LB_DISCOVERY").ok().as_deref() != Some("1") {
+        return None;
+    }
+
+    let GatewayMode::Addr(addr) = gateway else {
+        eprintln!(
+            "LB_DISCOVERY=1 but no LB_GATEWAY_ADDR — a headless node has no endpoint to advertise; \
+             LAN discovery stays OFF"
+        );
+        return None;
+    };
+
+    let node_id = std::env::var("LB_DISCOVERY_NODE_ID")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
+            format!("node:{host}")
+        });
+    let node = match lb_bus::NodeId::new(node_id.clone()) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("bad LB_DISCOVERY_NODE_ID '{node_id}': {e} — LAN discovery stays OFF");
+            return None;
+        }
+    };
+
+    let mut ad = lb_discovery::Advertisement::new(node, addr.port());
+
+    if let Some(ty) = std::env::var("LB_DISCOVERY_SERVICE_TYPE")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        match lb_discovery::ServiceType::new(ty.clone()) {
+            Ok(t) => ad.service_type = t,
+            Err(e) => {
+                eprintln!("bad LB_DISCOVERY_SERVICE_TYPE '{ty}': {e} — LAN discovery stays OFF");
+                return None;
+            }
+        }
+    }
+    ad.version = Some(env!("CARGO_PKG_VERSION").to_string());
+    ad.fleet = std::env::var("LB_DISCOVERY_FLEET")
+        .ok()
+        .filter(|s| !s.is_empty());
+
+    Some(ad)
 }
 
 /// Parse `LB_MAX_EXTENSION_UPLOAD_BYTES` (a plain byte count) into the `POST /extensions` upload
