@@ -264,7 +264,12 @@ async fn dispatch(
         // `flipflop`/`webhook` are sources: each reads the value the reactor placed in params under its
         // node id (the flipped bool / the hit payload) and emits it — the same entry-node leg as
         // `trigger`. `webhook` fires once per hit via the series-event reactor (slice 5).
-        "trigger" | "flipflop" | "webhook" => core::trigger(node_id, config, &inputs, params),
+        // `schedule` is a source like `flipflop`: the reactor evaluates the referenced global
+        // schedule and places the resulting boolean in params under this node id; the node emits it.
+        // The topic defaults to the schedule id so downstream can tell two schedules apart.
+        "trigger" | "flipflop" | "webhook" | "schedule" => {
+            core::trigger(node_id, config, &inputs, params)
+        }
         "tool" => core::tool(node, principal, ws, config, &inputs).await,
         "rhai" => core::rhai(node, principal, ws, config, &inputs, now).await,
         "rule" => core::rule(node, principal, ws, config, &inputs, now).await,

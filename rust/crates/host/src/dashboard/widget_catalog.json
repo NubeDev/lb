@@ -263,6 +263,21 @@
       ]
     },
     {
+      "id": "schedule",
+      "label": "Schedule",
+      "kind": "read",
+      "version": 1,
+      "buildable": true,
+      "data": false,
+      "action": false,
+      "options": [
+        { "id": "scheduleId", "label": "Schedule", "scope": "options", "path": "schedule.scheduleId", "control": "text" },
+        { "id": "mode", "label": "Mode", "scope": "options", "path": "schedule.mode", "control": "select", "choices": ["status", "week"] },
+        { "id": "refreshSecs", "label": "Refresh (seconds)", "scope": "options", "path": "schedule.refreshSecs", "control": "number" },
+        { "id": "allowToggle", "label": "Allow enable/disable", "scope": "options", "path": "schedule.allowToggle", "control": "toggle" }
+      ]
+    },
+    {
       "id": "row",
       "label": "Row",
       "kind": "layout",

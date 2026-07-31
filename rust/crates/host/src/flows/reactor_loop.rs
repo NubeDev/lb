@@ -146,6 +146,17 @@ async fn tick_once(
         Ok(_) => {}
         Err(e) => tracing::warn!(ws = %ws, error = %e, "flow webhook source reactor pass failed"),
     }
+    // SCHEDULE SOURCES: evaluate each `schedule` node's referenced global schedule and fire on a
+    // transition. This one stays on the sweep (unlike the interval timers): schedule windows are
+    // minute-grained at finest, so the tick cadence is ample resolution, and a sweep-driven scan needs
+    // no per-node timer to converge when a shared schedule record is edited out from under N nodes.
+    match super::react_schedule::react_to_flows_schedule(node, principal, ws, now).await {
+        Ok(pass) if pass.fired > 0 => {
+            tracing::info!(ws = %ws, fired = pass.fired, "flow schedule reactor fired");
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(ws = %ws, error = %e, "flow schedule reactor pass failed"),
+    }
     // Resume/cancel runs parked on an approval gate whose inbox item has resolved (slice 4).
     match super::react_approval::react_to_flow_approvals(node, principal, ws, now).await {
         Ok(pass) if pass.resumed > 0 || pass.cancelled > 0 => {

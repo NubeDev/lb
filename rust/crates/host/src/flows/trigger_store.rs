@@ -108,6 +108,59 @@ pub fn webhook_triggers(flow: &Flow) -> Vec<WebhookTrigger> {
         .collect()
 }
 
+/// One `schedule` source node: its id, the global schedule it follows, and its evaluation options.
+pub struct ScheduleTrigger {
+    pub node_id: String,
+    pub schedule_id: String,
+    pub evaluation_interval: u64,
+    pub emit_interval: bool,
+    pub invert: bool,
+}
+
+/// Every `schedule` source node in `flow` that names a global schedule. A flow may carry any number —
+/// each follows its own record on its own cursor. A node with an empty `schedule_id` is skipped (it
+/// follows nothing), never an error that blocks the flow's other triggers.
+pub fn schedule_triggers(flow: &Flow) -> Vec<ScheduleTrigger> {
+    flow.nodes
+        .iter()
+        .filter(|n| n.node_type == "schedule")
+        .filter_map(|n| {
+            let schedule_id = n
+                .config
+                .get("schedule_id")
+                .and_then(|v| v.as_str())?
+                .trim()
+                .to_string();
+            if schedule_id.is_empty() {
+                return None;
+            }
+            // Clamp rather than drop: a corrupt/zero interval must still tick (the descriptor's
+            // `minimum: 1` rejects it at save, so this only guards a hand-edited record).
+            let evaluation_interval = n
+                .config
+                .get("evaluation_interval")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10)
+                .max(1);
+            Some(ScheduleTrigger {
+                node_id: n.id.clone(),
+                schedule_id,
+                evaluation_interval,
+                emit_interval: n
+                    .config
+                    .get("emit_interval")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                invert: n
+                    .config
+                    .get("invert")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+            })
+        })
+        .collect()
+}
+
 /// Read a trigger node's durable cursor (`None` → never seen / no row yet).
 pub async fn read_cursor(
     store: &Store,

@@ -791,6 +791,11 @@ pub(crate) async fn run_host_verb(
         crate::call_docs_tool(&node.store, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("rules.") {
         crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("schedule.") {
+        // global-schedules: the `schedule.*` CRUD + evaluate surface. It rides the flows dispatcher
+        // (the schedule record is the flow `schedule` node's referent and shares its error type), but
+        // needs its own prefix arm because routing here is by prefix, not by owning service.
+        crate::call_flows_tool_boxed(node, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("flows.") {
         // Type-erase this dispatch edge to a boxed `dyn Future + Send`. A `flows.run` reached from
         // INSIDE a running flow (a `tool` node invoking `flows.run`) is an async recursion through

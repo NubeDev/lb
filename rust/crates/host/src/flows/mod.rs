@@ -25,6 +25,7 @@ pub mod patch_run;
 pub mod react_approval;
 pub mod react_cron;
 pub mod react_interval;
+pub mod react_schedule;
 pub mod react_source;
 pub mod reactor_loop;
 pub mod reconcile;
@@ -37,6 +38,7 @@ pub mod run_store;
 pub mod runs;
 pub mod save;
 pub mod scan_all;
+pub mod schedule_store;
 pub mod source;
 pub mod trigger_store;
 pub mod triggers;
@@ -50,6 +52,7 @@ pub use react_cron::{
     cron_is_valid, cron_run_id, react_to_flows_cron, ReactorPass as FlowReactorPass,
 };
 pub use react_interval::{fire_flipflop_node, flipflop_run_id, react_to_flows_interval};
+pub use react_schedule::{fire_schedule_node, react_to_flows_schedule, schedule_run_id};
 pub use react_source::{react_to_flow_sources, source_run_id, SourceReactorPass};
 pub use reactor_loop::spawn_flow_reactors;
 pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};
@@ -131,6 +134,36 @@ async fn dispatch(
             let id = str_arg(input, "id")?;
             save::flows_delete(&node.store, principal, ws, id).await?;
             Ok(json!({ "ok": true }))
+        }
+        // The GLOBAL schedule surface (global-schedules): a schedule is a workspace-scoped record in
+        // its own right, so it has its own CRUD rather than living inside one node's config. The
+        // `schedule` flow node and the dashboard widget are both plain readers of these verbs.
+        "schedule.save" => {
+            let record: schedule_store::ScheduleRecord = serde_json::from_value(input.clone())
+                .map_err(|e| FlowsError::BadInput(e.to_string()))?;
+            let id = schedule_store::schedule_save(&node.store, principal, ws, &record).await?;
+            Ok(json!({ "id": id }))
+        }
+        "schedule.get" => {
+            let id = str_arg(input, "id")?;
+            let record = schedule_store::schedule_get(&node.store, principal, ws, id).await?;
+            serde_json::to_value(record).map_err(|e| FlowsError::Internal(e.to_string()))
+        }
+        "schedule.list" => {
+            let schedules = schedule_store::schedule_list(&node.store, principal, ws).await?;
+            Ok(json!({ "schedules": schedules }))
+        }
+        "schedule.delete" => {
+            let id = str_arg(input, "id")?;
+            schedule_store::schedule_delete(&node.store, principal, ws, id).await?;
+            Ok(json!({ "ok": true }))
+        }
+        // Evaluate NOW — the verb the dashboard widget polls and an operator uses to answer "is it on
+        // right now, and why?" without wiring a flow.
+        "schedule.evaluate" => {
+            let id = str_arg(input, "id")?;
+            let ev = schedule_store::schedule_evaluate(&node.store, principal, ws, id).await?;
+            serde_json::to_value(ev).map_err(|e| FlowsError::Internal(e.to_string()))
         }
         "flows.run" => {
             let flow_id = str_arg(input, "id")?;

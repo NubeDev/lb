@@ -38,6 +38,7 @@ mod prefs;
 mod reminder;
 mod report;
 mod rules;
+mod schedule;
 mod secret;
 mod series;
 mod store;
@@ -74,6 +75,7 @@ const FAMILIES: &[&[HostTool]] = &[
     devkit::DEVKIT,
     ext::EXT,
     flows::FLOWS,
+    schedule::SCHEDULE,
     forms::FORMS,
     host::HOST,
     identity::IDENTITY,

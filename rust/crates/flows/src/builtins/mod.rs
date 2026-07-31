@@ -11,6 +11,7 @@
 //! - [`sequence`] — `split`/`join` (array-carry + the `parts` contract) + `batch` (durable grouping).
 //! - [`function`] — `filter` (RBE), `unique` (dedupe), `switch` (routing), `delay` (durable park).
 //! - [`observability`] — `debug` (Node-RED's debug node: a motion-only sink the debug panel tails).
+//! - [`schedule`] — the `schedule` time source over the workspace's global schedule records.
 //! - [`platform`] — the ext & store node pack (ext-store-nodes scope): `ext-list` / `ext-call` +
 //!   `store-read` / `store-write` / `store-delete`, dispatching the existing platform verbs.
 //!
@@ -24,6 +25,7 @@ pub mod function;
 pub mod observability;
 pub mod parse;
 pub mod platform;
+pub mod schedule;
 pub mod sequence;
 
 use crate::descriptor::NodeDescriptor;
@@ -39,6 +41,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
     out.extend(function::function_descriptors());
     out.extend(observability::observability_descriptors());
     out.extend(platform::platform_descriptors());
+    out.extend(schedule::schedule_descriptors());
     out
 }
 
@@ -94,6 +97,8 @@ mod tests {
         "store-read",
         "store-write",
         "store-delete",
+        // schedule (1)
+        "schedule",
     ];
 
     #[test]
@@ -103,8 +108,8 @@ mod tests {
         assert_eq!(types, EXPECTED);
         assert_eq!(
             d.len(),
-            38,
-            "12 spine + 20 data/JSON pack + 1 observability + 5 platform"
+            39,
+            "12 spine + 20 data/JSON pack + 1 observability + 5 platform + 1 schedule"
         );
         // Every built-in carries a compilable config schema (the load-time contract this test owns).
         for desc in &d {

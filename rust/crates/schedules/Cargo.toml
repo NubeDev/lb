@@ -1,0 +1,17 @@
+[package]
+name = "lb-schedules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Timezone-aware scheduling: weekly patterns, date exceptions, and priority-based evaluation"
+
+[lib]
+name = "lb_schedules"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = { workspace = true, features = ["serde"] }
+chrono-tz = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
