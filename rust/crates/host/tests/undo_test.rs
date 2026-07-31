@@ -183,7 +183,8 @@ async fn undo_restores_then_redo_reapplies_over_the_gate() {
     // history.list shows the step, undoable.
     let items = history_list(&node.store, &p, ws, "user:a", "")
         .await
-        .unwrap();
+        .unwrap()
+        .items;
     assert!(!items.is_empty());
     assert!(items[0].undoable);
 }

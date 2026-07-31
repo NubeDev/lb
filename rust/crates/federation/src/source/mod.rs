@@ -23,7 +23,11 @@ use serde_json::Value;
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresSource;
-pub use sqlite::SqliteSource;
+// `READ_SLOTS` rides the re-export so the read-concurrency tests can name K (and its mutation check
+// can flip it) without widening the module itself (federation-read-concurrency scope). The binary
+// itself never names K, so the re-export is unused there — that is the point, not an oversight.
+#[allow(unused_imports)]
+pub use sqlite::{SqliteSource, READ_SLOTS};
 
 pub mod dialect;
 #[allow(unused_imports)]

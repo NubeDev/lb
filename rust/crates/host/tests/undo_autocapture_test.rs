@@ -60,7 +60,8 @@ async fn a_reversible_mutation_is_auto_journaled_undoable() {
     // the touched record's own surface (its id `general__m1`), not a global stack.
     let items = history_list(&node.store, &p, ws, "user:a", "general__m1")
         .await
-        .expect("history reads");
+        .expect("history reads")
+        .items;
     assert_eq!(items.len(), 1, "exactly one auto-captured step");
     assert_eq!(items[0].tool, "inbox.record");
     assert!(
@@ -93,7 +94,8 @@ async fn an_outbox_call_is_auto_classified_irreversible() {
 
     let items = history_list(&node.store, &p, ws, "user:a", "")
         .await
-        .expect("history reads");
+        .expect("history reads")
+        .items;
     assert_eq!(items.len(), 1, "the outbox call is journaled (as a marker)");
     assert_eq!(items[0].tool, "outbox.enqueue");
     assert!(
@@ -123,7 +125,8 @@ async fn a_denied_call_is_not_journaled() {
 
     let items = history_list(&node.store, &p, ws, "user:a", "")
         .await
-        .expect("history reads");
+        .expect("history reads")
+        .items;
     assert!(
         items.is_empty(),
         "a denied call mutates nothing and is not auto-journaled"
@@ -154,6 +157,7 @@ async fn the_auto_captured_journal_is_workspace_walled() {
         history_list(&node.store, &a, "ws-a", "user:a", "general__m1")
             .await
             .unwrap()
+            .items
             .len(),
         1
     );
@@ -170,5 +174,6 @@ async fn the_auto_captured_journal_is_workspace_walled() {
     assert!(history_list(&node.store, &b, "ws-b", "user:a", "")
         .await
         .unwrap()
+        .items
         .is_empty());
 }

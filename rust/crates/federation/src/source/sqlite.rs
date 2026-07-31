@@ -55,7 +55,7 @@ use futures::TryStreamExt;
 /// saturate it without oversubscribing a node also running host/store/bus. A knob here would be a
 /// support surface for a number nobody should be retuning per site — revisit only with a measurement
 /// that says 4 binds.
-pub(crate) const READ_SLOTS: usize = 4;
+pub const READ_SLOTS: usize = 4;
 
 /// One read slot: an independent `SqliteConnectionPool` (its own OS connection) plus the provider
 /// cache for tables built against THAT pool. The pairing is the invariant — a `TableProvider` holds
@@ -139,10 +139,12 @@ impl SqliteSource {
         Ok(Arc::clone(guard.get_or_insert(built)))
     }
 
-    /// How many read slots are currently built. Test seam for the lazy-slot assertion (a strictly
-    /// serial caller must build exactly one connection).
-    #[cfg(test)]
-    pub(crate) fn built_slots(&self) -> usize {
+    /// How many read slots are currently built. The observable seam for the lazy-slot assertion (a
+    /// strictly serial caller must not pay for K connections) — the integration tests compose this
+    /// module directly rather than linking the binary, so it cannot be `#[cfg(test)]`, and the
+    /// binary itself never calls it.
+    #[allow(dead_code)]
+    pub fn built_slots(&self) -> usize {
         self.slots
             .iter()
             .filter(|s| s.lock().expect("slot mutex").is_some())

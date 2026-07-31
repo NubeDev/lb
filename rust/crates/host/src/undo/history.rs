@@ -6,18 +6,22 @@
 use lb_auth::Principal;
 use lb_mcp::authorize_tool;
 use lb_store::Store;
-use lb_undo::{compensations, list, HistoryItem};
+use lb_undo::{compensations, list, HistoryList};
 
 use super::error::UndoSvcError;
 
 /// List `actor`'s `surface` stack in `ws`, newest-first, as `principal`.
+///
+/// Returns the [`HistoryList`] whole — `items` plus the server-computed `can_undo`/`can_redo` gate
+/// flags (history-list-read-cost scope). The flags are derived from the same entries the caller was
+/// authorized to list above, so they leak nothing the items don't.
 pub async fn history_list(
     store: &Store,
     principal: &Principal,
     ws: &str,
     actor: &str,
     surface: &str,
-) -> Result<Vec<HistoryItem>, UndoSvcError> {
+) -> Result<HistoryList, UndoSvcError> {
     authorize_tool(principal, ws, "history.list").map_err(|_| UndoSvcError::Denied)?;
     if actor != principal.sub() {
         authorize_tool(principal, ws, "undo.any").map_err(|_| UndoSvcError::Denied)?;

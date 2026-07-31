@@ -74,7 +74,8 @@ async fn dashboard_save_is_auto_journaled_undoable() {
     // Auto-captured as an UNDOABLE step, scoped to this dashboard's surface — no manual record_change.
     let items = history_list(&node.store, &p, ws, "user:owner", "ops")
         .await
-        .expect("history reads");
+        .expect("history reads")
+        .items;
     assert_eq!(items.len(), 1, "exactly one auto-captured step");
     assert_eq!(items[0].tool, "dashboard.save");
     assert!(
@@ -199,7 +200,8 @@ async fn delete_is_journaled_undoable_and_undo_resurrects() {
     // The delete was journaled undoable.
     let items = history_list(&node.store, &p, ws, "user:owner", "ops")
         .await
-        .expect("history reads");
+        .expect("history reads")
+        .items;
     assert!(
         items
             .iter()

@@ -480,7 +480,8 @@ async fn undo_after_a_dashboard_restore_returns_the_pre_restore_record() {
     // step — not as an opaque non-generic marker.
     let items = history_list(&node.store, &p, ws, "user:ada", "ops")
         .await
-        .expect("history reads");
+        .expect("history reads")
+        .items;
     assert_eq!(
         items[0].tool, "versions.restore",
         "the newest step is the restore itself, not the nested save"

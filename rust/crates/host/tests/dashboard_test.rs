@@ -184,7 +184,7 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.icon, "activity");
     assert_eq!(got.color, "#3b82f6");
     // Freshness TTL persists through save → get (the bug that silently dropped it before this field).
-    assert_eq!(got.cache_ttl_s, 120);
+    assert_eq!(got.cache_ttl_s, Some(120));
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
     // Page width persists through save → get (dashboard page-settings).
     assert_eq!(got.width, "centered");
@@ -224,7 +224,7 @@ async fn page_settings_round_trip_and_preserve() {
     // Toolbar flags are page chrome too — a plain layout save preserves them.
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
     // Freshness is page chrome too — a plain layout save must never reset it to live.
-    assert_eq!(got.cache_ttl_s, 120);
+    assert_eq!(got.cache_ttl_s, Some(120));
     // Page width is page chrome too — a plain layout save preserves it.
     assert_eq!(got.width, "centered");
     // …as are the heading block and the variable presentation.
@@ -263,9 +263,206 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.show_heading, Some(true));
     assert_eq!(got.vars_display, "bar");
     // `None` cacheTtlS on the meta save preserved the freshness window (the preserve-on-omit path).
-    assert_eq!(got.cache_ttl_s, 120);
+    assert_eq!(got.cache_ttl_s, Some(120));
     // `None` width on the meta save preserved the page width (preserve-on-omit).
     assert_eq!(got.width, "centered");
+}
+
+/// Freshness is a TRI-STATE, and each state has to survive the store (dashboard-query-acceleration §C).
+///
+/// This is the pin on the bug that made every board read as "caching explicitly disabled": `cacheTtlS`
+/// used to be a bare `u64` with `#[serde(default)]`, so an unset board deserialized to `0` AND serialized
+/// back out as `0` — which is the UI's sentinel for the author's explicit "live". Unset and explicit-zero
+/// collapsed into one value, so the client-side default (caching ON for a new board) was unreachable.
+///
+/// The three states, and what each must mean on the wire:
+///   - never set    → `None`, key ABSENT   ⇒ the client default applies (caching on)
+///   - explicit `0` → `Some(0)`, key `0`   ⇒ live, caching off — the author's opt-out
+///   - explicit `N` → `Some(N)`, key `N`   ⇒ the author's window
+///
+/// The mutation check the handover asks for: make `0` collapse back to "unset" (`.unwrap_or`, or dropping
+/// the `Option`) and the explicit-zero assertions below go red.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn cache_ttl_tri_state_round_trips() {
+    let ws = "ws-dash-freshness";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    // 1. A board saved with NO freshness comes back with the field unset — not `0`. This is the state
+    //    every backend-created board is in, and the one that must reach the UI as "use your default".
+    dashboard_save(
+        &store,
+        &ada,
+        ws,
+        "unset",
+        "Unset",
+        vec![chart_cell("cooler.temp")],
+        vec![],
+        10,
+    )
+    .await
+    .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "unset").await.unwrap();
+    assert_eq!(
+        got.cache_ttl_s, None,
+        "an unset board must not read back as 0"
+    );
+    // …and it must be ABSENT on the wire, not a serialized `null`/`0` — that absence is what lets the
+    // UI's `undefined` branch fire for boards that already exist, with no re-save.
+    let wire = serde_json::to_value(&got).unwrap();
+    assert!(
+        wire.get("cacheTtlS").is_none(),
+        "unset freshness must be omitted from the payload, got {:?}",
+        wire.get("cacheTtlS")
+    );
+
+    // 2. An explicit `0` is a REAL value — the author choosing live. It must round-trip as `Some(0)`
+    //    and be present on the wire, or the opt-out is gone.
+    dashboard_save_meta(
+        &store,
+        &ada,
+        ws,
+        "live",
+        "Live",
+        PageMeta {
+            cache_ttl_s: Some(0),
+            ..PageMeta::default()
+        },
+        vec![chart_cell("cooler.temp")],
+        vec![],
+        10,
+    )
+    .await
+    .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "live").await.unwrap();
+    assert_eq!(
+        got.cache_ttl_s,
+        Some(0),
+        "an explicit 0 is the author's opt-out, not 'unset'"
+    );
+    let wire = serde_json::to_value(&got).unwrap();
+    assert_eq!(wire.get("cacheTtlS"), Some(&json!(0)));
+
+    // 3. A layout-only save (no `cacheTtlS` arg) must not wipe the explicit 0 — preserve-on-omit has to
+    //    hold for the zero case too, which is exactly what `.unwrap_or` got wrong.
+    dashboard_save(
+        &store,
+        &ada,
+        ws,
+        "live",
+        "Live v2",
+        vec![chart_cell("cooler.temp"), chart_cell("fryer.state")],
+        vec![],
+        20,
+    )
+    .await
+    .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "live").await.unwrap();
+    assert_eq!(
+        got.cache_ttl_s,
+        Some(0),
+        "a layout save must preserve the author's explicit live setting"
+    );
+
+    // 4. An unset board stays unset through a layout save too (it must not acquire a stored `0`).
+    dashboard_save(
+        &store,
+        &ada,
+        ws,
+        "unset",
+        "Unset v2",
+        vec![chart_cell("cooler.temp"), chart_cell("fryer.state")],
+        vec![],
+        20,
+    )
+    .await
+    .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "unset").await.unwrap();
+    assert_eq!(got.cache_ttl_s, None);
+
+    // 5. An author can move off the default to a real window, and back to live.
+    let cells = got.cells.clone();
+    dashboard_save_meta(
+        &store,
+        &ada,
+        ws,
+        "unset",
+        "Unset v3",
+        PageMeta {
+            cache_ttl_s: Some(300),
+            ..PageMeta::default()
+        },
+        cells.clone(),
+        vec![],
+        30,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        dashboard_get(&store, &ada, ws, "unset")
+            .await
+            .unwrap()
+            .cache_ttl_s,
+        Some(300)
+    );
+    dashboard_save_meta(
+        &store,
+        &ada,
+        ws,
+        "unset",
+        "Unset v4",
+        PageMeta {
+            cache_ttl_s: Some(0),
+            ..PageMeta::default()
+        },
+        cells,
+        vec![],
+        40,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        dashboard_get(&store, &ada, ws, "unset")
+            .await
+            .unwrap()
+            .cache_ttl_s,
+        Some(0),
+        "setting freshness back to 0 must stick — it is not 'clear the field'"
+    );
+}
+
+/// A pre-freshness stored record (no `cacheTtlS` key at all) and an explicit JSON `null` both mean
+/// "unset". The `null` case is why this field does NOT use the `null_default` helper the neighbouring
+/// fields use: that helper maps `null` → `T::default()`, which for a `u64` is `0` — i.e. it would turn
+/// "no opinion" into the author's explicit "live". For an `Option`, plain `#[serde(default)]` is correct.
+#[test]
+fn absent_and_null_cache_ttl_both_deserialize_as_unset() {
+    use lb_host::Dashboard;
+
+    let absent: Dashboard = serde_json::from_value(json!({
+        "id": "d1", "title": "D1", "cells": [], "owner": "user:ada", "updated_ts": 1
+    }))
+    .unwrap();
+    assert_eq!(absent.cache_ttl_s, None);
+
+    let null: Dashboard = serde_json::from_value(json!({
+        "id": "d1", "title": "D1", "cells": [], "owner": "user:ada", "updated_ts": 1, "cacheTtlS": null
+    }))
+    .unwrap();
+    assert_eq!(
+        null.cache_ttl_s, None,
+        "an explicit null means unset, not 0"
+    );
+
+    let zero: Dashboard = serde_json::from_value(json!({
+        "id": "d1", "title": "D1", "cells": [], "owner": "user:ada", "updated_ts": 1, "cacheTtlS": 0
+    }))
+    .unwrap();
+    assert_eq!(
+        zero.cache_ttl_s,
+        Some(0),
+        "an explicit 0 is the live opt-out"
+    );
 }
 
 // widget-config-vars scope, Slice 1: a cell's `title` round-trips through `dashboard.save`/`get` with no

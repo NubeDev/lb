@@ -1166,10 +1166,17 @@ async fn call_undo_tool(
         "undo" => undo_outcome(undo(&node.store, principal, ws, actor, surface).await),
         "redo" => undo_outcome(redo(&node.store, principal, ws, actor, surface).await),
         "history.list" => {
-            let items = history_list(&node.store, principal, ws, actor, surface)
+            // `items` keeps its exact shape/order; `can_undo`/`can_redo` are ADDITIVE top-level
+            // flags a button-gating caller reads instead of folding N items
+            // (history-list-read-cost scope).
+            let list = history_list(&node.store, principal, ws, actor, surface)
                 .await
                 .map_err(undo_svc_to_tool_err)?;
-            Ok(json!({ "items": items }))
+            Ok(json!({
+                "items": list.items,
+                "can_undo": list.can_undo,
+                "can_redo": list.can_redo,
+            }))
         }
         "history.compensations" => {
             let seq = input

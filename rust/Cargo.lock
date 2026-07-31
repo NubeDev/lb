@@ -6144,6 +6144,7 @@ dependencies = [
 name = "lb-undo"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "lb-store",
  "serde",
  "serde_json",

@@ -39,7 +39,9 @@ pub use apply_redo::apply_redo;
 pub use apply_undo::apply_undo;
 pub use classify::classify;
 pub use error::UndoError;
-pub use history::{compensations, list, HistoryItem};
+pub use history::{
+    compensations, list, peak_in_flight, reset_in_flight_peak, HistoryItem, HistoryList,
+};
 pub use model::{Class, JournalEntry, Kind, StackState, TouchedRecord, DEFAULT_DEPTH_CAP};
 pub use peek::{peek_redo, peek_undo};
 pub use record_captured::{record_captured, RecordCaptured};

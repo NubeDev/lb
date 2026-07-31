@@ -524,11 +524,18 @@ pub struct Dashboard {
     /// Per-dashboard freshness — the `viz.query` cache TTL in seconds (dashboard-query-acceleration
     /// scope §C). The UI resolves the effective TTL (a set auto-refresh interval wins; else this;
     /// else the client default) and threads it as the top-level `cache: {ttl_s}` directive so a warm
-    /// re-open serves from the federation result / gateway response cache. `0` = live (no directive).
-    /// Additive/defaulted — a pre-freshness dashboard round-trips unchanged. Opaque to the host beyond
-    /// serde (the host caches on the directive the UI sends, not on this field).
-    #[serde(default, deserialize_with = "null_default", rename = "cacheTtlS")]
-    pub cache_ttl_s: u64,
+    /// re-open serves from the federation result / gateway response cache.
+    ///
+    /// **Tri-state, and that is the point.** `None` (absent on the wire) means the author never chose
+    /// a freshness — the UI applies its default, so caching is ON by default for a new board. `Some(0)`
+    /// means the author explicitly chose **live** and is a real, distinct value the UI must honour by
+    /// sending no directive. Collapsing the two (a bare `u64` with `#[serde(default)]`, as this once
+    /// was) makes every board read as "caching explicitly disabled" and the default unreachable.
+    /// `skip_serializing_if` keeps unset ABSENT on the wire so existing boards pick the default up
+    /// without a re-save. Additive — a pre-freshness dashboard round-trips unchanged. Opaque to the
+    /// host beyond serde (the host caches on the directive the UI sends, not on this field).
+    #[serde(default, rename = "cacheTtlS", skip_serializing_if = "Option::is_none")]
+    pub cache_ttl_s: Option<u64>,
     /// Page content width (dashboard page-settings) — `"wide"` (full-bleed, the default/empty) or
     /// `"centered"` (a constrained, centred content column, the marketing-page look). Additive/
     /// defaulted — a pre-width dashboard round-trips as empty (⇒ wide). Opaque to the host beyond

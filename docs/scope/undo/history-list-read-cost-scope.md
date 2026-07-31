@@ -1,6 +1,6 @@
 # history.list read cost — kill the N+1, ship the gate flags
 
-**Topic:** `undo` · **Name:** `history-list-read-cost` · **Status:** scoped
+**Topic:** `undo` · **Name:** `history-list-read-cost` · **Status:** **built** (2026-07-31) — `lb_undo::list` loads entries concurrently in 32-chunks and returns `{items, can_undo, can_redo}`; the host verb carries the flags through additively. Tests + mutation checks in `crates/undo/tests/history_list_test.rs` + `history_list_concurrency_test.rs`. Session: `docs/sessions/undo/history-list-read-cost-session.md`.
 
 `history.list` on a long-lived surface is the slowest read verb on a dashboard open, and it grows
 with every edit. Measured live (2026-07-31, `demo-operations`, 99 journal entries):

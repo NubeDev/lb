@@ -10,7 +10,8 @@ pub(super) const UNDO: &[HostTool] = &[
     HostTool {
         tool: "history.list",
         group: "history",
-        description: "list the workspace's mutation history",
+        description: "list the workspace's mutation history; the result also carries \
+                      can_undo/can_redo gate flags for a caller that only enables buttons",
     },
     HostTool {
         tool: "history.compensations",

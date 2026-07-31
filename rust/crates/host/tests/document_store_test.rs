@@ -372,7 +372,8 @@ async fn markdown_save_participates_in_undo() {
     // The save was auto-captured as an undoable step.
     let items = history_list(&node.store, &p, ws, "user:ada", "")
         .await
-        .expect("history reads");
+        .expect("history reads")
+        .items;
     assert!(
         items
             .iter()

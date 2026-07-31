@@ -1,6 +1,6 @@
 # Federation read concurrency — same-source reads must not serialize
 
-**Topic:** `datasources` · **Name:** `federation-read-concurrency` · **Status:** scoped
+**Topic:** `datasources` · **Name:** `federation-read-concurrency` · **Status:** **built** (2026-07-31) — `SqliteSource` holds K=4 lazy read slots, round-robined per read; the invariant is stated on the `Source` trait. Tests + mutation checks in `crates/federation/tests/read_concurrency_test.rs`; the live measurement is `read_concurrency_live_bench.rs` (`#[ignore]`). Session: `docs/sessions/datasources/federation-read-concurrency-session.md`.
 
 A dashboard open fans N panel queries at one datasource. The transport is concurrent
 (`native-call-concurrency`, shipped — measured: 8 parallel `SELECT 1` = 15 ms wall), the batch verb

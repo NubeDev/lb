@@ -52,7 +52,7 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "icon": { "type": "string", "x-lb": { "label": "Icon", "description": "Optional icon-lib name for the page, e.g. 'activity' (omit to keep the existing one)" } },
                 "color": { "type": "string", "x-lb": { "label": "Colour", "description": "Optional CSS accent colour for the page icon (omit to keep the existing one)" } },
                 "timezone": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional dashboard timezone — an IANA name like 'Australia/Sydney' or 'browser' (omit to keep the existing one)" } },
-                "cacheTtlS": { "type": "integer", "x-lb": { "label": "Freshness (cache TTL)", "description": "Optional per-dashboard viz.query cache TTL in seconds; 0 = live (omit to keep the existing one)" } },
+                "cacheTtlS": { "type": "integer", "x-lb": { "label": "Freshness (cache TTL)", "description": "Optional per-dashboard viz.query cache TTL in seconds; 0 = live (caching off, an explicit author choice), omit to keep the existing one. Never set on a board = the client default applies (caching on)." } },
                 "width": { "type": "string", "x-lb": { "label": "Page width", "description": "Optional page content width: 'wide' (full-bleed, default) or 'centered' (constrained centred column) (omit to keep the existing one)" } },
                 "kind": { "type": "string", "enum": ["dashboard", "report"], "x-lb": { "label": "Kind", "description": "Optional record kind: 'dashboard' (default) or 'report' (a paper-shaped board report.export composes A4 pages from) (omit to keep the existing one)" } },
                 "reportIds": { "type": "array", "items": { "type": "string" }, "x-lb": { "label": "Bound reports", "description": "Optional report-kind dashboard ids this page's Generate-report control offers (omit to keep the existing ones)" } },
@@ -246,7 +246,10 @@ pub async fn dashboard_save_meta(
         icon: meta.icon.unwrap_or(prev.icon),
         color: meta.color.unwrap_or(prev.color),
         timezone: meta.timezone.unwrap_or(prev.timezone),
-        cache_ttl_s: meta.cache_ttl_s.unwrap_or(prev.cache_ttl_s),
+        // Same tri-state as `show_heading`: the ARG's `None` means "keep what the record had"
+        // (including keeping it absent ⇒ the UI's default), while a stored `Some(0)` is the
+        // author's explicit "live". `.or` preserves both; `.unwrap_or` would erase the distinction.
+        cache_ttl_s: meta.cache_ttl_s.or(prev.cache_ttl_s),
         toolbar: meta.toolbar.unwrap_or(prev.toolbar),
         width: meta.width.unwrap_or(prev.width),
         vars_display: meta.vars_display.unwrap_or(prev.vars_display),

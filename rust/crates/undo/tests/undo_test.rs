@@ -187,7 +187,7 @@ async fn the_journal_is_walled_per_workspace() {
     .unwrap();
 
     // ws-B's actor sees nothing of ws-A's stack.
-    let b_history = list(&store, "ws-b", "alice", "").await.unwrap();
+    let b_history = list(&store, "ws-b", "alice", "").await.unwrap().items;
     assert!(b_history.is_empty(), "ws-B must not see ws-A's journal");
 
     // And a ws-B undo finds nothing to undo (its own empty stack).
@@ -224,7 +224,7 @@ async fn an_irreversible_step_is_refused() {
     .unwrap();
 
     // history shows it, greyed (not undoable).
-    let history = list(&store, ws, "alice", "").await.unwrap();
+    let history = list(&store, ws, "alice", "").await.unwrap().items;
     assert_eq!(history.len(), 1);
     assert!(!history[0].undoable, "an irreversible step is greyed");
 
@@ -379,7 +379,7 @@ async fn pushing_past_the_depth_cap_deletes_the_fallen_off_events() {
     }
 
     // The cursor kept only the newest two.
-    let history = list(&store, ws, "alice", "").await.unwrap();
+    let history = list(&store, ws, "alice", "").await.unwrap().items;
     assert_eq!(history.len(), 2, "the stack is bounded at the depth cap");
     let kept: Vec<u64> = history.iter().map(|h| h.seq).collect();
     assert_eq!(kept, vec![seqs[2], seqs[1]], "newest-first, oldest evicted");

@@ -51,7 +51,8 @@ async fn undoable_on(node: &Arc<Node>, key: &SigningKey, surface: &str) -> usize
     let p = reader(key);
     let items = history_list(&node.store, &p, "acme", "user:ada", surface)
         .await
-        .expect("history reads");
+        .expect("history reads")
+        .items;
     items.iter().filter(|i| i.undoable).count()
 }
 
