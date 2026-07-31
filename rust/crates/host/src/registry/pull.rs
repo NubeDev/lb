@@ -8,8 +8,19 @@
 //! fetched artifact is **verified before it is cached** (the type system enforces this: `cache_artifact`
 //! takes a `VerifiedArtifact`, minted only by `verify_artifact`). A tampered/unsigned artifact is
 //! refused here — never cached, never returned.
+//!
+//! ## The authenticity waiver reaches this path too
+//!
+//! `authenticity` is threaded in from node config (`LB_EXT_UNTRUSTED_KEY=allow`). Waiving it here is
+//! **strictly more dangerous than waiving it at `ext_publish`**: an operator uploading to
+//! `POST /extensions` chose the bytes, whereas these bytes arrived from a remote `Source` over an
+//! untrusted wire (see `source.rs`). With the waiver on, a spoofed or compromised registry — or
+//! anyone who can MITM the fetch — can install code on this node, because the signature that would
+//! have caught it is the exact check being skipped. The digest check still runs, but the digest is a
+//! *claim carried in the same untrusted response*, so it defends only against corruption in transit,
+//! not against a hostile source. Development nodes only, on a network you control.
 
-use lb_registry::{verify_artifact, Artifact, TrustedKeys, Visibility};
+use lb_registry::{verify_artifact_with, Artifact, Authenticity, TrustedKeys, Visibility};
 use lb_store::Store;
 
 use super::cache::{cache_artifact, read_cached};
@@ -22,7 +33,12 @@ use super::source::Source;
 /// the injected logical timestamp. Cache hit → no `Source` call (offline path); cache miss → fetch,
 /// `verify_artifact`, cache, record catalog. Verification failure → [`RegistryServiceError::Unverified`].
 ///
+/// `authenticity` selects whether the publisher-signature check is enforced ([`Authenticity::Required`]
+/// in production and by default) or waived for a development node. Integrity is checked either way.
+/// Read the module docs before waiving this on a pull: the threat model here is worse than at publish.
+///
 /// Raw-ish verb at the host layer — the caller (`install_from_registry`) has already passed the gate.
+#[allow(clippy::too_many_arguments)]
 pub async fn pull<S: Source>(
     store: &Store,
     source: &S,
@@ -30,6 +46,7 @@ pub async fn pull<S: Source>(
     ext_id: &str,
     version: &str,
     trusted: &TrustedKeys,
+    authenticity: Authenticity,
     visibility: Visibility,
     ts: u64,
 ) -> Result<Artifact, RegistryServiceError> {
@@ -44,9 +61,24 @@ pub async fn pull<S: Source>(
     // CACHE MISS: fetch from the (untrusted) source. An offline source errors here → NotAvailable.
     let fetched = source.fetch(ext_id, version).await?;
 
-    // VERIFY BEFORE CACHE: prove the digest + signature against the allow-listed publisher key. On
-    // failure nothing is cached and nothing is returned (the verify-before-cache guarantee).
-    let verified = verify_artifact(fetched, trusted)?;
+    // VERIFY BEFORE CACHE: prove the digest, and (unless waived) the signature against the
+    // allow-listed publisher key. On failure nothing is cached and nothing is returned (the
+    // verify-before-cache guarantee).
+    let verified = verify_artifact_with(fetched, trusted, authenticity)?;
+
+    // A waived artifact off the network is the highest-risk thing this node does. Log every one,
+    // naming the source coordinates, so it is visible in the journal rather than only at boot.
+    if verified.authenticity().is_waived() {
+        tracing::warn!(
+            ws = %ws,
+            ext_id = %ext_id,
+            version = %version,
+            publisher_key_id = %verified.artifact().publisher_key_id,
+            "PUBLISHER TRUST GATE WAIVED: cached an artifact fetched from a remote registry without \
+             checking its publisher signature (LB_EXT_UNTRUSTED_KEY=allow). A hostile or spoofed \
+             source is not detectable in this posture — development use only."
+        );
+    }
 
     // Cache the verified bytes and record the catalog entry so the next pull can serve offline + the
     // version is selectable for rollback.

@@ -357,6 +357,11 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             // route-scoped body limit is sized from this; the binary fills it via `from_env`
             // (`LB_MAX_EXTENSION_UPLOAD_BYTES`, default 384 MiB), an embedder sets it directly.
             gw = gw.with_max_extension_upload_bytes(cfg.max_extension_upload_bytes);
+            // Pin the publisher trust-gate posture from config. `new_live` reads `LB_EXT_UNTRUSTED_KEY`
+            // itself, but an EMBEDDED node must not inherit the host process's env — the mode came
+            // down from `BootConfig` (from_env at the binary, or the embedder's explicit choice), the
+            // same discipline `credential_mode` follows above. Default is `Required` (gate enforced).
+            gw = gw.with_authenticity(cfg.authenticity);
             // Relocate the extension-UI serve dir when the embedder set one (`Some` ⇒ pin it via the
             // builder); `None` leaves the gateway's own `LB_EXT_UI_DIR`/"extensions-ui" default in place,
             // so the standalone binary is untouched (ext-UI-dir embed seam).

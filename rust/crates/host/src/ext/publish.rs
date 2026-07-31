@@ -4,16 +4,20 @@
 //! the upload — the hard wall, §7), and **verify-before-store**: the artifact is checked against the
 //! workspace's publisher allow-list BEFORE a byte is persisted (authenticity before authority).
 //!
+//! The signature half of that check is waivable on a development node (`Authenticity`,
+//! `LB_EXT_UNTRUSTED_KEY=allow`); the **content-digest half never is**, so even a waived node refuses
+//! a corrupt or tampered upload. See `lb_registry::verify` for the contract.
+//!
 //! It introduces **no new storage** — it reuses the registry service's own cache + catalog seam
-//! (`cache_artifact` takes a `VerifiedArtifact`, so an unverified upload *cannot* reach the cache; the
-//! type system, not call ordering, enforces verify-before-store). Idempotent on the artifact's content
+//! (`cache_artifact` takes a `VerifiedArtifact`, so an upload that failed verification *cannot* reach
+//! the cache; the type system, not call ordering, enforces verify-before-store). Idempotent on the artifact's content
 //! digest + `(ext_id, version)`: re-publishing the same signed bytes upserts the same rows (no-op
 //! success), exactly like the registry-host `ArtifactStore::publish`.
 
 use lb_auth::Principal;
 use lb_ext_loader::Manifest;
 use lb_mcp::authorize_tool;
-use lb_registry::{verify_artifact, Artifact, TrustedKeys, Visibility};
+use lb_registry::{verify_artifact_with, Artifact, Authenticity, TrustedKeys, Visibility};
 use lb_supervisor::OsLauncher;
 
 use super::error::ExtError;
@@ -74,25 +78,51 @@ fn coherent(artifact: &Artifact, manifest: &Manifest) -> Result<(), ExtError> {
 /// Idempotent — re-publishing the same bytes upserts every record and reloads the component. A
 /// tampered/unsigned/foreign-key upload is rejected and **nothing is stored** ([`ExtError::Unverified`]).
 ///
+/// `authenticity` selects whether the publisher-signature half of that gate is enforced.
+/// [`Authenticity::Required`] is production and the default everywhere; a node configured with
+/// `LB_EXT_UNTRUSTED_KEY=allow` passes [`Authenticity::WaivedUntrustedKey`], which accepts a
+/// **foreign-key** upload but still rejects a **tampered** one — the digest check is not waivable.
+/// Every waived publish emits a `warn!` naming the artifact and the unchecked key.
+///
 /// The grant set is the manifest's **requested** caps: the `ext.publish` caller IS the workspace admin
 /// approving the install (the admin-console action), so `admin_approved = requested` here. The grant
 /// is still computed as `requested ∩ admin_approved` in `install_extension`, so the trust model is
 /// unchanged — a real review step narrows `admin_approved` later without touching this seam.
+#[allow(clippy::too_many_arguments)]
 pub async fn ext_publish(
     node: &Node,
     caller: &Principal,
     ws: &str,
     artifact: Artifact,
     trusted: &TrustedKeys,
+    authenticity: Authenticity,
     visibility: Visibility,
     ts: u64,
 ) -> Result<(), ExtError> {
     // Gate 1: the MCP surface — workspace-first, then mcp:ext.publish:call. Opaque on denial.
     authorize_tool(caller, ws, "ext.publish").map_err(|_| ExtError::Denied)?;
 
-    // Gate 2 (independent): authenticity. Verify the digest + signature against the workspace's
-    // publisher allow-list. On any failure nothing is stored — the verify-before-store guarantee.
-    let verified = verify_artifact(artifact, trusted).map_err(|_| ExtError::Unverified)?;
+    // Gate 2 (independent): integrity, and — unless the operator waived it — authenticity. Verify
+    // the digest and (normally) the signature against the workspace's publisher allow-list. On any
+    // failure nothing is stored: the verify-before-store guarantee. The digest half runs either way,
+    // so a corrupt upload is rejected even on a node with the escape hatch on.
+    let verified =
+        verify_artifact_with(artifact, trusted, authenticity).map_err(|_| ExtError::Unverified)?;
+
+    // Loud on every waived artifact, not just once at boot. A boot warning scrolls out of a journal
+    // within hours; this is what an operator debugging "why did this install?" a week later finds,
+    // and it names exactly which artifact and which unchecked key got in.
+    if verified.authenticity().is_waived() {
+        tracing::warn!(
+            ws = %ws,
+            ext_id = %verified.artifact().ext_id,
+            version = %verified.artifact().version,
+            publisher_key_id = %verified.artifact().publisher_key_id,
+            "PUBLISHER TRUST GATE WAIVED: accepted an extension without checking its publisher \
+             signature (LB_EXT_UNTRUSTED_KEY=allow). Content integrity was still verified. This \
+             node will install code from any publisher — development use only."
+        );
+    }
 
     // Gate 3: COHERENCE — the artifact's `(ext_id, version)` must agree with the manifest they
     // carry. Both are parsed BEFORE anything is stored, so an incoherent upload leaves no trace

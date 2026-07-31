@@ -141,6 +141,7 @@ async fn installs_a_signed_artifact_end_to_end() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         &["mcp:hello.echo:call".into()], // admin-approved set
         Visibility::Private,
         1,
@@ -212,6 +213,7 @@ async fn install_rejects_tampered_artifact_even_with_grant() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         &["mcp:hello.echo:call".into()],
         Visibility::Private,
         1,

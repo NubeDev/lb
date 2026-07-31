@@ -110,6 +110,7 @@ async fn ws_b_cannot_see_ws_a_cache_or_catalog_in_store() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         Visibility::Private,
         1,
     )
@@ -147,6 +148,7 @@ async fn ws_b_cannot_see_ws_a_cache_or_catalog_in_store() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         Visibility::Private,
         2,
     )

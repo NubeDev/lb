@@ -83,6 +83,14 @@ impl ExtPublish for Local {
             self.principal().ws(),
             artifact,
             &trusted,
+            // ENFORCED, unconditionally — this path deliberately does not read the node's
+            // `LB_EXT_UNTRUSTED_KEY` posture. The escape hatch exists to spare an operator from
+            // syncing `LB_TRUSTED_PUBKEYS` across bench nodes, and local self-publish already has no
+            // such problem: `trust_artifact_publisher` just built an allow-list containing exactly
+            // the key that signed these bytes, so the check costs nothing and always passes for a
+            // well-formed artifact. Waiving it here would buy no convenience and only lose the
+            // signature check that still catches a mis-signed or mismatched-key local artifact.
+            lb_registry::Authenticity::Required,
             Visibility::Private,
             0,
         )

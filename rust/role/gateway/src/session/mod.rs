@@ -31,4 +31,4 @@ pub use mint_session::{
 };
 pub use reach::require_reach;
 pub use select_token::{is_select_token, mint_select_token, SELECT_TTL_SECS, WS_SELECT_CONSTRAINT};
-pub use trusted::trusted_from_env;
+pub use trusted::{authenticity_from_env, trusted_from_env};

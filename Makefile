@@ -137,6 +137,23 @@ CE_UI_SERVE := $(BE_DIR)/extensions-ui/control-engine
 DEVKIT_BUILDER ?= process
 DEVKIT_ENV = $(if $(filter container,$(DEVKIT_BUILDER)),LB_DEVKIT_BUILDER=container LB_DEVKIT_BUILD_IMAGE="$(DOCKER_BUILD_IMAGE)" LB_DEVKIT_CACHE_VOLUME="$(DOCKER_CARGO_VOL)",)
 
+# The publisher trust gate, WAIVED for local dev (`LB_EXT_UNTRUSTED_KEY`, see
+# docs/scope/extensions/publisher-trust-gate.md). The `dev`/`cloud` targets already wire
+# LB_TRUSTED_PUBKEYS from `lb-pack pubkey`, but that only helps a node started by THIS Makefile with
+# THIS key — regenerate $(KEY_FILE), publish from another checkout, or restart a node against a stale
+# env and every publish 422s "artifact failed verification" until the env is re-synced.
+#
+# Waives WHO SIGNED IT, never WHETHER THE BYTES ARE INTACT: the content digest is still recomputed and
+# compared, so a corrupt/tampered/cap-inflated artifact is STILL rejected. The node warns at boot,
+# warns on every artifact it lets through, and reports `"trust_gate":"waived-untrusted-key"` on
+# GET /health.
+#
+# Dev targets only — nothing packaged, containerised or released reads this. Restore the strict gate:
+#     make dev EXT_UNTRUSTED_KEY=required
+# Any value other than the exact string `allow` re-enables the gate (lb fails closed on garbage).
+EXT_UNTRUSTED_KEY ?= allow
+TRUST_ENV = LB_EXT_UNTRUSTED_KEY=$(EXT_UNTRUSTED_KEY)
+
 # All persistent local dev state lives under ONE root: `.lazybones/` (renamed from the too-generic
 # `.data/`). The node store, the dev publisher key, and packaged artifacts are subdirs of it, so a
 # single `rm -rf .lazybones` resets a dev box and one `.gitignore` line covers everything.
@@ -234,7 +251,7 @@ dev: build-wasm build-packages trusted-pubkey federation $(if $(CE_BASE),control
 	fi
 	@trap 'kill 0' EXIT INT TERM; \
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(TRUST_ENV) $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
 
@@ -340,7 +357,7 @@ cloud: build-wasm trusted-pubkey federation
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
 	@echo "devkit builder → $(DEVKIT_BUILDER) $(if $(filter container,$(DEVKIT_BUILDER)),(image=$(DOCKER_BUILD_IMAGE)),(set DEVKIT_BUILDER=container for hermetic builds))"
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
+	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(TRUST_ENV) $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
 
 # Just the UI dev server, browser build, pointed at the gateway. Pair with `make
 # cloud` in another terminal.

@@ -12,7 +12,7 @@
 use std::io::Write;
 
 use lb_ext_loader::Manifest;
-use lb_registry::{TrustedKeys, Visibility};
+use lb_registry::{Authenticity, TrustedKeys, Visibility};
 
 use super::error::RegistryServiceError;
 use super::pull::pull;
@@ -35,10 +35,12 @@ pub async fn install_native_from_registry<S: Source, L: lb_supervisor::Launcher>
     version: &str,
     install_dir: &str,
     trusted: &TrustedKeys,
+    authenticity: Authenticity,
     admin_approved: &[String],
     ts: u64,
 ) -> Result<Supervised, RegistryServiceError> {
-    // 1. Pull + VERIFY (offline-served if cached). The signature gate runs here, before disk I/O.
+    // 1. Pull + VERIFY (offline-served if cached). The signature gate runs here, before disk I/O —
+    //    or is waived if the node runs the development escape hatch (`pull` logs each waiver).
     let artifact = pull(
         &node.store,
         source,
@@ -46,6 +48,7 @@ pub async fn install_native_from_registry<S: Source, L: lb_supervisor::Launcher>
         ext_id,
         version,
         trusted,
+        authenticity,
         Visibility::Private,
         ts,
     )

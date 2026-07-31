@@ -9,7 +9,7 @@
 //! verified pull in front* — one trust model, one grant computation, no second copy. The signature
 //! gate (in `pull`) and the capability/grant gate (in `install_extension`) stay two independent gates.
 
-use lb_registry::{TrustedKeys, Visibility};
+use lb_registry::{Authenticity, TrustedKeys, Visibility};
 
 use super::error::RegistryServiceError;
 use super::pull::pull;
@@ -34,11 +34,13 @@ pub async fn install_from_registry<S: Source>(
     ext_id: &str,
     version: &str,
     trusted: &TrustedKeys,
+    authenticity: Authenticity,
     admin_approved: &[String],
     visibility: Visibility,
     ts: u64,
 ) -> Result<Loaded, RegistryServiceError> {
     // 1. Pull + VERIFY (offline-served if already cached). A bad artifact is refused here.
+    //    `authenticity` chooses whether the publisher signature is enforced; the digest always is.
     let artifact = pull(
         &node.store,
         source,
@@ -46,6 +48,7 @@ pub async fn install_from_registry<S: Source>(
         ext_id,
         version,
         trusted,
+        authenticity,
         visibility,
         ts,
     )

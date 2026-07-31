@@ -97,6 +97,7 @@ async fn pull_serves_cached_bytes_without_source() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         Visibility::Private,
         1,
     )
@@ -113,6 +114,7 @@ async fn pull_serves_cached_bytes_without_source() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         Visibility::Private,
         2,
     )
@@ -141,6 +143,7 @@ async fn install_succeeds_offline_once_cached() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         &approved,
         Visibility::Private,
         1,
@@ -159,6 +162,7 @@ async fn install_succeeds_offline_once_cached() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         &approved,
         Visibility::Private,
         2,
@@ -190,6 +194,7 @@ async fn offline_with_nothing_cached_fails() {
         "hello",
         "0.1.0",
         &trusted,
+        lb_registry::Authenticity::Required,
         Visibility::Private,
         1,
     )

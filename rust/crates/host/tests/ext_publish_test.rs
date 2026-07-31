@@ -81,7 +81,8 @@ async fn publish_installs_and_loads_the_extension_callable() {
     let art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
 
     let caller = principal(ws, &[PUBLISH]);
-    ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("a signed artifact publishes-and-installs");
 
@@ -117,7 +118,8 @@ async fn publish_is_denied_without_the_grant_and_nothing_is_stored() {
     let art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
 
     let caller = principal(ws, &[]); // no ext.publish grant
-    let err = ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+    let err = ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect_err("publish without the grant is denied");
     assert!(matches!(err, ExtError::Denied));
@@ -136,7 +138,8 @@ async fn publish_rejects_a_tampered_artifact_even_with_the_grant() {
     art.wasm.extend_from_slice(b"\x00tamper"); // digest no longer matches the signature
 
     let caller = principal(ws, &[PUBLISH]); // fully granted, still refused — the gates are independent
-    let err = ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+    let err = ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect_err("a tampered artifact is refused");
     assert!(matches!(err, ExtError::Unverified));
@@ -165,7 +168,8 @@ async fn publish_rejects_an_artifact_whose_version_disagrees_with_its_manifest()
     art.version = "9.9.9".into();
 
     let caller = principal(ws, &[PUBLISH]); // fully granted; refused on coherence, not authority
-    let err = ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+    let err = ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect_err("an artifact that contradicts its manifest is refused");
     assert!(
@@ -189,7 +193,8 @@ async fn publish_rejects_an_artifact_whose_ext_id_disagrees_with_its_manifest() 
     art.ext_id = "not-hello".into(); // the manifest declares `hello`; signature still valid
 
     let caller = principal(ws, &[PUBLISH]);
-    let err = ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+    let err = ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect_err("an artifact whose ext_id contradicts its manifest is refused");
     assert!(
@@ -212,7 +217,8 @@ async fn a_coherent_artifact_still_publishes() {
     let art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk); // ext_id/version match the manifest
 
     let caller = principal(ws, &[PUBLISH]);
-    ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("a coherent artifact publishes");
     assert!(
@@ -244,13 +250,15 @@ async fn publishing_identical_bytes_twice_caches_the_artifact_once() {
         ws,
         art.clone(),
         &trusted,
+        lb_registry::Authenticity::Required,
         Visibility::Private,
         1,
     )
     .await
     .expect("first publish");
     // Byte-identical re-publish (same signed artifact) — the guard must skip the payload re-write.
-    ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 2)
+    ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 2)
         .await
         .expect("re-publishing the same bytes is a no-op success");
 
@@ -312,7 +320,8 @@ async fn published_extension_survives_a_restart_via_load_enabled() {
     // --- first boot: publish (installs + loads + caches the verified bytes) ---
     let node1 = boot_on_path(&path).await;
     let caller = principal(ws, &[PUBLISH]);
-    ext_publish(&node1, &caller, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node1, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish on first boot");
     drop(node1); // release the store handle before re-opening the same path
@@ -358,7 +367,8 @@ async fn a_disabled_install_is_not_brought_back_by_load_enabled() {
 
     let node1 = boot_on_path(&path).await;
     let admin = principal(ws, &[PUBLISH, "mcp:ext.disable:call"]);
-    ext_publish(&node1, &admin, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node1, &admin, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish");
     ext_disable(&node1, &admin, ws, "hello", 2)
@@ -381,4 +391,207 @@ async fn a_disabled_install_is_not_brought_back_by_load_enabled() {
     );
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---- The publisher trust-gate escape hatch (`LB_EXT_UNTRUSTED_KEY=allow`). ------------------
+//
+// The hatch waives ONE of the two independent checks in `verify_artifact`: authenticity (who signed
+// it). Integrity (are these the bytes that were packed) is not waivable, and these tests exist
+// mainly to hold that line — the danger of an escape hatch is that it quietly becomes a bigger hole
+// than advertised. Everything below runs the REAL `ext_publish` over a real node, real store and
+// real wasm component (§9); only the publisher key is a fixture.
+
+/// Sign with `seed`'s key but hand over an allow-list that trusts a DIFFERENT publisher — the exact
+/// shape of the bench-node problem this feature exists for (a regenerated dev key that nobody
+/// re-synced into `LB_TRUSTED_PUBKEYS`).
+fn foreign_key_setup(seed: u8) -> (Artifact, TrustedKeys) {
+    let (kid, sk, _own_trust) = publisher(seed);
+    let (_other_id, _other_sk, someone_elses_trust) = publisher(seed.wrapping_add(1));
+    (sign(MANIFEST_V2, &hello_v2(), &kid, &sk), someone_elses_trust)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn waived_gate_accepts_an_artifact_from_a_publisher_outside_the_allow_list() {
+    let ws = "pub-waived-foreign";
+    let node = Node::boot().await.unwrap();
+    let (art, someone_elses_trust) = foreign_key_setup(60);
+    let caller = principal(ws, &[PUBLISH]);
+
+    // Baseline: with the gate ENFORCED this is the 422 the operator is tired of.
+    ext_publish(
+        &node,
+        &caller,
+        ws,
+        art.clone(),
+        &someone_elses_trust,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("enforced: a foreign publisher key is refused (today's behaviour, unchanged)");
+
+    // Waived: the same bytes now publish, install AND load — the point of the feature.
+    ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &someone_elses_trust,
+        lb_registry::Authenticity::WaivedUntrustedKey,
+        Visibility::Private,
+        2,
+    )
+    .await
+    .expect("waived: a foreign publisher key is accepted");
+
+    let rec = installed(&node, ws, "hello")
+        .await
+        .expect("install lookup")
+        .expect("the waived artifact really installed, it did not merely pass verification");
+    assert_eq!(rec.version, "0.2.0");
+
+    // And it is genuinely live, not just cataloged — the same bar the happy path is held to.
+    let p = principal(ws, &["mcp:hello.echo:call"]);
+    let out = call(
+        &node.registry,
+        &node.bus,
+        &p,
+        ws,
+        "hello.echo",
+        r#"{"msg":"hi"}"#,
+    )
+    .await
+    .expect("echo on the just-published (waived) extension");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["echo"], "hi");
+    assert_eq!(v["v"], 2, "the v2 component is the one that loaded");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn waived_gate_still_rejects_a_tampered_wasm_and_stores_nothing() {
+    // THE test that matters most. With the hatch fully open, corrupting the payload must still be
+    // refused: the digest is recomputed over (manifest, wasm) before authenticity is ever consulted.
+    // A bench node with the gate off is still not a node that installs corrupt bytes.
+    let ws = "pub-waived-tampered-wasm";
+    let node = Node::boot().await.unwrap();
+    let (kid, sk, trusted) = publisher(62);
+    let mut art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
+    art.wasm.extend_from_slice(b"trailing garbage"); // digest no longer matches the claim
+
+    let caller = principal(ws, &[PUBLISH]);
+    let err = ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::WaivedUntrustedKey,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("waived: a tampered artifact is STILL refused — integrity is not waivable");
+    assert!(matches!(err, ExtError::Unverified), "got {err:?}");
+
+    // Verify-before-store still holds under the waiver: nothing was persisted.
+    assert!(
+        installed(&node, ws, "hello")
+            .await
+            .expect("install lookup")
+            .is_none(),
+        "a rejected artifact must leave no install record, waived or not"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn waived_gate_still_rejects_a_tampered_manifest() {
+    // The privilege-escalation shape specifically: inflate the requested caps after signing. The
+    // manifest is digest-bound, and the waiver does not touch the digest, so this stays caught.
+    // Without this the hatch would let anyone on the box grant an extension arbitrary caps.
+    let ws = "pub-waived-tampered-manifest";
+    let node = Node::boot().await.unwrap();
+    let (kid, sk, trusted) = publisher(63);
+    let mut art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
+    art.manifest_toml = format!("{MANIFEST_V2}\nrequest = [\"secret:*\"]");
+
+    let caller = principal(ws, &[PUBLISH]);
+    let err = ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::WaivedUntrustedKey,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("waived: a tampered manifest is STILL refused");
+    assert!(matches!(err, ExtError::Unverified), "got {err:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn waived_gate_does_not_waive_the_capability_gate() {
+    // The two gates stay independent. Waiving the PUBLISHER check must not give an ungranted caller
+    // a way in — that would turn a signature-trust knob into an authorization bypass. Deny wins, and
+    // it is reported as a deny (not as Unverified), so the caller learns the honest reason.
+    let ws = "pub-waived-nocap";
+    let node = Node::boot().await.unwrap();
+    let (art, someone_elses_trust) = foreign_key_setup(64);
+    let caller = principal(ws, &[]); // no mcp:ext.publish:call
+
+    let err = ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &someone_elses_trust,
+        lb_registry::Authenticity::WaivedUntrustedKey,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("waived: an ungranted caller is still denied");
+    assert!(matches!(err, ExtError::Denied), "got {err:?}");
+
+    assert!(
+        installed(&node, ws, "hello")
+            .await
+            .expect("install lookup")
+            .is_none(),
+        "a denied publish stores nothing"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn waived_gate_does_not_cross_the_workspace_wall() {
+    // Workspace isolation is checked FIRST and is untouched by the waiver (§6, the hard wall). A
+    // caller whose token carries ws-A cannot publish into ws-B just because the node's publisher
+    // gate is open.
+    let node = Node::boot().await.unwrap();
+    let (art, someone_elses_trust) = foreign_key_setup(66);
+    let caller = principal("ws-a", &[PUBLISH]);
+
+    let err = ext_publish(
+        &node,
+        &caller,
+        "ws-b", // NOT the caller's workspace
+        art,
+        &someone_elses_trust,
+        lb_registry::Authenticity::WaivedUntrustedKey,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("waived: the workspace wall still stands");
+    assert!(matches!(err, ExtError::Denied), "got {err:?}");
+
+    assert!(
+        installed(&node, "ws-b", "hello")
+            .await
+            .expect("install lookup")
+            .is_none(),
+        "nothing lands in the foreign workspace"
+    );
 }

@@ -15,12 +15,21 @@ use tower::ServiceExt; // for `oneshot`
 
 /// The body's top-level key set is exactly `{status, version, detail}` and `detail` is exactly
 /// `{store, gateway}` — the contract shape, and nothing a probe can use as an oracle beyond it.
+///
+/// This asserts the shape on a **normally-configured** node. The `trust_gate` field added for the
+/// publisher-trust escape hatch is `skip_serializing_if = "Option::is_none"`, so it must not appear
+/// here at all — that is the property keeping the contract byte-identical for every existing probe.
+/// Its presence is asserted separately, on a gateway explicitly built with the gate waived.
 fn assert_leaks_nothing(body: &serde_json::Value, status: &str) {
     let obj = body.as_object().expect("body is an object");
     assert_eq!(
         obj.len(),
         3,
-        "only status/version/detail at status={status}"
+        "only status/version/detail at status={status} — a default node reports no trust_gate"
+    );
+    assert!(
+        !obj.contains_key("trust_gate"),
+        "trust_gate must be ABSENT when the publisher gate is enforced (the default)"
     );
     assert_eq!(obj["status"], status);
     assert_eq!(obj["version"], env!("CARGO_PKG_VERSION"));
@@ -120,4 +129,65 @@ async fn health_returns_to_ok_after_a_degrade_is_cleared() {
     gw.health.set_store(true); // a future monitor clears the degrade
     let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// ---- The publisher trust-gate escape hatch on the health surface. -------------------------
+//
+// The feature's stated risk is a bench setting silently surviving into production. These pin the
+// "not silent" half: an operator who inherits a box can see the posture from an unauthenticated
+// probe, without reading the unit file — and a normally-configured node is byte-identical to
+// before, so nothing existing has to change to accommodate the field.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_reports_the_trust_gate_when_it_has_been_waived() {
+    let (gw, _key) = gateway().await;
+    let gw = gw.with_authenticity(lb_role_gateway::Authenticity::WaivedUntrustedKey);
+    let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+
+    // Still 200/ok: a waived gate is a deliberate configuration, not a degraded subsystem. Reporting
+    // 503 would evict a working bench node from an LB's rotation for the state it is meant to be in.
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = json_body(resp).await;
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["detail"]["store"], "ok");
+    assert_eq!(body["detail"]["gateway"], "ok");
+
+    assert_eq!(
+        body["trust_gate"], "waived-untrusted-key",
+        "a waived node must announce it on the surface an inheriting operator actually probes"
+    );
+    // Still leaks nothing beyond the posture marker. The marker itself is the only thing added:
+    // it names the POSTURE, never any key material, key id, publisher, env var, or path. (Checked
+    // against the body with the marker's own value removed, since "waived-untrusted-key" naturally
+    // contains "key" — the substring scan would otherwise flag the marker for describing itself.)
+    let obj = body.as_object().unwrap();
+    assert_eq!(obj.len(), 4, "exactly status/version/detail/trust_gate");
+    let rendered = body.to_string().replace("waived-untrusted-key", "");
+    for forbidden in [
+        "LB_TRUSTED_PUBKEYS",
+        "LB_EXT_UNTRUSTED_KEY",
+        "dev-publisher",
+        "publisher",
+        "key",
+        "/",
+    ] {
+        assert!(
+            !rendered.contains(forbidden),
+            "the waived body must not name {forbidden:?}; got {rendered}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_omits_the_trust_gate_field_entirely_when_enforced() {
+    // The explicit-Required counterpart to the default-path assertion in `assert_leaks_nothing`:
+    // enforcing the gate must produce NO field, not `"trust_gate":"enforced"` or `null`. Existing
+    // probes, matchers and dashboards see the body they have always seen.
+    let (gw, _key) = gateway().await;
+    let gw = gw.with_authenticity(lb_role_gateway::Authenticity::Required);
+    let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = json_body(resp).await;
+    assert!(body.as_object().unwrap().get("trust_gate").is_none());
+    assert_leaks_nothing(&body, "ok");
 }

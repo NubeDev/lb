@@ -153,6 +153,10 @@ pub async fn publish_extension(
         p.ws(),
         publish.artifact,
         &publish.trusted,
+        // The node's configured posture. `Required` unless an operator set `LB_EXT_UNTRUSTED_KEY=allow`,
+        // in which case a publisher outside `publish.trusted` is accepted (a tampered artifact is
+        // still refused — the digest check is not waivable). `ext_publish` logs each waiver.
+        gw.authenticity,
         Visibility::Private,
         gw.now(),
     )

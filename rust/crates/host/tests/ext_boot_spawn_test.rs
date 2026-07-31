@@ -180,7 +180,8 @@ async fn a_published_native_extension_respawns_on_boot_and_answers() {
     // --- first boot: publish → the child spawns and is live. ---
     let node1 = boot_on_path(&scratch.store()).await;
     let caller = principal(ws, PUBLISH);
-    ext_publish(&node1, &caller, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node1, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish spawns the native child");
     assert!(
@@ -248,7 +249,8 @@ async fn a_disabled_native_install_stays_down_across_a_restart() {
 
     let node1 = boot_on_path(&scratch.store()).await;
     let admin = principal(ws, &[PUBLISH, &["mcp:ext.disable:call"]].concat());
-    ext_publish(&node1, &admin, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node1, &admin, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish");
     ext_disable(&node1, &admin, ws, "echo-sidecar", 2)
@@ -285,7 +287,8 @@ async fn an_enabled_install_with_no_cached_artifact_is_reported_not_silent() {
 
     let node1 = boot_on_path(&scratch.store()).await;
     let caller = principal(ws, PUBLISH);
-    ext_publish(&node1, &caller, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node1, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish");
     // Drop the cached bytes, keeping the (enabled) Install record: the intent to run outlives the
@@ -322,7 +325,8 @@ async fn a_missing_catalog_entry_is_reported_distinctly_from_evicted_bytes() {
 
     let node1 = boot_on_path(&scratch.store()).await;
     let caller = principal(ws, PUBLISH);
-    ext_publish(&node1, &caller, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node1, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish");
     // Drop the CATALOG row, keeping the cached bytes and the (enabled) install record: the shape a
@@ -364,7 +368,8 @@ async fn ext_start_brings_back_a_stopped_extension_and_it_answers() {
         ws,
         &[PUBLISH, &["mcp:ext.disable:call", "mcp:ext.start:call"]].concat(),
     );
-    ext_publish(&node, &admin, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node, &admin, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish spawns the child");
 
@@ -440,7 +445,8 @@ async fn ext_start_is_denied_without_the_grant_and_nothing_spawns() {
 
     let node = boot_on_path(&scratch.store()).await;
     let admin = principal(ws, &[PUBLISH, &["mcp:ext.disable:call"]].concat());
-    ext_publish(&node, &admin, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node, &admin, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish");
     ext_disable(&node, &admin, ws, "echo-sidecar", 2)
@@ -524,7 +530,8 @@ async fn a_second_bring_up_does_not_double_spawn() {
 
     let node = boot_on_path(&scratch.store()).await;
     let caller = principal(ws, PUBLISH);
-    ext_publish(&node, &caller, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
+        Visibility::Private, 1)
         .await
         .expect("publish spawns the child");
 

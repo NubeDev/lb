@@ -104,7 +104,7 @@ async fn publish_into(node: &Node, ws: &str, seed: u8) {
     let (kid, sk, trusted) = publisher(seed);
     let art = sign(&proof_panel_wasm(), &kid, &sk);
     let caller = principal(ws, &[PUBLISH]);
-    ext_publish(node, &caller, ws, art, &trusted, Visibility::Private, 1)
+    ext_publish(node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required, Visibility::Private, 1)
         .await
         .expect("a signed proof-panel artifact publishes-and-installs-and-loads");
     let rec = installed(node, ws, "proof-panel")

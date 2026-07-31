@@ -18,6 +18,29 @@
 //!   traffic.
 //! - **Connection refused = dead** — restart it. The absence of an answer is the liveness signal.
 //!
+//! ## One conditional field: `trust_gate`
+//!
+//! A node running the development escape hatch `LB_EXT_UNTRUSTED_KEY=allow` (see
+//! `session::trusted`) additionally reports:
+//!
+//! ```text
+//! GET /health  →  200  {"status":"ok", …, "trust_gate":"waived-untrusted-key"}
+//! ```
+//!
+//! The field is **omitted entirely** on a normally-configured node, so the contract above is
+//! unchanged for every existing probe — nothing new to parse unless there is something wrong to
+//! report. The status code is unaffected: a waived gate is a deliberate configuration, not a
+//! degraded subsystem, and 503 here would evict a healthy bench node from an LB.
+//!
+//! Why an unauthenticated route carries it at all: the failure mode this feature exists to prevent
+//! is a bench setting silently surviving into production, and the person who discovers that is
+//! usually someone who inherited the box and has no credentials for it yet. Surfacing the posture
+//! where they will actually look beats hiding it behind auth they do not have. The trade is real —
+//! anyone who can reach the port learns this node accepts foreign-signed extensions — so the value
+//! is a bare posture marker and never names a key, publisher, or path, and the knob must not be
+//! enabled on a node facing an untrusted network. It is also still reported on the two log surfaces
+//! (boot, and every waived artifact) for operators who prefer to keep the wire quiet.
+//!
 //! **Reads in-memory state only** — no store query, no disk I/O, no network call. A health check
 //! that can block on a dependency is a health check that can hang, and a health check that hangs is
 //! a health check that lies. The [`HealthGate`] is the in-memory cell the route reads (one
@@ -55,6 +78,10 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const OK: &str = "ok";
 const DEGRADED: &str = "degraded";
+
+/// The `trust_gate` value reported when the publisher-signature check has been waived
+/// (`LB_EXT_UNTRUSTED_KEY=allow`). Names the posture, never the allow-list contents.
+const TRUST_GATE_WAIVED: &str = "waived-untrusted-key";
 
 /// The in-memory health cell the gateway reads on every `/health` probe. One atomic per subsystem
 /// the contract names (`store`, `gateway`); load-only reads, so a probe never blocks on a
@@ -108,12 +135,22 @@ pub struct HealthDetail {
     gateway: &'static str,
 }
 
-/// The `/health` body — `status` + `version` + `detail`, exactly the contract shape.
+/// The `/health` body — `status` + `version` + `detail`, plus `trust_gate` **only when the publisher
+/// trust gate has been disabled**.
+///
+/// `trust_gate` is `skip_serializing_if = "Option::is_none"` on purpose: on a normally-configured
+/// node the body is byte-identical to what it has always been, so no existing probe, matcher, or
+/// dashboard sees a change. The field materialises exactly when there is something to say. This is
+/// an operator-visibility feature (an inherited box should reveal a forgotten bench setting without
+/// anyone reading the unit file); the cost is that it is also visible unauthenticated, which is why
+/// the value is a bare marker naming no key, path, or publisher.
 #[derive(Debug, Serialize)]
 pub struct HealthBody {
     status: &'static str,
     version: &'static str,
     detail: HealthDetail,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust_gate: Option<&'static str>,
 }
 
 /// `GET /health` — unauthenticated, in-memory, one route. `200` when every subsystem is serving,
@@ -139,6 +176,11 @@ pub async fn health(State(gw): State<Gateway>) -> (StatusCode, Json<HealthBody>)
             status,
             version: VERSION,
             detail,
+            // Present ONLY on a node whose publisher trust gate is disabled. Note this does not make
+            // the node `degraded`: a waived gate is a deliberate configuration, not a fault, and
+            // reporting 503 would pull a working bench box out of an orchestrator's rotation for a
+            // condition it is supposed to be in. Loudness comes from the field, not the status code.
+            trust_gate: gw.authenticity.is_waived().then_some(TRUST_GATE_WAIVED),
         }),
     )
 }

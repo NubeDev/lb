@@ -17,6 +17,7 @@
 use std::net::SocketAddr;
 
 use lb_auth::SigningKey;
+use lb_role_gateway::Authenticity;
 
 /// The default `POST /extensions` upload ceiling (extension-upload-limit fix): 384 MiB. Sized to the
 /// largest real native sidecar artifact observed (the ems modbus bundle ~317 MiB — a 6.2 MB release
@@ -206,6 +207,20 @@ pub struct BootConfig {
     /// the gateway is `Off` (no login route).
     pub credential_mode: CredentialMode,
 
+    /// Whether the extension **publisher-signature** check is enforced, or waived for a development
+    /// node (the `LB_EXT_UNTRUSTED_KEY=allow` escape hatch — see `lb_gateway::session::trusted`).
+    ///
+    /// Additive and fail-closed: `Default` is [`Authenticity::Required`], today's behaviour exactly,
+    /// so no existing embedder changes posture. `from_env()` derives it from `LB_EXT_UNTRUSTED_KEY`
+    /// to reproduce the standalone binary. Applied through `Gateway::with_authenticity` in the
+    /// builder's `GatewayMode::Addr` arm.
+    ///
+    /// Waived, this node accepts an extension signed by a key outside its allow-list — on upload and
+    /// on a registry pull alike. It does **not** waive the content-digest check, so a corrupt or
+    /// tampered artifact is still rejected. A node in this posture reports `trust_gate` on
+    /// `GET /health` and warns on every waived artifact. Development boxes only.
+    pub authenticity: Authenticity,
+
     /// The route-scoped body-size ceiling for the `POST /extensions` artifact upload, in bytes
     /// (extension-upload-limit fix). A NATIVE-tier artifact packs a host-target binary (megabytes)
     /// into the signed Artifact's `wasm` field, JSON-encoded as a byte array (~8× the binary), so a
@@ -347,6 +362,9 @@ impl Default for BootConfig {
             // Back-compat embed default: password-less. An embedder opts into `PasswordHash`
             // explicitly; `from_env()` (below) derives it from `LB_DEV_LOGIN` for the binary.
             credential_mode: CredentialMode::DevTrustAny,
+            // Fail closed. Unlike `credential_mode` above, the embed default here is the STRICT one:
+            // a weakened publisher gate must never be something an embedder gets by not asking.
+            authenticity: Authenticity::Required,
             // The route-scoped upload ceiling for `POST /extensions` (default 384 MiB). Additive:
             // a bounded, embedder-overridable limit that fits a real native sidecar artifact.
             max_extension_upload_bytes: DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
@@ -444,6 +462,11 @@ impl BootConfig {
             // password-enforcing, unlike the embed `Default` which stays `DevTrustAny` for
             // back-compat.
             credential_mode: credential_mode_from_env(),
+            // The publisher trust gate from `LB_EXT_UNTRUSTED_KEY`: only the exact token `allow`
+            // waives the signature check; unset/empty/anything else ⇒ `Required` (today's behaviour).
+            // The gateway's parser warns on stderr both when it disables the gate and when it
+            // ignores an unrecognised value. Read only here, at the binary boundary.
+            authenticity: lb_role_gateway::authenticity_from_env(),
             // The `POST /extensions` upload ceiling from `LB_MAX_EXTENSION_UPLOAD_BYTES` (bytes);
             // unset/empty/unparseable ⇒ the 384 MiB default. Read only here, at the binary boundary.
             max_extension_upload_bytes: max_extension_upload_bytes_from_env(),

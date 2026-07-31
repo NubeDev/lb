@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use lb_auth::SigningKey;
 use lb_host::Node;
-use lb_registry::TrustedKeys;
+use lb_registry::{Authenticity, TrustedKeys};
 
 /// The env var a deployment sets to the API-key hash pepper (api-keys scope). The pepper keys the
 /// HMAC over a key's secret field; it lives in env (a node secret), NEVER in the DB or a committed
@@ -45,6 +45,19 @@ pub struct Gateway {
     /// (no publishers wired yet), seeded by tests; durable storage + rotation are deferred (registry
     /// scope open questions). Held behind `Arc` so axum clones it cheaply per request.
     pub trusted: Arc<TrustedKeys>,
+    /// Whether the publisher-signature half of the upload gate is **enforced** ([`Authenticity::Required`],
+    /// the default and the only production posture) or **waived** for a development node
+    /// (`LB_EXT_UNTRUSTED_KEY=allow`; see `session::trusted`).
+    ///
+    /// Waived, `POST /extensions` accepts an artifact whose `publisher_key_id` is not in [`Self::trusted`],
+    /// and a registry pull accepts one from an unrecognised publisher. It does **not** waive the
+    /// content-digest check — a corrupt or tampered artifact is still `422`. `Copy`, so no `Arc`.
+    ///
+    /// This value is *reported on `GET /health`* when waived. That is a deliberate trade the operator
+    /// asked for: it makes a forgotten bench setting visible to whoever inherits the box without
+    /// credentials or shell access, at the cost of also being visible to anyone who can reach the
+    /// port. Do not enable this knob on a node exposed to an untrusted network.
+    pub authenticity: Authenticity,
     /// The directory extension UI bundles are served from — `{ext_ui_dir}/{ext}/{file}` (ui-federation
     /// scope). The bundle is **non-secret static code** (the session token is held by the shell, never
     /// the page; data access is gated at the host bridge), so it is served like any web asset. Seeded
@@ -203,6 +216,10 @@ impl Gateway {
             // `LB_TRUSTED_PUBKEYS` (empty if unset → every upload 422s). Tests override via
             // `with_trusted`.
             trusted: Arc::new(crate::session::trusted_from_env()),
+            // Fail closed: the publisher-signature check is enforced unless `LB_EXT_UNTRUSTED_KEY`
+            // holds the exact disable token. `authenticity_from_env` warns on stderr when it does.
+            // Tests and embedders override via `with_authenticity` / `BootConfig`.
+            authenticity: crate::session::authenticity_from_env(),
             ext_ui_dir: Arc::new(
                 std::env::var("LB_EXT_UI_DIR")
                     .map(std::path::PathBuf::from)
@@ -318,6 +335,15 @@ impl Gateway {
     /// publishers are wired. Returns `self` for builder-style construction.
     pub fn with_trusted(mut self, trusted: TrustedKeys) -> Self {
         self.trusted = Arc::new(trusted);
+        self
+    }
+
+    /// Pin whether the publisher-signature check is enforced or waived (the development escape
+    /// hatch). Production leaves this at [`Authenticity::Required`]; the boot seam fills it from
+    /// `LB_EXT_UNTRUSTED_KEY` / `BootConfig::authenticity`, and tests use it to exercise both
+    /// postures without touching process-wide env. Returns `self` for builder-style construction.
+    pub fn with_authenticity(mut self, authenticity: Authenticity) -> Self {
+        self.authenticity = authenticity;
         self
     }
 

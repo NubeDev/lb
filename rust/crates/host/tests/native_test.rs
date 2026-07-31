@@ -526,6 +526,7 @@ async fn native_artifact_installs_through_registry() {
         "0.1.0",
         &dir,
         &trusted,
+        lb_registry::Authenticity::Required,
         &[],
         1,
     )
@@ -581,6 +582,7 @@ async fn native_artifact_installs_through_registry() {
         "9.9.9",
         &dir,
         &trusted,
+        lb_registry::Authenticity::Required,
         &[],
         2,
     )
