@@ -114,6 +114,14 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     // so an agent, the palette, and the gateway route all use the same path (rule 7).
     "versions.",
     "tools.",
+    // global-schedules: the `schedule.*` CRUD + evaluate family. Host-native like the rest and
+    // reached over the one MCP bridge (rule 7), so the `schedule` flow node, the dashboard widget,
+    // the Settings roster, and any MCP client all resolve a schedule through the SAME path. A
+    // PREFIX (not exact names) because the family is a plain CRUD surface that will grow; each verb
+    // re-checks its own cap inside the flows dispatcher, so the outer gate here and the inner one
+    // agree. Without this the whole family fell through to extension resolution and answered
+    // "no such tool" — the caps existed, the catalog listed it, but nothing could call it.
+    "schedule.",
     // login-hardening scope: the admin credential-management verb (`identity.set_credential`) rides
     // the one MCP bridge like every other admin action, gated `mcp:identity.manage:call`. The other
     // `identity.*` verbs also have dedicated admin REST routes; reaching them here too is uniform.
@@ -1275,5 +1283,50 @@ async fn publish_ingest_motion(
         };
         sample.producer = principal.sub().to_string();
         let _ = publish_sample(&node.bus, ws, &sample).await;
+    }
+}
+
+#[cfg(test)]
+mod host_native_tests {
+    use super::is_host_native;
+
+    /// **THE REGRESSION** (global-schedules): a verb family can be fully built — dispatch arm,
+    /// catalog rows, role caps — and still answer `no such tool`, because `is_host_native` is the
+    /// gate that decides whether the host-native block runs at all. `schedule.*` was missing here,
+    /// so every call fell through to EXTENSION resolution (`resolve.rs` splits `schedule.list` into
+    /// ext `schedule` / tool `list`, finds no such extension) and 404'd — while the caps and the
+    /// catalog entry both existed, which made it read like a stale binary rather than a missing
+    /// registration. Adding a dispatch arm without a prefix here is a silent no-op.
+    #[test]
+    fn the_schedule_family_is_host_native() {
+        for verb in [
+            "schedule.save",
+            "schedule.get",
+            "schedule.list",
+            "schedule.delete",
+            "schedule.evaluate",
+        ] {
+            assert!(
+                is_host_native(verb),
+                "{verb} must be host-native or it falls through to extension resolution"
+            );
+        }
+    }
+
+    /// The prefix must not swallow a hypothetical extension whose id merely STARTS with the word —
+    /// `schedules` (plural) is a different id and stays extension-routed (rule 10: the host reserves
+    /// only its own family, never a namespace it does not own).
+    #[test]
+    fn a_similarly_named_extension_is_not_captured() {
+        assert!(!is_host_native("schedulesomething.list"));
+        assert!(!is_host_native("myext.schedule"));
+    }
+
+    /// Every family with a dispatch arm answers this gate — a spot-check that the two lists agree.
+    #[test]
+    fn the_neighbouring_families_are_host_native_too() {
+        assert!(is_host_native("flows.nodes"));
+        assert!(is_host_native("rules.eval"));
+        assert!(is_host_native("dashboard.get"));
     }
 }

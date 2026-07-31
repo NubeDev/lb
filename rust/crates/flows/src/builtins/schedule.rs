@@ -46,6 +46,10 @@ pub fn schedule_descriptors() -> Vec<NodeDescriptor> {
                     "properties": {
                         "schedule_id": {
                             "type": "string",
+                            // The editor renders this as the workspace's schedule roster picker
+                            // (`schedule.list`), not a bare text box. An opaque format hint — the UI
+                            // resolves it generically, the host never branches on a node id (rule 10).
+                            "format": "lb:schedule",
                             "title": "Schedule",
                             "description": "The global schedule this node follows (schedule.list). The windows live on that shared record — edit them once and every node and widget referencing it follows."
                         },
