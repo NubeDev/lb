@@ -126,6 +126,18 @@ pub struct FlowTriggerState {
     /// restart resumes from the durable cursor (no missed/duplicate firing). `None` before first arm.
     #[serde(default)]
     pub last_seq: Option<u64>,
+    /// The last evaluated active state of a `schedule` source node (`None` before its first
+    /// evaluation). The schedule reactor is **edge-triggered**: it fires only when the freshly
+    /// evaluated state differs from this, so a flow reacts to real transitions rather than to every
+    /// tick. Clock and state live in the one durable record, so a restart resumes without replaying a
+    /// transition that already fired (or missing one that happened while the node was down).
+    #[serde(default)]
+    pub schedule_active: Option<bool>,
+    /// The `schedule_id` this cursor was evaluated against. Re-pointing a node at a different global
+    /// schedule re-seeds the cursor exactly as a changed cron spec does — the stale active-state of
+    /// the previous schedule must never suppress the first transition of the new one.
+    #[serde(default)]
+    pub schedule_id: Option<String>,
 }
 
 /// The id of a per-node trigger-cursor (and node-memory) record within a flow.

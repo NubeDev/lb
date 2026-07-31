@@ -125,6 +125,7 @@ mod tests {
             ext: String::new(),
             items: Vec::new(),
             vars: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -172,6 +173,7 @@ mod tests {
             ext: String::new(),
             items: Vec::new(),
             vars: Default::default(),
+            ..Default::default()
         };
         let resolved = nav(ResolvedSource::Team, vec![dash]);
         assert_eq!(
@@ -193,6 +195,7 @@ mod tests {
             ext: "mqtt".into(),
             items: Vec::new(),
             vars: Default::default(),
+            ..Default::default()
         };
         let group = ResolvedItem {
             kind: "group".into(),
@@ -203,6 +206,7 @@ mod tests {
             ext: String::new(),
             items: vec![surface_item("flows"), surface_item("rules"), ext_child],
             vars: Default::default(),
+            ..Default::default()
         };
         let resolved = nav(ResolvedSource::WorkspaceDefault, vec![group]);
         assert_eq!(

@@ -255,6 +255,8 @@ async fn persist_cursor(
         period_secs: Some(period_secs),
         flop,
         last_seq: None,
+        // Schedule-source fields are inert here (this reactor owns a different source kind).
+        ..Default::default()
     };
     write_cursor(&node.store, ws, flow_id, node_id, &state)
         .await

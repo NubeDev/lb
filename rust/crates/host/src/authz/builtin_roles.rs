@@ -326,6 +326,12 @@ const VIEWER_CAPS: &[&str] = &[
     // secret plane even by name. They were reachable ONLY through the retired wildcard, never named
     // by any bundle, and their own inner gate already denies (verified live: `secret.list` → 403), so
     // naming them here would have widened the floor to match a bug.
+    // global schedules — READS are viewer-tier: the schedule widget renders for anyone who can see
+    // the dashboard, and `schedule.evaluate` is a pure read of the same record. Authoring
+    // (`schedule.save`/`delete`) is author-tier, below.
+    "mcp:schedule.get:call",
+    "mcp:schedule.list:call",
+    "mcp:schedule.evaluate:call",
     "mcp:channel.list:call",
     "mcp:dbschema.get:call",
     "mcp:dbschema.list:call",
@@ -494,6 +500,10 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:query.get:call",
     "mcp:query.list:call",
     "mcp:query.delete:call",
+    // global schedules — a member AUTHORS the shared schedule records the `schedule` node and the
+    // dashboard widget both reference. Reads are on the viewer floor.
+    "mcp:schedule.save:call",
+    "mcp:schedule.delete:call",
     // flows — a member AUTHORS/RUNS their own typed-node flows (no-widening run gate still applies).
     "mcp:flows.save:call",
     "mcp:flows.get:call",

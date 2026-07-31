@@ -48,6 +48,7 @@ members = [
     "crates/render",
     "crates/reminders",
     "crates/rules",
+    "crates/schedules",
     "crates/run-events",
     "crates/runtime",
     "crates/secrets",
@@ -109,6 +110,7 @@ lb-reminders = { path = "crates/reminders" }
 lb-registry = { path = "crates/registry" }
 lb-render = { path = "crates/render" }
 lb-rules = { path = "crates/rules" }
+lb-schedules = { path = "crates/schedules" }
 lb-run-events = { path = "crates/run-events" }
 lb-runtime = { path = "crates/runtime" }
 lb-secrets = { path = "crates/secrets" }
