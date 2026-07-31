@@ -49,6 +49,7 @@ mod membership;
 mod message;
 mod native;
 mod nav;
+mod node_identity;
 mod outbox;
 mod packs;
 mod panel;
@@ -124,7 +125,9 @@ pub use flows::{
     get_flow_node, get_flow_run, inject_flow, lifecycle_flow, list_flow_nodes, list_flow_runs,
     list_flows, patch_flow_run, run_flow, save_flow, update_flow_node,
 };
-pub use health::{health, HealthGate, SharedHealthGate};
+pub use health::{health, HealthGate, SharedHealthGate, VERSION};
+// node-identity scope: the unauthenticated `GET /node` identity probe. Shares `health`'s VERSION
+// constant rather than re-deriving it, so the two public routes can never report different builds.
 pub use history::get_history;
 pub use identity::{
     create_identity, get_identity, identity_workspaces as identity_workspaces_route,
@@ -156,6 +159,7 @@ pub use nav::{
     delete_nav, get_nav, get_nav_hidden, get_nav_pref, list_navs, list_shares_nav, resolve_nav,
     save_nav, set_default_nav, set_nav_hidden, set_nav_pref, share_nav, unshare_nav,
 };
+pub use node_identity::node_identity;
 pub use outbox::get_outbox_status;
 pub use packs::{upload_body_limit, upload_pack};
 pub use panel::{delete_panel, get_panel, list_panels, panel_usage, save_panel, share_panel};

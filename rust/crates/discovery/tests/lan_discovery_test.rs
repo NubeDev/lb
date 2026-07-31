@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use lb_bus::NodeId;
 use lb_discovery::{
-    advertise, browse, Advertisement, Browse, Discovered, DiscoveredPeer, ServiceType,
+    advertise, browse, Advertisement, Browse, Discovered, DiscoveredPeer, NodeIdentity, ServiceType,
 };
 
 /// How long to wait for a record to propagate on a working host. Generous: mDNS is chatty and a
@@ -193,4 +193,64 @@ async fn a_node_on_another_service_type_is_not_discovered() {
             .is_none(),
         "a node advertising under a different service type must never appear in this browse"
     );
+}
+
+/// The identity trio survives the wire: an operator-set `name` and an opaque `machine_id` reach a
+/// browsing peer alongside the addressable `node` id — the "available over discovery" half of the
+/// node-identity contract.
+///
+/// Asserts the two halves that matter together: the extras arrive intact, AND the node id is
+/// unchanged by them. A rename must never re-address the node, and this is where that would show
+/// up if `name` ever became load-bearing on the wire.
+#[tokio::test]
+async fn discovery_carries_the_full_identity_trio() {
+    require_mdns!();
+
+    let ty = service_type("e");
+    let node = NodeId::new("node:gw-03").unwrap();
+    let identity = NodeIdentity::new(node.clone())
+        .with_name("front office")
+        .with_machine_id("mid-abc123");
+
+    let browser = browse(&ty).expect("mDNS proven available by the probe");
+    let mut ad = Advertisement::with_identity(identity, 8300);
+    ad.service_type = ty;
+    let _held = advertise(&ad).expect("mDNS proven available by the probe");
+
+    let peer = await_peer(&browser, &node, RESOLVE_TIMEOUT)
+        .await
+        .expect("an advertised node MUST be discovered on an mDNS-capable host");
+
+    assert_eq!(peer.name.as_deref(), Some("front office"));
+    assert_eq!(peer.machine_id.as_deref(), Some("mid-abc123"));
+    // The invariant: naming a node does not rename its address.
+    assert_eq!(peer.node, node);
+}
+
+/// A node that publishes no machine id advertises no `mid` key at all — `None` on the peer, not an
+/// empty string. The distinction is what lets an operator tell "this node has no machine-id source"
+/// from "it published a blank one", and it is the reason the key is conditional in `advertise`.
+#[tokio::test]
+async fn an_absent_machine_id_is_absent_on_the_wire() {
+    require_mdns!();
+
+    let ty = service_type("f");
+    let node = NodeId::new("node:gw-04").unwrap();
+
+    let browser = browse(&ty).expect("mDNS proven available by the probe");
+    // `Advertisement::new` — the minimal form, no machine id, no explicit name.
+    let mut ad = Advertisement::new(node.clone(), 8400);
+    ad.service_type = ty;
+    let _held = advertise(&ad).expect("mDNS proven available by the probe");
+
+    let peer = await_peer(&browser, &node, RESOLVE_TIMEOUT)
+        .await
+        .expect("an advertised node MUST be discovered on an mDNS-capable host");
+
+    assert_eq!(
+        peer.machine_id, None,
+        "no source ⇒ no key, never an empty string"
+    );
+    // `name` still arrives, because it defaults to the node id rather than being empty.
+    assert_eq!(peer.name.as_deref(), Some("node:gw-04"));
 }

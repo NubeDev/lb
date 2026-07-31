@@ -10,6 +10,7 @@
 //! edges, reused via `add_member`/`nav_share`) — identical to the dashboard tests, cloned. `resolve`
 //! needs the whole `&Node` (it discovers `ext` items via `ext.list`), so those tests boot a real node.
 
+use lb_assets::{record_install, ExtNavItem, ExtUi, Install};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     add_member, dashboard_save, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list,
@@ -44,6 +45,8 @@ const SAVE: &str = "mcp:nav.save:call";
 const DELETE: &str = "mcp:nav.delete:call";
 const SHARE: &str = "mcp:nav.share:call";
 const RESOLVE: &str = "mcp:nav.resolve:call";
+/// Resolving an `ext:<ext>/<navid>` pin reads the install through the generic `ext.list` seam.
+const EXT_LIST: &str = "mcp:ext.list:call";
 const ALL: &[&str] = &[GET, LIST, SAVE, DELETE, SHARE, RESOLVE];
 
 /// The surface cap for the `dashboards` page (used to prove a surface item survives/strips).
@@ -1814,4 +1817,249 @@ async fn hidden_and_tag_group_apply_at_depth() {
         vec!["channels"],
         "deep hidden ref stripped at depth"
     );
+}
+
+// --- ext sub-ref pins (`ext:<ext>/<navid>`) ------------------------------------------------------
+// ext-subref-pins scope. The shell renders a pin on each of an extension's DECLARED `[[ui.nav]]`
+// destinations, using an `ext:<ext>/<navid>` ref. `nav.pref.set` always persisted it; `nav.resolve`
+// used to drop it silently (the ext branch matched no install for the id "modbus/networks"), so the
+// pin visibly un-filled on reload. These prove the round-trip and every strip path.
+
+/// Seed a REAL installed extension declaring `[[ui.nav]]` destinations (a real `Install` record
+/// `ext.list` reads — no sidecar spawn needed for a wasm page row).
+async fn seed_nav_ext(node: &std::sync::Arc<Node>, ws: &str, ext_id: &str, nav: Vec<ExtNavItem>) {
+    let page = ExtUi {
+        entry: "assets/remoteEntry.js".into(),
+        label: "Modbus".into(),
+        icon: "network".into(),
+        scope: vec![],
+        data: false,
+        id: None,
+        options: vec![],
+        nav,
+    };
+    let install = Install::new(ext_id, "0.1.0", vec![], 1).with_ui(Some(page), vec![]);
+    record_install(&node.store, ws, &install)
+        .await
+        .expect("seed nav ext install");
+}
+
+fn nav_item(id: &str, label: &str) -> ExtNavItem {
+    ExtNavItem {
+        id: id.into(),
+        label: label.into(),
+        ..ExtNavItem::default()
+    }
+}
+
+/// The headline: a pin on a declared ext destination RESOLVES (it used to strip silently), echoes
+/// the destination in `nav` so the client can reconstruct the ref, and keeps the member's order.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn ext_subref_pin_resolves_and_round_trips() {
+    let ws = "ws-nav-subref";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    seed_nav_ext(
+        &node,
+        ws,
+        "modbus",
+        vec![
+            nav_item("networks", "Networks"),
+            nav_item("templates", "Templates"),
+        ],
+    )
+    .await;
+
+    let ada = principal("user:ada", ws, &[RESOLVE, EXT_LIST]);
+    nav_pref_set(
+        &node.store,
+        &ada,
+        ws,
+        None,
+        Some(vec![
+            "ext:modbus/templates".into(),
+            "ext:modbus/networks".into(),
+        ]),
+        1,
+    )
+    .await
+    .unwrap();
+
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    assert_eq!(r.pinned.len(), 2, "both declared destinations resolve");
+    // Member order preserved, and each carries the ext + destination so `item_ref` rebuilds the ref.
+    assert_eq!(r.pinned[0].kind, "ext");
+    assert_eq!(r.pinned[0].ext, "modbus");
+    assert_eq!(r.pinned[0].nav, "templates");
+    assert_eq!(r.pinned[0].label, "Templates", "the declared label is used");
+    assert_eq!(r.pinned[1].nav, "networks");
+}
+
+/// A destination declaring a `dashboard` + `vars` resolves AS that dashboard (so the pin opens the
+/// board var-bound), while KEEPING its ext identity so it is still pinned as the destination it is.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn ext_subref_pin_on_a_dashboard_destination_opens_the_board() {
+    let ws = "ws-nav-subref-dash";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let ada = principal("user:ada", ws, &[RESOLVE, DASH_SAVE, DASH_GET, EXT_LIST]);
+    seed_dashboard(&node.store, &ada, ws, "site", "Site Board").await;
+    seed_nav_ext(
+        &node,
+        ws,
+        "ems",
+        vec![ExtNavItem {
+            id: "site-a".into(),
+            label: "Site A".into(),
+            dashboard: Some("dashboard:site".into()),
+            vars: [("site".to_string(), "a".to_string())]
+                .into_iter()
+                .collect(),
+            ..ExtNavItem::default()
+        }],
+    )
+    .await;
+
+    nav_pref_set(
+        &node.store,
+        &ada,
+        ws,
+        None,
+        Some(vec!["ext:ems/site-a".into()]),
+        1,
+    )
+    .await
+    .unwrap();
+
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    assert_eq!(r.pinned.len(), 1);
+    // It OPENS a board…
+    assert_eq!(r.pinned[0].kind, "dashboard");
+    assert_eq!(r.pinned[0].dashboard, "dashboard:site");
+    assert_eq!(r.pinned[0].vars.get("site").map(String::as_str), Some("a"));
+    // …but is still identified as the ext destination (so the pin lights the right row).
+    assert_eq!(r.pinned[0].ext, "ems");
+    assert_eq!(r.pinned[0].nav, "site-a");
+}
+
+/// Every strip path, none of which may mutate the stored record: an unknown destination (the ext
+/// shipped a new manifest), an uninstalled ext, and a 3-segment DYNAMIC child ref (a non-goal — the
+/// server can never resolve a `bridge.setNav` child, so it strips instead of faulting).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn ext_subref_pins_strip_silently_without_mutating_the_record() {
+    let ws = "ws-nav-subref-strip";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    seed_nav_ext(&node, ws, "modbus", vec![nav_item("networks", "Networks")]).await;
+
+    let ada = principal("user:ada", ws, &[RESOLVE, EXT_LIST]);
+    let stored = vec![
+        "ext:modbus/networks".to_string(),       // resolves
+        "ext:modbus/gone".to_string(),           // manifest no longer declares it
+        "ext:nosuch/networks".to_string(),       // ext not installed
+        "ext:modbus/networks/net-1".to_string(), // dynamic child — non-goal, strips
+    ];
+    nav_pref_set(&node.store, &ada, ws, None, Some(stored.clone()), 1)
+        .await
+        .unwrap();
+
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    assert_eq!(
+        r.pinned.len(),
+        1,
+        "only the live declared destination survives"
+    );
+    assert_eq!(r.pinned[0].nav, "networks");
+    // The record is untouched by any strip — a reinstall/new manifest restores the pins for free.
+    assert_eq!(
+        nav_pref_get(&node.store, &ada, ws).await.unwrap().pinned,
+        stored
+    );
+}
+
+/// Hide beats pin at the sub-ref grammar too — the hidden-set can target ONE ext destination, which
+/// the old three-shape `item_ref` could not express. A whole-ext pin is unaffected (no regression).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn hiding_one_ext_destination_beats_its_pin_and_spares_the_others() {
+    let ws = "ws-nav-subref-hide";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    seed_nav_ext(
+        &node,
+        ws,
+        "modbus",
+        vec![
+            nav_item("networks", "Networks"),
+            nav_item("templates", "Templates"),
+        ],
+    )
+    .await;
+
+    let admin = principal("user:admin", ws, ALL);
+    nav_hidden_set(
+        &node.store,
+        &admin,
+        ws,
+        vec!["ext:modbus/networks".into()],
+        1,
+    )
+    .await
+    .unwrap();
+
+    let ada = principal("user:ada", ws, &[RESOLVE, EXT_LIST]);
+    nav_pref_set(
+        &node.store,
+        &ada,
+        ws,
+        None,
+        Some(vec![
+            "ext:modbus/networks".into(),
+            "ext:modbus/templates".into(),
+            "ext:modbus".into(),
+        ]),
+        1,
+    )
+    .await
+    .unwrap();
+
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    // The hidden destination strips; its SIBLING and the whole-ext pin both survive.
+    let refs: Vec<String> = r
+        .pinned
+        .iter()
+        .map(|p| {
+            if p.nav.is_empty() {
+                format!("ext:{}", p.ext)
+            } else {
+                format!("ext:{}/{}", p.ext, p.nav)
+            }
+        })
+        .collect();
+    assert_eq!(refs, vec!["ext:modbus/templates", "ext:modbus"]);
+}
+
+/// A member who cannot LIST extensions has one stale ext pin STRIPPED — not a faulted menu. The pin
+/// path made this reachable: `resolve_ext` faults the whole resolve on a denied `ext.list`, which for
+/// a *pin* would blank the entire sidebar over one favorite. Strips are silent, always.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn ext_subref_pin_without_ext_list_cap_strips_rather_than_faulting() {
+    let ws = "ws-nav-subref-nocap";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    seed_nav_ext(&node, ws, "modbus", vec![nav_item("networks", "Networks")]).await;
+
+    // RESOLVE but NOT ext.list.
+    let ada = principal("user:ada", ws, &[RESOLVE]);
+    nav_pref_set(
+        &node.store,
+        &ada,
+        ws,
+        None,
+        Some(vec!["channels".into(), "ext:modbus/networks".into()]),
+        1,
+    )
+    .await
+    .unwrap();
+
+    // The menu still resolves (no Denied fault); the unreachable ext pin simply isn't in it.
+    let r = nav_resolve(&node, &ada, ws)
+        .await
+        .expect("resolve must not fault");
+    assert_eq!(r.pinned.len(), 1);
+    assert_eq!(r.pinned[0].surface, "channels");
 }

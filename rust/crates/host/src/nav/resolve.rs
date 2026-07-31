@@ -123,8 +123,17 @@ fn strip_hidden(item: ResolvedItem, hidden: &BTreeSet<String>) -> Option<Resolve
     Some(item)
 }
 
-/// A resolved item's ref in the shared hide/pin grammar.
+/// A resolved item's ref in the shared hide/pin grammar. An item that resolved to one of an
+/// extension's DECLARED `[[ui.nav]]` destinations carries that destination in `nav`, and its ref is
+/// the sub-ref `ext:<ext>/<navid>` — the same string the shell pinned (ext-subref-pins scope). This
+/// is what lets the hidden-set target ONE extension destination, and what makes a sub-ref pin light
+/// its own row instead of every row of that extension. A destination carrying a `dashboard` keeps
+/// its ext identity here (it resolved as a `dashboard`-kind item so it OPENS the board, but it is
+/// still pinned/hidden as the ext destination it is) — so the round-trip is stable in both grammars.
 fn item_ref(item: &ResolvedItem) -> String {
+    if !item.ext.is_empty() && !item.nav.is_empty() {
+        return format!("ext:{}/{}", item.ext, item.nav);
+    }
     match item.kind.as_str() {
         "ext" => format!("ext:{}", item.ext),
         "dashboard" => item.dashboard.clone(),
@@ -151,6 +160,16 @@ async fn resolve_pins(
         if hidden.contains(pin) {
             continue; // hide beats pin — the admin's curation lever actually declutters.
         }
+        // An `ext:<ext>/<navid>` pin targets one of the extension's DECLARED nav destinations
+        // (ext-subref-pins scope), which the generic `resolve_item` pipeline has no kind for — it
+        // resolves against the install's `[[ui.nav]]` list instead. Everything else keeps the
+        // synthetic-item path unchanged.
+        if let Some((ext, nav)) = split_ext_subref(pin) {
+            if let Some(resolved) = resolve_ext_nav(node, principal, ws, ext, nav).await? {
+                pinned.push(resolved);
+            }
+            continue;
+        }
         let item = pin_to_item(pin);
         if let Some(resolved) = resolve_item(node, principal, ws, &item).await? {
             pinned.push(resolved);
@@ -159,8 +178,98 @@ async fn resolve_pins(
     Ok(pinned)
 }
 
+/// Split an `ext:<ext>/<navid>` pin ref into its two opaque segments, or `None` when the ref is any
+/// other shape (a bare surface key, `dashboard:<id>`, a whole-extension `ext:<id>`).
+///
+/// A ref with MORE than one slash after the prefix is a runtime-published `bridge.setNav` child
+/// (`ext:<ext>/<navid>/<childid>`). Those exist only while the extension is mounted and publishing,
+/// so the server cannot resolve them and deliberately does NOT try: `None` here sends it down the
+/// ordinary path, where the nonsense ext id matches no install and strips silently. Non-goal, not an
+/// oversight (ext-subref-pins scope) — the shell drops the pin affordance on those rows to match.
+fn split_ext_subref(pin: &str) -> Option<(&str, &str)> {
+    let rest = pin.strip_prefix("ext:")?;
+    let (ext, nav) = rest.split_once('/')?;
+    if ext.is_empty() || nav.is_empty() || nav.contains('/') {
+        return None;
+    }
+    Some((ext, nav))
+}
+
+/// Resolve one of an extension's DECLARED `[[ui.nav]]` destinations (ext-subref-pins scope). Two
+/// opaque-string lookups, no id ever branched on (rule 10):
+///   1. the install, through the generic `ext.list` discovery seam — uninstalled ⇒ stripped;
+///   2. the declared nav item whose `id` matches — a manifest that no longer declares it ⇒ stripped.
+///
+/// The resulting KIND defers to what the destination itself declared. A destination carrying a
+/// `dashboard` ref resolves to a **`dashboard`** item with its `vars`, so the pinned entry opens the
+/// board var-bound exactly as clicking the sidebar row does — and it runs through the SAME
+/// `resolve_dashboard` as any other dashboard item, so an unreadable board cap-strips the pin for
+/// free. Anything else resolves to an **`ext`** item. Either way `nav` echoes the destination id, so
+/// `item_ref` reconstructs the ref the caller pinned.
+///
+/// An `admin`-gated destination is NOT filtered here: that flag is presentation-only chrome the
+/// extension owns (the verbs remain the wall), and the shell already applies it when rendering.
+async fn resolve_ext_nav(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    ext: &str,
+    nav: &str,
+) -> Result<Option<ResolvedItem>, NavError> {
+    // A caller who cannot even LIST extensions cannot reach this destination — strip the one pin
+    // rather than faulting the whole menu. This is the pin path: a member who lacks `ext.list`
+    // would otherwise get a blank sidebar on every resolve because of one stale favorite, which is
+    // precisely the "a strip is silent, never a fault" invariant `resolve_pins` documents.
+    let Ok(installed) = ext_list(node, principal, ws).await else {
+        return Ok(None);
+    };
+    let Some(row) = installed.iter().find(|row| row.ext == ext) else {
+        return Ok(None); // uninstalled → stripped silently, exactly like a whole-ext pin.
+    };
+    let Some(decl) = row
+        .ui
+        .as_ref()
+        .and_then(|ui| ui.nav.iter().find(|n| n.id == nav))
+    else {
+        return Ok(None); // the extension no longer declares this destination → stripped.
+    };
+    // A destination bound to a host dashboard resolves AS that dashboard (ext-dashboard-nav
+    // grammar), reusing the ordinary dashboard path so cap-strip/not-found behave identically.
+    if let Some(dashboard) = decl.dashboard.as_ref().filter(|d| !d.is_empty()) {
+        let item = NavItem {
+            kind: "dashboard".into(),
+            dashboard: dashboard.clone(),
+            label: decl.label.clone(),
+            icon: decl.icon.clone(),
+            vars: decl.vars.clone(),
+            ..NavItem::default()
+        };
+        return Ok(resolve_item(node, principal, ws, &item)
+            .await?
+            .map(|mut r| {
+                // Carry the ext identity so `item_ref` still reconstructs `ext:<ext>/<navid>` — the
+                // entry OPENS a board but is PINNED as the ext destination it is.
+                r.ext = ext.to_string();
+                r.nav = nav.to_string();
+                r
+            }));
+    }
+    Ok(Some(ResolvedItem {
+        kind: "ext".into(),
+        label: label_or(&decl.label, &decl.id),
+        icon: decl.icon.clone(),
+        ext: ext.to_string(),
+        nav: nav.to_string(),
+        ..ResolvedItem::default()
+    }))
+}
+
 /// Map a pin ref to the synthetic authored item the resolver understands. `dashboard:<id>` and
 /// `ext:<id>` select their kinds; anything else is a core surface key. All opaque data.
+///
+/// The `ext:<ext>/<navid>` sub-ref never reaches here — `resolve_pins` routes it to
+/// `resolve_ext_nav` first (ext-subref-pins scope), because it resolves against the install's
+/// declared nav list rather than mapping to a synthetic authored item.
 fn pin_to_item(pin: &str) -> NavItem {
     if pin.starts_with("dashboard:") {
         NavItem {
@@ -296,6 +405,7 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         surface: item.surface.clone(),
         dashboard: String::new(),
         ext: String::new(),
+        nav: String::new(),
         items: Vec::new(),
         vars: BTreeMap::new(),
     })
@@ -324,6 +434,7 @@ async fn resolve_dashboard(
             surface: String::new(),
             dashboard: format!("dashboard:{id}"),
             ext: String::new(),
+            nav: String::new(),
             items: Vec::new(),
             // reusable-pages scope: a pinned binding rides through to the href as `?var-<name>=…`.
             vars: item.vars.clone(),
@@ -372,6 +483,7 @@ async fn resolve_ext(
             surface: String::new(),
             dashboard: String::new(),
             ext: item.ext.clone(),
+            nav: String::new(),
             items: Vec::new(),
             vars: BTreeMap::new(),
         })),
@@ -416,6 +528,7 @@ async fn resolve_tag_group(
                 surface: String::new(),
                 dashboard: format!("dashboard:{id}"),
                 ext: String::new(),
+                nav: String::new(),
                 items: Vec::new(),
                 vars: BTreeMap::new(),
             });
@@ -429,6 +542,7 @@ async fn resolve_tag_group(
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),
+        nav: String::new(),
         items: children,
         vars: BTreeMap::new(),
     }))
@@ -467,6 +581,7 @@ async fn resolve_group(
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),
+        nav: String::new(),
         items: children,
         vars: BTreeMap::new(),
     }))

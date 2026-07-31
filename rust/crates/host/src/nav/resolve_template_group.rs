@@ -76,6 +76,7 @@ pub async fn resolve_template_group(
             surface: String::new(),
             dashboard: format!("dashboard:{dash_id}"),
             ext: String::new(),
+            nav: String::new(),
             items: Vec::new(),
             vars,
         });
@@ -88,6 +89,7 @@ pub async fn resolve_template_group(
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),
+        nav: String::new(),
         items: children,
         vars: BTreeMap::new(),
     }))

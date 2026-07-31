@@ -1,10 +1,16 @@
-//! What a discovery result actually is: an endpoint to dial, and nothing more.
+//! What a discovery result actually is: an endpoint to dial and who claims to be there — nothing more.
 //!
 //! The shape of this struct IS the workspace-wall argument (lib docs). Every field here is
 //! readable by anything on the LAN segment, so the type deliberately has no place to put a
 //! workspace, a persona, a capability, or an extension list. If a future change wants to add one,
 //! that is the signal it belongs on the fleet-presence roster — behind the bus, inside the wall —
 //! not in an mDNS TXT record.
+//!
+//! `name` and `machine_id` (the identity trio's other two thirds — see `identity.rs`) pass that
+//! bar and only that bar: they say *which* node answers, which is the same class of fact as `node`
+//! and `hostname` that this record already carried. They grant nothing and prove nothing — like
+//! every value here they are cleartext and forgeable, so they identify *accidents*, not
+//! *adversaries*, and the dial that follows still authenticates.
 
 use std::net::IpAddr;
 
@@ -33,6 +39,22 @@ pub struct DiscoveredPeer {
 
     /// The advertised service port — the endpoint to dial.
     pub port: u16,
+
+    /// The advertiser's operator-set human label (`NodeIdentity::name`). Present on any node
+    /// running a version that advertises it; `None` from an older responder.
+    ///
+    /// **Display text, never an identifier** — do not address, route to, or key off it. Two peers
+    /// may legitimately report the same name, and it is trivially forged on the wire like every
+    /// other TXT value. `node` remains the only identity that means anything.
+    pub name: Option<String>,
+
+    /// The advertiser's opaque machine-derived id, when it published one.
+    ///
+    /// Lets an operator tell "this box was reinstalled" (same `machine_id`, new `node`) from "this
+    /// is a different box". Never parsed or interpreted here, and **not** a trust signal: it is
+    /// cleartext on the LAN and forgeable, so it diagnoses accidents, not adversaries — the same
+    /// caveat `fleet` carries.
+    pub machine_id: Option<String>,
 
     /// The advertiser's version string, for compatibility decisions before dialing.
     pub version: Option<String>,
@@ -68,6 +90,8 @@ mod tests {
             node: NodeId::new("node:gw-01").unwrap(),
             addresses,
             port: 8099,
+            name: None,
+            machine_id: None,
             version: None,
             fleet: None,
             hostname: "gw-01.local.".into(),

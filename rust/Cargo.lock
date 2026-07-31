@@ -5975,6 +5975,7 @@ dependencies = [
  "lb-auth",
  "lb-authz",
  "lb-devkit",
+ "lb-discovery",
  "lb-ext-loader",
  "lb-flows",
  "lb-host",

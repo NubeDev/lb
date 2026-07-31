@@ -19,6 +19,9 @@ lb-auth.workspace = true
 # revoked open stream; the `Store` handle is cloned from `gw.node.store`.
 lb-store.workspace = true
 lb-registry.workspace = true
+# `NodeIdentity` — the `GET /node` probe serves the SAME identity the mDNS advertisement carries.
+# Consumed, never forked: one identity type across both public surfaces.
+lb-discovery.workspace = true
 lb-devkit = { workspace = true, features = ["devkit-full"] }
 lb-inbox.workspace = true
 lb-insights.workspace = true

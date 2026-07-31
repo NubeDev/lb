@@ -99,5 +99,5 @@ pub use lb_bus::{NodeId, NodeIdError};
 /// authoritative for workspace presence.
 pub use lb_discovery::{
     advertise, browse, Advertised, Advertisement, Browse, Discovered, DiscoveredPeer,
-    DiscoveryError, ServiceType, DEFAULT_SERVICE_TYPE,
+    DiscoveryError, NodeIdentity, ServiceType, DEFAULT_SERVICE_TYPE,
 };

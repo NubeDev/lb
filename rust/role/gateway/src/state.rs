@@ -108,6 +108,27 @@ pub struct Gateway {
     /// (a store-down detector, a drain-on-shutdown handoff) flips without the route shape changing;
     /// no caller flips them yet. Shared behind `Arc` so axum clones the state cheaply per request.
     pub health: crate::routes::SharedHealthGate,
+
+    /// Who this node is, for the unauthenticated `GET /node` probe (node-identity scope). `None`
+    /// (the default, and every existing test/`new_live` seam) ⇒ the route `404`s: the node has only
+    /// the throwaway per-boot id and has no durable identity to publish. Installed by the boot seam
+    /// from `BootConfig::identity` via [`Gateway::with_identity`].
+    ///
+    /// Carries nothing beyond what a discoverable node already broadcasts over mDNS in cleartext —
+    /// see `routes::node_identity` for the wall argument. Behind `Arc` so axum clones the state
+    /// cheaply per request.
+    pub identity: Arc<Option<lb_discovery::NodeIdentity>>,
+
+    /// The port `GET /node` reports as this node's dialable gateway endpoint. `None` ⇒ the route
+    /// reports `0`; the boot seam pins the REAL bound port (which may differ from the requested one
+    /// when binding `:0`), so what is published is what a caller can actually dial.
+    pub bound_port: Option<u16>,
+
+    /// Candidate addresses `GET /node` publishes. Empty is normal and honest — a wildcard bind with
+    /// no embedder-supplied enumeration has no specific address worth naming, and publishing
+    /// `0.0.0.0` would hand a client something unroutable. See `routes::node_identity` for why this
+    /// is a list rather than one address.
+    pub bound_addresses: Arc<[std::net::IpAddr]>,
 }
 
 impl Gateway {
@@ -213,7 +234,28 @@ impl Gateway {
             // the honest default (the store handle is alive once the node booted it; a future monitor
             // flips a subsystem via the `HealthGate` setters).
             health: Arc::new(crate::routes::HealthGate::new()),
+            // No durable identity on the test/`new_live` seams — `GET /node` 404s until the boot
+            // path installs one from `BootConfig::identity` (node-identity scope).
+            identity: Arc::new(None),
+            bound_port: None,
+            bound_addresses: Arc::from(Vec::new()),
         }
+    }
+
+    /// Install the node's durable identity + its dialable endpoint for `GET /node` (node-identity
+    /// scope). Builder-style; the boot seam passes `BootConfig::identity` and the REAL bound
+    /// address. Never called ⇒ the route `404`s, which is the honest answer for a node whose only
+    /// id is the per-boot random one.
+    pub fn with_identity(
+        mut self,
+        identity: lb_discovery::NodeIdentity,
+        port: u16,
+        addresses: Vec<std::net::IpAddr>,
+    ) -> Self {
+        self.identity = Arc::new(Some(identity));
+        self.bound_port = Some(port);
+        self.bound_addresses = Arc::from(addresses);
+        self
     }
 
     /// Pin the `POST /extensions` upload ceiling (bytes) the `router` sizes its route-scoped

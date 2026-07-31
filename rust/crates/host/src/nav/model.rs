@@ -275,7 +275,10 @@ pub struct ResolvedNav {
 /// other kind maps 1:1 (minus any the caller can't reach, which are dropped entirely). The reference
 /// fields are the same opaque data as [`NavItem`]; `label` is always populated (derived when the
 /// author left it empty) so the UI renders without re-deriving.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// `Default` so a resolver branch can spell only the fields its kind actually uses and let the rest
+// (including any later-added relay field like `nav`) fall out — adding a field to this struct must
+// not mean touching every construction site.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ResolvedItem {
     pub kind: String,
     pub label: String,
@@ -289,6 +292,15 @@ pub struct ResolvedItem {
     pub dashboard: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub ext: String,
+    /// The extension's declared `[[ui.nav]]` destination this item resolves to — the `<navid>`
+    /// segment of an `ext:<ext>/<navid>` ref (ext-subref-pins scope). Empty for a whole-extension
+    /// item and for every non-ext kind, so the client reduces THIS item back to the same ref it
+    /// pinned (`ext:<ext>/<navid>`) rather than to the extension as a whole — which is what makes
+    /// the pinned-state highlight land on one row instead of all of that ext's rows. Opaque relay
+    /// data; the host matches it as a string and branches on no id (rule 10). Serde-defaulted +
+    /// skipped-when-empty, so an old client and a pre-field record both read exactly as today.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub nav: String,
     /// Present only on a resolved `group` (from an author `group`, an expanded `tag-group`, OR an
     /// expanded `template-group`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

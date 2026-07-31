@@ -62,13 +62,24 @@ pub struct ForeignKeyMeta {
 /// `TableProvider` per referenced table name (the validator collected them), then runs the query
 /// through a DataFusion `SessionContext`. Discovery (`list_tables`/`describe_table`) reuses the same
 /// provider path — it never reaches for an `information_schema` the engine doesn't expose.
+///
+/// **Read-concurrency contract** (federation-read-concurrency scope): concurrent READ calls on one
+/// source (`table_provider` + the scans its providers drive, and `query_direct`) MUST be able to
+/// proceed concurrently, bounded by the source. N concurrent reads must cost ≈ the slowest one, not
+/// the sum. This is a per-`Source` invariant, not a per-kind detail: a source backed by a
+/// single-connection pool has to fan its reads across several connections internally (see
+/// `sqlite.rs`'s read slots); one already riding a multi-connection pool (`postgres.rs`) is
+/// conformant as written. A source that violates this silently converts the host's parallel fan-out
+/// into a serial staircase — the batch verb's semaphore then buys nothing. The WRITE path carries no
+/// such requirement (sqlite has one writer by design).
 #[async_trait::async_trait]
 pub trait Source: Send + Sync {
     /// A real connectivity probe — open the pool and run a trivial query. `Ok(())` is green.
     async fn probe(&self) -> Result<(), SourceError>;
 
     /// Build a DataFusion `TableProvider` for `table` against the live pool. The provider pushes the
-    /// query down to the remote engine (the whole point of federation).
+    /// query down to the remote engine (the whole point of federation). Callable concurrently — see
+    /// the read-concurrency contract on the trait.
     async fn table_provider(
         &self,
         table: &TableReference,

@@ -289,6 +289,28 @@ pub struct BootConfig {
     /// crate names a product (rule 10). Opt-in and non-fatal: if the network refuses mDNS, boot logs
     /// a warning and the node serves normally.
     pub discovery: Option<lb_discovery::Advertisement>,
+
+    /// Who this node is — the addressable id, an optional machine-derived id, and the operator's
+    /// human label ([`lb_discovery::NodeIdentity`]).
+    ///
+    /// `None` (the default) ⇒ unchanged behaviour: the node keeps the fresh random per-process id
+    /// `boot*` mints and serves no identity route. `Some(id)` ⇒ the node **installs that id as its
+    /// bus identity** (`Node::install_node_id`) and serves it on the unauthenticated `GET /node`.
+    ///
+    /// Installing it is the point, and it fixes a real gap: `boot*`'s per-boot random id is correct
+    /// for a test (unique, never collides) but wrong for a deployment — a restart looks like a
+    /// brand-new node and the fleet roster grows ghosts. This is the config seam
+    /// `Node::node_id`'s docs have always pointed at.
+    ///
+    /// **The embedder supplies the values; no core crate derives them** (rule 10). lb does not
+    /// reach for `/etc/machine-id`, a board serial, or any other platform-specific source — a
+    /// product host knows which is right for its hardware and fills this field at the binary
+    /// boundary. That also keeps lb free of a dependency on any one identity crate.
+    ///
+    /// Note this and [`discovery`](Self::discovery) are independent: a node may serve `GET /node`
+    /// without advertising on mDNS, or advertise without serving a gateway. When both are set, an
+    /// embedder should build them from the SAME identity so the two surfaces cannot disagree.
+    pub identity: Option<lb_discovery::NodeIdentity>,
 }
 
 impl Default for BootConfig {
@@ -346,6 +368,7 @@ impl Default for BootConfig {
             // network broadcast that switches itself on at upgrade is exactly the surprise this
             // posture avoids.
             discovery: None,
+            identity: None,
         }
     }
 }
@@ -359,7 +382,12 @@ impl BootConfig {
         // Deriving it here keeps the two from drifting — a node that advertised a port it does not
         // serve on would be discoverable and unreachable, the worst of both.
         let gateway = gateway_mode_from_env();
-        let discovery = discovery_from_env(&gateway);
+        // ONE identity feeds BOTH public surfaces — the mDNS advertisement and `GET /node`. Built
+        // once here and handed to both for the same reason the gateway port is: two independently
+        // derived identities would be free to disagree, and a node whose broadcast id differs from
+        // the one it serves over HTTP is worse than a node with no identity at all.
+        let identity = identity_from_env();
+        let discovery = discovery_from_env(&gateway, identity.clone());
         BootConfig {
             store_path: std::env::var("LB_STORE_PATH")
                 .ok()
@@ -425,6 +453,9 @@ impl BootConfig {
             // LAN discovery from `LB_DISCOVERY_*` — OFF unless `LB_DISCOVERY=1`, so the standalone
             // binary broadcasts nothing until an operator asks for it. Read only here.
             discovery,
+            // The durable node identity (`LB_NODE_*`) — installed as the bus id and served on the
+            // unauthenticated `GET /node`. Shared with `discovery` above so the two agree.
+            identity,
             // Optional dev-admin seed password (`LB_SEED_PASSWORD`) — so a `PasswordHash` binary
             // has a first admin who can log in. Absent ⇒ no credential seeded (correct for a
             // `DevTrustAny` binary). Secret-class: read here, hashed at seed time, never logged.
@@ -503,12 +534,75 @@ fn gateway_mode_from_env() -> GatewayMode {
 /// a headless node with `LB_DISCOVERY=1` warns and stays silent rather than advertising a port that
 /// refuses connections.
 ///
-/// - `LB_DISCOVERY_NODE_ID` — the advertised id (default `node:<hostname>`); must be
-///   key-expression-safe, since it is the same `NodeId` fleet-presence puts in a bus key.
+/// The id, name and machine id come from the SHARED identity (`LB_NODE_*`, see
+/// [`identity_from_env`]) rather than from discovery-specific vars, so the advertisement and
+/// `GET /node` cannot disagree about who this node is.
 /// - `LB_DISCOVERY_SERVICE_TYPE` — the DNS-SD type (default `_lb._tcp`); a product host sets its own.
 /// - `LB_DISCOVERY_FLEET` — an opaque grouping tag so unrelated fleets on one LAN ignore each other.
 ///   Plaintext on the wire and trivially forged — it separates accidents, not adversaries.
-fn discovery_from_env(gateway: &GatewayMode) -> Option<lb_discovery::Advertisement> {
+/// Build the node's durable identity from `LB_NODE_*` at the binary boundary.
+///
+/// This is the standalone binary's answer to the gap `Node::node_id`'s docs describe: without it a
+/// node runs the fresh-per-process random id `boot*` mints, so every restart looks like a brand-new
+/// node and the fleet roster grows ghosts. Setting `LB_NODE_ID` makes the identity durable.
+///
+/// - `LB_NODE_ID` — the addressable id (default `node:<hostname>`). Must be key-expression-safe: it
+///   is interpolated into bus keys (`ws/{id}/nodes/{node}`), so an id containing `/` or `*` could
+///   change a key's SHAPE — a `*` would silently address the whole fleet. Invalid ⇒ `None` (no
+///   durable identity installed, and LAN discovery stays off), never a silent fallback: quietly
+///   substituting a different id is how a node ends up addressable under an id nobody configured.
+/// - `LB_NODE_NAME` — the operator's human label (default: the id). Display text, never an
+///   identifier; nothing addresses or routes by it.
+/// - `LB_NODE_MACHINE_ID` — an opaque machine-derived id, absent by default. The binary does NOT
+///   derive one: reading `/etc/machine-id` or a board serial is platform-specific and belongs to
+///   the product host, not to lb (rule 10). Whatever is passed is published in cleartext over mDNS
+///   and on `GET /node`, so pass a hashed form if it originated as an OS machine-id.
+fn identity_from_env() -> Option<lb_discovery::NodeIdentity> {
+    // `LB_DISCOVERY_NODE_ID` is the ORIGINAL name of this var, from when the id was
+    // discovery-specific. It is now the node's identity everywhere (bus id, `GET /node`, mDNS), so
+    // `LB_NODE_ID` is the name that describes it — but the old one keeps working, because silently
+    // ignoring an operator's configured id would re-address a deployed node on upgrade. `LB_NODE_ID`
+    // wins when both are set.
+    let (var, node_id) = std::env::var("LB_NODE_ID")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|v| ("LB_NODE_ID", v))
+        .or_else(|| {
+            std::env::var("LB_DISCOVERY_NODE_ID")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|v| ("LB_DISCOVERY_NODE_ID", v))
+        })
+        .unwrap_or_else(|| {
+            let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
+            ("LB_NODE_ID", format!("node:{host}"))
+        });
+    let node = match lb_bus::NodeId::new(node_id.clone()) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("bad {var} '{node_id}': {e} — this node has NO durable identity");
+            return None;
+        }
+    };
+
+    let mut identity = lb_discovery::NodeIdentity::new(node);
+    // `with_name` ignores a blank, so an empty var keeps the id-derived default.
+    if let Ok(name) = std::env::var("LB_NODE_NAME") {
+        identity = identity.with_name(name);
+    }
+    if let Some(mid) = std::env::var("LB_NODE_MACHINE_ID")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        identity = identity.with_machine_id(mid);
+    }
+    Some(identity)
+}
+
+fn discovery_from_env(
+    gateway: &GatewayMode,
+    identity: Option<lb_discovery::NodeIdentity>,
+) -> Option<lb_discovery::Advertisement> {
     if std::env::var("LB_DISCOVERY").ok().as_deref() != Some("1") {
         return None;
     }
@@ -521,22 +615,13 @@ fn discovery_from_env(gateway: &GatewayMode) -> Option<lb_discovery::Advertiseme
         return None;
     };
 
-    let node_id = std::env::var("LB_DISCOVERY_NODE_ID")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
-            format!("node:{host}")
-        });
-    let node = match lb_bus::NodeId::new(node_id.clone()) {
-        Ok(n) => n,
-        Err(e) => {
-            eprintln!("bad LB_DISCOVERY_NODE_ID '{node_id}': {e} — LAN discovery stays OFF");
-            return None;
-        }
-    };
+    // The shared identity (`identity_from_env`) IS the advertised one — see `from_env`. It is
+    // `None` only when the operator gave an invalid `LB_NODE_ID`, which that reader already
+    // reported; advertising a fallback id after refusing to install it would be the exact
+    // disagreement between surfaces this sharing exists to prevent.
+    let identity = identity?;
 
-    let mut ad = lb_discovery::Advertisement::new(node, addr.port());
+    let mut ad = lb_discovery::Advertisement::with_identity(identity, addr.port());
 
     if let Some(ty) = std::env::var("LB_DISCOVERY_SERVICE_TYPE")
         .ok()

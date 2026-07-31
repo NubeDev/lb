@@ -59,7 +59,7 @@ fn discovery_is_off_unless_explicitly_enabled_with_a_gateway_to_advertise() {
     let ad = BootConfig::from_env()
         .discovery
         .expect("LB_DISCOVERY=1 with a gateway must produce an advertisement");
-    assert_eq!(ad.node.as_str(), "node:gw-01");
+    assert_eq!(ad.node().as_str(), "node:gw-01");
     assert_eq!(
         ad.port, 8099,
         "the advertised port must be the gateway's, or peers discover an unreachable endpoint"

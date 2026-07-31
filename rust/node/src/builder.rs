@@ -256,6 +256,19 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // store-compact reactor from here. Unset ⇒ `None` ⇒ the node behaves exactly as before.
     node.install_store_budget(cfg.store_budget_bytes);
 
+    // NODE IDENTITY: install the embedder's durable node id as this node's bus identity, replacing
+    // the fresh-per-process random one `Node::boot*` mints. Installed HERE — before the gateway is
+    // built and before anything declares a queryable or announces presence — so every downstream
+    // consumer sees one id for the whole life of the process. Doing it later would let a routed
+    // call or a roster entry be addressed under the throwaway id.
+    //
+    // `None` leaves the random id untouched (unchanged behaviour, correct for a test). See
+    // `BootConfig::identity` for why a real deployment must set it: a per-boot id makes every
+    // restart look like a brand-new node and the fleet roster accumulates ghosts.
+    if let Some(identity) = &cfg.identity {
+        node.install_node_id(identity.node().clone());
+    }
+
     // TELEMETRY sink selection: choose the tracing layers by config, right after boot so every
     // subsequent instrumented call is captured. Shares the node's OWN store + bus handles.
     lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), cfg.telemetry.clone());
@@ -384,6 +397,24 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             // bind-here-not-in-serve() comment above exists to prevent. The
             // PRINTED url (see `printed_gateway_url`) is a different question.
             node.install_gateway_url(format!("http://{bound}"));
+            // The unauthenticated `GET /node` probe (node-identity scope). Installed with the REAL
+            // bound port — `bind` may have resolved a `:0` request to a concrete port, and the whole
+            // value of the route is publishing something a caller can actually dial.
+            //
+            // A wildcard bind (`0.0.0.0`/`[::]`) is reported with NO addresses rather than the
+            // wildcard itself: `0.0.0.0` is not an address a client can connect to, and handing one
+            // over would be worse than silence. A caller that reached this route already has a
+            // working address — its own connection's. Enumerating real interfaces is deliberately
+            // not done here: it is a platform-specific concern, and no core crate should grow one
+            // (rule 10).
+            if let Some(identity) = cfg.identity.clone() {
+                let addresses = if bound.ip().is_unspecified() {
+                    Vec::new()
+                } else {
+                    vec![bound.ip()]
+                };
+                gw = gw.with_identity(identity, bound.port(), addresses);
+            }
             Some((gw, listener))
         }
         GatewayMode::Off => None,

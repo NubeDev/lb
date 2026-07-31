@@ -33,7 +33,7 @@ use crate::routes::{
     list_members, list_navs, list_occurrences, list_panels, list_reports, list_roles, list_rules,
     list_series, list_shares_nav, list_tables, list_team_members, list_teams, list_users,
     list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call,
-    panel_usage, patch_flow_run, pin_dashboards, post_message, post_redo, post_undo,
+    node_identity, panel_usage, patch_flow_run, pin_dashboards, post_message, post_redo, post_undo,
     post_version_restore, post_webhook, provision_workspace, publish_extension, publish_message,
     purge_workspace, put_asset_bin, put_doc, put_media_chunk, put_skill, put_versions_config,
     read_graph, read_samples, read_schema, reconcile_workspace, refresh_run_token,
@@ -85,6 +85,14 @@ pub fn router(gw: Gateway) -> Router {
         // contract". Registered FIRST so it is reachable at a stable path with zero auth machinery
         // in front of it; always on when `GatewayMode::Addr`.
         .route("/health", get(health))
+        // The node-identity probe (node-identity scope) — `GET /node`, UNAUTHENTICATED, beside
+        // `/health` and for the same reason: a provisioning tool, installer, or LAN app asking
+        // "who and where is this node?" has no session token yet. It is the HTTP twin of the mDNS
+        // advertisement and publishes exactly what that record already broadcasts in cleartext —
+        // id, name, machine id, version, endpoint — and nothing behind a wall (rule 6). `404` when
+        // no durable identity is configured, so a caller never caches a per-boot random id.
+        // Addressing is not authorization: the caps wall gates every byte after this.
+        .route("/node", get(node_identity))
         .route("/login", post(login))
         // email-login scope — the Slack-style human front door. `/auth/login` (email+password) and
         // `/auth/select` (select-token) are UNAUTHENTICATED-by-session (they ISSUE the token), like

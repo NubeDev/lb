@@ -9,8 +9,24 @@
 //! provider directly: a `SQLiteTable::new_with_schema` wrapped via
 //! `create_federated_table_provider()`. The factory's small `connect → get_schema → build` flow is
 //! inlined here for that one purpose; everything else (`probe`, FKs) keeps its prior shape.
+//!
+//! **K read slots** (federation-read-concurrency scope): the upstream `SqliteConnectionPool` is a
+//! SINGLE tokio-rusqlite connection, and every cached `TableProvider` is bound to the pool it was
+//! built against — so N concurrent reads on one source funnelled into one connection and collapsed
+//! back to a serial staircase (measured: 4 identical scans = 228/444/654/865 ms, wall ≈ the serial
+//! sum; the host's 16-permit batch semaphore bought nothing). We hold [`READ_SLOTS`] independent
+//! pools instead, each with its OWN provider cache, and round-robin `table_provider` across them.
+//! Concurrency in sqlite comes from *separate connections*: providers stay bound to exactly one
+//! connection, which is what makes this safe with zero upstream change.
+//!
+//! Slot 0 is built eagerly by [`SqliteSource::connect`] (today's behavior, same validation and error
+//! text); slots 1..K are built LAZILY on first use, so a source that only ever sees serial traffic
+//! never pays for K connections. The WRITE path (`apply_ddl`/`write_rows`/`delete_rows`) and the
+//! direct catalog reads (`foreign_keys`, `list_columns_with_types`) are deliberately untouched —
+//! they open their own short-lived `rusqlite` connections, and sqlite has one writer by design.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -31,12 +47,36 @@ use arrow::record_batch::RecordBatch;
 use datafusion_table_providers::sql::db_connection_pool::dbconnection::query_arrow;
 use futures::TryStreamExt;
 
-/// A connected SQLite source: a file-backed pool + the file path (the path is retained ONLY for
-/// direct catalog reads — `PRAGMA foreign_key_list` — the same path that is the DSN, never echoed).
-pub struct SqliteSource {
+/// How many independent read connections one sqlite source holds
+/// (federation-read-concurrency scope).
+///
+/// **K = 4, a constant, deliberately not env-tunable.** The federation child runs 4 worker threads
+/// (`main.rs`, documented choice) and scan work is CPU+IO on both ends, so 4 read connections
+/// saturate it without oversubscribing a node also running host/store/bus. A knob here would be a
+/// support surface for a number nobody should be retuning per site — revisit only with a measurement
+/// that says 4 binds.
+pub(crate) const READ_SLOTS: usize = 4;
+
+/// One read slot: an independent `SqliteConnectionPool` (its own OS connection) plus the provider
+/// cache for tables built against THAT pool. The pairing is the invariant — a `TableProvider` holds
+/// the pool it was built from, so a provider must never be shared across slots or the reads would
+/// funnel back onto one connection and re-serialize.
+struct ReadSlot {
     pool: Arc<SqliteConnectionPool>,
-    path: String,
     provider_cache: Mutex<HashMap<String, Arc<dyn TableProvider>>>,
+}
+
+/// A connected SQLite source: [`READ_SLOTS`] file-backed read pools + the file path (the path is
+/// retained ONLY for direct catalog reads — `PRAGMA foreign_key_list` — the same path that is the
+/// DSN, never echoed).
+pub struct SqliteSource {
+    /// Slot 0 is built by `connect`; slots 1..K are `None` until first use (lazy — a strictly serial
+    /// caller never opens more than one connection). The outer `Mutex` guards slot CREATION only and
+    /// is never held across a query.
+    slots: Vec<Mutex<Option<Arc<ReadSlot>>>>,
+    /// Round-robin cursor over the slots — the whole scheduling policy, one atomic add per read.
+    next_slot: AtomicUsize,
+    path: String,
 }
 
 impl SqliteSource {
@@ -54,15 +94,59 @@ impl SqliteSource {
                     .into(),
             ));
         }
+        // Slot 0 eagerly: `connect` must still fail HERE, with the same message, when the file is
+        // not a usable database — deferring every slot would turn a connect-time error into a
+        // surprise at first query.
+        let slot0 = Self::build_slot(path).await?;
+        let mut slots = Vec::with_capacity(READ_SLOTS);
+        slots.push(Mutex::new(Some(slot0)));
+        for _ in 1..READ_SLOTS {
+            slots.push(Mutex::new(None));
+        }
+        Ok(Self {
+            slots,
+            next_slot: AtomicUsize::new(0),
+            path: path.to_string(),
+        })
+    }
+
+    /// Build one read slot — an independent pool over the same file, with an empty provider cache.
+    async fn build_slot(path: &str) -> Result<Arc<ReadSlot>, SourceError> {
         let pool = SqliteConnectionPoolFactory::new(path, Mode::File, Duration::from_secs(5))
             .build()
             .await
             .map_err(|e| SourceError(format!("sqlite pool: {e}")))?;
-        Ok(Self {
+        Ok(Arc::new(ReadSlot {
             pool: Arc::new(pool),
-            path: path.to_string(),
             provider_cache: Mutex::new(HashMap::new()),
-        })
+        }))
+    }
+
+    /// Pick the next slot round-robin, building it on first use. The creation lock is released
+    /// before the caller runs any query, so slots serve reads concurrently; a lost race on the same
+    /// cold slot simply builds one extra pool and keeps the winner (idempotent, no correctness
+    /// issue — and only ever costs one redundant connection per slot, once).
+    async fn slot(&self) -> Result<Arc<ReadSlot>, SourceError> {
+        let idx = self.next_slot.fetch_add(1, Ordering::Relaxed) % READ_SLOTS;
+        // Fast path: already built. Scoped so the guard drops before the `.await` below — a
+        // `std::sync::MutexGuard` is not `Send` and must never be held across an await point.
+        if let Some(existing) = self.slots[idx].lock().expect("slot mutex").as_ref() {
+            return Ok(Arc::clone(existing));
+        }
+        let built = Self::build_slot(&self.path).await?;
+        let mut guard = self.slots[idx].lock().expect("slot mutex");
+        // Keep whoever landed first so every provider cache stays paired with one live pool.
+        Ok(Arc::clone(guard.get_or_insert(built)))
+    }
+
+    /// How many read slots are currently built. Test seam for the lazy-slot assertion (a strictly
+    /// serial caller must build exactly one connection).
+    #[cfg(test)]
+    pub(crate) fn built_slots(&self) -> usize {
+        self.slots
+            .iter()
+            .filter(|s| s.lock().expect("slot mutex").is_some())
+            .count()
     }
 }
 
@@ -82,19 +166,26 @@ impl Source for SqliteSource {
         table: &TableReference,
     ) -> Result<Arc<dyn TableProvider>, SourceError> {
         let table_name = table.to_string();
-        if let Some(cached) = self
-            .provider_cache
-            .lock()
-            .expect("cache mutex")
-            .get(&table_name)
+        // Round-robin onto a read slot: this is the ONE line that turns N concurrent reads from a
+        // serial staircase into K-way concurrency. Everything below resolves against THAT slot's
+        // pool and cache, so the returned provider is bound to exactly one connection.
+        let slot = self.slot().await?;
+        // Scoped so the guard drops before the awaits below (a std MutexGuard is not Send).
         {
-            return Ok(cached.clone());
+            if let Some(cached) = slot
+                .provider_cache
+                .lock()
+                .expect("cache mutex")
+                .get(&table_name)
+            {
+                return Ok(cached.clone());
+            }
         }
         // Mirror `SqliteTableFactory::table_provider` (the upstream helper does not auto-wrap under
         // `sqlite-federation`), then wrap with `create_federated_table_provider` so the federation
         // optimizer recognizes this table as belonging to one compute context and pushes the whole
         // plan down to SQLite (federation-pushdown scope).
-        let pool = Arc::clone(&self.pool);
+        let pool = Arc::clone(&slot.pool);
         let conn = pool
             .connect()
             .await
@@ -112,7 +203,7 @@ impl Source for SqliteSource {
             .create_federated_table_provider()
             .map_err(|e| SourceError(format!("federate {table}: {e}")))?;
         let provider: Arc<dyn TableProvider> = Arc::new(federated);
-        self.provider_cache
+        slot.provider_cache
             .lock()
             .expect("cache mutex")
             .insert(table_name, provider.clone());
@@ -120,7 +211,10 @@ impl Source for SqliteSource {
     }
 
     async fn query_direct(&self, sql: &str) -> Result<Vec<RecordBatch>, SourceError> {
-        let conn = self
+        // Direct reads ride the same round-robin — they are reads, and pinning them to slot 0 would
+        // serialize them against each other and against the provider path.
+        let slot = self.slot().await?;
+        let conn = slot
             .pool
             .connect()
             .await

@@ -37,11 +37,16 @@
 mod advertise;
 mod browse;
 mod error;
+mod identity;
 mod peer;
 mod service_type;
 
 pub use advertise::{advertise, Advertised, Advertisement};
 pub use browse::{browse, Browse, Discovered};
 pub use error::DiscoveryError;
+pub use identity::NodeIdentity;
+/// `NodeId` is minted in `lb-bus` and NOT forked here — re-exported so a caller that constructs a
+/// [`NodeIdentity`] can name the type it requires without depending on the bus crate directly.
+pub use lb_bus::NodeId;
 pub use peer::DiscoveredPeer;
 pub use service_type::{ServiceType, DEFAULT_SERVICE_TYPE};

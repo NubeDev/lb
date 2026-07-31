@@ -12,6 +12,7 @@ use mdns_sd::{Receiver, ServiceDaemon, ServiceEvent};
 use lb_bus::NodeId;
 
 use crate::error::DiscoveryError;
+use crate::identity::{TXT_MACHINE, TXT_NAME};
 use crate::peer::{DiscoveredPeer, TXT_FLEET, TXT_NODE, TXT_VERSION};
 use crate::service_type::ServiceType;
 
@@ -115,6 +116,12 @@ fn to_peer(resolved: &mdns_sd::ResolvedService) -> Option<DiscoveredPeer> {
             .map(|s| s.to_ip_addr())
             .collect(),
         port: resolved.get_port(),
+        // Identity extras: absent from an older responder that predates them, which is why both
+        // are `Option` and neither is required to build a usable peer.
+        name: resolved.get_property_val_str(TXT_NAME).map(str::to_string),
+        machine_id: resolved
+            .get_property_val_str(TXT_MACHINE)
+            .map(str::to_string),
         version: resolved
             .get_property_val_str(TXT_VERSION)
             .map(str::to_string),
