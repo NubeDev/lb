@@ -8,7 +8,7 @@
 //! gates, the capability-first posture carried into the query body.
 
 use datafusion::sql::sqlparser::ast::{Query, SetExpr, Statement, TableFactor, Visit, Visitor};
-use datafusion::sql::sqlparser::dialect::GenericDialect;
+use datafusion::sql::sqlparser::dialect::PostgreSqlDialect;
 use datafusion::sql::sqlparser::parser::Parser;
 use std::ops::ControlFlow;
 
@@ -43,7 +43,7 @@ pub struct ValidatedSelect {
 /// engine registers exactly those shapes). Rejects multiple statements, any
 /// INSERT/UPDATE/DELETE/DDL/DML, and anything that is not a read query.
 pub fn validate_select(sql: &str) -> Result<ValidatedSelect, ValidationError> {
-    let dialect = GenericDialect {};
+    let dialect = PostgreSqlDialect {};
     let statements = Parser::parse_sql(&dialect, sql)
         .map_err(|e| ValidationError(format!("parse error: {e}")))?;
 
@@ -289,5 +289,23 @@ mod tests {
     fn multiple_statements_rejected() {
         assert!(validate_select("SELECT 1; SELECT 2").is_err());
         assert!(validate_select("SELECT * FROM t; DROP TABLE t").is_err());
+    }
+
+    /// Postgres 12+ CTE materialization hints (`AS MATERIALIZED` / `AS NOT MATERIALIZED`) must
+    /// parse — regression test for the `GenericDialect` bug that rejected them with
+    /// "Expected: (, found: MATERIALIZED" (crash-looped the PDNSW federation sidecar).
+    #[test]
+    fn cte_materialized_hint_allowed() {
+        let v = validate_select(
+            "WITH cte AS MATERIALIZED (SELECT a FROM readings) SELECT * FROM cte",
+        )
+        .unwrap();
+        assert!(v.tables.contains(&"readings".to_string()));
+
+        let v = validate_select(
+            "WITH cte AS NOT MATERIALIZED (SELECT a FROM readings) SELECT * FROM cte",
+        )
+        .unwrap();
+        assert!(v.tables.contains(&"readings".to_string()));
     }
 }
