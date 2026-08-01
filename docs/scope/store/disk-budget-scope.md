@@ -307,6 +307,9 @@ session doc — but start from a decision, not a question.
 
 ## Related
 
+- `scope/store/boot-memory-guard-scope.md` (issue #128) — the **memory** half: this scope bounds
+  bytes on disk and explicitly never RSS; the boot path OOMing a Pi is that scope's problem, and
+  it reuses `PRODUCTIVE_RECLAIM_RATIO` + re-seeds the budget driver from its persisted record.
 - `scope/store/online-compaction-scope.md` — the pass this scope drives; OQ5 there is the
   deferral slice 2 reverses. Read it first.
 - `scope/store/persistent-backend-scope.md` — the SurrealKV posture (no native max-size option,

@@ -332,6 +332,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   governing constraint is append-only: a delete *adds* bytes until the next compaction, so any
   evicting pass must be followed by a compaction exempt from the minimum interval. Refusing writes
   at a hard ceiling is deliberately out of scope. All open questions are resolved decisions.
+  `store/` also holds `boot-memory-guard-scope.md` (issue #128) — the **memory** half of the same
+  problem: `Store::open` compacts + replays unconditionally with no RAM bound, which OOM-killed a
+  959 MB Pi globally (sshd included, box bricked twice). Three slices: precondition the boot pass
+  (skip on `log_bytes` vs `MemAvailable`, skip when the last pass was unproductive), refuse a
+  provably-won't-fit open with a diagnostic + `LB_STORE_OPEN_UNGUARDED` override instead of OOMing,
+  and persist the `CompactionRecord` beside the log so skips survive restart and show in
+  `store.status`. Fails open without `/proc`; supervisor `MemoryMax`/`OOMPolicy=stop` is the named
+  defense-in-depth (rubixd/rubix-ai side).
   `core/` also holds
   `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
   + a runnable `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs
