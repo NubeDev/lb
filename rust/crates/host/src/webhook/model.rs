@@ -126,6 +126,8 @@ impl WebhookRecord {
     }
 
     /// Build a fresh active record. `ts` is the caller-injected logical clock (no wall-clock).
+    // Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: impl Into<String>,
         ws: impl Into<String>,

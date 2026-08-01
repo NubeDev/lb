@@ -8,7 +8,7 @@
 //!
 //! Files (FILE-LAYOUT §3 — one responsibility each):
 //!   - `plan`       — the KIND PLAN TABLE (`kind → table, save_tool, id keys, counter field`) and
-//!                    the pure classification of a dispatched call. Adding a kind is adding a row.
+//!     the pure classification of a dispatched call. Adding a kind is adding a row.
 //!   - `record`     — the `entity_version` row, the ring key, the stable snapshot hash.
 //!   - `cap`        — the adjustable cap: const → workspace → per-kind, node-clamped.
 //!   - `store`      — the only place the ring table is queried.

@@ -62,6 +62,8 @@ pub enum DriveError {
 ///
 /// `sink` is an unbounded channel (never blocks the read loop); a closed receiver is ignored (the run
 /// keeps going and still returns its collected events).
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn drive(
     wrapper: &dyn AgentWrapper,
     profile: &AgentProfile,

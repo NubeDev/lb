@@ -10,7 +10,7 @@
 //!   - `verify` — the login-path `global_credential_verify` seam (timing-uniform on unknown identity).
 //!   - `tool` — the MCP bridge for `identity.set_password`.
 //!   - `error` — the service error (secret-free).
-//! The record itself lives in `lb_authz` (`identity_credential`), the raw store layer.
+//!     The record itself lives in `lb_authz` (`identity_credential`), the raw store layer.
 
 mod change;
 mod error;

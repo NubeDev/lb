@@ -1,7 +1,11 @@
 # Store scope — a boot memory guard (open without OOMing the box)
 
-Status: scope (the ask), issue [#128](https://github.com/NubeDev/lb/issues/128). Promotes to
-`doc-site/content/public/store/` once shipped. This is the **memory** half of the
+Status: **shipped 2026-08-01** (all three slices) — session
+[`sessions/store/boot-memory-guard-session.md`](../../sessions/store/boot-memory-guard-session.md),
+incident [`debugging/store/boot-compaction-oom-kills-the-box.md`](../../debugging/store/boot-compaction-oom-kills-the-box.md),
+public [`doc-site/content/public/store/store.md`](../../../doc-site/content/public/store/store.md),
+skill [`skills/store-compact/SKILL.md`](../../skills/store-compact/SKILL.md). Issue
+[#128](https://github.com/NubeDev/lb/issues/128). This is the **memory** half of the
 store-footprint problem; [#122](https://github.com/NubeDev/lb/issues/122)
 (`disk-budget-scope.md`, shipped) is the **disk** half and would not have prevented this
 incident — the live set was already 2.4× `LOG_ADVISORY_BYTES` and boot still ran the pass.
@@ -245,6 +249,14 @@ injecting an integer into a pure function is not a mock, rule 9 intact):
   to today's behaviour exactly) and atomic write (tmp + rename).
 
 ## Decisions (no open questions)
+
+> **Shipped as decided**, with two build-time refinements recorded in the session doc: the override is
+> threaded through an `OpenOptions` struct rather than a positional parameter of `Store::open` (so no
+> existing caller or suite changed), and `PRODUCTIVE_RECLAIM_RATIO`/`is_productive` moved down into
+> the store crate with the host re-exporting them, so boot and the runtime driver share **one**
+> definition of "did this pass pay?". The real-scale RSS measurement the plan asked for is in the
+> session doc: it leaves both ratios as scoped, and says why (peak/log is record-size dependent —
+> 0.26x on a fat-record store, ~1.4x on the incident's key-dense one).
 
 Every question this scope raised is answered here. Build to these; do not re-litigate
 them mid-implementation. If one proves wrong in the build, change it deliberately, pick

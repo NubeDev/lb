@@ -2,10 +2,10 @@
 //! store at `argv[1]`, performs the phase named by `argv[2]`, then **hard-aborts** (SIGABRT — no
 //! graceful flush). The parent test reopens and asserts exactly-once recovery. Phases:
 //!   - `stage-then-kill`  : durable-append a batch to staging, abort BEFORE any commit → the parent
-//!                          must drain it and commit each sample EXACTLY once (restart re-drain).
+//!     must drain it and commit each sample EXACTLY once (restart re-drain).
 //!   - `commit-then-kill` : append, commit ONE batch, abort AFTER the commit returned → the parent
-//!                          must see that batch once, the remainder still staged, and the re-drain
-//!                          finish the job without a double-commit.
+//!     must see that batch once, the remainder still staged, and the re-drain
+//!     finish the job without a double-commit.
 //!
 //! **[`STAGED`] is deliberately multi-batch.** A backlog under one `COMMIT_BATCH` (256) lets the
 //! parent's drain LOOP terminate on its first pass, so every loop-termination bug is invisible —

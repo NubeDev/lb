@@ -119,7 +119,10 @@ async fn flags_match_the_fold_consumers_do() {
     // (a) Empty stack: neither gate.
     let out = list(&store, "hist-empty", "alice", "").await.unwrap();
     assert!(out.items.is_empty());
-    assert!(!out.can_undo && !out.can_redo, "an empty stack gates nothing");
+    assert!(
+        !out.can_undo && !out.can_redo,
+        "an empty stack gates nothing"
+    );
 
     // (b) One reversible step: undo yes, redo no.
     let ws = "hist-mixed";
@@ -130,7 +133,10 @@ async fn flags_match_the_fold_consumers_do() {
     // (c) All undone: redo yes, undo no.
     apply_undo(&store, ws, "alice", "").await.expect("undo");
     let out = list(&store, ws, "alice", "").await.unwrap();
-    assert!(!out.can_undo && out.can_redo, "everything undone ⇒ redo only");
+    assert!(
+        !out.can_undo && out.can_redo,
+        "everything undone ⇒ redo only"
+    );
 
     // (d) Non-undoable class ONLY: the undo side is NOT empty, but nothing on it is reversible —
     //     the button must stay off. This is the case a naive `!undoable.is_empty()` gets wrong.

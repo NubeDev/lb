@@ -103,7 +103,7 @@ pub async fn agent_invoke(
         req.runtime.as_deref(),
         req.persona.as_deref(),
         &principal,
-        &principal.caps().to_vec(),
+        principal.caps(),
         ws,
         &job_id,
         &req.goal,

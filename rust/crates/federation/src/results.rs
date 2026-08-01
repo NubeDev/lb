@@ -210,6 +210,8 @@ pub fn requested_ttl(input: &Value) -> Option<std::time::Duration> {
         return None;
     }
     let ttl = input.get("cache")?.get("ttl_s")?.as_f64()?;
+    // `!(ttl > 0.0)` is deliberate: it rejects NaN too. `partial_cmp` would only add noise here.
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     if !(ttl > 0.0) || !ttl.is_finite() {
         return None;
     }

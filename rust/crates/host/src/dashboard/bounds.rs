@@ -166,9 +166,11 @@ mod tests {
 
     #[test]
     fn cell_bounds_include_passthrough() {
-        let mut cell = Cell::default();
-        cell.i = "c9".into();
-        cell.grafana_passthrough = json!({ "junk": "y".repeat(MAX_GRAFANA_PASSTHROUGH + 1) });
+        let cell = Cell {
+            i: "c9".into(),
+            grafana_passthrough: json!({ "junk": "y".repeat(MAX_GRAFANA_PASSTHROUGH + 1) }),
+            ..Cell::default()
+        };
         assert!(check_cell_bounds(&cell).is_err());
     }
 }

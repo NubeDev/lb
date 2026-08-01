@@ -161,7 +161,7 @@ async fn tools_call_round_trips_a_real_host_tool() {
     // The gateway returns the time as a JSON object; the shim wraps it in a text block. isError
     // is absent/false on success.
     assert!(
-        v["result"]["isError"].as_bool().unwrap_or(false) == false,
+        !v["result"]["isError"].as_bool().unwrap_or(false),
         "a granted call is not an error"
     );
 }

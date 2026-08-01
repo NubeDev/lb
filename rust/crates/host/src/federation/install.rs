@@ -76,6 +76,8 @@ pub struct Installed {
 /// The grant computation (`requested ∩ approved`) and the deny wall (`enforce_endpoint` reads the
 /// persisted grant) are unchanged from `install_native`/`net.rs`; this only bundles the bootstrap
 /// principal + the seed so a binary calls one function instead of re-implementing both.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn install_federation<L: Launcher>(
     node: &Node,
     launcher: &L,

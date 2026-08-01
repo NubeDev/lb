@@ -81,10 +81,18 @@ async fn publish_installs_and_loads_the_extension_callable() {
     let art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
 
     let caller = principal(ws, &[PUBLISH]);
-    ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect("a signed artifact publishes-and-installs");
+    ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect("a signed artifact publishes-and-installs");
 
     // The durable Install record exists (publish now installs).
     let rec = installed(&node, ws, "hello")
@@ -118,10 +126,18 @@ async fn publish_is_denied_without_the_grant_and_nothing_is_stored() {
     let art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk);
 
     let caller = principal(ws, &[]); // no ext.publish grant
-    let err = ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect_err("publish without the grant is denied");
+    let err = ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("publish without the grant is denied");
     assert!(matches!(err, ExtError::Denied));
     assert!(
         installed(&node, ws, "hello").await.unwrap().is_none(),
@@ -138,10 +154,18 @@ async fn publish_rejects_a_tampered_artifact_even_with_the_grant() {
     art.wasm.extend_from_slice(b"\x00tamper"); // digest no longer matches the signature
 
     let caller = principal(ws, &[PUBLISH]); // fully granted, still refused — the gates are independent
-    let err = ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect_err("a tampered artifact is refused");
+    let err = ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("a tampered artifact is refused");
     assert!(matches!(err, ExtError::Unverified));
     assert!(
         installed(&node, ws, "hello").await.unwrap().is_none(),
@@ -168,10 +192,18 @@ async fn publish_rejects_an_artifact_whose_version_disagrees_with_its_manifest()
     art.version = "9.9.9".into();
 
     let caller = principal(ws, &[PUBLISH]); // fully granted; refused on coherence, not authority
-    let err = ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect_err("an artifact that contradicts its manifest is refused");
+    let err = ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("an artifact that contradicts its manifest is refused");
     assert!(
         matches!(&err, ExtError::Manifest(m) if m.contains("disagrees with its manifest")),
         "the error names the real fault, got {err:?}"
@@ -193,10 +225,18 @@ async fn publish_rejects_an_artifact_whose_ext_id_disagrees_with_its_manifest() 
     art.ext_id = "not-hello".into(); // the manifest declares `hello`; signature still valid
 
     let caller = principal(ws, &[PUBLISH]);
-    let err = ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect_err("an artifact whose ext_id contradicts its manifest is refused");
+    let err = ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect_err("an artifact whose ext_id contradicts its manifest is refused");
     assert!(
         matches!(&err, ExtError::Manifest(m) if m.contains("disagrees with its manifest")),
         "the error names the real fault, got {err:?}"
@@ -217,10 +257,18 @@ async fn a_coherent_artifact_still_publishes() {
     let art = sign(MANIFEST_V2, &hello_v2(), &kid, &sk); // ext_id/version match the manifest
 
     let caller = principal(ws, &[PUBLISH]);
-    ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect("a coherent artifact publishes");
+    ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect("a coherent artifact publishes");
     assert!(
         installed(&node, ws, "hello").await.unwrap().is_some(),
         "the honest path is untouched by the coherence gate"
@@ -257,10 +305,18 @@ async fn publishing_identical_bytes_twice_caches_the_artifact_once() {
     .await
     .expect("first publish");
     // Byte-identical re-publish (same signed artifact) — the guard must skip the payload re-write.
-    ext_publish(&node, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 2)
-        .await
-        .expect("re-publishing the same bytes is a no-op success");
+    ext_publish(
+        &node,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        2,
+    )
+    .await
+    .expect("re-publishing the same bytes is a no-op success");
 
     // Exactly one cached row for the digest — the second publish did not append a duplicate.
     let rows = lb_store::list(&node.store, ws, "registry_cache", "digest_hex", &digest)
@@ -320,10 +376,18 @@ async fn published_extension_survives_a_restart_via_load_enabled() {
     // --- first boot: publish (installs + loads + caches the verified bytes) ---
     let node1 = boot_on_path(&path).await;
     let caller = principal(ws, &[PUBLISH]);
-    ext_publish(&node1, &caller, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect("publish on first boot");
+    ext_publish(
+        &node1,
+        &caller,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect("publish on first boot");
     drop(node1); // release the store handle before re-opening the same path
 
     // --- second boot: a FRESH runtime on the SAME store. load_enabled re-loads from the cache. ---
@@ -367,10 +431,18 @@ async fn a_disabled_install_is_not_brought_back_by_load_enabled() {
 
     let node1 = boot_on_path(&path).await;
     let admin = principal(ws, &[PUBLISH, "mcp:ext.disable:call"]);
-    ext_publish(&node1, &admin, ws, art, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect("publish");
+    ext_publish(
+        &node1,
+        &admin,
+        ws,
+        art,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect("publish");
     ext_disable(&node1, &admin, ws, "hello", 2)
         .await
         .expect("disable the durable intent");
@@ -407,7 +479,10 @@ async fn a_disabled_install_is_not_brought_back_by_load_enabled() {
 fn foreign_key_setup(seed: u8) -> (Artifact, TrustedKeys) {
     let (kid, sk, _own_trust) = publisher(seed);
     let (_other_id, _other_sk, someone_elses_trust) = publisher(seed.wrapping_add(1));
-    (sign(MANIFEST_V2, &hello_v2(), &kid, &sk), someone_elses_trust)
+    (
+        sign(MANIFEST_V2, &hello_v2(), &kid, &sk),
+        someone_elses_trust,
+    )
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

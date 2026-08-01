@@ -74,7 +74,7 @@ fn set_segs(cur: &mut Value, segs: &[&str], val: Value) {
     if rest.is_empty() {
         match cur {
             Value::Array(a) => {
-                if let Some(i) = head.parse::<usize>().ok() {
+                if let Ok(i) = head.parse::<usize>() {
                     if let Some(slot) = a.get_mut(i) {
                         *slot = val;
                     }
@@ -123,7 +123,7 @@ fn delete_segs(cur: &mut Value, segs: &[&str]) {
                 m.remove(*head);
             }
             Value::Array(a) => {
-                if let Some(i) = head.parse::<usize>().ok() {
+                if let Ok(i) = head.parse::<usize>() {
                     if i < a.len() {
                         a.remove(i);
                     }

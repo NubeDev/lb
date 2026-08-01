@@ -163,10 +163,8 @@ fn field_of(map: &Map, field: &str) -> Dynamic {
 fn num(d: &Dynamic) -> Option<f64> {
     if let Ok(i) = d.as_int() {
         Some(i as f64)
-    } else if let Ok(f) = d.as_float() {
-        Some(f)
     } else {
-        None
+        d.as_float().ok()
     }
 }
 

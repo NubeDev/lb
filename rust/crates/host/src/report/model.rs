@@ -26,19 +26,15 @@ pub const MAX_BLOCKS: usize = 200;
 /// same gate-3 read check applies unchanged).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Visibility {
     /// Owner only.
+    #[default]
     Private,
     /// Shared to a team via the `share` edge (read by team members).
     Team,
     /// Any workspace member with the read cap.
     Workspace,
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Private
-    }
 }
 
 /// One ordered block in a report — a tagged union over the three kinds (`kind` names it). Every

@@ -4,10 +4,10 @@
 //!
 //! The injected env (`LB_EXT_WS`/`LB_EXT_ID`/`LB_EXT_TOKEN`/`LB_GATEWAY_URL`) is the child's identity
 //! + callback address: a token minted carrying exactly `granted = requested ∩ admin_approved` (the
-//! same intersection the wasm tier grants), so a compromised child is bounded by its scoped key — it
-//! can do nothing the grant forbids when it calls back through the routed MCP namespace
-//! (`POST /mcp/call`). The token is per-spawn and never logged or stored (it lives only in the
-//! child's env).
+//!   same intersection the wasm tier grants), so a compromised child is bounded by its scoped key — it
+//!   can do nothing the grant forbids when it calls back through the routed MCP namespace
+//!   (`POST /mcp/call`). The token is per-spawn and never logged or stored (it lives only in the
+//!   child's env).
 //!
 //! **native-callback-transport scope:** the token is minted with the **node's signing key** (passed
 //! in), NOT a throwaway — so the gateway can VERIFY it on the callback (`session::authenticate`),

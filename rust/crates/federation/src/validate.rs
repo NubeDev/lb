@@ -296,10 +296,9 @@ mod tests {
     /// "Expected: (, found: MATERIALIZED" (crash-looped the PDNSW federation sidecar).
     #[test]
     fn cte_materialized_hint_allowed() {
-        let v = validate_select(
-            "WITH cte AS MATERIALIZED (SELECT a FROM readings) SELECT * FROM cte",
-        )
-        .unwrap();
+        let v =
+            validate_select("WITH cte AS MATERIALIZED (SELECT a FROM readings) SELECT * FROM cte")
+                .unwrap();
         assert!(v.tables.contains(&"readings".to_string()));
 
         let v = validate_select(

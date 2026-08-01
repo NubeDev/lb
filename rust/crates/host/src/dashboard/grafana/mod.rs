@@ -7,7 +7,7 @@
 //!   **bind** (commit only: a remapped target → an EXECUTABLE one — the `tool` + arg names our verbs
 //!   read; without it a panel imports clean and renders blank) → **report** (datasource-remap prompts
 //!   + a degraded list). Two phases: a preview (no `mappings` → report only, no write) and a commit
-//!   (`mappings` → UPSERT via `dashboard.save`).
+//!     (`mappings` → UPSERT via `dashboard.save`).
 //! - [`dashboard_export`] — the inverse `cell→grafana` map, re-emitting each cell's bounded `_grafana`
 //!   passthrough so unknown Grafana fields survive a round-trip.
 //!

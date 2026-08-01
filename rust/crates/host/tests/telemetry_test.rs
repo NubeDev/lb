@@ -163,6 +163,8 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
 /// Emit a dispatch event through the REAL Layer collection path, then AWAIT the real capped write +
 /// tail publish — deterministic (the production Layer fire-and-forgets the write; here we await it so
 /// a following read sees the row without racing a spawn).
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 fn emit(
     ws: &str,
     tool: &str,

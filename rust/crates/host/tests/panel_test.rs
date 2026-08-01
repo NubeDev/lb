@@ -511,11 +511,11 @@ async fn delete_refused_while_in_use_unless_forced() {
         ws,
         &[SAVE, GET, DELETE, USAGE, DASH_SAVE, DASH_GET],
     );
-    panel_save(&store, &ada, ws, "cooler", "Cooler", series_spec(), 1)
+    panel_save(store, &ada, ws, "cooler", "Cooler", series_spec(), 1)
         .await
         .unwrap();
     lb_host::dashboard_save(
-        &store,
+        store,
         &ada,
         ws,
         "ops",
@@ -528,29 +528,29 @@ async fn delete_refused_while_in_use_unless_forced() {
     .unwrap();
 
     // usage reports the referencing dashboard.
-    let usage = panel_usage(&store, &ada, ws, "cooler").await.unwrap();
+    let usage = panel_usage(store, &ada, ws, "cooler").await.unwrap();
     assert_eq!(usage.len(), 1);
     assert_eq!(usage[0].dashboard, "ops");
     assert_eq!(usage[0].cells, 1);
 
     // delete-in-use refused with the usage list.
-    match panel_delete(&store, &ada, ws, "cooler", false, 3).await {
+    match panel_delete(store, &ada, ws, "cooler", false, 3).await {
         Err(PanelError::InUse(rows)) => assert_eq!(rows[0].dashboard, "ops"),
         other => panic!("expected InUse, got {other:?}"),
     }
 
     // force → tombstone; the ref cell now hydrates to the placeholder.
-    panel_delete(&store, &ada, ws, "cooler", true, 4)
+    panel_delete(store, &ada, ws, "cooler", true, 4)
         .await
         .unwrap();
-    let d = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
     assert!(d.cells[0].panel_missing);
 
     // re-saving the panel un-hides it (dashboard tombstone semantics) — the ref re-hydrates.
-    panel_save(&store, &ada, ws, "cooler", "Cooler", series_spec(), 5)
+    panel_save(store, &ada, ws, "cooler", "Cooler", series_spec(), 5)
         .await
         .unwrap();
-    let d = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
     assert!(
         !d.cells[0].panel_missing,
         "re-created panel re-hydrates the ref"

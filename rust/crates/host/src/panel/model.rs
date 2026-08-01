@@ -27,19 +27,15 @@ pub const SCHEMA_VERSION: u32 = 3;
 /// same gate-3 read check applies unchanged; library-panels scope, "How it fits").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Visibility {
     /// Owner only.
+    #[default]
     Private,
     /// Shared to a team via the `share` edge (read by team members).
     Team,
     /// Any workspace member with the read cap.
     Workspace,
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Private
-    }
 }
 
 /// The **non-layout half of a v3 `Cell`** — the reusable panel definition (library-panels scope). Every

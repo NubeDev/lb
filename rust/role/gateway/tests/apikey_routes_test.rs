@@ -184,7 +184,7 @@ async fn list_and_get_carry_no_hash_or_secret() {
         "get must not expose the hash or the secret"
     );
     assert!(
-        full["caps"].as_array().unwrap().len() > 0,
+        !full["caps"].as_array().unwrap().is_empty(),
         "get resolves caps"
     );
 }

@@ -410,7 +410,7 @@ fn add_fk_sql(fk: &DesignFk, name: &str, _kind: &str) -> String {
 
 /// Quote an identifier (table/column/constraint name). Double-quoted per SQL standard (Postgres
 /// + SQLite both accept). A name with an embedded `"` is rejected — caller-side the design record
-/// validates identifiers to `[a-zA-Z_][a-zA-Z0-9_]*`, so this is defense in depth.
+///   validates identifiers to `[a-zA-Z_][a-zA-Z0-9_]*`, so this is defense in depth.
 pub fn quote_ident(name: &str) -> String {
     if name.contains('"') {
         // A quote in an identifier is an injection vector; refuse rather than double it (the

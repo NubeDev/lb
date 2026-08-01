@@ -60,8 +60,8 @@ pub fn render(value: &Value, format: Format) -> CliResult<String> {
 ///   - an **`{ items: [...] }`** or **`{ rows: [...] }`** envelope → unwrap to the inner array (the
 ///     `inbox.list` shape: `{ items: [...] }`) then table it;
 ///   - anything else (a scalar, an array of scalars) → its pretty JSON, verbatim.
-/// This is the "shape what the server sends, do not assume a shape" discipline the scope's drift risk
-/// names: an unexpected shape degrades to readable JSON, never a panic and never an invented column.
+///     This is the "shape what the server sends, do not assume a shape" discipline the scope's drift risk
+///     names: an unexpected shape degrades to readable JSON, never a panic and never an invented column.
 pub fn table(value: &Value) -> String {
     // Unwrap the common list envelopes first (`{items|rows: [...]}`) — the typed `inbox list` returns
     // `{ items: [...] }`, and we table the items, not a one-row "items" cell.

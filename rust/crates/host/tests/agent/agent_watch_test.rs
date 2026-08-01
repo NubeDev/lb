@@ -1,7 +1,7 @@
 //! agent-run scope Part 3 — the live `agent.watch` feed: a watcher observes a run's `RunEvent`
 //! stream (snapshot-then-deltas), gated by `mcp:agent.watch:call`, workspace-walled. Real node + bus
 //! + store; the only stub is the model provider (MockProvider). Multi-thread flavor + unique ws ids
-//! (a node boots a Zenoh peer — carry-forward from S3).
+//!   (a node boots a Zenoh peer — carry-forward from S3).
 
 use std::sync::Arc;
 

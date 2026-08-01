@@ -151,8 +151,10 @@ mod tests {
 
     #[test]
     fn gateway_url_flag_over_default_config_over_flag() {
-        let mut config = Config::default();
-        config.gateway_url = Some("http://config:1".into());
+        let config = Config {
+            gateway_url: Some("http://config:1".into()),
+            ..Config::default()
+        };
         // config wins over the flag default fallback order? Precedence: env > flag > config > default.
         assert_eq!(
             resolve_gateway_url(Some("http://flag:2"), &config),

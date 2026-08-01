@@ -9,19 +9,19 @@
 //!   - `query_result` — `{ source, sql, columns, rows, chart, truncated }`, posted by the worker.
 //!   - `query_error`  — `{ source, sql, error }`, posted by the worker when the query fails.
 //!   - `agent`        — `{ goal, runtime?, job }`, posted by a member who wants to ask an agent
-//!                      (channels-agent scope). `runtime` selects the `AgentRuntime` (absent → the
-//!                      in-house default; a profile id → an external agent). `job` is the durable run
-//!                      id the UI mints so it can watch the run stream the instant the item lands.
+//!     (channels-agent scope). `runtime` selects the `AgentRuntime` (absent → the
+//!     in-house default; a profile id → an external agent). `job` is the durable run
+//!     id the UI mints so it can watch the run stream the instant the item lands.
 //!   - `agent_result` — `{ goal, runtime, job, answer, truncated }`, posted by the agent worker on
-//!                      completion — the durable final answer.
+//!     completion — the durable final answer.
 //!   - `agent_error`  — `{ goal, error }`, posted by the agent worker when the run can't start / fails
-//!                      (opaque on the deny/unknown-runtime path — no capability/existence leak).
+//!     (opaque on the deny/unknown-runtime path — no capability/existence leak).
 //!   - `rich_result`  — `{ v:2, view, source?, data?, options?, action?, tools }`, the render-envelope
-//!                      (channel rich responses scope). A worker posts a viewable response — a `view`
-//!                      (`table`/`chart`/`stat`/`switch`/`button`/`template`) over inline `data` and/or a
-//!                      `source` the viewer re-runs, with row-control `options` and a control `action`.
-//!                      `tools` is the tool set the response's bridge may forward (source + action tools).
-//!                      `v` is the envelope version, ALWAYS serialized (a reader keys upconversion on it).
+//!     (channel rich responses scope). A worker posts a viewable response — a `view`
+//!     (`table`/`chart`/`stat`/`switch`/`button`/`template`) over inline `data` and/or a
+//!     `source` the viewer re-runs, with row-control `options` and a control `action`.
+//!     `tools` is the tool set the response's bridge may forward (source + action tools).
+//!     `v` is the envelope version, ALWAYS serialized (a reader keys upconversion on it).
 //!
 //! The host NEVER parses chat text for commands — the UI builds these structured payloads and
 //! posts them; the worker reads the `kind` to decide what (if anything) to do.
@@ -48,6 +48,9 @@ pub const KIND_RICH_RESULT: &str = "rich_result";
 /// A parsed kind-tagged payload pulled out of an item `body`. Chat (no `kind`) is `None` upstream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+// Boxing a variant would change the public payload API for no runtime win (these are parsed once
+// per item, never held in bulk).
+#[allow(clippy::large_enum_variant)]
 pub enum ItemPayload {
     Query(QueryPayload),
     QueryResult(QueryResultPayload),

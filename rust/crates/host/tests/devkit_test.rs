@@ -89,6 +89,8 @@ async fn each_devkit_mcp_verb_denies_without_its_grant() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn build_refuses_path_outside_allow_root_before_job_record() {
     let _guard = env_lock().lock().unwrap();
     let node = Arc::new(Node::boot().await.unwrap());
@@ -112,6 +114,8 @@ async fn build_refuses_path_outside_allow_root_before_job_record() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn build_job_record_is_workspace_scoped() {
     let _guard = env_lock().lock().unwrap();
     let node = Arc::new(Node::boot().await.unwrap());

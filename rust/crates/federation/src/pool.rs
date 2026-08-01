@@ -113,12 +113,7 @@ pub async fn cached_connect(kind: &str, dsn: &str) -> Result<Arc<dyn Source>, So
     // Phase 2 — await the connect OUTSIDE the map lock. Racers on the same key share one connect;
     // a different key proceeds fully in parallel.
     let result = slot
-        .get_or_init(|| async {
-            connect(kind, dsn)
-                .await
-                .map(Arc::from)
-                .map_err(|e| e.to_string())
-        })
+        .get_or_init(|| async { connect(kind, dsn).await.map_err(|e| e.to_string()) })
         .await;
 
     match result {

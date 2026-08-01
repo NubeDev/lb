@@ -146,7 +146,7 @@ fn not_redeemable_error(invite: &raw::Invite, now: u64) -> InviteError {
     match invite.status {
         raw::InviteStatus::Accepted => InviteError::AlreadyAccepted,
         raw::InviteStatus::Revoked => InviteError::Revoked,
-        raw::InviteStatus::Expired | _ if invite.is_expired(now) => InviteError::Expired,
+        _ if invite.is_expired(now) => InviteError::Expired,
         _ => InviteError::NotFound,
     }
 }

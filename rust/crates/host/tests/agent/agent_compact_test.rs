@@ -167,6 +167,7 @@ fn nothing_droppable_returns_zero_not_a_mangled_seed() {
 /// HTTP, like `MockProvider`, with a capture hook the assertion needs.
 struct CapturingScript {
     script: Mutex<Vec<Result<AiResponse, ProviderFault>>>,
+    #[allow(clippy::type_complexity)]
     seen: Arc<Mutex<Vec<Vec<(String, String)>>>>,
 }
 

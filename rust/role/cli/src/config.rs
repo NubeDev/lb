@@ -143,8 +143,10 @@ mod tests {
     fn save_then_load_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config");
-        let mut cfg = Config::default();
-        cfg.gateway_url = Some("http://127.0.0.1:8080".into());
+        let mut cfg = Config {
+            gateway_url: Some("http://127.0.0.1:8080".into()),
+            ..Config::default()
+        };
         cfg.set_token("acme", "tok-acme");
         cfg.set_token("beta", "tok-beta");
         save_to(&cfg, &path).unwrap();

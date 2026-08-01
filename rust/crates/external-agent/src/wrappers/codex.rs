@@ -3,10 +3,10 @@
 //!   * **OpenAI Codex** (`codex`), and
 //!   * **Open Interpreter** (`interpreter`) — an Apache-2.0 Rust *fork of Codex* ("a coding agent for
 //!     low-cost models"), so its `exec --json` and ACP surfaces are Codex-shaped.
-//! This is the seam paying off: a structurally different *family* from vtcode, yet **one shim covers a
-//! whole family** and a new family member is just a new `AgentProfile` (different binary), not new code.
-//! Both are **FUTURE** integration targets — neither is driven against a real binary here yet; the
-//! reference, exercised agent is [`super::vtcode`].
+//!     This is the seam paying off: a structurally different *family* from vtcode, yet **one shim covers a
+//!     whole family** and a new family member is just a new `AgentProfile` (different binary), not new code.
+//!     Both are **FUTURE** integration targets — neither is driven against a real binary here yet; the
+//!     reference, exercised agent is [`super::vtcode`].
 //!
 //! **Schema is verified against real source** (`openinterpreter/codex-rs/exec/src/exec_events.rs`),
 //! unlike the earlier best-effort guess: codex emits top-level `ThreadEvent`s (`thread.started`,

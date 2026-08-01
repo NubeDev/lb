@@ -156,6 +156,7 @@ impl PriorSeries {
     }
 
     /// Which producer the historical rows came from (the filter/deadband anchors are per-producer).
+    #[allow(clippy::wrong_self_convention)] // builder setter, not a `from_*` converter
     pub fn from_producer(mut self, producer: &str) -> Self {
         self.producer = producer.to_string();
         self

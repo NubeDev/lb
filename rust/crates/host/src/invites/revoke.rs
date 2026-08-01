@@ -73,7 +73,7 @@ pub async fn invite_resend(
         format!("invite:{new_hash}"),
         super::create::EMAIL_TARGET,
         super::create::EMAIL_ACTION,
-        &effect_payload.to_string(),
+        effect_payload.to_string(),
         format!("invite:{new_hash}"),
         now,
     );

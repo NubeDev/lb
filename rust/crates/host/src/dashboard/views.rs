@@ -144,7 +144,7 @@ mod tests {
         for v in views {
             let id = v["id"].as_str().expect("view has a string id");
             assert!(seen.insert(id.to_string()), "duplicate view id: {id}");
-            if v["kind"] == Value::from("viz") {
+            if v["kind"] == "viz" {
                 let opts = v["options"].as_array().expect("viz view has options array");
                 assert!(!opts.is_empty(), "viz view {id} has an empty options list");
             }

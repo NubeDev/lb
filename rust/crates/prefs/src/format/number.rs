@@ -53,7 +53,7 @@ fn group_thousands(int_digits: &str, sep: &str) -> String {
     let n = bytes.len();
     let mut out = String::with_capacity(n + n / 3 * sep.len());
     for (idx, ch) in int_digits.chars().enumerate() {
-        if idx > 0 && (n - idx) % 3 == 0 {
+        if idx > 0 && (n - idx).is_multiple_of(3) {
             out.push_str(sep);
         }
         out.push(ch);

@@ -3,7 +3,7 @@
 //!   - `model`  — the [`AgentDecision`] record (`agent_decision:{job}:{tool_call}`) + its id.
 //!   - `store`  — `create_pending` (first-write reservation) + `flip_to_settled` (conditional bind).
 //!   - `open`   — the loop's Ask action: reserve + surface inbox + transcript `SuspensionOpened` +
-//!                `suspend` the job (durable-before-motion).
+//!     `suspend` the job (durable-before-motion).
 //!   - `settle` — the `agent.decide` core: first-settle bind + leave the job resumable.
 //!
 //! The decision record is **separate from `lb_inbox::Resolution` on purpose**: Resolution is

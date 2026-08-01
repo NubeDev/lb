@@ -34,6 +34,10 @@
 //! Attribution: the embedded-DataFusion + SQL-validator pattern is adapted from `rubix-cube`
 //! (its `spice_engine` wrapper over the `datafusion` crate + its SQL validator), MIT/Apache-2.0.
 
+// The modules below are ALSO compiled directly into the integration tests via `#[path]`, so a
+// symbol used only by the tests (or only by one binary path) reads as dead here.
+#![allow(dead_code)]
+
 mod delete;
 mod event;
 mod info_schema;

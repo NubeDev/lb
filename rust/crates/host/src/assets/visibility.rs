@@ -56,7 +56,7 @@ pub async fn may_read_doc(
     for subject in &subjects {
         if subject.starts_with(USER_PREFIX) {
             // A direct individual share — the subject IS the principal's full sub (`user:…`).
-            if subject == &principal.sub() {
+            if subject == principal.sub() {
                 return Ok(());
             }
             continue;
@@ -106,7 +106,7 @@ pub async fn may_read_asset(
     let subjects = list_related(store, ws, SHARE, &asset.id).await?;
     for subject in &subjects {
         if subject.starts_with(USER_PREFIX) {
-            if subject == &principal.sub() {
+            if subject == principal.sub() {
                 return Ok(());
             }
             continue;

@@ -887,7 +887,7 @@ async fn ladder_first_raise_posts_then_cooldown_holds_the_rest() {
         "10 raises in the cooldown produced at most a couple of posts, not 10 (got {})",
         ops.len()
     );
-    assert!(ops.len() >= 1, "the first raise broke through immediately");
+    assert!(!ops.is_empty(), "the first raise broke through immediately");
 }
 
 // --- scope-named: digest idempotency -----------------------------------------------------

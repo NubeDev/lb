@@ -25,6 +25,8 @@ pub const UNCONFIGURED_ANSWER: &str =
 pub struct UnconfiguredModel;
 
 impl ModelAccess for UnconfiguredModel {
+    // Explicit `impl Future` is load-bearing here (trait-object-safe, explicit lifetime capture).
+    #[allow(clippy::manual_async_fn)]
     fn turn(
         &self,
         _ws: &str,

@@ -273,7 +273,7 @@ async fn activating_the_persona_with_an_external_runtime_fails_with_a_named_erro
         Some("some-external"), // an external runtime
         Some(PERSONA),         // paired with the in-house-only persona
         &admin,
-        &admin.caps().to_vec(),
+        admin.caps(),
         ws,
         "job-rt",
         "build me an extension",
@@ -316,7 +316,7 @@ async fn the_persona_runs_fine_on_the_in_house_default_runtime() {
         None,
         Some(PERSONA),
         &admin,
-        &admin.caps().to_vec(),
+        admin.caps(),
         ws,
         "job-ih",
         "build me an extension",
@@ -401,7 +401,7 @@ use lb_jobs::{load as load_job, JobStatus};
 async fn a_real_scaffold_works_through_the_persona_devkit_surface() {
     // The persona advertises `devkit.scaffold`; an admin caller reaches the REAL devkit verb and a real
     // extension tree lands on disk. (Scaffold only — the cargo build is the heavy e2e test's concern.)
-    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let _node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "coding-e2e-scaffold";
     let admin = principal("user:ada", ws, &["mcp:devkit.scaffold:call"]);
 
@@ -476,7 +476,7 @@ async fn a_publish_proposed_under_the_persona_suspends_for_a_human_it_never_publ
         None, // in-house default (persona allows it)
         Some(PERSONA),
         &admin,
-        &admin.caps().to_vec(),
+        admin.caps(),
         ws,
         job_id,
         "publish the extension you built",

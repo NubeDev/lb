@@ -41,10 +41,10 @@ pub async fn validate_and_strip_refs(
         }
         let id = cell.panel_ref.trim_start_matches("panel:");
         // Owner shortcut: a raw read first; if it hits AND the saver owns the panel, treat as resolved.
-        let owner_owned = match super::store::read_panel(store, ws, id).await {
-            Ok(Some(p)) if !p.deleted && p.owner == principal.owner_sub() => true,
-            _ => false,
-        };
+        let owner_owned = matches!(
+            super::store::read_panel(store, ws, id).await,
+            Ok(Some(p)) if !p.deleted && p.owner == principal.owner_sub()
+        );
         if !owner_owned {
             // Non-owner (or missing): the ref must resolve for the saver right now (in-workspace,
             // readable, shared) — loud on failure.

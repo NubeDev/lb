@@ -198,20 +198,22 @@ mod tests {
         let ts = day_start + 7 * 3_600_000; // 07:00Z
 
         // 06:00 → phase 0 → the epoch grid, unchanged.
-        let on_grid = Some(Align {
+        let on_grid = Align {
             origin_ms: 6 * 3_600_000,
-        });
-        assert_eq!(on_grid.unwrap().phase(ninety_min), 0);
+        };
+        assert_eq!(on_grid.phase(ninety_min), 0);
+        let on_grid = Some(on_grid);
         assert_eq!(
             bucket_start(ts, ninety_min, on_grid),
             bucket_start(ts, ninety_min, None)
         );
 
         // 06:30 → phase 30 min. Boundaries run 00:30, 02:00, … 06:30, 08:00 → 07:00 floors to 06:30.
-        let shifted = Some(Align {
+        let shifted = Align {
             origin_ms: 6 * 3_600_000 + 30 * 60_000,
-        });
-        assert_eq!(shifted.unwrap().phase(ninety_min), 1_800_000);
+        };
+        assert_eq!(shifted.phase(ninety_min), 1_800_000);
+        let shifted = Some(shifted);
         assert_eq!(
             bucket_start(ts, ninety_min, shifted),
             day_start + 23_400_000

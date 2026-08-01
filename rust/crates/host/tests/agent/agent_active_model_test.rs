@@ -282,7 +282,7 @@ async fn the_in_house_loop_drives_the_picked_workspace_model() {
         None, // absent → the in-house default, which now rides the per-ws override
         None, // no per-invoke persona
         &ada,
-        &ada.caps().to_vec(),
+        ada.caps(),
         ws,
         "loop-1",
         "do the thing",

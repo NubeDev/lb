@@ -58,6 +58,8 @@ pub async fn call_native_tool(
 /// Dispatch tool `tool` of native extension `ext_id` to its live child, as `caller` in `ws`. Gated
 /// `mcp:native.call:call`. On a transport fault (the child died), restart-on-demand and retry once.
 /// Generic over the launcher (the seam tests inject a fake into and the real path uses `OsLauncher`).
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn call_sidecar<L: Launcher>(
     node: &Node,
     launcher: &L,

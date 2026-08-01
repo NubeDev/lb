@@ -19,7 +19,9 @@ use ed25519_dalek::{Signer, SigningKey as PublisherSigningKey};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{install_from_registry, installed, pull, Node, RegistryServiceError, Source};
 use lb_mcp::call;
-use lb_registry::{digest, digest_hex, Artifact, PublisherKey, TrustedKeys, Visibility};
+use lb_registry::{
+    digest, digest_hex, Artifact, Authenticity, PublisherKey, TrustedKeys, Visibility,
+};
 
 // --- manifests + wasm (the real components) ---------------------------------------------------
 
@@ -243,6 +245,7 @@ async fn pull_rejects_artifact_signed_by_untrusted_key() {
         "hello",
         "0.1.0",
         &workspace_trust,
+        Authenticity::Required,
         Visibility::Private,
         1,
     )

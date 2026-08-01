@@ -47,7 +47,7 @@ fn devkit_sign_produces_an_artifact_verify_artifact_accepts() {
 
     // The oracle: build the trusted-keys map from the dev key the sign just used, and verify. If the
     // digest or signature were off, this would reject — this asserts the round-trip the scope requires.
-    let loaded = lb_devkit::load_or_create_key(&lb_cli::sign::key_path()).unwrap();
+    let loaded = lb_devkit::load_or_create_key(lb_cli::sign::key_path()).unwrap();
     let publisher =
         PublisherKey::from_bytes(&loaded.signing_key.verifying_key().to_bytes()).unwrap();
     let mut trusted = TrustedKeys::new();
@@ -70,7 +70,7 @@ fn a_tampered_artifact_fails_verification() {
     // operator can tamper survives the registry gate).
     artifact.wasm.push(0xff);
 
-    let loaded = lb_devkit::load_or_create_key(&lb_cli::sign::key_path()).unwrap();
+    let loaded = lb_devkit::load_or_create_key(lb_cli::sign::key_path()).unwrap();
     let publisher =
         PublisherKey::from_bytes(&loaded.signing_key.verifying_key().to_bytes()).unwrap();
     let mut trusted = TrustedKeys::new();

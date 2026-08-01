@@ -26,7 +26,7 @@ pub async fn media_serve(
     variant: Option<&str>,
 ) -> Result<ServedMedia, MediaError> {
     // Capability gate: store:media/{id}:read
-    let req = Request::new(ws, Surface::Store, &format!("media/{id}"), Action::Read);
+    let req = Request::new(ws, Surface::Store, format!("media/{id}"), Action::Read);
     if matches!(check(principal, &req), Decision::Denied(_)) {
         return Err(MediaError::Denied);
     }
@@ -39,7 +39,7 @@ pub async fn media_serve(
         return Err(MediaError::NotReady);
     }
 
-    let etag = format!("\"{}\"", &media.checksum);
+    let etag = format!("\"{}\"", media.checksum);
 
     if let Some(vname) = variant {
         // Serve a variant.
@@ -55,7 +55,7 @@ pub async fn media_serve(
         Ok(ServedMedia {
             bytes: variant_bytes,
             mime,
-            etag: format!("\"{}-{vname}\"", &media.checksum),
+            etag: format!("\"{}-{vname}\"", media.checksum),
         })
     } else {
         // Serve the original.

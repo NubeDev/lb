@@ -3,8 +3,8 @@
 //! offline idempotent replay (composite-id upsert, LWW).
 
 use lb_prefs::{
-    get_user_prefs, get_workspace_prefs, resolve_chain, set_user_prefs, set_workspace_prefs,
-    DateStyle, Dimension, NumberFormat, Prefs, TimeStyle, Unit, UnitSystem, USER_PREFS_TABLE,
+    get_user_prefs, resolve_chain, set_user_prefs, set_workspace_prefs, DateStyle, Dimension,
+    NumberFormat, Prefs, TimeStyle, Unit, UnitSystem, USER_PREFS_TABLE,
 };
 use lb_store::Store;
 

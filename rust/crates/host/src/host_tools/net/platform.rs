@@ -44,9 +44,7 @@ pub fn interfaces() -> Vec<PlatformInterface> {
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
     for iface in &mut out {
-        iface
-            .addresses
-            .sort_by(|a, b| a.ip.to_string().cmp(&b.ip.to_string()));
+        iface.addresses.sort_by_key(|a| a.ip.to_string());
     }
     out
 }

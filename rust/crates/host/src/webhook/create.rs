@@ -117,6 +117,8 @@ pub async fn webhook_create(
 /// `bearer_key_id` cross-reference. The one-time `lbk_…` string is returned. The cache is unused
 /// here (`apikey_create` does not bust on success — it only stores + grants); it is threaded for
 /// symmetry with `revoke`/`rotate` (which DO bust).
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 async fn create_bearer(
     store: &Store,
     principal: &Principal,
@@ -170,6 +172,8 @@ async fn create_bearer(
 
 /// `signature` mode: generate the shared secret, store it in `lb-secrets` at `webhook/{id}`
 /// (Workspace visibility, host-mediate-readable), then persist the webhook row.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 async fn create_signature(
     store: &Store,
     principal: &Principal,

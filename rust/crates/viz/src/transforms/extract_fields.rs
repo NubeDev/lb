@@ -5,12 +5,12 @@
 //!     used as-is).
 //!   - `format: "kv"` — `key=value` pairs separated by `,`/space (Grafana's key-values grammar).
 //!   - `format: "auto"`/absent — JSON when the cell parses as an object, else kv.
-//! New columns appear in first-seen key order (alphabetical within one cell — `serde_json::Map`
-//! sorts keys; column ORDER is cosmetic, addressing is by name); a row without a key reads `Null`
-//! (ragged-honest).
-//! `replace: true` keeps ONLY the extracted fields (+ time fields when `keepTime: true`). A cell
-//! that parses to nothing contributes nothing (never an error). Grafana's `delimiter`/`regexp`
-//! formats are not ported (tranche bound — carried as an unknown format, source untouched).
+//!     New columns appear in first-seen key order (alphabetical within one cell — `serde_json::Map`
+//!     sorts keys; column ORDER is cosmetic, addressing is by name); a row without a key reads `Null`
+//!     (ragged-honest).
+//!     `replace: true` keeps ONLY the extracted fields (+ time fields when `keepTime: true`). A cell
+//!     that parses to nothing contributes nothing (never an error). Grafana's `delimiter`/`regexp`
+//!     formats are not ported (tranche bound — carried as an unknown format, source untouched).
 
 use serde_json::{Map, Value};
 

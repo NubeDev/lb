@@ -50,6 +50,8 @@ pub struct Restored {
     pub entity_rev: u64,
 }
 
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn versions_restore(
     node: &Arc<Node>,
     principal: &Principal,

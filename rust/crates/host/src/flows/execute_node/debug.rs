@@ -159,10 +159,10 @@ mod tests {
         let node = "admits";
         // limit 3 at t=0: three admitted, the rest suppressed (no flush yet — same window).
         for _ in 0..3 {
-            assert_eq!(governor(WS, FLOW, node, 0, 3).0, true);
+            assert!(governor(WS, FLOW, node, 0, 3).0);
         }
-        assert_eq!(governor(WS, FLOW, node, 0, 3).0, false);
-        assert_eq!(governor(WS, FLOW, node, 0, 3).0, false);
+        assert!(!governor(WS, FLOW, node, 0, 3).0);
+        assert!(!governor(WS, FLOW, node, 0, 3).0);
     }
 
     #[test]
@@ -173,7 +173,7 @@ mod tests {
             governor(WS, FLOW, node, 0, 2);
         }
         for _ in 0..3 {
-            assert_eq!(governor(WS, FLOW, node, 0, 2).0, false);
+            assert!(!governor(WS, FLOW, node, 0, 2).0);
         }
         // t=1100ms: new window — the 3 suppressed flush as a sentinel, then this msg admits.
         let (publish, flush) = governor(WS, FLOW, node, 1100, 2);
@@ -195,7 +195,7 @@ mod tests {
         for _ in 0..3 {
             governor(WS, FLOW, "indep-a", 0, 3);
         }
-        assert_eq!(governor(WS, FLOW, "indep-a", 0, 3).0, false, "A is full");
-        assert_eq!(governor(WS, FLOW, "indep-b", 0, 3).0, true, "B is fresh");
+        assert!(!governor(WS, FLOW, "indep-a", 0, 3).0, "A is full");
+        assert!(governor(WS, FLOW, "indep-b", 0, 3).0, "B is fresh");
     }
 }

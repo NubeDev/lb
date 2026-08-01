@@ -97,7 +97,7 @@ fn launcher() -> (FakeLauncher, Arc<AtomicU32>) {
 #[tokio::test]
 async fn handshake_then_call_and_health() {
     let (l, launches) = launcher();
-    let mut sc = Sidecar::spawn(Spec::new("fake"), &l).await.unwrap();
+    let sc = Sidecar::spawn(Spec::new("fake"), &l).await.unwrap();
     assert_eq!(launches.load(Ordering::SeqCst), 1, "spawned once");
 
     let out = sc.call("format", r#"{"x":1}"#).await.unwrap();

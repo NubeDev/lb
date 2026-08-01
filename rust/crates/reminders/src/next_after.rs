@@ -39,7 +39,7 @@ pub fn is_valid(schedule: &str) -> bool {
 fn secs_to_dt(secs: u64) -> DateTime<Utc> {
     // Logical seconds since the unix epoch → a UTC instant. `from_timestamp` returns `None` only
     // for out-of-range i64; clamp an absurd value to the epoch rather than panic.
-    DateTime::<Utc>::from_timestamp(secs as i64, 0).unwrap_or_else(DateTime::<Utc>::default)
+    DateTime::<Utc>::from_timestamp(secs as i64, 0).unwrap_or_default()
 }
 
 fn dt_to_secs(dt: DateTime<Utc>) -> u64 {

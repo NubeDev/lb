@@ -363,7 +363,7 @@ async fn run_default(node: &Arc<Node>, caller: &Principal, ws: &str, job: &str) 
         None, // absent runtime → the in-house default
         None, // no per-invoke persona
         caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         job,
         "remember boiler-1 runs hot",

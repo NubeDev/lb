@@ -9,7 +9,7 @@ pub const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /// Encode `bytes` as a Crockford base32 string with no padding.
 pub fn encode(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity((bytes.len() * 8 + 4) / 5);
+    let mut out = String::with_capacity((bytes.len() * 8).div_ceil(5));
     let mut buffer: u64 = 0;
     let mut bits: u32 = 0;
     for &byte in bytes {
@@ -37,10 +37,7 @@ pub fn is_valid(s: &str) -> bool {
 }
 
 fn is_symbol(b: u8) -> bool {
-    match b.to_ascii_uppercase() {
-        b'0'..=b'9' | b'A'..=b'T' | b'V'..=b'Z' => true,
-        _ => false,
-    }
+    matches!(b.to_ascii_uppercase(), b'0'..=b'9' | b'A'..=b'T' | b'V'..=b'Z')
 }
 
 #[cfg(test)]

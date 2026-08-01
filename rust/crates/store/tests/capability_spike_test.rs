@@ -8,7 +8,7 @@
 //! Classification (the scope's matrix):
 //!   - **LOAD-BEARING** — a ✗ is NO-GO for all of S9; the test FAILS so it can never be ignored.
 //!     (durability across restart, composite/array record IDs, RELATE edges w/ props,
-//!      namespace isolation on disk, multi-statement transactions)
+//!     namespace isolation on disk, multi-statement transactions)
 //!   - **DEGRADABLE** — a ✗ defers one capability to a follow-up; recorded as a documented `false`,
 //!     never a hard failure. (DEFINE BUCKET, SEARCH/BM25, HNSW vector, materialized views, LIVE)
 

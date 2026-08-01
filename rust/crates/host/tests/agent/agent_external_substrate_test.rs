@@ -114,7 +114,7 @@ async fn an_explicit_skill_body_reaches_an_external_runtime_goal() {
         Some("open-interpreter-default"),
         None,
         &caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         "job-ext",
         "a stat tile of open alerts",

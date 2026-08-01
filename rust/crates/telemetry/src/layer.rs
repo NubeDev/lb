@@ -113,7 +113,7 @@ impl SurrealCappedLayer {
             return true;
         }
         let n = self.counter.fetch_add(1, Ordering::Relaxed);
-        n % self.sample_every == 0
+        n.is_multiple_of(self.sample_every)
     }
 }
 

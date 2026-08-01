@@ -13,6 +13,8 @@
 mod authorize;
 mod derive;
 mod error;
+// `extract::extract` is the verb file; the parent is the module family (FILE-LAYOUT).
+#[allow(clippy::module_inception)]
 mod extract;
 mod ledger;
 mod model;

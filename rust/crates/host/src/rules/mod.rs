@@ -81,8 +81,8 @@ impl RuleModel for DisabledModel {
 ///   1. the workspace **configured** a model in `agent.config` (an `active_definition` OR a
 ///      `model_endpoint` — the catalog pick writes both; a bare endpoint selection sets the latter), and
 ///   2. the resolved model is a **real** provider ([`ErasedModel::is_configured`] — not the placeholder).
-/// Either missing → [`DisabledModel`]. The reads are workspace-scoped `agent.config` under the caller
-/// (the hard wall) on the already-authorized `rules.run` path — a host-internal read, not a new verb.
+///      Either missing → [`DisabledModel`]. The reads are workspace-scoped `agent.config` under the caller
+///      (the hard wall) on the already-authorized `rules.run` path — a host-internal read, not a new verb.
 async fn resolve_rule_model(
     node: &Arc<Node>,
     principal: &Principal,

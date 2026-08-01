@@ -108,7 +108,7 @@ fn trust_artifact_publisher(artifact: &Artifact) -> CliResult<TrustedKeys> {
     // names a `publisher_key_id`. For a local self-publish we cannot reconstruct the verifying key from
     // the artifact alone, so local publish reads the same dev key `lb devkit sign` wrote and trusts it.
     // The key material lives beside the CLI's config (the devkit default root).
-    let loaded = lb_devkit::load_or_create_key(&crate::sign::key_path())
+    let loaded = lb_devkit::load_or_create_key(crate::sign::key_path())
         .map_err(|e| CliError::Other(format!("load publisher key: {e}")))?;
     let publisher = PublisherKey::from_bytes(&loaded.signing_key.verifying_key().to_bytes())
         .map_err(|e| CliError::Other(format!("publisher key: {e}")))?;

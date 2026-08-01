@@ -28,6 +28,8 @@ use crate::boot::Node;
 /// column order; `rows[i]` is a column-aligned array. `key` (optional) names the conflict columns
 /// for an idempotent UPSERT (redelivery writes the same row once). Returns the sidecar's
 /// `{affected}` JSON value. The DSN is mediated host-side and never returned.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn federation_write<L: Launcher>(
     node: &Node,
     launcher: &L,

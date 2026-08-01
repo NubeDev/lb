@@ -31,7 +31,7 @@ impl From<IdentityWorkspace> for WorkspaceRow {
 /// of two states, distinguished by presence:
 ///   - **full session** — `token`, `principal`, `workspace`, `caps` set; `select_token` absent.
 ///   - **select needed (N>1)** — `select_token` set; `token`/`principal`/`workspace`/`caps` absent.
-/// `workspaces` (the roster) is present in BOTH so the client always learns the switcher list.
+///     `workspaces` (the roster) is present in BOTH so the client always learns the switcher list.
 #[derive(Debug, Serialize)]
 pub struct AuthReply {
     /// The full signed session token — present iff this is the full-session branch (1-workspace login,

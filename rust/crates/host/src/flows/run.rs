@@ -23,6 +23,8 @@ use super::save::flows_get_internal;
 pub const FLOW_RUN_KIND: &str = "flow-run";
 
 /// Start a manual run of flow `flow_id`. Returns the run id (the run is the durable job).
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn flows_run(
     node: &Arc<Node>,
     principal: &Principal,
@@ -58,6 +60,8 @@ pub async fn flows_run(
 /// blocking call (§6.1). This is what makes Stop and live-values work: the caller (the gateway) is
 /// freed before the run is terminal, so the canvas can poll/stream intermediate states and cancel
 /// mid-flight. A panicking drive marks the run `failed` (durable + observable), never a silent hang.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn flows_run_async(
     node: &Arc<Node>,
     principal: &Principal,
@@ -149,6 +153,8 @@ async fn drive_run_task(
 /// Create + drive a flow run to terminal completion. Used by `flows.run` and by a `subflow` node
 /// (Decision 11). The run pins `flow.version` into `flow_run` (Decision 1); drive is idempotent +
 /// resumable (the CAS claim makes a redelivered node a no-op). Returns the terminal status string.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_flow_to_completion(
     node: &Arc<Node>,
     principal: &Principal,

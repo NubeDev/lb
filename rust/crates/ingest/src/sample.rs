@@ -16,17 +16,12 @@ use serde_json::Value;
 /// (producer keeps a durable staging copy, pruned only after a commit ack; overflow → dead-letter).
 /// `BestEffort` is lossy by design (high-rate telemetry): overflow → drop-oldest, no per-sample ack,
 /// and the "never lost" promise does NOT apply.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Qos {
+    #[default]
     BestEffort,
     MustDeliver,
-}
-
-impl Default for Qos {
-    fn default() -> Self {
-        Qos::BestEffort
-    }
 }
 
 /// One data point. `payload` is **any SurrealDB-typed value** (scalar, nested object, array, or a

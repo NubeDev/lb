@@ -103,7 +103,7 @@ pub async fn notify_send(
     if to.is_empty() {
         return Err(NotifyError::BadInput("empty audience".into()));
     }
-    if title.is_empty() && catalog.as_ref().map_or(true, |c| c.title_key.is_empty()) {
+    if title.is_empty() && catalog.as_ref().is_none_or(|c| c.title_key.is_empty()) {
         return Err(NotifyError::BadInput(
             "either title or title_key is required".into(),
         ));
@@ -131,7 +131,7 @@ pub async fn notify_send(
         &effect_id,
         super::push_target::PUSH_TARGET,
         "notify",
-        &payload.to_string(),
+        payload.to_string(),
         &effect_id,
         now,
     );

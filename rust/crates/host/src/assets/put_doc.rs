@@ -23,6 +23,8 @@ use super::visibility::{DOCLINK, EMBED};
 /// Create or update doc `id` in workspace `ws` as `principal`. `owner` is forced to
 /// `principal.sub` (the caller owns what they create). `content_type` types the body;
 /// `tags` is the flat discovery list. Returns the stored doc.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn put_doc(
     store: &Store,
     principal: &Principal,

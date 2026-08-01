@@ -2,8 +2,8 @@
 //! Member-gated (`mcp:dbschema.delete:call`, workspace-first, covered by the author delete
 //! wildcard). Tombstones the record (the store has no delete verb; a tombstone keeps the id stable
 //! + idempotent, mirroring `datasource.remove`). The record's tables/columns are documentation —
-//! deleting it touches NO live database (a live schema is dropped via a future destructive-migrate
-//! verb, never here).
+//!   deleting it touches NO live database (a live schema is dropped via a future destructive-migrate
+//!   verb, never here).
 
 use lb_auth::Principal;
 

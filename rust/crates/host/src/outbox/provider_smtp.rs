@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn validate_refuses_a_transport_that_cannot_send() {
-        let mut config = SmtpTransportConfig {
+        let config = SmtpTransportConfig {
             host: "smtp.acme.com".into(),
             from_addr: "reports@acme.com".into(),
             secret_path: "mail/smtp-password".into(),

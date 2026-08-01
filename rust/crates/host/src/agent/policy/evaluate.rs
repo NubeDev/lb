@@ -56,6 +56,11 @@ fn rule_matches(rule: &Rule, tool: &str, args: &Value) -> bool {
 fn arg_equals(args: &Value, path: &str, equals: &str) -> bool {
     match args.get(path) {
         Some(Value::String(s)) => s == equals,
+        #[allow(clippy::cmp_owned)]
+        // NOT `v == equals`: a non-string scalar must compare by its JSON TEXT (`5` matches "5").
+        // `Value == &str` is false for every non-string variant, which silently turns a Deny rule
+        // into an Allow. (A clippy `cmp_owned` "fix" made exactly that mistake — regression test:
+        // `arg_equality_compares_non_string_scalars_by_json`.)
         Some(v) => v.to_string() == equals,
         None => false,
     }

@@ -10,12 +10,12 @@
 //! - **skipped by aggregations** — `mean([1, (), 3])` is `2.0`;
 //! - **preserved positionally as `()`** by windowed/sequence/normalize functions, whose outputs
 //!   have the input's length with a number or `()` in every slot.
-//! Numeric results are always `FLOAT`. `variance`/`std_dev`/`sem` (and `rolling_std`) are
-//! **sample** statistics (n-1 denominator). `percentile` uses linear interpolation. The two
-//! element-order verbs (`sample`/`shuffle`) pass elements through **verbatim** (they reorder, they
-//! don't compute) and take a **mandatory seed** — a deterministic in-crate PRNG, no `rand`, no
-//! ambient randomness. Undefined cases (empty input, mismatched lengths, zero variance, bad
-//! window/seed arguments) are clear author-facing errors, never silent numbers.
+//!   Numeric results are always `FLOAT`. `variance`/`std_dev`/`sem` (and `rolling_std`) are
+//!   **sample** statistics (n-1 denominator). `percentile` uses linear interpolation. The two
+//!   element-order verbs (`sample`/`shuffle`) pass elements through **verbatim** (they reorder, they
+//!   don't compute) and take a **mandatory seed** — a deterministic in-crate PRNG, no `rand`, no
+//!   ambient randomness. Undefined cases (empty input, mismatched lengths, zero variance, bad
+//!   window/seed arguments) are clear author-facing errors, never silent numbers.
 
 mod center;
 mod missing;

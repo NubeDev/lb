@@ -58,6 +58,8 @@ fn docker_image_ready() -> bool {
 /// Fallback selection (unit): `LB_DEVKIT_BUILDER` config picks the right `Toolchain`, defaulting
 /// to `process` when unset — the node's fast inner loop keeps working with no container runtime.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn builder_config_selects_process_by_default() {
     let _guard = env_lock();
     std::env::remove_var("LB_DEVKIT_BUILDER");
@@ -90,6 +92,8 @@ fn builder_config_container_flag_parses() {
 /// `ContainerToolchain` to an installable artifact, proving the trait swap is behavior-preserving.
 /// Skips (does not fail) if Docker or the pinned image isn't present on this box.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn container_toolchain_builds_same_artifact_as_process_toolchain() {
     let _guard = env_lock();
     if !docker_image_ready() {
@@ -125,6 +129,8 @@ async fn container_toolchain_builds_same_artifact_as_process_toolchain() {
 /// build succeeds or fails. Skips if Docker/the image aren't available. This is the regression
 /// test for a native extension's `exit 101` symptom (docs/debugging/extensions/).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn container_build_log_never_contains_the_git_token() {
     let _guard = env_lock();
     if !docker_image_ready() {
@@ -172,6 +178,8 @@ async fn container_build_log_never_contains_the_git_token() {
 /// Deny / failure paths: container mode selected but no runtime/image present fails with a clear
 /// message, not a panic or a cryptic spawn error.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn container_build_fails_clearly_when_image_is_missing() {
     let _guard = env_lock();
     let root = rust_extensions_root();

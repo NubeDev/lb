@@ -23,8 +23,10 @@ async fn login_persists_a_credential_a_later_command_loads_and_uses() {
     let reply = do_login(&reqwest::Client::new(), &gw.base_url, "user:ada", "acme")
         .await
         .unwrap();
-    let mut cfg = Config::default();
-    cfg.gateway_url = Some(gw.base_url.clone());
+    let mut cfg = Config {
+        gateway_url: Some(gw.base_url.clone()),
+        ..Config::default()
+    };
     cfg.set_token(&reply.workspace, reply.token.clone());
     save_to(&cfg, &cfg_path).unwrap();
 

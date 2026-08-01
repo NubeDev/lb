@@ -777,10 +777,7 @@ async fn json_parse_fails_the_node_on_invalid_json() {
     run_flow(&node, &p, "ws", "jbad", "jbad-1").await;
     let snap = runs_get(&node, &p, "ws", "jbad-1").await;
     assert_eq!(snap["status"], "failed");
-    assert_eq!(
-        step_output(&snap, "j").is_null() || step_output(&snap, "j") == &json!({}),
-        true
-    );
+    assert!(step_output(&snap, "j").is_null() || step_output(&snap, "j") == &json!({}));
     let step = snap["steps"]
         .as_array()
         .unwrap()

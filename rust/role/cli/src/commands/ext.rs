@@ -2,9 +2,9 @@
 //! scope). Two accepted inputs, so the whole curl+jq flow collapses to one command:
 //!   - a **signed artifact JSON file** (the output of `lb devkit sign … --out`) → published verbatim;
 //!   - an **extension name/dir** → signed on the fly (via `lb devkit sign`'s path) then published.
-//! Both end at the transport's [`ExtPublish::publish`], which POSTs `/extensions` (remote) or calls
-//! `lb_host::ext_publish` (local). The gateway verifies against ITS trusted keys (remote), so an
-//! operator cannot self-trust onto another node; local trusts the operator's own dev key.
+//!     Both end at the transport's [`ExtPublish::publish`], which POSTs `/extensions` (remote) or calls
+//!     `lb_host::ext_publish` (local). The gateway verifies against ITS trusted keys (remote), so an
+//!     operator cannot self-trust onto another node; local trusts the operator's own dev key.
 
 use lb_registry::Artifact;
 

@@ -180,8 +180,10 @@ pub async fn run_query_with(
     let validate_ms = t0.elapsed().as_millis() as u64;
 
     let bounded = tokio::time::timeout(timeout, async move {
-        let mut phases = QueryPhaseTimings::default();
-        phases.pool_cache = Some(pool_cache);
+        let mut phases = QueryPhaseTimings {
+            pool_cache: Some(pool_cache),
+            ..Default::default()
+        };
 
         let t0 = std::time::Instant::now();
         let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
@@ -532,6 +534,7 @@ pub fn table_meta_from_rows(rows: Vec<Value>) -> Vec<TableMeta> {
 
 // Provide the per-kind list query so each `Source` impl stays small and the catalog SQL lives in one
 // place. Returns `(sql, bindings)`.
+#[allow(clippy::type_complexity)]
 pub(crate) fn list_tables_plan(
     kind: &str,
 ) -> Result<(&'static str, Vec<(&'static str, &'static str)>), String> {
@@ -576,7 +579,7 @@ mod tests {
     //!      same" steer is gone; if a future provider upgrade brings the bug back, this fires.
     //!   3. The federation optimizer recognizes a single-source multi-table plan as ONE federated
     //!      scan node in the EXPLAIN output (structural — not a flaky timing assertion).
-    //! Plus the ROW_CAP remote-LIMIT clamp and the SELECT-only regression set.
+    //!      Plus the ROW_CAP remote-LIMIT clamp and the SELECT-only regression set.
 
     use super::*;
     use crate::source::{connect, Source};

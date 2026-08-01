@@ -31,18 +31,25 @@
 
 #![cfg(feature = "postgres")]
 
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/event.rs"]
 mod event;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/info_schema.rs"]
 mod info_schema;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/pool.rs"]
 mod pool;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/query.rs"]
 mod query;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/results.rs"]
 mod results;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/source/mod.rs"]
 mod source;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/validate.rs"]
 mod validate;
 

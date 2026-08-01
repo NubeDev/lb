@@ -46,7 +46,7 @@ async fn linked_edge_and_hub() -> (Node, Node) {
     };
     let endpoint = format!("tcp/127.0.0.1:{port}");
 
-    let hub_bus = Bus::peer_with(&[endpoint.clone()], &[])
+    let hub_bus = Bus::peer_with(std::slice::from_ref(&endpoint), &[])
         .await
         .expect("hub bus listens on the chosen endpoint");
     let hub = node_on_bus(hub_bus, NodeRole::Hub).await;

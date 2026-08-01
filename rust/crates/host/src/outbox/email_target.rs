@@ -324,7 +324,7 @@ mod tests {
             "invite:hash1",
             EMAIL_TARGET,
             "send_invite",
-            &payload.to_string(),
+            payload.to_string(),
             "invite:hash1",
             0,
         )

@@ -22,6 +22,8 @@ use crate::subscription::Subscription;
 /// post-raise ack state (ack suppresses non-breakthrough deliveries — notify scope). `kill_off`
 /// names owners whose per-member kill switch is off.
 // SCOPE: docs/scope/insights/insight-notify-scope.md §"The state machine" (Intent path)
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn apply_intents(
     store: &Store,
     ws: &str,

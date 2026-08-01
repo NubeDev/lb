@@ -126,6 +126,8 @@ async fn await_terminal(node: &Arc<HostNode>, p: &Principal, ws: &str, run_id: &
 }
 
 /// Save + run a one-node flow on a SHARED host node; return `(run status, node outcome, output)`.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 async fn run_one_on(
     node: &Arc<HostNode>,
     p: &Principal,

@@ -27,9 +27,9 @@ use super::retention_sweep::{should_sweep, sweep_retention};
 
 /// The caps the reactor's system principal needs to drive a flow run headless: the flows run surface
 /// + the store read/write the run-store + reconciler touch. Scoped per workspace (minted fresh for
-/// each ws each tick — the principal carries the ws, the hard wall). This is a NODE-internal actor
-/// (the reactor IS the node acting on its own durable flows), not a user; it is the same authority
-/// the cron/boot reactors always assumed they ran under.
+///   each ws each tick — the principal carries the ws, the hard wall). This is a NODE-internal actor
+///   (the reactor IS the node acting on its own durable flows), not a user; it is the same authority
+///   the cron/boot reactors always assumed they ran under.
 fn reactor_caps() -> Vec<String> {
     vec![
         "mcp:flows.run:call".into(),

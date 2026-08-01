@@ -21,6 +21,8 @@ pub fn max_bytes_for_mime(mime: &str) -> u64 {
 }
 
 /// Begin a new upload. Returns `{ id, chunk_size, chunks }`.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn media_upload_begin(
     store: &Store,
     principal: &Principal,

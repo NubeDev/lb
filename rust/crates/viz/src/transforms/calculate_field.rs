@@ -127,7 +127,7 @@ fn reduce_row_field(frame: &Frame, reduce: &Value, alias: Option<&str>) -> Field
 }
 
 fn index_field(frame: &Frame, alias: Option<&str>) -> Field {
-    let values: Vec<Value> = (0..frame.length).map(|i| Value::from(i)).collect();
+    let values: Vec<Value> = (0..frame.length).map(Value::from).collect();
     let name = alias
         .map(str::to_string)
         .filter(|s| !s.is_empty())

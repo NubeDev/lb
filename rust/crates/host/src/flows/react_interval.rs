@@ -203,6 +203,29 @@ fn next_slot_after(scheduled_ts: u64, period_secs: u64, now: u64) -> u64 {
     scheduled_ts + (elapsed / period + 1) * period
 }
 
+async fn persist_cursor(
+    node: &Arc<Node>,
+    ws: &str,
+    flow_id: &str,
+    node_id: &str,
+    period_secs: u64,
+    next_attempt_ts: u64,
+    flop: Option<bool>,
+) -> Result<(), FlowsError> {
+    let state = FlowTriggerState {
+        next_attempt_ts,
+        cron: None,
+        period_secs: Some(period_secs),
+        flop,
+        last_seq: None,
+        // Schedule-source fields are inert here (this reactor owns a different source kind).
+        ..Default::default()
+    };
+    write_cursor(&node.store, ws, flow_id, node_id, &state)
+        .await
+        .map_err(FlowsError::Internal)
+}
+
 #[cfg(test)]
 mod tests {
     use super::next_slot_after;
@@ -238,27 +261,4 @@ mod tests {
     fn zero_period_still_advances() {
         assert_eq!(next_slot_after(100, 0, 100), 101);
     }
-}
-
-async fn persist_cursor(
-    node: &Arc<Node>,
-    ws: &str,
-    flow_id: &str,
-    node_id: &str,
-    period_secs: u64,
-    next_attempt_ts: u64,
-    flop: Option<bool>,
-) -> Result<(), FlowsError> {
-    let state = FlowTriggerState {
-        next_attempt_ts,
-        cron: None,
-        period_secs: Some(period_secs),
-        flop,
-        last_seq: None,
-        // Schedule-source fields are inert here (this reactor owns a different source kind).
-        ..Default::default()
-    };
-    write_cursor(&node.store, ws, flow_id, node_id, &state)
-        .await
-        .map_err(FlowsError::Internal)
 }

@@ -110,7 +110,7 @@ fn media_status(e: &lb_host::MediaError) -> StatusCode {
     }
 }
 
-fn header_str<'a>(headers: &'a HeaderMap, name: header::HeaderName) -> Option<&'a str> {
+fn header_str(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
     headers.get(name).and_then(|v| v.to_str().ok())
 }
 

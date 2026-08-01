@@ -215,7 +215,7 @@ mod tests {
         let rows: Vec<Value> = (0..10).map(|_| json!({"v": big.clone()})).collect();
         let (_c, r, truncated) = cap_result(cols, rows);
         assert!(truncated);
-        assert!(serialized_size(&vec!["v".to_string()], &r) <= MAX_BYTES);
+        assert!(serialized_size(&["v".to_string()], &r) <= MAX_BYTES);
     }
 
     #[test]

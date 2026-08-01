@@ -1,7 +1,7 @@
 //! `panel.usage(id)` — "which dashboards reference this panel" (library-panels scope: the delete-safety
 //! + "where is this used" read, and the editor's "used on N dashboards" banner). Scans the workspace's
-//! dashboards for ref cells whose `panel_ref` points at `panel:{id}`, returning one [`PanelUsageRow`]
-//! per referencing dashboard (id/title/cell-count).
+//!   dashboards for ref cells whose `panel_ref` points at `panel:{id}`, returning one [`PanelUsageRow`]
+//!   per referencing dashboard (id/title/cell-count).
 //!
 //! Gate 3 applies: only dashboards the caller may **read** are counted (a caller never learns a
 //! dashboard exists that they cannot see — rule 5/6). Consistent with `dashboard.list`; `force`-delete

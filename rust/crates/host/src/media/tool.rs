@@ -29,34 +29,34 @@ pub async fn call_media_tool(
             let result =
                 media_upload_begin(store, principal, ws, mime, bytes, checksum, origin, now)
                     .await
-                    .map_err(|e| ToolError::from(e))?;
+                    .map_err(ToolError::from)?;
             Ok(result)
         }
         "media.upload_commit" => {
             let id = str_arg(input, "id")?;
             let result = media_upload_commit(store, principal, ws, id, now)
                 .await
-                .map_err(|e| ToolError::from(e))?;
+                .map_err(ToolError::from)?;
             Ok(result)
         }
         "media.get" => {
             let id = str_arg(input, "id")?;
             let media = media_get(store, principal, ws, id)
                 .await
-                .map_err(|e| ToolError::from(e))?;
+                .map_err(ToolError::from)?;
             Ok(json!({ "media": media }))
         }
         "media.list" => {
             let list = media_list(store, principal, ws)
                 .await
-                .map_err(|e| ToolError::from(e))?;
+                .map_err(ToolError::from)?;
             Ok(json!({ "media": list }))
         }
         "media.delete" => {
             let id = str_arg(input, "id")?;
             media_delete(store, principal, ws, id)
                 .await
-                .map_err(|e| ToolError::from(e))?;
+                .map_err(ToolError::from)?;
             Ok(json!({ "ok": true }))
         }
         _ => Err(ToolError::NotFound),

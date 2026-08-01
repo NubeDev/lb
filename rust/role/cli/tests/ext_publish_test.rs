@@ -39,7 +39,7 @@ fn stage_devkit_root(root: &Path) {
 /// The trusted-keys map for the CLI's dev publisher key (the gateway trusts exactly this, as
 /// `LB_TRUSTED_PUBKEYS` would).
 fn trusted_dev_key() -> TrustedKeys {
-    let loaded = lb_devkit::load_or_create_key(&lb_cli::sign::key_path()).unwrap();
+    let loaded = lb_devkit::load_or_create_key(lb_cli::sign::key_path()).unwrap();
     let publisher =
         PublisherKey::from_bytes(&loaded.signing_key.verifying_key().to_bytes()).unwrap();
     let mut trusted = TrustedKeys::new();
@@ -67,6 +67,8 @@ async fn spawn_trusting_gateway() -> (
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn ext_publish_signs_and_installs_over_the_real_gateway() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
@@ -105,6 +107,8 @@ async fn ext_publish_signs_and_installs_over_the_real_gateway() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn ext_publish_without_the_cap_is_denied_server_side() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();

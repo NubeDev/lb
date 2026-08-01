@@ -6,7 +6,7 @@
 //!     same-named fields from different frames stay distinguishable.
 //!   - `label`: the frame name lands as a label (`frameNameLabel`, default `"frame"`) instead.
 //!   - `drop`: names untouched.
-//! A frame with no `name` contributes its `refId` (else nothing to say — name untouched).
+//!     A frame with no `name` contributes its `refId` (else nothing to say — name untouched).
 
 use serde_json::Value;
 

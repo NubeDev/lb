@@ -7,10 +7,10 @@
 //! only tags a column named `time`.
 //!
 //! - `timeseries(rows, "ts")`            → normalize the named column to canonical epoch-ms, rename it
-//!                                         `time`, sort ascending. The frame builder tags the x-axis.
+//!   `time`, sort ascending. The frame builder tags the x-axis.
 //! - `timeseries(rows, "ts", ["v1"])`    → same, plus trim to `time` + the named value columns.
 //! - `wide(rows, "ts", "series","value")`→ long→wide pivot: one row per timestamp, one numeric column
-//!                                         per distinct `series` value (the multi-line shape).
+//!   per distinct `series` value (the multi-line shape).
 //! - `category(rows, "name", "value")`   → the bar/pie shape: one label column + one numeric column.
 //!
 //! Each returns plain rows, so `timeseries(query(…).records(), "ts")` as a rule's LAST line is a
@@ -148,7 +148,7 @@ pub(crate) fn to_epoch_ms(d: &Dynamic) -> Option<i64> {
     if let Ok(f) = d.as_float() {
         return Some(normalize_epoch(f as i64));
     }
-    if let Some(s) = d.clone().into_string().ok() {
+    if let Ok(s) = d.clone().into_string() {
         // Epoch given as a numeric string.
         if let Ok(i) = s.trim().parse::<i64>() {
             return Some(normalize_epoch(i));

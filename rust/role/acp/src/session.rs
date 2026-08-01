@@ -4,11 +4,11 @@
 //!   - `initialize`            → capability handshake.
 //!   - `session/new`           → start a durable run (a job id); reject client `mcpServers`/`cwd`.
 //!   - `session/prompt`        → drive a turn (start/resume — NOT a blocking final-answer call); the
-//!                               `RunEvent` projection (Part 3 watch) is streamed back as
-//!                               `session/update`s; the turn ends with a `StopReason`.
+//!     `RunEvent` projection (Part 3 watch) is streamed back as
+//!     `session/update`s; the turn ends with a `StopReason`.
 //!   - `session/request_permission` ← a `Suspended` event (Part 2) — issued mid-prompt; if the run
-//!                               suspends, the prompt ends with the "suspended" stop reason and the
-//!                               decision settles out-of-band.
+//!     suspends, the prompt ends with the "suspended" stop reason and the
+//!     decision settles out-of-band.
 //!   - `session/cancel`        → the Part-0 cancel hook.
 //!   - `session/load`/`resume` ← rehydrate from the Part-0 transcript (the snapshot replay).
 //!

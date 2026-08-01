@@ -9,10 +9,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use lb_rules::seam::{AiSeam, DataSeam, SchemaColumn, SourceKind};
-use lb_rules::{
-    AiCompletion, AiLimits, GridJson, Rule, RuleEngine, RuleError, RuleLimits, RuleRun,
-};
+use lb_rules::seam::{DataSeam, SchemaColumn, SourceKind};
+use lb_rules::{AiLimits, GridJson, Rule, RuleEngine, RuleError, RuleLimits, RuleRun};
 use support::ScriptedAi;
 
 /// A data seam that REFUSES any collect whose query mentions a blocked table — modelling the host's

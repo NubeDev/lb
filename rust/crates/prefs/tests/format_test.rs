@@ -29,6 +29,8 @@ fn number_separators_per_format() {
     );
 }
 
+// 3.14159 is test input, not an attempt to spell PI.
+#[allow(clippy::approx_constant)]
 #[test]
 fn number_max_frac_rounds() {
     let opts = NumberOpts { max_frac: Some(2) };

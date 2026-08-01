@@ -9,10 +9,11 @@
 use serde::{Deserialize, Serialize};
 
 /// How a burst within `window_ms` collapses to a single firing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CoalesceStrategy {
     /// Latest-wins within the window: fire with the last value seen when the window closes.
+    #[default]
     Latest,
     /// Fire on the first edge of the window, then suppress the rest (leading-edge).
     Leading,
@@ -20,12 +21,6 @@ pub enum CoalesceStrategy {
     Trailing,
     /// Fire at most once per `window_ms` (the first sample), dropping the rest.
     Sample,
-}
-
-impl Default for CoalesceStrategy {
-    fn default() -> Self {
-        Self::Latest
-    }
 }
 
 /// A coalesce window: a strategy + a duration in ms. `window_ms = 0` means "no coalescing" (one run

@@ -44,8 +44,8 @@ pub struct Rendered {
 ///   2. the built-in catalog for the resolved language,
 ///   3. the built-in `en` catalog,
 ///   4. the key literal itself.
-/// A message that fails to parse (should never happen for a builtin — lint guards that) also falls
-/// through to the next layer, so a bad tenant override can never break rendering.
+///      A message that fails to parse (should never happen for a builtin — lint guards that) also falls
+///      through to the next layer, so a bad tenant override can never break rendering.
 pub fn render(
     key: &str,
     args: &Value,

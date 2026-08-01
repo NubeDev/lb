@@ -2,7 +2,7 @@
 //! transformations scope, "Adopt Grafana's transformation model verbatim") so an imported dashboard's
 //! `transformations[]` is a pass-through, not a translation. One responsibility: the `Transformation`
 //! + `Matcher` shapes the pipeline reads (the per-id `options` stay opaque `Value`, parsed by each
-//! transformer file).
+//!   transformer file).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

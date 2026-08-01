@@ -33,19 +33,15 @@ pub const SCHEMA_VERSION: u32 = 3;
 /// A dashboard's visibility tier — the S4 asset-sharing tiers (dashboard scope, "Access").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Visibility {
     /// Owner only.
+    #[default]
     Private,
     /// Shared to a team via the `share` edge (read by team members).
     Team,
     /// Any workspace member with the read cap.
     Workspace,
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Private
-    }
 }
 
 /// A cell's data source, v2: ANY MCP tool call (read or write) in the install grant — not the

@@ -19,6 +19,8 @@ use std::net::SocketAddr;
 use lb_auth::SigningKey;
 use lb_role_gateway::Authenticity;
 
+use crate::store_env::{store_budget_bytes_from_env, store_open_unguarded_from_env};
+
 /// The default `POST /extensions` upload ceiling (extension-upload-limit fix): 384 MiB. Sized to the
 /// largest real native sidecar artifact observed (the ems modbus bundle ~317 MiB — a 6.2 MB release
 /// binary is ~50 MB once JSON-encoded, and a 317 MB embedder bundle is the current high-water mark)
@@ -281,6 +283,17 @@ pub struct BootConfig {
     /// `LB_STORE_MAX_BYTES` at the binary boundary — the one place `LB_*` is read.
     pub store_budget_bytes: Option<u64>,
 
+    /// Force the store open past the **boot memory guard** (`LB_STORE_OPEN_UNGUARDED=1`, parsed in
+    /// [`crate::store_env`]): `false` (default) ⇒ a log larger than available RAM is refused with
+    /// `StoreError::WontFit` and the binary exits nonzero rather than risking a machine-wide OOM
+    /// (#128). The *open* guard only — the compaction preconditions are not overridable.
+    pub store_open_unguarded: bool,
+
+    /// What that guard should treat as this machine's available RAM. `None` (default, and what the
+    /// binary always fills) ⇒ read `/proc/meminfo`. An embedder sets it when it knows a truer
+    /// ceiling (under a cgroup, `MemoryMax` is the node's real budget). Never read from env.
+    pub store_available_ram_bytes: Option<u64>,
+
     /// Advertise this node on the local network over **mDNS/DNS-SD** so peers can discover an
     /// endpoint to dial before they have a bus session (`lb-discovery`).
     ///
@@ -336,6 +349,11 @@ impl Default for BootConfig {
     fn default() -> Self {
         Self {
             store_path: None,
+            // The boot memory guard is ON by default for every embedder: it only ever fires on a
+            // store this machine provably cannot replay, and the failure it replaces is a
+            // machine-wide OOM (boot-memory-guard scope, issue #128).
+            store_open_unguarded: false,
+            store_available_ram_bytes: None,
             signing_key: SigningKey::generate(),
             workspace: "acme".into(),
             seed_user: Some("user:ada".into()),
@@ -473,6 +491,12 @@ impl BootConfig {
             // The node's store disk budget from `LB_STORE_MAX_BYTES` (bytes); unset/empty/
             // unparseable ⇒ `None` ⇒ today's flat 256 MiB advisory and no marks. Read only here.
             store_budget_bytes: store_budget_bytes_from_env(),
+            // The boot memory-guard override from `LB_STORE_OPEN_UNGUARDED` (exactly `1`);
+            // anything else warns and leaves the guard on. Read only here, at the binary boundary —
+            // the store crate reads no env and takes this as a parameter.
+            store_open_unguarded: store_open_unguarded_from_env(),
+            // The binary measures the machine (`/proc/meminfo`); only an embedder overrides it.
+            store_available_ram_bytes: None,
             // LAN discovery from `LB_DISCOVERY_*` — OFF unless `LB_DISCOVERY=1`, so the standalone
             // binary broadcasts nothing until an operator asks for it. Read only here.
             discovery,
@@ -548,21 +572,6 @@ fn gateway_mode_from_env() -> GatewayMode {
     }
 }
 
-/// Build the LAN-discovery advertisement from `LB_DISCOVERY_*`, or `None` to advertise nothing.
-///
-/// **Off unless `LB_DISCOVERY=1`.** A node broadcasting its existence on the local network is a
-/// posture change an operator must ask for; it must never arrive as a silent default on upgrade.
-///
-/// Requires a gateway: discovery advertises an endpoint to *dial*, and a headless node has none, so
-/// a headless node with `LB_DISCOVERY=1` warns and stays silent rather than advertising a port that
-/// refuses connections.
-///
-/// The id, name and machine id come from the SHARED identity (`LB_NODE_*`, see
-/// [`identity_from_env`]) rather than from discovery-specific vars, so the advertisement and
-/// `GET /node` cannot disagree about who this node is.
-/// - `LB_DISCOVERY_SERVICE_TYPE` — the DNS-SD type (default `_lb._tcp`); a product host sets its own.
-/// - `LB_DISCOVERY_FLEET` — an opaque grouping tag so unrelated fleets on one LAN ignore each other.
-///   Plaintext on the wire and trivially forged — it separates accidents, not adversaries.
 /// Build the node's durable identity from `LB_NODE_*` at the binary boundary.
 ///
 /// This is the standalone binary's answer to the gap `Node::node_id`'s docs describe: without it a
@@ -622,6 +631,21 @@ fn identity_from_env() -> Option<lb_discovery::NodeIdentity> {
     Some(identity)
 }
 
+/// Build the LAN-discovery advertisement from `LB_DISCOVERY_*`, or `None` to advertise nothing.
+///
+/// **Off unless `LB_DISCOVERY=1`.** A node broadcasting its existence on the local network is a
+/// posture change an operator must ask for; it must never arrive as a silent default on upgrade.
+///
+/// Requires a gateway: discovery advertises an endpoint to *dial*, and a headless node has none, so
+/// a headless node with `LB_DISCOVERY=1` warns and stays silent rather than advertising a port that
+/// refuses connections.
+///
+/// The id, name and machine id come from the SHARED identity (`LB_NODE_*`, see
+/// [`identity_from_env`]) rather than from discovery-specific vars, so the advertisement and
+/// `GET /node` cannot disagree about who this node is.
+/// - `LB_DISCOVERY_SERVICE_TYPE` — the DNS-SD type (default `_lb._tcp`); a product host sets its own.
+/// - `LB_DISCOVERY_FLEET` — an opaque grouping tag so unrelated fleets on one LAN ignore each other.
+///   Plaintext on the wire and trivially forged — it separates accidents, not adversaries.
 fn discovery_from_env(
     gateway: &GatewayMode,
     identity: Option<lb_discovery::NodeIdentity>,
@@ -680,24 +704,6 @@ fn max_extension_upload_bytes_from_env() -> u64 {
             DEFAULT_MAX_EXTENSION_UPLOAD_BYTES
         }),
         _ => DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
-    }
-}
-
-/// Parse `LB_STORE_MAX_BYTES` (a plain byte count) into the node's store disk budget
-/// (disk-budget scope, slice 1); unset/empty/unparseable ⇒ `None` ⇒ today's exact behaviour (the
-/// flat [`lb_host::LOG_ADVISORY_BYTES`] advisory, no marks — scope decisions 1 and 2). A malformed
-/// value warns and falls back rather than panicking (the "don't panic in boot config" posture,
-/// exactly as [`max_extension_upload_bytes_from_env`] does). Only this binary-boundary reader
-/// touches the env — the value rides `BootConfig` below the boot seam.
-fn store_budget_bytes_from_env() -> Option<u64> {
-    match std::env::var("LB_STORE_MAX_BYTES") {
-        Ok(v) if !v.trim().is_empty() => v.trim().parse().ok().or_else(|| {
-            eprintln!(
-                "bad LB_STORE_MAX_BYTES '{v}': not a byte count — running with no store disk budget"
-            );
-            None
-        }),
-        _ => None,
     }
 }
 

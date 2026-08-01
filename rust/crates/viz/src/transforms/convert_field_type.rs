@@ -9,7 +9,7 @@
 //!     `%Y-%m-%d %H:%M:%S` / `%Y-%m-%d`, read as UTC) → epoch-ms. Grafana's arbitrary
 //!     `dateFormat` (dayjs grammar) is NOT ported — an unparsable cell is `Null` (degrade); a
 //!     fixture demanding the dayjs grammar names a follow-up, per the tranche bound.
-//! An unknown `destinationType` or missing target field leaves the field untouched (carried).
+//!     An unknown `destinationType` or missing target field leaves the field untouched (carried).
 
 use serde_json::Value;
 

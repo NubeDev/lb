@@ -17,9 +17,46 @@ use surrealdb::Surreal;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-use crate::compact::{compact_log, CompactionRecord};
+use crate::boot_guard::open_would_not_fit;
+use crate::boot_pass::boot_compact;
+use crate::compact::CompactionRecord;
 
+/// How [`Store::open_with`] treats this machine's memory. Built from `default()` and mutated
+/// through the builder methods — the struct is `#[non_exhaustive]` so a future knob stays additive
+/// for every embedder.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct OpenOptions {
+    /// Disable the **open guard** only (never the compaction preconditions — skipping a pass is
+    /// always safe, so there is nothing to force). Filled at the binary boundary from
+    /// `LB_STORE_OPEN_UNGUARDED=1`; the store crate reads no env itself.
+    pub unguarded: bool,
+    /// Use this figure as the machine's available RAM instead of probing `/proc/meminfo`.
+    ///
+    /// For an embedder that measures its own budget (a cgroup limit is a truer ceiling than the
+    /// host's `MemAvailable`), and for tests, which pin the gigabyte-scale decisions by feeding the
+    /// real functions a real integer rather than seeding 617 MB.
+    pub available_ram_bytes: Option<u64>,
+}
+
+impl OpenOptions {
+    /// Turn the open guard off (`LB_STORE_OPEN_UNGUARDED=1`).
+    pub fn allow_unguarded(mut self, yes: bool) -> Self {
+        self.unguarded = yes;
+        self
+    }
+
+    /// Override the measured available RAM.
+    pub fn with_available_ram(mut self, bytes: Option<u64>) -> Self {
+        self.available_ram_bytes = bytes;
+        self
+    }
+}
+
+/// `#[non_exhaustive]` since the boot memory guard (issue #128) added [`StoreError::WontFit`]:
+/// embedders match with a `_` arm, and a future variant stays source-compatible.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum StoreError {
     #[error("store backend error: {0}")]
     Backend(String),
@@ -30,6 +67,25 @@ pub enum StoreError {
     /// first", not a backend failure.
     #[error("record already exists (first-write conflict)")]
     Conflict,
+    /// The commit log is too large for this machine's memory to replay: opening would build the
+    /// whole live-set index in RAM and, on the incident that motivated this guard, take the
+    /// **machine** down with the kernel's global OOM killer rather than just the node
+    /// (boot-memory-guard scope, issue #128). Refused before a byte is allocated.
+    ///
+    /// The message names both numbers and every remedy, because it is the entire diagnostic an
+    /// operator gets from `journalctl` on a box they may only just have got back.
+    #[error(
+        "store at {path} will not fit in memory: the commit log is {log_bytes} bytes and only \
+         {available_ram} bytes of RAM are available, so replaying it would likely OOM this \
+         machine. Refusing to open (this is a heuristic guard). Remedies: add RAM or swap; \
+         compact the store on a larger machine; lower retention so the next compaction shrinks \
+         the live set; or, if you know it fits, set LB_STORE_OPEN_UNGUARDED=1 to force the open."
+    )]
+    WontFit {
+        path: String,
+        log_bytes: u64,
+        available_ram: u64,
+    },
 }
 
 impl From<surrealdb::Error> for StoreError {
@@ -133,6 +189,10 @@ impl ScopedResponse {
     // The selector is an `impl ScopedIndex` ARGUMENT (a hidden generic), so `R` is the only turbofish
     // param — `take::<Vec<Foo>>(0)` binds the result type exactly as `Response::take::<Vec<Foo>>(0)`
     // does. The associated-type bound threads the shifted selector into SurrealDB's `QueryResult`.
+    // `surrealdb::Error` is ~144 bytes and is NOT ours to box: it is the type every one of the ~140
+    // `query_ws` callers already matches on, so wrapping it here would be an API break across the
+    // workspace to move bytes we do not own.
+    #[allow(clippy::result_large_err)]
     pub fn take<R: DeserializeOwned>(
         &mut self,
         index: impl ScopedIndex<Shifted: surrealdb::opt::QueryResult<R>>,
@@ -142,6 +202,7 @@ impl ScopedResponse {
 
     /// Surface any statement error. `query_ws` already `check`s internally, so this is a no-op that
     /// preserves the `…await?.check()?` caller idiom.
+    #[allow(clippy::result_large_err)] // see `take` above — the error type is surrealdb's.
     pub fn check(self) -> Result<Self, surrealdb::Error> {
         Ok(self)
     }
@@ -169,13 +230,72 @@ impl Store {
     /// The commit log is compacted first (see [`compact_log`]) — SurrealKV is append-only and
     /// replays every byte of the log at open, so a long-running node otherwise pays its whole
     /// write history on every boot (measured: a 1.5 GB log ≈ 13 s to open, live set ~2% of it).
+    /// The boot pass and the open guard both apply — see [`Store::open_with`], of which this is
+    /// the default-options form (the guard on, the machine measured).
     pub async fn open(path: &str) -> Result<Self, StoreError> {
+        Self::open_with(path, &OpenOptions::default()).await
+    }
+
+    /// Open a persistent store with the boot memory guards configured (boot-memory-guard scope,
+    /// issue #128). Three things happen, in this order:
+    ///
+    /// 1. Any pending `.merge/` is completed — **always**, before any decision (the P0 in
+    ///    `compact.rs`); skipping compaction must never mean skipping merge completion.
+    /// 2. The boot compaction pass runs **only if the machine can afford it and it is expected to
+    ///    pay** ([`crate::boot_compaction_skip`]). A skip is logged at warn with every number and
+    ///    surfaces in `store.status` as `last_compaction.skipped`.
+    /// 3. The open itself is **refused** with [`StoreError::WontFit`] when the (possibly
+    ///    uncompacted) log is larger than available RAM — unless `opts.unguarded`. `lb-node` turns
+    ///    that into a clean nonzero exit and never falls back to `mem://`: a silently-empty node
+    ///    serving a workspace that "lost" its data is strictly worse than a down node with a
+    ///    legible reason (scope decision 3).
+    ///
+    /// Both guards **fail open** on a machine whose memory cannot be measured (`/proc/meminfo`
+    /// absent or unreadable): today's behaviour, byte for byte.
+    pub async fn open_with(path: &str, opts: &OpenOptions) -> Result<Self, StoreError> {
+        let available_ram = opts
+            .available_ram_bytes
+            .or_else(crate::meminfo::available_ram_bytes);
         let owned = path.to_string();
-        // `compact()` is synchronous file I/O over the whole log — keep it off the async
-        // workers. Best-effort by design: a failed compaction only means a slower boot.
-        let boot_pass = tokio::task::spawn_blocking(move || compact_log(&owned))
-            .await
-            .ok();
+        // The pass is synchronous file I/O over the whole log — keep it off the async workers.
+        // Best-effort by design: a failed compaction only means a slower boot.
+        //
+        // The caller's `tracing` dispatcher is carried ONTO the blocking thread: a subscriber is
+        // thread-local unless it was installed globally, and the guard's whole contract is that its
+        // decision is loud. A warn line emitted on a pool thread that no subscriber is listening to
+        // is a silent skip — the exact failure mode this scope exists to remove.
+        let dispatch = tracing::dispatcher::get_default(|d| d.clone());
+        let boot_pass = tokio::task::spawn_blocking(move || {
+            tracing::dispatcher::with_default(&dispatch, || boot_compact(&owned, available_ram))
+        })
+        .await
+        .ok();
+
+        // Re-stat AFTER the pass: a productive pass is exactly what can bring a log back under the
+        // guard, and refusing on the pre-pass number would refuse a store that now fits.
+        let (log_bytes, _) = crate::status::log_stats(path);
+        if open_would_not_fit(log_bytes, available_ram) {
+            let available_ram = available_ram.unwrap_or(0);
+            if opts.unguarded {
+                tracing::warn!(
+                    path = %path,
+                    log_bytes,
+                    available_ram,
+                    "store: the commit log is larger than available RAM, but the open guard is \
+                     DISABLED (LB_STORE_OPEN_UNGUARDED=1) — attempting the open anyway; if this \
+                     machine OOMs, that is why"
+                );
+            } else {
+                let err = StoreError::WontFit {
+                    path: path.to_string(),
+                    log_bytes,
+                    available_ram,
+                };
+                tracing::error!(path = %path, log_bytes, available_ram, "{err}");
+                return Err(err);
+            }
+        }
+
         let db = Surreal::new::<SurrealKv>(path).await?;
         Ok(Self {
             handle: Arc::new(RwLock::new(db)),

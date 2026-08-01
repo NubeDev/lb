@@ -128,7 +128,8 @@ impl ScheduleEvaluator {
     }
 
     fn sort_by_priority(&mut self) {
-        self.schedules.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.schedules
+            .sort_by_key(|s| std::cmp::Reverse(s.priority));
     }
 }
 

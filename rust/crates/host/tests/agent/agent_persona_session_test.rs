@@ -43,6 +43,8 @@ const P_CREATE: &str = "mcp:agent.persona.create:call";
 const P_DELETE: &str = "mcp:agent.persona.delete:call";
 const CFG_SET: &str = "mcp:agent.config.set:call";
 const PREFS_SET: &str = "mcp:prefs.set:call";
+// Kept beside its siblings so a future case can grant it without re-deriving the cap string.
+#[allow(dead_code)]
 const PREFS_SET_DEFAULT: &str = "mcp:prefs.set_default:call";
 
 fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {

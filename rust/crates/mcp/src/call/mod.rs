@@ -96,6 +96,8 @@ pub async fn call_on_node(
 /// host MCP surface under the guest's delegated authority (host-callback scope). `None` (and any
 /// routed/remote target) means the guest gets no callback — a routed guest's identity would have to
 /// ride the wire (a separate scope), and a host-native verb carries no guest at all.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn call_with_ctx(
     registry: &Registry,
     bus: &Bus,

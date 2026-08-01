@@ -55,11 +55,7 @@ pub async fn run_migrate(
         }
     };
 
-    let statement_json: Vec<Value> = plan
-        .statements
-        .iter()
-        .map(|s| statement_to_json(s))
-        .collect();
+    let statement_json: Vec<Value> = plan.statements.iter().map(statement_to_json).collect();
 
     if dry_run {
         return Ok(json!({

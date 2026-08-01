@@ -204,7 +204,7 @@ fn create_action(input: &Value) -> Result<Action, ToolError> {
 ///   - `channel-post` → `channel`, `body`;
 ///   - `mcp-tool`     → `tool`, `args` (a JSON STRING is parsed to a `Value`, else passed through/Null);
 ///   - `outbox`       → `target`, `action_action` (the outbox action verb, renamed in the flat form to
-///                      avoid colliding with the nested `action` key), `payload`.
+///     avoid colliding with the nested `action` key), `payload`.
 fn action_from_flat(input: &Value) -> Result<Action, ToolError> {
     let kind = input
         .get("action_kind")
@@ -355,7 +355,7 @@ fn opt_u32(input: &Value, key: &str) -> Result<Option<u32>, ToolError> {
         None | Some(Value::Null) => Ok(None),
         Some(v) => Ok(Some(
             v.as_u64()
-                .ok_or_else(|| ToolError::BadInput(format!("{key} must be a number").into()))?
+                .ok_or_else(|| ToolError::BadInput(format!("{key} must be a number")))?
                 as u32,
         )),
     }

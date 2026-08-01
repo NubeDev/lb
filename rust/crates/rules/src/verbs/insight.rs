@@ -35,7 +35,7 @@ use crate::verbs::inbox::{map_str, map_to_json, seam_err};
 
 /// The `insight` scope value — the messaging seam + the shared write meter + the run's logical clock
 /// + the run's `route` flag + the run's origin ref (the rule's id/name, stamped into `Origin.ref`).
-/// The collectors ride along so a `route:false` skip is a visible cage log line, not a silent drop.
+///   The collectors ride along so a `route:false` skip is a visible cage log line, not a silent drop.
 #[derive(Clone)]
 pub struct InsightHandle {
     seam: Arc<dyn MessagingSeam>,

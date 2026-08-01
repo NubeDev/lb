@@ -27,6 +27,8 @@ const DEFAULT_ROWS: u64 = 10;
 /// Snapshot `source` in `ws` as `caller`. `tables` filters to the named tables when present;
 /// `limit` rows per table, clamped to 1..=50 (default 10). Returns the sidecar's JSON snapshot
 /// (`{tables:[…], relationships:[…], truncated}`). The DSN is mediated host-side, never returned.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn federation_sample<L: Launcher>(
     node: &Node,
     launcher: &L,

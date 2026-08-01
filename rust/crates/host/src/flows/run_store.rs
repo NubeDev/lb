@@ -290,6 +290,8 @@ pub async fn park_step(
 /// (flow-plain-wiring-scope — every port defaults to `any`). Each in-subgraph dependent `D` wired
 /// from `finished` goes through [`release_one_dependent`] (the ONE policy-aware release seam — the
 /// `switch` matched-release path uses it too, so a matched release can never bypass the policy).
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn release_dependents(
     store: &Store,
     ws: &str,
@@ -703,6 +705,8 @@ pub struct ResolvedInputs {
 /// under universal `any` (the recorded map used to hold only the arriving upstream — a silent-null
 /// regression this widening prevents); a genuine cross-branch settle never matches (and is a save
 /// lint). Empty `fctx` everywhere ⇒ byte-for-byte the pre-ports resolution.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn resolve_node_bindings(
     store: &Store,
     ws: &str,

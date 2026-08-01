@@ -180,9 +180,9 @@ pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
 ///   read grant its verb re-checks; curating which nav you use is part of resolving your own menu.
 /// - `nav.set_default` — nav scope: the workspace-default pointer is an authoring action — it gates
 ///   on the `mcp:nav.save:call` grant that creates the navs it points at. Re-checked inside.
-/// The capability name the dispatcher's gate will ACTUALLY check for `qualified_tool`, across both
-/// tiers — a host-native verb resolves through the [`gate_tool_for`] alias table, while an
-/// `<ext>.<tool>` is gated on its own qualified name by `lb_mcp`'s `authorize`.
+///   The capability name the dispatcher's gate will ACTUALLY check for `qualified_tool`, across both
+///   tiers — a host-native verb resolves through the [`gate_tool_for`] alias table, while an
+///   `<ext>.<tool>` is gated on its own qualified name by `lb_mcp`'s `authorize`.
 ///
 /// It exists so the stale-grant repair asks the gate's own question rather than a near-miss of it.
 /// Getting this wrong is silent in the worst way: ask about the wrong cap and the repair either
@@ -356,6 +356,8 @@ fn now_ts() -> u64 {
 /// Emit the redacted dispatch decision through the telemetry layer. The outcome is derived from the
 /// call's result (`Denied` → deny, other error → error, ok → allow); the level tracks severity. The
 /// raw params NEVER reach the event — `record_dispatch` digests them.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 fn emit_dispatch_decision(
     result: &Result<String, ToolError>,
     principal: &Principal,
@@ -984,10 +986,10 @@ fn role_wire(role: lb_auth::Role) -> &'static str {
 ///   - **writes that PRODUCE motion** (proof-workflow-sim scope): `inbox.record` (create an item),
 ///     `outbox.enqueue` (stage a pending effect) — so a guest can drive a full inbox→approval→outbox
 ///     round-trip, not just read one something else seeded.
-/// Each host verb re-authorizes internally (workspace-first, then `mcp:<verb>:call`); a denial is
-/// opaque (`ToolError::Denied`), indistinguishable from a missing tool. Both `inbox.record`'s author
-/// and `inbox.resolve`'s actor are forced to the principal's `sub` — never caller-supplied (a guest
-/// cannot forge another source's authorship/sign-off).
+///     Each host verb re-authorizes internally (workspace-first, then `mcp:<verb>:call`); a denial is
+///     opaque (`ToolError::Denied`), indistinguishable from a missing tool. Both `inbox.record`'s author
+///     and `inbox.resolve`'s actor are forced to the principal's `sub` — never caller-supplied (a guest
+///     cannot forge another source's authorship/sign-off).
 async fn call_inbox_outbox_tool(
     node: &Node,
     principal: &Principal,

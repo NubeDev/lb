@@ -39,6 +39,8 @@ pub struct Supervised {
 ///
 /// Authorization (`mcp:native.install:call`, workspace-first) runs FIRST — a caller without the
 /// grant is refused before any record is written or any process is spawned (the deny path).
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn install_native<L: Launcher>(
     node: &Node,
     launcher: &L,
@@ -197,6 +199,14 @@ fn carry_runtime_net_grants(mut granted: Vec<String>, prior: Option<Install>) ->
     granted
 }
 
+/// Stop a running sidecar for `(ws, ext_id)` if present (a cooperative shutdown). Used by a
+/// re-install to replace the child in place. No-op if nothing is running here.
+pub(crate) async fn stop_if_running(node: &Node, ws: &str, ext_id: &str) {
+    if let Some(handle) = node.sidecars.remove(ws, ext_id) {
+        handle.lock().await.shutdown().await;
+    }
+}
+
 #[cfg(test)]
 mod carry_grant_tests {
     use super::*;
@@ -245,13 +255,5 @@ mod carry_grant_tests {
     fn no_prior_install_is_a_passthrough() {
         let out = carry_runtime_net_grants(vec!["net:tls:h:1:connect".into()], None);
         assert_eq!(out, vec!["net:tls:h:1:connect".to_string()]);
-    }
-}
-
-/// Stop a running sidecar for `(ws, ext_id)` if present (a cooperative shutdown). Used by a
-/// re-install to replace the child in place. No-op if nothing is running here.
-pub(crate) async fn stop_if_running(node: &Node, ws: &str, ext_id: &str) {
-    if let Some(handle) = node.sidecars.remove(ws, ext_id) {
-        handle.lock().await.shutdown().await;
     }
 }

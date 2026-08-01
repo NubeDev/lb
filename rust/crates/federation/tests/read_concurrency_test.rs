@@ -27,18 +27,25 @@ use std::time::Instant;
 
 // The crate is a binary, so the test binary composes the modules it needs directly (same pattern as
 // `pool_cache_test.rs`).
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/event.rs"]
 mod event;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/info_schema.rs"]
 mod info_schema;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/pool.rs"]
 mod pool;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/query.rs"]
 mod query;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/results.rs"]
 mod results;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/source/mod.rs"]
 mod source;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/validate.rs"]
 mod validate;
 
@@ -89,10 +96,7 @@ const SCAN_SQL: &str = "SELECT SUM(value) AS total FROM reading";
 /// over the same slots, so this measures the serialization the scope removes without dragging a
 /// DataFusion `SessionContext` into the timing.
 async fn scan(src: &Arc<SqliteSource>) -> f64 {
-    let batches = src
-        .query_direct(SCAN_SQL)
-        .await
-        .expect("scan must succeed");
+    let batches = src.query_direct(SCAN_SQL).await.expect("scan must succeed");
     let b = batches.first().expect("one batch");
     let col = b.column(0);
     let arr = col

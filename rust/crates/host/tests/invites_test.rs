@@ -5,9 +5,7 @@
 //! no mocks (rule 9). The email target is the one sanctioned fake (RecordingEmailProvider).
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{
-    call_invite_tool, invite_accept, invite_create, invite_list, InviteError, EMAIL_TARGET,
-};
+use lb_host::{call_invite_tool, invite_accept, invite_create, invite_list, InviteError};
 use lb_store::Store;
 use serde_json::json;
 

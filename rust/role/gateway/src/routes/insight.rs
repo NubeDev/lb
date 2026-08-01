@@ -1,8 +1,8 @@
 //! `GET /insights` + `GET /insights/{id}` + `POST /insights/{id}/{ack|resolve}` +
 //! `GET /insights/{id}/occurrences` — the Insights page's REST surface (insights umbrella scope
 //! + occurrences sub-scope). Mirrors `lb_host::insight_*`. Authenticated by the session token;
-//! gated by `mcp:insight.<verb>:call`. The `ts`-taking verbs use `gw.now()` so the REST client
-//! passes no `now` (the rules-messaging / dashboard-pin precedent).
+//!   gated by `mcp:insight.<verb>:call`. The `ts`-taking verbs use `gw.now()` so the REST client
+//!   passes no `now` (the rules-messaging / dashboard-pin precedent).
 //!
 //! The live feed rides `GET /insights/events?token=<jwt>` (SSE over `ws/{ws}/insight/events`),
 //! query-param authed like the channel stream (`EventSource` can't set headers).

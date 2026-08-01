@@ -104,6 +104,8 @@ pub struct PageMeta {
 /// Creates on a fresh id (owner = the principal's `owner_sub` — the human behind a derived agent
 /// actor, so an agent-built dashboard belongs to whoever asked; visibility = private); updates an
 /// existing one (owner-only). Returns the persisted record.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn dashboard_save(
     store: &Store,
     principal: &Principal,

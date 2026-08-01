@@ -84,8 +84,8 @@ impl Schedule {
 
         // Advance until stop is in the future
         while stop <= now {
-            start = start + week;
-            stop = stop + week;
+            start += week;
+            stop += week;
         }
 
         let is_active = now > start && now < stop;
@@ -124,13 +124,13 @@ impl Schedule {
 
         // Ensure stop is after start
         if stop <= start {
-            stop = stop + week;
+            stop += week;
         }
 
         // Advance until stop is in the future
         while stop <= now {
-            start = start + week;
-            stop = stop + week;
+            start += week;
+            stop += week;
         }
 
         let is_active = now > start && now < stop;

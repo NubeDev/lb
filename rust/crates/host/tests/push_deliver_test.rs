@@ -335,7 +335,7 @@ async fn effect_missing_workspace_fails_instead_of_guessing() {
         "notify:bad",
         "push",
         "notify",
-        &payload.to_string(),
+        payload.to_string(),
         "notify:bad",
         100,
     );

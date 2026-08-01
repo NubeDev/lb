@@ -60,7 +60,7 @@ fn echo_call(id: &str, msg: &str) -> ToolCall {
 async fn rehydrate_reconstructs_messages_prior_and_active_skills() {
     // UNIT: the fold from the durable transcript is the same view the live loop held — the
     // event-sourced projection (live and a reload yield the same state). N turns + a skill.
-    let events = vec![
+    let events = [
         TranscriptEvent::AssistantTurn {
             content: "thinking".into(),
         },

@@ -20,6 +20,7 @@ use tokio::sync::Mutex as AsyncMutex;
 #[derive(Default)]
 pub struct SidecarMap {
     // (ws, ext_id) → the live sidecar (async mutex: a tool call/lifecycle needs &mut on it).
+    #[allow(clippy::type_complexity)]
     live: RwLock<HashMap<(String, String), Arc<AsyncMutex<Sidecar>>>>,
 }
 

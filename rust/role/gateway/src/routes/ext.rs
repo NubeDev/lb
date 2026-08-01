@@ -194,7 +194,7 @@ fn publish_body(
     let key_id = "dev-publisher";
     let key_path = lb_dir().join("keys").join("dev-publisher.key");
     let loaded = lb_devkit::load_or_create_key(&key_path).map_err(pack_status)?;
-    let path = lb_devkit::resolve_under_root(&lb_devkit::default_devkit_root(), &req.path)
+    let path = lb_devkit::resolve_under_root(lb_devkit::default_devkit_root(), &req.path)
         .map_err(pack_status)?;
     let manifest_path = path.join("extension.toml");
     let manifest =

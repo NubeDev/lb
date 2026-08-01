@@ -155,7 +155,7 @@ impl Target for PushTarget {
                 // catalog keys, render them in THIS recipient's resolved language (their pref →
                 // en fallback). The literal title/body are the untranslated compat path.
                 let localized = if payload.title_key.is_some() || payload.body_key.is_some() {
-                    let resolved = lb_prefs::resolve(&[recipient_prefs.clone()]);
+                    let resolved = lb_prefs::resolve(std::slice::from_ref(&recipient_prefs));
                     let empty = std::collections::BTreeMap::new();
                     let title = match payload.title_key.as_deref().filter(|k| !k.is_empty()) {
                         Some(key) => {

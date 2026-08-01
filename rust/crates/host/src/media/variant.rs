@@ -40,7 +40,7 @@ pub async fn derive_thumb(
     })
     .await
     .map_err(|e| MediaError::Store(e.to_string()))?
-    .map_err(|e| MediaError::Store(e))?;
+    .map_err(MediaError::Store)?;
 
     // Store the variant bytes.
     variant_write(store, ws, &media.id, "thumb", &thumb_bytes).await?;

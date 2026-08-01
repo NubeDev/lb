@@ -167,7 +167,7 @@ pub async fn agent_def_test(
             // work". Previewing the active persona's context is a separate follow-up (scope open-Q 2).
             None,
             caller,
-            &caller.caps().to_vec(),
+            caller.caps(),
             ws,
             &job_id,
             SELF_DESCRIBE,

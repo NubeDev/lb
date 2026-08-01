@@ -187,7 +187,7 @@ mod tests {
     use serde_json::json;
 
     fn rows(values: &[Value]) -> Vec<Value> {
-        values.iter().cloned().collect()
+        values.to_vec()
     }
 
     #[test]

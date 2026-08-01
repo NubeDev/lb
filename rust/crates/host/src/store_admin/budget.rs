@@ -22,16 +22,15 @@
 use std::time::{Duration, Instant};
 
 use lb_store::CompactionRecord;
+// The convergence judgement now lives in `lb_store::boot_guard` so the BOOT precondition and this
+// runtime driver make the same call from ONE definition (boot-memory-guard scope slice 1) — two
+// copies of "did this pass pay?" is exactly the drift that makes a skip and an enqueue disagree.
+pub use lb_store::{is_productive, PRODUCTIVE_RECLAIM_RATIO};
 
 use super::marks::BudgetMarks;
 
 /// Minimum wall time between *automatic* passes (decision 5). A hard-mark crossing is exempt.
 pub const AUTO_COMPACT_MIN_INTERVAL: Duration = Duration::from_secs(60 * 60);
-
-/// A pass that leaves more than this fraction of the log behind reclaimed essentially nothing.
-/// Any value in 0.85..0.95 separates that from the measured 26-65x bloat case; named so tuning it
-/// later is a one-line change with a test (decision 6).
-pub const PRODUCTIVE_RECLAIM_RATIO: f64 = 0.9;
 
 /// `requested_by` on a budget-driven job — deliberately not a real principal, so an operator
 /// reading the job record sees at a glance that the budget driver caused the pause (decision 8).
@@ -112,8 +111,11 @@ impl BudgetDriver {
     /// Fold in the outcome of a pass — **any** pass the node ran, whichever principal asked for
     /// it. A productive one clears the suspension; an unproductive one sets it.
     pub fn note_pass(&mut self, rec: &CompactionRecord) {
-        if !rec.ok {
-            return; // a failed pass says nothing about whether compaction pays here
+        if !rec.ok || rec.skipped.is_some() {
+            // A failed pass — or one a boot precondition declined to run — says nothing about
+            // whether compaction pays here. Concluding "unproductive" from a skip would suspend the
+            // runtime driver precisely on the RAM-bound node that most needs it to keep working.
+            return;
         }
         self.unproductive = !is_productive(rec.before_bytes, rec.after_bytes);
     }
@@ -122,13 +124,4 @@ impl BudgetDriver {
     pub fn is_suspended(&self) -> bool {
         self.unproductive
     }
-}
-
-/// Did the pass reclaim enough to be worth the write pause? A pass over an empty log is
-/// productive by convention (there was nothing to reclaim, so nothing to conclude).
-pub fn is_productive(before_bytes: u64, after_bytes: u64) -> bool {
-    if before_bytes == 0 {
-        return true;
-    }
-    (after_bytes as f64) <= PRODUCTIVE_RECLAIM_RATIO * (before_bytes as f64)
 }

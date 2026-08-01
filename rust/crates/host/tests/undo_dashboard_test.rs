@@ -10,8 +10,8 @@
 //!   - undo of an EDIT restores the prior cell set (not the post-edit one);
 //!   - undo of a CREATE removes the dashboard (empty before-image), and redo re-creates it;
 //!   - `dashboard.delete` is journaled undoable and undo **resurrects** the record.
-//! These are exactly the flows the rubix-ai dashboard toolbar drives — the buttons gate on the resulting
-//! `history.list` `undoable`/`redoable` flags, so this is the backend contract those buttons depend on.
+//!     These are exactly the flows the rubix-ai dashboard toolbar drives — the buttons gate on the resulting
+//!     `history.list` `undoable`/`redoable` flags, so this is the backend contract those buttons depend on.
 
 use std::sync::Arc;
 

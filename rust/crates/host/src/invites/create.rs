@@ -80,7 +80,7 @@ pub async fn invite_create(
         format!("invite:{token_hash}"),
         EMAIL_TARGET,
         EMAIL_ACTION,
-        &effect_payload.to_string(),
+        effect_payload.to_string(),
         format!("invite:{token_hash}"),
         now,
     );

@@ -15,11 +15,10 @@ use std::sync::{Arc, Mutex};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     agent_persona_get, call_agent_tool, grant_skill, invoke_via_runtime, reachable_tools,
-    seed_core_skills, seed_personas, AllowedTool, ErasedModel, Node, Persona, RunContext,
-    RuntimeRegistry, Substrate,
+    seed_core_skills, seed_personas, AllowedTool, ErasedModel, Node, Persona, RuntimeRegistry,
+    Substrate,
 };
 use lb_prefs::{set_workspace_prefs, Prefs};
-use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
 use lb_role_gateway::dev_claims;
 
 // ---- harness -----------------------------------------------------------------------------------
@@ -168,7 +167,7 @@ async fn menu_under_persona(
         None,
         Some(persona),
         caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         &format!("job-{persona}"),
         "do the task",
@@ -492,7 +491,7 @@ async fn menu_under_persona_none(node: &Arc<Node>, ws: &str, caller: &Principal)
         None,
         None, // NO persona
         caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         "job-before",
         "which sites had abnormal energy use last week?",
@@ -544,7 +543,7 @@ async fn a_ws_b_default_persona_never_affects_a_ws_a_run() {
         None,
         None, // no explicit persona → resolves ws-B's ws-default data-analyst
         &admin_b,
-        &admin_b.caps().to_vec(),
+        admin_b.caps(),
         "ws-b",
         "job-b",
         "task",

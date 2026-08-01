@@ -20,22 +20,29 @@ use std::time::Duration;
 
 // The crate is a binary, so the test binary includes the modules it needs directly. This mirrors
 // how the sidecar itself composes them.
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/event.rs"]
 mod event;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/info_schema.rs"]
 mod info_schema;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/pool.rs"]
 mod pool;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/query.rs"]
 mod query;
 // `query.rs` fronts the result cache (federation-result-cache scope), so this composition needs it
 // too. It stays INERT for every test in this file: none of them passes a `cache: {ttl_s}` contract,
 // which is itself a live assertion that the cache is opt-in — if it ever started caching by default,
 // the pool tests below would go red on their own row-content assertions.
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/results.rs"]
 mod results;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/source/mod.rs"]
 mod source;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/validate.rs"]
 mod validate;
 

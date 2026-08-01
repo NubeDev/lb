@@ -94,7 +94,7 @@ impl Schedule {
                 })?;
 
             if stop <= start {
-                stop = stop + chrono::Duration::hours(24);
+                stop += chrono::Duration::hours(24);
             }
 
             self.add_exception(start, stop, exception_type.clone(), self.priority + 5);

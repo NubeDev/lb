@@ -200,7 +200,7 @@ async fn save_dashboard_of_kind(
         id,
         title,
         PageMeta {
-            kind: kind,
+            kind,
             ..PageMeta::default()
         },
         cells,

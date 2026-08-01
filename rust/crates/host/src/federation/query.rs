@@ -34,6 +34,8 @@ use crate::boot::Node;
 /// child's cache key. Every future result-shaping field has to touch this seam the same way — that
 /// is the review rule the cache's key discipline rests on, since the hash can only cover what
 /// actually arrives.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn federation_query<L: Launcher>(
     node: &Node,
     launcher: &L,

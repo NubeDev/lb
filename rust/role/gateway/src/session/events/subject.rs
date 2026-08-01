@@ -68,8 +68,7 @@ pub async fn open_subject(
                 .await
                 .map_err(|_| SubjectError::Denied)?;
             // Phase 1: the transcript snapshot, then Phase 2: live deltas — same order as `run_stream`.
-            let snapshot =
-                futures::stream::iter(watch.snapshot.into_iter()).map(|ev| frame("run", &ev));
+            let snapshot = futures::stream::iter(watch.snapshot).map(|ev| frame("run", &ev));
             let live = futures::stream::unfold(watch.stream, |sub| async move {
                 sub.recv().await.map(|ev| (frame("run", &ev), sub))
             });
@@ -168,8 +167,7 @@ pub async fn open_subject(
                 lb_host::telemetry_tail(&gw.node.store, &gw.node.bus, principal, &ws, 100)
                     .await
                     .map_err(|_| SubjectError::Denied)?;
-            let snap =
-                futures::stream::iter(snapshot.rows.into_iter()).map(|row| frame("snapshot", &row));
+            let snap = futures::stream::iter(snapshot.rows).map(|row| frame("snapshot", &row));
             let live = futures::stream::unfold(sub, |sub| async move {
                 sub.recv().await.map(|bytes| {
                     let data = String::from_utf8(bytes).unwrap_or_default();

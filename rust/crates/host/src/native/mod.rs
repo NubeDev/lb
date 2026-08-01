@@ -18,7 +18,7 @@
 //!   - `install`   — `install_native`: persist records → spawn → supervise (the start verb).
 //!   - `lifecycle` — `stop` / `restart` / `status` (the operator controls).
 //!   - `tool`      — the `native.*` MCP bridge (store-only `status`) + `call_sidecar` (child dispatch
-//!                   with crash-restart-on-fault — the supervision proof).
+//!     with crash-restart-on-fault — the supervision proof).
 //!
 //! Two independent gates throughout: the **capability** gate (`authorize_native`) and, when the
 //! binary came from the signed registry, the **signature** gate (`verify_artifact` in `pull`).

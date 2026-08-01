@@ -2,7 +2,7 @@
 //! step 3). Each route mirrors a `lb_host::dashboard_*` verb 1:1 and re-runs the host's three gates
 //! server-side (workspace-first → `mcp:dashboard.<verb>:call` → membership/visibility). The workspace
 //! + owner come from the **token**, never the body (§7) — so a dashboard's owner is the authenticated
-//! principal, un-spoofable. The UI cap-gate is convenience only; this is the boundary.
+//!   principal, un-spoofable. The UI cap-gate is convenience only; this is the boundary.
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};

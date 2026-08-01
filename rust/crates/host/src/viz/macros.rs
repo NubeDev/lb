@@ -86,7 +86,7 @@ fn interval_to_grafana(width_ms: u64) -> String {
     if width_ms == 0 {
         return "0s".into();
     }
-    if width_ms % 1_000 != 0 {
+    if !width_ms.is_multiple_of(1_000) {
         return format!("{width_ms}ms");
     }
     let secs = width_ms / 1_000;
@@ -98,7 +98,7 @@ fn interval_to_grafana(width_ms: u64) -> String {
         (1, "s"),
     ];
     for &(size, suffix) in UNITS {
-        if secs % size == 0 {
+        if secs.is_multiple_of(size) {
             return format!("{}{}", secs / size, suffix);
         }
     }

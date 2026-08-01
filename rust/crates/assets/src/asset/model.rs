@@ -1,6 +1,6 @@
 //! The binary-asset shape (document-store scope). An `asset:{ws}:{id}` record: opaque bytes
 //! + the metadata the host needs to gate a read (owner, mime) and to bound size. Like a doc,
-//! it is *state*, owned by the creating principal, workspace-namespaced (README §7).
+//!   it is *state*, owned by the creating principal, workspace-namespaced (README §7).
 
 use serde::{Deserialize, Serialize};
 

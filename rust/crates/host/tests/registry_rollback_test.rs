@@ -18,7 +18,9 @@ use lb_host::{
 };
 use lb_inbox::Item;
 use lb_mcp::call;
-use lb_registry::{digest, digest_hex, Artifact, PublisherKey, TrustedKeys, Visibility};
+use lb_registry::{
+    digest, digest_hex, Artifact, Authenticity, PublisherKey, TrustedKeys, Visibility,
+};
 
 const MANIFEST_V1: &str = include_str!("../../../extensions/hello/extension.toml");
 const MANIFEST_V2: &str = include_str!("../../../extensions/hello-v2/extension.toml");
@@ -123,6 +125,7 @@ async fn rolls_back_to_prior_version_preserving_durable_state() {
         "hello",
         "0.2.0",
         &trusted,
+        Authenticity::Required,
         &approved,
         Visibility::Private,
         1,
@@ -173,6 +176,7 @@ async fn rolls_back_to_prior_version_preserving_durable_state() {
         "hello",
         "0.1.0",
         &trusted,
+        Authenticity::Required,
         &approved,
         Visibility::Private,
         2,
@@ -236,6 +240,7 @@ async fn rollback_is_offline_when_prior_version_cached() {
         "hello",
         "0.1.0",
         &trusted,
+        Authenticity::Required,
         &approved,
         Visibility::Private,
         1,
@@ -249,6 +254,7 @@ async fn rollback_is_offline_when_prior_version_cached() {
         "hello",
         "0.2.0",
         &trusted,
+        Authenticity::Required,
         &approved,
         Visibility::Private,
         2,
@@ -263,6 +269,7 @@ async fn rollback_is_offline_when_prior_version_cached() {
         "hello",
         "0.1.0",
         &trusted,
+        Authenticity::Required,
         &approved,
         Visibility::Private,
         3,

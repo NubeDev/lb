@@ -7,7 +7,11 @@ description: >-
   growing", "slow boot / long replay", "commit log size", "compaction", or the
   `store:status:read` / `store:compact:run` capabilities. Also covers the node **disk budget**
   (`LB_STORE_MAX_BYTES`): the soft/hard marks that make the node compact itself, the headroom
-  read, and the "budget too small for this workload" verdict. IMPORTANT: `store.compact` is a JOB
+  read, and the "budget too small for this workload" verdict. **Also covers the boot MEMORY guard
+  (issue #128)**: why boot may SKIP its compaction pass (`last_compaction.skipped`), how to read the
+  persisted `last-compaction.json`, and how to recover a node that REFUSES to open
+  (`StoreError::WontFit`, `LB_STORE_OPEN_UNGUARDED=1`) — read this for "node won't start / OOM at
+  boot / the box died on restart". IMPORTANT: `store.compact` is a JOB
   (whole-log I/O) — it enqueues and returns `{job_id}`; the reactor executes the pass, and
   writes pause behind the store's session mutex while it runs.
 ---
@@ -271,6 +275,129 @@ GROUNDING: job record payload: {"requested_by":"user:ada","outcome":{"ok":true,
 GROUNDING: status after: log_bytes=12464, last_compaction.ok=true
 ```
 
+## 6. The boot memory guard: when boot declines, or refuses (issue #128)
+
+Everything above bounds bytes on **disk**. Boot also has a **memory** limit, and on a small box it
+is the one that bricks the machine: the boot pass resolves the live set into RAM and the open then
+replays the log to build the index. Since #128 the node decides both, from this machine's
+`MemAvailable`:
+
+| decision | rule | what you see |
+|---|---|---|
+| skip the boot pass | `log_bytes > 0.5 × available RAM` | WARN + `last_compaction.skipped` |
+| skip the boot pass | last **persisted** pass reclaimed ~nothing (`after > 0.9 × before`) **and** log ≤ `1.25 × after` | WARN + `last_compaction.skipped` |
+| refuse to open | `log_bytes > 1.0 × available RAM` | nonzero exit + the `WontFit` diagnostic on stderr |
+
+Unmeasurable memory (no readable `/proc/meminfo`) ⇒ **no guard at all**, today's behaviour. Nothing
+overrides the skips (skipping a pass is always safe); the *open* guard is overridable — see 6.3.
+
+### 6.1 Read the persisted record
+
+The outcome of every pass that actually **ran** is written beside the store as
+`<store dir>/../last-compaction.json` (atomic tmp+rename). It is a *sibling* of the engine directory
+on purpose: `log_bytes` and the disk-budget marks never count it. Read it directly when the node is
+down — that is exactly when you need it:
+
+```bash
+cat /var/lib/lb/last-compaction.json
+# {"at_epoch_ms":1785565525582,"ok":true,"before_bytes":10800,"after_bytes":10984,
+#  "duration_ms":55,"error":null,"skipped":null}
+```
+
+A **skip is never persisted** — the file holds the last pass that ran, because that is what the next
+boot's "is a pass worth it" precondition reads. The skip itself is in `store.status`.
+
+### 6.2 Interpret a skip
+
+```jsonc
+// store.status  →  last_compaction
+{
+  "ok": false,               // nothing was compacted…
+  "error": null,             // …and nothing failed: a skip is a DECISION
+  "skipped": "log 617000000 bytes exceeds 50% of available RAM (802000000 bytes) — …",
+  "before_bytes": 617000000, // == after_bytes: the log is untouched
+  "after_bytes": 617000000
+}
+```
+
+`ok: false` + `error: null` + `skipped: <reason>` is the signature. What it means and what to do:
+
+- **Headroom skip** — the box is too small for a pass over this log. The node is up and serving on
+  an uncompacted log; boot is slower, nothing is at risk. Fix the *cause*: tighten retention so the
+  live set shrinks, or run `store.compact` **online** (section 2) — the guard does not gate the
+  online pass, and a failed pass there costs a job, not the box.
+- **Unproductive skip** — a previous pass reclaimed essentially nothing, i.e. the log **is** the
+  live set. Compacting again would be an expensive no-op. Same remedy as "budget too small for this
+  workload" (5.6): raise the allowance, tighten retention, or move data off the node. The skip lifts
+  by itself once the log grows past `1.25 ×` the last pass's `after_bytes`.
+
+The `#122` budget driver **re-seeds** its own suspension from the persisted record at boot, so a
+node that has proven compaction does not pay here no longer forgets it on every restart.
+
+### 6.3 Recover a refused open
+
+A node that refuses to open exits nonzero in milliseconds and says exactly why:
+
+```text
+store at /var/lib/lb/store will not fit in memory: the commit log is 11426 bytes and only 1024
+bytes of RAM are available, so replaying it would likely OOM this machine. Refusing to open (this
+is a heuristic guard). Remedies: add RAM or swap; compact the store on a larger machine; lower
+retention so the next compaction shrinks the live set; or, if you know it fits, set
+LB_STORE_OPEN_UNGUARDED=1 to force the open.
+```
+
+It will **not** fall back to an empty `mem://` store — a node silently serving a workspace that
+"lost" its data is worse than a down node with a legible reason. Under a restarting unit this loops
+on a `stat` instead of on 90 s of allocation, so ssh stays usable. In order of preference:
+
+1. **Give it memory** — add swap or raise the box/cgroup, then start normally.
+2. **Compact elsewhere** — copy the store directory to a bigger machine, open it there once (the
+   boot pass runs and shrinks it), copy it back.
+3. **Tighten retention first**, then do (2) — otherwise the pass reclaims nothing.
+4. **Force it**, only if you know it fits (you added swap, or you measured):
+
+```bash
+LB_STORE_OPEN_UNGUARDED=1 systemctl start rubix-ai     # exactly "1"; anything else warns and the guard STAYS ON
+```
+
+The override disables the **open** guard only, and warns loudly on stderr while it does. Embedders
+can instead supply a truer ceiling than the host's figure — a cgroup limit — through
+`BootConfig::store_available_ram_bytes`.
+
+### 6.4 Grounding — the boot-guard flow (live run, 2026-08-01)
+
+`cargo test -p lb-host --test store_boot_guard_test -- --ignored --nocapture` (a real SurrealKV dir,
+real records through the real write path, the real `store.status` verb; the RAM figure is injected
+so the gigabyte decisions are reproducible on a workstation):
+
+```text
+LIVE boot(normal):   log_bytes=11212 last_compaction=Some(CompactionRecord { at_epoch_ms: 1785565525582,
+                     ok: true, before_bytes: 10800, after_bytes: 10984, duration_ms: 55, error: None,
+                     skipped: None })
+LIVE persisted record: Some(CompactionRecord { .. same record .. })
+LIVE sidecar path:   /tmp/lb-host-bootguard-live-01KYXZZDAZC27QAQ9NYV7587NX/last-compaction.json
+
+LIVE boot(skipped):  log_bytes=11426 skipped=Some("log 11212 bytes exceeds 50% of available RAM
+                     (16818 bytes) — the boot compaction pass can peak at more than the log size
+                     (measured 0.26x on a fat-record store, ~1.4x on a key-dense one) and could OOM
+                     this machine; skipping it and opening on the uncompacted log")
+
+LIVE boot(refused):  store at …/store will not fit in memory: the commit log is 11426 bytes and only
+                     1024 bytes of RAM are available … set LB_STORE_OPEN_UNGUARDED=1 to force the open.
+
+LIVE boot(override): opened, log_bytes=11640
+```
+
+Note the skipped boot still **opened and served** — that is the expected outcome on a box like the
+incident's (617 MB log, 802 MB available): pass declined, open allowed, degraded boot speed, no
+drama. Refusal is reserved for the genuinely hopeless case.
+
+**What a pass costs, measured at GB scale** (1.34 GB log / 867 MB live set, fat records): peak RSS
+**0.26 ×** the log with the pass, **0.11 ×** with it skipped, and boot wall time 9.7 s → 3.4 s. The
+ratio is record-size dependent (SurrealKV's boot memory tracks the *index*, not the values) — the
+incident's key-dense store peaked at ~1.4 × its log, which is why the constants are set where they
+are. Details: `sessions/store/boot-memory-guard-session.md`.
+
 ## What to know before leaning on it
 
 - **Writers pause, briefly.** The pass holds the global session mutex: concurrent writes block
@@ -288,5 +415,8 @@ GROUNDING: status after: log_bytes=12464, last_compaction.ok=true
   action, deliberately NOT implied by `store:*:write`. The budget adds **no verb**: it is boot
   config, not a record, precisely so nobody can raise the ceiling through an MCP call.
 - **The budget is node-scoped**, never per-workspace. One allowance for the whole node's store.
+- **The boot guard is not the disk budget.** It never evicts, pauses or bounds anything: it turns
+  one guaranteed-fatal boot into a diagnostic. `LB_STORE_MAX_BYTES` (the disk half) is what keeps a
+  node from ever getting near it — set both.
 - **The reactor mints no principal.** A budget-driven pass is node maintenance below the namespace
   wall — the capability gate is what an *operator's* `store.compact` goes through.

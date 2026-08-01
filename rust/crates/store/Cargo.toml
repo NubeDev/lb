@@ -17,7 +17,15 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+# The boot memory guards log their (skipped pass / refused open) decisions at WARN with every
+# number in the line — those are operator-facing events that must reach the node's telemetry sink,
+# not just stderr (boot-memory-guard scope: "skipping is loud, never silent").
+tracing.workspace = true
 ulid.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+# The boot-guard suite asserts the SKIP IS LOUD on the real emitted warn line (not merely on the
+# returned record), and stages a genuine pending `.merge/` with the same engine the store uses.
+tracing-subscriber.workspace = true
+surrealkv = "0.9.3"

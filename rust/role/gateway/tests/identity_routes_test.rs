@@ -203,6 +203,7 @@ async fn membership_remove_is_a_clean_exit() {
 
 // Touch NOW so the const stays referenced even if the suite grows (the token helper uses it).
 #[test]
+#[allow(clippy::assertions_on_constants)] // the point IS to reference the const, not to test it
 fn now_const_anchor() {
     assert!(NOW > 0);
 }

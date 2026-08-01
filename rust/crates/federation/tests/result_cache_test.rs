@@ -28,20 +28,28 @@ use std::time::Duration;
 /// single-flight tests need real parallelism); the kill-switch test takes the WRITE lock.
 static ENV_LOCK: RwLock<()> = RwLock::new(());
 
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/event.rs"]
 mod event;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/info_schema.rs"]
 mod info_schema;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/pool.rs"]
 mod pool;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/query.rs"]
 mod query;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/results.rs"]
 mod results;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/source/mod.rs"]
 mod source;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/validate.rs"]
 mod validate;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/write.rs"]
 mod write;
 
@@ -136,6 +144,8 @@ async fn run(dsn: &str, input: &serde_json::Value) -> query::QueryResult {
 /// Breaks if: `cached_query` runs the inner future on an accepted `current` (rule 1), or the store
 /// on completion is dropped, or the key is computed per-call.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn a_hit_serves_the_cached_rows_not_the_new_ones() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -174,6 +184,8 @@ async fn a_hit_serves_the_cached_rows_not_the_new_ones() {
 ///    than the cache being permanently on (test 1 alone passes against a never-expiring cache) or
 ///    permanently off (test 2 alone passes against no cache at all).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn an_expired_entry_re_queries_and_sees_new_rows() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -205,6 +217,8 @@ async fn an_expired_entry_re_queries_and_sees_new_rows() {
 /// 3a. **Bypass — no `cache` field.** The default path must be today's behaviour bit for bit: every
 ///     call reaches the datasource, so a row inserted between two calls is immediately visible.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn no_cache_field_never_caches() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -223,6 +237,8 @@ async fn no_cache_field_never_caches() {
 
 /// 3b. **Bypass — `ttl_s: 0`.** An explicit zero window is a disable, not a "cache forever".
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn ttl_zero_never_caches() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -246,6 +262,8 @@ async fn ttl_zero_never_caches() {
 /// Runs in its own process-global env, so it is `serial`-shaped by construction: it sets the var,
 /// exercises the path, and restores it. (Every other test in this binary reads the var as unset.)
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn the_kill_switch_forces_bypass_even_when_the_caller_asks() {
     let dsn = seed_db("bypass-env", 1);
     let inp = input("envsrc", SQL, Some(60.0));
@@ -276,6 +294,8 @@ async fn the_kill_switch_forces_bypass_even_when_the_caller_asks() {
 /// Breaks if: the `results::evict_source` call in `write::run_write` is removed (the second query
 /// then serves the pre-write rows and this goes red on the row count).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn a_write_evicts_the_cached_results_for_that_source() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -312,6 +332,8 @@ async fn a_write_evicts_the_cached_results_for_that_source() {
 ///     on purpose, but it must not be coarse across sources — that would make any busy writer
 ///     destroy every other source's cache.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn a_write_to_one_source_leaves_another_sources_cache_intact() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -352,6 +374,8 @@ async fn a_write_to_one_source_leaves_another_sources_cache_intact() {
 ///    never cross results. This is the scariest failure a datasource cache can have, so it is
 ///    asserted on real content from real distinct files.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn distinct_calls_never_share_an_entry() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -421,6 +445,8 @@ async fn distinct_calls_never_share_an_entry() {
 ///     harmless, and intended — a rename then invalidates naturally instead of serving the old
 ///     alias's rows under the new name.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn the_source_alias_is_part_of_the_key() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -455,6 +481,8 @@ async fn the_source_alias_is_part_of_the_key() {
 ///
 /// Uses a wide TEXT payload to cross 4 MB in few enough rows to stay under `ROW_CAP`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn an_over_cap_result_is_served_but_not_stored() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -508,6 +536,8 @@ async fn an_over_cap_result_is_served_but_not_stored() {
 ///     `MAX_RESULT_ENTRIES` distinct queries and asserts the map never exceeds the cap while the
 ///     most recent entry still serves cached rows (eviction must not evict what was just stored).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn the_entry_cap_bounds_the_map_without_evicting_the_newest() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -556,6 +586,8 @@ async fn the_entry_cap_bounds_the_map_without_evicting_the_newest() {
 /// Breaks if: the `inflight` handle is not installed under the map lock, or joiners start their own
 /// query instead of subscribing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn concurrent_cold_queries_collapse_to_one() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -621,6 +653,8 @@ async fn concurrent_cold_queries_collapse_to_one() {
 /// be far below the refresh's duration — together those show it neither waited nor was served the
 /// refreshed data. Breaks if the accept path joins `inflight` instead of returning `current`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -744,6 +778,8 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
 ///     bad-SQL refresh against a warm entry errors for the caller that asked for it, while the
 ///     accepting callers keep being served — and the key still works afterwards.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn a_failed_refresh_leaves_the_entry_serving() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -824,6 +860,8 @@ async fn a_failed_refresh_leaves_the_entry_serving() {
 /// post-respawn state (empty for this source) in-process, and the assertion is that the answer is
 /// then FRESH and CORRECT, not merely non-empty.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn a_lost_cache_costs_freshness_not_correctness() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
@@ -861,6 +899,8 @@ async fn a_lost_cache_costs_freshness_not_correctness() {
 /// direction, even with byte-identical SQL and identical `source` aliases. The process-level half is
 /// asserted by the host's native workspace suite.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn two_workspaces_sources_never_share_a_cached_result() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).

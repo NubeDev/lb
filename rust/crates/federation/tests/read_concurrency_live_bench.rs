@@ -17,18 +17,25 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/event.rs"]
 mod event;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/info_schema.rs"]
 mod info_schema;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/pool.rs"]
 mod pool;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/query.rs"]
 mod query;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/results.rs"]
 mod results;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/source/mod.rs"]
 mod source;
+#[allow(dead_code)] // shared src module: only part of it is used by this test
 #[path = "../src/validate.rs"]
 mod validate;
 
@@ -73,7 +80,13 @@ async fn measure_the_staircase() {
 
     println!("\n=== federation read concurrency (READ_SLOTS = {READ_SLOTS}) ===");
     println!("  1 scan alone      : {unit:?}");
-    println!("  4 concurrent, wall: {four:?}   (serial would be ~{:?})", unit * 4);
-    println!(" 10 concurrent, wall: {ten:?}   (serial would be ~{:?})", unit * 10);
+    println!(
+        "  4 concurrent, wall: {four:?}   (serial would be ~{:?})",
+        unit * 4
+    );
+    println!(
+        " 10 concurrent, wall: {ten:?}   (serial would be ~{:?})",
+        unit * 10
+    );
     println!("  slots built       : {}\n", src.built_slots());
 }

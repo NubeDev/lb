@@ -290,6 +290,9 @@ impl AgentRuntime for AcpRuntime {
             // the run is STUCK — we drop `run_fut` (reaping the subprocess, same as the wall ceiling)
             // and return a distinct stall error so the caller can tell "stuck" from "slow"/"denied".
             let quiet = self.no_progress;
+            // The `loop` is the re-arm structure for the watchdog select; every arm currently
+            // exits on the first pass, but the shape is load-bearing for the pinned future.
+            #[allow(clippy::never_loop)]
             let events = {
                 tokio::pin!(run_fut);
                 loop {

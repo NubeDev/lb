@@ -41,7 +41,7 @@ impl OutboxHandle {
             .ok_or_else(|| rhai_err("outbox.enqueue: missing `action`"))?;
         let payload = effect
             .get("payload")
-            .map(|v| crate::grid::dynamic_to_json(v))
+            .map(crate::grid::dynamic_to_json)
             .unwrap_or(Value::Null);
         let seq = self.meter.charge().map_err(rhai_err)?;
         let id =

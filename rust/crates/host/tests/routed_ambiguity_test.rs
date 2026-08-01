@@ -127,7 +127,7 @@ async fn two_hosts_one_ext(
     let ep_a = format!("tcp/127.0.0.1:{port_a}");
     let ep_b = format!("tcp/127.0.0.1:{port_b}");
 
-    let bus_a = Bus::peer_with(&[ep_a.clone()], &[])
+    let bus_a = Bus::peer_with(std::slice::from_ref(&ep_a), &[])
         .await
         .expect("hub A listens");
     let hub_a = Node::boot_on_bus(bus_a, NodeRole::Hub)
@@ -139,7 +139,7 @@ async fn two_hosts_one_ext(
         .await
         .expect("hub A serves");
 
-    let bus_b = Bus::peer_with(&[ep_b.clone()], &[])
+    let bus_b = Bus::peer_with(std::slice::from_ref(&ep_b), &[])
         .await
         .expect("hub B listens");
     let hub_b = Node::boot_on_bus(bus_b, NodeRole::Hub)
@@ -474,7 +474,9 @@ async fn a_single_host_untargeted_call_still_just_works() {
     let ep = format!("tcp/127.0.0.1:{port}");
     let id = NodeId::new("node:only-one").unwrap();
 
-    let hub_bus = Bus::peer_with(&[ep.clone()], &[]).await.unwrap();
+    let hub_bus = Bus::peer_with(std::slice::from_ref(&ep), &[])
+        .await
+        .unwrap();
     let hub = Node::boot_on_bus(hub_bus, NodeRole::Hub).await.unwrap();
     hub.install_node_id(id.clone());
     host_whoami(&hub, ext, "the-only-node");
@@ -699,7 +701,9 @@ async fn a_live_node_that_drops_becomes_unreachable_promptly_and_runs_nothing() 
     let port = free_port();
     let ep = format!("tcp/127.0.0.1:{port}");
 
-    let caller_bus = Bus::peer_with(&[], &[ep.clone()]).await.unwrap();
+    let caller_bus = Bus::peer_with(&[], std::slice::from_ref(&ep))
+        .await
+        .unwrap();
     let caller = Node::boot_on_bus(caller_bus, NodeRole::Edge).await.unwrap();
     register_remote_extension(&caller, ext, id.clone(), &["whoami".to_string()]);
     let p = principal(ws, &[&format!("mcp:{ext}.whoami:call")]);
@@ -725,6 +729,7 @@ async fn a_live_node_that_drops_becomes_unreachable_promptly_and_runs_nothing() 
     // Phase 2 — the same target, now gone. Must refuse PROMPTLY (a bounded wait, not the query's
     // default ~10s timeout), and must never fall back to anything else.
     let started = std::time::Instant::now();
+    #[allow(unused_assignments)] // seeded so the post-loop diagnostic can always read it
     let mut last = None;
     let deadline = std::time::Instant::now() + Duration::from_secs(20);
     let err = loop {

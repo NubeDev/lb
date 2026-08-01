@@ -60,9 +60,9 @@ pub enum Outcome {
 ///      - **ttfb** — time to first batch: network round-trip + DB execution + first batch Arrow
 ///        conversion. The closest proxy for "what the database itself took."
 ///      - **fetch** — `execute_ms - ttfb_ms`: remaining batches Arrow conversion + collect.
-///      When pushdown returns one batch (the common case for a single SELECT), `ttfb` ≈ `execute`.
+///        When pushdown returns one batch (the common case for a single SELECT), `ttfb` ≈ `execute`.
 ///   7. **serialize** — `shape()`: Arrow `RecordBatch` → JSON → `{columns, rows}`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct QueryPhaseTimings {
     pub validate_ms: u64,
     pub connect_ms: u64,
@@ -75,23 +75,6 @@ pub struct QueryPhaseTimings {
     pub serialize_ms: u64,
     /// Warm-pool state — `None` when no connect was attempted (result-cache hit).
     pub pool_cache: Option<Cache>,
-}
-
-impl Default for QueryPhaseTimings {
-    fn default() -> Self {
-        Self {
-            validate_ms: 0,
-            connect_ms: 0,
-            info_schema_reg_ms: 0,
-            table_reg_ms: 0,
-            plan_ms: 0,
-            execute_ms: 0,
-            ttfb_ms: 0,
-            fetch_ms: 0,
-            serialize_ms: 0,
-            pool_cache: None,
-        }
-    }
 }
 
 /// A digest of `sql` — never the SQL itself. 16 hex chars of SHA-256 plus the length: enough to
@@ -124,6 +107,8 @@ pub struct ResultCacheEvent {
 ///
 /// `trace_id` is a correlation id uniting all sub-queries of one dashboard panel refresh. Omitted
 /// when absent or empty.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub fn query_event(
     source: Option<&str>,
     kind: &str,

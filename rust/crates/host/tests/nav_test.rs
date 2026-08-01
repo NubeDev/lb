@@ -1531,7 +1531,7 @@ fn nest_groups(depth: usize, leaf: NavItem) -> NavItem {
 }
 
 /// Descend into the single nested `group` chain and return the deepest group's items.
-fn deepest_group_items<'a>(item: &'a lb_host::NavResolvedItem) -> &'a [lb_host::NavResolvedItem] {
+fn deepest_group_items(item: &lb_host::NavResolvedItem) -> &[lb_host::NavResolvedItem] {
     let mut cur = item;
     while let Some(inner) = cur.items.iter().find(|c| c.kind == "group") {
         cur = inner;

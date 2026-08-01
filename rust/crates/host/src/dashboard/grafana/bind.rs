@@ -68,7 +68,7 @@ fn bind_target(target: &mut Target, cell_key: &str, bound: &[String]) -> Vec<Deg
         return Vec::new();
     };
     let name = name.to_string();
-    if !bound.iter().any(|b| *b == name) {
+    if !bound.contains(&name) {
         return Vec::new();
     }
     let tool = tool_for_binding(&name);

@@ -106,7 +106,7 @@ async fn two_hosts_one_ext(
     let ep_a = format!("tcp/127.0.0.1:{}", free_port());
     let ep_b = format!("tcp/127.0.0.1:{}", free_port());
 
-    let bus_a = Bus::peer_with(&[ep_a.clone()], &[])
+    let bus_a = Bus::peer_with(std::slice::from_ref(&ep_a), &[])
         .await
         .expect("hub A listens");
     let hub_a = Node::boot_on_bus(bus_a, NodeRole::Hub)
@@ -118,7 +118,7 @@ async fn two_hosts_one_ext(
         .await
         .expect("hub A serves");
 
-    let bus_b = Bus::peer_with(&[ep_b.clone()], &[])
+    let bus_b = Bus::peer_with(std::slice::from_ref(&ep_b), &[])
         .await
         .expect("hub B listens");
     let hub_b = Node::boot_on_bus(bus_b, NodeRole::Hub)

@@ -73,8 +73,8 @@ pub async fn federation_mirror<L: Launcher>(
     let end = rows.len().min(range);
     let start = job.cursor as usize;
 
-    for i in start..end {
-        let sample = row_to_sample(target_series, &rows[i])?;
+    for (i, row) in rows.iter().enumerate().take(end).skip(start) {
+        let sample = row_to_sample(target_series, row)?;
         // ingest_write stamps the producer (the caller) and dedups on (series, producer, seq) — a
         // re-applied row upserts the same slot, so resume never double-writes.
         ingest_write(&node.store, caller, ws, vec![sample])

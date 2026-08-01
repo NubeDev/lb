@@ -29,7 +29,7 @@ use lb_host::{
     agent_persona_create, agent_persona_delete, agent_persona_get, agent_persona_list,
     agent_persona_update, call_agent_tool, glob_matches, grant_skill, invoke_via_runtime,
     seed_core_skills, seed_personas, AgentError, AgentRuntime, AllowedTool, ErasedModel, Node,
-    Persona, PersonaPatch, RunContext, RuntimeRegistry, Substrate, DEFAULT_RUNTIME,
+    Persona, PersonaPatch, RunContext, RuntimeRegistry, Substrate,
 };
 use lb_prefs::{set_workspace_prefs, Prefs};
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
@@ -178,6 +178,7 @@ impl AgentRuntime for CapturingExternal {
 }
 
 /// A registry with the in-house default PLUS a capturing external runtime `id`.
+#[allow(clippy::type_complexity)]
 fn external_registry(id: &str) -> (RuntimeRegistry, Arc<Mutex<Vec<String>>>, Arc<Mutex<String>>) {
     let default: Arc<dyn ErasedModel> =
         Arc::new(AiGateway::new(MockProvider::new(vec![AiResponse::stop(
@@ -394,7 +395,7 @@ async fn drive_in_house_with_active_persona(
         None, // runtime: default (in-house)
         None, // persona arg: none → resolve the ACTIVE persona
         caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         &format!("job-{persona_id}"),
         "answer the question",
@@ -546,7 +547,7 @@ async fn swap_test_external_runtime_advertises_narrowed_tools_and_folds_identity
         Some(ext_id),
         Some("analyst"),
         &caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         "job-ext",
         "answer",
@@ -595,7 +596,7 @@ async fn a_pinned_ungranted_skill_fails_the_run_at_start_with_a_named_error() {
         None,
         Some("grounded"),
         &caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         "job-fc",
         "answer",
@@ -626,7 +627,7 @@ async fn an_explicit_unknown_persona_is_a_named_error_not_a_silent_run() {
         None,
         Some("no-such-persona"),
         &caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         "job-eu",
         "answer",
@@ -739,7 +740,7 @@ async fn explicit_persona_overrides_the_active_one() {
         None,
         Some("explicit-one"),
         &caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         "job-prec",
         "answer",
@@ -1041,7 +1042,7 @@ async fn a_persona_grounded_run_is_fed_its_pinned_skill_body_not_the_repo() {
         None,
         Some("grounded-analyst"),
         &caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         "job-grounding",
         "How do I verify this backend feature in the real world?",
@@ -1094,7 +1095,7 @@ async fn a_persona_pinning_an_ungranted_real_seed_fails_closed() {
         None,
         Some("wants-runbook"),
         &caller,
-        &caller.caps().to_vec(),
+        caller.caps(),
         ws,
         "job-gd",
         "answer",

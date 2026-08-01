@@ -359,7 +359,7 @@ pub async fn workspace_datasources(node: &Node, ws: &str) -> HashSet<String> {
     };
     let mut out = HashSet::new();
     for value in rows {
-        if let Some(ds) = serde_json::from_value::<crate::federation::Datasource>(value).ok() {
+        if let Ok(ds) = serde_json::from_value::<crate::federation::Datasource>(value) {
             if !ds.removed {
                 out.insert(ds.name);
             }
@@ -385,7 +385,7 @@ pub async fn workspace_queries(node: &Node, ws: &str) -> HashSet<String> {
     };
     let mut out = HashSet::new();
     for value in rows {
-        if let Some(q) = serde_json::from_value::<crate::query::SavedQuery>(value).ok() {
+        if let Ok(q) = serde_json::from_value::<crate::query::SavedQuery>(value) {
             if !q.removed {
                 out.insert(q.id);
             }

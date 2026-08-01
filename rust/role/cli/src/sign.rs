@@ -41,7 +41,7 @@ pub fn sign_extension(name_or_path: &str) -> CliResult<Artifact> {
             bytes_path.display()
         ))
     })?;
-    let loaded = load_or_create_key(&key_path())
+    let loaded = load_or_create_key(key_path())
         .map_err(|e| CliError::Other(format!("load/create publisher key: {e}")))?;
     sign_artifact(manifest, bytes, DEFAULT_KEY_ID, &loaded.signing_key)
         .map_err(|e| CliError::Other(format!("sign artifact: {e}")))

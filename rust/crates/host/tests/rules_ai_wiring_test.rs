@@ -269,6 +269,8 @@ impl ModelAccess for AnswerModel {
 /// clear error (a rule has no loop to run tools), never hang.
 struct ToolOnlyModel;
 impl ModelAccess for ToolOnlyModel {
+    // Explicit `impl Future` is load-bearing here (trait-object-safe, explicit lifetime capture).
+    #[allow(clippy::manual_async_fn)]
     fn turn(
         &self,
         _ws: &str,

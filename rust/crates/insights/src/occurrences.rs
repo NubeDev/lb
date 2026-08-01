@@ -64,7 +64,7 @@ pub async fn occurrences(
         .filter_map(|v| serde_json::from_value(v).ok())
         .collect();
     // Newest-first by the monotone per-insight sequence.
-    items.sort_by(|a, b| b.seq.cmp(&a.seq));
+    items.sort_by_key(|o| std::cmp::Reverse(o.seq));
     // Keyset: strictly before (older than) the cursor's seq.
     if let Some(cur) = cursor {
         items.retain(|o| o.seq < cur.seq);

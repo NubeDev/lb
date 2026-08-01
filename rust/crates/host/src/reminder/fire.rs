@@ -98,6 +98,8 @@ async fn resolve_fire_principal(
     Ok(Principal::routed(sub, ws, caps))
 }
 
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 async fn fire_channel_post(
     node: &Arc<Node>,
     principal: &Principal,
@@ -169,6 +171,8 @@ async fn fire_mcp_tool(
         .map_err(|_| ReminderError::Denied)
 }
 
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 async fn fire_outbox(
     store: &Store,
     principal: &Principal,

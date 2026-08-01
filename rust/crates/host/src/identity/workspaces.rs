@@ -22,7 +22,7 @@ use crate::workspaces::{
 
 /// The workspaces `sub` is an effective member of, for `principal`. Each row carries the workspace id
 /// + display name. Drives the login picker + the switcher. Bounded by the directory size (a hub hosts
-/// few workspaces — decision #5).
+///   few workspaces — decision #5).
 pub async fn identity_workspaces(
     store: &Store,
     principal: &Principal,

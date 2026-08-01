@@ -43,6 +43,16 @@ pub struct CompactionRecord {
     pub duration_ms: u64,
     /// The failure, when `ok` is false. A failed pass leaves the log exactly as it was.
     pub error: Option<String>,
+    /// Set when the pass did not run because a **boot precondition** declined it — the machine
+    /// lacked the memory headroom, or the last pass reclaimed essentially nothing and the log has
+    /// not grown since (boot-memory-guard scope slice 1). Carries the human-readable reason, which
+    /// is the same string logged at warn. `ok` is false for a skip (nothing was compacted) but
+    /// `error` is `None` — a skip is a decision, not a failure, and every reader that judges
+    /// whether compaction still pays must ignore it rather than conclude from it.
+    ///
+    /// Defaulted on deserialize so a record persisted by an older node still loads.
+    #[serde(default)]
+    pub skipped: Option<String>,
 }
 
 /// Engine options for a direct `surrealkv` handle — MUST mirror surrealdb's own wrapper
@@ -63,7 +73,7 @@ fn engine_options(dir: &std::path::Path) -> surrealkv::Options {
 /// Open + close a throwaway direct handle: applies any pending `.merge/` (the physical swap)
 /// while performing zero user writes. See the module doc for why this MUST happen before any
 /// writing session opens the store.
-fn complete_pending_merge(dir: &std::path::Path) -> Result<(), String> {
+pub(crate) fn complete_pending_merge(dir: &std::path::Path) -> Result<(), String> {
     let store = surrealkv::Store::new(engine_options(dir)).map_err(|e| e.to_string())?;
     store.close().map_err(|e| e.to_string())
 }
@@ -81,6 +91,7 @@ pub(crate) fn compact_log(path: &str) -> CompactionRecord {
         after_bytes: 0,
         duration_ms: 0,
         error: None,
+        skipped: None,
     };
     let fail = |mut rec: CompactionRecord, started: std::time::Instant, e: String| {
         eprintln!("store: log compaction failed ({e}) — continuing on the uncompacted log");
@@ -194,6 +205,7 @@ pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
                 after_bytes: 0,
                 duration_ms: 0,
                 error: Some(format!("compaction task join error: {e}")),
+                skipped: None,
             })
     } else {
         CompactionRecord {
@@ -205,6 +217,7 @@ pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
             error: Some(format!(
                 "engine did not quiesce at {path} within {RELEASE_TIMEOUT:?}; pass skipped"
             )),
+            skipped: None,
         }
     };
 
@@ -224,6 +237,9 @@ pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
     *guard = reopened;
     drop(guard);
 
+    // Persist the outcome beside the store: this is a pass that actually ran, and it is what the
+    // NEXT boot's benefit precondition reads (slice 3). Best-effort — a failure only warns.
+    crate::last_pass::store_last_compaction(&path, &rec);
     *store
         .last_compaction_slot()
         .lock()
@@ -257,10 +273,7 @@ pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
 async fn wait_for_quiesce(dir: &str, timeout: std::time::Duration) -> bool {
     let started = std::time::Instant::now();
     let has_proc = std::fs::read_dir("/proc/self/fd").is_ok();
-    let mut last_snapshot: Option<(
-        std::time::Instant,
-        Vec<(std::path::PathBuf, u64, std::time::SystemTime)>,
-    )> = None;
+    let mut last_snapshot: Option<(std::time::Instant, Vec<FileStamp>)> = None;
     loop {
         // Fast path: full fd release (only reachable when no index-builder leak exists).
         if has_proc && started.elapsed() < RELEASE_FAST_PATH {
@@ -296,10 +309,13 @@ async fn wait_for_quiesce(dir: &str, timeout: std::time::Duration) -> bool {
     }
 }
 
+/// One file's identity for the stability probe: path + size + mtime.
+type FileStamp = (std::path::PathBuf, u64, std::time::SystemTime);
+
 /// Every file under `dir` (recursive) with its (size, mtime) — the stability probe's unit.
-fn dir_snapshot(dir: &std::path::Path) -> Vec<(std::path::PathBuf, u64, std::time::SystemTime)> {
+fn dir_snapshot(dir: &std::path::Path) -> Vec<FileStamp> {
     let mut out = Vec::new();
-    fn walk(d: &std::path::Path, out: &mut Vec<(std::path::PathBuf, u64, std::time::SystemTime)>) {
+    fn walk(d: &std::path::Path, out: &mut Vec<FileStamp>) {
         if let Ok(rd) = std::fs::read_dir(d) {
             for e in rd.flatten() {
                 let p = e.path();
@@ -316,7 +332,7 @@ fn dir_snapshot(dir: &std::path::Path) -> Vec<(std::path::PathBuf, u64, std::tim
     out
 }
 
-fn epoch_ms() -> u64 {
+pub(crate) fn epoch_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)

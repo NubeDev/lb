@@ -23,20 +23,20 @@ pub async fn call_notify_tool(
             let app_id = input.get("app_id").and_then(|v| v.as_str());
             device_register(store, principal, ws, platform, token, app_id, now)
                 .await
-                .map_err(|e| ToolError::from(e))?;
+                .map_err(ToolError::from)?;
             Ok(json!({ "ok": true }))
         }
         "device.list" => {
             let devices = device_list(store, principal, ws)
                 .await
-                .map_err(|e| ToolError::from(e))?;
+                .map_err(ToolError::from)?;
             Ok(json!({ "devices": devices }))
         }
         "device.remove" => {
             let id = str_arg(input, "id")?;
             let removed = device_remove(store, principal, ws, id)
                 .await
-                .map_err(|e| ToolError::from(e))?;
+                .map_err(ToolError::from)?;
             Ok(json!({ "removed": removed }))
         }
         "notify.send" => {
@@ -83,7 +83,7 @@ pub async fn call_notify_tool(
                 now,
             )
             .await
-            .map_err(|e| ToolError::from(e))?;
+            .map_err(ToolError::from)?;
             Ok(json!({ "effect_id": effect_id }))
         }
         _ => Err(ToolError::NotFound),

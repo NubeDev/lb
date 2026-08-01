@@ -14,7 +14,7 @@
 //!   - `tool`     — the MCP bridge (`agent.persona.*` → DTO), reached via `call_agent_tool`.
 //!   - `resolve`  — "which persona is active" + the `extends`-closure union (the resolve-at-read seam).
 //!   - `apply`    — the ONE run-assembly filter both runtimes call: narrow the menu, fold identity +
-//!                  pinned-skill bodies into the goal (fail-closed), enforce the runtime restriction.
+//!     pinned-skill bodies into the goal (fail-closed), enforce the runtime restriction.
 
 mod apply;
 mod create;

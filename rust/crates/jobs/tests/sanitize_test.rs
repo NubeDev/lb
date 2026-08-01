@@ -59,7 +59,7 @@ fn only_unresolved_proposals_are_orphans() {
 fn a_settled_suspension_is_still_not_an_orphan() {
     // A parked call whose decision settled (result appended by the resume path) stays resolved;
     // even a parked call with no settle yet is not an orphan — the decision path owns it.
-    let events = vec![
+    let events = [
         proposed("gated"),
         TranscriptEvent::SuspensionOpened {
             tool_call_id: "gated".into(),
@@ -77,7 +77,7 @@ fn a_settled_suspension_is_still_not_an_orphan() {
 #[test]
 fn an_empty_or_clean_transcript_has_no_orphans() {
     assert!(orphaned_calls(&[]).is_empty());
-    let events = vec![TranscriptEvent::AssistantTurn {
+    let events = [TranscriptEvent::AssistantTurn {
         content: "just text".into(),
     }];
     let refs: Vec<&TranscriptEvent> = events.iter().collect();

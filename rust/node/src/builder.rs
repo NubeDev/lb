@@ -42,6 +42,7 @@ use lb_host::{load_enabled, AgentServer, Node};
 use lb_role_gateway::Gateway;
 
 use crate::config::{BootConfig, CredentialMode, GatewayMode};
+use crate::open_store::open_store;
 
 /// A booted node, ready to serve. Hands back the [`Node`] (store / bus / host verbs — the embedder
 /// calls verbs in-process), and — when the gateway is on — the [`Gateway`] value + bind address to
@@ -185,59 +186,6 @@ fn printed_gateway_url_from(addr: &str, public: Option<&str>, scheme: Option<&st
     }
 }
 
-#[cfg(test)]
-mod printed_url_tests {
-    use super::printed_gateway_url_from as url;
-
-    #[test]
-    fn the_default_is_unchanged() {
-        // Every node that has not opted in must print exactly what it printed
-        // before work item 7.
-        assert_eq!(url("127.0.0.1:8099", None, None), "http://127.0.0.1:8099");
-        assert_eq!(url("0.0.0.0:8099", None, None), "http://0.0.0.0:8099");
-    }
-
-    #[test]
-    fn a_loopback_bind_is_never_printed_as_https() {
-        // The guard rule. The loopback listener is plaintext by design
-        // (rubix-fleet docs/rasp-pi/HTTPS.md §3) and no certificate carries a
-        // 127.0.0.1 SAN, so https://127.0.0.1:8099 can neither connect nor
-        // verify — it is a broken instruction in a journal someone is reading to
-        // find out why a box is unreachable.
-        for addr in ["127.0.0.1:8099", "localhost:8099", "[::1]:8099"] {
-            assert!(
-                url(addr, None, Some("https")).starts_with("http://"),
-                "{addr} must not be printed as https"
-            );
-        }
-    }
-
-    #[test]
-    fn a_non_loopback_bind_honours_the_scheme() {
-        assert_eq!(
-            url("192.168.1.40:8099", None, Some("https")),
-            "https://192.168.1.40:8099"
-        );
-        assert_eq!(url("192.168.1.40:8099", None, Some("HTTPS")).split(':').next(), Some("https"));
-    }
-
-    #[test]
-    fn public_url_expresses_the_reverse_proxy_case() {
-        // The node binds loopback; operators reach it at a hostname over TLS.
-        // Neither the scheme nor the authority of the bind address is what to
-        // print, which is why a scheme-only knob cannot express this.
-        assert_eq!(
-            url("127.0.0.1:8099", Some("https://ai.pi-07.local/"), None),
-            "https://ai.pi-07.local"
-        );
-    }
-
-    #[test]
-    fn an_empty_public_url_falls_through_rather_than_printing_nothing() {
-        assert_eq!(url("127.0.0.1:8099", Some("  "), None), "http://127.0.0.1:8099");
-    }
-}
-
 /// Perform the full boot ritual from `cfg` and return a [`RunningNode`]. This is the ONE copy of the
 /// ritual; the binary and every embedder call it. No env is read here below the seam — everything
 /// comes from `cfg` (the exceptions are the role mounts `federation`/`control_engine`, which still read
@@ -271,7 +219,7 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
 
     // TELEMETRY sink selection: choose the tracing layers by config, right after boot so every
     // subsequent instrumented call is captured. Shares the node's OWN store + bus handles.
-    lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), cfg.telemetry.clone());
+    lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), cfg.telemetry);
 
     // S1 hello demo bring-up (gated): load the `hello` extension and call `hello.echo` once. The binary
     // runs it; an embedder wants it off.
@@ -518,15 +466,63 @@ async fn spawn_native_enabled(node: &lb_host::Node, ws: &str) {
     }
 }
 
-/// Open the store the boot config selects: `store_path: Some(non-empty)` ⇒ a durable on-disk store;
-/// `None`/empty ⇒ an ephemeral `mem://` store. This is the ONE place the store path (today's
-/// `LB_STORE_PATH`, filled into `cfg` at the binary boundary) turns into a `Store` — no library code
-/// below reads the env. Mirrors `Node::open_store`'s config-not-role selection, but sourced from the
-/// struct so an embedder controls it directly.
-async fn open_store(cfg: &BootConfig) -> anyhow::Result<lb_store::Store> {
-    let store = match cfg.store_path.as_deref() {
-        Some(path) if !path.is_empty() => lb_store::Store::open(path).await?,
-        _ => lb_store::Store::memory().await?,
-    };
-    Ok(store)
+#[cfg(test)]
+mod printed_url_tests {
+    use super::printed_gateway_url_from as url;
+
+    #[test]
+    fn the_default_is_unchanged() {
+        // Every node that has not opted in must print exactly what it printed
+        // before work item 7.
+        assert_eq!(url("127.0.0.1:8099", None, None), "http://127.0.0.1:8099");
+        assert_eq!(url("0.0.0.0:8099", None, None), "http://0.0.0.0:8099");
+    }
+
+    #[test]
+    fn a_loopback_bind_is_never_printed_as_https() {
+        // The guard rule. The loopback listener is plaintext by design
+        // (rubix-fleet docs/rasp-pi/HTTPS.md §3) and no certificate carries a
+        // 127.0.0.1 SAN, so https://127.0.0.1:8099 can neither connect nor
+        // verify — it is a broken instruction in a journal someone is reading to
+        // find out why a box is unreachable.
+        for addr in ["127.0.0.1:8099", "localhost:8099", "[::1]:8099"] {
+            assert!(
+                url(addr, None, Some("https")).starts_with("http://"),
+                "{addr} must not be printed as https"
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_loopback_bind_honours_the_scheme() {
+        assert_eq!(
+            url("192.168.1.40:8099", None, Some("https")),
+            "https://192.168.1.40:8099"
+        );
+        assert_eq!(
+            url("192.168.1.40:8099", None, Some("HTTPS"))
+                .split(':')
+                .next(),
+            Some("https")
+        );
+    }
+
+    #[test]
+    fn public_url_expresses_the_reverse_proxy_case() {
+        // The node binds loopback; operators reach it at a hostname over TLS.
+        // Neither the scheme nor the authority of the bind address is what to
+        // print, which is why a scheme-only knob cannot express this.
+        assert_eq!(
+            url("127.0.0.1:8099", Some("https://ai.pi-07.local/"), None),
+            "https://ai.pi-07.local"
+        );
+    }
+
+    #[test]
+    fn an_empty_public_url_falls_through_rather_than_printing_nothing() {
+        assert_eq!(
+            url("127.0.0.1:8099", Some("  "), None),
+            "http://127.0.0.1:8099"
+        );
+    }
 }

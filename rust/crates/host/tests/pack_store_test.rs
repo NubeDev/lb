@@ -386,6 +386,8 @@ async fn a_missing_store_write_cap_is_a_denied_partial() {
 /// must NOT clobber a migrated row that shares an id. This is the sharp "no data loss on upgrade" test
 /// (pack-store-datasource-scope §Migration), on a real node with a real sqlite file.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn the_sqlite_to_store_migration_carries_operator_rows_without_loss_or_clobber() {
     let _lb_dir_guard = MIGRATE_LB_DIR_LOCK
         .lock()
@@ -483,6 +485,8 @@ async fn the_sqlite_to_store_migration_carries_operator_rows_without_loss_or_clo
 /// place — would silently skip carrying their sqlite rows into the store. The 5b test proves the
 /// migration MECHANICS on a first apply; this proves the `Upgrade` DECISION reaches them.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn the_migration_runs_on_an_in_place_upgrade() {
     let _lb_dir_guard = MIGRATE_LB_DIR_LOCK
         .lock()

@@ -50,6 +50,21 @@ pub fn spawn_store_compact_reactors(
         let mut ticker = tokio::time::interval(period);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut driver = BudgetDriver::new(budget_marks(budget_bytes));
+        // Re-seed the convergence suspension from the PERSISTED last pass (boot-memory-guard scope
+        // slice 3). Without this, every restart begins believing compaction still pays here and
+        // re-enqueues a pass that a previous run already proved reclaims nothing — a recurring
+        // write pause for zero bytes, on exactly the node that restarts most.
+        if let Some(rec) = lb_store::last_persisted_compaction(&node.store) {
+            driver.note_pass(&rec);
+            if driver.is_suspended() {
+                tracing::info!(
+                    before_bytes = rec.before_bytes,
+                    after_bytes = rec.after_bytes,
+                    "store budget driver starts suspended: the last persisted pass reclaimed \
+                     almost nothing, so automatic passes stay held off until one pays"
+                );
+            }
+        }
         loop {
             ticker.tick().await;
             // The advisory: visible before painful. One stat per tick, warn only while over.

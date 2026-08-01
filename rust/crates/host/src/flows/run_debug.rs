@@ -59,7 +59,7 @@ pub fn resolve_format(declared: &str, payload: &Value) -> &'static str {
     }
     if let Value::String(s) = payload {
         // A string that parses as a JSON object/array → json (rendered as a tree).
-        if serde_json::from_str::<Value>(s).map_or(false, |v| v.is_object() || v.is_array()) {
+        if serde_json::from_str::<Value>(s).is_ok_and(|v| v.is_object() || v.is_array()) {
             return FORMAT_JSON;
         }
         if looks_like_markdown(s) {
@@ -82,7 +82,7 @@ fn looks_like_markdown(s: &str) -> bool {
         if l.starts_with('#')
             && l.chars()
                 .nth(1)
-                .map_or(true, |c| c.is_whitespace() || c == '#')
+                .is_none_or(|c| c.is_whitespace() || c == '#')
         {
             return true;
         }

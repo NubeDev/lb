@@ -90,7 +90,7 @@ async fn list_skills_over_the_bridge_carries_tier_rows() {
     let core = skills.iter().find(|s| s["id"] == "core.lb-cli").unwrap();
     assert_eq!(core["tier"], "core");
     assert_eq!(core["granted"], true);
-    assert!(core["description"].as_str().unwrap().len() > 0);
+    assert!(!core["description"].as_str().unwrap().is_empty());
     let user = skills.iter().find(|s| s["id"] == "acme-runbook").unwrap();
     assert_eq!(user["tier"], "user");
     assert_eq!(user["description"], "the runbook");

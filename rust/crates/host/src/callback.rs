@@ -9,7 +9,7 @@
 //!   - the guest's **effective principal** = `caller ∩ install-grant` (set by the caller, never
 //!     widened — see [`super::tool_call`]),
 //!   - the workspace (host-set, never guest-supplied),
-//! so the callback acts on behalf of the caller AND within the install grant, in the caller's ws.
+//!     so the callback acts on behalf of the caller AND within the install grant, in the caller's ws.
 //!
 //! **Borrow discipline (the re-entrancy hazard).** The callback dispatches through `call_tool`,
 //! which resolves a FRESH target (instance/route) and locks it — it never re-borrows the in-flight

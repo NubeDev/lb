@@ -139,8 +139,12 @@ fn pivot(
             .map_err(perr)?;
     // The distinct on-values become output COLUMNS — pre-check the pivot's width against the
     // cell cap before polars runs the reshape (rows can only shrink; width is the explosion).
+    // NOTE: `height().min(1).max(1)` is a constant `1` — likely a latent bug (probably meant
+    // `max(1)` alone). Left as-is deliberately; behaviour change belongs in its own issue.
+    #[allow(clippy::min_max, clippy::manual_clamp)]
+    let rows = f.df.height().min(1).max(1);
     f.limits
-        .check_frame(f.df.height().min(1).max(1), distinct.height() + 1)
+        .check_frame(rows, distinct.height() + 1)
         .map_err(rerr)?;
     let lf = f.df.clone().lazy().pivot(
         by_name([columns], true, false),

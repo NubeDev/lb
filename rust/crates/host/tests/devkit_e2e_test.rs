@@ -83,11 +83,19 @@ async fn publish_generated(node: &Node, ws: &str, id: &str, tier: Tier) -> PathB
         caps.push("mcp:native.install:call".to_string());
     }
     let admin = principal(ws, &caps);
-    ext_publish(node, &admin, ws, artifact, &trusted, lb_registry::Authenticity::Required,
-        Visibility::Private, 1)
-        .await
-        .expect("publish");
-    PathBuf::from(report.path)
+    ext_publish(
+        node,
+        &admin,
+        ws,
+        artifact,
+        &trusted,
+        lb_registry::Authenticity::Required,
+        Visibility::Private,
+        1,
+    )
+    .await
+    .expect("publish");
+    report.path
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

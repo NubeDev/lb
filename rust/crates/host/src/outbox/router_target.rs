@@ -68,6 +68,8 @@ impl RouterTarget {
 }
 
 impl Target for RouterTarget {
+    // Explicit `impl Future` is load-bearing here (trait-object-safe, explicit lifetime capture).
+    #[allow(clippy::manual_async_fn)]
     fn deliver(
         &self,
         effect: &Effect,

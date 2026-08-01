@@ -37,6 +37,7 @@ const CONFIG_SET: &str = "mcp:agent.config.set:call";
 /// and counts calls. Rule 9: stands in only for the provider HTTP.
 struct CapturingScript {
     script: Mutex<Vec<Result<AiResponse, ProviderFault>>>,
+    #[allow(clippy::type_complexity)]
     seen: Arc<Mutex<Vec<Vec<(String, String)>>>>,
 }
 
@@ -102,6 +103,8 @@ async fn drive(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// Test-only serialization guard: the lock is deliberately held for the whole async section.
+#[allow(clippy::await_holding_lock)]
 async fn an_identical_call_spiral_climbs_warn_block_break() {
     let ws = "detector-ladder";
     let node = Arc::new(Node::boot().await.unwrap());

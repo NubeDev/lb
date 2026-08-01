@@ -194,7 +194,7 @@ async fn an_effect_without_a_workspace_is_parked_not_defaulted() {
         "invite:noworkspace",
         lb_host::EMAIL_TARGET,
         "send_invite",
-        &serde_json::json!({ "email": "sam@example.com", "token": "lbi_x" }).to_string(),
+        serde_json::json!({ "email": "sam@example.com", "token": "lbi_x" }).to_string(),
         "invite:noworkspace",
         0,
     );

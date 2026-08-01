@@ -43,5 +43,5 @@ pub async fn sweep_retention(node: &Arc<Node>, ws: &str) {
 /// workspaces) should run the retention sweep. Firing on `tick_count % N == 0` including tick 0 means
 /// a freshly-booted node reclaims a bloated store on its first tick, then settles into the cadence.
 pub fn should_sweep(tick_count: u64) -> bool {
-    tick_count % SWEEP_EVERY_N_TICKS == 0
+    tick_count.is_multiple_of(SWEEP_EVERY_N_TICKS)
 }

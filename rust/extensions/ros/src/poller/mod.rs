@@ -15,6 +15,8 @@
 //! `poller::tests`).
 
 pub mod gating;
+// `poller::poller` is the tick core; the parent is the module family (FILE-LAYOUT).
+#[allow(clippy::module_inception)]
 pub mod poller;
 pub mod relay;
 pub mod ros_source;

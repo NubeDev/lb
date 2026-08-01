@@ -67,19 +67,15 @@ pub const MAX_PINNED: usize = 50;
 /// dashboard tiers, so the same gate-3 read check applies unchanged).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Visibility {
     /// Owner only.
+    #[default]
     Private,
     /// Shared to a team via the `share` edge (resolved by team members).
     Team,
     /// Any workspace member with the read cap.
     Workspace,
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Private
-    }
 }
 
 /// One faceted tag query on a `tag-group` item — `{ key, value? }`. A value present means exact

@@ -19,9 +19,11 @@ pub mod config;
 // custom ritual, but the supported entry point is `boot_full`.
 pub mod hello_demo;
 pub mod mail;
+pub mod open_store;
 pub mod reactors;
 pub mod seed_identity;
 pub mod seeds;
+mod store_env;
 
 // The thin role-aware mounts (§3.1) — the binary's role wiring, reused by the builder.
 pub mod agent;

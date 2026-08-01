@@ -7,6 +7,8 @@
 //!
 //! State only (§3.3): the store holds state; motion is the bus's job. No pub/sub here.
 
+mod boot_guard;
+mod boot_pass;
 mod capped;
 mod compact;
 mod conflict;
@@ -14,7 +16,9 @@ mod create;
 mod delete;
 mod graph;
 mod increment;
+mod last_pass;
 mod list;
+mod meminfo;
 mod open;
 mod read;
 mod read_versioned;
@@ -32,14 +36,20 @@ mod write_journaled;
 mod write_locked;
 mod write_tx;
 
+pub use boot_guard::{
+    boot_compaction_skip, is_productive, open_would_not_fit, BOOT_COMPACT_MEM_RATIO,
+    OPEN_GUARD_MEM_RATIO, PRODUCTIVE_RECLAIM_RATIO, REGROWTH_RERUN_RATIO,
+};
 pub use capped::{capped_insert, new_ulid, ulid_timestamp_ms};
 pub use compact::{compact, CompactionRecord};
 pub use create::create;
 pub use delete::delete;
 pub use graph::{graph, Edge as GraphEdge, Graph, Node as GraphNode, MAX_FANOUT, MAX_SEED};
 pub use increment::increment;
+pub use last_pass::last_persisted_compaction;
 pub use list::list;
-pub use open::{Store, StoreError};
+pub use meminfo::available_ram_bytes;
+pub use open::{OpenOptions, Store, StoreError};
 pub use read::read;
 pub use read_versioned::read_versioned;
 pub use record::{Versioned, FIRST_REV};

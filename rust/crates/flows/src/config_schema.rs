@@ -2,7 +2,7 @@
 //! manifest's `[node.config]` table is compiled as a schema at load (a `config` that isn't valid
 //! JSON-Schema is a reject), and a node's saved config **instance** is validated against it at save
 //! + at `flows.patch_run` (against the pinned descriptor, Decision 12). One dialect, host-side
-//! (`jsonschema`/Boon) and editor-side (`ajv`), so a bad config is caught both before save and run.
+//!   (`jsonschema`/Boon) and editor-side (`ajv`), so a bad config is caught both before save and run.
 
 use jsonschema::Validator;
 use thiserror::Error;

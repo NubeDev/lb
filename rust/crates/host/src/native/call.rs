@@ -37,6 +37,8 @@ use super::registry::SidecarMap;
 /// the host bound is a backstop for a child that has stopped answering at all, not a competing
 /// deadline that would pre-empt the child's own message. Not manifest-driven yet (see the scope's
 /// open questions) — one constant beats a knob nobody sets.
+// Only referenced by the `#[cfg(not(test))]` accessor below.
+#[allow(dead_code)]
 const CALL_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// The bound actually applied. Tests override it (via `#[cfg(test)]`) so the fault/retry paths can

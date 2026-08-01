@@ -312,8 +312,8 @@ mod tests {
             compile_phrase("whenever the mood strikes"),
             Err(ScheduleError::Unparseable(_))
         ));
-        assert!(matches!(compile_phrase("every 0 minutes"), Err(_)));
-        assert!(matches!(compile_phrase("every 90 minutes"), Err(_)));
+        assert!(compile_phrase("every 0 minutes").is_err());
+        assert!(compile_phrase("every 90 minutes").is_err());
     }
 
     #[test]

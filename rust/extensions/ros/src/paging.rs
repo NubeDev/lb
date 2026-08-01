@@ -25,7 +25,7 @@ where
     F: Fn(&T) -> String,
 {
     // Total order on the stable id so the cursor walk is deterministic across calls.
-    all.sort_by(|a, b| id_of(a).cmp(&id_of(b)));
+    all.sort_by_key(|a| id_of(a));
 
     let start = match cursor {
         // First id strictly greater than the cursor (keyset: exclusive of the cursor itself).

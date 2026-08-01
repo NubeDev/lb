@@ -35,7 +35,10 @@ fn each_level_of_the_chain_wins_in_order() {
     };
 
     // workspace default only.
-    assert_eq!(resolve(&[ws_default.clone()]).timezone, "Europe/Madrid");
+    assert_eq!(
+        resolve(std::slice::from_ref(&ws_default)).timezone,
+        "Europe/Madrid"
+    );
     // user beats workspace default.
     assert_eq!(
         resolve(&[user.clone(), ws_default.clone()]).timezone,

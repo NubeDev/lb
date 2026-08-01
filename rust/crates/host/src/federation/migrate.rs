@@ -28,6 +28,8 @@ use crate::boot::Node;
 /// Plan + (optionally) apply a migrate of `schema` against `source` in `ws` as `caller`. `dry_run`
 /// defaults to true (the Ask gate — nothing applies unless the caller explicitly opts in). Returns
 /// the sidecar's `{statements, applied, destructive_refusal?}` JSON. The DSN is never returned.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
 pub async fn federation_migrate<L: Launcher>(
     node: &Node,
     launcher: &L,

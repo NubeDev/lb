@@ -45,6 +45,9 @@ fn record(before: u64, after: u64) -> lb_store::CompactionRecord {
         after_bytes: after,
         duration_ms: 1,
         error: None,
+        // A pass that RAN (a boot skip sets this; the driver must ignore those — see
+        // `store_boot_guard_test`).
+        skipped: None,
     }
 }
 

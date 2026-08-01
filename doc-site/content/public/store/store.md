@@ -27,7 +27,8 @@ bound it, and both now run without a restart in the loop:
     "before_bytes": 1500000000,
     "after_bytes": 24000000,
     "duration_ms": 8400,
-    "error": null
+    "error": null,
+    "skipped": null          // set instead when boot DECLINED the pass — see the memory guard below
   }
 }
 ```
@@ -72,6 +73,59 @@ What happens next depends on one piece of config:
 A pass on a 2.06 GiB log measured **771 ms** (reclaiming it to 16 MiB) — the number the automatic
 trigger was approved on. See [Upgrading](../upgrading/upgrading.md) and the disk-budget scope.
 
+## The boot memory guard — open without OOMing the box (issue #128)
+
+Compaction bounds bytes on **disk**. It says nothing about **RAM**, and boot is the one place the
+node predictably doubles its memory demand: the pass resolves every live value into memory, and the
+open then replays the log again to build the index. On a 959 MB edge box with a 617 MB live set that
+peaked at 879 MB RSS, and the kernel's **global** OOM killer took `sshd` down with the node —
+`Restart=on-failure` then re-ran the same spike every 5 s until someone drove to the site.
+
+Boot is now memory-aware. Three decisions, all arithmetic over this machine's own numbers
+(`MemAvailable` from `/proc/meminfo`) — identical code on a 64 GB cloud node and a 959 MB edge node:
+
+1. **The pass runs only if the machine can afford it.** `log_bytes > 0.5 × available RAM` ⇒ skipped.
+2. **…and only if it is expected to pay.** If the *persisted* last pass reclaimed essentially
+   nothing (`after > 0.9 × before`) and the log has not grown past `1.25 × after` since, the pass is
+   skipped: re-compacting a log that **is** the live set is the most expensive possible no-op.
+3. **A hopeless open is refused, not attempted.** `log_bytes > 1.0 × available RAM` ⇒ the node exits
+   nonzero with a diagnostic instead of allocating. A restart loop then costs a `stat`, not 90 s of
+   allocation — ssh stays usable, which is the difference between a remote fix and a site visit.
+
+A skip is **loud**: one WARN line with all three numbers, and `store.status` serves
+`last_compaction.skipped` with the reason, so "this node has stopped compacting at boot, and why"
+is one MCP call away. A skip never suspends the *online* `store.compact` path.
+
+A refusal looks like this on stderr / in `journalctl`:
+
+```
+store at /var/lib/lb/store will not fit in memory: the commit log is 943718400 bytes and only
+841154560 bytes of RAM are available, so replaying it would likely OOM this machine. Refusing to
+open (this is a heuristic guard). Remedies: add RAM or swap; compact the store on a larger machine;
+lower retention so the next compaction shrinks the live set; or, if you know it fits, set
+LB_STORE_OPEN_UNGUARDED=1 to force the open.
+```
+
+The node **never** falls back to an empty `mem://` store on refusal: a node silently serving a
+workspace that "lost" its data is worse than a down node with a legible reason.
+
+**Both guards fail open** where `/proc/meminfo` cannot be read (non-Linux, odd container mounts) —
+today's behaviour, byte for byte — and `LB_STORE_OPEN_UNGUARDED=1` disables the *open* guard for an
+operator who added swap or measured the headroom. (Nothing overrides the compaction skips: skipping
+a pass is always safe.) Embedders can supply a truer ceiling than the host figure — a cgroup limit —
+via `BootConfig::store_available_ram_bytes`.
+
+The outcome of every pass that actually ran is persisted next to the store as
+`<store dir>/../last-compaction.json` (atomic write, best-effort in both directions: a missing or
+corrupt file simply means "no information" and the node compacts as it always did). It is a sibling
+of the engine directory on purpose — `log_bytes` and the disk budget's marks never count it. That
+file is what lets a skip decision, and the disk budget's "compaction stopped paying here"
+suspension, survive the restart at which they matter.
+
+The complementary layer belongs on the unit, not in the node: `MemoryMax` + `OOMPolicy=stop` +
+`RestartSec`/`StartLimitBurst` is what keeps *every* workload on the box from taking the machine
+down. The guard makes the node well-behaved even under a naked unit; deploy both.
+
 ## The engine bug this work found (P0, fixed)
 
 At the pinned `surrealkv 0.9.3`, `compact()` stages the live set in `.merge/` and the swap
@@ -86,4 +140,7 @@ open before any writing session touches the directory. Full story:
 
 - Scope: `docs/scope/store/online-compaction-scope.md` · Session:
   `docs/sessions/store/online-compaction-session.md` · Skill: `docs/skills/store-compact/SKILL.md`
+- The memory guard: `docs/scope/store/boot-memory-guard-scope.md` (issue #128) · Session:
+  `docs/sessions/store/boot-memory-guard-session.md` · Incident:
+  `docs/debugging/store/boot-compaction-oom-kills-the-box.md`
 - The session mutex this leans on: `docs/scope/store/session-concurrency-scope.md`

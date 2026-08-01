@@ -8,7 +8,7 @@
 //!   - `#`-prefixed comment lines (and blank lines) ignored,
 //!   - one `key = <MF1 message>` per line — split on the FIRST `=` (a key never contains `=`; the
 //!     message may, e.g. a plural `=0` arm, so only the first split matters).
-//! Keys are flat dotted strings (`alert.threshold_crossed`), never nested.
+//!     Keys are flat dotted strings (`alert.threshold_crossed`), never nested.
 
 use std::collections::BTreeMap;
 

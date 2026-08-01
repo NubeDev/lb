@@ -41,7 +41,7 @@ pub async fn devkit_build(
 
     // Selected by config (README §3 rule 1), not a branch `build_extension` or the job/log
     // contract knows about — devkit-container-build-scope.md.
-    let toolchain = select_toolchain(&node, ws).await;
+    let toolchain = select_toolchain(node, ws).await;
 
     let node = Arc::clone(node);
     let ws = ws.to_string();

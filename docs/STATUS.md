@@ -30,7 +30,40 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-07-30 (unreleased — needs the next `node-v*` tag) — A QUEUE CAN NOW SUBSCRIBE TO
+**Just shipped 2026-08-01 (unreleased — needs the next `node-v*` tag) — BOOT IS MEMORY-AWARE: A NODE
+THAT CANNOT OPEN ITS STORE NOW ASKS FOR AN OPERATOR, NOT THE OOM KILLER
+([`store/boot-memory-guard-scope.md`](scope/store/boot-memory-guard-scope.md), session
+[`store/boot-memory-guard`](sessions/store/boot-memory-guard-session.md), issue
+[#128](https://github.com/NubeDev/lb/issues/128)).** `Store::open` ran a full compaction pass
+unconditionally and then replayed the log again, with nothing on the path knowing how much RAM the
+machine had. On a 959 MB Rubix Compute with a 617 MB live set that peaked at 879 MB RSS, the kernel's
+**global** OOM killer took `sshd` down with the node, and `Restart=on-failure` re-ran it every 5 s —
+the box was dark until someone drove to it, twice in one day. All three slices shipped:
+
+- **The boot pass is conditional** — skipped when `log_bytes > 0.5 × MemAvailable`
+  (`BOOT_COMPACT_MEM_RATIO`), and skipped when the **persisted** last pass reclaimed essentially
+  nothing and the log has not grown past `1.25 ×` it (`REGROWTH_RERUN_RATIO`). Every skip is one WARN
+  line with all the numbers plus `store.status → last_compaction.skipped`. The online `store.compact`
+  path is untouched — a failed pass there costs a job, not the box.
+- **A hopeless open is refused** — `log_bytes > 1.0 × MemAvailable` ⇒ `StoreError::WontFit` naming
+  both numbers, the override and the remedies; `lb-node` exits nonzero and **never** falls back to
+  `mem://`. A restart loop now costs a `stat`, so ssh survives. Both guards **fail open** without
+  `/proc/meminfo`; `LB_STORE_OPEN_UNGUARDED=1` (exact `1`) forces the open.
+- **The pass record is persisted** at `<store dir>/../last-compaction.json` (atomic, best-effort,
+  outside the #122 byte arithmetic), so the skip decision survives the restart at which it matters and
+  the disk-budget driver re-seeds its "compaction stopped paying here" suspension from it.
+- **Measured at GB scale** (1.34 GB log / 867 MB live set): the pass peaks at **0.26 ×** the log,
+  a skipped open at **0.11 ×**, boot 9.7 s → 3.4 s. peak/log is *record-size dependent* (SurrealKV's
+  boot memory tracks the index, not the values) — the incident's key-dense store peaked at ~1.4 ×,
+  which is why both ratios ship as scoped. Numbers in the session doc.
+- **Still owed downstream (not this repo):** `rubix-ai`'s armhf env sample wants `LB_STORE_MAX_BYTES`
+  sized to the box, and its unit — plus the rubixd generator — wants `MemoryMax` / `OOMPolicy=stop` /
+  `RestartSec=30` / `StartLimitBurst=3`. The guard makes the node well-behaved under a naked unit;
+  the stanza is what protects the box from everything else.
+
+---
+
+**Previously (2026-07-30, also unreleased) — A QUEUE CAN NOW SUBSCRIBE TO
 ITSELF ([`insight-assignee-notify-scope`](scope/insights/insight-assignee-notify-scope.md), session
 [`insight-assignee-notify`](sessions/insights/insight-assignee-notify-session.md)).** Triage (below)
 shipped able to **give someone work and tell them nothing** — the subscription ladder was

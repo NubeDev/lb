@@ -65,6 +65,83 @@ pub fn result_to_rows(result: &Value) -> Vec<Value> {
     }
 }
 
+/// The columnar `{columns:[…], rows:[[…], …]}` shape (`federation.query` / a rule's `grid` output):
+/// column-aligned arrays zipped into named row objects. `Some(rows)` only when `rows` is an array of
+/// arrays (a `{rows:[{…}]}` of objects is already row-shaped and returns `None` so the generic path
+/// handles it). Short rows pad with `null`; an unnamed column falls back to its index.
+fn columnar_rows(o: &serde_json::Map<String, Value>) -> Option<Vec<Value>> {
+    let (Some(Value::Array(columns)), Some(Value::Array(rows))) = (o.get("columns"), o.get("rows"))
+    else {
+        return None;
+    };
+    if !rows.iter().all(|r| r.is_array()) {
+        return None;
+    }
+    let names: Vec<String> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            c.as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| i.to_string())
+        })
+        .collect();
+    Some(
+        rows.iter()
+            .map(|row| {
+                let cells = row.as_array().cloned().unwrap_or_default();
+                let obj: serde_json::Map<String, Value> = names
+                    .iter()
+                    .cloned()
+                    .zip(cells.into_iter().chain(std::iter::repeat(Value::Null)))
+                    .collect();
+                Value::Object(obj)
+            })
+            .collect(),
+    )
+}
+
+/// Unwrap a rules result envelope by SHAPE (never by tool id — the viz plane treats `rules.run` as an
+/// opaque tool, CLAUDE §10). Two nested envelopes, both `kind`/key-discriminated:
+///   - a full `RunResult` `{output, findings, log, ms, …}` → recurse into `output`;
+///   - a `RuleOutput` `{kind:"scalar", value}` → the value; `{kind:"grid", columns, rows}` → the grid
+///     object (the existing columnar path zips it); `{kind:"findings"|"nothing"}` → empty (no rows).
+///     Returns `None` for anything that is not one of these documented shapes, so every other tool result
+///     flows through the normal `result_to_rows` matching untouched — and `Some(rows)` (already normalized)
+///     when it IS a rules envelope. Grid is dispatched to the shared columnar zip; scalar recurses on the
+///     value; findings/nothing are honestly empty.
+fn unwrap_rule_envelope(result: &Value) -> Option<Vec<Value>> {
+    let o = result.as_object()?;
+    // Layer A: a full RunResult carries `output` alongside `findings`/`log`/`ms`. Recurse into output.
+    if let Some(output) = o.get("output") {
+        if o.contains_key("findings") || o.contains_key("log") || o.contains_key("ms") {
+            return Some(result_to_rows(output));
+        }
+    }
+    // Layer B: a bare RuleOutput, discriminated by `kind`.
+    match o.get("kind").and_then(Value::as_str) {
+        // A scalar `value` is usually the array of row maps; recurse so an array unwraps to N rows and a
+        // non-array renders as an honest single `{value}` row (the same shaping every other path uses).
+        Some("scalar") => Some(result_to_rows(o.get("value").unwrap_or(&Value::Null))),
+        // Route the grid's `{columns, rows}` straight into the shared columnar zip (NOT back through the
+        // envelope check — the `kind:"grid"` key would re-match and recurse forever).
+        Some("grid") => Some(columnar_rows(o).unwrap_or_default()),
+        // findings/nothing carry no chart rows (findings are the insights plane's food, not chart rows).
+        Some("findings") | Some("nothing") => Some(Vec::new()),
+        _ => None,
+    }
+}
+
+/// The time field of a row set, if any row carries a canonical time key — so the frame builder tags
+/// that column `Time`. Returns the first matching key by `TIME_KEYS` priority.
+pub fn detect_time_field(rows: &[Value]) -> Option<String> {
+    let first = rows.iter().find_map(|r| r.as_object())?;
+    TIME_KEYS
+        .iter()
+        .find(|k| first.contains_key(**k))
+        .map(|k| k.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,81 +251,4 @@ mod tests {
             "reminder.list unwraps to N reminder rows, not one blob row"
         );
     }
-}
-
-/// The columnar `{columns:[…], rows:[[…], …]}` shape (`federation.query` / a rule's `grid` output):
-/// column-aligned arrays zipped into named row objects. `Some(rows)` only when `rows` is an array of
-/// arrays (a `{rows:[{…}]}` of objects is already row-shaped and returns `None` so the generic path
-/// handles it). Short rows pad with `null`; an unnamed column falls back to its index.
-fn columnar_rows(o: &serde_json::Map<String, Value>) -> Option<Vec<Value>> {
-    let (Some(Value::Array(columns)), Some(Value::Array(rows))) = (o.get("columns"), o.get("rows"))
-    else {
-        return None;
-    };
-    if !rows.iter().all(|r| r.is_array()) {
-        return None;
-    }
-    let names: Vec<String> = columns
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            c.as_str()
-                .map(str::to_string)
-                .unwrap_or_else(|| i.to_string())
-        })
-        .collect();
-    Some(
-        rows.iter()
-            .map(|row| {
-                let cells = row.as_array().cloned().unwrap_or_default();
-                let obj: serde_json::Map<String, Value> = names
-                    .iter()
-                    .cloned()
-                    .zip(cells.into_iter().chain(std::iter::repeat(Value::Null)))
-                    .collect();
-                Value::Object(obj)
-            })
-            .collect(),
-    )
-}
-
-/// Unwrap a rules result envelope by SHAPE (never by tool id — the viz plane treats `rules.run` as an
-/// opaque tool, CLAUDE §10). Two nested envelopes, both `kind`/key-discriminated:
-///   - a full `RunResult` `{output, findings, log, ms, …}` → recurse into `output`;
-///   - a `RuleOutput` `{kind:"scalar", value}` → the value; `{kind:"grid", columns, rows}` → the grid
-///     object (the existing columnar path zips it); `{kind:"findings"|"nothing"}` → empty (no rows).
-/// Returns `None` for anything that is not one of these documented shapes, so every other tool result
-/// flows through the normal `result_to_rows` matching untouched — and `Some(rows)` (already normalized)
-/// when it IS a rules envelope. Grid is dispatched to the shared columnar zip; scalar recurses on the
-/// value; findings/nothing are honestly empty.
-fn unwrap_rule_envelope(result: &Value) -> Option<Vec<Value>> {
-    let o = result.as_object()?;
-    // Layer A: a full RunResult carries `output` alongside `findings`/`log`/`ms`. Recurse into output.
-    if let Some(output) = o.get("output") {
-        if o.contains_key("findings") || o.contains_key("log") || o.contains_key("ms") {
-            return Some(result_to_rows(output));
-        }
-    }
-    // Layer B: a bare RuleOutput, discriminated by `kind`.
-    match o.get("kind").and_then(Value::as_str) {
-        // A scalar `value` is usually the array of row maps; recurse so an array unwraps to N rows and a
-        // non-array renders as an honest single `{value}` row (the same shaping every other path uses).
-        Some("scalar") => Some(result_to_rows(o.get("value").unwrap_or(&Value::Null))),
-        // Route the grid's `{columns, rows}` straight into the shared columnar zip (NOT back through the
-        // envelope check — the `kind:"grid"` key would re-match and recurse forever).
-        Some("grid") => Some(columnar_rows(o).unwrap_or_default()),
-        // findings/nothing carry no chart rows (findings are the insights plane's food, not chart rows).
-        Some("findings") | Some("nothing") => Some(Vec::new()),
-        _ => None,
-    }
-}
-
-/// The time field of a row set, if any row carries a canonical time key — so the frame builder tags
-/// that column `Time`. Returns the first matching key by `TIME_KEYS` priority.
-pub fn detect_time_field(rows: &[Value]) -> Option<String> {
-    let first = rows.iter().find_map(|r| r.as_object())?;
-    TIME_KEYS
-        .iter()
-        .find(|k| first.contains_key(**k))
-        .map(|k| k.to_string())
 }

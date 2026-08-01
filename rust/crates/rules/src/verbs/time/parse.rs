@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn from_parts_validates_the_calendar() {
         assert_eq!(from_parts(2021, 1, 1, 0, 0, 0).unwrap(), T0);
-        assert_eq!(from_parts(2024, 2, 29, 0, 0, 0).is_ok(), true); // leap day exists
+        assert!(from_parts(2024, 2, 29, 0, 0, 0).is_ok()); // leap day exists
         assert!(from_parts(2023, 2, 29, 0, 0, 0).is_err()); // …only in a leap year
         assert!(from_parts(2021, 4, 31, 0, 0, 0).is_err()); // April has 30
         assert!(from_parts(2021, 1, 1, 24, 0, 0).is_err()); // hour 24

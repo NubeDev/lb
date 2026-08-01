@@ -388,7 +388,7 @@ async fn status_error_surfaces_message_frame_still_empty() {
         "bad SQL → error, got {status}"
     );
     assert!(
-        status["message"].as_str().unwrap_or("").len() > 0,
+        !status["message"].as_str().unwrap_or("").is_empty(),
         "error carries the downstream tool's message, got {status}"
     );
     // No invented rows — a failed target is still an empty frame.
