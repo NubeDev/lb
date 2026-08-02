@@ -53,6 +53,19 @@ pub use lb_host::Node;
 pub use lb_host::CacheConfig;
 pub use lb_role_gateway::BrowserSessionConfig;
 
+/// The publisher trust-gate posture an embedder sets on [`BootConfig::authenticity`]. Re-exported for
+/// exactly the reason [`CacheConfig`] is: the field is `pub`, so without this a downstream host with
+/// only the `lb-node` dep can NAME the field but not the value to put in it — the setting is
+/// unreachable in practice, and an embedder silently keeps the default. Pairs with
+/// [`authenticity_from_env`] for a host that mirrors the binary's `LB_EXT_UNTRUSTED_KEY` rule at its
+/// own boundary.
+pub use lb_role_gateway::Authenticity;
+
+/// Derive [`Authenticity`] from `LB_EXT_UNTRUSTED_KEY`, exactly as the standalone binary does — so an
+/// embedded node reproduces the binary's dev-hatch behaviour instead of reimplementing the parse (and
+/// its warnings) per host. Read at the host's binary boundary, never below the seam.
+pub use lb_role_gateway::authenticity_from_env;
+
 // ---- The embedder seam ------------------------------------------------------------------------
 //
 // Everything below exists for the same reason `SigningKey`/`Node`/`BrowserSessionConfig` do: a host
