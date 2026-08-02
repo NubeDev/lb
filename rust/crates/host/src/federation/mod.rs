@@ -35,7 +35,6 @@ mod list;
 mod migrate;
 mod mirror;
 mod net;
-mod query;
 #[cfg(feature = "datasource-profile")]
 mod profile;
 #[cfg(feature = "datasource-profile")]
@@ -44,6 +43,7 @@ mod profile_get;
 mod profile_record;
 #[cfg(feature = "datasource-profile")]
 mod profile_refresh;
+mod query;
 #[cfg(feature = "datasource-profile")]
 mod react_to_profiles;
 mod record;
@@ -71,7 +71,6 @@ pub use list::{datasource_list, DatasourceSummary};
 pub use migrate::{federation_migrate, migrate_descriptor};
 pub use mirror::federation_mirror;
 pub use net::enforce_endpoint;
-pub use query::{federation_query, query_descriptor};
 #[cfg(feature = "datasource-profile")]
 pub use profile::{federation_profile, profile_descriptor, ProfileBounds};
 #[cfg(feature = "datasource-profile")]
@@ -86,6 +85,7 @@ pub use profile_record::{
 pub use profile_refresh::{
     federation_profile_refresh, profile_refresh_descriptor, PROFILE_JOB_KIND,
 };
+pub use query::{federation_query, query_descriptor};
 #[cfg(feature = "datasource-profile")]
 pub use react_to_profiles::{
     react_to_profiles, spawn_profile_reactors, ProfilePass, ProfileReactorConfig, PROFILE_PERIOD,

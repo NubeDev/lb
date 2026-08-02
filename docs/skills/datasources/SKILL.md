@@ -4,7 +4,9 @@ description: >-
   Manage Lazybones external SQL datasources over the node gateway via the `federation` extension —
   register/remove/list/test a Postgres or SQLite source, run a SELECT-only `federation.query`, browse
   a source's tables/columns with `federation.schema`, snapshot tables + foreign keys + sample rows
-  for an AI prompt with `federation.sample`, and mirror an external range into the platform
+  for an AI prompt with `federation.sample`, read a source's precomputed discovery profile
+  (per-column cardinality, top values, min/max, grouped value ranges) with
+  `federation.profile_get`, and mirror an external range into the platform
   series plane with `federation.mirror`. Use when a task says "connect an external database",
   "add/register a datasource", "query Postgres/Timescale over the API", "test a datasource",
   "federate", "mirror an external table", "give the AI a sample of a datasource", or "call
@@ -69,6 +71,9 @@ Send it as `Authorization: Bearer $TOKEN` on every call. Capabilities:
 | Query (SELECT-only) | *(MCP only)* | `{"tool":"federation.query","args":{…}}` | `source,sql,ts*` |
 | Browse schema | *(MCP only)* | `{"tool":"federation.schema","args":{…}}` | `source,table?,ts*` |
 | AI-context snapshot | *(MCP only)* | `{"tool":"federation.sample","args":{…}}` | `source,tables?,limit?,ts*` |
+| Read discovery profile | *(MCP only)* | `{"tool":"federation.profile_get","args":{…}}` | `source,compute_if_missing?,ts*` |
+| Compute discovery profile | *(MCP only)* | `{"tool":"federation.profile","args":{…}}` | `source,tables?,ts*` |
+| Queue a profile rebuild | *(MCP only)* | `{"tool":"federation.profile_refresh","args":{…}}` | `source,ts*` |
 | Mirror → series plane | *(MCP only)* | `{"tool":"federation.mirror","args":{…}}` | `source,query,target_series,job_id,range?,ts*` |
 
 `* ts` — a caller-supplied millisecond logical timestamp (determinism, README §3: no wall-clock
@@ -140,6 +145,68 @@ curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN"
 #     "rows":{"columns":[…],"values":[[…],…]},"row_limit":10}],
 #    "relationships":[{"from":"sales.customer_id","to":"customers.id","kind":"foreign_key"}],
 #    "truncated":false}
+```
+
+### The durable discovery profile (`federation.profile_get`)
+
+`federation.sample` shows you ROWS; `federation.profile_get` tells you the SOURCE'S SHAPE — and it
+costs one store read, because lb computed it in advance (datasource-profile scope). Per table: the
+columns with a neutral `kind` (`text`/`number`/`time`/`other`, derived from the source's real type,
+never from the column name), the real foreign keys, per-text-column cardinality + top values, per
+numeric/time min/max + null fraction, and — for a long/EAV-shaped table — the per-group `[lo, hi]`
+value spans that tell a METRIC column from a PLACE column.
+
+**Reach for it before `federation.sample` when the question is "what can I chart / how do I group
+this?"** — it answers in a store read what would otherwise be ~2×N `SELECT DISTINCT`/`GROUP BY`
+round trips.
+
+Three verbs, and the distinction between them matters:
+
+- **`profile_get`** is a **pure store read**. It never touches the external DB and never blocks. A
+  source that was never profiled returns `NotFound` — pass `compute_if_missing:true` only when you
+  can afford to wait for a full pass.
+- **`federation.profile`** computes the pass and upserts the record (bounded-synchronous).
+- **`federation.profile_refresh`** **enqueues** a rebuild as an `lb-jobs` job (kind
+  `datasource_profile`) and returns immediately with the job id. Repeated calls collapse onto the
+  same job.
+
+`profile_get`/`profile` ride the **same `mcp:federation.query:call` cap** as query/schema/sample — a
+profile is strictly less than what that cap can already `SELECT`. `profile_refresh` needs its own
+`mcp:federation.profile_refresh:call`, because it spends work on the external database on demand.
+
+Bounded like `sample`: ≤ 25 tables, ≤ 60 values per column, ≤ 200 distinct groups counted before the
+count is reported as a floor (`distinct_capped:true`), long cells truncated, and the same
+`password`/`secret`/`token`/`api_key`/`hash` denylist emitting `«redacted»`. Anything cut sets
+`truncated:true`. Freshness is a `react_to_profiles` reactor on a clock (default 24 h), never inline
+on the read path.
+
+> Compiled under lb's `datasource-profile` cargo feature, **off by default** — the verbs are absent
+> from the tool catalog on a build without it, and `BootConfig::profile` (`LB_PROFILE=1`) is the
+> separate runtime switch for the freshness reactor.
+
+```bash
+# the hot path: one store read, no external DB touch
+curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{
+  "tool":"federation.profile_get","args":{"source":"warehouse","ts":1719800000000}}'
+# → {"source":"warehouse","version":1,"profiled_at":1719800000000,"truncated":false,
+#    "tables":[
+#      {"name":"point","columns":[
+#         {"name":"id","type":"Int64","kind":"number","min":1,"max":3,"null_frac":0.0},
+#         {"name":"name","type":"Utf8","kind":"text","distinct":3,
+#          "values":["Demand kW","Occupied","Zone Temp"]}],
+#       "foreign_keys":[]},
+#      {"name":"reading","columns":[
+#         {"name":"value","type":"Float64","kind":"number","min":0.0,"max":218.0,"null_frac":0.0}],
+#       "foreign_keys":[{"column":"point_id","ref_table":"point","ref_column":"id"}],
+#       "group_ranges":{"time":[{"group":"2026-01-01T00:00:00+00:00","lo":0.0,"hi":212.0}]}}]}
+
+# never profiled yet → an honest NotFound, NOT a silent 20 s pass
+# → {"error":"no such datasource"}      # queue one instead:
+curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{
+  "tool":"federation.profile_refresh","args":{"source":"warehouse","ts":1719800000000}}'
+# → {"job_id":"datasource-profile:warehouse","enqueued":true}
 ```
 
 Dashboards read a federated source the same way — a cell with `tool:"federation.query"` and

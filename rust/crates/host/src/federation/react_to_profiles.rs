@@ -68,7 +68,15 @@ fn reactor_principal(ws: &str) -> Principal {
     Principal::routed(
         format!("ext:{FEDERATION_EXT}"),
         ws.to_string(),
-        vec!["mcp:federation.query:call".to_string()],
+        vec![
+            // The read privilege the pass itself needs…
+            "mcp:federation.query:call".to_string(),
+            // …and the authority to reach the supervised sidecar that performs it. Both are the
+            // federation extension's OWN authority, not a caller's — there is no caller here, a
+            // clock fired. Exactly these two and nothing more: a background pass must not be able
+            // to do anything a `federation.profile` call could not.
+            "mcp:native.call:call".to_string(),
+        ],
     )
 }
 
@@ -127,14 +135,7 @@ pub async fn react_to_profiles(
     {
         let source = job.payload.clone();
         match federation_profile(
-            node,
-            &launcher,
-            &principal,
-            ws,
-            &source,
-            None,
-            cfg.bounds,
-            now,
+            node, &launcher, &principal, ws, &source, None, cfg.bounds, now,
         )
         .await
         {
