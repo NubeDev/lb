@@ -115,6 +115,11 @@ reqwest.workspace = true
 # path is a zero-cost no-op seam (`cache::dispatch` just runs the handler); CI builds it OFF to prove
 # the seam compiles and the read-path suite stays green.
 page-cache = ["dep:moka"]
+# The durable per-source discovery profile (datasource-profile scope). OFF by default, the
+# `page-cache` precedent: a default build compiles none of the profile verbs, record, or reactor, and
+# the verbs are absent from the tool catalog — so a node that cannot dispatch them never advertises
+# them. A downstream host turns it on. CI builds BOTH ways.
+datasource-profile = []
 
 [dev-dependencies]
 tokio.workspace = true

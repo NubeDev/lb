@@ -262,6 +262,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   AI-prompt-ready snapshot of a source (tables + columns + real foreign keys + `LIMIT 10` rows per
   table) under the existing `federation.query` cap, so an agent writes correct SQL in one round trip
   instead of N+1 `federation.schema` calls with no relationship metadata.
+  **`datasource-profile-scope.md`** adds the deferred statistics half: a durable
+  `datasource_profile:{ws}:{source}` record (per-column cardinality/top-K values/min-max/range
+  spans + real FKs) computed in one bounded sidecar pass, read back instantly via
+  `federation.profile_get` under the existing read cap, kept fresh by a `react_to_profiles`
+  reactor + `lb-jobs` refresh — so chart/SQL inference (e.g. rubix-ai's Quick Chart ~20 s probe)
+  reads precomputed shape instead of fanning out live `DISTINCT`/`GROUP BY` scans per open.
   **`federation-pushdown-scope.md`** makes single-source `federation.query` push the whole validated
   SELECT down to the source engine (the pinned providers' `*-federation` features +
   datafusion-federation) instead of streaming base-table rows into DataFusion and joining in the

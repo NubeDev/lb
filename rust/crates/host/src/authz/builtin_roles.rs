@@ -395,6 +395,10 @@ const AUTHOR_CAPS: &[&str] = &[
     // suffix).
     "mcp:federation.write:call",
     "mcp:federation.export:call",
+    // datasource-profile scope: REFRESHING a profile spends real work on the external database on
+    // demand, so it is its own grant — separately revokable from the read cap that `profile_get`
+    // and `profile` ride. An author may trigger it; a viewer may only read the result.
+    "mcp:federation.profile_refresh:call",
     "mcp:dbschema.save:call",
     "mcp:dbschema.delete:call",
     // ingest — a member WRITES their own series (producer = the authed principal). Reads are viewer.

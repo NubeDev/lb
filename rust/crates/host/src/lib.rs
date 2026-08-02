@@ -198,6 +198,14 @@ pub use federation::{
     resolve_datasource, Datasource, DatasourceSummary, FederationError,
     Installed as FederationInstalled, SeedSource,
 };
+/// The durable per-source discovery profile (datasource-profile scope). Compiled only under the
+/// `datasource-profile` feature, so an embedder that leaves it off links none of it.
+#[cfg(feature = "datasource-profile")]
+pub use federation::{
+    federation_profile, federation_profile_get, federation_profile_refresh, react_to_profiles,
+    resolve_profile, spawn_profile_reactors, DatasourceProfile, ProfileBounds, ProfilePass,
+    ProfileReactorConfig, PROFILE_JOB_KIND, PROFILE_PERIOD,
+};
 pub use flows::error::FlowsError;
 /// The global-schedule surface (`schedule.*`): the record shape + its CRUD/evaluate entry points, so
 /// an embedder (rubix-ai) can read and seed schedules through the library API.

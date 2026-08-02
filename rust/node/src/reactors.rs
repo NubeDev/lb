@@ -26,6 +26,7 @@ pub async fn spawn(
     providers: &OutboxProviders,
     email_transport: Option<&EmailTransport>,
     store_budget_bytes: Option<u64>,
+    profile: Option<crate::config::ProfileConfig>,
 ) {
     // FLOW REACTOR TICK: drive cron/reconcile scans so a `mode:"cron"` trigger actually fires. A
     // few-second period catches a minute-granularity cron promptly; each tick is a cheap ws scan.
@@ -138,4 +139,49 @@ pub async fn spawn(
         vec![ws.to_string()],
         Duration::from_secs(30),
     );
+
+    // DATASOURCE PROFILE REACTOR TICK (datasource-profile scope): keep each source's discovery
+    // profile younger than `refresh_after_secs` by enqueueing + draining bounded profiling passes.
+    // OFF on two axes — the `datasource-profile` cargo feature must be compiled in AND the embedder
+    // must have filled `BootConfig::profile` with `enabled: true`. This one spends work on an
+    // EXTERNAL database, so opting in is deliberately explicit twice over. The tick is lazy
+    // (minutes): a profile's freshness contract is hours, and a tight loop here is exactly the
+    // reactor-rescan CPU burn that pegged a Pi.
+    spawn_profile_reactor(node, ws, profile);
+}
+
+/// Spawn the discovery-profile reactor when the feature is compiled AND the config enables it.
+/// Split into a `#[cfg]` pair so `spawn` above reads the same either way — the feature-off build
+/// compiles a no-op, never a branch inside the caller.
+#[cfg(feature = "datasource-profile")]
+fn spawn_profile_reactor(
+    node: &Arc<Node>,
+    ws: &str,
+    profile: Option<crate::config::ProfileConfig>,
+) {
+    let Some(cfg) = profile.filter(|c| c.enabled) else {
+        return;
+    };
+    lb_host::spawn_profile_reactors(
+        node.clone(),
+        vec![ws.to_string()],
+        lb_host::PROFILE_PERIOD,
+        lb_host::ProfileReactorConfig {
+            refresh_after_secs: cfg.refresh_after_secs,
+            bounds: lb_host::ProfileBounds {
+                max_tables: cfg.max_tables,
+                max_values: cfg.max_values,
+            },
+        },
+    );
+}
+
+/// Feature-off: the config field is accepted and honoured as a no-op (the `page-cache` posture), so
+/// an embedder's config code is identical on a build that left the feature out.
+#[cfg(not(feature = "datasource-profile"))]
+fn spawn_profile_reactor(
+    _node: &Arc<Node>,
+    _ws: &str,
+    _profile: Option<crate::config::ProfileConfig>,
+) {
 }

@@ -18,6 +18,8 @@ use super::{
     federation_migrate, federation_mirror, federation_query, federation_sample, federation_schema,
     federation_write, ExportFrom,
 };
+#[cfg(feature = "datasource-profile")]
+use super::{federation_profile, federation_profile_get, federation_profile_refresh, ProfileBounds};
 use crate::boot::Node;
 
 /// Dispatch a `federation.*` / `datasource.*` MCP call. `input` is the verb's JSON args; the return
@@ -83,6 +85,58 @@ pub async fn call_federation_tool(
                 ts,
             )
             .await?;
+            Ok(out)
+        }
+        // datasource-profile scope. `profile_get` is the HOT path — a pure store read; `profile`
+        // computes + upserts; `profile_refresh` enqueues. Reads ride `mcp:federation.query:call`
+        // (see `gate_tool_for`); refresh has its own cap, checked inside the verb.
+        #[cfg(feature = "datasource-profile")]
+        "federation.profile" => {
+            let source = str_arg(input, "source")?;
+            let tables: Option<Vec<String>> =
+                input.get("tables").and_then(|v| v.as_array()).map(|a| {
+                    a.iter()
+                        .filter_map(|t| t.as_str().map(str::to_string))
+                        .collect()
+                });
+            let out = federation_profile(
+                node,
+                &launcher,
+                principal,
+                ws,
+                source,
+                tables.as_deref(),
+                ProfileBounds::default(),
+                ts,
+            )
+            .await?;
+            Ok(out)
+        }
+        #[cfg(feature = "datasource-profile")]
+        "federation.profile_get" => {
+            let source = str_arg(input, "source")?;
+            // Opt-in ONLY: the hot path must never be silently converted into a profiling pass.
+            let compute = input
+                .get("compute_if_missing")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let out = federation_profile_get(
+                node,
+                &launcher,
+                principal,
+                ws,
+                source,
+                compute,
+                ProfileBounds::default(),
+                ts,
+            )
+            .await?;
+            Ok(out)
+        }
+        #[cfg(feature = "datasource-profile")]
+        "federation.profile_refresh" => {
+            let source = str_arg(input, "source")?;
+            let out = federation_profile_refresh(node, principal, ws, source, ts).await?;
             Ok(out)
         }
         "federation.mirror" => {

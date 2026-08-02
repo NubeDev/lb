@@ -100,6 +100,36 @@ pub struct OutboxProviders {
     pub targets: Vec<(String, std::sync::Arc<dyn lb_host::DynTarget>)>,
 }
 
+/// The datasource **discovery profile** knobs (datasource-profile scope). Plain data, always
+/// compiled (like `CacheConfig`) so the field's type exists whether or not the feature is on — an
+/// embedder's config code must not need `#[cfg]`.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct ProfileConfig {
+    /// The runtime switch. `false` ⇒ the reactor is not spawned; the verbs still work when called
+    /// explicitly. This separation is deliberate: an operator may want on-demand profiling without
+    /// a clock spending work on their database.
+    pub enabled: bool,
+    /// A profile older than this is re-enqueued by the reactor. Default 24 h — the scope's global
+    /// setting; a per-datasource override is a later, additive field on the datasource record.
+    pub refresh_after_secs: u64,
+    /// Tables per pass. Clamped down by the sidecar's ceiling, never up.
+    pub max_tables: u64,
+    /// Distinct values retained per text column. Clamped down by the sidecar's ceiling, never up.
+    pub max_values: u64,
+}
+
+impl Default for ProfileConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            refresh_after_secs: 86_400,
+            max_tables: 25,
+            max_values: 60,
+        }
+    }
+}
+
 /// Everything the boot ritual needs. Filled at the binary boundary (env today, via [`from_env`]) or by
 /// an embedder (mutating [`default()`](Default::default)). No library code below the boot seam reads
 /// this from env.
@@ -267,6 +297,21 @@ pub struct BootConfig {
     /// `from_env` maps `LB_CACHE_*` for the standalone binary.
     pub cache: Option<lb_host::CacheConfig>,
 
+    /// The durable per-source **discovery profile** (datasource-profile scope). `None` (the default)
+    /// ⇒ no freshness reactor runs and nothing is profiled on a clock — byte-for-byte today's
+    /// behaviour. `Some(ProfileConfig)` with `enabled` ⇒ the node ticks `react_to_profiles` per
+    /// workspace: profiles older than `refresh_after_secs` are re-enqueued as `lb-jobs` jobs and
+    /// drained, so a source's shape stays current without any read ever blocking on a pass.
+    ///
+    /// Additive on the same two axes as [`cache`](Self::cache): the `datasource-profile` CARGO
+    /// feature gates whether any of it is COMPILED (off ⇒ the verbs are absent from the catalog and
+    /// this field is honoured as a no-op); this field is the RUNTIME switch on a build that
+    /// compiled it in. Role = config, never a code branch (rule 1) — a cloud node and an edge node
+    /// differ only in these numbers.
+    ///
+    /// `from_env` maps `LB_PROFILE_*` for the standalone binary; an embedder fills it directly.
+    pub profile: Option<ProfileConfig>,
+
     /// The node's **disk budget** for the store directory, in bytes (disk-budget scope, slice 1).
     /// `None` (the default) ⇒ today's behaviour exactly: the flat
     /// [`lb_host::LOG_ADVISORY_BYTES`] advisory (256 MiB) and **no marks** — nothing derives from a
@@ -395,6 +440,10 @@ impl Default for BootConfig {
             // No response cache by default — an embedder opts in (rubix-ai does, on by default in
             // ITS binary). `from_env` (below) turns it on for the standalone binary via `LB_CACHE_*`.
             cache: None,
+            // No profiling by default (the `cache` posture): a node must not silently start
+            // spending work on an external database because it was upgraded. An embedder opts in;
+            // `from_env` (below) reads `LB_PROFILE*` for the standalone binary.
+            profile: None,
             // No disk budget by default (disk-budget scope decision 2): unset means today's flat
             // 256 MiB advisory and no marks, forever. No auto-derivation from filesystem size — a
             // node must not silently acquire a new behaviour on upgrade.
@@ -518,8 +567,37 @@ impl BootConfig {
             // in its default features, so the stock binary usually can't cache anyway). `LB_CACHE=1`
             // (or any non-empty non-"0") turns it on; `LB_CACHE_BUDGET_MB` sizes it. Read only here.
             cache: cache_from_env(),
+            // OFF unless asked, same posture as the cache — and doubly so, because this one spends
+            // work on someone else's database. `LB_PROFILE=1` turns it on. Read only here.
+            profile: profile_from_env(),
         }
     }
+}
+
+/// The standalone binary's discovery-profile config from `LB_PROFILE*` (from-env only). `None`
+/// unless `LB_PROFILE` is truthy. Embedders never call this — they fill `BootConfig.profile`
+/// directly. Env is a BINARY concern: nothing below the boot seam reads it.
+fn profile_from_env() -> Option<ProfileConfig> {
+    let on = std::env::var("LB_PROFILE")
+        .ok()
+        .map(|v| !v.is_empty() && v != "0")
+        .unwrap_or(false);
+    if !on {
+        return None;
+    }
+    let d = ProfileConfig::default();
+    let num = |k: &str, fallback: u64| {
+        std::env::var(k)
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(fallback)
+    };
+    Some(ProfileConfig {
+        enabled: true,
+        refresh_after_secs: num("LB_PROFILE_REFRESH_SECS", d.refresh_after_secs),
+        max_tables: num("LB_PROFILE_MAX_TABLES", d.max_tables),
+        max_values: num("LB_PROFILE_MAX_VALUES", d.max_values),
+    })
 }
 
 /// The standalone binary's response-cache config from `LB_CACHE*` (from-env only). `None` unless

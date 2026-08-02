@@ -89,4 +89,25 @@ pub(super) const DATASOURCE: &[HostTool] = &[
         group: "federation",
         description: "a bounded row snapshot of a source's tables for AI context (rides the federation.query cap)",
     },
+    // datasource-profile scope. Cataloged only when the feature is compiled in — a verb the node
+    // cannot dispatch must not be advertised to an agent that would then call it and get "unknown
+    // tool". `profile_get` is listed first because it is the one a caller normally wants.
+    #[cfg(feature = "datasource-profile")]
+    HostTool {
+        tool: "federation.profile_get",
+        group: "federation",
+        description: "read a source's stored discovery profile: per-column cardinality, top values, min/max, grouped ranges (one store read; rides the federation.query cap)",
+    },
+    #[cfg(feature = "datasource-profile")]
+    HostTool {
+        tool: "federation.profile",
+        group: "federation",
+        description: "compute and store a source's discovery profile in one bounded pass (rides the federation.query cap)",
+    },
+    #[cfg(feature = "datasource-profile")]
+    HostTool {
+        tool: "federation.profile_refresh",
+        group: "federation",
+        description: "queue a rebuild of a source's discovery profile (own cap: it spends external-DB work on demand)",
+    },
 ];

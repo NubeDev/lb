@@ -198,7 +198,14 @@ fn gate_for(qualified_tool: &str) -> &str {
 }
 
 pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
-    if qualified_tool == "federation.schema" || qualified_tool == "federation.sample" {
+    if qualified_tool == "federation.schema"
+        || qualified_tool == "federation.sample"
+        // datasource-profile scope: a profile is strictly LESS than what the read cap can already
+        // SELECT, so reading/computing one is the same read privilege — no new grant. (Only
+        // `federation.profile_refresh` is separately capped: it SPENDS external-DB work on demand.)
+        || qualified_tool == "federation.profile"
+        || qualified_tool == "federation.profile_get"
+    {
         "federation.query"
     } else if qualified_tool == "identity.set_credential"
         || qualified_tool == "identity.set_email"

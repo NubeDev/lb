@@ -15,6 +15,9 @@
 //!   - `schema`    — `federation.schema` (native table/column discovery for the no-SQL UI).
 //!   - `sample`    — `federation.sample` (one AI-ready snapshot: tables + FKs + sample rows).
 //!   - `mirror`    — `federation.mirror` (the durable, resumable `lb-jobs` copy-in).
+//!   - `profile*`  — `federation.profile`/`profile_get`/`profile_refresh` + the
+//!                   `datasource_profile:{ws}:{source}` record and its freshness reactor. Compiled
+//!                   only under the `datasource-profile` feature (off by default).
 //!   - `tool`      — the `federation.*` / `datasource.*` MCP bridge dispatch.
 
 mod add;
@@ -33,6 +36,16 @@ mod migrate;
 mod mirror;
 mod net;
 mod query;
+#[cfg(feature = "datasource-profile")]
+mod profile;
+#[cfg(feature = "datasource-profile")]
+mod profile_get;
+#[cfg(feature = "datasource-profile")]
+mod profile_record;
+#[cfg(feature = "datasource-profile")]
+mod profile_refresh;
+#[cfg(feature = "datasource-profile")]
+mod react_to_profiles;
 mod record;
 mod remove;
 mod sample;
@@ -59,6 +72,24 @@ pub use migrate::{federation_migrate, migrate_descriptor};
 pub use mirror::federation_mirror;
 pub use net::enforce_endpoint;
 pub use query::{federation_query, query_descriptor};
+#[cfg(feature = "datasource-profile")]
+pub use profile::{federation_profile, profile_descriptor, ProfileBounds};
+#[cfg(feature = "datasource-profile")]
+pub use profile_get::{federation_profile_get, profile_get_descriptor};
+#[cfg(feature = "datasource-profile")]
+#[allow(unused_imports)]
+pub use profile_record::{
+    define_profile_index, profile_tag, resolve as resolve_profile, DatasourceProfile,
+    PROFILE_RECORD_VERSION, TABLE as PROFILE_TABLE,
+};
+#[cfg(feature = "datasource-profile")]
+pub use profile_refresh::{
+    federation_profile_refresh, profile_refresh_descriptor, PROFILE_JOB_KIND,
+};
+#[cfg(feature = "datasource-profile")]
+pub use react_to_profiles::{
+    react_to_profiles, spawn_profile_reactors, ProfilePass, ProfileReactorConfig, PROFILE_PERIOD,
+};
 pub use record::{
     datasource_tag, put as put_datasource, resolve as resolve_datasource, Datasource, TABLE,
 };

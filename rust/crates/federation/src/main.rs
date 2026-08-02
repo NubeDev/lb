@@ -43,6 +43,7 @@ mod event;
 mod info_schema;
 mod migrate;
 mod pool;
+mod profile;
 mod query;
 mod results;
 mod sample;
@@ -105,6 +106,7 @@ async fn handle_call(req: &Request) -> Reply {
         "federation.query" => federation_query(req.id, &input).await,
         "federation.schema" => federation_schema(req.id, &input).await,
         "federation.sample" => federation_sample(req.id, &input).await,
+        "federation.profile" => federation_profile(req.id, &input).await,
         "federation.write" => federation_write(req.id, &input).await,
         "federation.delete" => federation_delete(req.id, &input).await,
         "federation.migrate" => federation_migrate(req.id, &input).await,
@@ -223,6 +225,39 @@ async fn federation_sample(id: u64, input: &Value) -> Reply {
         .map(|n| n as usize)
         .unwrap_or(sample::DEFAULT_ROWS);
     match sample::run_sample(kind, dsn, tables, limit).await {
+        Ok(value) => Reply::ok(id, value.to_string()),
+        Err(e) => Reply::err(id, e),
+    }
+}
+
+/// `federation.profile` — one bounded discovery pass (datasource-profile scope): per-table columns +
+/// kinds + FKs, per-text-column cardinality and top values, per-numeric min/max + null fraction, and
+/// the grouped value ranges that separate a metric column from a place column. Everything a "what
+/// can I chart here?" consumer used to derive from ~2×N browser round trips, computed once next to
+/// the data. Bounded in `profile::run_profile`; the DSN is mediated by the host, same as query.
+async fn federation_profile(id: u64, input: &Value) -> Reply {
+    let (kind, dsn) = match (str_of(input, "kind"), str_of(input, "dsn")) {
+        (Some(k), Some(d)) => (k, d),
+        _ => return Reply::err(id, "missing kind/dsn"),
+    };
+    let tables: Option<Vec<String>> = input.get("tables").and_then(|v| v.as_array()).map(|a| {
+        a.iter()
+            .filter_map(|t| t.as_str().map(str::to_string))
+            .collect()
+    });
+    let d = profile::ProfileBounds::default();
+    let usize_of = |k: &str, fallback: usize| {
+        input
+            .get(k)
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .unwrap_or(fallback)
+    };
+    let bounds = profile::ProfileBounds {
+        max_tables: usize_of("max_tables", d.max_tables),
+        max_values: usize_of("max_values", d.max_values),
+    };
+    match profile::run_profile(kind, dsn, tables, bounds).await {
         Ok(value) => Reply::ok(id, value.to_string()),
         Err(e) => Reply::err(id, e),
     }

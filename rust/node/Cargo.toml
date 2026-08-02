@@ -84,3 +84,6 @@ external-agent = ["dep:lb-role-external-agent"]
 # lean); a downstream host enables `lb-node/page-cache` in ITS defaults (rubix-ai does). Feature-off
 # ⇒ no `moka`, a zero-cost no-op cache seam.
 page-cache = ["lb-host/page-cache"]
+# Forward the durable discovery profile (datasource-profile scope) to the host crate that owns it.
+# OFF in lb's default features — embedders opt in, same posture as `page-cache`.
+datasource-profile = ["lb-host/datasource-profile"]

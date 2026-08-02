@@ -30,6 +30,14 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         crate::federation::sample_descriptor(),
         // The write plane (schema-designer scope): bounded INSERT/UPSERT + DDL migrate + durable
         // export. Each gates on its own cap; `federation.migrate` is admin + dry-run-default.
+        // The durable discovery profile (datasource-profile scope): `profile_get` is what a chart
+        // composer or an agent calls on the hot path — one store read instead of ~2×N probe queries.
+        #[cfg(feature = "datasource-profile")]
+        crate::federation::profile_get_descriptor(),
+        #[cfg(feature = "datasource-profile")]
+        crate::federation::profile_descriptor(),
+        #[cfg(feature = "datasource-profile")]
+        crate::federation::profile_refresh_descriptor(),
         crate::federation::write_descriptor(),
         // The structured row DELETE (entity-binding scope, O-2): mirrors write's caps/shape — a
         // bounded key-match delete, gated on its own `mcp:federation.delete:call`.
