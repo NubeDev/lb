@@ -99,6 +99,22 @@ pub use lb_host::{DeliveryError, DynTarget, OutboxEffect, Target};
 /// [`RunningNode::mint_service_session`], which is the ergonomic form and the one to prefer.
 pub use lb_role_gateway::{mint_full_session_with_ttl, MintedSession, SESSION_TTL_SECS};
 
+/// The relative time-range grammar + resolver (dashboard relative-time-range scope) — the whole
+/// module, so an embedder's report CLI resolves `--from last-month` / `--from now-6h` with the
+/// host's OWN calendar arithmetic instead of a private copy: `timerange::parse`,
+/// `timerange::resolve`, `timerange::resolve_range` (string tz), `timerange::validate`.
+///
+/// **One vocabulary, by decision.** There is no legacy report-preset compat layer — the seven
+/// pre-grammar ids are gone (nothing was in production carrying them), so a CLI that used to take
+/// `--preset last-7-days` now takes `--from last-7-days` and gets the GRAMMAR's semantics.
+pub use lb_host::timerange;
+/// The embedder-facing time-range surface, flat — **string-in/plain-out**, so a host whose manifest
+/// carries no chrono/chrono-tz can call it: [`resolve_range`] takes the timezone as an IANA *name*
+/// (empty/"UTC" = UTC; an unknown name is a normal `Err`, never a panic); [`ResolvedRange`] exposes
+/// `from_ms`/`to_ms` and the ISO-day projection `from_day`/`to_day` as plain `String` fields;
+/// [`TimeRangeError`] is `std::error::Error`, so `anyhow` callers `?` it with no glue.
+pub use lb_host::timerange::{resolve_range, ResolvedRange, TimeRangeError};
+
 /// `NodeId` — the identity a discovery advertisement carries, shared with fleet-presence's bus
 /// roster so a discovered peer correlates with a roster entry once connected.
 pub use lb_bus::{NodeId, NodeIdError};

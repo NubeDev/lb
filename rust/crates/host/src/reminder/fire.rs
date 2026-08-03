@@ -63,7 +63,9 @@ pub async fn fire_reminder(
             )
             .await
         }
-        Action::McpTool { tool, args } => fire_mcp_tool(node, &principal, ws, tool, args).await,
+        Action::McpTool { tool, args } => {
+            fire_mcp_tool(node, &principal, ws, tool, args, now).await
+        }
         Action::Outbox {
             target,
             action,
@@ -156,14 +158,18 @@ async fn fire_mcp_tool(
     ws: &str,
     tool: &str,
     args: &Value,
+    now: u64,
 ) -> Result<(), ReminderError> {
     // Authoritative validation at fire time: re-enter the one call_tool chokepoint, which re-checks
     // workspace-first + `mcp:{tool}:call` under the stored principal. A denied/missing tool is a
     // logged deny here (no effect); a tool error is surfaced.
+    //
+    // A named window (`range`) in the args resolves against the FIRE clock into concrete `from`/`to`
+    // ISO days first (relative-time-range scope, step 7) — the tool is handed dates, not a name.
     let input = if args.is_null() {
         "{}".to_string()
     } else {
-        args.to_string()
+        super::range::resolve_payload_window(args, now)?.to_string()
     };
     crate::tool_call::call_tool(node, principal, ws, tool, &input)
         .await
@@ -186,8 +192,20 @@ async fn fire_outbox(
 ) -> Result<(), ReminderError> {
     // The effect id is derived from (reminder, scheduled_ts) — stable, so a re-enqueue is a no-op.
     let effect_id = fire_job_id(reminder_id, scheduled_ts);
+    // A JSON payload carrying a named window (`range`) resolves against the FIRE clock into
+    // concrete `from`/`to` ISO days before the effect is staged — the target is handed dates
+    // (relative-time-range scope, step 7). A non-JSON payload is opaque and rides unchanged.
+    // A `preset` key is matched too, NOT to resolve it but to REFUSE it: the legacy preset
+    // vocabulary was removed, and a row that predates the removal must fail loudly here rather
+    // than quietly mail a fallback window every night.
+    let payload = match serde_json::from_str::<Value>(payload) {
+        Ok(v) if v.get("range").is_some() || v.get("preset").is_some() => {
+            super::range::resolve_payload_window(&v, now)?.to_string()
+        }
+        _ => payload.to_string(),
+    };
     crate::outbox::enqueue_outbox(
-        store, principal, ws, &effect_id, target, action, payload, now,
+        store, principal, ws, &effect_id, target, action, &payload, now,
     )
     .await
     .map_err(|_| ReminderError::Denied)

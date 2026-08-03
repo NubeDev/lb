@@ -59,6 +59,8 @@ pub async fn reminder_update(
     }
     if let Some(action) = patch.action {
         best_effort_check_action(&action)?;
+        // A named window in the new payload is judged at SAVE time, exactly as on create.
+        super::range::check_action_window(&action)?;
         reminder.action = action;
     }
 

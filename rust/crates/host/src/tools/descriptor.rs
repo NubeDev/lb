@@ -69,6 +69,11 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // The widget palette read (widget-catalog scope). Named `dashboard.catalog` on purpose: the
         // catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so the verb's own
         // `mcp:dashboard.catalog:call` gate decides its visibility — no new cap, no `if` in the catalog.
+        // The relative time-range resolver (relative-time-range scope). Named `time.range.resolve`
+        // on purpose: the catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so
+        // the verb's own `mcp:time.range.resolve:call` gate decides its visibility — no new cap,
+        // no `if` in the catalog. Schema'd so a model can form the call.
+        crate::timerange::resolve_descriptor(),
         crate::dashboard::catalog_descriptor(),
         // The pin-to-dashboard write (widget-platform scope, Slice B). Named `dashboard.pin` on purpose:
         // the catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so the verb's own

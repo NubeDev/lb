@@ -72,6 +72,10 @@ mod system;
 mod tags;
 mod teams;
 mod telemetry;
+/// The relative time-range grammar + resolver (dashboard relative-time-range scope). `pub` as a
+/// MODULE so an embedding host (via `lb-node`'s re-export) reaches the whole API —
+/// `parse`/`resolve`/`resolve_range`/`validate` — without lb-host growing a flat alias per item.
+pub mod timerange;
 mod tool_call;
 mod tools;
 mod ui_decl;
@@ -169,7 +173,7 @@ pub use dashboard::{
     dashboard_save, dashboard_save_meta, dashboard_share, dashboard_share_closure,
     export_descriptor, import_descriptor, managed_by_of, mint_cell_from_envelope, pin_descriptor,
     seed_iot_demo, share_closure_descriptor, AccessReport, Action, Cell, Dashboard, DashboardError,
-    DashboardSummary, DatasourceRemap as GrafanaDatasourceRemap,
+    DashboardSummary, DashboardTime, DatasourceRemap as GrafanaDatasourceRemap,
     DegradedItem as GrafanaDegradedItem, DepKind, DepVerdict,
     Disposition as ShareClosureDisposition, ExtWidget as DashboardExtWidget,
     ImportReport as GrafanaImportReport, PageMeta, SeedReport, ShareClosureItem,
@@ -436,6 +440,7 @@ pub use telemetry::{
     telemetry_seed, telemetry_tail, telemetry_trace, QueryFilter, QueryPage, TailSnapshot, TailSub,
     TelemetryRow, TelemetrySvcError, TELEMETRY_TABLE,
 };
+pub use timerange::call_timerange_tool;
 pub use tool_call::{call_tool, call_tool_on_node};
 // Re-exported so a caller of `call_tool_on_node` (the `POST /mcp/call` bridge) can name a target
 // node without taking its own `lb-bus` dependency — the node id is part of this crate's signature.

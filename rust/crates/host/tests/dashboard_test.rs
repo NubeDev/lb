@@ -709,12 +709,31 @@ async fn workspace_isolation() {
     let ada = principal("user:ada", "ws-a", ALL);
     let ben = principal("user:ben", "ws-b", ALL);
 
-    dashboard_save(&store, &ada, "ws-a", "ops", "Ops A", vec![], vec![], 1)
-        .await
-        .unwrap();
+    // The record carries a default TIME window (relative-time-range scope) so the isolation claim
+    // covers the new field too: it lives on the `dashboard:{id}` record behind the same wall.
+    lb_host::dashboard_save_meta(
+        &store,
+        &ada,
+        "ws-a",
+        "ops",
+        "Ops A",
+        lb_host::PageMeta {
+            time: Some(lb_host::DashboardTime {
+                from: "last-7-days".into(),
+                to: String::new(),
+            }),
+            ..lb_host::PageMeta::default()
+        },
+        vec![],
+        vec![],
+        1,
+    )
+    .await
+    .unwrap();
 
     // Ben (ws-B) cannot get ws-A's dashboard (a different namespace → not found) and his roster is
-    // empty — the workspace wall, structural.
+    // empty — the workspace wall, structural. The `time` field never leaks cross-workspace: the
+    // ONLY read paths are get/list, both refused here.
     assert!(matches!(
         dashboard_get(&store, &ben, "ws-b", "ops")
             .await
@@ -725,6 +744,19 @@ async fn workspace_isolation() {
         .await
         .unwrap()
         .is_empty());
+
+    // A same-id save in ws-B creates ws-B's OWN record — reading it back shows no ws-A window
+    // (the two namespaces never alias).
+    dashboard_save(&store, &ben, "ws-b", "ops", "Ops B", vec![], vec![], 2)
+        .await
+        .unwrap();
+    let b = dashboard_get(&store, &ben, "ws-b", "ops").await.unwrap();
+    assert!(
+        b.time.is_none(),
+        "ws-B's same-id record must not surface ws-A's time window"
+    );
+    let a = dashboard_get(&store, &ada, "ws-a", "ops").await.unwrap();
+    assert_eq!(a.time.as_ref().unwrap().from, "last-7-days");
     // And a non-owner cannot overwrite the owner's dashboard even within the same workspace.
     let mallory = principal("user:mallory", "ws-a", ALL);
     assert!(matches!(

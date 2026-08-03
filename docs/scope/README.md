@@ -147,7 +147,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   credential check** — any body mints a token — and **every login gets an admin-grade cap bundle**
   so a nominal member can add members / self-grant `workspace.delete`; adds a `CredentialCheck` seam
   + role-scoped cap issuance behind the same `mint`/`verify` boundary, restoring README §6.6 RBAC),
-  and `access-model-scope.md` (**team-as-the-unit-of-access** + a `dashboard.access_check` preflight
+  and `invite-admin-routes-scope.md` (the **browser half of a shipped verb family**: `invites-scope.md`
+  is built — `invite.create`/`list`/`revoke`/`resend` in `host/src/invites/`, plus the pre-auth
+  `POST /public/invite/accept` + `GET /public/invite/verify` — but there is **no authenticated
+  `/admin/invites*` gateway route**, so a browser holding a session bearer cannot mint, list, revoke
+  or resend an invite; the redeem side of the door is hung and the mint side is not. Four thin routes
+  over the existing host verbs, no new cap/table/MCP verb; downstream consumer is rubix-ai's People-tab
+  credential UI), and `access-model-scope.md` (**team-as-the-unit-of-access** + a `dashboard.access_check` preflight
   that walks a dashboard's transitive **dependency closure** — panels, datasources, query verb +
   `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
   a live session found bob assigned a page whose cells still 403'd on a private panel + a missing
@@ -346,6 +352,21 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   and persist the `CompactionRecord` beside the log so skips survive restart and show in
   `store.status`. Fails open without `/proc`; supervisor `MemoryMax`/`OOMPolicy=stop` is the named
   defense-in-depth (rubixd/rubix-ai side).
+  `node-roles/` also holds `node-update-scope.md` — **the node's own binary as a mediated surface**:
+  an `update.*` host-native verb family (`status`/`check`/`apply`/`rollback`/`history` +
+  `credential.status|set|claim`) over a `BootConfig.update` provider seam, so an operator replaces the
+  node from the app the node serves instead of an SSH session. lb defines the seam and the vocabulary
+  and performs no update — the mechanism (a supervisor, an orchestrator, a package manager) is the
+  embedder's, exactly as `node-identity-scope.md` split machine identity (rule 10). `apply` is
+  accepted-not-done by contract (the responder is the process being replaced); the backend credential
+  is resolved per call from the sealed workspace secret → env NAME, never returned, fingerprint-only
+  on the wire. Additive: no provider ⇒ `{"supported": false}`. The same scope adds the second seam the first one
+  needs on an airgapped box: **`BootConfig.upload_sinks`** — a resumable `Content-Range` binary route
+  feeding embedder-registered sinks, keyed by an opaque name (the `OutboxProviders::targets` posture).
+  Chunks are forwarded as they arrive and lb holds no upload state, so peak memory is one 64 KiB chunk
+  at any artifact size and a resume survives an lb restart — the shape `POST /extensions` (JSON
+  byte-array, ~8x inflation, fully resident) cannot reach, and which a multi-GB sidecar on a 959 MB box
+  requires. Downstream: rubix-ai's rubixd-backed provider + `package` sink + Admin → Updates page.
   `core/` also holds
   `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
   + a runnable `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs

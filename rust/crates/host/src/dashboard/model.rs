@@ -454,6 +454,24 @@ pub struct Toolbar {
     pub cached: bool,
 }
 
+/// A dashboard's stored **default time window** (relative-time-range scope) — grammar expressions,
+/// not frozen instants: `from: "last-7-days"` still means the last seven days when the board is
+/// opened next month. Typed (not an `options` key) because the `Dashboard` struct drops untyped
+/// top-level keys on save — the `kind`/`reportIds` reason. VALIDATED on save like `kind` (a stored
+/// unresolvable expression is a board that errors on every open), unlike the opaque `width`.
+/// `to` empty = the window's own end (a range token IS both ends; an endpoint `from` ends at now).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct DashboardTime {
+    /// A range token (`today`, `this-month`, `last-3-months`) or an endpoint (`now-4h`,
+    /// `now-1d/d`, an ISO day/instant, an epoch ms).
+    #[serde(default, deserialize_with = "null_default")]
+    pub from: String,
+    /// An optional endpoint (exclusive). Empty with a range token (the token is both ends) or to
+    /// end at now.
+    #[serde(default, deserialize_with = "null_default")]
+    pub to: String,
+}
+
 /// A dashboard record. The persisted layout + sharing metadata (dashboard scope, "Data").
 /// Derives `Default` so the next additive field costs no call-site churn (the `Policy` precedent).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -532,6 +550,13 @@ pub struct Dashboard {
     /// host beyond serde (the host caches on the directive the UI sends, not on this field).
     #[serde(default, rename = "cacheTtlS", skip_serializing_if = "Option::is_none")]
     pub cache_ttl_s: Option<u64>,
+    /// The stored DEFAULT time window (relative-time-range scope) — see [`DashboardTime`]. Follows
+    /// `width`'s four layers exactly (model field, save schema + preserve-on-omit, tool arg,
+    /// gateway body field) but is VALIDATED on save like `kind`. `Option` + `skip_serializing_if`
+    /// so a pre-time dashboard round-trips byte-clean and absent means "the client default window",
+    /// which is distinct from an author's explicit choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<DashboardTime>,
     /// Page content width (dashboard page-settings) — `"wide"` (full-bleed, the default/empty) or
     /// `"centered"` (a constrained, centred content column, the marketing-page look). Additive/
     /// defaulted — a pre-width dashboard round-trips as empty (⇒ wide). Opaque to the host beyond

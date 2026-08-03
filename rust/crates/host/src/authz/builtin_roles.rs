@@ -206,6 +206,11 @@ const VIEWER_CAPS: &[&str] = &[
     // show counts + freshness when the admin-plane `series.retention.status` is refused
     // (series-observability scope).
     "mcp:series.stats:call",
+    // The relative time-range resolver (relative-time-range scope) — read-only compute over the
+    // caller's OWN expression (no store read, no write), the arithmetic every screen's range picker
+    // and every flow needs. Viewer-tier for the same reason `viz.query` is: it renders a screen a
+    // viewer was given and reaches nothing.
+    "mcp:time.range.resolve:call",
     // What the PRODUCERS of a series report about their own ingest. Same data-plane tier and the
     // same argument as `series.stats`: it is a read about samples the viewer can already see, and
     // the fan-out it performs is re-gated per extension under the CALLER's own principal, so this

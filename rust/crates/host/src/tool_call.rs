@@ -108,6 +108,11 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     // `docs.search`/`docs.reindex` next). Reached over the one MCP bridge like every host-native verb.
     "docs.",
     "telemetry.",
+    // relative-time-range scope: the `time.range.resolve` read-only compute verb. Host-native like
+    // the rest (pure arithmetic over the caller's expression — no store, no motion), reached over
+    // the one MCP bridge so flows, rules, agents and extensions all resolve a window through the
+    // SAME path instead of a private copy of the calendar maths.
+    "time.",
     "history.",
     // versions scope (#112): the generic entity version-history family (list/get/restore +
     // config.get/set). Host-native like the undo journal beside it, reached over the one MCP bridge
@@ -917,6 +922,10 @@ pub(crate) async fn run_host_verb(
             .await
             .map_err(crate::ingest::ingest_error_to_tool)?;
         serde_json::to_value(health).map_err(|e| ToolError::Extension(e.to_string()))?
+    } else if qualified_tool.starts_with("time.") {
+        // relative-time-range scope: pure compute (no store, no node state) — the verb re-runs its
+        // own `mcp:time.range.resolve:call` gate inside (defense in depth, like every family here).
+        crate::timerange::call_timerange_tool(principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("cache.") {
         // response-cache scope: the `cache.stats` / `cache.purge` admin verbs, reached over the
         // one MCP bridge like every host-native verb. The outer gate ran `mcp:cache.<verb>:call`;

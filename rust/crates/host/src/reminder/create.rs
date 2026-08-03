@@ -39,6 +39,9 @@ pub async fn reminder_create(
         }
     }
     best_effort_check_action(&action)?;
+    // A named window (`range`/`preset`) in the action payload is validated NOW, with a human
+    // watching — never first judged by the 03:00 firing (relative-time-range scope, step 7).
+    super::range::check_action_window(&action)?;
 
     // First fire: the next slot strictly after `now` (never fire at create time).
     let next_attempt_ts = next_after(schedule, now)?;

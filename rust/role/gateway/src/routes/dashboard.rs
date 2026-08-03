@@ -85,6 +85,11 @@ pub struct SaveDashboard {
     /// Additive & OPTIONAL, same preserve-on-omit discipline; the settings dialog sends it as `cacheTtlS`.
     #[serde(default, rename = "cacheTtlS")]
     pub cache_ttl_s: Option<u64>,
+    /// The default time window (relative-time-range scope) — `{ from, to }` GRAMMAR expressions
+    /// (`"last-7-days"`, `"now-6h"`), validated host-side on save. Additive & OPTIONAL, same
+    /// preserve-on-omit discipline; an all-empty pair is the explicit clear.
+    #[serde(default)]
+    pub time: Option<lb_host::DashboardTime>,
     /// Page content width (dashboard page-settings) — `"wide"` (default) or `"centered"`. Additive &
     /// OPTIONAL, same preserve-on-omit discipline; the settings dialog sends it.
     #[serde(default)]
@@ -159,6 +164,12 @@ pub async fn save_dashboard(
     }
     if let Some(v) = body.cache_ttl_s {
         args.insert("cacheTtlS".into(), json!(v));
+    }
+    if let Some(v) = &body.time {
+        args.insert(
+            "time".into(),
+            serde_json::to_value(v).unwrap_or(Value::Null),
+        );
     }
     if let Some(v) = &body.width {
         args.insert("width".into(), json!(v));

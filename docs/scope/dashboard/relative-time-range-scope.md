@@ -1,6 +1,7 @@
 # Dashboard scope — the relative time-range grammar (host slice)
 
-Status: **scope (the ask)**. Owning repo: **this one (`lb`)**, released as **`node-v0.15.0`**; the
+Status: **IMPLEMENTED (unreleased — tag pending)**; session log:
+`docs/sessions/dashboard/relative-time-range-session.md`. Owning repo: **this one (`lb`)**, released as **`node-v0.15.0`**; the
 consumer slice (URL contract, picker, report CLI, page settings) lives in `NubeIO/rubix-ai` →
 `docs/scope/frontend/dashboard/relative-time-range-scope.md`, which bumps the pin.
 
@@ -18,8 +19,8 @@ dashboard record, and a schedule payload that names its window instead of freezi
 - `Dashboard.time` — a typed, additive default window on the record, validated on save.
 - `time.range.resolve` — a read-only host verb so flows, rules, agents and extensions can resolve a window
   without a private copy of the arithmetic.
-- The report/reminder payload accepts a range **expression** beside the legacy preset id, with the legacy
-  ids reproducing their current dates exactly.
+- The report/reminder payload names its window with a range **expression** — the ONE vocabulary. (The
+  legacy preset ids were dropped by decision, not carried; see build step 4.)
 - A committed **conformance fixture** the downstream TypeScript twin asserts against, so the two
   implementations cannot drift silently.
 
@@ -70,8 +71,8 @@ Decided semantics (the ambiguities that made the existing two implementations di
 - **Rule 10.** The grammar names no extension and no board; the verb is registered generically and reached
   through ordinary tool resolution.
 - **Symmetric nodes.** The clock is a parameter; no role branch.
-- **One responsibility per file.** `timerange/{grammar.rs, civil.rs, resolve.rs, legacy.rs, tool.rs,
-  mod.rs}`, each well under 400 lines.
+- **One responsibility per file.** `timerange/{grammar.rs, civil.rs, resolve.rs, tool.rs, mod.rs}`, each
+  well under 400 lines (grammar/resolve carry their unit tests in sibling `tests/` files to stay so).
 - **No mocks.** Injected clock, real store, real caps wall in the host tests.
 
 ## The build
@@ -83,10 +84,14 @@ Decided semantics (the ambiguities that made the existing two implementations di
 3. `crates/host/src/timerange/resolve.rs` —
    `resolve(from, to: Option<&str>, now_ms: i64, tz: Tz) -> Result<ResolvedRange>` returning
    `{ from_ms, to_ms }` and the ISO-day projection the URL/report path uses.
-4. `crates/host/src/timerange/legacy.rs` — the seven shipped report preset ids (`yesterday`,
-   `last-24-hours`, `last-7-days`, `last-30-days`, `last-90-days`, `this-month`, `last-month`) mapped to
-   expressions that reproduce **today's** resolved dates byte-for-byte. No scheduled report may shift its
-   window on upgrade, including where a legacy id disagrees with the same-named new token.
+4. ~~`crates/host/src/timerange/legacy.rs` — the seven shipped report preset ids mapped to expressions
+   reproducing today's dates byte-for-byte.~~ **DROPPED BY DECISION (2026-08-03) — not an oversight.**
+   It was built, then hard-deleted the same session: there is **no production deployment**, so no
+   scheduled report exists whose window could shift on upgrade, and the only thing a compat layer
+   would have bought is a second window vocabulary to keep in sync forever. The grammar is now the
+   ONLY vocabulary — `last-7-days` is a grammar token meaning what the grammar says, not a preset id
+   with its own arithmetic (note the two DID disagree: legacy `this-month` ended after *today*).
+   The `preset` key is refused loudly wherever it appears (see 7), never aliased or ignored.
 5. `crates/host/src/timerange/tool.rs` — the `time.range.resolve` descriptor + handler
    (`from`, optional `to`, `tz`, `now`) → `{ fromMs, toMs, fromIso, toIso }`.
 6. `crates/host/src/dashboard/model.rs` — additive typed `DashboardTime { from: String, to: String }` as
@@ -94,11 +99,15 @@ Decided semantics (the ambiguities that made the existing two implementations di
    layers, following the shipped `width` precedent: model field, `save.rs` JSON-schema entry +
    `dashboard_save_meta` `Option<_>` preserve-on-omit, `dashboard/tool.rs` arg mapping, gateway
    `POST /dashboards` field. Expressions are **validated on save**.
-7. Report/reminder payload — accept `{"range":{"from":"last-month"}}` beside `{"preset":"…"}`, validated at
-   **save** time (a bad expression must fail with a human watching, not at 03:00 nightly) and resolved at
-   fire time.
-8. `docs/contracts/time-range-conformance.json` — ~60 rows generated and asserted by a `timerange` test;
-   rubix-ai vendors the file and asserts it from vitest.
+7. Report/reminder payload — `{"range":{"from":"last-month","to":…,"tz":…}}` is the **only** named-window
+   form, validated at **save** time (a bad expression must fail with a human watching, not at 03:00
+   nightly) and resolved at fire time. Per decision 4 above, a `{"preset":"…"}` key is **refused
+   loudly at save AND at fire** — naming the dead key and its replacement — rather than accepted or
+   silently ignored: a silently-ignored `preset` leaves a reminder that LOOKS configured and mails a
+   fallback window nightly.
+8. `docs/contracts/time-range-conformance.json` — 83 rows generated and asserted by a `timerange` test;
+   rubix-ai vendors the file and asserts it from vitest. (No row ever pinned a legacy preset id — the
+   fixture is pure grammar — so dropping the compat layer changed it not at all.)
 
 ## Example flow
 
@@ -117,8 +126,9 @@ Decided semantics (the ambiguities that made the existing two implementations di
 - **Offline/sync, hot-reload** — N/A (pure compute, no motion, no extension surface).
 - **Conformance** — every token, both `last-month` spellings, 29 Feb 2028, 31 Mar `last-1-month`,
   1 Jan `last-month` across the year boundary, an `Australia/Sydney` DST transition, a Monday-start week.
-- **Legacy compat** — each of the seven preset ids resolves to the exact dates the downstream `preset.rs`
-  returns today (asserted against the pre-deletion values).
+- ~~**Legacy compat**~~ — dropped with the compat layer itself (build step 4: no production deployment).
+  Replaced by a **removal** test: a `preset` key is refused at save AND at fire, in both payload carriers,
+  with a message naming the dead key and its replacement.
 - **Malformed input** — `last-fortnight`, `this-month` with a `to`, an empty string: refused with the bad
   token named; nothing defaults silently.
 - **Save round-trip** — `dashboard.save` sets `time`, a later save omitting it preserves it, an invalid
@@ -130,14 +140,16 @@ Decided semantics (the ambiguities that made the existing two implementations di
   than by reading the code.
 - Two implementations (Rust + the downstream TS twin) is a deliberate cost — the fixture is the mitigation
   and the only artefact that must stay honest.
-- Moving live scheduled behaviour out of rubix-ai into the host: covered by the legacy-compat test, which
-  runs before the downstream file is deleted.
+- ~~Moving live scheduled behaviour out of rubix-ai into the host~~ — a non-risk once the compat layer
+  was dropped: nothing is deployed, so no live schedule can shift. The downstream `preset.rs` is deleted
+  outright rather than mirrored.
 
 ## Open questions
 
 None. Every ambiguity found while scoping is decided above: `last-month` vs `last-1-month`, the exclusive
-`to`, the timezone precedence, Monday weeks, calendar quarters, host-verb-not-hot-path, and legacy preset
-ids keeping their current dates.
+`to`, the timezone precedence, Monday weeks, calendar quarters, and host-verb-not-hot-path. The one
+decision REVERSED after scoping: legacy preset ids are **not** kept — with nothing in production there is
+no window to preserve, so they were hard-deleted and the key is now refused (build step 4).
 
 ## Related
 

@@ -57,7 +57,8 @@ pub use kind::{KIND_DASHBOARD, KIND_REPORT};
 pub use list::dashboard_list;
 pub use managed::managed_by_of;
 pub use model::{
-    Action, Cell, Dashboard, QueryOptions, Source, Target, Toolbar, Variable, Visibility,
+    Action, Cell, Dashboard, DashboardTime, QueryOptions, Source, Target, Toolbar, Variable,
+    Visibility,
 };
 pub use pin::{dashboard_pin, mint_cell_from_envelope, pin_descriptor};
 pub use save::{dashboard_save, dashboard_save_meta, save_descriptor, PageMeta};

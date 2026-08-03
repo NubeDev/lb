@@ -23,7 +23,7 @@ use super::authorize::authorize_dashboard;
 use super::error::DashboardError;
 use super::kind::{KIND_DASHBOARD, KIND_REPORT};
 use super::managed::managed_by_of;
-use super::model::{Cell, Dashboard, Toolbar, Variable, Visibility};
+use super::model::{Cell, Dashboard, DashboardTime, Toolbar, Variable, Visibility};
 use super::store::{read_dashboard, write_dashboard};
 use super::visibility::may_read_dashboard;
 
@@ -53,6 +53,10 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "color": { "type": "string", "x-lb": { "label": "Colour", "description": "Optional CSS accent colour for the page icon (omit to keep the existing one)" } },
                 "timezone": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional dashboard timezone — an IANA name like 'Australia/Sydney' or 'browser' (omit to keep the existing one)" } },
                 "cacheTtlS": { "type": "integer", "x-lb": { "label": "Freshness (cache TTL)", "description": "Optional per-dashboard viz.query cache TTL in seconds; 0 = live (caching off, an explicit author choice), omit to keep the existing one. Never set on a board = the client default applies (caching on)." } },
+                "time": { "type": "object", "properties": {
+                    "from": { "type": "string" },
+                    "to": { "type": "string" }
+                }, "x-lb": { "label": "Default time range", "description": "Optional default window as RELATIVE expressions, e.g. { from: 'last-7-days' } or { from: 'now-6h' } — a range token (today, yesterday, this-month, last-3-months) in 'from' with 'to' absent, or endpoint pair (now-4h, now-1d/d, ISO day/instant, epoch ms). Validated on save; omit to keep the existing one; { from: '', to: '' } clears" } },
                 "width": { "type": "string", "x-lb": { "label": "Page width", "description": "Optional page content width: 'wide' (full-bleed, default) or 'centered' (constrained centred column) (omit to keep the existing one)" } },
                 "kind": { "type": "string", "enum": ["dashboard", "report"], "x-lb": { "label": "Kind", "description": "Optional record kind: 'dashboard' (default) or 'report' (a paper-shaped board report.export composes A4 pages from) (omit to keep the existing one)" } },
                 "reportIds": { "type": "array", "items": { "type": "string" }, "x-lb": { "label": "Bound reports", "description": "Optional report-kind dashboard ids this page's Generate-report control offers (omit to keep the existing ones)" } },
@@ -94,6 +98,10 @@ pub struct PageMeta {
     pub timezone: Option<String>,
     pub cache_ttl_s: Option<u64>,
     pub toolbar: Option<Toolbar>,
+    /// The default time window (relative-time-range scope). `None` preserves; `Some` sets after
+    /// VALIDATION (a bad expression refuses the save); a `Some` with both fields empty CLEARS —
+    /// the `reportIds` empty-array precedent (an author must be able to remove the default).
+    pub time: Option<DashboardTime>,
     pub width: Option<String>,
     pub vars_display: Option<String>,
     pub kind: Option<String>,
@@ -149,6 +157,17 @@ fn check_kind(kind: &str) -> Result<(), DashboardError> {
     }
 }
 
+/// Validate a supplied [`DashboardTime`] through the one grammar ([`crate::timerange`]). Validated
+/// like `kind` (not opaque like `width`) because the two fail differently: an unknown `width`
+/// degrades visibly on screen, whereas a stored unresolvable expression is a board that errors on
+/// every open and a schedule that fails at 03:00 with nobody watching. The refusal names the bad
+/// token and the legal set (the grammar's own error).
+fn check_time(t: &DashboardTime) -> Result<(), DashboardError> {
+    let to = (!t.to.is_empty()).then_some(t.to.as_str());
+    crate::timerange::validate(&t.from, to)
+        .map_err(|e| DashboardError::BadInput(format!("time: {e}")))
+}
+
 /// `dashboard.save` with the page-presentation fields (dashboard page-settings). See [`PageMeta`] for
 /// the preserve-on-omit contract every one of them follows. This is the full form; [`dashboard_save`]
 /// is the presentation-preserving wrapper every layout/variable caller uses.
@@ -171,6 +190,17 @@ pub async fn dashboard_save_meta(
     if let Some(k) = meta.kind.as_deref() {
         check_kind(k)?;
     }
+    // The default time window: validate BEFORE anything is read or written, like `kind` — a bad
+    // expression refuses the whole save and leaves the stored value untouched. An all-empty pair is
+    // the explicit CLEAR, not an error.
+    let time = match &meta.time {
+        Some(t) if t.from.is_empty() && t.to.is_empty() => Some(None),
+        Some(t) => {
+            check_time(t)?;
+            Some(Some(t.clone()))
+        }
+        None => None,
+    };
     // Lenient-args normalization BEFORE validation: an AI writer regularly sends `options.genui.ir`
     // as a JSON-encoded string; parse it into the object the validator and renderer expect.
     for cell in &mut cells {
@@ -253,6 +283,10 @@ pub async fn dashboard_save_meta(
         // author's explicit "live". `.or` preserves both; `.unwrap_or` would erase the distinction.
         cache_ttl_s: meta.cache_ttl_s.or(prev.cache_ttl_s),
         toolbar: meta.toolbar.unwrap_or(prev.toolbar),
+        // Preserve-on-omit over a tri-state, like `cache_ttl_s`: `None` (the arg was absent) keeps
+        // whatever the record had — including keeping it absent; the validated `Some(Some(_))`
+        // sets; `Some(None)` is the explicit clear.
+        time: time.unwrap_or(prev.time),
         width: meta.width.unwrap_or(prev.width),
         vars_display: meta.vars_display.unwrap_or(prev.vars_display),
         // Preserve-on-omit like every other page-settings field: a layout save (which sends no `kind`)

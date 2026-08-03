@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 use lb_authz::Subject;
 
-use super::model::{Cell, Toolbar, Visibility};
+use super::model::{Cell, DashboardTime, Toolbar, Visibility};
 use super::{
     dashboard_access_check, dashboard_delete, dashboard_get, dashboard_list, dashboard_pin,
     dashboard_save_meta, dashboard_share, dashboard_share_closure, DashboardError, PageMeta,
@@ -69,6 +69,7 @@ pub async fn call_dashboard_tool(
                     timezone: opt_str_arg(input, "timezone"),
                     cache_ttl_s: opt_u64_arg(input, "cacheTtlS"),
                     toolbar: opt_toolbar_arg(input),
+                    time: opt_time_arg(input),
                     width: opt_str_arg(input, "width"),
                     vars_display: opt_str_arg(input, "varsDisplay"),
                     kind: opt_str_arg(input, "kind"),
@@ -265,6 +266,24 @@ fn opt_bool_arg(input: &Value, key: &str) -> Option<bool> {
 /// present-but-malformed value is coerced to `None` (lenient — never fail a whole save over chrome).
 fn opt_toolbar_arg(input: &Value) -> Option<Toolbar> {
     match input.get("toolbar") {
+        Some(v) if !v.is_null() => serde_json::from_value(v.clone()).ok(),
+        _ => None,
+    }
+}
+
+/// The OPTIONAL `time` arg (relative-time-range scope): the default window's `{from, to}`
+/// expressions. `Some` when present as an object, `None` when absent or null — the "preserve the
+/// stored value" signal, exactly like `toolbar`. A present-but-malformed OBJECT is coerced to
+/// `None` (lenient shape, like `toolbar`); the EXPRESSIONS inside are then validated loudly by
+/// `dashboard_save_meta` — shape leniency never swallows a bad expression.
+fn opt_time_arg(input: &Value) -> Option<DashboardTime> {
+    match input.get("time") {
+        // The lenient bare-string form AI callers emit (`"time": "last-7-days"`) reads as the
+        // `from` expression — the validator still judges it.
+        Some(Value::String(from)) => Some(DashboardTime {
+            from: from.clone(),
+            to: String::new(),
+        }),
         Some(v) if !v.is_null() => serde_json::from_value(v.clone()).ok(),
         _ => None,
     }

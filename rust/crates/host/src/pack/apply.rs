@@ -450,6 +450,13 @@ async fn apply_dashboard(
             timezone: str_key("timezone"),
             cache_ttl_s: d.json.get("cacheTtlS").and_then(Value::as_u64),
             toolbar: None,
+            // Same keys, same preserve-on-omit: a pack page may declare a default window
+            // (`"time": { "from": "last-7-days" }`); `dashboard_save_meta` validates it like any
+            // other writer (a pack with a bad expression fails apply loudly, never stores a typo).
+            time: d
+                .json
+                .get("time")
+                .and_then(|v| serde_json::from_value(v.clone()).ok()),
             width: str_key("width"),
             vars_display: str_key("varsDisplay"),
             kind: str_key("kind"),

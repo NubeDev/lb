@@ -22,6 +22,7 @@ mod descriptor;
 mod fire;
 mod fire_now;
 mod get;
+mod range;
 mod react;
 mod spawn;
 mod tool;
