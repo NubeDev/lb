@@ -33,7 +33,7 @@ pub mod federation;
 
 pub use builder::{boot_full, RunningNode};
 pub use config::{
-    AgentModelConfig, BootConfig, CredentialMode, GatewayMode, OutboxProviders,
+    AgentModelConfig, BootConfig, CredentialMode, GatewayMode, OutboxProviders, ProfileConfig,
     DEFAULT_MAX_EXTENSION_UPLOAD_BYTES,
 };
 

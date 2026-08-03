@@ -155,7 +155,10 @@ pub async fn run_profile(
         // provider per query would re-plan the federation adaptor for each column.
         let ctx = SessionContext::new();
         let reference = TableReference::bare(meta.name.clone());
-        if ctx.register_table(reference.clone(), provider.clone()).is_err() {
+        if ctx
+            .register_table(reference.clone(), provider.clone())
+            .is_err()
+        {
             continue;
         }
 
@@ -209,10 +212,15 @@ pub async fn run_profile(
         // meaningful when the table has exactly ONE numeric column: that is the long/EAV signature
         // (a wide table has one column per metric and nothing to separate). Same rule the consumer's
         // detector applies, computed here instead of over N round trips.
+        // The VALUE column candidates: numeric columns that are not JOIN KEYS. Excluding the FK
+        // columns is STRUCTURAL (the source's own catalog says so), never name-based — an integer
+        // `point_id` is plumbing, not a measurement, and counting it as one meant a normalized fact
+        // table looked like it had two numeric columns and got no ranges at all.
         let numeric_names: Vec<String> = columns
             .iter()
             .filter(|c| c["kind"] == json!("number"))
             .filter_map(|c| c["name"].as_str().map(str::to_string))
+            .filter(|n| !fks.iter().any(|fk| &fk.column == n))
             .collect();
         let mut group_ranges = Map::new();
         if numeric_names.len() == 1 {
@@ -236,7 +244,10 @@ pub async fn run_profile(
         if let Some(rows) = meta.rows {
             table.insert("row_estimate".into(), json!(rows));
         }
-        table.insert("columns".into(), Value::Array(columns.into_iter().map(Value::Object).collect()));
+        table.insert(
+            "columns".into(),
+            Value::Array(columns.into_iter().map(Value::Object).collect()),
+        );
         table.insert(
             "foreign_keys".into(),
             Value::Array(fks.iter().map(fk_json).collect()),
@@ -330,6 +341,18 @@ async fn distinct_stats(
             vec![count(datafusion::prelude::lit(1)).alias("__n")],
         )
         .ok()?
+        // ORDER BEFORE LIMIT, and order TOTALLY. A bare `LIMIT` after a `GROUP BY` takes whichever
+        // partitions finish first, so on a column whose counts all tie (the common case for a
+        // high-cardinality column) two passes over identical data retained two different subsets —
+        // and the record was no longer idempotent, which the reactor's repeated upserts depend on.
+        // Sorting by (count desc, value asc) makes the retained set both a real top-K and stable;
+        // the sort is over the aggregate's OUTPUT (distinct groups), not the raw rows, and
+        // DataFusion executes it as a bounded top-K.
+        .sort(vec![
+            col("__n").sort(false, false),
+            col(quoted(name)).sort(true, false),
+        ])
+        .ok()?
         .limit(0, Some(MAX_DISTINCT_SCAN))
         .ok()?;
     let shaped = crate::query::shape(df.collect().await.ok()?).ok()?;
@@ -393,6 +416,10 @@ async fn range_stats(
                 max(col(quoted(value_column))).alias("__hi"),
             ],
         )
+        .ok()?
+        // Same reason as `distinct_stats`: order totally before limiting, or which groups survive a
+        // cut is down to partition scheduling and the record stops being idempotent.
+        .sort(vec![col(quoted(name)).sort(true, false)])
         .ok()?
         .limit(0, Some(max_values))
         .ok()?;

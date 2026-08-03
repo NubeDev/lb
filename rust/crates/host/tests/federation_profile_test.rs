@@ -129,7 +129,8 @@ fn seed_db(who: &str) -> String {
 
 /// A fixture with more tables than one pass may touch (the bounds assertion).
 fn seed_many_tables(who: &str) -> String {
-    let path = std::env::temp_dir().join(format!("lb-fed-profmany-{}-{who}.db", std::process::id()));
+    let path =
+        std::env::temp_dir().join(format!("lb-fed-profmany-{}-{who}.db", std::process::id()));
     let _ = std::fs::remove_file(&path);
     let conn = rusqlite::Connection::open(&path).expect("open sqlite fixture");
     let mut sql = String::new();
@@ -280,13 +281,19 @@ async fn profile_end_to_end_shape_bounds_and_idempotence() {
         .expect("group_ranges for reading.time");
     assert!(!ranges.is_empty(), "grouped ranges present: {reading}");
     assert!(
-        ranges.iter().all(|r| r.get("lo").is_some() && r.get("hi").is_some()),
+        ranges
+            .iter()
+            .all(|r| r.get("lo").is_some() && r.get("hi").is_some()),
         "every group carries a [lo, hi] span: {reading}"
     );
 
     // CARDINALITY CAP — 250 distinct values, scanned to the 200 ceiling and reported as a FLOOR.
     let wide = column_of(table_of(&profile, "wide"), "wide_text");
-    assert_eq!(wide["distinct"], json!(200), "capped at the scan ceiling: {wide}");
+    assert_eq!(
+        wide["distinct"],
+        json!(200),
+        "capped at the scan ceiling: {wide}"
+    );
     assert_eq!(wide["distinct_capped"], json!(true));
     assert!(
         wide["values"].as_array().expect("values").len() <= 60,
@@ -382,7 +389,10 @@ async fn profile_bounds_truncate_a_wide_source() {
 
     // Record size stays well inside the context-basket body budget (the scope's ~100 KB worst case).
     let bytes = profile.to_string().len();
-    assert!(bytes < 100_000, "worst-case record stays prompt-sized: {bytes} bytes");
+    assert!(
+        bytes < 100_000,
+        "worst-case record stays prompt-sized: {bytes} bytes"
+    );
 
     let _ = std::fs::remove_file(&db);
 }
@@ -466,7 +476,7 @@ async fn profile_denies_and_isolates() {
 
     // ── WORKSPACE ISOLATION (mandatory) ───────────────────────────────────────────────────────
     let ws_b = "other";
-    let admin_b = admin(ws_b);
+    let admin_b = crate::admin(ws_b);
     install_federation(&node, &admin_b, ws_b, &dir).await;
     let iso = call(
         &node,
@@ -522,7 +532,10 @@ async fn profile_reactor_enqueues_stale_once_and_isolates_workspaces() {
     let stale = lb_host::react_to_profiles(&node, ws, 1_000, cfg)
         .await
         .expect("a stale pass");
-    assert_eq!(stale.enqueued, 1, "the stale profile is enqueued: {stale:?}");
+    assert_eq!(
+        stale.enqueued, 1,
+        "the stale profile is enqueued: {stale:?}"
+    );
     assert_eq!(stale.ran, 1, "and drained in the same tick: {stale:?}");
     assert_eq!(stale.failed, 0);
 

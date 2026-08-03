@@ -19,7 +19,9 @@ use super::{
     federation_write, ExportFrom,
 };
 #[cfg(feature = "datasource-profile")]
-use super::{federation_profile, federation_profile_get, federation_profile_refresh, ProfileBounds};
+use super::{
+    federation_profile, federation_profile_get, federation_profile_refresh, ProfileBounds,
+};
 use crate::boot::Node;
 
 /// Dispatch a `federation.*` / `datasource.*` MCP call. `input` is the verb's JSON args; the return

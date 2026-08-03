@@ -1,6 +1,21 @@
 # Datasources scope — `federation.profile`, a durable per-source discovery profile
 
-Status: scope (the ask). Promotes to `public/datasources/datasources.md` once shipped.
+Status: **SHIPPED, untagged.** All of it: the sidecar pass
+(`rust/crates/federation/src/profile.rs`), the three host verbs + the
+`datasource_profile:{ws}:{source}` record with its `(tag, profiled_at)` index, the
+`react_to_profiles` reactor (enqueue + drain, LIMIT-bounded, ws-isolated, `profiling_since` guard),
+`BootConfig::profile` (`ProfileConfig`) and the `datasource-profile` cargo feature — OFF by default,
+CI-proven to build and boot both ways. Tests in
+`rust/crates/host/tests/federation_profile_test.rs` cover every mandatory category. **Needs a
+`node-v*` tag** before the downstream consumer
+(`rubix-ai docs/scope/frontend/dashboard/quick-chart-discovery-scope.md`) can drop its local
+`[patch]`. Promotes to `public/datasources/datasources.md` once tagged.
+
+**Resolved open questions** (all three took the recommendation):
+`profile_get` is a pure read with an explicit `compute_if_missing` opt-in; `row_estimate` is
+catalog-based where the kind exposes one (`TableMeta.rows`) and omitted otherwise — never
+`COUNT(*)`; `refresh_after_secs` is global on `BootConfig` (default 86 400), per-record later if
+asked for.
 
 We want a **persisted, workspace-scoped discovery profile per datasource** — per table: the
 columns and their kinds, real foreign keys, per-text-column cardinality + top distinct values,
