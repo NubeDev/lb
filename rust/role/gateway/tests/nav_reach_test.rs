@@ -25,19 +25,12 @@ use lb_role_gateway::{router, Gateway};
 use serde_json::json;
 use tower::ServiceExt;
 
-/// Log in over the real `/login` route (password-less dev) and return the bearer token. Reach caps are
-/// folded into this token at mint time (login.rs), so the token already carries the caller's reach set.
+/// Mint the token `/auth/login` would issue for `(user, ws)` — the SAME role-correct path
+/// (`mint_full_session`). Reach caps are folded in at mint time, so the token already carries the
+/// caller's reach set. (Was a `POST /login` round trip; that route was deleted in the pre-production
+/// legacy sweep — the issuance this asserts is the same function the live route calls.)
 async fn login(gw: &Gateway, user: &str, ws: &str) -> String {
-    let resp = router(gw.clone())
-        .oneshot(json_post(
-            "/login",
-            json!({ "user": user, "workspace": ws }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "login {user}@{ws} ok");
-    let reply: serde_json::Value = common::json_body(resp).await;
-    reply["token"].as_str().unwrap().to_string()
+    common::bootstrap::session_token(gw, user, ws).await
 }
 
 /// `GET /surface/{surface}` under `token` — the page-reach preflight. `200` iff the caller's nav grants

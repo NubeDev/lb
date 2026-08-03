@@ -27,7 +27,7 @@
 //!
 //! # The wall (rule 6 — the same one `lb-discovery` draws)
 //!
-//! This is served **outside the auth wall**, the same posture as `GET /health` and `POST /login`,
+//! This is served **outside the auth wall**, the same posture as `GET /health` and `POST /auth/login`,
 //! so it obeys the identical rule the mDNS record does: **reachability and identity only**. No
 //! workspace, no persona, no capability, no extension list, no member — nothing that is inside a
 //! wall may appear here. Everything in the body is already broadcast in cleartext over mDNS by a

@@ -131,8 +131,9 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   conditional stack). Consumer UI: `NubeIO/rubix-ai` `frontend/version-history-scope.md`.
 - `auth-caps/` — the capability grammar, token, and grant delegation; plus `edge-trust-scope.md` (node
   enrollment/cert + mTLS + token-on-the-bus), `authz-grants-scope.md` (durable roles/grants/teams —
-  restricted user/team access), `admin-crud-scope.md` (the destructive half — workspace/user/team/
-  member delete·disable·remove·rename + dev-store user CRUD), and `api-keys-scope.md` (machine
+  restricted user/team access), `admin-crud-scope.md` (the destructive half — workspace/team/
+  member delete·rename·remove; its `user.*` CRUD half was DELETED in the 2026-08-03 pre-production
+  legacy sweep — the roster is `membership.*`, see `email-login-scope.md` §Sequencing), and `api-keys-scope.md` (machine
   principals — appliance/cli/api/agent keys as a non-human `Subject` over the same grant model,
   a hashed bearer secret verified per request for instant revoke, lazy expiry, and an admin tab), and
   `access-console-scope.md` (the **Access console** — the access-first evolution of the `/admin` UI:

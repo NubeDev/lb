@@ -2,7 +2,7 @@
 //! tests must run against a REAL in-process node, not a `*.fake.ts` — CLAUDE §9, testing §0). This is
 //! the smallest real-node harness the "retire the fakes" migration (STATUS Next-up #00) needs: boot a
 //! real gateway-role node + the SSE/HTTP router and serve it on `$PORT`, so a Node test process can
-//! `fetch` against it, `POST /login` for a real signed token, seed real rows through the real write
+//! `fetch` against it, `POST /auth/login` for a real signed token, seed real rows through the real write
 //! path, and drive the UI exactly as a browser would.
 //!
 //! It is NOT a production entry point (that is the `node` binary, role-by-config). It exists so the UI
@@ -23,10 +23,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(0);
 
-    // A real gateway-role node with a fresh signing key and the real clock — `POST /login` mints a
-    // real token carrying the dev claim set (which includes the data-console caps), and every other
-    // route verifies it. The same code path a deployed node runs; only the credential check is the
-    // dev-login stand-in (collaboration scope).
+    // A real gateway-role node with a fresh signing key and the real clock — `POST /auth/login` mints
+    // a real token carrying the role-correct claim set (which includes the data-console caps), and
+    // every other route verifies it. The same code path a deployed node runs; the credential check is
+    // password-less only when `LB_DEV_LOGIN` is set (collaboration scope).
     let gw = lb_role_gateway::Gateway::boot().await?;
 
     // Boot-seed the built-in agent definitions into the reserved `_lb_agents` namespace, mirroring the

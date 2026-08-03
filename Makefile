@@ -97,6 +97,15 @@ WS ?= acme
 # (LB_SEED_USER=) to skip seeding entirely.
 SEED_USER ?= user:ada
 
+# The dev identity's GLOBAL email + password — the handle `POST /auth/login {email, password}` (the
+# ONLY human door since the legacy `POST /login` was deleted, 2026-08-03) authenticates. The boot seed
+# writes both onto $(SEED_USER); without an email there is literally no way to sign in, so these are
+# defaulted rather than left unset. `LB_DEV_LOGIN=1` on the dev targets keeps the check password-less
+# (dev/CI only — a release build without the flag demands the real argon2 password).
+SEED_EMAIL ?= ada@$(WS).local
+SEED_PASSWORD ?= dev-admin-pw
+SEED_ENV := LB_SEED_USER=$(SEED_USER) LB_SEED_EMAIL=$(SEED_EMAIL) LB_SEED_PASSWORD=$(SEED_PASSWORD) LB_DEV_LOGIN=1
+
 # Datasources (federation native extension). Setting FED_ENDPOINTS installs + supervises the
 # `federation` sidecar at boot and pre-approves these `host:port` endpoints (`net:tls:host:port`).
 # The seed pre-registers one source so the Datasources page works on first boot. Defaults target the
@@ -251,7 +260,7 @@ dev: build-wasm build-packages trusted-pubkey federation $(if $(CE_BASE),control
 	fi
 	@trap 'kill 0' EXIT INT TERM; \
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(TRUST_ENV) $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) $(SEED_ENV) LB_TRUSTED_PUBKEYS=$$TRUSTED $(TRUST_ENV) $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
 
@@ -347,7 +356,7 @@ fly-status:
 edge: build-wasm
 	@mkdir -p $(STORE_DIR)
 	@echo "edge: solo node (no gateway, offline)   (ws=$(WS), store=$(STORE_PATH))"
-	cd $(BE_DIR) && LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) cargo run -p $(NODE_BIN)
+	cd $(BE_DIR) && LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) $(SEED_ENV) cargo run -p $(NODE_BIN)
 
 # CLOUD posture: the SAME binary with the SSE/HTTP gateway mounted (LB_GATEWAY_ADDR).
 # A browser can now reach it. Run `make ui` (or `make dev`) against this.
@@ -357,7 +366,7 @@ cloud: build-wasm trusted-pubkey federation
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
 	@echo "devkit builder → $(DEVKIT_BUILDER) $(if $(filter container,$(DEVKIT_BUILDER)),(image=$(DOCKER_BUILD_IMAGE)),(set DEVKIT_BUILDER=container for hermetic builds))"
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(TRUST_ENV) $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
+	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) $(SEED_ENV) LB_TRUSTED_PUBKEYS=$$TRUSTED $(TRUST_ENV) $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
 
 # Just the UI dev server, browser build, pointed at the gateway. Pair with `make
 # cloud` in another terminal.
@@ -396,9 +405,9 @@ pack: $(BE_DIR)/target/debug/lb-pack
 # curl + jq. The node must trust this publisher key (the run targets set LB_TRUSTED_PUBKEYS for you).
 publish-ext: pack
 	@command -v jq >/dev/null || { echo "publish-ext needs jq"; exit 1; }
-	@echo "→ login $(GW_URL) as dev/$(WS)"
-	@TOKEN=$$(curl -fsS -X POST $(GW_URL)/login -H 'content-type: application/json' \
-		-d '{"user":"dev","workspace":"$(WS)"}' | jq -r .token); \
+	@echo "→ login $(GW_URL) as $(SEED_EMAIL)"
+	@TOKEN=$$(curl -fsS -X POST $(GW_URL)/auth/login -H 'content-type: application/json' \
+		-d '{"email":"$(SEED_EMAIL)","password":"$(SEED_PASSWORD)"}' | jq -r .token); \
 	echo "→ POST $(GW_URL)/extensions ($(EXT))"; \
 	code=$$(curl -sS -o /tmp/lb-publish-resp -w '%{http_code}' -X POST $(GW_URL)/extensions \
 		-H "authorization: Bearer $$TOKEN" -H 'content-type: application/json' \

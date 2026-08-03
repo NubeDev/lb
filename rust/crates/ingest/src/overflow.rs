@@ -52,7 +52,11 @@ pub async fn enforce_bound(
 }
 
 /// Count of staged rows in `ws` (the workspace-partitioned bound — never another workspace's rows).
-async fn staged_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
+///
+/// `pub(crate)` so [`write`](crate::write) can take ONE count up front and skip the per-sample
+/// `enforce_bound` while it holds proven headroom — this query is a full aggregate scan, and running
+/// it per sample is what made a large batch unaffordable on edge hardware.
+pub(crate) async fn staged_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
     let mut resp = store
         .query_ws(
             ws,

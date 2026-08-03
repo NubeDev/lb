@@ -37,7 +37,7 @@ pub async fn run(cli: Cli) -> CliResult<Printed> {
 /// Route one command under the resolved context.
 async fn dispatch(command: Command, ctx: &RunContext, format: Format) -> CliResult<Printed> {
     match command {
-        Command::Login { user } => run_login(ctx, user).await,
+        Command::Login { email, password } => run_login(ctx, &email, password).await,
 
         Command::Devkit(DevkitCmd::Sign { target, out }) => {
             // Signing needs no transport; still print a header for a consistent surface, using
@@ -100,19 +100,30 @@ async fn dispatch_reminder(
 
 /// Log in (remote-only) and persist the config (0600). A `--local login` is meaningless — local mints
 /// in-process — so this errors loudly rather than silently ignoring the flag.
-async fn run_login(ctx: &RunContext, user: Option<String>) -> CliResult<Printed> {
+async fn run_login(ctx: &RunContext, email: &str, password: Option<String>) -> CliResult<Printed> {
     if ctx.local {
         return Err(CliError::BadInput(
             "`lb login` is remote-only; local mode mints a principal in-process (no login needed)"
                 .into(),
         ));
     }
-    let workspace = ctx
-        .resolve_workspace()
-        .ok_or_else(|| CliError::BadInput("login needs a workspace: `lb login -w <ws>`".into()))?;
-    let user = user.unwrap_or_else(|| login::DEFAULT_USER.to_string());
+    // `-w` is OPTIONAL now: `/auth/login` auto-enters when the person belongs to exactly one
+    // workspace, and only the N>1 branch needs a pick (`login::do_login` names them if it is missing).
+    let workspace = ctx.resolve_workspace();
+    // The password may come from `--password` or `LB_LOGIN_PASSWORD` (preferred — never in history).
+    // Absent ⇒ empty, which only a password-less dev node (`LB_DEV_LOGIN`) accepts.
+    let password = password
+        .or_else(|| std::env::var(login::PASSWORD_ENV).ok())
+        .unwrap_or_default();
     let mut config = ctx.config.clone();
-    let printed = login::run(&mut config, &ctx.gateway_url, &user, &workspace).await?;
+    let printed = login::run(
+        &mut config,
+        &ctx.gateway_url,
+        email,
+        &password,
+        workspace.as_deref(),
+    )
+    .await?;
     config::save(&config)?;
     Ok(printed)
 }

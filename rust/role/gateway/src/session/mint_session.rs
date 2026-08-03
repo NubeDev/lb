@@ -1,5 +1,5 @@
-//! `mint_full_session` — the ONE role-correct token-minting path (email-login scope), factored out of
-//! `routes/login.rs` so the legacy `/login` and all three `/auth/*` routes mint **byte-identically**.
+//! `mint_full_session` — the ONE role-correct token-minting path (email-login scope), so all four
+//! `/auth/*` routes and the invite-accept mint **byte-identically**.
 //! Given a resolved `(principal_sub, workspace)` that has ALREADY passed the membership + credential
 //! gates, it builds the viewer-floor claims, unions the durable grant/role caps (`resolve_caps_live`)
 //! and the nav-derived reach caps, signs the token, and best-effort registers the workspace in the
@@ -18,7 +18,7 @@ use lb_host::Node;
 use super::credentials::dev_claims;
 
 /// The human session lifetime — long enough for a working session, short enough that a leaked token
-/// expires. (Was `SESSION_TTL_SECS` in `routes/login.rs`; centralized here so every mint path agrees.)
+/// expires. (Centralized here so every mint path agrees.)
 pub const SESSION_TTL_SECS: u64 = 60 * 60 * 12;
 
 /// The outcome of a mint: the signed token and the caps it carries (surfaced so a route reply can

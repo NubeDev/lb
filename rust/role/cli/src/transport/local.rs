@@ -2,7 +2,8 @@
 //! `Node::boot()` and call `lb_host::call_tool` in-process — no daemon, no network, fully offline.
 //! This IS the edge/solo posture; the same crates run everywhere.
 //!
-//! The principal is minted with the **same `dev_claims` claim set** the gateway's `/login` issues,
+//! The principal is minted with the **same `dev_claims` claim set** the gateway's `/auth/login` mint
+//! starts from,
 //! scoped by `-w` (the local-vs-remote parity decision) — so local is NOT silently more privileged
 //! than a real login. The workspace the principal is scoped to IS the wall (`call_tool` gate 1): a
 //! local `-w acme` principal cannot reach outside `acme`, exactly like a remote `acme` token.

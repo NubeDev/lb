@@ -79,10 +79,12 @@ the rest of each persona's granted skills as activate-on-demand.
   invites users, sets workspace defaults; states the deny reason when the caller lacks a cap
   rather than retrying.
 - **granted_tools:** `nav.*` (get/list/resolve/save/delete/share/set_default), `members.*`
-  (list/add/manage), `identity.manage`, `user.manage`, `user.disable`, `teams.list`,
+  (list/add/manage), `identity.manage`, `teams.list`,
   `teams.manage`, `workspace.list`, `workspace.create`, `workspace.rename`, `grants.assign`,
   `grants.list`, `roles.define`, `roles.list`, `roles.manage`, `authz.resolve`,
   `prefs.set_default`, `prefs.catalog`, `apikey.manage`, `webhook.manage`.
+  (`user.manage`/`user.disable` were in this list until the 2026-08-03 legacy sweep deleted the verbs;
+  the roster is `members.manage` now.)
   **Deliberately excluded:** `workspace.delete`, `workspace.purge`, `authz.revoke-tokens` —
   destructive/security verbs stay human-driven even for an admin caller (the persona narrows;
   see Risks).

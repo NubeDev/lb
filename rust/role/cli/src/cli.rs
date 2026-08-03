@@ -41,9 +41,13 @@ pub struct Cli {
 pub enum Command {
     /// Log in to a gateway and store the session token (per-workspace, 0600, never logged).
     Login {
-        /// The login user (dev-login accepts any). Defaults to `user:ada`.
+        /// The login email — the human handle `/auth/login` authenticates.
         #[arg(long)]
-        user: Option<String>,
+        email: String,
+        /// The password. Prefer `LB_LOGIN_PASSWORD` so it never lands in shell history; a
+        /// password-less dev node (`LB_DEV_LOGIN`) accepts an empty one.
+        #[arg(long)]
+        password: Option<String>,
     },
     /// Print who you are: workspace, user, role, and the caps your session carries. Never the token.
     Whoami,

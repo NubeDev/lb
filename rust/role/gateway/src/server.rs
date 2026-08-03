@@ -14,36 +14,35 @@ use crate::routes::{
     accept_invite, ack_insight, add_datasource, add_member, add_team_member, agent_invoke,
     archive_workspace, assign_grant, auth_login, auth_password, auth_select, auth_switch,
     bus_stream, channel_stream, convert_unit, create_apikey, create_channel, create_def,
-    create_identity, create_invite, create_team, create_user, create_webhook, create_workspace,
-    define_role, delete_brand, delete_dashboard, delete_def, delete_flow, delete_insight,
-    delete_message, delete_nav, delete_occurrence, delete_panel, delete_report, delete_role,
-    delete_rule, delete_series_route, delete_series_samples_route, delete_team, delete_user,
-    disable_extension, disable_user, edit_message, enable_extension, enable_flow, enable_user,
-    events_stream, events_subscribe, events_unsubscribe, export_dashboard, export_report,
-    find_series, flow_debug_stream, flow_node_state, flow_run_stream, format_datetime,
-    format_number, format_quantity, get_agent_config_route, get_apikey, get_asset_bin, get_brand,
-    get_catalog, get_dashboard, get_def, get_doc, get_flow, get_flow_node, get_flow_run,
-    get_history, get_identity, get_insight, get_layout, get_media, get_nav, get_nav_hidden,
-    get_nav_pref, get_outbox_status, get_panel, get_prefs, get_report, get_rule,
-    get_undo_compensations, get_undo_history, get_version, get_versions, get_versions_config,
-    get_webhook, grant_skill, health, identity_workspaces_route, import_dashboard, inject_flow,
-    insight_events, latest_sample, lifecycle_flow, link_doc, list_apikeys, list_brands,
-    list_channels, list_dashboards, list_datasources, list_defs, list_docs, list_extensions,
-    list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
-    list_insights, list_invites, list_members, list_navs, list_occurrences, list_panels,
-    list_reports, list_roles, list_rules, list_series, list_shares_nav, list_tables,
-    list_team_members, list_teams, list_users, list_webhooks, list_workspaces, load_skill, login,
-    mcp_call, mcp_catalog, native_call, node_identity, panel_usage, patch_flow_run, pin_dashboards,
-    post_message, post_redo, post_undo, post_version_restore, post_webhook, provision_workspace,
-    publish_extension, publish_message, purge_workspace, put_asset_bin, put_doc, put_media_chunk,
-    put_skill, put_versions_config, read_graph, read_samples, read_schema, reconcile_workspace,
-    refresh_run_token, remove_datasource, remove_member, remove_team_member, rename_series_route,
-    rename_team, rename_workspace, render_catalog_message, resend_invite, reset_extension,
-    resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey,
-    revoke_grant, revoke_invite, revoke_tokens_route, revoke_webhook, rotate_apikey,
-    rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream, save_brand,
-    save_dashboard, save_flow, save_nav, save_panel, save_report, save_rule, scan_table,
-    series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
+    create_identity, create_invite, create_team, create_webhook, create_workspace, define_role,
+    delete_brand, delete_dashboard, delete_def, delete_flow, delete_insight, delete_message,
+    delete_nav, delete_occurrence, delete_panel, delete_report, delete_role, delete_rule,
+    delete_series_route, delete_series_samples_route, delete_team, disable_extension, edit_message,
+    enable_extension, enable_flow, events_stream, events_subscribe, events_unsubscribe,
+    export_dashboard, export_report, find_series, flow_debug_stream, flow_node_state,
+    flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
+    get_apikey, get_asset_bin, get_brand, get_catalog, get_dashboard, get_def, get_doc, get_flow,
+    get_flow_node, get_flow_run, get_history, get_identity, get_insight, get_layout, get_media,
+    get_nav, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_report,
+    get_rule, get_undo_compensations, get_undo_history, get_version, get_versions,
+    get_versions_config, get_webhook, grant_skill, health, identity_workspaces_route,
+    import_dashboard, inject_flow, insight_events, latest_sample, lifecycle_flow, link_doc,
+    list_apikeys, list_brands, list_channels, list_dashboards, list_datasources, list_defs,
+    list_docs, list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants,
+    list_identities, list_inbox, list_insights, list_invites, list_members, list_navs,
+    list_occurrences, list_panels, list_reports, list_roles, list_rules, list_series,
+    list_shares_nav, list_tables, list_team_members, list_teams, list_webhooks, list_workspaces,
+    load_skill, mcp_call, mcp_catalog, native_call, node_identity, panel_usage, patch_flow_run,
+    pin_dashboards, post_message, post_redo, post_undo, post_version_restore, post_webhook,
+    provision_workspace, publish_extension, publish_message, purge_workspace, put_asset_bin,
+    put_doc, put_media_chunk, put_skill, put_versions_config, read_graph, read_samples,
+    read_schema, reconcile_workspace, refresh_run_token, remove_datasource, remove_member,
+    remove_team_member, rename_series_route, rename_team, rename_workspace, render_catalog_message,
+    resend_invite, reset_extension, resolve_caps, resolve_inbox, resolve_insight, resolve_nav,
+    resolve_prefs, revoke_apikey, revoke_grant, revoke_invite, revoke_tokens_route, revoke_webhook,
+    rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream,
+    save_brand, save_dashboard, save_flow, save_nav, save_panel, save_report, save_rule,
+    scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
     set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs, share_dashboard,
     share_doc, share_nav, share_panel, share_report, start_extension, surface_reach, system_acp,
     system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
@@ -60,9 +59,9 @@ use crate::state::Gateway;
 const EXT_UPLOAD_LAYER_MARGIN: u64 = 16 * 1024 * 1024;
 
 /// The gateway router: every browser verb, mirroring the host one-to-one. Each guarded route reads
-/// the session token (the `login` route issues it); the workspace + caps come from the token.
+/// the session token (the `/auth/*` front door issues it); the workspace + caps come from the token.
 ///
-/// Session:        `POST /login`
+/// Session:        `POST /auth/login|select|switch|password`
 /// Workspaces:     `GET|POST /workspaces`
 /// Channel msgs:   `GET|POST /channels/{cid}/messages`, `GET /channels/{cid}/stream`
 /// Channel registry:`GET|POST /channels`
@@ -77,7 +76,7 @@ pub fn router(gw: Gateway) -> Router {
     let router = Router::new()
         // The fleet health probe (issue #72) — `GET /health`, UNAUTHENTICATED, on the gateway port.
         // The one route an LB/orchestrator probes to ask "is this node up?" without a session token,
-        // outside the auth wall (an LB has no bearer) — the same posture as `POST /login` below. One
+        // outside the auth wall (an LB has no bearer) — the same posture as `POST /auth/login` below. One
         // route, never `/healthz`; the liveness/readiness split is the status code (200 serving /
         // 503 alive-but-not-serving / connection-refused = dead). Reads in-memory state only — no
         // store query, no disk I/O, no network call — so it can never block on a dependency. The
@@ -93,10 +92,12 @@ pub fn router(gw: Gateway) -> Router {
         // no durable identity is configured, so a caller never caches a per-boot random id.
         // Addressing is not authorization: the caps wall gates every byte after this.
         .route("/node", get(node_identity))
-        .route("/login", post(login))
-        // email-login scope — the Slack-style human front door. `/auth/login` (email+password) and
-        // `/auth/select` (select-token) are UNAUTHENTICATED-by-session (they ISSUE the token), like
-        // `/login`. `/auth/switch` (password-less re-mint) and `/auth/password` (self-service change)
+        // email-login scope — the Slack-style human front door, and the ONLY human door: the legacy
+        // `POST /login {user, workspace}` was deleted in the pre-production legacy sweep (it leaked a
+        // membership/credential oracle and carried the empty-workspace self-bootstrap). Machines do not
+        // log in at all — they present an lb API key. `/auth/login` (email+password) and
+        // `/auth/select` (select-token) are UNAUTHENTICATED-by-session (they ISSUE the token).
+        // `/auth/switch` (password-less re-mint) and `/auth/password` (self-service change)
         // require a valid full token, verified inside the handler. `/auth/login` rate-limits per email
         // inside the handler (only failures count), so no middleware layer here.
         .route("/auth/login", post(auth_login))
@@ -112,7 +113,7 @@ pub fn router(gw: Gateway) -> Router {
         // public path unrelated to the session-authed `/admin/webhooks/*` surface.
         .route("/hooks/{ws}/{id}", post(post_webhook))
         // The pre-auth invite accept route (invites scope) — `POST /public/invite/accept`. The
-        // THIRD unauthenticated route (besides /login and /hooks): the caller presents the invite
+        // THIRD unauthenticated route (besides /auth/login and /hooks): the caller presents the invite
         // token (not a session), and the accept chain runs the atomic onboarding. The gateway's
         // signing key mints the session.
         // Rate-limited per client IP from day one (invites scope risk note) — the route is a
@@ -220,10 +221,6 @@ pub fn router(gw: Gateway) -> Router {
         .route("/message/catalog", put(set_catalog))
         // admin-crud: the destructive/admin surface (admin-console scope). Every verb re-checks the
         // capability server-side — the UI cap-gate is convenience only.
-        .route("/admin/users", get(list_users).post(create_user))
-        .route("/admin/users/{user}", delete(delete_user))
-        .route("/admin/users/{user}/disable", post(disable_user))
-        .route("/admin/users/{user}/enable", post(enable_user))
         .route("/admin/teams", get(list_teams).post(create_team))
         .route("/admin/teams/{team}", delete(delete_team))
         .route("/admin/teams/{team}/rename", post(rename_team))
@@ -559,8 +556,8 @@ pub fn router(gw: Gateway) -> Router {
     // Unset ⇒ no fallback, unmatched paths 404 exactly as before (rule 10: generic, no ext knowledge).
     // A path that matched NO route falls back to the static tree (above). A path that matched a route
     // but not for its METHOD never reaches that fallback — axum 405s first — which silently made every
-    // SPA route colliding with an lb route of another method unreachable (`GET /login` vs lb's
-    // `POST /login`: the shell served fine and could not render a login page). `spa_or_405` closes
+    // SPA route colliding with an lb route of another method unreachable (`GET /auth/login` vs lb's
+    // `POST /auth/login`: the shell served fine and could not render a login page). `spa_or_405` closes
     // that hole by content negotiation: a browser navigation (GET/HEAD + Accept explicitly prefers
     // text/html) gets `index.html`; every API client still gets the 405 with its `Allow` intact.
     // Mounted only alongside a static root, so a node with no shell keeps today's routing exactly

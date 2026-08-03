@@ -1,8 +1,10 @@
 //! The static-root **method-mismatch** rule (spa-static-hosting scope) — the gap that shipped the
 //! bug. `static_root_test.rs` covers the *no route matched* fallback; NONE of its 5 tests covered a
-//! path that matched a route but not for its method, which is why `GET /login` 405'd on a deployed
-//! shell (lb registers `POST /login`) and ems's ARM/Pi build could serve its whole UI but never
-//! render a login page (NubeIO/ems#8).
+//! path that matched a route but not for its method, which is why `GET /auth/login` 405'd on a
+//! deployed shell (lb registers `POST /auth/login`) and ems's ARM/Pi build could serve its whole UI
+//! but never render a login page (NubeIO/ems#8). The collision was originally on the legacy
+//! `POST /login`; that route was deleted in the pre-production legacy sweep, so the tests probe
+//! `/auth/login` — the same shape, the door that actually exists.
 //!
 //! The rule under test: method-mismatch + GET/HEAD + `Accept` **explicitly** prefers `text/html`
 //! → `index.html`; anything else → the 405 with `Allow` intact.
@@ -53,22 +55,26 @@ fn req_accept(method: &str, uri: &str, accept: &str) -> Request<Body> {
 const BROWSER_ACCEPT: &str =
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
 
-/// **The regression test for NubeIO/ems#8.** A browser navigating to `/login` — a path where lb has
-/// only a POST handler — must reach the SPA shell, not a 405.
+/// **The regression test for NubeIO/ems#8.** A browser navigating to `/auth/login` — a path where lb
+/// has only a POST handler — must reach the SPA shell, not a 405.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn browser_navigation_to_login_reaches_the_spa() {
     let (gw, dir) = gateway_with_static_root("login-nav").await;
     let resp = router(gw)
-        .oneshot(req_accept("GET", "/login", BROWSER_ACCEPT))
+        .oneshot(req_accept("GET", "/auth/login", BROWSER_ACCEPT))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "GET /login serves the shell");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "GET /auth/login serves the shell"
+    );
     let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
         .await
         .unwrap();
     assert!(
         body.starts_with(b"<!doctype html>"),
-        "GET /login → index.html so the SPA can render its login page"
+        "GET /auth/login → index.html so the SPA can render its login page"
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -78,7 +84,7 @@ async fn browser_navigation_to_login_reaches_the_spa() {
 async fn api_client_on_a_method_mismatch_still_gets_405() {
     let (gw, dir) = gateway_with_static_root("json-405").await;
     let resp = router(gw)
-        .oneshot(req_accept("GET", "/login", "application/json"))
+        .oneshot(req_accept("GET", "/auth/login", "application/json"))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
@@ -93,7 +99,7 @@ async fn api_client_on_a_method_mismatch_still_gets_405() {
 async fn method_mismatch_405_keeps_its_allow_header() {
     let (gw, dir) = gateway_with_static_root("allow-hdr").await;
     let resp = router(gw)
-        .oneshot(req_accept("GET", "/login", "application/json"))
+        .oneshot(req_accept("GET", "/auth/login", "application/json"))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
@@ -155,7 +161,7 @@ async fn browser_navigating_to_an_api_route_gets_the_shell_by_design() {
 async fn head_navigation_serves_index_with_no_body() {
     let (gw, dir) = gateway_with_static_root("head-nav").await;
     let resp = router(gw)
-        .oneshot(req_accept("HEAD", "/login", BROWSER_ACCEPT))
+        .oneshot(req_accept("HEAD", "/auth/login", BROWSER_ACCEPT))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -172,7 +178,7 @@ async fn a_non_get_method_mismatch_is_never_html() {
     let (gw, dir) = gateway_with_static_root("delete-405").await;
     let req = Request::builder()
         .method("DELETE")
-        .uri("/login")
+        .uri("/auth/login")
         .header("accept", BROWSER_ACCEPT)
         .body(Body::empty())
         .unwrap();
@@ -185,29 +191,28 @@ async fn a_non_get_method_mismatch_is_never_html() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// The real route is untouched: `POST /login` still reaches the login handler and mints a real token.
-/// (This is lb's legacy dev-login — it trusts the caller and issues a signed token; the credential
-/// check is a separate seam. The point here is that the handler answers, not the fallback: the reply
-/// is a token, never a 405 and never the static page.)
+/// The real route is untouched: `POST /auth/login` still reaches the login HANDLER, not the fallback.
+/// The point here is that the handler answers — with the credential door's own uniform
+/// `401 invalid credentials` for an unknown email — never a 405 and never the static page.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_real_post_route_is_unaffected() {
     let (gw, dir) = gateway_with_static_root("post-login").await;
-    let body = serde_json::json!({ "user": "nobody", "workspace": "ws1" });
-    let resp = router(gw).oneshot(json_post("/login", body)).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    let body = serde_json::json!({ "email": "nobody@example.com", "password": "x" });
+    let resp = router(gw)
+        .oneshot(json_post("/auth/login", body))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "the login handler answered (uniform 401), not the static fallback"
+    );
     let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
         .await
         .unwrap();
     assert!(
         !body.starts_with(b"<!doctype html>"),
-        "POST /login is the login handler's JSON, never the static shell"
-    );
-    let v: serde_json::Value = serde_json::from_slice(&body).expect("login returns JSON");
-    assert!(
-        v.get("token")
-            .and_then(|t| t.as_str())
-            .is_some_and(|t| !t.is_empty()),
-        "the real login still mints a token"
+        "POST /auth/login is the login handler's reply, never the static shell"
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -219,7 +224,7 @@ async fn the_real_post_route_is_unaffected() {
 async fn without_a_static_root_a_browser_still_gets_the_405() {
     let (gw, _key) = gateway().await;
     let resp = router(gw)
-        .oneshot(req_accept("GET", "/login", BROWSER_ACCEPT))
+        .oneshot(req_accept("GET", "/auth/login", BROWSER_ACCEPT))
         .await
         .unwrap();
     assert_eq!(

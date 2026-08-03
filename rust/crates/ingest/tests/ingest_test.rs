@@ -231,6 +231,66 @@ async fn best_effort_overflow_drops_oldest() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn one_batch_larger_than_the_bound_still_stays_bounded() {
+    // The intra-batch bound. `write` takes ONE staged-count up front and skips `enforce_bound` while
+    // it holds proven headroom (the per-sample full-table count made a 1680-sample batch cost 41s on
+    // armv7). A batch BIGGER than the bound is exactly the case that headroom must not swallow: the
+    // skip has to run out mid-batch and hand back to the real per-sample enforcement.
+    //
+    // The pre-existing overflow tests all write one sample per `write` call, so every check was a
+    // fresh call — none of them can see an intra-batch regression.
+    let store = Store::memory().await.unwrap();
+    let batch: Vec<_> = (1..=10)
+        .map(|seq| sample("t", "p", seq, serde_json::json!(seq), Qos::BestEffort))
+        .collect();
+    let accepted = write(&store, "acme", &batch, 3).await.unwrap();
+    assert_eq!(accepted, 10, "every sample is handled");
+
+    let mut resp = store
+        .query_ws(
+            "acme",
+            &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
+            vec![],
+        )
+        .await
+        .unwrap();
+    let n: Option<i64> = resp.take("count").unwrap();
+    assert_eq!(
+        n,
+        Some(3),
+        "a single over-sized batch is still capped at the bound"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_batch_within_headroom_stages_every_sample() {
+    // The other side of the same knob: when the batch fits, headroom skips every check and all
+    // samples must still land. A too-eager skip would be invisible here, but an off-by-one that
+    // under-counts headroom would show up as a dropped sample.
+    let store = Store::memory().await.unwrap();
+    let batch: Vec<_> = (1..=5)
+        .map(|seq| sample("t", "p", seq, serde_json::json!(seq), Qos::BestEffort))
+        .collect();
+    write(&store, "acme", &batch, 100).await.unwrap();
+    let got = read(&store, "acme", "t", None, None).await.unwrap();
+    assert!(
+        got.is_empty(),
+        "staged, not committed — read sees nothing yet"
+    );
+
+    let mut resp = store
+        .query_ws(
+            "acme",
+            &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
+            vec![],
+        )
+        .await
+        .unwrap();
+    let n: Option<i64> = resp.take("count").unwrap();
+    assert_eq!(n, Some(5), "a batch inside the bound stages in full");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn must_deliver_overflow_dead_letters() {
     // Bound at 1; a 2nd must-deliver sample is dead-lettered, not dropped — never silently lost.
     let store = Store::memory().await.unwrap();

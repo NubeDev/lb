@@ -8,9 +8,50 @@
 //! exist only where retention has (or is about to have) evicted the raw samples beneath them.
 
 use lb_store::{Store, StoreError};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::schema::ROLLUP_TABLE;
+
+/// Deserialize a float that the datastore may have narrowed to an INTEGER.
+///
+/// `sum`/`min`/`max` are `f64` in Rust, but SurrealDB stores a whole-numbered float as an `i64` —
+/// a meter reading of exactly `6432914451` round-trips as an integer, not a float. Plain
+/// `#[derive(Deserialize)]` then fails the whole row with "expected a 64-bit floating point,
+/// found 6432914451i64", which takes down the entire GC pass that reads it.
+///
+/// That failure is silent and self-perpetuating: the FIRST pass writes rollups fine, and every
+/// later pass dies reading them back, so retention GC stops evicting and the store grows without
+/// bound — the precise failure the retention feature exists to prevent. Observed on RC-6 with 30
+/// modbus meters (2026-08-03): one successful pass, then `last_run_ms` frozen forever while the
+/// store climbed ~3.6 MB/min.
+///
+/// Accepting both numeric shapes on the way IN is the honest fix — the writer cannot control which
+/// one the datastore picks, so the reader must tolerate either.
+fn de_lenient_f64<'de, D>(d: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // `serde_json::Value` accepts any JSON number; `as_f64` widens an integer losslessly here
+    // (rollup sums are far inside f64's exact-integer range).
+    let v = Value::deserialize(d)?;
+    v.as_f64()
+        .ok_or_else(|| serde::de::Error::custom(format!("expected a number, found {v}")))
+}
+
+/// The `Option` twin of [`de_lenient_f64`] — `min`/`max` are absent on a non-numeric bucket.
+fn de_opt_lenient_f64<'de, D>(d: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match Option::<Value>::deserialize(d)? {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_f64()
+            .map(Some)
+            .ok_or_else(|| serde::de::Error::custom(format!("expected a number, found {v}"))),
+    }
+}
 
 /// One stored rollup bucket. `t` is the bucket start (epoch ms, aligned to `width_ms`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18,9 +59,12 @@ pub struct RollupRow {
     pub series: String,
     pub width_ms: u64,
     pub t: u64,
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     pub min: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     pub max: Option<f64>,
     /// Sum + count of numeric payloads — exact re-aggregation, never a mean-of-means.
+    #[serde(deserialize_with = "de_lenient_f64")]
     pub sum: f64,
     pub num_count: u64,
     /// Total samples in the bucket (numeric or not).
@@ -156,4 +200,68 @@ pub async fn evict_rollups(
         .take("count")
         .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(n.unwrap_or(0).max(0) as usize)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The row shape `read_rollups` projects, with `sum`/`min`/`max` as the datastore returns them.
+    fn row_json(sum: Value, min: Value, max: Value) -> Value {
+        json!({
+            "series": "modbus.loadtest.meter-1.active-power-total",
+            "width_ms": 300_000u64,
+            "t": 1_785_729_000_000u64,
+            "min": min,
+            "max": max,
+            "sum": sum,
+            "num_count": 3u64,
+            "count": 3u64,
+            "last": 42.0,
+            "last_ts": 1_785_729_200_000u64,
+        })
+    }
+
+    /// The RC-6 regression: SurrealDB narrows a whole-numbered float to an integer, and the derived
+    /// impl rejected it — killing every GC pass that read the row back, so retention silently
+    /// stopped evicting. An integer `sum` must deserialize.
+    #[test]
+    fn integer_sum_deserializes() {
+        let r: RollupRow =
+            serde_json::from_value(row_json(json!(6_432_914_451i64), json!(1i64), json!(9i64)))
+                .expect("an integer sum/min/max must read back");
+        assert_eq!(r.sum, 6_432_914_451.0);
+        assert_eq!(r.min, Some(1.0));
+        assert_eq!(r.max, Some(9.0));
+    }
+
+    /// The ordinary float path must keep working unchanged.
+    #[test]
+    fn float_sum_still_deserializes() {
+        let r: RollupRow =
+            serde_json::from_value(row_json(json!(1.5), json!(0.25), json!(2.75))).unwrap();
+        assert_eq!(r.sum, 1.5);
+        assert_eq!(r.min, Some(0.25));
+        assert_eq!(r.max, Some(2.75));
+    }
+
+    /// A non-numeric bucket carries no min/max; null must stay `None` rather than error.
+    #[test]
+    fn null_min_max_is_none() {
+        let r: RollupRow =
+            serde_json::from_value(row_json(json!(0i64), Value::Null, Value::Null)).unwrap();
+        assert_eq!(r.min, None);
+        assert_eq!(r.max, None);
+    }
+
+    /// A genuinely wrong type is still an error — leniency is about NUMERIC SHAPE, not anything-goes.
+    #[test]
+    fn non_numeric_sum_still_errors() {
+        let e = serde_json::from_value::<RollupRow>(row_json(
+            json!("not-a-number"),
+            Value::Null,
+            Value::Null,
+        ));
+        assert!(e.is_err(), "a string sum must not silently become a number");
+    }
 }

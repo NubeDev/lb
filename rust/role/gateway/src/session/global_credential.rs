@@ -1,11 +1,13 @@
-//! The **global credential check** — the seam `/auth/login` runs before minting (email-login scope),
-//! the global-identity analogue of the per-ws [`CredentialCheck`](crate::session::credential). Where
-//! that one verifies a `(workspace, user)` password for the legacy `/login`, THIS one verifies a
-//! person's ONE global password (all workspaces) against the `identity_credential` record — the Slack
-//! model. `/auth/login` resolves email→sub, then calls [`GlobalCredentialCheck::verify`]; a
+//! The **credential check** — the ONE seam `/auth/login` runs before minting (email-login scope). It
+//! verifies a person's ONE global password (all workspaces) against the `identity_credential` record —
+//! the Slack model. `/auth/login` resolves email→sub, then calls [`GlobalCredentialCheck::verify`]; a
 //! bad/absent secret is a `401` with no token, uniform with an unknown email (no enumeration oracle).
 //!
-//! Two impls, selected by the SAME `LB_DEV_LOGIN` env as the per-ws seam (resolved open question):
+//! There is no per-workspace credential check any more: the legacy `POST /login {user, workspace,
+//! secret}` and its `CredentialCheck` seam were deleted in the pre-production legacy sweep, so this is
+//! the only door a password is ever presented at (machines carry an lb API key instead).
+//!
+//! Two impls, selected by `LB_DEV_LOGIN`:
 //!   - [`GlobalPasswordHash`] — the real check: argon2 against the stored global hash
 //!     (`lb_host::global_credential_verify`, which is itself timing-uniform on an unknown identity).
 //!     A wrong secret AND an absent credential both `401` (no password ⇒ identity unproven).
@@ -18,7 +20,19 @@
 use async_trait::async_trait;
 use lb_host::{global_credential_verify, GlobalCredentialCheck as CheckOutcome, Node};
 
-pub use crate::session::credential::{CredentialRejection, DEV_LOGIN_ENV};
+/// The env var that opts a node into the password-less dev login. Set (to any non-empty value) for
+/// local dev / CI; UNSET in a real deployment (which then requires a real credential).
+pub const DEV_LOGIN_ENV: &str = "LB_DEV_LOGIN";
+
+/// Why a login credential was refused. Collapses to `401` at the route (authenticity before
+/// authority — a `403` would leak that the credential was valid but the principal ungranted).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialRejection {
+    /// The presented secret did not match, or no credential is set and the policy requires one.
+    BadCredential,
+    /// An internal store/hash failure while checking — fail closed (no token).
+    CheckFailed,
+}
 
 /// The pluggable global credential check `/auth/login` runs before minting. One method: prove
 /// `(sub, secret)` — the person's global password — before a token is issued. `Ok(())` allows the
@@ -30,8 +44,8 @@ pub trait GlobalCredentialCheck: Send + Sync {
         -> Result<(), CredentialRejection>;
 }
 
-/// Select the global credential check from the environment — the SAME switch as the per-ws seam:
-/// `LB_DEV_LOGIN` set → `GlobalDevTrustAny` (dev/CI), unset → `GlobalPasswordHash` (production).
+/// Select the global credential check from the environment: `LB_DEV_LOGIN` set → `GlobalDevTrustAny`
+/// (dev/CI), unset → `GlobalPasswordHash` (production).
 pub fn global_credential_check_from_env() -> std::sync::Arc<dyn GlobalCredentialCheck> {
     match std::env::var(DEV_LOGIN_ENV) {
         Ok(v) if !v.trim().is_empty() => std::sync::Arc::new(GlobalDevTrustAny),

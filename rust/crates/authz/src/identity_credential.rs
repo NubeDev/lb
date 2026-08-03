@@ -5,7 +5,8 @@
 //! `credential` service hashes before `identity_credential_set` and compares in `credential_verify`.
 //!
 //! Contrast the shipped per-`(workspace, user)` `Credential` (`crates/host/src/credential/`): that
-//! one lives in a *workspace* namespace and backs the legacy `POST /login`. THIS one is **global**
+//! one lives in a *workspace* namespace (invite takeover protection only, since `POST /login` was
+//! deleted). THIS one is **global**
 //! (one per identity, all workspaces) and lives in the system directory — a person has one password
 //! everywhere, exactly like Slack. Secret-class (§6.7): never returned by any read/list/log.
 

@@ -34,18 +34,15 @@ pub use routes::{INVITE_ACCEPT_MAX_PER_WINDOW, INVITE_ACCEPT_WINDOW_SECS};
 pub use server::{router, serve, serve_listener};
 pub use session::{authenticate, dev_claims, verify_token, AuthRejection};
 pub use session::{mint_full_session, mint_full_session_with_ttl, MintedSession, SESSION_TTL_SECS};
-// The credential-check seam (login-hardening) — re-exported at the crate root so an embedder
-// (via `lb-node`'s builder, embedder-credential-mode scope) can name the two impls without
-// reaching into `session::credential`.
-pub use session::{credential_check_from_env, CredentialCheck, DevTrustAny, PasswordHash};
 // The publisher trust-gate posture — re-exported at the crate root for the same reason as the
 // credential seam: an embedder (via `lb-node`'s `BootConfig`) selects it without reaching into
 // `session::trusted`, and the binary boundary is the one place `LB_EXT_UNTRUSTED_KEY` is read.
 // `Authenticity` is re-exported from `lb-registry` so an embedder needs no direct dependency on it.
 pub use lb_registry::Authenticity;
 pub use session::authenticity_from_env;
-// The GLOBAL credential-check seam (email-login) — the `/auth/login` analogue, likewise re-exported so
-// an embedder selects the same mode for both the legacy `/login` and the new email front door.
+// The credential-check seam (email-login, embedder-credential-mode scope) — re-exported at the crate
+// root so an embedder (via `lb-node`'s builder) names the impls without reaching into the module. This
+// is the ONLY credential seam; the per-ws `CredentialCheck` died with `POST /login`.
 pub use session::{
     global_credential_check_from_env, GlobalCredentialCheck, GlobalDevTrustAny, GlobalPasswordHash,
 };

@@ -324,7 +324,7 @@ async fn workspace_admin_persona_under_a_member_caller_advertises_nothing_it_lac
     let member = member_principal("user:mo", ws); // only invoke + catalog
 
     let menu = menu_under_persona(&node, ws, &member, "builtin.workspace-admin").await;
-    for admin_verb in ["members.manage", "roles.define", "user.disable"] {
+    for admin_verb in ["members.manage", "roles.define", "identity.manage"] {
         assert!(
             !menu.iter().any(|t| t == admin_verb),
             "a member caller under workspace-admin never sees the admin verb {admin_verb} \

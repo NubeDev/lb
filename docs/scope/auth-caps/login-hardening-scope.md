@@ -2,6 +2,15 @@
 
 Status: scope (the ask). Promotes to `doc-site/content/public/auth-caps/` once shipped.
 
+> **The route this scope hardened is GONE (2026-08-03, pre-production legacy sweep).** `POST /login`
+> and its per-`(ws, user)` `CredentialCheck` seam (`DevTrustAny`/`PasswordHash`) were **deleted** —
+> `/auth/*` is the only human door and `identity_credential` the only human credential
+> (`email-login-scope.md` §Sequencing). **What this scope actually shipped survives intact and is where
+> the value was:** the escalation fix (admin caps ride the `workspace-admin` ROLE, never the base
+> bundle), the **viewer floor**, and role-correct issuance — all now living in `mint_full_session`, the
+> one path every `/auth/*` route mints through. The cap `mcp:user.manage:call` named below no longer
+> exists; the equivalent admin marker is `mcp:members.manage:call`. Read the rest as history.
+
 The `POST /login` dev-shim is the one non-real piece of an otherwise-real auth stack, and it
 currently leaks in two ways that a live session surfaced. **(1)** It performs *no credential
 check* — any caller who can reach the port mints a valid signed token for any `user` in any

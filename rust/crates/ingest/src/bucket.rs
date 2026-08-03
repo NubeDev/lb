@@ -271,9 +271,31 @@ struct NumRow {
     /// clamp, taking the read down instead of returning a short first bucket.
     b: i64,
     num_count: u64,
+    /// Lenient like [`crate::rollup::RollupRow`]'s twins, and for a sharper reason: these are the
+    /// values SurrealDB's own `GROUP BY` aggregate produced. `math::sum` over integer-valued samples
+    /// returns an INTEGER, so a series of whole-numbered meter readings fails this decode and takes
+    /// the whole bucketed read — and therefore the entire retention GC fold — down with it.
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     min: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     max: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     sum: Option<f64>,
+}
+
+/// Accept an integer OR a float for a persisted/aggregated `f64` — see [`crate::rollup`]'s twin.
+fn de_opt_lenient_f64<'de, D>(d: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    match Option::<Value>::deserialize(d)? {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_f64()
+            .map(Some)
+            .ok_or_else(|| serde::de::Error::custom(format!("expected a number, found {v}"))),
+    }
 }
 
 /// One `GROUP BY b` row of the count + ordered-last query (Query L). `count` is the TOTAL sample

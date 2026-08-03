@@ -12,12 +12,14 @@ Two things are needed for a shell served that way to actually log in, and lb now
 Neither is on unless you ask for it. A node with no `static_root` and no `browser_session` keeps
 today's bearer-only routing byte-for-byte.
 
-## 1. SPA routes that collide with an lb route (the `/login` 405)
+## 1. SPA routes that collide with an lb route (the login-path 405)
 
 `static_root` mounts the shell on the router's **fallback**, which axum reaches only when *no route
 matched the path at all*. Any SPA route sharing a path with an lb route of a **different method**
-therefore never reached the shell — the router 405'd first. `GET /login` is exactly that case, since
-lb registers `POST /login`: the shell served every other deep link and could not render a login page.
+therefore never reached the shell — the router 405'd first. `GET /auth/login` is exactly that case,
+since lb registers `POST /auth/login`: the shell served every other deep link and could not render a
+login page. (The original collision was on the legacy `POST /login`, deleted in the 2026-08-03
+pre-production sweep; `/auth/login` is the same shape and the door that exists.)
 
 The gateway now content-negotiates on the method-mismatch path, but only when `static_root` is set:
 
@@ -31,7 +33,7 @@ its SPA and the API keeps its contract, with no path list and no host knowledge.
 
 **What this means for you:**
 
-- Your SPA may own `/login` (or any path lb registers under another method). It just works.
+- Your SPA may own `/login` (or any path lb registers under another method — e.g. `/auth/login`). It just works.
 - `curl -X GET /mcp/call` still returns `405 Allow: POST`. `Accept: */*` is deliberately **not**
   treated as an HTML preference.
 - A *browser* hand-navigating to a POST-only API route will get the shell instead of a 405. That is
@@ -112,7 +114,7 @@ breakage this whole feature fixes. Turn it on when you serve over TLS.
 
 ## Not this
 
-- **The bearer contract is unchanged.** `POST /login`, `/auth/*`, and `Authorization: Bearer` are
+- **The bearer contract is unchanged.** `/auth/*` and `Authorization: Bearer` are
   untouched. This wraps them; it does not replace or deprecate them.
 - **Cookies are not forced on anyone.** A host that holds its token in `localStorage` and talks to the
   gateway cross-origin stays valid — this seam is same-origin, opt-in, and additive. rubixd's own

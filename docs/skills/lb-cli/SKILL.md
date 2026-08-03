@@ -50,16 +50,27 @@ Global flags (all commands): `-w/--workspace` (credential selector), `-o/--outpu
 ## 1. `lb login` — the front door
 
 ```bash
-lb login --url http://127.0.0.1:8080 -w acme          # dev-login user defaults to user:ada
+lb login --url http://127.0.0.1:8080 --email ada@acme.local   # password: --password or LB_LOGIN_PASSWORD
 # ws: acme  user: user:ada  role: member  mode: remote
 # logged in to http://127.0.0.1:8080 as user:ada (workspace acme); credential stored in "…/.lazybones/config"
 ```
 
-`login` POSTs the dev-login `{user, workspace}` to the gateway's `/login` (the same the browser
-uses), and stores the signed token **keyed by the workspace it was minted for**, in
+`login` POSTs `{email, password}` to the gateway's **`/auth/login`** (the same door the browser uses,
+and the only human door — the legacy `POST /login {user, workspace}` was deleted in the 2026-08-03
+pre-production sweep), then stores the signed token **keyed by the workspace it was minted for**, in
 `$LB_DIR/config` (TOML, `0600`). The token carries the workspace + caps and is verified per request
-server-side — the wall holds at the front door with no new auth code. Override the user with
-`--user user:bo`.
+server-side — the wall holds at the front door with no new auth code.
+
+**`-w` is optional at login.** `/auth/login` authenticates first and then resolves the workspaces you
+belong to: exactly one ⇒ you are entered automatically; several ⇒ pass `-w <ws>` and the CLI completes
+the pick with `/auth/select`. Omit it with several and the error NAMES them.
+
+**The password**: prefer `LB_LOGIN_PASSWORD=… lb login --email …` so it never lands in shell history.
+A dev/CI node booted with `LB_DEV_LOGIN=1` is password-less and accepts an empty one; a release build
+always demands the real argon2 password.
+
+**Machines don't log in.** An agent, appliance, or raw API caller carries an **lb API key**, not a
+password — `lb login` is the human front door only.
 
 **The token is secret material**: written `0600`, never logged, never echoed in any command's
 output (including `-o json`). Don't paste it into shell history — let `login` store it.
@@ -371,7 +382,7 @@ Run them: `cd rust && cargo test -p lb-cli`.
 - Public: `doc-site/content/public/cli/cli.mdx` (the shipped truth).
 - Session: `docs/sessions/cli/operator-cli-session.md` (the build log + green tests).
 - Implementation: `rust/role/cli/` (client lib + `lb` binary); the seams it uses —
-  `rust/role/gateway/src/routes/mcp.rs` (`/mcp/call`), `…/routes/login.rs`, `…/routes/ext.rs`
+  `rust/role/gateway/src/routes/mcp.rs` (`/mcp/call`), `…/routes/auth_login.rs`, `…/routes/ext.rs`
   (`/extensions`), `rust/crates/host/src/tool_call.rs` (`call_tool`), `rust/crates/devkit/`
   (signing). Sibling surface: `docs/skills/extensions/SKILL.md` (the browser/API extension flow this
   CLI mirrors).

@@ -2,7 +2,7 @@
 //! `_lb_identity` namespace (email-login scope, the decision-#7 `cred_ref` seam made real). This is
 //! the human login credential for the `/auth/*` front door: a person has ONE password across all
 //! their workspaces (Slack-style), distinct from the shipped per-`(workspace, user)` `Credential`
-//! that backs the legacy `POST /login`.
+//! that used to back the deleted `POST /login`.
 //!
 //! Verbs, one concern per file (FILE-LAYOUT §3):
 //!   - `set` — the admin `identity.set_password` verb (gated `mcp:identity.manage:call`).

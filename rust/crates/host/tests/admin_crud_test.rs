@@ -1,14 +1,17 @@
-//! Admin-CRUD at the host layer: the destructive workspace/user/team/member verbs + the user
-//! lifecycle, with the mandatory capability-deny and two-workspace isolation tests, plus the slice
-//! cases — disable-bites-login, soft-before-hard (+ confirm token), teams.delete cascade + revoke,
-//! idempotency, and tombstone-not-resurrected (admin-crud scope).
+//! Admin-CRUD at the host layer: the destructive workspace/team/member verbs, with the mandatory
+//! capability-deny and two-workspace isolation tests, plus the slice cases — soft-before-hard (+
+//! confirm token), teams.delete cascade + revoke, idempotency, and tombstone-not-resurrected
+//! (admin-crud scope).
+//!
+//! The `user.*` half of this scope (`user.create`/`list`/`disable`/`enable`/`delete` and the per-ws
+//! `user` record) was DELETED in the pre-production legacy sweep (email-login scope): the roster is
+//! `membership.*` and there is no per-workspace disable. Its cases live in `identity_membership_test`.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     add_team_member, grants_assign, list_members, remove_member, resolve_caps, teams_create,
-    teams_delete, user_create, user_delete, user_disable, user_enable, user_list, user_login_check,
-    workspace_create, workspace_delete, workspace_list, workspace_purge, workspace_rename, Scope,
-    Subject, UsersError,
+    teams_delete, workspace_create, workspace_delete, workspace_list, workspace_purge,
+    workspace_rename, Scope, Subject,
 };
 use lb_store::Store;
 
@@ -32,8 +35,7 @@ const ADMIN: &[&str] = &[
     "mcp:workspace.purge:call",
     "mcp:workspace.create:call",
     "mcp:workspace.list:call",
-    "mcp:user.manage:call",
-    "mcp:user.disable:call",
+    "mcp:members.manage:call",
     "mcp:teams.manage:call",
     "mcp:teams.list:call",
     "mcp:members.add:call",
@@ -65,8 +67,6 @@ async fn denies_destructive_verbs_without_their_cap() {
     assert!(workspace_rename(&store, &none, "acme", "x", 1)
         .await
         .is_err());
-    assert!(user_disable(&store, &none, "acme", "bob").await.is_err());
-    assert!(user_delete(&store, &none, "acme", "bob").await.is_err());
     assert!(teams_delete(&store, &none, "acme", "facilities")
         .await
         .is_err());
@@ -108,10 +108,7 @@ async fn ws_b_admin_cannot_touch_ws_a() {
     let admin_a = principal("user:alice", "acme", ADMIN);
     let admin_b = principal("user:carol", "globex", ADMIN);
 
-    // ws-A seeds a user + team + member.
-    user_create(&store, &admin_a, "acme", "bob", "member", "dev", 1)
-        .await
-        .unwrap();
+    // ws-A seeds a team + member.
     teams_create(&store, &admin_a, "acme", "facilities", "Facilities")
         .await
         .unwrap();
@@ -120,8 +117,6 @@ async fn ws_b_admin_cannot_touch_ws_a() {
         .unwrap();
 
     // ws-B admin targeting acme is denied / sees nothing across the verbs.
-    assert!(user_list(&store, &admin_b, "acme").await.is_err());
-    assert!(user_disable(&store, &admin_b, "acme", "bob").await.is_err());
     assert!(teams_delete(&store, &admin_b, "acme", "facilities")
         .await
         .is_err());
@@ -142,68 +137,6 @@ async fn ws_b_admin_cannot_touch_ws_a() {
 }
 
 // ── Slice cases ───────────────────────────────────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn disable_bites_login_and_enable_restores_and_list_hides_cred() {
-    let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
-    user_create(&store, &admin, "acme", "bob", "member", "secret-cred", 1)
-        .await
-        .unwrap();
-
-    // Active user mints.
-    user_login_check(&store, "acme", "bob").await.unwrap();
-    // Disable → login refuses.
-    user_disable(&store, &admin, "acme", "bob").await.unwrap();
-    assert!(matches!(
-        user_login_check(&store, "acme", "bob").await,
-        Err(UsersError::Disabled)
-    ));
-    // Enable → restored.
-    user_enable(&store, &admin, "acme", "bob").await.unwrap();
-    user_login_check(&store, "acme", "bob").await.unwrap();
-
-    // user.list never leaks the credential ref (the view has no cred field at all).
-    let views = user_list(&store, &admin, "acme").await.unwrap();
-    let json = serde_json::to_string(&views).unwrap();
-    assert!(!json.contains("secret-cred"), "cred must never be listed");
-
-    // An un-administered user (no record) still mints — auto-seed preserved.
-    user_login_check(&store, "acme", "newcomer").await.unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn delete_user_revokes_grants_and_blocks_login_idempotently() {
-    let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
-    user_create(&store, &admin, "acme", "bob", "member", "dev", 1)
-        .await
-        .unwrap();
-    grants_assign(
-        &store,
-        &admin,
-        "acme",
-        &Subject::User("bob".into()),
-        "mcp:x.y:call",
-        &Scope::All,
-    )
-    .await
-    .unwrap();
-    assert_eq!(resolve_caps(&store, "acme", "bob").await.unwrap().len(), 1);
-
-    // Delete revokes the one grant and reports the count; a deleted user can't mint.
-    assert_eq!(user_delete(&store, &admin, "acme", "bob").await.unwrap(), 1);
-    assert!(resolve_caps(&store, "acme", "bob")
-        .await
-        .unwrap()
-        .is_empty());
-    assert!(matches!(
-        user_login_check(&store, "acme", "bob").await,
-        Err(UsersError::Disabled)
-    ));
-    // Idempotent: re-deleting is a no-op success (0 grants left).
-    assert_eq!(user_delete(&store, &admin, "acme", "bob").await.unwrap(), 0);
-}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn teams_delete_cascades_members_and_revokes_grants() {

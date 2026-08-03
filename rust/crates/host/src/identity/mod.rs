@@ -30,6 +30,3 @@ pub use model::{IdentityView, IdentityWorkspace};
 pub use set_email::identity_set_email;
 pub use tool::call_identity_tool;
 pub use workspaces::identity_workspaces;
-
-// Crate-internal: the effective-member helpers the membership service + login share.
-pub(crate) use workspaces::{has_any_effective_member, is_effective_member};

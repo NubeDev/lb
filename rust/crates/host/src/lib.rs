@@ -81,7 +81,6 @@ mod tools;
 mod ui_decl;
 mod undo;
 mod undo_capture;
-mod users;
 mod versions;
 mod viz;
 mod webhook;
@@ -312,8 +311,8 @@ pub use media::{
 };
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{
-    call_membership_tool, membership_add, membership_list, membership_login_resolve,
-    membership_remove, MembershipError, MembershipView, WORKSPACE_ADMIN_ROLE_CAP,
+    call_membership_tool, membership_add, membership_list, membership_remove, MembershipError,
+    MembershipView,
 };
 pub use native::{
     authorize_native, build_spec, call_native_tool, call_sidecar, install_native, read_status,
@@ -451,10 +450,6 @@ pub use tool_call::{call_tool, call_tool_on_node};
 pub use lb_bus::{NodeId, NodeIdError};
 pub use tools::{call_tools_tool, tools_catalog, ToolsCatalog};
 pub use undo::{history_compensations, history_list, redo, undo, UndoSvcError};
-pub use users::{
-    call_users_tool, user_create, user_delete, user_disable, user_enable, user_list,
-    user_login_check, UserView, UsersError,
-};
 pub use versions::{
     call_versions_tool, descriptors as versions_descriptors, VersionsError, DEFAULT_VERSION_CAP,
     ENTITY_VERSION_TABLE,

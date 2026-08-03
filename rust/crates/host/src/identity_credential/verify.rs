@@ -1,6 +1,6 @@
 //! `global_credential_verify` — the **login-path** global-credential seam (email-login scope). Called
 //! by the gateway's `GlobalPasswordHash` check BEFORE minting, with NO principal yet (we are deciding
-//! whether to issue one) — un-gated, like `membership_login_resolve`. It reads the identity's global
+//! whether to issue one) — un-gated, like `login_workspaces`. It reads the identity's global
 //! credential from `_lb_identity` and constant-time-compares the presented secret against the stored
 //! argon2 hash.
 //!

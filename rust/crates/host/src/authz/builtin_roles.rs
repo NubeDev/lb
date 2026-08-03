@@ -605,8 +605,6 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:roles.delete:call",
     "mcp:grants.assign:call",
     "mcp:grants.list:call",
-    "mcp:user.manage:call",
-    "mcp:user.disable:call",
     "mcp:identity.manage:call",
     // packs (packs scope): APPLYING a pack writes through every object family at once — a
     // datasource, saved rules that then RUN, dashboards, channels, and the workspace-shared agent
@@ -755,7 +753,7 @@ mod tests {
 
     /// The escalation regression, at the cap-bundle layer: a member's bundle holds NONE of the
     /// admin-only caps the live `user:bob` abused (members.add / teams.manage / grants.assign /
-    /// user.manage / workspace.create / workspace.delete / dashboard.delete_any).
+    /// members.manage / workspace.create / workspace.delete / dashboard.delete_any).
     #[test]
     fn member_bundle_holds_no_admin_caps() {
         let member = member_role_caps();
@@ -764,7 +762,7 @@ mod tests {
             "mcp:teams.manage:call",
             "mcp:roles.define:call",
             "mcp:grants.assign:call",
-            "mcp:user.manage:call",
+            "mcp:members.manage:call",
             "mcp:workspace.create:call",
             "mcp:workspace.delete:call",
             "mcp:dashboard.delete_any:call",

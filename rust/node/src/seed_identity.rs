@@ -10,19 +10,19 @@ use lb_host::Node;
 /// guarantees the dev user IS a member so a fresh OR previously-seeded store logs in cleanly.
 ///
 /// `credential` (embedder-credential-mode scope): when `Some(non-empty)`, argon2-hash it into the
-/// user's credential record so a `PasswordHash` node has a first admin who can log in (the bootstrap
-/// paradox — `identity.set_credential` needs an admin token, unavailable before any credential
-/// exists). Written raw here (no principal — this IS the provisioning seam), mirroring the
-/// invite-accept onboarding write: the same `credential` table, in `ws`'s namespace, PHC only.
+/// user's per-workspace credential record AND (with `email`) the global one, so a `PasswordHash` node
+/// has a first admin who can log in (the bootstrap paradox — `identity.set_credential` needs an admin
+/// token, unavailable before any credential exists). Written raw here (no principal — this IS the
+/// provisioning seam), mirroring the invite-accept onboarding write.
 /// `None` seeds no credential (correct for password-less `DevTrustAny` nodes). Idempotent (upsert).
 ///
 /// `email` (email-login scope): when `Some(non-empty)`, also set the dev admin's GLOBAL email login
 /// handle (`identity_set_email`) AND — when a `credential` is present — the GLOBAL password
-/// (`identity_credential_set`), so the new `POST /auth/login {email, password}` front door has a first
-/// admin who can sign in on a fresh store. The same `credential` plaintext backs both the legacy per-ws
-/// `/login` credential above and the global credential here, so one seeded password works on both doors
-/// while they coexist. `None` email ⇒ no global email/credential seeded (the identity still logs in via
-/// the legacy `/login` or the dev form). Idempotent (upsert); the global email index is race-safe.
+/// (`identity_credential_set`), so the `POST /auth/login {email, password}` front door — the ONLY human
+/// door — has a first admin who can sign in on a fresh store. The same `credential` plaintext backs the
+/// per-ws credential above (now only the invite takeover-protection record) and the global credential
+/// here. `None` email ⇒ no global email/credential seeded, so the seeded identity has **no way to sign
+/// in** on a `PasswordHash` node. Idempotent (upsert); the global email index is race-safe.
 pub async fn seed_dev_identity(
     node: &Node,
     ws: &str,

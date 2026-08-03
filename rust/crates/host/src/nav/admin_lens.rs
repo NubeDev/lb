@@ -42,7 +42,6 @@ use lb_auth::Principal;
 /// pins that. (`mcp:devkit.templates:call` was listed here but lives in the member `AUTHOR_CAPS`
 /// bundle — the authoring toolchain, not the admin console — so it is not a marker.)
 const ADMIN_MARKER_CAPS: &[&str] = &[
-    "mcp:user.manage:call",
     "mcp:teams.manage:call",
     "mcp:grants.assign:call",
     "mcp:workspace.delete:call",
@@ -56,6 +55,9 @@ const ADMIN_MARKER_CAPS: &[&str] = &[
     "mcp:ext.uninstall:call",
     "mcp:apikey.manage:call",
     "mcp:webhook.manage:call",
+    // The People/roster marker. It REPLACED `mcp:user.manage:call`, which was dropped with the legacy
+    // per-workspace `user` record in the pre-production legacy sweep (email-login scope): `user.manage`
+    // no longer exists as a verb, so it could never label anything again.
     "mcp:members.manage:call",
 ];
 

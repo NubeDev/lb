@@ -6,10 +6,11 @@
 //! so the SAME capability check guards the browser as guards every other caller (capability-first,
 //! §3.5), and the workspace comes from the *token*, never the request (the hard wall, §7).
 //!
-//! The demo principal is gone (collaboration scope, slice 1): `login` issues a real signed token
-//! and every other route verifies it. The credential check behind `login` is a dev-login for now
-//! (pick a principal); the *token path* is real (mint + verify). A real IdP plugs in behind the
-//! same `verify` seam later — `Non-goals` in the scope.
+//! The demo principal is gone (collaboration scope, slice 1): `/auth/login` issues a real signed
+//! token and every other route verifies it. The credential behind it is the person's ONE global
+//! password (email-login scope); the legacy `POST /login {user, workspace}` was deleted in the
+//! pre-production sweep, so `/auth/*` is the only human door. A real IdP plugs in behind the same
+//! `GlobalCredentialCheck` seam later — `Non-goals` in the scope.
 
 use std::sync::Arc;
 
@@ -83,16 +84,9 @@ pub struct Gateway {
     /// random pepper so API keys work locally without a configured one. Held behind `Arc` so axum
     /// clones it cheaply per request.
     pub pepper: Arc<[u8]>,
-    /// The credential check `login` runs BEFORE minting a token (login-hardening scope). Selected by
-    /// `LB_DEV_LOGIN` in production ([`boot`]): set → `DevTrustAny` (dev/CI, password-less); unset →
-    /// `PasswordHash` (argon2 against the stored credential — a real secret is required). Tests
-    /// override via [`Gateway::with_credential_check`]; the `new`/`new_live` seams default to
-    /// `DevTrustAny` so existing password-less test logins keep working (the security gate lives in
-    /// the env-driven production `boot` path). Behind `Arc<dyn>` so axum clones it cheaply.
-    pub credential_check: Arc<dyn crate::session::CredentialCheck>,
-    /// The GLOBAL credential check `/auth/login` runs before minting a token (email-login scope) —
-    /// the Slack-model analogue of `credential_check`. Verifies the person's ONE global password
-    /// (`identity_credential`) after the email→sub lookup. Selected by the SAME `LB_DEV_LOGIN` env in
+    /// The credential check `/auth/login` runs before minting a token (email-login scope) — the ONE
+    /// credential seam. Verifies the person's ONE global password (`identity_credential`) after the
+    /// email→sub lookup. Selected by `LB_DEV_LOGIN` in
     /// production ([`boot`]): set → `GlobalDevTrustAny` (dev/CI, password-less); unset →
     /// `GlobalPasswordHash` (argon2). Tests override via [`Gateway::with_global_credential_check`]; the
     /// `new`/`new_live` seams default to `GlobalDevTrustAny`. Behind `Arc<dyn>` for cheap axum clones.
@@ -165,14 +159,13 @@ impl Gateway {
         // still gets a fresh ephemeral key (nothing durable to pair it with).
         // Production reads the live wall clock per request (fixed_now = None) — never a value frozen
         // at boot. The wall-clock read lives in `Gateway::now`.
-        // Select the credential check from the environment: `LB_DEV_LOGIN` set → `DevTrustAny`
-        // (dev/CI, password-less); unset → `PasswordHash` (a real argon2 credential is required —
+        // Select the credential check from the environment: `LB_DEV_LOGIN` set → `GlobalDevTrustAny`
+        // (dev/CI, password-less); unset → `GlobalPasswordHash` (a real argon2 credential is required —
         // the release default hard-refuses a password-less login). Only the env-driven production
-        // `boot` path applies this gate; the `new`/`new_live` test seams stay `DevTrustAny`.
+        // `boot` path applies this gate; the `new`/`new_live` test seams stay password-less.
         Ok(
             Self::new_live(Arc::new(node), crate::signing_key::resolve())
                 .with_pepper_from_env()
-                .with_credential_check(crate::session::credential_check_from_env())
                 .with_global_credential_check(crate::session::global_credential_check_from_env()),
         )
     }
@@ -234,13 +227,10 @@ impl Gateway {
             browser_session: Arc::new(None),
             // Dev default: a per-process random pepper (no committed constant). Tests override.
             pepper: Arc::from(random_pepper().as_slice()),
-            // Default to the password-less dev check on the `new`/`new_live` seams so existing
-            // password-less test logins keep working. Production `boot` overrides via env
-            // (`with_credential_check(credential_check_from_env())`), which hard-refuses in release.
-            credential_check: Arc::new(crate::session::DevTrustAny),
-            // The GLOBAL credential check `/auth/login` runs before minting (email-login scope).
-            // Same default posture as `credential_check`: password-less on the test seams, env-driven
-            // in production `boot`. A test uses `with_global_credential_check` to exercise the real
+            // The credential check `/auth/login` runs before minting (email-login scope).
+            // Password-less on the `new`/`new_live` test seams, env-driven in production `boot`
+            // (which hard-refuses a password-less login in release). A test uses
+            // `with_global_credential_check` to exercise the real
             // `GlobalPasswordHash` (`401` on bad/absent global secret) path against a seeded credential.
             global_credential_check: Arc::new(crate::session::GlobalDevTrustAny),
             events: crate::session::events::EventHub::new(),
@@ -280,17 +270,6 @@ impl Gateway {
     /// `BootConfig::max_extension_upload_bytes`, tests pin a small value to exercise the reject path.
     pub fn with_max_extension_upload_bytes(mut self, bytes: u64) -> Self {
         self.max_extension_upload_bytes = bytes;
-        self
-    }
-
-    /// Install the credential check `login` runs before minting (login-hardening scope). Production
-    /// `boot` selects it from `LB_DEV_LOGIN`; a test uses this to exercise the real `PasswordHash`
-    /// (`401` on bad/absent secret) path against a seeded credential. Builder-style.
-    pub fn with_credential_check(
-        mut self,
-        check: Arc<dyn crate::session::CredentialCheck>,
-    ) -> Self {
-        self.credential_check = check;
         self
     }
 

@@ -168,7 +168,7 @@ you tell the user to run them directly."""
 granted_tools = [
   "nav.*",
   "members.list", "members.add", "members.manage",
-  "identity.manage", "user.manage", "user.disable",
+  "identity.manage",
   "teams.list", "teams.manage",
   "workspace.list", "workspace.create", "workspace.rename",
   "grants.assign", "grants.list",

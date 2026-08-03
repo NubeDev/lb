@@ -34,9 +34,9 @@ pub enum RangeMode {
 /// An inclusive value band. Either bound may be absent (one-sided).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Range {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     pub min: Option<f64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     pub max: Option<f64>,
     #[serde(default)]
     pub mode: RangeMode,
@@ -50,9 +50,9 @@ pub struct Range {
 /// live one. (Rejected: taking the larger delta, which reads as "I set 0.5 and got 5".)
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Deadband {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     pub abs: Option<f64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     pub pct: Option<f64>,
 }
 
@@ -146,11 +146,32 @@ impl FilterCounts {
 ///
 /// `value` is `None` for a non-numeric payload: the anchor still advances the `ts` axis
 /// (min-interval keeps working) without inventing a number to compare against.
+///
+/// It is read back with [`de_opt_lenient_f64`] for the same reason as [`crate::rollup::RollupRow`]'s
+/// numeric fields: SurrealDB narrows a whole-numbered float to an `i64`, and a meter reporting an
+/// exact integer would otherwise fail this row's decode — here on the COMMIT path, where it would
+/// break ingest rather than just GC.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct LastCommitted {
     pub ts: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
     pub value: Option<f64>,
+}
+
+/// Accept an integer OR a float for a persisted `f64` — see [`crate::rollup`]'s twin for the full
+/// rationale. Kept as its own copy rather than shared: these are two independent persisted structs,
+/// and a shared helper would couple the ingest filter's wire format to the rollup table's.
+fn de_opt_lenient_f64<'de, D>(d: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match Option::<serde_json::Value>::deserialize(d)? {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(v) => v
+            .as_f64()
+            .map(Some)
+            .ok_or_else(|| serde::de::Error::custom(format!("expected a number, found {v}"))),
+    }
 }
 
 /// The verdict for one sample.
@@ -223,5 +244,51 @@ pub fn decide(filter: &Filter, payload: &Value, ts: u64, last: Option<&LastCommi
     match (value, raw) {
         (Some(v), Some(r)) if v != r => Decision::Clamp(v),
         _ => Decision::Keep,
+    }
+}
+
+#[cfg(test)]
+mod last_committed_decode_tests {
+    use super::*;
+
+    /// The commit-path twin of the rollup regression: a meter reporting an exact integer persists
+    /// as `i64`, and the anchor must still decode — otherwise the deadband filter's state read
+    /// fails and takes the commit with it.
+    #[test]
+    fn integer_anchor_value_deserializes() {
+        let lc: LastCommitted = serde_json::from_value(
+            serde_json::json!({"ts": 1_785_729_000_000u64, "value": 240i64}),
+        )
+        .expect("an integer anchor value must read back");
+        assert_eq!(lc.value, Some(240.0));
+    }
+
+    /// An operator authoring `{"range": {"min": 0, "max": 100}}` — integers, the natural way to
+    /// write a bound — must not break the policy read. Same narrowing, on hand-written config
+    /// rather than machine-generated data.
+    #[test]
+    fn integer_filter_config_deserializes() {
+        let f: Filter = serde_json::from_value(serde_json::json!({
+            "range": {"min": 0, "max": 100},
+            "deadband": {"abs": 2, "pct": 5}
+        }))
+        .expect("integer filter bounds must read back");
+        let r = f.range.expect("range");
+        assert_eq!((r.min, r.max), (Some(0.0), Some(100.0)));
+        let d = f.deadband.expect("deadband");
+        assert_eq!((d.abs, d.pct), (Some(2.0), Some(5.0)));
+    }
+
+    /// Floats and absent/null values keep their existing behaviour.
+    #[test]
+    fn float_and_null_anchor_values_still_work() {
+        let f: LastCommitted =
+            serde_json::from_value(serde_json::json!({"ts": 1u64, "value": 1.5})).unwrap();
+        assert_eq!(f.value, Some(1.5));
+        let n: LastCommitted =
+            serde_json::from_value(serde_json::json!({"ts": 1u64, "value": null})).unwrap();
+        assert_eq!(n.value, None);
+        let a: LastCommitted = serde_json::from_value(serde_json::json!({"ts": 1u64})).unwrap();
+        assert_eq!(a.value, None);
     }
 }

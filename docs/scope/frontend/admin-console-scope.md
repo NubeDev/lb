@@ -132,7 +132,8 @@ through — it names the consequence, distinguishes reversible (archive/disable)
 ## Example flow
 
 1. **Alice (admin)** opens the **Admin** section (visible because her token carries `mcp:workspace.*`/
-   `teams.manage`/`user.manage`). **Bob (member)** never sees the section.
+   `teams.manage`/`members.manage` — `user.manage` was deleted in the 2026-08-03 legacy sweep).
+   **Bob (member)** never sees the section.
 2. **Users**: Alice sees `alice (active)`, `bob (active)`, `carol (active)`. She **disables `bob`** — a
    `ConfirmDestructive` (reversible) explains he can't sign in until re-enabled; she confirms. Bob's next
    login is refused.

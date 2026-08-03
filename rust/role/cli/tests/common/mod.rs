@@ -25,7 +25,8 @@ pub struct RunningGateway {
 
 /// Boot a real Hub-role node, front it with a gateway on an ephemeral loopback port, and serve it in a
 /// background task. Returns once the socket is bound and accepting — the `Remote` transport can hit it
-/// immediately.
+/// immediately. The gateway's credential check is the password-less dev default, so `lb login` can be
+/// driven end to end once an identity with an email + a membership exists (see `seed_person`).
 pub async fn spawn_gateway() -> RunningGateway {
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
@@ -70,8 +71,8 @@ pub fn token(key: &SigningKey, sub: &str, ws: &str, caps: &[&str]) -> String {
     mint(key, &claims)
 }
 
-/// A member token carrying the FULL dev-login caps (parity with `/login`) for `(sub, ws)` — used when
-/// a test needs a normally-authorized session (e.g. to read a seeded inbox).
+/// A member token carrying the FULL dev-login caps (parity with `/auth/login`'s viewer floor) for
+/// `(sub, ws)` — used when a test needs a normally-authorized session (e.g. to read a seeded inbox).
 pub fn dev_token(key: &SigningKey, sub: &str, ws: &str) -> String {
     let claims = lb_role_gateway::dev_claims(sub, ws, NOW, 10_000);
     mint(key, &claims)
@@ -115,4 +116,40 @@ pub async fn seed_reminder(node: &Node, ws: &str, id: &str, channel: &str, body:
     )
     .await
     .expect("seed reminder via the real write path");
+}
+
+/// Provision a real person the `lb login` front door can authenticate: a global identity with an
+/// `email` login handle, a membership row in `ws`, and the built-in `member` + `workspace-admin`
+/// grants. Written through the same un-gated provisioning seams the boot seed uses (identity /
+/// membership / grants) against the REAL store — the operator path that replaced the deleted
+/// `POST /login` empty-workspace self-bootstrap.
+///
+/// No password is set: the test gateway runs the password-less dev credential check, so `/auth/login`
+/// accepts any password for a resolvable email. A test that needs the real argon2 door sets the
+/// global credential explicitly.
+pub async fn seed_person(node: &Node, ws: &str, sub: &str, email: &str) {
+    let store = &node.store;
+    lb_host::workspace_register(store, ws, ws, NOW)
+        .await
+        .expect("register workspace in the directory");
+    lb_host::ensure_builtin_authz_roles(store, ws)
+        .await
+        .expect("seed built-in roles");
+    lb_authz::identity_create(store, sub, None, NOW)
+        .await
+        .expect("create identity");
+    lb_authz::identity_set_email(store, sub, email)
+        .await
+        .expect("claim the email index");
+    lb_authz::membership_add_raw(store, ws, sub, NOW)
+        .await
+        .expect("write membership row");
+    let bare = sub.strip_prefix("user:").unwrap_or(sub);
+    let subject = lb_authz::Subject::User(bare.to_string());
+    lb_authz::grant_assign(store, ws, &subject, "role:member")
+        .await
+        .expect("grant role:member");
+    lb_authz::grant_assign(store, ws, &subject, "role:workspace-admin")
+        .await
+        .expect("grant role:workspace-admin");
 }

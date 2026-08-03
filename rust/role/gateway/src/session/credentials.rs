@@ -1,14 +1,14 @@
-//! The **dev-login** claim builder (login-hardening scope). Maps a `(user, workspace)` login to the
-//! claim set the gateway mints into a real signed token.
+//! The **base claim builder** (login-hardening scope). Maps a `(sub, workspace)` login to the claim
+//! set the gateway mints into a real signed token.
 //!
 //! **What changed (the escalation fix).** This file used to hold ONE hardcoded `member_caps()`
 //! bundle that *contained admin caps* (`members.add`, `teams.manage`, `roles.define`,
-//! `grants.assign`, `user.manage`, `workspace.create`, `dashboard.delete_any`, …), and every login
+//! `grants.assign`, `members.manage`, `workspace.create`, `dashboard.delete_any`, …), and every login
 //! — member or admin — was minted that bundle. So a nominal `Role::Member` was, in practice, a full
 //! admin: a live test proved `user:bob`, added only as a plain member, could add members, create
 //! teams, and self-grant `mcp:workspace.delete:call` (all `204`). The base bundle here is now the
 //! **member-only** set from the durable role catalog (`lb_host::member_role_caps`), and admin caps
-//! ride the `workspace-admin` ROLE through `resolve_caps` (the `login` route unions it on top). A
+//! ride the `workspace-admin` ROLE through `resolve_caps` (`mint_full_session` unions it on top). A
 //! member's token no longer carries any admin cap — the route's existing capability check now
 //! actually `403`s (deny path exercised for real).
 //!
@@ -136,7 +136,7 @@ mod tests {
             "mcp:teams.manage:call",
             "mcp:roles.define:call",
             "mcp:grants.assign:call",
-            "mcp:user.manage:call",
+            "mcp:members.manage:call",
             "mcp:workspace.create:call",
             "mcp:workspace.delete:call",
             "mcp:dashboard.delete_any:call",

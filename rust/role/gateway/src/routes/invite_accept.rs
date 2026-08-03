@@ -3,7 +3,7 @@
 //! session), and the accept chain runs the atomic onboarding (verify → identity → credential →
 //! membership → grants → mint). The gateway's signing key mints the session token.
 //!
-//! This is the THIRD public route (besides `/login` and `/hooks`) — it is not behind the session
+//! This is the THIRD public route (besides `/auth/login` and `/hooks`) — it is not behind the session
 //! authenticate layer. Rate-limiting is the gateway's concern (the public route ships rate-limited
 //! from day one per the scope's risk note).
 

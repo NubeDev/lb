@@ -107,8 +107,9 @@ same binary, the same verbs, the same auth path, differing only by where the hos
 > *Rejected:* two binaries (`lb` remote, `lb-edge` local). It duplicates the command tree and violates
 > "one binary, roles are config" (§3.1). A `Transport` seam is the smaller, honest split.
 
-**3. v1 auth is the dev-login token; API keys are the documented upgrade.** `lb login` posts to the
-existing `/login` (`role/gateway/src/routes/login.rs`) — the same dev-login the browser uses — and stores
+**3. v1 auth is the human login token; API keys are the documented upgrade.** `lb login` posts
+`{email, password}` to `/auth/login` (`role/gateway/src/routes/auth_login.rs`) — the same door the
+browser uses, and the only human door since the legacy `POST /login` was deleted (2026-08-03) — and stores
 the signed token in the config file, **keyed by the workspace it was minted for**. The token already
 carries workspace + caps, verified per request by `session::authenticate`
 (`role/gateway/src/session/authenticate.rs:38`), so the wall holds at the front door with **no new auth
@@ -170,8 +171,9 @@ logged-in user (a real parity risk, called out below).
 
 ## Example flow
 
-1. **Install + login (remote).** `lb login --url http://127.0.0.1:8080 -w acme` posts `/login`
-   `{user: dev, workspace: acme}`, stores the token **keyed by workspace** (`acme → <token>`) plus
+1. **Install + login (remote).** `lb login --url http://127.0.0.1:8080 --email ada@acme.local` posts
+   `/auth/login {email, password}`; one workspace ⇒ auto-entered (with several, `-w <ws>` completes the
+   pick via `/auth/select`). It stores the token **keyed by workspace** (`acme → <token>`) plus
    `gateway_url` and `default_workspace: acme` in `~/.lazybones/config` (0600). `lb whoami` prints
    `ws: acme  user: dev  role: member  …`.
 2. **The spine, one command.** `lb call hello.echo '{"msg":"hi"}'` → `POST /mcp/call` `{tool:

@@ -280,22 +280,14 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             // A LIVE clock: `Gateway::new_live` reads wall time per request and installs its key onto
             // the node. Do NOT call `Gateway::boot()` here — that would open a second store handle.
             let mut gw = Gateway::new_live(node.clone(), cfg.signing_key.clone());
-            // Select the credential check `POST /login` runs (embedder-credential-mode scope).
-            // `new_live` hardwired `DevTrustAny` (password-less); apply the config's choice through
-            // the existing `with_credential_check` builder so an embedded node can enforce real
-            // passwords (`PasswordHash` → argon2, wrong/absent secret 401s). This is the ONLY place
-            // an embedded node's login check is selected; the mode came down from `BootConfig`
-            // (from_env at the binary, or the embedder's explicit choice), never re-read from env.
-            let check: Arc<dyn lb_role_gateway::CredentialCheck> = match cfg.credential_mode {
-                CredentialMode::DevTrustAny => Arc::new(lb_role_gateway::DevTrustAny),
-                CredentialMode::PasswordHash => Arc::new(lb_role_gateway::PasswordHash),
-            };
-            gw = gw.with_credential_check(check);
-            // Select the GLOBAL credential check `POST /auth/login` runs (email-login scope), from the
-            // SAME `credential_mode` so both human doors agree: `DevTrustAny` ⇒ password-less dev/CI,
-            // `PasswordHash` ⇒ real argon2 against the global credential (wrong/absent secret 401s).
-            // `new_live` hardwired `GlobalDevTrustAny`; without this the embedded `/auth/login` would
-            // stay password-less even under `PasswordHash`.
+            // Select the credential check `POST /auth/login` runs (embedder-credential-mode scope).
+            // `new_live` hardwired `GlobalDevTrustAny` (password-less); apply the config's choice
+            // through the `with_global_credential_check` builder so an embedded node can enforce real
+            // passwords (`PasswordHash` → argon2 against the global credential, wrong/absent secret
+            // 401s). This is the ONLY place an embedded node's login check is selected; the mode came
+            // down from `BootConfig` (from_env at the binary, or the embedder's explicit choice),
+            // never re-read from env. There is one door — the legacy per-ws `POST /login` check was
+            // deleted in the pre-production legacy sweep.
             let global_check: Arc<dyn lb_role_gateway::GlobalCredentialCheck> =
                 match cfg.credential_mode {
                     CredentialMode::DevTrustAny => Arc::new(lb_role_gateway::GlobalDevTrustAny),

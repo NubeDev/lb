@@ -35,8 +35,8 @@ lb-devkit = { workspace = true, features = ["devkit-full"] }
 lb-registry.workspace = true
 # The local transport maps `lb_mcp::ToolError` (a host deny) to the CLI's honest DENY.
 lb-mcp.workspace = true
-# Local mode mints the SAME claim set as the dev-login for parity (scope decision) — reuse the one
-# `dev_claims` the gateway's `/login` uses rather than re-listing caps.
+# Local mode mints the SAME claim set as the remote login for parity (scope decision) — reuse the one
+# `dev_claims` the gateway's `/auth/login` mint uses rather than re-listing caps.
 lb-role-gateway.workspace = true
 clap.workspace = true
 tabled.workspace = true
@@ -52,6 +52,9 @@ anyhow.workspace = true
 # The integration tests spin a REAL gateway on a real socket + seed via the real write path (no mocks,
 # CLAUDE §9): the node, the outbox/inbox seed verbs, a known signing key, and a scratch LB_DIR.
 lb-store.workspace = true
+# `seed_person` provisions a real identity + email + membership + grants through the un-gated authz
+# seams (the operator path), so `lb login` can be driven end to end against the real `/auth/login`.
+lb-authz.workspace = true
 ed25519-dalek.workspace = true
 tempfile.workspace = true
 futures.workspace = true

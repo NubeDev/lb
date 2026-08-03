@@ -1,13 +1,17 @@
 //! Embedder-credential-mode scope — proves `BootConfig::credential_mode` reaches the gateway the
 //! embed seam (`boot_full`) builds, so an embedded node can enforce REAL passwords. Before this,
-//! `builder.rs` hardwired `DevTrustAny` and an embedded `POST /login` accepted any secret (verified
-//! live on a cc-app node: `secret:"WRONG"` → `200`). No mocks (CLAUDE §9 / testing §0): a real
+//! `builder.rs` hardwired the password-less check and an embedded login accepted any secret (verified
+//! live on a cc-app node: `secret:"WRONG"` → `200`). The door under test is `POST /auth/login
+//! {email, password}` — the ONLY human door, since the legacy `POST /login {user, workspace, secret}`
+//! was deleted in the pre-production legacy sweep. No mocks (CLAUDE §9 / testing §0): a real
 //! `boot_full` node, the real gateway `router`, the real SurrealDB (`mem://`), real argon2 — driven
 //! through the same `router().oneshot()` tower seam the gateway crate's route tests use (no port).
 //!
 //! Boots with the gateway ON (`GatewayMode::Addr` on a loopback port we never actually serve — we
-//! drive the `Gateway` value `RunningNode` hands back). `hello_demo`/`reactors` OFF and `seed_user`
-//! `None` keep the boot to the store+auth+MCP+gateway subset the assertion needs.
+//! drive the `Gateway` value `RunningNode` hands back). `hello_demo`/`reactors` OFF keep the boot to
+//! the store+auth+MCP+gateway subset the assertion needs. The FIRST admin comes from the boot seed
+//! (`seed_user` + `seed_credential` + `seed_email`) — the blessed provisioning path, and the only
+//! bootstrap there is now that first-login-into-an-empty-workspace is gone.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -42,109 +46,109 @@ async fn json_body(resp: axum::response::Response) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-/// Boot an embedded node with the gateway ON and the given credential mode. Returns the `Gateway`
-/// `boot_full` built (the one whose login check the field selected) AND a sibling `DevTrustAny`
-/// gateway over the SAME node/key — the sibling is the password-less admin path a test uses to seed
-/// a credential before asserting the real gateway enforces it (both share one store: one node).
-/// `hello_demo`/`reactors` OFF, no dev seed — the minimal gateway-serving subset.
-async fn boot_gateways(mode: CredentialMode) -> (Gateway, Gateway) {
+/// Boot an embedded node with the gateway ON, the given credential mode, and a seeded first admin
+/// (`user:ada` / `ada@acme.com` / `pw`). Returns the `Gateway` `boot_full` built — the one whose
+/// credential check the `credential_mode` field selected.
+async fn boot_gateway(mode: CredentialMode, admin_password: Option<&str>) -> Gateway {
     let mut cfg = BootConfig::default();
-    cfg.seed_user = None;
     cfg.reactors = false;
     cfg.hello_demo = false;
     // A loopback address the ritual builds the gateway on. We drive the returned `Gateway` value via
     // its `router` (a tower service) rather than serving HTTP — the address is never actually bound.
     cfg.gateway = GatewayMode::Addr("127.0.0.1:0".parse().unwrap());
     cfg.credential_mode = mode;
-    // Keep the key so the sibling DevTrustAny gateway signs/verifies with the SAME identity the
-    // node installed (a mismatched key would 401 every sibling-minted token).
-    let key = cfg.signing_key.clone();
+    cfg.seed_user = Some(ADMIN_SUB.into());
+    cfg.seed_email = Some(ADMIN_EMAIL.into());
+    cfg.seed_credential = admin_password.map(str::to_string);
     let running: RunningNode = boot_full(cfg).await.expect("embedded boot");
-    let node = running.node.clone();
-    let target = running.gateway.expect("gateway is on (Addr mode)").0;
-    // The sibling always DevTrustAny (password-less), for seeding — over the same node.
-    let seeder = Gateway::new_live(node, key);
-    (target, seeder)
+    running.gateway.expect("gateway is on (Addr mode)").0
 }
 
-/// Log in over the real `/login` route, asserting `200`, and return the bearer token.
-async fn login(gw: &Gateway, user: &str, ws: &str, secret: &str) -> String {
+/// The seeded first admin (the boot seed's defaults + the email/password this suite pins).
+const ADMIN_SUB: &str = "user:ada";
+const ADMIN_EMAIL: &str = "ada@acme.com";
+const ADMIN_PASSWORD: &str = "dev-admin-pw";
+
+/// `POST /auth/login {email, password}` — returns the whole reply so a test can assert the status
+/// AND read the token out of the 1-workspace auto-skip branch.
+async fn auth_login(gw: &Gateway, email: &str, password: &str) -> (StatusCode, Value) {
     let resp = router(gw.clone())
         .oneshot(json_post(
-            "/login",
-            json!({ "user": user, "workspace": ws, "secret": secret }),
+            "/auth/login",
+            json!({ "email": email, "password": password }),
         ))
         .await
         .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::OK,
-        "login {user}@{ws} expected 200"
-    );
-    let reply = json_body(resp).await;
-    reply["token"].as_str().unwrap().to_string()
+    let status = resp.status();
+    if status != StatusCode::OK {
+        return (status, Value::Null);
+    }
+    (status, json_body(resp).await)
 }
 
-/// The status of a `/login` attempt (no token assertion — for the deny cases).
-async fn login_status(gw: &Gateway, user: &str, ws: &str, secret: &str) -> StatusCode {
-    router(gw.clone())
-        .oneshot(json_post(
-            "/login",
-            json!({ "user": user, "workspace": ws, "secret": secret }),
-        ))
-        .await
-        .unwrap()
-        .status()
+/// Log in and assert the full-session branch, returning the bearer token.
+async fn login_token(gw: &Gateway, email: &str, password: &str) -> String {
+    let (status, reply) = auth_login(gw, email, password).await;
+    assert_eq!(status, StatusCode::OK, "login {email} expected 200");
+    reply["token"]
+        .as_str()
+        .expect("the 1-workspace branch mints a full token")
+        .to_string()
+}
+
+/// The status of a login attempt (for the deny cases).
+async fn login_status(gw: &Gateway, email: &str, password: &str) -> StatusCode {
+    auth_login(gw, email, password).await.0
 }
 
 /// THE HEADLINE: a `boot_full` node built with `credential_mode: PasswordHash` enforces the argon2
-/// credential over its real `/login` — wrong/absent secret `401`s, the right secret `200`s. This is
-/// the exact behaviour an embedded node could NOT get before the field existed (login accepted any
-/// secret). The credential is set through the real mediated admin verb (`identity.set_credential`).
+/// credential over its real `/auth/login` — wrong/absent password `401`s, the right one `200`s. This
+/// is the exact behaviour an embedded node could NOT get before the field existed (login accepted any
+/// secret). The person under test is provisioned by the seeded admin through the real mediated admin
+/// routes (identity + email + global password + membership).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn boot_full_password_hash_mode_enforces_the_credential() {
-    // `gw` is the PasswordHash gateway `boot_full` built from the field; `dev_gw` is a password-less
-    // sibling over the SAME node, used only to bootstrap an admin + seed bob's credential (a
-    // PasswordHash gateway can't bootstrap — alice has no credential yet, so it would 401 her).
-    let (gw, dev_gw) = boot_gateways(CredentialMode::PasswordHash).await;
+    let gw = boot_gateway(CredentialMode::PasswordHash, Some(ADMIN_PASSWORD)).await;
+    // The seeded admin signs in with the seeded password — the bootstrap paradox fix (no admin token
+    // is needed to seed the FIRST admin's credential).
+    let admin = login_token(&gw, ADMIN_EMAIL, ADMIN_PASSWORD).await;
 
-    // First login into the empty workspace bootstraps `alice` as workspace-admin (decision #3).
-    let admin = login(&dev_gw, "user:alice", "acme", "").await;
-
-    // Admin adds bob as a member and sets his argon2 credential over the real MCP bridge.
-    let resp = router(dev_gw.clone())
-        .oneshot(bearer(
-            json_post("/admin/members", json!({ "sub": "user:bob" })),
-            &admin,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT, "admin adds bob");
-    let resp = router(dev_gw.clone())
-        .oneshot(bearer(
-            json_post(
-                "/mcp/call",
-                json!({ "tool": "identity.set_credential",
-                        "args": { "user": "user:bob", "secret": "hunter2" } }),
-            ),
-            &admin,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "admin sets bob's credential");
+    // The admin provisions bob: global identity + email, global password, membership. All mediated,
+    // all `mcp:identity.manage:call` / `mcp:members.manage:call` gated server-side.
+    for (uri, body) in [
+        (
+            "/admin/identities".to_string(),
+            json!({ "sub": "user:bob", "email": "bob@acme.com" }),
+        ),
+        (
+            "/admin/identities/user:bob/password".to_string(),
+            json!({ "secret": "hunter2" }),
+        ),
+        ("/admin/members".to_string(), json!({ "sub": "user:bob" })),
+    ] {
+        let resp = router(gw.clone())
+            .oneshot(bearer(json_post(&uri, body), &admin))
+            .await
+            .unwrap();
+        assert!(
+            resp.status().is_success(),
+            "admin provisioning {uri} → {}",
+            resp.status()
+        );
+    }
 
     // Now the PasswordHash gateway (built by `boot_full` from the field) enforces it:
-    // right secret → 200 + token; wrong secret → 401; absent secret → 401.
-    let token = login(&gw, "user:bob", "acme", "hunter2").await;
+    // right password → 200 + token; wrong → 401; absent → 401.
+    let token = login_token(&gw, "bob@acme.com", "hunter2").await;
     assert!(!token.is_empty(), "right password mints a token");
 
     assert_eq!(
-        login_status(&gw, "user:bob", "acme", "WRONG").await,
+        login_status(&gw, "bob@acme.com", "WRONG").await,
         StatusCode::UNAUTHORIZED,
         "wrong password → 401 (this was 200 on an embedded node before credential_mode)"
     );
     assert_eq!(
-        login_status(&gw, "user:bob", "acme", "").await,
+        login_status(&gw, "bob@acme.com", "").await,
         StatusCode::UNAUTHORIZED,
         "absent password → 401"
     );
@@ -155,49 +159,44 @@ async fn boot_full_password_hash_mode_enforces_the_credential() {
 /// `credential_mode: DevTrustAny`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn boot_full_default_mode_is_password_less() {
-    // Default-constructed config → DevTrustAny; a login with any (or no) secret 200s.
-    let (gw, _seeder) = boot_gateways(CredentialMode::DevTrustAny).await;
-    let token = login(&gw, "user:ada", "acme", "anything").await;
+    // Default-constructed config → DevTrustAny; a login with any (or no) password 200s.
+    let gw = boot_gateway(CredentialMode::DevTrustAny, None).await;
+    let token = login_token(&gw, ADMIN_EMAIL, "anything").await;
     assert!(
         !token.is_empty(),
-        "DevTrustAny mints a token with any secret"
+        "DevTrustAny mints a token with any password"
     );
     assert_eq!(
-        login_status(&gw, "user:ada", "acme", "").await,
+        login_status(&gw, ADMIN_EMAIL, "").await,
         StatusCode::OK,
-        "DevTrustAny 200s an empty secret too (today's embed behaviour, unchanged)"
+        "DevTrustAny 200s an empty password too (today's embed behaviour, unchanged)"
     );
 }
 
-/// BOOTSTRAP: a `PasswordHash` node with `seed_user` + `seed_credential` seeds the dev admin's
-/// argon2 credential at boot, so that admin can log in with the seeded password (the bootstrap
-/// paradox fix — no admin token is needed to seed the FIRST admin's credential). Wrong secret still
-/// `401`s. This is the path an embedder (cc-app) uses so `make seed`'s admin login works under
-/// PasswordHash.
+/// BOOTSTRAP: a `PasswordHash` node with `seed_user` + `seed_credential` + `seed_email` seeds the dev
+/// admin's argon2 GLOBAL credential at boot, so that admin can sign in with the seeded password (the
+/// bootstrap paradox fix — no admin token is needed to seed the FIRST admin's credential). Wrong
+/// password still `401`s. This is the ONLY bootstrap: the deleted `POST /login` used to promote the
+/// first caller into an empty workspace, which is exactly the self-promotion hazard the sweep closed.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn boot_full_seeds_the_dev_admin_credential_for_password_hash() {
-    let mut cfg = BootConfig::default();
-    cfg.reactors = false;
-    cfg.hello_demo = false;
-    cfg.gateway = GatewayMode::Addr("127.0.0.1:0".parse().unwrap());
-    cfg.credential_mode = CredentialMode::PasswordHash;
-    cfg.seed_user = Some("user:ada".into());
-    cfg.seed_credential = Some("dev-admin-pw".into());
-    let running = boot_full(cfg).await.expect("embedded boot");
-    let gw = running.gateway.expect("gateway on").0;
-
-    // The seeded admin logs in with the seeded password → 200 + token (was impossible: no admin
-    // could authenticate to set its own credential under PasswordHash before this).
-    let token = login(&gw, "user:ada", "acme", "dev-admin-pw").await;
+    let gw = boot_gateway(CredentialMode::PasswordHash, Some(ADMIN_PASSWORD)).await;
+    let token = login_token(&gw, ADMIN_EMAIL, ADMIN_PASSWORD).await;
     assert!(
         !token.is_empty(),
         "seeded admin logs in with the seeded password"
     );
     // Wrong password still 401s — the seed sets a REAL argon2 credential, not a bypass.
     assert_eq!(
-        login_status(&gw, "user:ada", "acme", "WRONG").await,
+        login_status(&gw, ADMIN_EMAIL, "WRONG").await,
         StatusCode::UNAUTHORIZED,
         "wrong password 401s even for the seeded admin"
+    );
+    // And an unknown email is the SAME uniform 401 — no account-enumeration oracle.
+    assert_eq!(
+        login_status(&gw, "nobody@acme.com", ADMIN_PASSWORD).await,
+        StatusCode::UNAUTHORIZED,
+        "unknown email → the same 401 as a wrong password"
     );
 }
 

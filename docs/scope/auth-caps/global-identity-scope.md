@@ -167,8 +167,13 @@ Mandatory categories from `scope/testing/testing-scope.md`:
 - **Offline / sync** — a membership added on the hub reaches an edge after reconnect (idempotent
   replay); a removed membership is not resurrected by a stale synced edge (coordinate with
   `sync`/`edge-trust`, same tombstone discipline as `revoke_subject`).
-- **Migration** — an upgraded workspace with legacy `user:<name>` rows resolves them to
-  `(identity, membership)` correctly; no access is gained or lost across the migration.
+- ~~**Migration** — an upgraded workspace with legacy `user:<name>` rows resolves them to
+  `(identity, membership)` correctly; no access is gained or lost across the migration.~~
+  **SUPERSEDED 2026-08-03** (decision #10 below): the legacy `user:*` row family was deleted outright
+  rather than migrated, so there is nothing to migrate and no union to test. The replacement case is
+  the one the lazy migration got wrong — **the roster and the login path agree**, asserted from both
+  directions over the one `membership` source
+  (`identity_membership_test::roster_and_login_path_agree_on_the_one_membership_source`).
 
 Plus this slice's cases:
 
@@ -257,14 +262,37 @@ on join, first-member bootstrap, login/provisioning rule) plus the two retrofit-
    console swap (workspace-scoped `user_list` → `membership.list`) is low-risk and is the proving
    surface for the new verbs, so it ships with the identity slice, not after. (The rest of the console
    is untouched.)
-10. **Migration → lazy, not a big-bang upgrade.** A legacy `user:<name>` row with no `membership` row is
-    treated as an implicit membership (resolved on first touch), and `identity:{user:<name>}` is created
-    idempotently on first resolution if absent. No access is gained or lost; a test pins that.
+10. ~~**Migration → lazy, not a big-bang upgrade.**~~ **SUPERSEDED 2026-08-03 — no migration at all;
+    the legacy rows were DELETED.** The original decision: a legacy `user:<name>` row with no
+    `membership` row is treated as an implicit membership (resolved on first touch), and
+    `identity:{user:<name>}` is created idempotently on first resolution if absent; no access gained or
+    lost, pinned by a test.
 
-> **Reinforcement found during peer review:** `crates/host/src/users/model.rs:1-3` already documents
+    **Why it is superseded.** Two reasons, and the first alone would have been enough:
+
+    - **lb is pre-production.** There is no deployed store with legacy rows in it. The lazy migration
+      was paying a permanent architectural cost — a second, parallel source of truth for "who belongs
+      to this workspace" — to protect data that does not exist.
+    - **The lazy path proved to have a key-asymmetry bug, and it was not one mistake but a class.**
+      `user_create` wrote the legacy row keyed by the **BARE** handle; `membership_list`'s legacy pass
+      LISTED the table and synthesized the sub from the row's `user` FIELD (so it matched);
+      `is_effective_member` did a **keyed point read** with the already-prefixed sub (so it missed);
+      and `has_any_effective_member` was a third variant again. Three readers of one "implicit
+      membership", written at three different times, agreeing with nobody. Live consequence:
+      `GET /admin/members` listed `user:ap` while `/auth/login` refused them with "not a member of any
+      workspace" (`debugging/app/roster-login-disagree-legacy-user-rows.md`). Aligning the key would
+      have fixed the instance and kept the class — and this was already the **second** instance of
+      that class (see the twin, `debugging/app/bare-login-handle-not-a-member.md`).
+
+    **What replaced it:** `membership:{sub}`, keyed by the canonical `user:<name>` sub, is the ONE
+    membership record. `membership.list`, `identity.workspaces`, and `login_workspaces` all read it and
+    nothing else, so they cannot disagree. Decisions #1-#9 are unaffected.
+
+> ~~**Reinforcement found during peer review:** `crates/host/src/users/model.rs:1-3` already documents
 > "per-workspace user records, one global principal id" — so the global-sub / per-workspace-row split
 > this scope formalizes is half-acknowledged in the code today. The migration is therefore a
-> re-pointing of an existing intent, not a reversal.
+> re-pointing of an existing intent, not a reversal.~~ **(That file is deleted — the split was resolved
+> by removing the per-workspace half, not by re-pointing it.)**
 
 ## Related
 

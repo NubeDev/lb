@@ -3,12 +3,11 @@
 //!   - [`authenticate`] — read the `Authorization: Bearer <token>` header, `lb_auth::verify` it
 //!     with the node key, and return the verified [`Principal`]. EVERY guarded route calls this
 //!     first; the workspace + caps come from the token, never the request (the hard wall, §7).
-//!   - [`credentials`] — the dev-login: map a `(user, workspace)` to a claim set. This is the
-//!     ONLY non-real piece (Non-goals: no IdP yet); the token it mints is fully real (signed,
-//!     verified). A real credential check / IdP plugs in here behind the same `verify` seam.
+//!   - [`credentials`] — the claim builder: map a `(sub, workspace)` to a claim set, which
+//!     [`mint_session`] then unions with the caller's resolved role/grant/nav-reach caps. The
+//!     credential itself is proven by [`global_credential`] at `/auth/login`, the only human door.
 
 mod authenticate;
-mod credential;
 mod credentials;
 pub mod events;
 mod global_credential;
@@ -18,13 +17,10 @@ mod select_token;
 mod trusted;
 
 pub use authenticate::{authenticate, verify_token, AuthRejection};
-pub use credential::{
-    credential_check_from_env, CredentialCheck, CredentialRejection, DevTrustAny, PasswordHash,
-    DEV_LOGIN_ENV,
-};
 pub use credentials::dev_claims;
 pub use global_credential::{
-    global_credential_check_from_env, GlobalCredentialCheck, GlobalDevTrustAny, GlobalPasswordHash,
+    global_credential_check_from_env, CredentialRejection, GlobalCredentialCheck,
+    GlobalDevTrustAny, GlobalPasswordHash, DEV_LOGIN_ENV,
 };
 pub use mint_session::{
     mint_full_session, mint_full_session_with_ttl, MintedSession, SESSION_TTL_SECS,

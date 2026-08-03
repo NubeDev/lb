@@ -5,7 +5,8 @@
 //! The freshness asymmetry bites here and the UI must surface it: dropping the edge revokes the
 //! user's access to resources shared to that team **live** (Gate 3 re-resolves the edge every read),
 //! but caps the user **inherited** via the team stay in their current token until **re-mint**
-//! (Gate 2). For a true immediate lockout, pair with `user.disable` + short TTL.
+//! (Gate 2). For a true immediate lockout, pair with `membership.remove` (which marks the live token)
+//! + a short TTL — the legacy `user.disable` flag no longer exists (pre-production legacy sweep).
 
 use lb_assets::unrelate;
 use lb_auth::Principal;

@@ -9,7 +9,7 @@
 # /usr/share/lazybones/web; with the dir empty it simply 404s and every path falls to the gateway.
 #
 # A product SPA is expected to be a same-origin build (empty gateway base URL) — every API call it
-# makes is a RELATIVE path (`/login`, `/mcp/call`, `/channels/…/stream`, …). So the split here is
+# makes is a RELATIVE path (`/auth/login`, `/mcp/call`, `/channels/…/stream`, …). So the split here is
 # "explicit SPA paths; everything else is the gateway" — a NEW gateway route never needs a Caddyfile
 # change (the dev-pulse `try_files`-eats-the-API lesson: keep the SPA match narrow and explicit, the
 # gateway match broad, and use `handle` blocks so the first match wins instead of falling through

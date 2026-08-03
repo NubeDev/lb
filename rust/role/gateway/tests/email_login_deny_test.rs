@@ -24,16 +24,11 @@ async fn real_gateway() -> (Gateway, Arc<Node>, SigningKey) {
     (gw, node, key)
 }
 
+/// Provision the workspace's first admin — the explicit operator path that replaced the deleted
+/// `POST /login` empty-workspace self-bootstrap (pre-production legacy sweep). Real store writes,
+/// role-correct mint.
 async fn bootstrap_admin(gw: &Gateway, user: &str, ws: &str) -> String {
-    let resp = router(gw.clone())
-        .oneshot(json_post(
-            "/login",
-            json!({ "user": user, "workspace": ws }),
-        ))
-        .await
-        .unwrap();
-    let reply: Value = json_body(resp).await;
-    reply["token"].as_str().unwrap().to_string()
+    common::bootstrap::provision_admin(gw, user, ws).await
 }
 
 async fn provision(gw: &Gateway, admin: &str, sub: &str, email: &str, pw: &str) {

@@ -116,18 +116,11 @@ async fn seed_viewer(gw: &Gateway) -> String {
     login(gw, "user:bob", "acme").await
 }
 
-/// Log in over the real `/login` route (password-less dev check) and return the bearer token.
+/// Mint the token `/auth/login` would issue for `(user, ws)` — the SAME role-correct path
+/// (`mint_full_session`: viewer floor ∪ resolved grants ∪ nav-reach). The legacy `POST /login` this
+/// used to call was deleted in the pre-production legacy sweep; the issuance under test is unchanged.
 async fn login(gw: &Gateway, user: &str, ws: &str) -> String {
-    let resp = router(gw.clone())
-        .oneshot(json_post(
-            "/login",
-            json!({ "user": user, "workspace": ws }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "login {user}@{ws} ok");
-    let reply: serde_json::Value = common::json_body(resp).await;
-    reply["token"].as_str().unwrap().to_string()
+    common::bootstrap::session_token(gw, user, ws).await
 }
 
 /// Call `tool` with `args` over the real `/mcp/call` bridge under `token`; return the HTTP status.

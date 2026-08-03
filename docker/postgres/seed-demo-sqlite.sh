@@ -10,15 +10,19 @@
 # `127.0.0.1:0` convention, which `make dev`'s default FED_ENDPOINTS pre-approves.
 #
 # Prereqs: a running `make dev` node with the federation sidecar (default) + jq + curl + python3.
-# Usage:  bash docker/postgres/seed-demo-sqlite.sh [DB_PATH] [GATEWAY_URL] [USER] [WORKSPACE]
+# Usage:  bash docker/postgres/seed-demo-sqlite.sh [DB_PATH] [GATEWAY_URL] [EMAIL] [WORKSPACE] [PASSWORD]
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 
 DB="${1:-$ROOT/.lazybones/data/demo/buildings.db}"
 GW="${2:-http://127.0.0.1:8080}"
-USER="${3:-user:ada}"
+# The login handle is an EMAIL: `POST /auth/login {email, password}` is the only human door (the
+# legacy `POST /login {user, workspace}` was deleted in the 2026-08-03 pre-production sweep). These
+# match the boot seed's `LB_SEED_EMAIL`/`LB_SEED_PASSWORD` defaults.
+EMAIL="${3:-ada@acme.local}"
 WS="${4:-acme}"
+PASSWORD="${5:-dev-admin-pw}"
 NAME="demo-buildings"
 
 command -v jq >/dev/null || { echo "seed-demo-sqlite needs jq"; exit 1; }
@@ -26,10 +30,10 @@ command -v jq >/dev/null || { echo "seed-demo-sqlite needs jq"; exit 1; }
 echo "-> generating demo dataset (lite profile) into $DB"
 python3 "$HERE/seed.py" --sqlite "$DB"
 
-echo "-> login $GW as $USER/$WS"
-TOKEN=$(curl -fsS -X POST "$GW/login" -H 'content-type: application/json' \
-  -d "{\"user\":\"$USER\",\"workspace\":\"$WS\"}" | jq -r .token)
-[ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "login failed (is $USER a member of $WS?)"; exit 1; }
+echo "-> login $GW as $EMAIL"
+TOKEN=$(curl -fsS -X POST "$GW/auth/login" -H 'content-type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" | jq -r .token)
+[ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "login failed (is $EMAIL seeded and a member of $WS?)"; exit 1; }
 
 echo "-> register datasource '$NAME' (kind sqlite, dsn = node-local file path)"
 curl -fsS -X POST "$GW/mcp/call" -H "authorization: Bearer $TOKEN" \

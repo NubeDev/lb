@@ -9,8 +9,10 @@
 //! replays idempotently under sync (§6.8) and a stale synced grant can't resurrect access.
 //!
 //! Per the freshness asymmetry ([`resolve_caps`](crate::resolve_caps)): this drops the subject's
-//! Gate-2 caps on the *next re-mint*. A true immediate lockout also needs `user.disable` (kills
-//! minting) — the admin-crud user verbs pair the two.
+//! Gate-2 caps on the *next re-mint*. For an immediate lockout, pair it with `token_revoke_mark`
+//! (kills the live token) — which is exactly what `membership.remove` composes. There is no longer a
+//! per-workspace *disable* flag: the legacy `user` record was removed in the pre-production legacy
+//! sweep (email-login scope), so removal is the only workspace-level lockout.
 
 use lb_store::{Store, StoreError};
 

@@ -1335,7 +1335,7 @@ async fn pins_member_owned_and_bounded() {
 
 /// An admin-marker cap — its presence means the caller sees the admin console, so a curated nav must
 /// not silently replace it (mirrors the UI's `ADMIN_SECTION_CAPS`).
-const USER_MANAGE: &str = "mcp:user.manage:call";
+const MEMBERS_MANAGE: &str = "mcp:members.manage:call";
 
 /// The HEADLINE no-lockout guarantee: a workspace admin is NEVER auto-narrowed by a team-shared nav
 /// or the workspace default — those tiers are skipped for admins, who fall through to the built-in
@@ -1346,12 +1346,12 @@ async fn admin_never_auto_narrowed_member_still_is() {
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
 
-    // Ada is an ADMIN (holds `user.manage`) AND can author navs. Ben is a plain member.
+    // Ada is an ADMIN (holds `members.manage`) AND can author navs. Ben is a plain member.
     let ada = principal(
         "user:ada",
         ws,
         &[
-            USER_MANAGE,
+            MEMBERS_MANAGE,
             SAVE,
             SHARE,
             RESOLVE,

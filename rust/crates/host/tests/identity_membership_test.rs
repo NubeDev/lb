@@ -1,13 +1,13 @@
 //! Global identity + membership at the host layer: the identity/membership admin verbs over the MCP
 //! surface, the mandatory per-verb capability-deny and two-workspace isolation tests, plus the
-//! scope-specific cases (login/zero-memberships, leave-is-a-clean-exit, migration, the create_workspace
+//! scope-specific cases (login/zero-memberships, leave-is-a-clean-exit, the create_workspace
 //! first-member bootstrap). Mirrors `authz_test.rs`'s shape: a `principal()` token factory.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_authz::{grant_list, membership_is_member, Subject};
 use lb_host::{
-    call_identity_tool, call_membership_tool, identity_list, identity_workspaces, membership_add,
-    membership_list, membership_login_resolve, membership_remove,
+    call_identity_tool, call_membership_tool, identity_workspaces, login_workspaces,
+    membership_add, membership_list, membership_remove,
 };
 use lb_mcp::ToolError;
 use lb_store::Store;
@@ -151,41 +151,88 @@ async fn one_identity_in_n_workspaces_resolves_n_memberships() {
     assert_eq!(ids, vec!["globex", "pilot"], "ada is a member of both");
 }
 
-// ── login / zero-memberships (decision #4) ───────────────────────────────────────────────────
+// ── one source of truth: the roster and the login path agree ─────────────────────────────────
 
+/// The invariant the legacy `user:*` union violated (and the reason it was deleted): `membership.list`
+/// (the People tab) and the login path (`identity.workspaces` / `login_workspaces`) read the SAME
+/// rows, so they can never disagree about who belongs. The old union had two sources keyed differently
+/// — the roster synthesized `"user:" + <bare handle>` from a legacy row while the login path did a
+/// keyed read on the already-prefixed sub — so `admin/members` listed a person that `/auth/login` then
+/// refused with "not a member of any workspace"
+/// (`docs/debugging/app/roster-login-disagree-legacy-user-rows.md`).
+///
+/// Asserted from BOTH directions, on the real `mem://` store through the real verbs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn login_refuses_a_non_member_of_a_workspace_that_has_members() {
+async fn roster_and_login_path_agree_on_the_one_membership_source() {
     let store = Store::memory().await.unwrap();
+    seed_directory(&store, "acme").await;
     let admin = principal("user:alice", "acme", MANAGE);
-    // acme now has a member (alice bootstraps via membership_login_resolve on empty).
-    membership_login_resolve(&store, "acme", "user:alice", 1)
+
+    // A member: `membership_add` is the ONE write. Both readers must see it.
+    membership_add(&store, &admin, "acme", "user:ap", 5)
         .await
         .unwrap();
-    // A provisioned identity with zero memberships cannot enter acme.
+    let roster = membership_list(&store, &admin, "acme").await.unwrap();
+    assert!(
+        roster.iter().any(|m| m.sub == "user:ap"),
+        "the roster lists the member it was told about: {roster:?}"
+    );
+    let wss = identity_workspaces(&store, &admin, "user:ap")
+        .await
+        .unwrap();
+    assert!(
+        wss.iter().any(|w| w.ws == "acme"),
+        "identity.workspaces resolves the same membership the roster shows: {wss:?}"
+    );
+    let login = login_workspaces(&store, "user:ap").await.unwrap();
+    assert!(
+        login.iter().any(|w| w.ws == "acme"),
+        "the un-gated login path resolves it too: {login:?}"
+    );
+
+    // A non-member: BOTH are empty. (Decision #4 — a provisioned identity with zero memberships
+    // cannot enter a workspace it was never added to; there is no legacy row that could imply one.)
     lb_authz::identity_create(&store, "user:eve", None, 0)
         .await
         .unwrap();
-    let err = membership_login_resolve(&store, "acme", "user:eve", 2)
-        .await
-        .unwrap_err();
-    assert!(matches!(err, lb_host::MembershipError::Denied));
-    // But the empty-workspace bootstrap still works (decision #3).
-    membership_login_resolve(&store, "brandnew", "user:eve", 3)
+    assert!(
+        !roster.iter().any(|m| m.sub == "user:eve"),
+        "a sub with no membership row is not on the roster"
+    );
+    assert!(
+        identity_workspaces(&store, &admin, "user:eve")
+            .await
+            .unwrap()
+            .is_empty(),
+        "and resolves no workspaces"
+    );
+    assert!(
+        login_workspaces(&store, "user:eve")
+            .await
+            .unwrap()
+            .is_empty(),
+        "and cannot log in anywhere"
+    );
+
+    // Removal keeps them in step: gone from the roster ⇒ gone from the login path.
+    membership_remove(&store, &admin, "acme", "user:ap")
         .await
         .unwrap();
-    assert!(membership_is_member(&store, "brandnew", "user:eve")
-        .await
-        .unwrap());
-    // identity.workspaces(eve) shows brandnew only — eve never got into acme.
-    seed_directory(&store, "acme").await;
-    seed_directory(&store, "brandnew").await;
-    let admin_b = principal("user:alice", "brandnew", MANAGE);
-    let wss = identity_workspaces(&store, &admin_b, "user:eve")
-        .await
-        .unwrap();
-    assert!(wss.iter().any(|w| w.ws == "brandnew"));
-    assert!(wss.iter().all(|w| w.ws != "acme"));
-    let _ = admin; // admin used for the un-gated resolve's type; resolve is un-gated
+    assert!(
+        !membership_list(&store, &admin, "acme")
+            .await
+            .unwrap()
+            .iter()
+            .any(|m| m.sub == "user:ap"),
+        "removed from the roster"
+    );
+    assert!(
+        login_workspaces(&store, "user:ap")
+            .await
+            .unwrap()
+            .is_empty(),
+        "and removed from the login path, in the same step"
+    );
 }
 
 // ── leave is a clean exit: live token refused after remove ────────────────────────────────────
@@ -222,43 +269,6 @@ async fn membership_remove_revokes_grants_and_marks_token() {
             .await
             .unwrap()
     );
-}
-
-// ── migration: legacy user rows → no access gained or lost (decision #10) ─────────────────────
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn legacy_user_rows_are_implicit_memberships_no_access_change() {
-    let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", MANAGE);
-    // Seed a legacy workspace-scoped user row directly (a row from BEFORE this slice, the shape
-    // `user_create` writes) — the migration must treat it as an implicit membership.
-    let legacy = serde_json::json!({
-        "user": "bob", "active": true, "role": "member", "cred_ref": "dev", "kind": "user", "ts": 5,
-    });
-    lb_store::write(&store, "acme", "user", "bob", &legacy)
-        .await
-        .unwrap();
-    // legacy bob's existing grant is unchanged.
-    lb_authz::grant_assign(
-        &store,
-        "acme",
-        &Subject::User("bob".into()),
-        "mcp:hvac.setpoint:call",
-    )
-    .await
-    .unwrap();
-
-    // membership.list includes bob (the implicit/legacy member) — no access gained or lost.
-    let members = membership_list(&store, &admin, "acme").await.unwrap();
-    assert!(members.iter().any(|m| m.sub == "user:bob"));
-    // bob's grant is intact (migration does not touch grants).
-    let caps = grant_list(&store, "acme", &Subject::User("bob".into()))
-        .await
-        .unwrap();
-    assert!(caps.iter().any(|c| c == "mcp:hvac.setpoint:call"));
-    // identity was lazy-created on first resolution.
-    let identities = identity_list(&store, &admin).await.unwrap();
-    assert!(identities.iter().any(|i| i.sub == "user:bob"));
 }
 
 // ── offline / sync: a removed membership is not resurrected by a stale edge ───────────────────

@@ -26,7 +26,7 @@ verbs the individual admin tabs already call:
 
 | Step | Verb(s) | Same as tab |
 | --- | --- | --- |
-| Person | `user.create` | People |
+| Person | `membership.add` (People) — was `user.create`, deleted in the 2026-08-03 legacy sweep | People |
 | Team | `teams.create`, `members.add` | Teams |
 | Access | `grants.assign` (`role:<name>` → **team**), **`nav.save`** (build a nav inline), `nav.share` (team tier), `nav.set-default` | Roles + Nav |
 
@@ -69,8 +69,9 @@ display lens; the server re-checks every verb.
 - **No new authz, no new asset, no new verb** — rule 5/10 hold for free because the wizard only calls
   existing gated seams. It never branches on an extension id (nav `ext` items stay opaque, rendered
   through the shell's existing surface map).
-- **Capabilities (rule 5):** the Setup tab shows for a caller holding **any** of `user.manage`,
-  `teams.manage`, or `grants.assign` (display gate). Each step's write is re-checked server-side; a
+- **Capabilities (rule 5):** the Setup tab shows for a caller holding **any** of `members.manage`
+  (was `user.manage`, deleted in the 2026-08-03 legacy sweep), `teams.manage`, or `grants.assign`
+  (display gate). Each step's write is re-checked server-side; a
   caller without the cap is refused at the gateway regardless of what the UI shows (tested).
 - **Workspace wall (rule 6):** every verb is workspace-scoped by the session token; a person onboarded
   in ws-A is invisible in ws-B (tested).

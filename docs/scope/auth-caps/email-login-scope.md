@@ -213,15 +213,47 @@ seeded via real verbs (no mocks; argon2 real):
   even with a valid select-token).
 - **Email uniqueness** — second identity with the same (case-folded) email is refused; lookup is
   case-insensitive.
-- **Legacy path is gone** — `POST /login` no longer exists (or `404`s); no per-ws credential verb
-  remains. A test asserts the removed route is unreachable and that the login-hardening tests which
-  depended on it were retired or ported to `/auth/*`, not left dangling.
+- **Legacy path is gone** ✅ **(2026-08-03)** — `POST /login` no longer exists; the gateway's per-ws
+  `CredentialCheck` seam is deleted, so no route consults a per-workspace password. The
+  login-hardening tests that depended on `/login` were ported (the escalation + member-reach cases now
+  mint through `mint_full_session`, the same function the live routes call) or retired (the
+  `PasswordHash`-gates-minting case, whose surviving equivalent is `email_login_test`'s
+  wrong/absent-password `401`s against `GlobalPasswordHash`). `static_root_method_mismatch_test` now
+  probes `/auth/login` — the POST-only path that actually exists. Nothing was left dangling.
 - **Machine auth intact** — an API-key caller still authenticates and authorizes unchanged (a smoke
   test that the removal didn't touch the `apikey:` path).
 - **Switch freshness** — membership removed → next `auth.switch` refused; user disabled in the
   target → refused (mirror of `user_login_check` at login).
 
-## Sequencing (implementing session, 2026-07-16)
+## Sequencing (implementing session, 2026-07-16) — **removal sweep DONE 2026-08-03**
+
+> **The removal sweep landed (2026-08-03).** `POST /login` is **gone** — deleted, not deprecated —
+> along with the gateway's per-`(ws, user)` `CredentialCheck` seam (`DevTrustAny`/`PasswordHash`), the
+> whole legacy `user` record family (`user.create`/`list`/`disable`/`enable`/`delete`,
+> `user_login_check`, `mcp:user.manage:call`/`mcp:user.disable:call`, `/admin/users*`), and
+> `membership_login_resolve` with its empty-workspace self-bootstrap. `/auth/*` is now the ONLY human
+> door and `identity_credential` the only human credential; machines carry an lb API key, untouched.
+>
+> Two things forced `/login`'s removal beyond tidiness: it checked **membership before the credential**,
+> making it an unauthenticated **account-enumeration oracle** (member → 401, non-member → 403, disabled →
+> a third message, all with a garbage password); and its bootstrap-on-empty would have become a
+> **self-promotion hazard** the moment legacy `user` rows stopped counting toward
+> "does this workspace have anyone in it" — the next stranger to hit the port would have been minted
+> `workspace-admin`. The first admin is now provisioned explicitly (boot seed, or
+> `identity.create` → `identity.set_password` → `create_workspace`) — the story this scope's Risks
+> section already owned.
+>
+> **What remains of the sweep:** the per-workspace `credential` record itself (`host/src/credential/`,
+> `identity.set_credential`) still exists — it no longer authenticates anything, but the invite flow's
+> **takeover protection** reads it (`invites/accept.rs`) to answer "does this sub already hold a password
+> in this workspace?". Removing it is the invite scope's call, not this one's; it is no longer a login
+> door, so it is not a second silent credential path.
+>
+> **Behaviour deliberately lost:** per-workspace **disable/enable**. `login_workspaces` no longer filters
+> by a `user_login_check`, because there is no `user` record to be disabled in. `membership.remove` is
+> the surviving control and is strictly stronger (tombstone + revoke grants + mark the live token). No
+> replacement field was invented; nothing silently no-ops (the verbs and routes are gone, so a caller
+> gets an unknown-tool/404, not a quiet success).
 
 **Build the replacement first, remove `/login` in a tracked follow-up.** The end-state is unchanged
 — `/auth/*` is the only human door and the global credential the only human credential — but the
@@ -236,7 +268,10 @@ the legacy suites) is the immediate next slice, tracked here so it is not forgot
 
 ## Risks & hard problems
 
-- **One credential store, cleanly.** The per-ws `Credential` and `identity.set_credential` are slated
+- **One credential store, cleanly.** ✅ **The login half is done (2026-08-03):** the gateway's per-ws
+  `CredentialCheck` is deleted, so `identity_credential` is the only thing any login consults. The
+  per-ws `Credential` RECORD survives as invite takeover-protection state only (see the sweep note
+  above) — not a door. Original note: the per-ws `Credential` and `identity.set_credential` were slated
   for **deletion** (the removal sweep above) — the global credential in `_lb_identity` becomes the
   single source of truth for human auth. The risk is an incomplete removal: a lingering `POST /login`
   handler or per-ws verify call would be a second, silent door. The removal must be total and the
@@ -255,8 +290,12 @@ the legacy suites) is the immediate next slice, tracked here so it is not forgot
   not read-then-write.
 - **Select-token abuse.** It must be useless everywhere except `/auth/select` — the deny tests
   above are the guardrail; get them in before the route ships, not after.
-- **Bootstrap of the very first admin.** With `POST /login` gone, the old "first login into an
-  empty workspace bootstraps a workspace-admin" trick disappears too — so this scope **owns** the
+- **Bootstrap of the very first admin.** ✅ **Settled 2026-08-03.** With `POST /login` gone, the old
+  "first login into an empty workspace bootstraps a workspace-admin" trick disappeared with it — and
+  good riddance: once legacy `user` rows stopped counting toward "has any member", that trick was a
+  self-promotion hole for any stranger who could reach the port. The blessed path below is now the
+  only one (the boot seed `seed_user`+`seed_credential`+`seed_email` realizes it; tests provision
+  through the same un-gated seams) — so this scope **owns** the
   first-admin story. The blessed path: an operator seeds at provision time with `identity.create`
   (+ `email`) → `identity.set_password` → `create_workspace` (which auto-grants that identity
   `workspace-admin`, decision #3), after which they log in via `/auth/login` normally. Name this in

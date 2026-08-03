@@ -3,7 +3,8 @@
 //! the 0/1/N branch, the select-token deny surface, workspace isolation of the switch, timing-uniform
 //! credential failure, email uniqueness + case-insensitivity, and the self-service change.
 //!
-//! Seeding uses the REAL write path: an admin is bootstrapped via `/login` into an empty workspace,
+//! Seeding uses the REAL write path: an admin is provisioned explicitly (`common::bootstrap` — the
+//! operator first-admin path, since `POST /login` and its empty-workspace self-bootstrap were deleted),
 //! then provisions global identities (`POST /admin/identities` with email), sets their global password
 //! (`POST /admin/identities/{sub}/password`), and adds memberships (`POST /admin/members`) — exactly
 //! the operator provisioning path the scope names. `/auth/*` is then driven end to end.
@@ -32,18 +33,11 @@ async fn real_gateway() -> (Gateway, Arc<Node>, SigningKey) {
     (gw, node, key)
 }
 
-/// Bootstrap an admin: first `/login` into an empty workspace makes the requester workspace-admin.
+/// Provision the workspace's first admin — the explicit operator path that replaced the deleted
+/// `POST /login` empty-workspace self-bootstrap (pre-production legacy sweep). Real store writes,
+/// role-correct mint.
 async fn bootstrap_admin(gw: &Gateway, user: &str, ws: &str) -> String {
-    let resp = router(gw.clone())
-        .oneshot(json_post(
-            "/login",
-            json!({ "user": user, "workspace": ws }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "bootstrap {user}@{ws}");
-    let reply: Value = json_body(resp).await;
-    reply["token"].as_str().unwrap().to_string()
+    common::bootstrap::provision_admin(gw, user, ws).await
 }
 
 /// Provision a global identity with an email as `admin`.

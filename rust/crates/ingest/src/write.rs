@@ -15,7 +15,7 @@
 use lb_store::{Store, StoreError};
 use serde_json::{json, Value};
 
-use crate::overflow::{enforce_bound, OverflowPolicy};
+use crate::overflow::{enforce_bound, staged_count as staged_count_for_headroom, OverflowPolicy};
 use crate::sample::{Qos, Sample};
 use crate::staging::STAGING_TABLE;
 
@@ -29,6 +29,26 @@ pub async fn write(
     samples: &[Sample],
     bound: usize,
 ) -> Result<usize, StoreError> {
+    // Headroom short-circuit. `enforce_bound` opens with a `SELECT count() ... GROUP ALL` — a full
+    // aggregate scan of staging — and calling it per sample made a batch cost 2 queries/sample, with
+    // the scan half getting MORE expensive as staging filled. On a 959MB armv7 box a 1680-sample
+    // batch took 41s and every push timed out (`lastAccepted: 0`), so nothing landed at all.
+    //
+    // One count up front tells us how many samples can be admitted before the bound is even
+    // reachable; while `headroom` lasts we skip the check entirely and spend ONE query per sample.
+    // `headroom` is deliberately only decremented, never trusted upward: once it runs out we fall
+    // back to the per-sample `enforce_bound` and its authoritative re-count, so the bound's meaning
+    // is unchanged — this only removes checks that provably cannot fire.
+    //
+    // Concurrent writers can consume real headroom underneath us, so this is an optimistic estimate.
+    // That is safe in the same way the pre-existing code was: `enforce_bound` re-counts for real, and
+    // the bound is a coarse backpressure cap (see `overflow`'s module doc), not an exact quota.
+    let mut headroom = if bound == 0 {
+        usize::MAX // unbounded: enforce_bound is a no-op anyway
+    } else {
+        bound.saturating_sub(staged_count_for_headroom(store, ws).await?)
+    };
+
     let mut accepted = 0;
     for sample in samples {
         let policy = match sample.qos {
@@ -36,7 +56,10 @@ pub async fn write(
             Qos::MustDeliver => OverflowPolicy::DeadLetter,
         };
         // Bound check FIRST (both-ends rule): make room or divert before the durable append.
-        if !enforce_bound(store, ws, bound, policy, sample).await? {
+        // Skipped only while we hold proven headroom — see the note above.
+        if headroom > 0 {
+            headroom -= 1;
+        } else if !enforce_bound(store, ws, bound, policy, sample).await? {
             // must-deliver was dead-lettered instead of admitted to staging; still handled.
             accepted += 1;
             continue;

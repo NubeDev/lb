@@ -4,7 +4,7 @@
 //!
 //! Why this exists: `Router::fallback_service` fires only when NO route matched the path at all. An
 //! SPA route that collides with an lb route of a different method therefore never reaches the shell —
-//! the router 405s first. `GET /login` is exactly that case (lb registers `POST /login`), so a
+//! the router 405s first. `GET /auth/login` is exactly that case (lb registers `POST /auth/login`), so a
 //! deployed shell served its whole UI and could not render a login page. See the scope for the full
 //! diagnosis (`docs/scope/frontend/spa-static-hosting-scope.md`).
 //!

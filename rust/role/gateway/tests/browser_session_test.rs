@@ -10,8 +10,9 @@
 //!     must be provably incapable of widening authority.
 //!   - **Off-by-default** — `browser_session: None` ⇒ no `/api/*`, no cookie, today's router.
 //!
-//! Seeding uses the REAL write path (as `email_login_test.rs` does): bootstrap an admin via `/login`,
-//! provision a global identity + password, add memberships. `/api/*` is then driven end to end.
+//! Seeding uses the REAL write path (as `email_login_test.rs` does): provision an admin explicitly
+//! (`common::bootstrap`), provision a global identity + password, add memberships. `/api/*` is then
+//! driven end to end.
 
 mod common;
 
@@ -40,18 +41,11 @@ async fn session_gateway() -> (Gateway, Arc<Node>, SigningKey) {
     (gw, node, key)
 }
 
-/// Bootstrap an admin: the first `/login` into an empty workspace makes the requester workspace-admin.
+/// Provision the workspace's first admin — the explicit operator path that replaced the deleted
+/// `POST /login` empty-workspace self-bootstrap (pre-production legacy sweep). Real store writes,
+/// role-correct mint.
 async fn bootstrap_admin(gw: &Gateway, user: &str, ws: &str) -> String {
-    let resp = router(gw.clone())
-        .oneshot(json_post(
-            "/login",
-            json!({ "user": user, "workspace": ws }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "bootstrap {user}@{ws}");
-    let reply: Value = json_body(resp).await;
-    reply["token"].as_str().unwrap().to_string()
+    common::bootstrap::provision_admin(gw, user, ws).await
 }
 
 /// Provision a real person: global identity + email + password, member of `ws`.

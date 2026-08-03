@@ -16,7 +16,7 @@ OAuth steps are dropped).
 |---|---|
 | `fly.toml` | Fly app config — region `cdg`, `shared-cpu-1x`, `[build]` → `deploy/common/Dockerfile`, `[http_service]` `:8080`, `[mounts]` `/data` → volume `lb_data`, non-secret env. No `release_command` (seeding runs in the entrypoint; release VMs get no volume). |
 | `compose.fly-local.yml` + `Caddyfile.local` | Local **HTTPS pre-flight** — the same image behind mkcert TLS on `https://localhost`. Prove a deploy in ~30 s before the ~5–10 min Fly round-trip. |
-| `smoke.sh` | Boot smoke against a running container: `POST /login` → token, `GET /workspaces` includes the ws, `GET /` returns the SPA, `demo-buildings` registered (`datasource.list`) — proving Caddy proxies the gateway hop, not the SPA fallback. |
+| `smoke.sh` | Boot smoke against a running container: `POST /auth/login` → token, `GET /workspaces` includes the ws, `GET /` returns the SPA, `demo-buildings` registered (`datasource.list`) — proving Caddy proxies the gateway hop, not the SPA fallback. |
 
 ## Commands (Makefile `fly-*` targets)
 

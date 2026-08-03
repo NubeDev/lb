@@ -6,9 +6,9 @@
 //! Why this is needed: `login_workspaces` (the `/auth/login` roster) scans the workspace DIRECTORY and
 //! keeps only the workspaces the person is an effective member of. Membership alone is not enough — the
 //! workspace must also appear in the directory. `workspace_create` registers it, but it is
-//! capability-gated and used to be reached only lazily on the first `/login`. A freshly seeded node has
-//! the membership but not the directory record, so `/auth/login` returned "not a member of any
-//! workspace" until a legacy `/login` ran. This seam lets the boot seed register the workspace up front.
+//! capability-gated and used to be reached only lazily on the first legacy `/login` (since deleted). A
+//! freshly seeded node has the membership but not the directory record, so `/auth/login` returned "not
+//! a member of any workspace". This seam lets the boot seed register the workspace up front.
 //!
 //! Idempotent, and it respects the purge tombstone (a purged workspace is never resurrected).
 

@@ -28,21 +28,13 @@ use tower::ServiceExt; // for `oneshot`
 // ----- session ----------------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn login_issues_a_token_that_authenticates_subsequent_requests() {
-    // The keystone: log in → get a token → post with it → read it back. A real signed session.
+async fn a_provisioned_session_token_authenticates_subsequent_requests() {
+    // The keystone: provision a real member → mint through the real role-correct path → post with the
+    // token → read it back. A real signed session. (This used to log in over `POST /login`; that route
+    // was deleted in the pre-production legacy sweep — `/auth/login`'s own end-to-end mint is pinned
+    // in `email_login_test.rs`, so this test keeps its focus on the token→route spine.)
     let (gw, _key) = gateway().await;
-
-    let resp = router(gw.clone())
-        .oneshot(json_post(
-            "/login",
-            serde_json::json!({ "user": "user:ada", "workspace": "acme" }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "login ok");
-    let reply: serde_json::Value = json_body(resp).await;
-    let tok = reply["token"].as_str().unwrap().to_string();
-    assert_eq!(reply["workspace"], "acme");
+    let tok = common::bootstrap::provision_admin(&gw, "user:ada", "acme").await;
 
     let item = Item::new("m1", "general", "user:ada", "hello with a real token", 1);
     let resp = router(gw)

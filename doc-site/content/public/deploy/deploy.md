@@ -44,7 +44,7 @@ Caddyfile change.
 
 ```bash
 make fly-local        # build deploy/common/Dockerfile, run behind mkcert TLS on https://localhost
-make fly-smoke         # POST /login, GET /workspaces, datasource.list — real HTTP against a real node
+make fly-smoke         # POST /auth/login, GET /workspaces, datasource.list — real HTTP against a real node
 make fly-local-down    # tear down (keeps volumes)
 ```
 

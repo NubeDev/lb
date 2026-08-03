@@ -45,12 +45,12 @@ pub enum GatewayMode {
     Addr(SocketAddr),
 }
 
-/// Which credential check `POST /login` runs before minting a token (embedder-credential-mode
-/// scope — the embed-seam completion of login-hardening). The gateway already ships two checks
-/// behind the `CredentialCheck` trait; this selects which one a `boot_full` node installs, through
-/// the existing `Gateway::with_credential_check` seam. Selecting it here (a `BootConfig` field) is
-/// what lets an embedded node run **real** password login — before this, `builder.rs` hardwired
-/// `DevTrustAny` and an embedded `POST /login` accepted any password.
+/// Which credential check `POST /auth/login` runs before minting a token (embedder-credential-mode
+/// scope — the embed-seam completion of login-hardening). The gateway ships two checks behind the
+/// `GlobalCredentialCheck` trait; this selects which one a `boot_full` node installs, through the
+/// `Gateway::with_global_credential_check` seam. Selecting it here (a `BootConfig` field) is what
+/// lets an embedded node run **real** password login — before this, `builder.rs` hardwired the
+/// password-less check and an embedded login accepted any password.
 ///
 /// `Default` is [`DevTrustAny`](CredentialMode::DevTrustAny) — the back-compat embed default, so
 /// every existing embedder and `boot_full`-based test keeps today's password-less login until it
@@ -230,13 +230,13 @@ pub struct BootConfig {
     /// an env NAME, resolved at send time in the effect's workspace. `from_env` reads `LB_MAIL_*`.
     pub email_transport: Option<crate::mail::EmailTransport>,
 
-    /// Which credential check `POST /login` runs before minting (embedder-credential-mode scope).
+    /// Which credential check `POST /auth/login` runs before minting (embedder-credential-mode scope).
     /// Additive: `Default` is [`CredentialMode::DevTrustAny`] — today's `boot_full` password-less
     /// behaviour, so no existing embedder breaks. An embedder sets [`CredentialMode::PasswordHash`]
     /// to enforce real passwords (argon2 against the stored credential); `from_env()` derives it
     /// from `LB_DEV_LOGIN` to reproduce the standalone binary. Applied through
-    /// `Gateway::with_credential_check` in the builder's `GatewayMode::Addr` arm; irrelevant when
-    /// the gateway is `Off` (no login route).
+    /// `Gateway::with_global_credential_check` in the builder's `GatewayMode::Addr` arm; irrelevant
+    /// when the gateway is `Off` (no login route).
     pub credential_mode: CredentialMode,
 
     /// Whether the extension **publisher-signature** check is enforced, or waived for a development
@@ -278,10 +278,10 @@ pub struct BootConfig {
     /// boot (email-login scope), so the new `POST /auth/login {email, password}` front door has a
     /// first admin who can sign in on a fresh store. `Some(non-empty)` ⇒ the seed sets the identity's
     /// globally-unique email AND — when [`seed_credential`](Self::seed_credential) is also set — the
-    /// global password (the same plaintext backs both the legacy per-ws `/login` credential and the
-    /// global one, so one seeded password works on both doors while they coexist). `None` (the
-    /// default) seeds no global email — the dev user still logs in via the legacy `/login` or the dev
-    /// form. `from_env` reads `LB_SEED_EMAIL`. Filled at the binary boundary; the email is non-secret.
+    /// global password. `/auth/login` is the ONLY human door (the legacy `POST /login` was deleted in
+    /// the pre-production sweep), so `None` here means the seeded dev admin **cannot log in** on a
+    /// `PasswordHash` node — set it whenever you set `seed_credential`.
+    /// `from_env` reads `LB_SEED_EMAIL`. Filled at the binary boundary; the email is non-secret.
     pub seed_email: Option<String>,
 
     /// The optional server-side response cache (response-cache scope). `None` (the default) ⇒ no
@@ -434,8 +434,8 @@ impl Default for BootConfig {
             // No seed password by default — a `DevTrustAny` node needs none, and an embedder fills
             // this only when it boots `PasswordHash` and wants the dev admin to be able to log in.
             seed_credential: None,
-            // No global email seeded by default — an embedder fills this to give the new `/auth/login`
-            // front door a first admin. `None` ⇒ the dev user logs in via the legacy `/login`/dev form.
+            // No global email seeded by default — an embedder fills this to give the `/auth/login`
+            // front door a first admin. `None` ⇒ the seeded dev user has no way to sign in.
             seed_email: None,
             // No response cache by default — an embedder opts in (rubix-ai does, on by default in
             // ITS binary). `from_env` (below) turns it on for the standalone binary via `LB_CACHE_*`.

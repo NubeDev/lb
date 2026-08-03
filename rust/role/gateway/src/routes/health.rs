@@ -58,7 +58,7 @@
 //!
 //! Always on when `GatewayMode::Addr`; embedders need no `BootConfig` field for it. Sits OUTSIDE
 //! the auth wall (an LB has no bearer token) — the same posture as the unauthenticated
-//! `POST /login`.
+//! `POST /auth/login`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

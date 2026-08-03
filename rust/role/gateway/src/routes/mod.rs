@@ -7,7 +7,6 @@ mod admin_apikeys;
 mod admin_grants;
 mod admin_members;
 mod admin_teams;
-mod admin_users;
 mod admin_webhooks;
 mod admin_workspaces;
 mod agent_config;
@@ -40,7 +39,6 @@ mod insight;
 mod invite_accept;
 mod invites;
 mod layout;
-mod login;
 mod mcp;
 // `POST /packs/upload` — a pack `.zip` as transport, dispatched to the ordinary pack verbs.
 mod mcp_catalog;
@@ -81,7 +79,6 @@ pub use admin_grants::{
 };
 pub use admin_members::remove_team_member;
 pub use admin_teams::{create_team, delete_team, list_teams, rename_team};
-pub use admin_users::{create_user, delete_user, disable_user, enable_user, list_users};
 pub use admin_webhooks::{
     create_webhook, get_webhook, list_webhooks, revoke_webhook, rotate_webhook,
 };
@@ -146,7 +143,6 @@ pub use insight::{
 pub use invite_accept::{accept_invite, verify_invite};
 pub use invites::{create_invite, list_invites, resend_invite, revoke_invite};
 pub use layout::{get_layout, set_layout};
-pub use login::login;
 pub use mcp::mcp_call;
 pub use mcp_catalog::mcp_catalog;
 pub use media::{get_media, put_media_chunk};

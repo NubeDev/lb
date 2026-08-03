@@ -168,15 +168,16 @@ async fn onboard(
         raw::identity_create(store, sub, Some(&invite.email), now).await?;
     }
 
-    // Set the credential (hash + write). Written to BOTH doors from the SAME plaintext hash so an
-    // onboarded member can sign in on either while they coexist:
-    //   • the per-ws `credential` (workspace namespace, the hard wall) — the legacy `/login {user,
-    //     secret}` door, and the takeover-protection read above (`credential_verify`);
-    //   • the GLOBAL `identity_credential` (`_lb_identity`) + the reverse email index — the email
-    //     front door (`/auth/login {email, password}` → `global_credential_verify`).
+    // Set the credential (hash + write). ONE plaintext, hashed once, written to two records:
+    //   • the GLOBAL `identity_credential` (`_lb_identity`) + the reverse email index — the ONLY
+    //     login door (`/auth/login {email, password}` → `global_credential_verify`);
+    //   • the per-ws `credential` (workspace namespace, the hard wall) — no longer a login door (the
+    //     legacy `POST /login` was deleted in the pre-production sweep); it now backs ONLY the
+    //     takeover-protection read above (`credential_verify`), i.e. "does this sub already have a
+    //     password in this workspace?".
     // Before this, accept set only the per-ws credential and never claimed the email index, so every
-    // invited member 401'd at `/auth/login` (`identity_by_email` → None) even though `/login` worked —
-    // the onboarding produced an account its own email door could not authenticate.
+    // invited member 401'd at `/auth/login` (`identity_by_email` → None) — the onboarding produced an
+    // account its own email door could not authenticate.
     let phc = hash_secret(secret).map_err(InviteError::Store)?;
     let cred = serde_json::json!({
         "sub": sub,

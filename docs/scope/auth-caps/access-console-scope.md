@@ -62,7 +62,8 @@ duplication that was just retired).
   Gate 2's *input* (resolved caps display) and adds an admin *lever* over token freshness — it does
   not add a check.
 - **No new IdP / credential mechanism.** Password / OIDC / SSO / MFA stay the later pluggable slice.
-  `user.create` still seeds a dev credential. The session-invalidation lever operates on **existing**
+  Onboarding seeds the credential through `identity.set_password` + `membership.add` (`user.create`
+  was deleted in the 2026-08-03 legacy sweep). The session-invalidation lever operates on **existing**
   sessions/tokens, not on credential issuance.
 - **No full audit-log UI.** S10's `audit/` scope owns the tamper-evident ledger. This scope shows
   best-effort *provenance* on a grant (last-changed-by/at if cheaply available) and routes destructive

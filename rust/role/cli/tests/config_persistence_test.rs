@@ -20,9 +20,16 @@ async fn login_persists_a_credential_a_later_command_loads_and_uses() {
     let cfg_path = dir.path().join("config");
 
     // Invocation 1: login → store the token in the config (as `lb login` does).
-    let reply = do_login(&reqwest::Client::new(), &gw.base_url, "user:ada", "acme")
-        .await
-        .unwrap();
+    common::seed_person(&gw.node, "acme", "user:ada", "ada@acme.com").await;
+    let reply = do_login(
+        &reqwest::Client::new(),
+        &gw.base_url,
+        "ada@acme.com",
+        "any-password-on-a-dev-node",
+        None,
+    )
+    .await
+    .unwrap();
     let mut cfg = Config {
         gateway_url: Some(gw.base_url.clone()),
         ..Config::default()
@@ -75,9 +82,16 @@ async fn no_command_output_ever_emits_the_stored_token() {
     // contains the secret token. Runs `whoami` (which reads the token) and `inbox list` and asserts the
     // token appears in neither.
     let gw = spawn_gateway().await;
-    let reply = do_login(&reqwest::Client::new(), &gw.base_url, "user:ada", "acme")
-        .await
-        .unwrap();
+    common::seed_person(&gw.node, "acme", "user:ada", "ada@acme.com").await;
+    let reply = do_login(
+        &reqwest::Client::new(),
+        &gw.base_url,
+        "ada@acme.com",
+        "any-password-on-a-dev-node",
+        None,
+    )
+    .await
+    .unwrap();
     let remote = lb_cli::transport::Remote::new(&gw.base_url, reply.token.clone());
 
     // whoami: header + caps body.

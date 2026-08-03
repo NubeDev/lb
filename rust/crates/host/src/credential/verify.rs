@@ -1,7 +1,7 @@
 //! `credential_verify` — the **login-path** credential seam (login-hardening scope). Called by the
 //! gateway's `PasswordHash` credential check BEFORE minting, with NO principal yet (we are deciding
-//! whether to issue one) — so this is un-gated, exactly like `user_login_check` /
-//! `membership_login_resolve`. It reads the `(ws, sub)` credential record from the workspace namespace
+//! whether to issue one) — so this is un-gated, like `login_workspaces`. It reads the `(ws, sub)`
+//! credential record from the workspace namespace
 //! and constant-time-compares the presented secret against the stored argon2 hash.
 //!
 //! Workspace isolation is structural: the record is read from `ws`'s own namespace, so a password set

@@ -7,6 +7,24 @@ that **delete, disable, remove, and rename** — plus a real **user record CRUD*
 dev-credential store. Together they make identity, tenancy, and membership a complete administered surface
 instead of the create-only, no-delete state shipped in S9.
 
+> **The `user.*` half of this scope is REMOVED (2026-08-03, pre-production legacy sweep).** Everything
+> below about **workspaces, teams, and members** shipped and stands. The **user record CRUD** —
+> `user.create`/`list`/`disable`/`enable`/`delete`, the per-workspace `user` record, `user_login_check`,
+> `mcp:user.manage:call`/`mcp:user.disable:call`, and the `/admin/users*` routes — is **deleted**.
+> `global-identity-scope.md` superseded it: a person is a global identity (`_lb_identity`) linked to a
+> workspace by a `membership` row, administered through `membership.*` + `identity.*`. Keeping both
+> meant two sources of truth for "who belongs here", and they drifted on the record KEY — the roster
+> synthesized `user:<bare handle>` from the row's field while the login path point-read the prefixed sub,
+> so `/admin/members` listed someone `/auth/login` then refused
+> (`debugging/app/roster-login-disagree-legacy-user-rows.md`). Pre-production: no back-compat, no
+> migration, one record.
+>
+> **Deliberately lost with it: per-workspace disable/enable.** The `active` flag has no membership-row
+> equivalent and none was invented. `membership.remove` is the surviving control and is strictly
+> stronger — it tombstones the row, revokes the subject's grants, and marks the live token. A genuine
+> "suspend without revoke" requirement is a new, scoped change on the membership row, not a resurrected
+> parallel record.
+
 Today the management verbs are **half a CRUD**. Workspaces have `create`/`list` but no rename/delete.
 Members have `add`/`list` but no remove. There is **no team service at all** (teams are implicit
 membership edges; `authz-grants` promotes them, but even there create/add exist before

@@ -16,10 +16,18 @@ use serde_json::json;
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn login_then_call_round_trips_over_the_real_gateway() {
     let gw = spawn_gateway().await;
-    // The front door: POST /login mints a real signed token the gateway will accept.
-    let reply = do_login(&reqwest::Client::new(), &gw.base_url, "user:ada", "acme")
-        .await
-        .expect("login succeeds");
+    // The front door: POST /auth/login mints a real signed token the gateway will accept. `ada` is a
+    // member of exactly one workspace, so this is the 1-branch auto-skip — no picker, no `-w`.
+    common::seed_person(&gw.node, "acme", "user:ada", "ada@acme.com").await;
+    let reply = do_login(
+        &reqwest::Client::new(),
+        &gw.base_url,
+        "ada@acme.com",
+        "any-password-on-a-dev-node",
+        None,
+    )
+    .await
+    .expect("login succeeds");
     assert_eq!(reply.workspace, "acme");
     assert!(!reply.token.is_empty());
 
@@ -137,9 +145,16 @@ async fn remote_mode_fails_clearly_when_the_gateway_is_down() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_header_reflects_the_tokens_workspace_and_never_leaks_the_token() {
     let gw = spawn_gateway().await;
-    let reply = do_login(&reqwest::Client::new(), &gw.base_url, "user:ada", "acme")
-        .await
-        .unwrap();
+    common::seed_person(&gw.node, "acme", "user:ada", "ada@acme.com").await;
+    let reply = do_login(
+        &reqwest::Client::new(),
+        &gw.base_url,
+        "ada@acme.com",
+        "any-password-on-a-dev-node",
+        None,
+    )
+    .await
+    .unwrap();
     let remote = Remote::new(&gw.base_url, reply.token.clone());
     let header = remote.header();
     assert_eq!(header.workspace, "acme");
