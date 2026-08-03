@@ -192,3 +192,13 @@ as absent in both the fixed and pre-fix binaries. Verify by running the GC call 
 reading the error, or compare checksums against a known-good build.
 
 Probe series were deleted after the run; store settled at 28 MB.
+
+### A working GC is necessary but not sufficient
+
+This bug made the GC *dead*. Fixing it does not make a node's disc **bounded** — the stock
+modbus policy keeps its rollup tier forever (`keep_for_ms: 0`), so a healthy GC still folds
+raw into rollups that accumulate without limit. At 1800 points that is ~193 MB/day.
+
+The operator-side sizing for that — measured constants, the horizons that actually fit an
+RC's disc, and the two other guards found inert on the same box — is in
+`rubix-fleet/docs/rasp-pi/CAPACITY-AND-LIMITS.md`.
