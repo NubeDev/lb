@@ -28,6 +28,11 @@ pub enum RegistryServiceError {
     Store(#[from] StoreError),
     #[error("load error: {0}")]
     Load(#[from] LoadError),
+    /// The zip-transport container itself was malformed — distinct from `Unverified` (a
+    /// well-formed container carrying a tampered/untrusted signed claim): this is "the upload
+    /// wasn't even a readable artifact," not "the bytes aren't the publisher's."
+    #[error("artifact transport error: {0}")]
+    Transport(String),
 }
 
 impl From<VerifyError> for RegistryServiceError {
@@ -35,6 +40,7 @@ impl From<VerifyError> for RegistryServiceError {
         match e {
             // Both verify-layer failures are a refusal to trust the bytes — collapse to Unverified.
             VerifyError::Unverified | VerifyError::Malformed(_) => RegistryServiceError::Unverified,
+            VerifyError::Transport(msg) => RegistryServiceError::Transport(msg),
         }
     }
 }

@@ -22,9 +22,11 @@ path = "src/main.rs"
 [dependencies]
 # Only the stable pack surface — proves the published core builds without `devkit-full`.
 lb-devkit = { workspace = true, default-features = false }
+# The zip-transport artifact codec (`--format zip`) — same crate the node verifies with, so a
+# zip-packaged artifact stays on the one crypto/wire idiom (no second implementation to drift).
+lb-registry.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 
 [dev-dependencies]
-lb-registry.workspace = true
 tempfile.workspace = true

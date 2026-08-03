@@ -13,8 +13,9 @@
 //! Verbs (one per file, FILE-LAYOUT §3): `ext.list` (`mcp:ext.list:call`), `ext.enable`/`ext.disable`
 //! (`mcp:ext.disable:call`), `ext.start` (`mcp:ext.start:call`), `ext.uninstall`
 //! (`mcp:ext.uninstall:call`), `ext.publish` (`mcp:ext.publish:call` — upload a signed artifact,
-//! verify-before-store), plus the un-gated boot `reconcile` the node calls on start. The MCP bridge
-//! ([`call_ext_tool`]) exposes the gated verbs.
+//! verify-before-store), `ext.versions` (`mcp:ext.versions:call` — the catalog's full per-version
+//! history for one extension, `ext.list`'s read-only peer), plus the un-gated boot `reconcile` the
+//! node calls on start. The MCP bridge ([`call_ext_tool`]) exposes the gated verbs.
 //!
 //! **`enable` is intent; `start` is the act** — the same split `disable`/`stop` already has.
 //! `enable` marks an install runnable (and auto-startable at boot) without running it; `start` runs
@@ -42,6 +43,7 @@ mod row;
 mod start;
 mod tool;
 mod uninstall;
+mod versions;
 
 pub use boot_load::{load_enabled, LoadedExt};
 pub use boot_spawn::{spawn_enabled, SpawnedExt};
@@ -56,3 +58,4 @@ pub use row::ExtRow;
 pub use start::ext_start;
 pub use tool::call_ext_tool;
 pub use uninstall::ext_uninstall;
+pub use versions::ext_versions;

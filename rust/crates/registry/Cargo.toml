@@ -11,6 +11,10 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 ed25519-dalek = { workspace = true }
 sha2 = { workspace = true }
+# The zip-transport envelope (`zip.rs`): an alternative wire shape for a signed `Artifact`, carrying
+# the binary as a real archive member instead of a JSON decimal-int array (the extension-artifact-
+# upload-size fix). Same crate/version `lb-packs` already uses for its own zip envelope.
+zip = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }

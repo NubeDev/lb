@@ -128,6 +128,9 @@ datasource-profile = []
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# The artifact-cache blob-path tests (registry/blob.rs) need a scratch LB_DIR, same idiom the CLI's
+# own config-persistence tests already use elsewhere in the workspace.
+tempfile.workspace = true
 # The registry tests sign artifacts with a deterministic publisher key (the same `ed25519-dalek`
 # stack `lb_registry::verify_artifact` checks against). Test-only — the host never build-depends on
 # it directly (verification lives in `lb-registry`).

@@ -453,6 +453,11 @@ const AUTHOR_CAPS: &[&str] = &[
     // authority, listing what's installed is not. `ext.list` is host-native by EXACT name (rule 10),
     // so this grants no reach over an `ext.<other>` an extension owns.
     "mcp:ext.list:call",
+    // `ext.list`'s read-only peer: the catalog's full per-version history for one extension (id/
+    // version/digest/publisher/ts — still no bytes). Same author-tier reasoning as `ext.list` right
+    // above — enumerating past versions is a read, not a lifecycle mutation, so it stays out of the
+    // admin-only bucket below.
+    "mcp:ext.versions:call",
     // dashboards — a member BUILDS/SHARES/DELETES their OWN (gate-3 owns which). The `*_any`
     // overrides (save/share/delete) are admin-only, below.
     "mcp:dashboard.save:call",
@@ -976,6 +981,27 @@ mod tests {
                 "a member must NOT hold the extension mutator {mutator}"
             );
         }
+    }
+
+    /// `ext.versions`'s own tier, pinned the same way `ext.list`'s is right above: it is `ext.list`'s
+    /// read-only peer (per-extension version history, still no bytes), so it must land in the exact
+    /// same AUTHOR tier — not admin-only (that would deny a flow author/picker the same way an
+    /// ext.list misclassification would), and not silently absent from the member bundle.
+    #[test]
+    fn ext_versions_is_an_author_cap_alongside_ext_list() {
+        let versions = "mcp:ext.versions:call".to_string();
+        assert!(
+            author_caps().contains(&versions),
+            "ext.versions must be an AUTHOR cap — ext.list's read-only peer"
+        );
+        assert!(
+            member_role_caps().contains(&versions),
+            "the member bundle must hold ext.versions by name"
+        );
+        assert!(
+            !admin_only_caps().contains(&versions),
+            "ext.versions must NOT be admin-only — it is a read, like ext.list"
+        );
     }
 
     /// The `share_closure` cap REACHES through the real matcher for a member and does NOT for a

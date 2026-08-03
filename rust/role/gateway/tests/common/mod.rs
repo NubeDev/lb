@@ -126,6 +126,19 @@ pub fn json_post_sized(uri: &str, body: serde_json::Value) -> Request<Body> {
         .unwrap()
 }
 
+/// A raw-body `POST` with `Content-Type: application/zip` and `Content-Length` set (mirrors
+/// [`json_post_sized`] for the zip-transport artifact path — `POST /extensions`'s Content-Type
+/// dispatch).
+pub fn zip_post_sized(uri: &str, bytes: Vec<u8>) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("content-type", "application/zip")
+        .header("content-length", bytes.len())
+        .body(Body::from(bytes))
+        .unwrap()
+}
+
 pub async fn json_body<T: serde::de::DeserializeOwned>(resp: axum::response::Response) -> T {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()

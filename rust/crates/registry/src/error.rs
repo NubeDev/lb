@@ -16,4 +16,12 @@ pub enum RegistryError {
     /// rejection during development; both are refused before caching.
     #[error("artifact signature material is malformed: {0}")]
     Malformed(String),
+    /// The zip-transport envelope itself was malformed — a container problem, not a signed-artifact
+    /// problem: not a readable zip, the wrong entry set, a non-stored payload entry, an oversized
+    /// payload, or an EOCD comment that isn't the expected JSON shape. Named apart from `Malformed`
+    /// (signature MATERIAL specifically) so a broken/adversarial container is distinguishable from a
+    /// crypto problem — a tampered signed claim inside an otherwise well-formed container still
+    /// surfaces as `Unverified` from `verify_artifact`, never from here.
+    #[error("artifact zip transport error: {0}")]
+    Transport(String),
 }
