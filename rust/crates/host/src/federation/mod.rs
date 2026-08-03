@@ -16,8 +16,8 @@
 //!   - `sample`    — `federation.sample` (one AI-ready snapshot: tables + FKs + sample rows).
 //!   - `mirror`    — `federation.mirror` (the durable, resumable `lb-jobs` copy-in).
 //!   - `profile*`  — `federation.profile`/`profile_get`/`profile_refresh` + the
-//!                   `datasource_profile:{ws}:{source}` record and its freshness reactor. Compiled
-//!                   only under the `datasource-profile` feature (off by default).
+//!     `datasource_profile:{ws}:{source}` record and its freshness reactor. Compiled only under
+//!     the `datasource-profile` feature (off by default).
 //!   - `tool`      — the `federation.*` / `datasource.*` MCP bridge dispatch.
 
 mod add;

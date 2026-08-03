@@ -4,6 +4,10 @@
 //! itself a test binary. `dead_code` is allowed because each test file uses only a subset.
 #![allow(dead_code)]
 
+/// The `/admin/invites*` fixtures — one sub-module rather than more entries here, because they are
+/// specific to that surface (mint/roster/hash) and not general gateway plumbing.
+pub mod invites;
+
 use std::sync::Arc;
 
 use axum::body::Body;

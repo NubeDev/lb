@@ -38,6 +38,7 @@ mod inbox;
 mod ingest;
 mod insight;
 mod invite_accept;
+mod invites;
 mod layout;
 mod login;
 mod mcp;
@@ -143,6 +144,7 @@ pub use insight::{
     list_occurrences, resolve_insight,
 };
 pub use invite_accept::{accept_invite, verify_invite};
+pub use invites::{create_invite, list_invites, resend_invite, revoke_invite};
 pub use layout::{get_layout, set_layout};
 pub use login::login;
 pub use mcp::mcp_call;

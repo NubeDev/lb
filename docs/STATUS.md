@@ -30,6 +30,38 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-08-03 (unreleased — needs the next `node-v*` tag) — THE INVITE DOOR NOW OPENS
+FROM BOTH SIDES ([`auth-caps/invite-admin-routes-scope.md`](scope/auth-caps/invite-admin-routes-scope.md),
+issue [#130](https://github.com/NubeDev/lb/issues/130)).** `invites-scope.md` shipped the host verbs
+(`invite.create`/`list`/`revoke`/`resend`) and the pre-auth redeem routes, but **no authenticated
+`/admin/invites*` route ever existed** — every mint-side verb was MCP-only, so a browser holding a
+session bearer could redeem an invite it had no way to create. Four thin gateway routes over the
+existing verbs close it; no new host logic, capability, table, or MCP verb.
+
+- **The routes.** `GET|POST /admin/invites` and `POST /admin/invites/{token_hash}/revoke|resend`, in
+  one file (`role/gateway/src/routes/invites.rs`). Workspace + principal come from the bearer, never
+  the body or the path; `create`/`resend` return the raw token **once**, and the roster carries only
+  the `token_hash`. Revoke is `204` on a real revoke, `404` when nothing matched — the same opaque
+  404 as missing/expired/already-accepted, so an admin surface is not a token oracle.
+- **`?status=` shipped from day one** (the scope's open question #1), filtering on the *effective*
+  status: `Invite.status` is stored rather than derived, so a record still written `pending` past its
+  `expires_ts` reads as `expired` via the same `Invite::is_redeemable(now)` the accept chain uses. An
+  unknown value is a `400`, never a silent empty list.
+- **The deny tests found the scope wrong about caps.** The family is gated by **two** caps, not one:
+  `mcp:invite.list:call` for the roster, `mcp:invite.create:call` for mint/revoke/resend. A principal
+  holding only the mint cap is `403` on `GET /admin/invites`. The scope doc has been corrected; the
+  asymmetry is pinned by a dedicated test.
+- **Tests:** `role/gateway/tests/invite_admin_routes_test.rs` (the mandatory categories) +
+  `invite_admin_lifecycle_test.rs` (the rest) — 9, green, on a real embedded node
+  (`mem://`, real caps, real routes): cap-deny per route, the two-cap asymmetry, workspace isolation
+  (`beta` sees nothing and gets a `404` — not a `403` — revoking `acme`'s hash), the mint →
+  `POST /public/invite/accept` round trip through to identity + membership + `role:member`, secret
+  hygiene across all four statuses, resend killing the prior token, and the filter.
+- **Downstream:** unblocks `NubeIO/rubix-ai` → `frontend/credential-admin-scope.md` (the People-tab
+  invite half) once the next `node-v*` tag lands.
+
+---
+
 **Just shipped 2026-08-01 (unreleased — needs the next `node-v*` tag) — BOOT IS MEMORY-AWARE: A NODE
 THAT CANNOT OPEN ITS STORE NOW ASKS FOR AN OPERATOR, NOT THE OOM KILLER
 ([`store/boot-memory-guard-scope.md`](scope/store/boot-memory-guard-scope.md), session

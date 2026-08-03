@@ -1,7 +1,10 @@
 # Auth-caps scope — invite admin routes (the browser half of a shipped verb family)
 
-Status: scope (the ask). Issue [#130](https://github.com/NubeDev/lb/issues/130). Promotes to
-`doc-site/content/public/auth-caps/` once shipped.
+Status: **shipped** 2026-08-03. Issue [#130](https://github.com/NubeDev/lb/issues/130). Implemented
+per Intent / approach §1–5 in `rust/role/gateway/src/routes/invites.rs` + `server.rs`; tests in
+`rust/role/gateway/tests/invite_admin_routes_test.rs` (4) +
+`invite_admin_lifecycle_test.rs` (5) — 9, green. Promotes to
+`doc-site/content/public/auth-caps/` next.
 
 > Read with: `invites-scope.md` (the owning scope — the record, the token, the accept surface, all
 > **built**), `email-login-scope.md` (**shipped** — the global email+password an invite redeems
@@ -35,9 +38,12 @@ change.
   (email, role, team, status, expiry, audit) and **never** a token or token hash usable to redeem.
 - **`POST /admin/invites/{token_hash}/revoke`** and **`/resend`** — over `invite_revoke` /
   `invite_resend`. Resend returns a fresh `{ token }`; the prior one is dead.
-- **Every route re-checks `mcp:invite.create:call` server-side**, workspace and principal taken
-  from the bearer, never the body or path. Identical to the `identity.*` and `membership.*` blocks
-  at `server.rs:242-266`.
+- **Every route re-checks its cap server-side**, workspace and principal taken from the bearer,
+  never the body or path. Identical to the `identity.*` and `membership.*` blocks at
+  `server.rs:242-266`. It is **two caps, not one**: `list` is gated `mcp:invite.list:call` while
+  `create`/`revoke`/`resend` are gated `mcp:invite.create:call` (`builtin_roles.rs:722-724`). The
+  `workspace-admin` bundle holds both, so an admin sees no seam — but a principal handed only the
+  mint cap is `403` on the roster, so the deny tests are written per route to pin that.
 - **Route handlers stay thin.** One file, `role/gateway/src/routes/invites.rs`, that deserialises,
   calls the host verb, and maps the error. All authorization stays in `invites/*.rs` where it
   already lives — a second gate in the route would be a place for the two to drift apart.
@@ -52,8 +58,10 @@ change.
 - **A password-reset token.** Still deferred, per `login-hardening-scope.md:43` and
   `email-login-scope.md:60-62`. An admin rotating via `identity.set_password` remains the recovery
   path; an emailed reset link is its own scope when the outbox target exists.
-- **A new capability.** `mcp:invite.create:call` already covers create/list/revoke/resend
-  (`builtin_roles.rs:723`). Splitting it now would be a caps-grammar change for no caller.
+- **A new capability, and no change to the existing split.** The two caps the host verbs already
+  check — `mcp:invite.list:call` for the roster, `mcp:invite.create:call` for
+  create/revoke/resend — cover all four routes (`builtin_roles.rs:722-724`). Merging or further
+  splitting them would be a caps-grammar change for no caller.
 
 ## Intent / approach
 
@@ -68,7 +76,13 @@ change.
    host signature change, for a value the caller already holds.)*
 4. **Error mapping follows `identity.rs:146-150`:** denial → `403`, bad input → `400`, unknown or
    already-redeemed token → `404`, store failure → `500`. A revoked-vs-missing distinction is
-   deliberately *not* exposed — same token-oracle reasoning as the pre-auth routes.
+   deliberately *not* exposed — same token-oracle reasoning as the pre-auth routes, so all four
+   404 cases share one message.
+   **`revoke`'s 404 is a route decision, not host behaviour:** `invite_revoke` is idempotent and
+   returns a `bool` — `Ok(false)` means "nothing matched", never an error. The route maps
+   `Ok(false)` → `404` (and `Ok(true)` → `204 No Content`) so a stale or unknown hash reads as
+   not-found to a console. The host verb is unchanged; a second revoke is still a harmless no-op
+   underneath.
 5. **No rate limit on these routes.** They sit behind the bearer and an admin cap; the IP limiter
    at `server.rs:122` exists because `accept`/`verify` are unauthenticated. Adding it here would
    throttle a legitimate admin bulk-onboarding a site.
@@ -79,7 +93,8 @@ Sequencing: entirely self-contained. Ships in one PR, then a `node-v*` tag that 
 
 - **Tenancy / isolation.** Workspace comes from the bearer. `invite_list` is already
   workspace-scoped; the route passes `ws` from the principal and has no path to name another.
-- **Capabilities.** `mcp:invite.create:call`, re-checked in the host verb. The deny is `403` with
+- **Capabilities.** `mcp:invite.list:call` for `list`, `mcp:invite.create:call` for
+  create/revoke/resend — each re-checked in the host verb. The deny is `403` with
   no body detail. Unchanged grammar, no new cap, no wildcard widening — note
   `builtin_roles.rs:43-50` on why broad `mcp:*.<verb>:call` patterns are forbidden here.
 - **Placement.** Either — a gateway route on any node running the gateway role. No `if cloud`.
@@ -106,15 +121,20 @@ Sequencing: entirely self-contained. Ships in one PR, then a `node-v*` tag that 
 **The deny path.** A `member`-role principal calls `POST /admin/invites`. `authorize_tool` fails
 in `invite_create` → **`403`**, no record written, no token generated.
 
-**The stale-token path.** Ada calls `/revoke` on a hash already redeemed → **`404`**. The response
-does not distinguish redeemed from never-existed.
+**The revoke path.** Ada calls `/revoke` on a pending hash → **`204 No Content`**. Calling it
+again — or on a hash already redeemed, or one that never existed — is the same **`404`**: the host
+verb matched nothing, and the response does not distinguish redeemed from revoked from
+never-existed.
 
 ## Testing plan
 
 Mandatory categories from `scope/testing/testing-scope.md` that apply:
 
-- **Capability-deny tests** — one per route: a principal lacking `mcp:invite.create:call` gets
-  `403` and no side effect. This is the category that must not be skipped for an admin surface.
+- **Capability-deny tests** — one per route, **with that route's own cap stripped** (`list` needs
+  `mcp:invite.list:call`, the other three `mcp:invite.create:call`): the caller gets `403` and there
+  is no side effect. Includes the asymmetry case — a principal holding ONLY `mcp:invite.create:call`
+  is `403` on `GET /admin/invites`. This is the category that must not be skipped for an admin
+  surface.
 - **Workspace-isolation** — an invite minted in `acme` is absent from `GET /admin/invites` under a
   `beta` bearer, and `/revoke` on its hash from `beta` is `404`, not `403` (no cross-workspace
   existence oracle).
@@ -144,10 +164,14 @@ Mandatory categories from `scope/testing/testing-scope.md` that apply:
 
 ## Open questions
 
-- **Should `list` support `status` filtering and paging?** A long-lived workspace accumulates
-  accepted/expired records indefinitely. Recommend shipping `?status=pending` from day one — it is
-  the only view a console actually renders, and retrofitting a filter after callers depend on the
-  unfiltered shape is worse.
+- **Should `list` support `status` filtering and paging?** **Resolved — filtering shipped, paging
+  did not.** `?status=pending|accepted|revoked|expired` is in from day one (retrofitting a filter
+  after callers depend on the unfiltered shape is worse); an unknown value is a `400`, never a
+  silent empty list. The filter matches the **effective** status, because `Invite.status` is stored,
+  not derived: a record still written `pending` past its `expires_ts` reads as `expired`, via the
+  same `Invite::is_redeemable(now)` predicate the accept chain uses — so "pending here" and
+  "redeemable there" cannot drift. Paging stays out until a workspace's roster is big enough to
+  need it.
 - **Should expired invites be reaped?** Recommend **no** in this scope: expiry is already a status,
   and the audit trail of who invited whom is worth keeping. Revisit if the table grows unbounded.
 - **`POST` or `DELETE` for revoke?** Recommend `POST …/revoke`, matching the shipped

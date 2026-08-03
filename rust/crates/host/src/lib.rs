@@ -299,6 +299,10 @@ pub use layout::{
     call_layout_tool, layout_get, layout_set, LayoutError, UiLayout, MAX_LAYOUT_BYTES,
 };
 pub use lb_authz::fold_email;
+/// The invite record + its status lifecycle — re-exported so a transport (the gateway's
+/// `/admin/invites*` routes) can name the type `invite_list` returns without taking a second,
+/// direct dependency on `lb-authz`. One type across both sides of the seam.
+pub use lb_authz::{Invite, InviteStatus};
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use media::{

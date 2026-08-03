@@ -153,7 +153,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `/admin/invites*` gateway route**, so a browser holding a session bearer cannot mint, list, revoke
   or resend an invite; the redeem side of the door is hung and the mint side is not. Four thin routes
   over the existing host verbs, no new cap/table/MCP verb; downstream consumer is rubix-ai's People-tab
-  credential UI), and `access-model-scope.md` (**team-as-the-unit-of-access** + a `dashboard.access_check` preflight
+  credential UI. **SHIPPED** 2026-08-03 — `routes/invites.rs` serves `GET|POST /admin/invites` +
+  `POST /admin/invites/{token_hash}/revoke|resend` with a `?status=` filter, and its deny tests pinned
+  that the family is gated by **two** caps, not one: `mcp:invite.list:call` for the roster,
+  `mcp:invite.create:call` for mint/revoke/resend), and `access-model-scope.md` (**team-as-the-unit-of-access** + a `dashboard.access_check` preflight
   that walks a dashboard's transitive **dependency closure** — panels, datasources, query verb +
   `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
   a live session found bob assigned a page whose cells still 403'd on a private panel + a missing

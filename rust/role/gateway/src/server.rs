@@ -14,41 +14,41 @@ use crate::routes::{
     accept_invite, ack_insight, add_datasource, add_member, add_team_member, agent_invoke,
     archive_workspace, assign_grant, auth_login, auth_password, auth_select, auth_switch,
     bus_stream, channel_stream, convert_unit, create_apikey, create_channel, create_def,
-    create_identity, create_team, create_user, create_webhook, create_workspace, define_role,
-    delete_brand, delete_dashboard, delete_def, delete_flow, delete_insight, delete_message,
-    delete_nav, delete_occurrence, delete_panel, delete_report, delete_role, delete_rule,
-    delete_series_route, delete_series_samples_route, delete_team, delete_user, disable_extension,
-    disable_user, edit_message, enable_extension, enable_flow, enable_user, events_stream,
-    events_subscribe, events_unsubscribe, export_dashboard, export_report, find_series,
-    flow_debug_stream, flow_node_state, flow_run_stream, format_datetime, format_number,
-    format_quantity, get_agent_config_route, get_apikey, get_asset_bin, get_brand, get_catalog,
-    get_dashboard, get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history,
-    get_identity, get_insight, get_layout, get_media, get_nav, get_nav_hidden, get_nav_pref,
-    get_outbox_status, get_panel, get_prefs, get_report, get_rule, get_undo_compensations,
-    get_undo_history, get_version, get_versions, get_versions_config, get_webhook, grant_skill,
-    health, identity_workspaces_route, import_dashboard, inject_flow, insight_events,
-    latest_sample, lifecycle_flow, link_doc, list_apikeys, list_brands, list_channels,
-    list_dashboards, list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes,
-    list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_insights,
-    list_members, list_navs, list_occurrences, list_panels, list_reports, list_roles, list_rules,
-    list_series, list_shares_nav, list_tables, list_team_members, list_teams, list_users,
-    list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call,
-    node_identity, panel_usage, patch_flow_run, pin_dashboards, post_message, post_redo, post_undo,
-    post_version_restore, post_webhook, provision_workspace, publish_extension, publish_message,
-    purge_workspace, put_asset_bin, put_doc, put_media_chunk, put_skill, put_versions_config,
-    read_graph, read_samples, read_schema, reconcile_workspace, refresh_run_token,
-    remove_datasource, remove_member, remove_team_member, rename_series_route, rename_team,
-    rename_workspace, render_catalog_message, reset_extension, resolve_caps, resolve_inbox,
-    resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant, revoke_tokens_route,
-    revoke_webhook, rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule,
-    run_stream, save_brand, save_dashboard, save_flow, save_nav, save_panel, save_report,
-    save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog,
-    set_default_nav, set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs,
-    share_dashboard, share_doc, share_nav, share_panel, share_report, start_extension,
-    surface_reach, system_acp, system_overview, system_subsystem, system_tools, system_topology,
-    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav,
-    update_def, update_flow_node, update_series_samples_route, upload_body_limit, upload_pack,
-    write_samples,
+    create_identity, create_invite, create_team, create_user, create_webhook, create_workspace,
+    define_role, delete_brand, delete_dashboard, delete_def, delete_flow, delete_insight,
+    delete_message, delete_nav, delete_occurrence, delete_panel, delete_report, delete_role,
+    delete_rule, delete_series_route, delete_series_samples_route, delete_team, delete_user,
+    disable_extension, disable_user, edit_message, enable_extension, enable_flow, enable_user,
+    events_stream, events_subscribe, events_unsubscribe, export_dashboard, export_report,
+    find_series, flow_debug_stream, flow_node_state, flow_run_stream, format_datetime,
+    format_number, format_quantity, get_agent_config_route, get_apikey, get_asset_bin, get_brand,
+    get_catalog, get_dashboard, get_def, get_doc, get_flow, get_flow_node, get_flow_run,
+    get_history, get_identity, get_insight, get_layout, get_media, get_nav, get_nav_hidden,
+    get_nav_pref, get_outbox_status, get_panel, get_prefs, get_report, get_rule,
+    get_undo_compensations, get_undo_history, get_version, get_versions, get_versions_config,
+    get_webhook, grant_skill, health, identity_workspaces_route, import_dashboard, inject_flow,
+    insight_events, latest_sample, lifecycle_flow, link_doc, list_apikeys, list_brands,
+    list_channels, list_dashboards, list_datasources, list_defs, list_docs, list_extensions,
+    list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
+    list_insights, list_invites, list_members, list_navs, list_occurrences, list_panels,
+    list_reports, list_roles, list_rules, list_series, list_shares_nav, list_tables,
+    list_team_members, list_teams, list_users, list_webhooks, list_workspaces, load_skill, login,
+    mcp_call, mcp_catalog, native_call, node_identity, panel_usage, patch_flow_run, pin_dashboards,
+    post_message, post_redo, post_undo, post_version_restore, post_webhook, provision_workspace,
+    publish_extension, publish_message, purge_workspace, put_asset_bin, put_doc, put_media_chunk,
+    put_skill, put_versions_config, read_graph, read_samples, read_schema, reconcile_workspace,
+    refresh_run_token, remove_datasource, remove_member, remove_team_member, rename_series_route,
+    rename_team, rename_workspace, render_catalog_message, resend_invite, reset_extension,
+    resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey,
+    revoke_grant, revoke_invite, revoke_tokens_route, revoke_webhook, rotate_apikey,
+    rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream, save_brand,
+    save_dashboard, save_flow, save_nav, save_panel, save_report, save_rule, scan_table,
+    series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
+    set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs, share_dashboard,
+    share_doc, share_nav, share_panel, share_report, start_extension, surface_reach, system_acp,
+    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
+    test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
+    update_flow_node, update_series_samples_route, upload_body_limit, upload_pack, write_samples,
 };
 use crate::state::Gateway;
 
@@ -264,6 +264,18 @@ pub fn router(gw: Gateway) -> Router {
         )
         .route("/admin/members", get(list_members).post(add_member))
         .route("/admin/members/{sub}", delete(remove_member))
+        // invite-admin-routes scope — the AUTHENTICATED half of the invite family: mint, list,
+        // revoke, resend. The pre-auth redeem half (`POST /public/invite/accept`, `GET
+        // /public/invite/verify`) is registered ABOVE, unauthenticated and IP-rate-limited; these
+        // are its counterpart, so a browser holding a session bearer can work the mint side of the
+        // same door. Caps are re-checked server-side inside the host verb — `mcp:invite.list:call`
+        // for the roster, `mcp:invite.create:call` for mint/revoke/resend (two caps, not one). ws +
+        // principal from the token; the path carries the `token_hash`, never a redeemable token.
+        // No rate limiter here: these sit behind the bearer AND an admin cap, and throttling would
+        // punish an admin bulk-onboarding a site.
+        .route("/admin/invites", get(list_invites).post(create_invite))
+        .route("/admin/invites/{token_hash}/revoke", post(revoke_invite))
+        .route("/admin/invites/{token_hash}/resend", post(resend_invite))
         // api-keys (api-keys scope) — the machine-credential admin surface: list (no hash/secret),
         // create (returns the one-time bearer), get (full resolved caps), revoke (instant local
         // revoke), rotate (new secret, old dead). Each re-checks `mcp:apikey.manage:call`
