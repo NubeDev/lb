@@ -148,3 +148,57 @@ Both were confirmed load-bearing by removing the fallback and watching the first
 UPSERT is the remaining (larger) win, but it is a real change to the write path's shape
 rather than a bug fix — `overflow`'s module doc already flags the checkpointed-ring
 optimization as deliberately out of scope for that slice. Left for an owner decision.
+
+---
+
+## Verified on RC-6 (2026-08-03)
+
+The fix is now **proven on the box**, not just in tests. Node at `192.168.15.10:8099`
+(the RC holds two addresses on `eth0` — `.15.11` primary and `.15.10` secondary — which
+is why the IP appears to drift between sessions).
+
+Two traps had to be cleared before the test could mean anything:
+
+1. **The service was not running.** After a power cycle the unit was `inactive (dead)` and
+   `disabled`, so `:8099` refused connections. Starting it triggered a store-segment
+   repair (`Corrupted transaction record ... segment_id: 2`) — expected recovery from the
+   interrupted write, not a new fault. Boot completed clean.
+2. **The clock was 4 hours slow** (no RTC). GC evicts on *age*, so a slow clock makes
+   every aged sample look fresh and pins `evicted_raw` at 0 for reasons unrelated to this
+   bug. Always `sudo date -u -s ...` before judging a GC result.
+
+The `modbus.loadtest.*` series preserved for this proof were **empty husks** — the boot
+compaction had already consumed their samples, so they could not demonstrate eviction.
+Fresh probes with controlled timestamps were used instead, which is the stronger test:
+integer payloads (the exact shape that triggered the narrowing bug), straddling the
+15-minute raw window so that correct behaviour must *keep* one group and *evict* the other.
+
+| step | result |
+|---|---|
+| `series.retention.gc` returns JSON, not `expected a 64-bit floating point, found <N>i64` | ✅ |
+| `last_run_ms` advances (was frozen for 80+ min) | ✅ |
+| 60 samples aged 40 min → `evicted_raw: 60`, `rollup_rows: 3` | ✅ |
+| 30 samples aged 2 min → all 30 survive, every one newer than the window boundary | ✅ |
+| GC pass 2 re-reads pass 1's rollup rows (`RollupRow` site) | ✅ clean, idempotent |
+| **reactor fires unattended on its 300 s timer** → `evicted_raw: 40`, `rollup_rows: 2` | ✅ |
+| warnings across every pass | 0 |
+
+The last row is the one that matters: eviction and the 5-minute fold now happen with no
+manual call at all. That is the loop that had been silently dead.
+
+Note `strings | grep de_lenient_f64` is **not** a usable deployment check — the serde
+helper is inlined and its name does not survive into the stripped armv7 binary. It reads
+as absent in both the fixed and pre-fix binaries. Verify by running the GC call and
+reading the error, or compare checksums against a known-good build.
+
+Probe series were deleted after the run; store settled at 28 MB.
+
+### A working GC is necessary but not sufficient
+
+This bug made the GC *dead*. Fixing it does not make a node's disc **bounded** — the stock
+modbus policy keeps its rollup tier forever (`keep_for_ms: 0`), so a healthy GC still folds
+raw into rollups that accumulate without limit. At 1800 points that is ~193 MB/day.
+
+The operator-side sizing for that — measured constants, the horizons that actually fit an
+RC's disc, and the two other guards found inert on the same box — is in
+`rubix-fleet/docs/rasp-pi/CAPACITY-AND-LIMITS.md`.
