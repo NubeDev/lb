@@ -274,6 +274,7 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             cfg.email_transport.as_ref(),
             cfg.store_budget_bytes,
             cfg.profile,
+            cfg.retention_period,
         )
         .await;
     }
