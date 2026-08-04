@@ -51,7 +51,7 @@ pub use producer_health::{
 };
 pub use read::{
     series_latest_many, series_latest_value, series_read_buckets, series_read_page,
-    series_read_range,
+    series_read_range, series_read_rollups,
 };
 pub use rename::series_rename;
 pub use retention::{
@@ -74,4 +74,8 @@ pub use lb_ingest::{Qos, Sample, SampleKey, SampleUpdate};
 // a direct `lb-ingest` dependency, reaching past this crate's API for types this crate's own
 // signature requires. `effective_width` rides along for the same reason: resolving `width_ms`/
 // `budget` into one width is part of forming a valid `BucketQuery`, not a detail of the caller.
-pub use lb_ingest::{effective_width, Align, Bucket, BucketQuery, Method};
+// `RollupRow` is the return type of `series_read_rollups`, and `Source` is a field of `Bucket` — a
+// caller matching on a bucket's provenance must be able to NAME the enum. Same rule as the rest of
+// this list, so they ride here even though this crate's own code reaches `lb_ingest` directly.
+#[allow(unused_imports)]
+pub use lb_ingest::{effective_width, Align, Bucket, BucketQuery, Method, RollupRow, Source};
