@@ -23,6 +23,7 @@ mod model;
 mod parse;
 mod run;
 mod schema;
+mod secret_wall;
 mod tool;
 
 pub use authorize::authorize_store_query;

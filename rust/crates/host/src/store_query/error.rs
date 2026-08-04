@@ -17,6 +17,12 @@ pub enum StoreQueryError {
     /// the load-bearing read-only gate — surfaced so the SQL editor can show the author what's wrong.
     #[error("rejected: {0}")]
     Rejected(String),
+    /// The statement reads (or could read) the **secret plane** — the credential tables the owner
+    /// gate on `secret.get` protects. Refused for every principal, with no override capability, on
+    /// every read surface (`secret_wall.rs`). Named, not opaque: the caller wrote the table, so the
+    /// message carries no existence signal, and a generic 500 would just look like a bug.
+    #[error("rejected: reading the secret-plane table '{0}' is not allowed on any read surface")]
+    SecretTable(&'static str),
     /// The statement was syntactically invalid SurrealQL (the parser refused it before we could even
     /// allowlist its kind).
     #[error("parse error: {0}")]

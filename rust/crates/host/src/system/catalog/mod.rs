@@ -47,6 +47,7 @@ mod telemetry;
 mod template;
 mod timerange;
 mod undo;
+mod update;
 mod versions;
 mod viz;
 mod workflow;
@@ -98,6 +99,7 @@ const FAMILIES: &[&[HostTool]] = &[
     template::TEMPLATE,
     timerange::TIMERANGE,
     undo::UNDO,
+    update::UPDATE,
     versions::VERSIONS,
     viz::VIZ,
     workflow::WORKFLOW,

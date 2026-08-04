@@ -128,6 +128,11 @@ pub const RESERVED_TABLES: &[&str] = &[
     // (a forged snapshot is a write to the real entity the moment someone restores it).
     "entity_version",
     "versions_config",
+    // -- node update audit (node-update scope) --
+    // "who replaced the binary on this box" must survive the binary — and must not be forgeable or
+    // erasable through the generic store CRUD surface. An audit trail a `store:*:write` holder can
+    // rewrite is worth nothing.
+    "update_audit",
     // -- prefs / i18n --
     "user_prefs",
     "workspace_prefs",

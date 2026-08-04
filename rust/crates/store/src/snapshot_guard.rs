@@ -48,20 +48,11 @@
 
 use serde_json::Value;
 
-/// Tables that are part of the secret plane — never snapshotted, whatever a caller's plan says.
-/// This is the floor under every capture allowlist: a subsystem that wires a new kind cannot reach
-/// these by adding a row.
-const SECRET_TABLES: &[&str] = &[
-    // lb-secrets: `secret:{ws}:{path}` — plaintext-in-store today (envelope encryption is its own
-    // stage), so a snapshot is a verbatim copy of the credential.
-    "secret",
-    // Per-workspace credential records (login-hardening scope) — argon2 hashes.
-    "credential",
-    // Global password records (email-login scope) — argon2 hashes.
-    "identity_credential",
-    // API-key records — token material.
-    "apikey",
-];
+/// The secret-plane tables, from the ONE canonical list ([`crate::secret_tables`]). Shared with the
+/// host's raw-read wall (`store.query`/`store.scan`/`store.graph`) so a table added there is refused
+/// by both surfaces at once — a second copy of this list is how the two drift apart.
+#[cfg(test)]
+use crate::secret_tables::SECRET_TABLES;
 
 /// Object keys whose non-empty string value is treated as secret material at any depth. Deliberately
 /// narrow and unambiguous: each of these names a credential in every context we have, so a refusal
@@ -128,7 +119,7 @@ impl std::fmt::Display for SnapshotRefusal {
 ///
 /// The check is pure, so it is unit-testable without a store and cannot depend on caller state.
 pub fn snapshot_safety(table: &str, value: &Value) -> Result<(), SnapshotRefusal> {
-    if let Some(t) = SECRET_TABLES.iter().find(|t| **t == table) {
+    if let Some(t) = crate::secret_tables::secret_table_of(table) {
         return Err(SnapshotRefusal::SecretTable(t));
     }
     scan(value, "", 0)

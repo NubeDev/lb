@@ -11,17 +11,18 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::routes::{
-    accept_invite, ack_insight, add_datasource, add_member, add_team_member, agent_invoke,
-    archive_workspace, assign_grant, auth_login, auth_password, auth_select, auth_switch,
-    bus_stream, channel_stream, convert_unit, create_apikey, create_channel, create_def,
-    create_identity, create_invite, create_team, create_webhook, create_workspace, define_role,
-    delete_brand, delete_dashboard, delete_def, delete_flow, delete_insight, delete_message,
-    delete_nav, delete_occurrence, delete_panel, delete_report, delete_role, delete_rule,
-    delete_series_route, delete_series_samples_route, delete_team, disable_extension, edit_message,
-    enable_extension, enable_flow, events_stream, events_subscribe, events_unsubscribe,
-    export_dashboard, export_report, find_series, flow_debug_stream, flow_node_state,
-    flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
-    get_apikey, get_asset_bin, get_brand, get_catalog, get_dashboard, get_def, get_doc, get_flow,
+    abort_upload, accept_invite, ack_insight, add_datasource, add_member, add_team_member,
+    agent_invoke, append_upload, archive_workspace, assign_grant, auth_login, auth_password,
+    auth_select, auth_switch, begin_upload, bus_stream, channel_stream, complete_upload,
+    convert_unit, create_apikey, create_channel, create_def, create_identity, create_invite,
+    create_team, create_webhook, create_workspace, define_role, delete_brand, delete_dashboard,
+    delete_def, delete_flow, delete_insight, delete_message, delete_nav, delete_occurrence,
+    delete_panel, delete_report, delete_role, delete_rule, delete_series_route,
+    delete_series_samples_route, delete_team, disable_extension, edit_message, enable_extension,
+    enable_flow, events_stream, events_subscribe, events_unsubscribe, export_dashboard,
+    export_report, find_series, flow_debug_stream, flow_node_state, flow_run_stream,
+    format_datetime, format_number, format_quantity, get_agent_config_route, get_apikey,
+    get_asset_bin, get_brand, get_catalog, get_dashboard, get_def, get_doc, get_flow,
     get_flow_node, get_flow_run, get_history, get_identity, get_insight, get_layout, get_media,
     get_nav, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_report,
     get_rule, get_undo_compensations, get_undo_history, get_version, get_versions,
@@ -47,7 +48,8 @@ use crate::routes::{
     share_doc, share_nav, share_panel, share_report, start_extension, surface_reach, system_acp,
     system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
     test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
-    update_flow_node, update_series_samples_route, upload_body_limit, upload_pack, write_samples,
+    update_flow_node, update_series_samples_route, upload_body_limit, upload_pack, upload_status,
+    write_samples,
 };
 use crate::state::Gateway;
 
@@ -562,6 +564,32 @@ pub fn router(gw: Gateway) -> Router {
     // text/html) gets `index.html`; every API client still gets the 405 with its `Allow` intact.
     // Mounted only alongside a static root, so a node with no shell keeps today's routing exactly
     // (spa-static-hosting scope).
+    // The generic upload lane (node-update scope §Seam 2), mounted ONLY when the embedder registered
+    // at least one sink — with none, these paths do not exist and every existing route is
+    // byte-for-byte unchanged. `{sink}` is an OPAQUE registry key; the core names no sink (rule 10),
+    // the same posture `OutboxProviders::targets` already set.
+    //
+    // `DefaultBodyLimit::disable()` on the PATCH arm is load-bearing and safe for the same reason:
+    // the handler NEVER collects the body (it streams 64 KiB chunks straight into the sink and
+    // awaits each one), so peak memory is one chunk whatever the artifact's size, while the real
+    // bound comes from the sink's own `max_upload_bytes` checked against the `Content-Range` before
+    // a byte is read. A `DefaultBodyLimit::max(..)` here would cap a 2 GB sidecar at whatever number
+    // we guessed — which is exactly the mistake `POST /extensions` is living with.
+    let router = if gw.upload_sinks.is_empty() {
+        router
+    } else {
+        router
+            .route("/uploads/{sink}", post(begin_upload))
+            .route(
+                "/uploads/{sink}/{id}",
+                get(upload_status)
+                    .patch(append_upload)
+                    .delete(abort_upload)
+                    .layer(axum::extract::DefaultBodyLimit::disable()),
+            )
+            .route("/uploads/{sink}/{id}/complete", post(complete_upload))
+    };
+
     let router = match gw.static_root.as_ref() {
         Some(dir) => {
             let serve = ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")));

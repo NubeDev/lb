@@ -203,6 +203,12 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // The disk budget (issue #122) — `LB_STORE_MAX_BYTES` reaches `store.status` and the
     // store-compact reactor from here. Unset ⇒ `None` ⇒ the node behaves exactly as before.
     node.install_store_budget(cfg.store_budget_bytes);
+    // The UPDATE SEAM (node-update scope §Seam 1): install the embedder's provider + the BOOT
+    // workspace the credential seals into, right beside the other install-once-at-boot facts. `None`
+    // ⇒ this node cannot replace itself — `update.status` answers `{"supported": false}` and every
+    // other verb is a clean `Unsupported`. The boot workspace (never the caller's) is what makes the
+    // credential node-scoped: one node credential rather than one per workspace.
+    node.install_update(cfg.update.clone(), &cfg.workspace);
 
     // NODE IDENTITY: install the embedder's durable node id as this node's bus identity, replacing
     // the fresh-per-process random one `Node::boot*` mints. Installed HERE — before the gateway is
@@ -303,6 +309,10 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             // down from `BootConfig` (from_env at the binary, or the embedder's explicit choice), the
             // same discipline `credential_mode` follows above. Default is `Required` (gate enforced).
             gw = gw.with_authenticity(cfg.authenticity);
+            // Register the embedder's upload sinks (node-update scope §Seam 2). An empty vec leaves
+            // the `/uploads/*` routes UNMOUNTED — byte-for-byte today's router for every existing
+            // embedder. The gateway learns only "there is a sink called X", never whose (rule 10).
+            gw = gw.with_upload_sinks(cfg.upload_sinks.clone());
             // Relocate the extension-UI serve dir when the embedder set one (`Some` ⇒ pin it via the
             // builder); `None` leaves the gateway's own `LB_EXT_UI_DIR`/"extensions-ui" default in place,
             // so the standalone binary is untouched (ext-UI-dir embed seam).

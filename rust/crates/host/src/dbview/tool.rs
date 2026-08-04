@@ -56,6 +56,10 @@ pub async fn call_dbview_tool(
 fn dbview_to_tool(e: DbViewError) -> ToolError {
     match e {
         DbViewError::Denied => ToolError::Denied,
+        // Named, not opaque: the secret-plane wall is a stated rule, not an existence signal.
+        DbViewError::SecretTable(t) => ToolError::BadInput(format!(
+            "reading the secret-plane table '{t}' is not allowed on any read surface"
+        )),
         DbViewError::Store(s) => ToolError::Extension(s.to_string()),
     }
 }

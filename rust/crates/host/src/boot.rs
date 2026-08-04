@@ -130,6 +130,15 @@ pub struct Node {
     /// never installed, or installed as `None`, both mean **unbudgeted**: today's flat advisory and
     /// no automatic pass, which is what makes the whole scope additive on upgrade.
     store_budget: std::sync::OnceLock<Option<u64>>,
+    /// The node's **update seam** (node-update scope §Seam 1), installed once at boot from
+    /// `BootConfig::update` together with the boot workspace the credential seals into. It lives on
+    /// the `Node` for the same reason `store_budget` does: the `update.*` verbs need it long after
+    /// the boot layer that knew it returned.
+    ///
+    /// A `OnceLock` — never installed, or installed as `None`, both mean **this node cannot replace
+    /// itself**: `update.status` answers `{"supported": false}` and every other verb is a clean
+    /// `Unsupported`. That is what makes the seam additive for every existing embedder.
+    update: std::sync::OnceLock<Option<Arc<crate::update::InstalledUpdate>>>,
     pub role: Role,
 }
 
@@ -162,6 +171,7 @@ impl Node {
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
+            update: std::sync::OnceLock::new(),
             role: Role::Solo,
         })
     }
@@ -190,6 +200,7 @@ impl Node {
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
+            update: std::sync::OnceLock::new(),
             role,
         })
     }
@@ -217,6 +228,7 @@ impl Node {
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
+            update: std::sync::OnceLock::new(),
             role,
         })
     }
@@ -336,6 +348,25 @@ impl Node {
     /// This node's configured disk budget, or `None` when unbudgeted. Lock-free read.
     pub fn store_budget(&self) -> Option<u64> {
         self.store_budget.get().copied().flatten()
+    }
+
+    /// Install the embedder's update seam from `BootConfig.update` (node-update scope §Seam 1),
+    /// together with the boot workspace the credential seals into. Called once by the boot layer; a
+    /// second call is a no-op. `None` ⇒ this node cannot replace itself — the honest, additive
+    /// default (and never calling it means the same thing).
+    pub fn install_update(&self, cfg: Option<crate::update::UpdateConfig>, boot_workspace: &str) {
+        let built = cfg.map(|c| {
+            Arc::new(crate::update::InstalledUpdate::new(
+                c,
+                boot_workspace.to_string(),
+            ))
+        });
+        let _ = self.update.set(built);
+    }
+
+    /// This node's installed update seam, or `None` when no provider was configured. Lock-free read.
+    pub fn update(&self) -> Option<Arc<crate::update::InstalledUpdate>> {
+        self.update.get().cloned().flatten()
     }
 
     /// Feature-off: the response cache does not exist. This no-op keeps the ONE call site in the

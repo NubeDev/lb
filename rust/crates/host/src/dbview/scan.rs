@@ -20,5 +20,11 @@ pub async fn store_scan_view(
     after: Option<&str>,
 ) -> Result<Page, DbViewError> {
     authorize_dbview(principal, ws, "store.scan")?;
+    // The secret-plane wall (node-update scope, decision 9): a raw scan bypasses the owner gate on
+    // `secret.get` entirely, so the table itself is refused — for every principal, no override cap.
+    // A scan names its table literally, so there is nothing dynamic to prove here.
+    if let Some(t) = lb_store::secret_table_of(table) {
+        return Err(DbViewError::SecretTable(t));
+    }
     Ok(store_scan(store, ws, table, limit, after).await?)
 }

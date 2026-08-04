@@ -81,6 +81,10 @@ mod tools;
 mod ui_decl;
 mod undo;
 mod undo_capture;
+// node-update scope: the `update.*` family (Seam 1) + the streaming upload sink registry (Seam 2).
+// Both are embedder-filled seams; core names no provider, no sink, no product (rule 10).
+pub mod update;
+pub mod upload;
 mod versions;
 mod viz;
 mod webhook;
@@ -147,11 +151,11 @@ pub use assets::{
 pub use authz::{
     admin_only_caps, author_caps, authz_check_scoped, authz_resolve, authz_scope_filter,
     call_authz_tool, ensure_builtin_authz_roles, grants_assign, grants_list, grants_list_scoped,
-    grants_revoke, member_role_caps, resolve_caps, resolve_caps_live, resolve_subject_caps_live,
-    revoke_subject, revoke_tokens, roles_define, roles_delete, roles_list, teams_create,
-    teams_list, token_revoked, viewer_role_caps, workspace_admin_role_caps, AuthzError, AuthzRole,
-    CapSource, Grant, Scope, ScopeFilter, SourcedCap, Subject, Team, ROLE_MEMBER, ROLE_VIEWER,
-    ROLE_WORKSPACE_ADMIN,
+    grants_revoke, holds_cap, member_role_caps, resolve_caps, resolve_caps_live,
+    resolve_subject_caps_live, revoke_subject, revoke_tokens, roles_define, roles_delete,
+    roles_list, teams_create, teams_list, token_revoked, viewer_role_caps,
+    workspace_admin_role_caps, AuthzError, AuthzRole, CapSource, Grant, Scope, ScopeFilter,
+    SourcedCap, Subject, Team, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
 };
 pub use boot::{Node, NodeError};
 pub use bus::{
@@ -450,6 +454,16 @@ pub use tool_call::{call_tool, call_tool_on_node};
 pub use lb_bus::{NodeId, NodeIdError};
 pub use tools::{call_tools_tool, tools_catalog, ToolsCatalog};
 pub use undo::{history_compensations, history_list, redo, undo, UndoSvcError};
+/// The stable prefix an `Unsupported` refusal carries — a client branches on it rather than parsing
+/// prose, and a UI keys its "this node cannot update itself" card on it.
+pub use update::UNSUPPORTED_PREFIX as UPDATE_UNSUPPORTED_PREFIX;
+pub use update::{
+    call_update_tool, Accepted, AvailableVersion, CredentialSource, CredentialStatus, UpdateConfig,
+    UpdateCx, UpdateError, UpdateEvent, UpdateOutcome, UpdateProvider, UpdateStatus, UPDATE_VERBS,
+};
+pub use upload::{
+    UploadError, UploadHandle, UploadMeta, UploadSink, DEFAULT_MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES,
+};
 pub use versions::{
     call_versions_tool, descriptors as versions_descriptors, VersionsError, DEFAULT_VERSION_CAP,
     ENTITY_VERSION_TABLE,

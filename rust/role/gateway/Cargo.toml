@@ -57,6 +57,9 @@ serde.workspace = true
 serde_json.workspace = true
 base64.workspace = true
 futures.workspace = true
+# The streaming upload routes hand each body chunk straight to the sink as `Bytes` — same crate
+# axum's body uses, so the forward is a move, never a copy (node-update scope §Seam 2).
+bytes.workspace = true
 rand.workspace = true
 # The `CredentialCheck` login seam (login-hardening scope) is an `async fn` trait — one impl calls
 # `lb_host::credential_verify` (a store read). Same pinned version the host crate uses.

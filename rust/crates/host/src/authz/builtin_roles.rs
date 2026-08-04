@@ -657,6 +657,16 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:store.status:call",
     "mcp:store.compact:call",
     "store:compact:run",
+    // node update (node-update scope) — three grants split by BLAST RADIUS: reading a version is not
+    // applying one, and applying one is not holding the backend's credential. All three are
+    // workspace-admin ONLY and never a member's; `update.credential` is documented as **equivalent to
+    // backend admin** (lb cannot narrow a backend's credential), and none of the three belongs in the
+    // default agent capability ceiling — an agent that can replace the node's binary is a different
+    // product. The verbs are node-scoped, the deliberate exception `store.status`/`store.compact`
+    // already set.
+    "mcp:update.read:call",
+    "mcp:update.apply:call",
+    "mcp:update.credential:call",
     // system map — reads across every subsystem of the workspace.
     "mcp:system.overview:call",
     "mcp:system.topology:call",
