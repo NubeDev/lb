@@ -26,6 +26,7 @@ use crate::bucket::{read_buckets, BucketQuery};
 use crate::cap::{
     cap_cutoff_ms, cap_series, default_cap_notice, sample_count, DEFAULT_MAX_SAMPLES,
 };
+use crate::clock_sanity::{newest_sample_ms, skew_warning};
 use crate::dead_letter_gc::{prune_dead_letters, DEAD_LETTER_KEEP_MS};
 use crate::meta::series_names;
 use crate::page::PageError;
@@ -59,6 +60,21 @@ pub struct GcPass {
     /// sees them without reading node logs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// How far the newest sample on disc sits AHEAD of this pass's `now_ms`, when that exceeds
+    /// [`crate::SKEW_TOLERANCE_MS`] — i.e. the clock the horizons were computed from disagrees with
+    /// the data (`clock_sanity`). `None` on a healthy pass.
+    ///
+    /// The number exists alongside the human warning because the two have different consumers: the
+    /// warning is for the operator reading a GC result, this is for the thing that ALARMS without a
+    /// human reading anything. A monitor cannot threshold a sentence, and grepping prose for
+    /// "clock skew" is a contract nobody agreed to.
+    ///
+    /// This is the field that makes an inert pass distinguishable from an idle one. Before it,
+    /// `evicted_raw: 0, warnings: 0` was returned by both a healthy node with nothing to evict and a
+    /// node whose clock had drifted 46 minutes and was evicting NOTHING while the store grew
+    /// (rubix-ai#84 AC 7, observed live on RC-6 2026-08-04).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_skew_ms: Option<u64>,
 }
 
 /// Run one retention pass over every policy in `ws` at logical time `now_ms`.
@@ -70,6 +86,19 @@ pub struct GcPass {
 pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, StoreError> {
     let started = std::time::Instant::now();
     let mut pass = GcPass::default();
+
+    // FIRST, before any horizon is computed: is `now_ms` even plausible? Every bound below is
+    // `now_ms - horizon`, so a clock behind the data makes every one of them land before the oldest
+    // row and the whole pass evicts nothing — while returning exactly what a healthy idle pass
+    // returns. This does not stop the pass (a stopped GC is the failure being guarded against); it
+    // makes the pass stop being SILENT about running on a clock the data contradicts.
+    if let Some(newest) = newest_sample_ms(store, ws).await? {
+        if let Some(warning) = skew_warning(now_ms, Some(newest)) {
+            pass.clock_skew_ms = Some(newest - now_ms);
+            pass.warnings.push(warning);
+        }
+    }
+
     let policies = list_policies(store, ws).await?;
     for policy in &policies {
         // Only the series this policy actually GOVERNS — a series under a longer prefix belongs to

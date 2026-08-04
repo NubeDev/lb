@@ -48,13 +48,25 @@ pub fn spawn_retention_reactors(node: Arc<Node>, workspaces: Vec<String>, period
                 match run_gc(&node.store, ws, now_wall_ms()).await {
                     Ok(pass) => {
                         // Only log a pass that did something — an idle node ticks quietly.
-                        if pass.evicted_raw > 0 || pass.capped_raw > 0 || pass.evicted_rollup > 0 {
+                        //
+                        // A detected clock skew COUNTS as something, even though every eviction
+                        // count is zero. That combination is precisely the inert state
+                        // (rubix-ai#84 AC 7): the clock is behind the data, so every horizon lands
+                        // before the oldest row and the pass evicts nothing while the store grows.
+                        // Gating this line on the eviction counts alone would keep the node silent
+                        // in exactly the case an operator most needs a line in the log.
+                        if pass.evicted_raw > 0
+                            || pass.capped_raw > 0
+                            || pass.evicted_rollup > 0
+                            || pass.clock_skew_ms.is_some()
+                        {
                             tracing::info!(
                                 ws = %ws,
                                 evicted_raw = pass.evicted_raw,
                                 capped_raw = pass.capped_raw,
                                 rollup_rows = pass.rollup_rows,
                                 evicted_rollup = pass.evicted_rollup,
+                                clock_skew_ms = pass.clock_skew_ms,
                                 "retention gc pass"
                             );
                         }
