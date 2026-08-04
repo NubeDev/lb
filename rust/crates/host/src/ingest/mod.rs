@@ -69,3 +69,9 @@ pub use write::{ingest_write, DEFAULT_STAGING_BOUND};
 
 // Re-export the wire envelope so host callers / tests use one `Sample`/`Qos` type.
 pub use lb_ingest::{Qos, Sample, SampleKey, SampleUpdate};
+// The parameter types of the public `series_read_buckets` above. Re-exported because a caller that
+// can SEE the function but not name its arguments cannot call it — every consumer would have to add
+// a direct `lb-ingest` dependency, reaching past this crate's API for types this crate's own
+// signature requires. `effective_width` rides along for the same reason: resolving `width_ms`/
+// `budget` into one width is part of forming a valid `BucketQuery`, not a detail of the caller.
+pub use lb_ingest::{effective_width, Align, Bucket, BucketQuery, Method};

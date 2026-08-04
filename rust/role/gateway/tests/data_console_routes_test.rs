@@ -343,3 +343,91 @@ async fn ws_b_session_cannot_browse_or_read_ws_a() {
     let body: Value = json_body(resp).await;
     assert_eq!(body["series"], json!(["node.cpu_temp"]));
 }
+
+// ----- bucketed reads over the gateway ------------------------------------------------------------
+
+/// The regression this pins: `mode=buckets` used to be DROPPED by the query extractor (Axum ignores
+/// params a struct does not declare), so the route silently served a raw read. On a node whose raw
+/// window had aged out that answered `{"samples":[]}` — real, rolled-up history reported as "no
+/// data", with a 200 and no error. The UI could not show long-term history at all.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn buckets_mode_decimates_instead_of_silently_serving_a_raw_read() {
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:ada", "acme", &[WRITE, READ]);
+
+    // Four samples inside one 60 s bucket, plus one in the next.
+    for (seq, ts, v) in [(1u64, 1_000u64, 10.0), (2, 2_000, 30.0), (3, 3_000, 20.0)] {
+        let resp = router(gw.clone())
+            .oneshot(bearer(
+                json_post(
+                    "/ingest",
+                    json!({ "samples": [{
+                        "series": "b.temp", "producer": "ignored", "ts": ts, "seq": seq,
+                        "payload": v
+                    }]}),
+                ),
+                &tok,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    let resp = router(gw)
+        .oneshot(bearer(
+            get_req("/series/b.temp/samples?mode=buckets&from=0&to=60000&width_ms=60000"),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = json_body(resp).await;
+
+    // The reply is the BUCKET shape, not the raw one — the whole point of the fix.
+    assert!(
+        body.get("samples").is_none(),
+        "must not fall back to a raw read"
+    );
+    let buckets = body["buckets"].as_array().expect("buckets array");
+    assert_eq!(buckets.len(), 1, "all three samples land in one 60s bucket");
+    assert_eq!(buckets[0]["count"], 3);
+    assert_eq!(buckets[0]["min"], 10.0);
+    assert_eq!(buckets[0]["max"], 30.0);
+    assert_eq!(buckets[0]["avg"], 20.0);
+    assert_eq!(body["width_ms"], 60000);
+}
+
+/// A missing bound must be a NAMED 400, never a silent fall-through to the raw read. Degrading to
+/// raw here would hand back an empty-looking success for a malformed request — the same class of
+/// lie the `mode` drop produced.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn buckets_mode_without_a_window_is_a_named_bad_request() {
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:ada", "acme", &[WRITE, READ]);
+
+    let resp = router(gw)
+        .oneshot(bearer(
+            get_req("/series/b.temp/samples?mode=buckets&width_ms=60000"),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// The raw path must be untouched by the new fields — no `mode`, same reply as always.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_read_without_mode_is_still_the_raw_range_read() {
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:ada", "acme", &[WRITE, READ]);
+    seed_sample(&gw, &tok, "b.plain", 1, json!(1.5)).await;
+
+    let resp = router(gw)
+        .oneshot(bearer(get_req("/series/b.plain/samples"), &tok))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = json_body(resp).await;
+    assert!(body.get("buckets").is_none());
+    assert_eq!(body["samples"].as_array().unwrap().len(), 1);
+}
