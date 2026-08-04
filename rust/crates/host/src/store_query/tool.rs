@@ -49,6 +49,10 @@ fn to_tool(e: StoreQueryError) -> ToolError {
     match e {
         StoreQueryError::Denied => ToolError::Denied,
         StoreQueryError::Rejected(m) => ToolError::BadInput(m),
+        // The secret-plane wall: a stated rule the editor should show verbatim, naming the table.
+        StoreQueryError::SecretTable(t) => ToolError::BadInput(format!(
+            "reading the secret-plane table '{t}' is not allowed on any read surface"
+        )),
         StoreQueryError::Parse(m) => ToolError::BadInput(format!("parse error: {m}")),
         StoreQueryError::Store(s) => ToolError::Extension(s.to_string()),
     }

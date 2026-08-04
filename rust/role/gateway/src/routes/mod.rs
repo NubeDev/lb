@@ -67,6 +67,9 @@ mod surface;
 mod system;
 mod telemetry_stream;
 mod undo;
+// node-update scope §Seam 2: the generic streaming upload lane, mounted only when the embedder
+// registered a sink. Its own folder — five routes, one responsibility each.
+mod uploads;
 mod versions;
 mod webhook;
 mod workspace;
@@ -184,6 +187,7 @@ pub use surface::surface_reach;
 pub use system::{system_acp, system_overview, system_subsystem, system_tools, system_topology};
 pub use telemetry_stream::telemetry_stream;
 pub use undo::{get_undo_compensations, get_undo_history, post_redo, post_undo};
+pub use uploads::{abort_upload, append_upload, begin_upload, complete_upload, upload_status};
 pub use versions::{
     get_version, get_versions, get_versions_config, post_version_restore, put_versions_config,
 };

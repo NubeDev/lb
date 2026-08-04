@@ -19,6 +19,7 @@
 use surrealdb::sql::Statement;
 
 use super::error::StoreQueryError;
+use super::secret_wall::ensure_no_secret_read;
 
 /// Which kind of read a validated statement is — the runner bounds a `SELECT` with a `LIMIT`/`TIMEOUT`
 /// wrapper but runs `INFO`/`SHOW` (inherently single-row introspection) as-is.
@@ -32,6 +33,8 @@ pub enum ReadKind {
 /// inside the caller's workspace namespace). On failure a [`StoreQueryError::Rejected`] (a disallowed
 /// kind / multi-statement) or [`StoreQueryError::Parse`] (invalid SurrealQL) — both safe to surface to
 /// the SQL editor (they are author feedback, not an authorization signal).
+/// It also carries the **secret-plane wall** ([`ensure_no_secret_read`]) on the same parsed statement
+/// ([`StoreQueryError::SecretTable`]), so no caller can hold one gate and skip the other.
 pub fn ensure_read_only(sql: &str) -> Result<ReadKind, StoreQueryError> {
     let query = surrealdb::syn::parse(sql).map_err(|e| StoreQueryError::Parse(e.to_string()))?;
     let statements = &query.0 .0;
@@ -46,24 +49,36 @@ pub fn ensure_read_only(sql: &str) -> Result<ReadKind, StoreQueryError> {
         }
     }
 
-    match &statements[0] {
+    let stmt = &statements[0];
+
+    let kind = match stmt {
         // Reads — allowed. A `SELECT` is the workhorse; `INFO`/`SHOW` are introspection a schema/
         // discovery view may need. None of these can mutate or name a namespace.
-        Statement::Select(_) => Ok(ReadKind::Select),
-        Statement::Info(_) | Statement::Show(_) => Ok(ReadKind::Introspection),
+        Statement::Select(_) => ReadKind::Select,
+        Statement::Info(_) | Statement::Show(_) => ReadKind::Introspection,
 
         // `USE` names a namespace/database — refused outright (the workspace wall is host-side).
-        Statement::Use(_) => Err(StoreQueryError::Rejected(
-            "USE (namespace/database selection) is not allowed — the workspace is fixed".into(),
-        )),
+        Statement::Use(_) => {
+            return Err(StoreQueryError::Rejected(
+                "USE (namespace/database selection) is not allowed — the workspace is fixed".into(),
+            ))
+        }
 
         // Everything else is a write, a schema change, control flow, a transaction boundary, or a
         // bare value — refused by kind. The message names the kind so the editor can explain it.
-        other => Err(StoreQueryError::Rejected(format!(
-            "only a single read (SELECT / INFO / SHOW) is allowed; '{}' is rejected",
-            statement_kind(other)
-        ))),
-    }
+        other => {
+            return Err(StoreQueryError::Rejected(format!(
+                "only a single read (SELECT / INFO / SHOW) is allowed; '{}' is rejected",
+                statement_kind(other)
+            )))
+        }
+    };
+
+    // The second, independent wall: a read of the right KIND may still touch the secret plane. It is
+    // checked on the same parsed statement — see `secret_wall.rs` for what it can and cannot prove.
+    ensure_no_secret_read(stmt)?;
+
+    Ok(kind)
 }
 
 /// A short human label for a rejected statement kind (for the editor's error line).

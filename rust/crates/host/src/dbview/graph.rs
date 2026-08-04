@@ -29,5 +29,15 @@ pub async fn store_graph_view(
     depth: u32,
 ) -> Result<Graph, DbViewError> {
     authorize_dbview(principal, ws, "store.graph")?;
+    // The secret-plane wall (node-update scope, decision 9). A graph walk reads whole records, so
+    // both seeds are checked: the seed table, and the table half of a `table:id` record seed. The
+    // edges walked are the const `EDGE_TABLES` above — none is a secret table (asserted in the
+    // dbview tests), so traversal cannot reach the plane from a non-secret seed.
+    let seeds = [table, id.map(|i| i.split(':').next().unwrap_or(i))];
+    for seed in seeds.into_iter().flatten() {
+        if let Some(t) = lb_store::secret_table_of(seed) {
+            return Err(DbViewError::SecretTable(t));
+        }
+    }
     Ok(store_graph(store, ws, table, id, EDGE_TABLES, depth).await?)
 }

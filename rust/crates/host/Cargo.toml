@@ -76,6 +76,9 @@ tokio.workspace = true
 # instead of one-per-tile behind the browser's connection cap. I/O-bound (DB round trips), so cooperative
 # concurrency on one task is exactly right; a semaphore bounds the in-flight count.
 futures.workspace = true
+# `Bytes` in the `UploadSink` trait signature (node-update scope §Seam 2) — the gateway hands the
+# sink the request-body chunk it already owns, with no copy.
+bytes.workspace = true
 tracing.workspace = true
 base64ct = { version = "1", features = ["alloc"] }
 # Base64 for media chunk encoding (media scope).

@@ -251,6 +251,10 @@ tower-http = { version = "0.6", features = ["cors", "fs"] }
 # adds no build cost.
 tower = { version = "0.5", features = ["util"] }
 futures = "0.3"
+# The zero-copy byte buffer the streaming upload seam (node-update scope §Seam 2) hands a sink.
+# Pinned to the same 1.x axum/hyper already use, so `axum::body::Bytes` IS this type — no conversion,
+# no copy, at the one boundary where a copy would defeat the whole point.
+bytes = "1"
 
 # The registry-host client (`HttpSource`) — the first outbound HTTP *client* in the tree (previously
 # only a gateway dev-dep). `rustls` so there is no system OpenSSL dependency; `json` for the artifact

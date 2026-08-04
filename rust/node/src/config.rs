@@ -384,6 +384,49 @@ pub struct BootConfig {
     /// without advertising on mDNS, or advertise without serving a gateway. When both are set, an
     /// embedder should build them from the SAME identity so the two surfaces cannot disagree.
     pub identity: Option<lb_discovery::NodeIdentity>,
+
+    /// **How this node replaces itself** (node-update scope §Seam 1) — the `update.*` verb family's
+    /// provider, plus the credential's custody NAMES (a secret PATH and an env var NAME, never a
+    /// value).
+    ///
+    /// `None` (the default, and every existing embedder) ⇒ `update.status` answers
+    /// `{"supported": false}` and every other `update.*` verb is a clean `Unsupported` — the honest
+    /// [`UnconfiguredModel`](lb_host::UnconfiguredModel) posture, never a `404`. Byte-for-byte prior
+    /// behaviour: nothing new runs, nothing new is stored, no route changes.
+    ///
+    /// **lb performs no update and stores no artifact.** The mechanism — a supervisor, an
+    /// orchestrator, a package manager — is the embedder's; no core crate names one (rule 10). lb
+    /// owns the vocabulary, the caps wall, the audit trail and the credential's custody: the sealed
+    /// record is stamped owner = the node host principal in the BOOT workspace, so no principal —
+    /// admin included — can read it back through `secret.get`, and (since the raw-read wall)
+    /// `store.query`/`scan`/`graph` refuse the `secret` table structurally too.
+    ///
+    /// Placement-agnostic, like every other field here: a cloud node behind an orchestrator and an
+    /// edge node under a supervisor fill this ONE seam with different providers — role is config,
+    /// never a code branch (rule 2). Deliberately NOT read from env: a provider is a trait object,
+    /// so there is nothing for `from_env` to parse, and the binary leaves it `None`.
+    pub update: Option<lb_host::UpdateConfig>,
+
+    /// **Where big binary uploads land** (node-update scope §Seam 2) — embedder-registered upload
+    /// sinks keyed by an OPAQUE name, exactly the posture
+    /// [`OutboxProviders::targets`](OutboxProviders::targets) already set.
+    ///
+    /// Empty (the default, and every existing embedder) ⇒ the `/uploads/*` gateway routes are **not
+    /// mounted at all**; unmatched paths answer exactly as they do today. Non-empty ⇒ the gateway
+    /// serves a resumable, chunked lane per sink: `POST /uploads/{sink}` to open, `PATCH` with a
+    /// `Content-Range` to stream, `GET` for the offset, `POST …/complete`, `DELETE` to abort.
+    ///
+    /// **Bytes stream, never buffer, and resume.** The request body is read as a stream and handed
+    /// to the sink in 64 KiB pieces; lb never collects a body and never writes an artifact to its own
+    /// disk, so peak memory is one chunk regardless of artifact size and an interrupted 2 GB upload
+    /// continues from its offset. Offsets are the SINK's truth (lb holds no upload state, so
+    /// resumption survives an lb restart for free), and the resume identity is `digest_hex`.
+    ///
+    /// Each route enforces the sink's OWN `required_cap()` — the sink chooses, lb enforces, on every
+    /// call in the sequence. The core names no sink: a sink called `"package"` on one host and
+    /// `"firmware"` on another needs zero lb change (rule 10). Not read from env, for the same reason
+    /// [`update`](Self::update) is not.
+    pub upload_sinks: Vec<(String, std::sync::Arc<dyn lb_host::UploadSink>)>,
 }
 
 impl Default for BootConfig {
@@ -454,6 +497,13 @@ impl Default for BootConfig {
             // posture avoids.
             discovery: None,
             identity: None,
+            // `None` ⇒ this node cannot replace itself: `update.status` answers
+            // `{"supported": false}` and every other verb is a clean `Unsupported`. An embedder
+            // fills it with its own provider; no core crate names a mechanism (rule 10).
+            update: None,
+            // Empty ⇒ the `/uploads/*` routes are not mounted at all. An embedder registers its
+            // sinks; the gateway never learns whose bytes it moves.
+            upload_sinks: Vec::new(),
         }
     }
 }
@@ -570,6 +620,11 @@ impl BootConfig {
             // OFF unless asked, same posture as the cache — and doubly so, because this one spends
             // work on someone else's database. `LB_PROFILE=1` turns it on. Read only here.
             profile: profile_from_env(),
+            // Deliberately absent from the env path: both seams carry TRAIT OBJECTS, so there is
+            // nothing for a binary-boundary reader to parse. The standalone `node` binary ships with
+            // no update provider and no upload sinks — an embedder fills the struct directly.
+            update: None,
+            upload_sinks: Vec::new(),
         }
     }
 }

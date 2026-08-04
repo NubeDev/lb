@@ -131,6 +131,15 @@ pub struct Gateway {
     /// when binding `:0`), so what is published is what a caller can actually dial.
     pub bound_port: Option<u16>,
 
+    /// The embedder-registered **upload sinks** (node-update scope §Seam 2), keyed by an opaque
+    /// name. Empty (the default, and every existing node) ⇒ the `/uploads/*` routes are NOT MOUNTED
+    /// at all — byte-for-byte today's behaviour, and an unmounted route cannot be a surface.
+    ///
+    /// The gateway never learns whose bytes it moves (rule 10): it owns framing, resumption, bounds
+    /// and the wall; the sink owns the backend, the digest verification and the durable state.
+    /// Behind `Arc` so axum clones the state cheaply per request.
+    pub upload_sinks: Arc<Vec<(String, Arc<dyn lb_host::UploadSink>)>>,
+
     /// Candidate addresses `GET /node` publishes. Empty is normal and honest — a wildcard bind with
     /// no embedder-supplied enumeration has no specific address worth naming, and publishing
     /// `0.0.0.0` would hand a client something unroutable. See `routes::node_identity` for why this
@@ -246,6 +255,9 @@ impl Gateway {
             identity: Arc::new(None),
             bound_port: None,
             bound_addresses: Arc::from(Vec::new()),
+            // No upload sinks by default: the `/uploads/*` routes are not mounted (node-update
+            // scope §Seam 2). The boot seam fills this from `BootConfig::upload_sinks`.
+            upload_sinks: Arc::new(Vec::new()),
         }
     }
 
@@ -262,6 +274,14 @@ impl Gateway {
         self.identity = Arc::new(Some(identity));
         self.bound_port = Some(port);
         self.bound_addresses = Arc::from(addresses);
+        self
+    }
+
+    /// Register the embedder's upload sinks (node-update scope §Seam 2) — builder-style; the boot
+    /// seam passes `BootConfig::upload_sinks`, and a test registers its own real sink. Never called
+    /// (or called with an empty vec) ⇒ the `/uploads/*` routes are not mounted, unchanged.
+    pub fn with_upload_sinks(mut self, sinks: Vec<(String, Arc<dyn lb_host::UploadSink>)>) -> Self {
+        self.upload_sinks = Arc::new(sinks);
         self
     }
 

@@ -123,6 +123,9 @@ fn platform_err(e: crate::store_query::StoreQueryError) -> QueryError {
         crate::store_query::StoreQueryError::Rejected(m) => {
             QueryError::BadInput(format!("rejected by store.query gate: {m}"))
         }
+        crate::store_query::StoreQueryError::SecretTable(t) => QueryError::BadInput(format!(
+            "rejected by store.query gate: reading the secret-plane table '{t}' is not allowed"
+        )),
         crate::store_query::StoreQueryError::Parse(m) => {
             QueryError::BadInput(format!("parse error: {m}"))
         }

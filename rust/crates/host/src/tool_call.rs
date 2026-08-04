@@ -156,6 +156,19 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     "ext.enable",
     "ext.disable",
     "ext.uninstall",
+    // node-update scope: the `update.*` family. EXACT names (not an `update.` prefix) for the same
+    // reason `ext.list` is: reserving a whole namespace against a hypothetical extension whose id is
+    // `update` is the mistake this list already avoided (scope decision 6). Each verb re-checks its
+    // own collapsed cap inside `call_update_tool`; the outer gate resolves it through
+    // `gate_tool_for` below.
+    "update.status",
+    "update.check",
+    "update.apply",
+    "update.rollback",
+    "update.history",
+    "update.credential.status",
+    "update.credential.set",
+    "update.credential.claim",
 ];
 
 pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
@@ -276,6 +289,26 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // authz-verbs-mcp-dispatch scope: the inner gate + admin role bundle use
         // `mcp:teams.manage:call` (there is no `mcp:teams.create:call`); align the outer gate.
         "teams.manage"
+    } else if qualified_tool == "update.status"
+        || qualified_tool == "update.check"
+        || qualified_tool == "update.history"
+        || qualified_tool == "update.credential.status"
+    {
+        // node-update scope: the family's three grants split by BLAST RADIUS, not by verb — reading a
+        // version is not applying one, and applying one is not holding the backend's credential. So
+        // eight verbs collapse onto three caps, and THIS table is the only place that collapse is
+        // expressible: via a tool registry every tool would gate on its own literal name (scope
+        // decision 7), which is exactly the shipped-but-unusable state the aliases above exist to
+        // prevent. Each verb re-checks the same cap inside itself, so the two gates agree.
+        crate::update::READ_CAP
+    } else if qualified_tool == "update.apply" || qualified_tool == "update.rollback" {
+        crate::update::APPLY_CAP
+    } else if qualified_tool == "update.credential.set"
+        || qualified_tool == "update.credential.claim"
+    {
+        // Documented as equivalent to BACKEND ADMIN (§Risks): lb cannot narrow a backend's
+        // credential, so the grant's weight is made visible rather than quietly bundled.
+        crate::update::CREDENTIAL_CAP
     } else if qualified_tool == "roles.delete" {
         // authz-verbs-mcp-dispatch scope: deleting a role is the SAME authority as defining/managing
         // one — the inner gate checks `mcp:roles.manage:call`; no `mcp:roles.delete:call` exists.
@@ -880,6 +913,13 @@ pub(crate) async fn run_host_verb(
         // (`store:status:read` / `store:compact:run`). compact ENQUEUES a job — the pass
         // itself runs on the reactor, never on this request path.
         crate::call_store_admin_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("update.") {
+        // node-update scope: the `update.*` family over the one MCP bridge (rule 7), so the UI, an
+        // agent, a flow node and a script all reach it through the SAME path. `is_host_native` admits
+        // ONLY the eight exact verbs listed in `HOST_NATIVE_EXACT`, so this branch never sees an
+        // extension's own `update.<tool>` (rule 10); `call_update_tool` returns `NotFound` for
+        // anything else. The outer gate resolved the collapsed cap; each verb re-runs it inside.
+        crate::call_update_tool(node, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool == "identity.set_credential" {
         // login-hardening scope: set/rotate a user's password hash. Gated `mcp:identity.manage:call`
         // (the outer gate above ran it); the verb hashes argon2 before any write and returns no hash.

@@ -71,6 +71,12 @@ fn status(e: StoreQueryError) -> (StatusCode, String) {
     match e {
         StoreQueryError::Denied => (StatusCode::FORBIDDEN, e.to_string()),
         StoreQueryError::Rejected(m) => (StatusCode::BAD_REQUEST, m),
+        // The secret-plane wall — a stated rule about the request, so `400` with the table named
+        // (never a generic 500, and never a `403` that would read as "ask for the capability").
+        StoreQueryError::SecretTable(t) => (
+            StatusCode::BAD_REQUEST,
+            format!("reading the secret-plane table '{t}' is not allowed on any read surface"),
+        ),
         StoreQueryError::Parse(m) => (StatusCode::BAD_REQUEST, format!("parse error: {m}")),
         StoreQueryError::Store(s) => (StatusCode::FORBIDDEN, s.to_string()),
     }
