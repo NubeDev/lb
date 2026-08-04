@@ -13,10 +13,11 @@
 //! asserting the reply is EMPTY rather than a decimated raw payload.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::call_ingest_tool;
+use lb_host::{call_ingest_tool, call_tool, Node};
 use lb_mcp::ToolError;
 use lb_store::Store;
-use serde_json::json;
+use serde_json::{json, Value};
+use std::sync::Arc;
 
 const READ: &str = "mcp:series.read:call";
 
@@ -187,6 +188,39 @@ async fn without_the_read_cap_it_denies() {
     .await
     .unwrap_err();
     assert!(matches!(err, ToolError::Denied));
+}
+
+/// REGRESSION: the verb must be reachable through the REAL dispatcher, not just `call_ingest_tool`.
+///
+/// `series.rollup.read` deliberately mints no cap of its own — its service layer authorizes
+/// `series.read`, because reading the stored rows is strictly LESS than what the bucketed read
+/// already returns. But the OUTER gate in `tool_call` derives a cap from the verb NAME, so without
+/// an alias it demanded `mcp:series.rollup.read:call`, which no role bundle grants — and the verb
+/// 403'd for every caller while holding `mcp:series.read:call`.
+///
+/// Every other test in this file calls `call_ingest_tool` directly and so never crosses that gate,
+/// which is exactly why they all passed against a verb that was unreachable in the product. Found by
+/// driving it on a live node. This test goes through `call_tool`, the path the gateway uses.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn is_reachable_through_the_real_dispatcher_with_only_the_read_cap() {
+    let node = Arc::new(Node::boot().await.unwrap());
+    let ada = principal("user:ada", "acme", &[READ]);
+
+    let out = call_tool(
+        &node,
+        &ada,
+        "acme",
+        "series.rollup.read",
+        &json!({ "series": "cpu", "from": 0, "to": 60_000 }).to_string(),
+    )
+    .await
+    .expect("the READ capability alone must reach the rollup verb");
+
+    // Shape, not contents: an unseeded node legitimately has no rows. What is being proven is that
+    // the call was AUTHORIZED and answered, rather than refused by a cap nobody holds.
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert!(v["rows"].is_array(), "answered with a rows array");
+    assert!(v["widths"].is_array(), "answered with a widths array");
 }
 
 /// Workspace-first: a ws-B principal cannot read ws-A's stored rollups even holding the cap.
