@@ -26,11 +26,11 @@ use crate::bucket::{read_buckets, BucketQuery};
 use crate::cap::{
     cap_cutoff_ms, cap_series, default_cap_notice, sample_count, DEFAULT_MAX_SAMPLES,
 };
-use crate::clock_sanity::{newest_sample_ms, skew_warning};
+use crate::clock_sanity::{backwards_warning, newest_sample_ms, skew, skew_warning};
 use crate::dead_letter_gc::{prune_dead_letters, DEAD_LETTER_KEEP_MS};
 use crate::meta::series_names;
 use crate::page::PageError;
-use crate::pass_record::{record_pass, GcPassRecord};
+use crate::pass_record::{last_pass, record_pass, GcPassRecord};
 use crate::retention::{list_policies, resolve_policy, Policy};
 use crate::rollup::{evict_rollups, read_rollups, rollup_widths, write_rollups, RollupRow};
 use crate::rollup_window::{evict_cutoff, oldest_raw_ts, tier_cutoff};
@@ -60,9 +60,13 @@ pub struct GcPass {
     /// sees them without reading node logs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
-    /// How far the newest sample on disc sits AHEAD of this pass's `now_ms`, when that exceeds
-    /// [`crate::SKEW_TOLERANCE_MS`] — i.e. the clock the horizons were computed from disagrees with
-    /// the data (`clock_sanity`). `None` on a healthy pass.
+    /// How far the DATA leads the clock — i.e. the clock is BEHIND, which makes horizons land too
+    /// early so the pass evicts too little (possibly nothing) while the store grows. Set when that
+    /// exceeds [`crate::SKEW_TOLERANCE_MS`]; `None` on a healthy pass.
+    ///
+    /// Only this direction is representable, and that is deliberate: a clock AHEAD of the data is
+    /// the ordinary state of any idle series, not a fault (`clock_sanity::skew`). The fast-clock
+    /// failure is reported through `warnings` by the independent floor check instead.
     ///
     /// The number exists alongside the human warning because the two have different consumers: the
     /// warning is for the operator reading a GC result, this is for the thing that ALARMS without a
@@ -92,11 +96,36 @@ pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, Stor
     // row and the whole pass evicts nothing — while returning exactly what a healthy idle pass
     // returns. This does not stop the pass (a stopped GC is the failure being guarded against); it
     // makes the pass stop being SILENT about running on a clock the data contradicts.
+    //
+    // Only ONE direction is checkable here, and the asymmetry is fundamental: data ahead of the
+    // clock is impossible (so always a clock error), while a clock ahead of the data is ORDINARY —
+    // it just means nothing was written recently, which is true of every idle or decommissioned
+    // series. `clock_sanity::skew` carries the full reasoning. The genuine fast-clock case is caught
+    // by the independent floor check below instead.
     if let Some(newest) = newest_sample_ms(store, ws).await? {
-        if let Some(warning) = skew_warning(now_ms, Some(newest)) {
-            pass.clock_skew_ms = Some(newest - now_ms);
-            pass.warnings.push(warning);
+        if let Some(delta) = skew(now_ms, Some(newest)) {
+            pass.clock_skew_ms = Some(delta);
+            if let Some(warning) = skew_warning(now_ms, Some(newest)) {
+                pass.warnings.push(warning);
+            }
         }
+    }
+
+    // SECOND, and INDEPENDENT of the data: has the clock gone backwards since this node's own last
+    // pass? The check above compares two clocks and is therefore blind when both are wrong together
+    // — which is the normal case on a box whose producer and node share one bad system clock, and
+    // total when the series table is empty (a fresh boot has no data to contradict anything).
+    //
+    // This one compares `now_ms` to a MONOTONIC FLOOR instead: a pass demonstrably ran at
+    // `last_run_ms`, so the true time is at least that. A clock below it moved backwards between two
+    // boots, which a correct clock cannot do. That is the power-cycle-with-no-RTC case (AC 8), and
+    // it is detectable even on a workspace holding no samples at all.
+    //
+    // Read BEFORE `record_pass` overwrites the row at the end of this function.
+    if let Some(warning) =
+        backwards_warning(now_ms, last_pass(store, ws).await?.map(|p| p.last_run_ms))
+    {
+        pass.warnings.push(warning);
     }
 
     let policies = list_policies(store, ws).await?;

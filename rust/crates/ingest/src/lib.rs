@@ -57,7 +57,10 @@ pub use bucket::{
     effective_width, read_buckets, read_buckets_fold, Bucket, BucketQuery, MAX_BUCKETS,
 };
 pub use cap::{cap_series, default_cap_notice, sample_count, CAP_EVICT_BATCH, DEFAULT_MAX_SAMPLES};
-pub use clock_sanity::{newest_sample_ms, skew_warning, SKEW_TOLERANCE_MS};
+pub use clock_sanity::{
+    backwards_warning, clock_went_backwards, newest_sample_ms, skew, skew_warning,
+    SKEW_TOLERANCE_MS,
+};
 pub use commit::{commit_batch, commit_batch_capped, CommitPass};
 pub use cursor::Cursor;
 pub use dead_letter_gc::{prune_dead_letters, DEAD_LETTER_KEEP_MS};

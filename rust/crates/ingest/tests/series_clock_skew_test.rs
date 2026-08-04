@@ -182,9 +182,138 @@ async fn ordinary_producer_skew_does_not_fire() {
     );
 }
 
-/// An empty workspace carries no lower bound on the true time, so it must say nothing at all —
-/// otherwise every freshly-provisioned node alarms on its first pass, before it has any data to be
-/// wrong about.
+/// **A fast clock over-evicts, and only the FLOOR check can see it** — the data comparison cannot,
+/// and must not pretend to.
+///
+/// This test pins the corrected design after a real mistake. A first attempt flagged any clock
+/// running ahead of the newest sample as a fault, reasoning that over-eviction is the unrecoverable
+/// direction. It is — but "clock ahead of the data" is also the ordinary state of every idle series,
+/// so that check fired on healthy nodes (`series_default_cap_test` caught it at once). The two facts
+/// are genuinely indistinguishable from the data alone.
+///
+/// So the coverage is split, and this proves both halves:
+///   1. a fast clock really does destroy data that was inside its window (the damage is real);
+///   2. `clock_skew_ms` stays silent about it (the data check cannot see it, by design);
+///   3. the floor check catches it anyway, because a node cannot run a pass before an earlier one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_fast_clock_over_evicts_and_the_floor_is_what_catches_it() {
+    let store = Store::memory().await.unwrap();
+    let now = 10_000 * MIN;
+    seed_an_hour(&store, "acme", now).await;
+
+    // A control pass on a good clock: the 30-minute horizon keeps the recent half.
+    let store_ok = Store::memory().await.unwrap();
+    seed_an_hour(&store_ok, "acme", now).await;
+    let healthy = run_gc(&store_ok, "acme", now).await.unwrap();
+
+    // (1) The same data, clock a day fast: every sample is now "older than 30 minutes".
+    let ahead = run_gc(&store, "acme", now + 24 * 60 * MIN).await.unwrap();
+    assert!(
+        ahead.evicted_raw > healthy.evicted_raw,
+        "a fast clock must over-evict relative to a good one: {} vs {}",
+        ahead.evicted_raw,
+        healthy.evicted_raw
+    );
+
+    // (2) ...and the data comparison is silent, because from the data alone this is
+    // indistinguishable from a series that simply stopped reporting a day ago.
+    assert_eq!(
+        ahead.clock_skew_ms, None,
+        "a clock ahead of the data must NOT be reported as skew — that fires on every idle series"
+    );
+
+    // (3) The floor is what sees it. The fast pass above wrote its own inflated `last_run_ms`, so
+    // when the clock is corrected the next pass is BELOW that floor and says so.
+    let corrected = run_gc(&store, "acme", now).await.unwrap();
+    let warning = corrected
+        .warnings
+        .iter()
+        .find(|w| w.contains("clock went backwards"))
+        .unwrap_or_else(|| {
+            panic!(
+                "the floor must catch the correction after a fast pass, got {:?}",
+                corrected.warnings
+            )
+        });
+    assert!(
+        warning.contains("cannot move backwards"),
+        "the message must say why this is impossible, not merely odd: {warning}"
+    );
+}
+
+/// **The power-cycle case (AC 8), which the data comparison is structurally blind to.**
+///
+/// `skew` compares `now_ms` to the newest sample. That is useless when there are no samples, and
+/// equally useless when the producer and the node share one wrong clock (the modbus sidecar stamps
+/// `ts` from `SystemTime::now()` on the same box) — the data agrees with the clock and nothing
+/// fires.
+///
+/// `clock_went_backwards` covers it with an INDEPENDENT signal: this node's own last recorded pass
+/// is a monotonic floor. A pass demonstrably ran at `last_run_ms`, so the true time is at least
+/// that; a clock below it moved backwards between two boots, which a correct clock cannot do. The
+/// floor is written on every pass INCLUDING idle ones, so it exists even on a node that has never
+/// evicted anything.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_backwards_clock_is_caught_even_with_no_data_at_all() {
+    let store = Store::memory().await.unwrap();
+    let now = 10_000 * MIN;
+
+    // A pass on a good clock over an EMPTY workspace. Evicts nothing, warns about nothing — and
+    // still records the floor, which is the whole point of recording idle passes.
+    let first = run_gc(&store, "acme", now).await.unwrap();
+    assert!(first.warnings.is_empty(), "{:?}", first.warnings);
+    assert_eq!(
+        last_pass(&store, "acme")
+            .await
+            .unwrap()
+            .unwrap()
+            .last_run_ms,
+        now,
+        "an idle pass must still stamp the floor, or there is nothing to check against"
+    );
+
+    // Power cycle: the box comes back with its clock hours behind. The series table is STILL empty,
+    // so `skew` has nothing to say...
+    let after_reboot = now - 6 * 60 * MIN;
+    let pass = run_gc(&store, "acme", after_reboot).await.unwrap();
+    assert_eq!(
+        pass.clock_skew_ms, None,
+        "no data means the data-comparison check is silent — that is the blind spot"
+    );
+
+    // ...and the floor catches it anyway.
+    let warning = pass
+        .warnings
+        .iter()
+        .find(|w| w.contains("clock went backwards"))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a backwards-clock warning, got {:?}",
+                pass.warnings
+            )
+        });
+    assert!(
+        warning.contains("6h"),
+        "the delta must be readable: {warning}"
+    );
+    assert!(
+        warning.contains("cannot move backwards"),
+        "the message must say why this is impossible rather than merely odd: {warning}"
+    );
+}
+
+/// A node that has genuinely never run a pass has no floor, and must not invent one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_node_that_never_ran_a_pass_has_no_floor_to_check() {
+    let store = Store::memory().await.unwrap();
+    // now_ms = 0 is the most hostile clock there is; with no prior pass there is nothing to compare.
+    let pass = run_gc(&store, "acme", 0).await.unwrap();
+    assert!(pass.warnings.is_empty(), "{:?}", pass.warnings);
+}
+
+/// An empty workspace carries no lower bound on the true time from its DATA, so the skew check must
+/// say nothing — otherwise every freshly-provisioned node alarms on its first pass, before it has
+/// any data to be wrong about. (The floor check above is what covers this case instead.)
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_empty_workspace_never_alarms() {
     let store = Store::memory().await.unwrap();
