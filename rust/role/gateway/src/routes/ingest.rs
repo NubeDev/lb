@@ -154,14 +154,36 @@ pub async fn latest_sample(
 }
 
 /// `GET /series/{series}/samples?from=&to=` query — a bounded range of recent samples.
+///
+/// `mode=buckets` switches to the decimated read (see [`read_samples`]). The bucket params ride the
+/// same struct because Axum rejects nothing it does not recognise: an unknown query param is
+/// silently DROPPED, so a caller asking for `mode=buckets` against a struct without the field got a
+/// raw read and an empty `{"samples":[]}` — data that exists, reported as absent, with no error.
+/// That is exactly the silent-degrade this crate's ingest work exists to end, so the fields are
+/// declared here even though only `mode` selects between the two paths.
 #[derive(Debug, Deserialize)]
 pub struct ReadQuery {
     pub from: Option<u64>,
     pub to: Option<u64>,
+    /// `"buckets"` for the decimated read; absent/anything else is the raw range read.
+    pub mode: Option<String>,
+    pub width_ms: Option<u64>,
+    pub budget: Option<usize>,
+    /// Signed — a west-of-Greenwich grid anchor is ordinary.
+    pub origin_ms: Option<i64>,
+    pub method: Option<String>,
 }
 
-/// `GET /series/{series}/samples` — committed samples in `[from, to]` ordered by seq. Gated
-/// `series.read`. The UI reads the recent tail and renders newest-first.
+/// `GET /series/{series}/samples` — committed samples in `[from, to]` ordered by seq, or, with
+/// `mode=buckets`, the server-side decimated read. Gated `series.read` either way.
+///
+/// **Why buckets belong on this route.** The raw table holds only the retention window (30 min on a
+/// stock modbus node); everything older lives as rolled-up tier rows. A raw-only read therefore goes
+/// EMPTY the moment the GC runs, which reads as "no data" on a series with months of history. The
+/// bucketed path merges the rolled-up tail (`bucket::merge_rollups`) with the live raw window in one
+/// read, so a caller gets a continuous line across the raw→rollup boundary instead of a cliff.
+/// The MCP verb (`series.read {mode:"buckets"}`) has always been able to do this; the HTTP route
+/// could not, which is why the UI could not show long-term history.
 pub async fn read_samples(
     State(gw): State<Gateway>,
     headers: HeaderMap,
@@ -171,10 +193,60 @@ pub async fn read_samples(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
+
+    if q.mode.as_deref() == Some("buckets") {
+        return read_buckets(&gw, &p, &series, &q).await;
+    }
+
     let rows = lb_host::series_read_range(&gw.node.store, &p, p.ws(), &series, q.from, q.to)
         .await
         .map_err(ingest_status)?;
     Ok(Json(json!({ "samples": rows })))
+}
+
+/// The `mode=buckets` half. A 1:1 mirror of the `series.read {mode:"buckets"}` MCP verb — same
+/// query shape, same width resolution, same reply keys — so the two surfaces cannot drift into
+/// disagreeing about what a bucket is. A missing bound is a `400` naming the field, never a silent
+/// fallback to the raw read: an empty chart that should have been an error is the failure this whole
+/// path is meant to prevent.
+async fn read_buckets(
+    gw: &Gateway,
+    p: &lb_auth::Principal,
+    series: &str,
+    q: &ReadQuery,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    // Generic over `Display` so a literal and a `String` error from the ingest crate both land here
+    // verbatim — the caller is told which field was wrong, never a generic 400.
+    let bad = |m: &dyn std::fmt::Display| (StatusCode::BAD_REQUEST, m.to_string());
+
+    let query = lb_host::BucketQuery {
+        from_ts: q
+            .from
+            .ok_or_else(|| bad(&"buckets mode needs from (epoch ms)"))?,
+        to_ts: q
+            .to
+            .ok_or_else(|| bad(&"buckets mode needs to (epoch ms)"))?,
+        width_ms: q.width_ms,
+        budget: q.budget,
+        align: q.origin_ms.map(|origin_ms| lb_host::Align { origin_ms }),
+    };
+    let width = lb_host::effective_width(&query).map_err(|e| bad(&e))?;
+    let method = match q.method.as_deref() {
+        Some(name) => Some(lb_host::Method::parse(name).map_err(|e| bad(&e))?),
+        None => None,
+    };
+
+    let (buckets, resolved, align) =
+        lb_host::series_read_buckets(&gw.node.store, p, p.ws(), series, &query, width, method)
+            .await
+            .map_err(ingest_status)?;
+
+    Ok(Json(json!({
+        "buckets": buckets,
+        "width_ms": width,
+        "method": resolved.map(|m| m.as_str()),
+        "origin_ms": align.map(|a| a.origin_ms),
+    })))
 }
 
 /// `DELETE /series/{series}/samples` body — the selector: explicit `keys` ([{producer, seq}]) XOR

@@ -92,6 +92,37 @@ pub struct ProducerReport {
     pub last_write_ms: Option<u64>,
     /// How many samples the host accepted on that write.
     pub last_accepted: Option<u64>,
+    /// How long that write took, in ms.
+    ///
+    /// Modelled — rather than left to `details` — because WITHOUT it `last_accepted: 0` is two
+    /// opposite conditions sharing one number, and no consumer can tell them apart:
+    ///
+    /// - a producer that had nothing to send (a change-of-value filter suppressed everything, a
+    ///   quiet interval) reports `last_accepted: 0` with a near-zero duration. It is **healthy**.
+    /// - a producer whose write FAILED or timed out reports `last_accepted: 0` after a long
+    ///   duration. It is **losing data**.
+    ///
+    /// Rendering those identically is what lets total data loss look like a quiet meter — the
+    /// observed failure in `rubix-ai/docs/debugging/2026-08-04-dead-producer-epochs-render-connected.md`.
+    /// It stays `Option` like everything else here: a producer that does not measure it says so, and
+    /// absence must never be defaulted to `0` (which would claim an instant write that never happened).
+    ///
+    /// This is a fact about ANY producer of samples — a webhook's delivery, a flow's batch write —
+    /// not a polling-specific one, which is what earns it a modelled field rather than a detail row.
+    pub last_push_ms: Option<u64>,
+    /// Whether this producer is still the CURRENT generation of its stream.
+    ///
+    /// A producer identity may carry a generation (an epoch, a spawn id, a connection leg). When a
+    /// producer restarts, its earlier identities remain in the store as authors of historical
+    /// samples, and a consumer asking about one of them is asking about a stream that has ENDED.
+    ///
+    /// `Some(false)` says exactly that, and is the difference between "this stream is dead" and the
+    /// live stream's status wearing a dead stream's name. `None` means the producer does not model
+    /// generations at all (the common case — most producers have exactly one).
+    ///
+    /// The host neither parses nor assigns generations: only the producer knows whether the identity
+    /// it was handed is its current one.
+    pub is_current: Option<bool>,
     /// Everything else the producer wants shown, in its own words.
     pub details: Vec<ProducerDetail>,
 }
