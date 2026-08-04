@@ -9,8 +9,11 @@
 //! pass runs ONLY when an authorized caller enqueued one and over-threshold logs the advisory and
 //! nothing else — today's behaviour, unchanged. Budgeted, the driver may enqueue **one** job in
 //! the node's configured workspace (never a fan-out: the pass is node-global and each one
-//! quiesces every write on the node), rate-limited by [`AUTO_COMPACT_MIN_INTERVAL`] and stopped
-//! outright once passes stop reclaiming (see [`super::budget`]).
+//! quiesces every write on the node), rate-limited by [`AUTO_COMPACT_MIN_INTERVAL`] and held off at
+//! the soft mark once passes stop reclaiming (see [`super::budget`]) — but **never held off at the
+//! hard mark**, where a suspended driver still retries on [`SUSPENDED_HARD_RETRY_INTERVAL`].
+//! Suspending absolutely deadlocked: only an executed pass lifts the suspension and the suspension
+//! is what stops one being enqueued (rubix-ai#84).
 //!
 //! Ticks never overlap (`MissedTickBehavior::Skip`); errors are logged, never fatal. The
 //! reactor mints no principal — the capability gate ran at `store.compact` enqueue time, the
@@ -23,7 +26,9 @@ use lb_jobs::{Job, JobStatus};
 use lb_store::CompactionRecord;
 
 use crate::boot::Node;
-use crate::store_admin::budget::{BudgetAction, BudgetDriver, BUDGET_REQUESTED_BY};
+use crate::store_admin::budget::{
+    BudgetAction, BudgetDriver, BUDGET_REQUESTED_BY, SUSPENDED_HARD_RETRY_INTERVAL,
+};
 use crate::store_admin::compact::{CompactJobPayload, STORE_COMPACT_JOB_KIND};
 use crate::store_admin::marks::budget_marks;
 use crate::store_admin::status::over_threshold_advisory;
@@ -96,22 +101,43 @@ pub async fn budget_tick(
     budget_ws: &str,
 ) {
     let now = std::time::Instant::now();
+    // Read the suspension BEFORE the enqueue: `note_enqueued` does not clear it, but the flag is
+    // what distinguishes an ordinary hard-mark pass from the suspended retry, and reading it up
+    // front keeps that independent of any future bookkeeping in the enqueue arm.
+    let suspended = driver.is_suspended();
     match driver.decide(log_bytes, now) {
         BudgetAction::Idle => {}
         BudgetAction::BudgetTooSmall => {
             tracing::warn!(
                 log_bytes,
                 budget_bytes = ?driver.marks().budget_bytes,
+                hard_mark_bytes = ?driver.marks().hard_mark_bytes,
                 "store is over the soft mark but compaction reclaims almost nothing — budget too \
-                 small for this workload; not auto-compacting (raise LB_STORE_MAX_BYTES or tighten \
-                 retention). Auto-passes resume once a pass reclaims again."
+                 small for this workload; holding off (raise LB_STORE_MAX_BYTES or tighten \
+                 retention). Auto-passes resume once a pass reclaims again, and the node still \
+                 retries periodically past the hard mark."
             );
         }
         BudgetAction::Enqueue { hard_mark } => {
             match enqueue_budget_compaction(node, budget_ws).await {
                 Ok(job_id) => {
                     driver.note_enqueued(now);
-                    if hard_mark {
+                    if hard_mark && suspended {
+                        // The rubix-ai#84 path: the driver believes compaction is not paying here,
+                        // and is trying anyway because the alternative is a guaranteed breach. Say
+                        // so explicitly — a pass that runs while the previous line said "budget too
+                        // small" looks like a contradiction unless the retry is named.
+                        tracing::warn!(
+                            log_bytes, %job_id,
+                            hard_mark_bytes = ?driver.marks().hard_mark_bytes,
+                            retry_interval_s = SUSPENDED_HARD_RETRY_INTERVAL.as_secs(),
+                            "store is past the HARD disk mark and the last pass reclaimed almost \
+                             nothing — retrying anyway, because only a compaction frees bytes on an \
+                             append-only engine and declining guarantees the breach. If this repeats \
+                             without shrinking the store, the budget really is too small for the \
+                             workload: raise LB_STORE_MAX_BYTES or tighten retention."
+                        );
+                    } else if hard_mark {
                         tracing::warn!(
                             log_bytes, %job_id,
                             hard_mark_bytes = ?driver.marks().hard_mark_bytes,

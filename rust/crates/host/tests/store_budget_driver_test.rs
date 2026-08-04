@@ -4,8 +4,13 @@
 //!
 //! The regressions that matter, in order of how badly they bite:
 //!   - **convergence** — a store whose *live set* is the budget compacts once, sees
-//!     `after_bytes > 0.9 x before_bytes`, then never enqueues again over many ticks. Getting this
-//!     wrong is an hourly write outage forever, which is why it is the first test here.
+//!     `after_bytes > 0.9 x before_bytes`, then stops enqueueing at the SOFT mark over many ticks.
+//!     Getting this wrong is an hourly write outage forever, which is why it is the first test here.
+//!   - **…but the suspension is not absolute** (rubix-ai#84). Past the HARD mark a suspended driver
+//!     still retries, rate-limited to `SUSPENDED_HARD_RETRY_INTERVAL`. An absolute suspension
+//!     deadlocks — only an executed pass lifts it and the suspension blocks one — and that is how a
+//!     store blew its budget and grew unbounded with its compaction count frozen. Both failure
+//!     modes are one edit apart, so both are pinned: never retrying, and retrying every tick.
 //!   - **the minimum interval** — no second automatic pass inside the hour…
 //!   - **…except at the hard mark**, which is exempt (on an append-only engine only a compaction
 //!     frees bytes, so a reclamation path an interval can block is a path that blows the budget).
@@ -21,6 +26,7 @@ use std::time::{Duration, Instant};
 use lb_host::{
     budget_marks, budget_tick, drain_compact_jobs, is_productive, BudgetAction, BudgetDriver, Node,
     AUTO_COMPACT_MIN_INTERVAL, BUDGET_REQUESTED_BY, STORE_COMPACT_JOB_KIND,
+    SUSPENDED_HARD_RETRY_INTERVAL,
 };
 use lb_store::{compact, delete, status, write, Store};
 use serde_json::json;
@@ -92,21 +98,48 @@ async fn a_store_whose_live_set_is_the_budget_stops_auto_enqueueing() {
     drain_compact_jobs(&node, ws).await.expect("drain");
     assert_eq!(pending_count(&store, ws).await, 0);
 
-    // Many ticks, hours of simulated time, still over the mark — and past the HARD mark too.
-    let start = Instant::now();
-    for i in 1..=200u32 {
-        let _ = start; // clock advances via the driver's own Instant; see interval test below
-        budget_tick(&node, &mut driver, if i % 2 == 0 { 900 } else { 990 }, ws).await;
+    // Many ticks at the SOFT mark: still nothing. This is what the suspension is for — an hourly
+    // write pause that reclaims nothing is the outage it exists to prevent.
+    for _ in 1..=200u32 {
+        budget_tick(&node, &mut driver, 900, ws).await;
     }
     assert_eq!(
         pending_count(&store, ws).await,
         0,
-        "a suspended driver must never enqueue again — not at the soft mark, not at the hard mark"
+        "a suspended driver must not enqueue at the soft mark, however many ticks pass"
     );
     assert_eq!(
         driver.decide(900, Instant::now()),
         BudgetAction::BudgetTooSmall,
-        "and it says the useful thing at the SOFT mark, not only at the hard one"
+        "and it says the useful thing at the SOFT mark"
+    );
+
+    // The HARD mark is different, and this is the AC 1 fix (rubix-ai#84): a suspended driver still
+    // retries there, because refusing to guarantees the breach it is trying to describe. Bounded,
+    // though — 200 consecutive hard-mark ticks produce ONE pass, not 200. See
+    // `a_convergence_suspension_never_survives_the_hard_mark` for why the retry must exist at all,
+    // and `SUSPENDED_HARD_RETRY_INTERVAL` for why it is rate-limited rather than free.
+    for _ in 1..=200u32 {
+        budget_tick(&node, &mut driver, 990, ws).await;
+    }
+    assert_eq!(
+        pending_count(&store, ws).await,
+        1,
+        "a suspended driver retries ONCE per SUSPENDED_HARD_RETRY_INTERVAL at the hard mark — not \
+         never (that deadlocks and blows the budget) and not every tick (that is a permanent \
+         write outage)"
+    );
+    drain_compact_jobs(&node, ws).await.expect("drain");
+    // The pass reclaimed nothing again, so the suspension stays armed and the retry clock is set.
+    driver.note_pass(&record(990, 985));
+    assert!(driver.is_suspended());
+    for _ in 1..=200u32 {
+        budget_tick(&node, &mut driver, 990, ws).await;
+    }
+    assert_eq!(
+        pending_count(&store, ws).await,
+        0,
+        "and it does not retry again until the interval is due"
     );
 
     // Resumption: a pass that pays again (whoever asked for it) lifts the suspension. The soft
@@ -129,7 +162,8 @@ async fn a_store_whose_live_set_is_the_budget_stops_auto_enqueueing() {
     assert_eq!(
         pending_count(&store, ws).await,
         1,
-        "and the exempt hard mark enqueues at once — which it did NOT while suspended"
+        "and once unsuspended the exempt hard mark enqueues at once, with no retry interval \
+         standing between the crossing and the pass"
     );
 
     cleanup(&path);
@@ -166,6 +200,131 @@ fn the_interval_blocks_a_second_soft_pass_but_never_the_hard_mark() {
     assert_eq!(
         d.decide(850, now),
         BudgetAction::Enqueue { hard_mark: false }
+    );
+}
+
+/// **The AC 1 failure, reproduced as a unit (rubix-ai#84).** A convergence suspension must NEVER
+/// hold across the hard mark.
+///
+/// Observed live: a node ingesting into a fresh deployment blew its 120 MB budget and kept growing
+/// with the compaction count frozen at 4. The sequence:
+///
+/// | pass | before | after | after/before |
+/// |---|---|---|---|
+/// | #2 | 101.2 MB | 75.3 MB | 0.744 — productive |
+/// | #3 | 116.0 MB | 99.3 MB | 0.856 — productive |
+/// | #4 | 120.9 MB | 110.1 MB | **0.911 — one hundredth over the 0.9 line** |
+///
+/// Pass #4 latched `unproductive`, and `decide` returns `BudgetTooSmall` **before** it ever looks at
+/// the hard mark — so the store sailed past 95%, past 100%, and grew unbounded while the driver
+/// logged "budget too small" and did nothing. Only an *executed* pass clears the latch, and
+/// suspension is what prevents one being enqueued: a deadlock nothing but a manual operator
+/// compaction can break.
+///
+/// The verdict was also simply WRONG. Retention evicts nothing until data passes `raw_for_ms`
+/// (30 min), and the breach happened ~4 minutes BEFORE that horizon was first reachable. Pass #4
+/// measured a live set that was still growing monotonically because nothing was yet deletable — a
+/// true reading of that instant and a false prediction of the steady state minutes later, when
+/// retention would begin deleting and compaction would have plenty to reclaim. A one-shot ratio
+/// taken during a cold-start ramp cannot distinguish "the live set IS the budget" from "the live
+/// set has not started shrinking yet", and those need opposite responses.
+#[test]
+fn a_convergence_suspension_never_survives_the_hard_mark() {
+    let mut d = BudgetDriver::new(budget_marks(Some(125_829_120)));
+    // Pass #4 as it really landed: 9% reclaimed, a hair over the line.
+    d.note_pass(&record(120_947_087, 110_147_087));
+    assert!(
+        d.is_suspended(),
+        "a 0.911 ratio is over PRODUCTIVE_RECLAIM_RATIO, so the driver does suspend — that part is \
+         the existing, intended behaviour"
+    );
+
+    let now = Instant::now();
+    // At the SOFT mark, staying quiet is right: re-compacting every tick for no bytes is a
+    // recurring write outage. This is the behaviour the suspension exists to provide, and it stays.
+    assert_eq!(
+        d.decide(101_000_000, now),
+        BudgetAction::BudgetTooSmall,
+        "at the soft mark a suspended driver must still hold off — unchanged"
+    );
+
+    // At the HARD mark it is not. The store is about to breach its budget and only a compaction
+    // frees bytes on an append-only engine; declining to try guarantees the breach.
+    assert_eq!(
+        d.decide(120_947_087, now),
+        BudgetAction::Enqueue { hard_mark: true },
+        "a suspended driver MUST still compact at the hard mark: this is the exact state in which \
+         the store blew its budget and grew unbounded with the compaction count frozen"
+    );
+
+    // And past the budget entirely — the state the live run was stuck in for minutes.
+    assert_eq!(
+        d.decide(134_283_415, now),
+        BudgetAction::Enqueue { hard_mark: true },
+        "over budget and suspended is the worst state there is; it must not be the quiet one"
+    );
+}
+
+/// The suspended hard-mark retry is **rate-limited, not free**. Both failure modes are one edit
+/// apart, so both are pinned: never retrying deadlocks and blows the budget; retrying every tick
+/// compacts a genuinely-full store twice a minute forever (the reactor ticks every 30 s), which is
+/// a permanent write outage.
+#[test]
+fn the_suspended_hard_retry_is_rate_limited() {
+    let mut d = BudgetDriver::new(budget_marks(Some(1000)));
+    d.note_pass(&record(900, 890));
+    assert!(d.is_suspended());
+
+    let t0 = Instant::now();
+    assert_eq!(
+        d.decide(990, t0),
+        BudgetAction::Enqueue { hard_mark: true },
+        "the first hard-mark crossing while suspended retries immediately"
+    );
+    d.note_enqueued(t0);
+
+    // Immediately after, and all the way up to the interval, it holds off.
+    assert_eq!(d.decide(990, t0), BudgetAction::BudgetTooSmall);
+    assert_eq!(
+        d.decide(
+            990,
+            t0 + SUSPENDED_HARD_RETRY_INTERVAL - Duration::from_secs(1)
+        ),
+        BudgetAction::BudgetTooSmall,
+        "a suspended driver must not compact on every tick — that is a permanent write outage"
+    );
+    // …then tries once more.
+    assert_eq!(
+        d.decide(990, t0 + SUSPENDED_HARD_RETRY_INTERVAL),
+        BudgetAction::Enqueue { hard_mark: true },
+        "and it must keep trying periodically — the store is over 95% and only a pass frees bytes"
+    );
+
+    // The ordinary hourly interval must not smother the 5-minute retry: `note_enqueued` stamps
+    // both clocks, and a hard-mark retry is due long before AUTO_COMPACT_MIN_INTERVAL elapses.
+    assert!(SUSPENDED_HARD_RETRY_INTERVAL < AUTO_COMPACT_MIN_INTERVAL);
+}
+
+/// The suspension must not become a *permanent* latch either. A pass that pays clears it — and the
+/// hard-mark exemption above is what guarantees such a pass can still happen, closing the deadlock
+/// where suspension prevents the very pass that would lift it.
+#[test]
+fn a_paying_pass_lifts_the_suspension() {
+    let mut d = BudgetDriver::new(budget_marks(Some(125_829_120)));
+    d.note_pass(&record(120_947_087, 110_147_087));
+    assert!(d.is_suspended());
+
+    // Retention has since evicted a chunk of aged raw, so the next pass reclaims properly.
+    d.note_pass(&record(120_000_000, 60_000_000));
+    assert!(
+        !d.is_suspended(),
+        "a productive pass must resume automatic compaction — otherwise a single unlucky ratio \
+         during a cold-start ramp disables the budget for the life of the process"
+    );
+    assert_eq!(
+        d.decide(101_000_000, Instant::now()),
+        BudgetAction::Enqueue { hard_mark: false },
+        "and the soft mark works again once compaction is paying"
     );
 }
 
