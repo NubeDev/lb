@@ -26,7 +26,7 @@ fn seed_user() -> Prefs {
 async fn set_then_get_round_trips_canonical() {
     let store = Store::memory().await.unwrap();
     let p = seed_user();
-    set_user_prefs(&store, "acme", "user:ada", &p)
+    set_user_prefs(&store, "acme", "user:ada", &p, &[])
         .await
         .unwrap();
 
@@ -40,7 +40,7 @@ async fn set_then_get_round_trips_canonical() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn patch_merge_leaves_other_axes_untouched() {
     let store = Store::memory().await.unwrap();
-    set_user_prefs(&store, "acme", "user:ada", &seed_user())
+    set_user_prefs(&store, "acme", "user:ada", &seed_user(), &[])
         .await
         .unwrap();
 
@@ -49,7 +49,7 @@ async fn patch_merge_leaves_other_axes_untouched() {
         date_style: Some(DateStyle::Usa),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &patch)
+    set_user_prefs(&store, "acme", "user:ada", &patch, &[])
         .await
         .unwrap();
 
@@ -67,7 +67,7 @@ async fn no_formatted_string_is_persisted() {
     // Canonical guarantee: the stored row carries only locale-neutral enums/ids, never a rendered
     // string like "43,2 km/h" or "27/06/2026". Read the raw row and assert its values are canonical.
     let store = Store::memory().await.unwrap();
-    set_user_prefs(&store, "acme", "user:ada", &seed_user())
+    set_user_prefs(&store, "acme", "user:ada", &seed_user(), &[])
         .await
         .unwrap();
 
@@ -116,12 +116,13 @@ async fn resolve_from_store_folds_user_over_workspace_default() {
             timezone: Some("Europe/Madrid".into()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
     let mut user = Prefs::default();
     user.unit_overrides.insert(Dimension::Speed, Unit::Knot);
-    set_user_prefs(&store, "acme", "user:ada", &user)
+    set_user_prefs(&store, "acme", "user:ada", &user, &[])
         .await
         .unwrap();
 
@@ -158,10 +159,10 @@ async fn offline_edit_replays_idempotently() {
         language: Some("es".into()),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &edit)
+    set_user_prefs(&store, "acme", "user:ada", &edit, &[])
         .await
         .unwrap();
-    set_user_prefs(&store, "acme", "user:ada", &edit)
+    set_user_prefs(&store, "acme", "user:ada", &edit, &[])
         .await
         .unwrap(); // replay
 
@@ -185,7 +186,7 @@ async fn offline_edit_replays_idempotently() {
         language: Some("en".into()),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &edit2)
+    set_user_prefs(&store, "acme", "user:ada", &edit2, &[])
         .await
         .unwrap();
     let got = get_user_prefs(&store, "acme", "user:ada")

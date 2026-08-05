@@ -46,6 +46,7 @@ async fn set_default_denied_for_non_admin() {
             unit_system: Some(UnitSystem::Imperial),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap_err();
@@ -78,6 +79,7 @@ async fn get_reads_only_callers_own_record() {
             unit_system: Some(UnitSystem::Metric),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -89,6 +91,7 @@ async fn get_reads_only_callers_own_record() {
             unit_system: Some(UnitSystem::Imperial),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -119,6 +122,7 @@ async fn set_cannot_write_another_users_record() {
             unit_system: Some(UnitSystem::Imperial),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -150,7 +154,7 @@ async fn deny_without_any_cap_is_opaque() {
         Err(PrefsSvcError::Denied)
     ));
     assert!(matches!(
-        prefs_set(&store, &nobody, "acme", &Prefs::default()).await,
+        prefs_set(&store, &nobody, "acme", &Prefs::default(), &[]).await,
         Err(PrefsSvcError::Denied)
     ));
 }

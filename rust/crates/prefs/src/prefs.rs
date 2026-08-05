@@ -74,10 +74,15 @@ pub struct Prefs {
     /// #1's `agent.config.active_persona` toggle re-homed). Consulted by the host's `resolve_persona`
     /// when an invoke carries no explicit `persona`: member record → workspace-default record, first
     /// `Some` wins. The id is OPAQUE data (rule 10); a dangling id warns + runs un-narrowed at the
-    /// consumer, never here. `None` = inherit; an **empty string clears the axis** (the MERGE-can't-
-    /// write-null workaround — the consumer's `filter(|s| !s.is_empty())` treats it as unset). A
-    /// whole-fold nullable axis (the `insight_notifications` pattern): not an i18n axis, not in
-    /// `ResolvedPrefs`, no `format.*` reads it.
+    /// consumer, never here. `None` = inherit. A whole-fold nullable axis (the
+    /// `insight_notifications` pattern): not an i18n axis, not in `ResolvedPrefs`, no `format.*`
+    /// reads it.
+    ///
+    /// An **empty string also reads as unset** (the consumer's `filter(|s| !s.is_empty())`). That
+    /// began as a "MERGE can't write null" workaround — a belief that turned out to be false (an
+    /// explicit null in the merge object DOES drop the column; see [`crate::PrefsAxis`]). The
+    /// honest way to unset this axis is now `clear: ["agent_persona"]`; the `""` form is kept
+    /// working for the clients already sending it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_persona: Option<String>,
     /// The member's (or workspace-default's) **push notification mute** (push-target scope).

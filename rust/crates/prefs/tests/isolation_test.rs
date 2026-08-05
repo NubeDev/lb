@@ -23,6 +23,7 @@ async fn same_user_resolves_per_workspace_never_cross_reads() {
             unit_system: Some(UnitSystem::Imperial),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -35,6 +36,7 @@ async fn same_user_resolves_per_workspace_never_cross_reads() {
             unit_system: Some(UnitSystem::Metric),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -67,6 +69,7 @@ async fn workspace_default_change_in_a_does_not_move_b() {
             unit_system: Some(UnitSystem::Imperial),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -77,6 +80,7 @@ async fn workspace_default_change_in_a_does_not_move_b() {
             unit_system: Some(UnitSystem::Metric),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -92,6 +96,7 @@ async fn workspace_default_change_in_a_does_not_move_b() {
             unit_system: Some(UnitSystem::Metric),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();

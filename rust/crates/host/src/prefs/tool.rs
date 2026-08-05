@@ -14,7 +14,7 @@ use lb_auth::Principal;
 use lb_mcp::ToolError;
 use lb_prefs::{
     convert, format_datetime, format_number, format_quantity, DateStyle, Dimension, NumberFormat,
-    NumberOpts, Prefs, ResolvedPrefs, TimeStyle, Unit,
+    NumberOpts, Prefs, PrefsAxis, ResolvedPrefs, TimeStyle, Unit,
 };
 use lb_store::Store;
 use serde_json::{json, Value};
@@ -37,8 +37,9 @@ pub async fn call_prefs_tool(
             Ok(json!({ "prefs": prefs }))
         }
         "prefs.set" => {
-            let patch = parse_prefs(input, "patch")?;
-            prefs_set(store, principal, ws, &patch)
+            let clear = parse_clear(input)?;
+            let patch = patch_arg(input, &clear)?;
+            prefs_set(store, principal, ws, &patch, &clear)
                 .await
                 .map_err(svc_err)?;
             Ok(json!({ "ok": true }))
@@ -51,8 +52,9 @@ pub async fn call_prefs_tool(
             Ok(json!({ "resolved": resolved }))
         }
         "prefs.set_default" => {
-            let patch = parse_prefs(input, "patch")?;
-            prefs_set_default(store, principal, ws, &patch)
+            let clear = parse_clear(input)?;
+            let patch = patch_arg(input, &clear)?;
+            prefs_set_default(store, principal, ws, &patch, &clear)
                 .await
                 .map_err(svc_err)?;
             Ok(json!({ "ok": true }))
@@ -124,11 +126,28 @@ fn svc_err(e: PrefsSvcError) -> ToolError {
     }
 }
 
-fn parse_prefs(input: &Value, key: &str) -> Result<Prefs, ToolError> {
-    let v = input
-        .get(key)
-        .ok_or_else(|| ToolError::BadInput(format!("missing arg: {key}")))?;
-    serde_json::from_value(v.clone()).map_err(|e| ToolError::BadInput(format!("{key}: {e}")))
+/// The `patch` arg for a write verb. Required UNLESS the call names axes to `clear` — "make these
+/// inherit again" is a complete request on its own, and demanding an empty `{}` alongside it would
+/// be ceremony. With neither, the call is a no-op the caller almost certainly didn't intend, so it
+/// stays a loud `missing arg: patch`.
+fn patch_arg(input: &Value, clear: &[PrefsAxis]) -> Result<Prefs, ToolError> {
+    match input.get("patch") {
+        None | Some(Value::Null) if !clear.is_empty() => Ok(Prefs::default()),
+        None => Err(ToolError::BadInput("missing arg: patch".into())),
+        Some(v) => serde_json::from_value(v.clone())
+            .map_err(|e| ToolError::BadInput(format!("patch: {e}"))),
+    }
+}
+
+/// The optional `clear` arg — a list of axis names to reset to "inherit". Absent/null means an empty
+/// list. An unknown axis name is a hard `BadInput` rather than a silent skip: a typo'd clear that
+/// quietly did nothing would look exactly like a working one.
+fn parse_clear(input: &Value) -> Result<Vec<PrefsAxis>, ToolError> {
+    match input.get("clear") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(v) => serde_json::from_value(v.clone())
+            .map_err(|e| ToolError::BadInput(format!("clear: {e}"))),
+    }
 }
 
 fn optional_prefs(input: &Value, key: &str) -> Result<Option<Prefs>, ToolError> {

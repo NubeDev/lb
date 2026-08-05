@@ -10,23 +10,33 @@
 use lb_store::{Store, StoreError};
 use serde_json::{json, Value};
 
+use crate::clear::{clear_entries, PrefsAxis};
 use crate::prefs::Prefs;
 
 use super::schema::{define_prefs_schema, USER_PREFS_TABLE};
 
 /// Apply `patch` to `user`'s record in `ws`, creating it if absent. Present fields overwrite; the
 /// `id`/`ws`/`user` bookkeeping columns are always set so the row is self-describing.
+///
+/// Every axis named in `clear` is set back to NULL — "inherit the next link again" — which a patch
+/// alone cannot express (an absent axis means "leave as stored"). An axis in both `patch` and
+/// `clear` is cleared: the caller asked for inheritance, and honouring the set would silently drop
+/// half the request.
 pub async fn set_user_prefs(
     store: &Store,
     ws: &str,
     user: &str,
     patch: &Prefs,
+    clear: &[PrefsAxis],
 ) -> Result<(), StoreError> {
     define_prefs_schema(store, ws).await?;
     // MERGE the present fields onto the (possibly existing) record. UPSERT ... MERGE keeps untouched
     // fields; absent axes in `patch` (skipped by serde's skip_serializing_if) are simply not in the
-    // merge object, so they stay as stored.
+    // merge object, so they stay as stored. An explicit null DOES clear a column — that is what the
+    // `clear` entries ride in on (verified against a real store; the "MERGE can't write null" belief
+    // this codebase carried was wrong).
     let mut merge = patch_object(patch)?;
+    merge.extend(clear_entries(clear));
     merge.insert("ws".into(), Value::String(ws.to_string()));
     merge.insert("user".into(), Value::String(user.to_string()));
 

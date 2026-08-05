@@ -55,7 +55,7 @@ async fn migrate_one(store: &Store, ws: &str) -> Result<bool, StoreError> {
             agent_persona: Some(legacy.clone()),
             ..Default::default()
         };
-        set_workspace_prefs(store, ws, &patch).await?;
+        set_workspace_prefs(store, ws, &patch, &[]).await?;
     }
 
     // Clear the legacy field either way (one-shot: a second boot finds nothing to copy).
