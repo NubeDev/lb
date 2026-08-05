@@ -235,7 +235,7 @@ async fn onboard(
             language: Some(locale.to_string()),
             ..Default::default()
         };
-        lb_prefs::set_user_prefs(store, ws, sub, &patch).await?;
+        lb_prefs::set_user_prefs(store, ws, sub, &patch, &[]).await?;
     }
     Ok(())
 }

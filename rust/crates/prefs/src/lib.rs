@@ -18,6 +18,7 @@
 
 pub mod axis;
 pub mod catalog;
+mod clear;
 mod convert;
 mod error;
 mod format;
@@ -29,6 +30,7 @@ pub use axis::{DateStyle, Dimension, FirstDay, NumberFormat, TimeStyle, Unit, Un
 pub use catalog::{
     lint as lint_catalog, merged_catalog, render as render_message, Rendered as RenderedMessage,
 };
+pub use clear::PrefsAxis;
 pub use convert::{convert, to_display, DisplayQuantity};
 pub use error::PrefsError;
 pub use format::{format_datetime, format_number, format_quantity, FormattedQuantity, NumberOpts};

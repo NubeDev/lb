@@ -123,6 +123,7 @@ async fn precedence_explicit_beats_member_default_beats_ws_default_beats_none() 
             agent_persona: Some("ws-p".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -144,6 +145,7 @@ async fn precedence_explicit_beats_member_default_beats_ws_default_beats_none() 
             agent_persona: Some("member-p".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -175,6 +177,7 @@ async fn precedence_explicit_beats_member_default_beats_ws_default_beats_none() 
             agent_persona: Some(String::new()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -202,6 +205,7 @@ async fn a_dangling_default_warns_and_runs_un_narrowed_an_explicit_unknown_error
             agent_persona: Some("ghost".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -222,6 +226,7 @@ async fn a_dangling_default_warns_and_runs_un_narrowed_an_explicit_unknown_error
             agent_persona: Some("temp".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -325,6 +330,7 @@ async fn an_explicit_invoke_of_a_disabled_persona_fails_named_and_a_disabled_def
             agent_persona: Some("off".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -369,6 +375,7 @@ async fn a_ws_a_default_and_roster_never_affect_a_ws_b_run() {
             agent_persona: Some("a-only".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -396,6 +403,7 @@ async fn a_ws_a_default_and_roster_never_affect_a_ws_b_run() {
             agent_persona: Some("a-only".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -443,6 +451,7 @@ async fn member_is_denied_roster_and_ws_default_writes_but_allowed_own_default()
                 agent_persona: Some("builtin.flow-author".into()),
                 ..Default::default()
             },
+            &[],
         )
         .await,
         Err(PrefsSvcError::Denied)
@@ -461,6 +470,7 @@ async fn member_is_denied_roster_and_ws_default_writes_but_allowed_own_default()
             agent_persona: Some("mine".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .expect("member may set their own default");
@@ -500,6 +510,7 @@ async fn two_members_and_two_explicit_ids_resolve_independently_with_zero_server
             agent_persona: Some("p-list".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -511,6 +522,7 @@ async fn two_members_and_two_explicit_ids_resolve_independently_with_zero_server
             agent_persona: Some("p-get".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -571,6 +583,7 @@ async fn migration_copies_the_legacy_toggle_once_idempotently_and_never_clobbers
             agent_persona: Some("builtin.system-manager".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();

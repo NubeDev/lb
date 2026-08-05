@@ -284,6 +284,7 @@ async fn multi_recipient_fanout_produces_two_distinct_renders() {
             number_format: Some(lb_prefs::NumberFormat::CommaDot),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -301,6 +302,7 @@ async fn multi_recipient_fanout_produces_two_distinct_renders() {
                 .collect(),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();

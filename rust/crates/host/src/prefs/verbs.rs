@@ -5,7 +5,8 @@
 
 use lb_auth::Principal;
 use lb_prefs::{
-    get_user_prefs, resolve_chain, set_user_prefs, set_workspace_prefs, Prefs, ResolvedPrefs,
+    get_user_prefs, resolve_chain, set_user_prefs, set_workspace_prefs, Prefs, PrefsAxis,
+    ResolvedPrefs,
 };
 use lb_store::Store;
 
@@ -23,16 +24,18 @@ pub async fn prefs_get(
     Ok(get_user_prefs(store, ws, principal.sub()).await?)
 }
 
-/// `prefs.set` (write OWN) — merge `patch` into the caller's own record. Forced to `principal.sub()`;
-/// a caller cannot write a different user's record.
+/// `prefs.set` (write OWN) — merge `patch` into the caller's own record, and set every axis named in
+/// `clear` back to "inherit". Forced to `principal.sub()`; a caller cannot write a different user's
+/// record. Clearing is the only way a member stops shadowing the workspace default on an axis.
 pub async fn prefs_set(
     store: &Store,
     principal: &Principal,
     ws: &str,
     patch: &Prefs,
+    clear: &[PrefsAxis],
 ) -> Result<(), PrefsSvcError> {
     authorize_prefs(principal, ws, "prefs.set")?;
-    set_user_prefs(store, ws, principal.sub(), patch).await?;
+    set_user_prefs(store, ws, principal.sub(), patch, clear).await?;
     Ok(())
 }
 
@@ -48,15 +51,17 @@ pub async fn prefs_resolve(
     Ok(resolve_chain(store, ws, principal.sub(), override_).await?)
 }
 
-/// `prefs.set_default` (ADMIN) — set the workspace-default prefs. Gated by the admin-only
-/// `mcp:prefs.set_default:call`; a non-admin (lacking that cap) is denied opaquely.
+/// `prefs.set_default` (ADMIN) — set the workspace-default prefs, clearing every axis named in
+/// `clear`. Gated by the admin-only `mcp:prefs.set_default:call`; a non-admin (lacking that cap) is
+/// denied opaquely.
 pub async fn prefs_set_default(
     store: &Store,
     principal: &Principal,
     ws: &str,
     patch: &Prefs,
+    clear: &[PrefsAxis],
 ) -> Result<(), PrefsSvcError> {
     authorize_prefs(principal, ws, "prefs.set_default")?;
-    set_workspace_prefs(store, ws, patch).await?;
+    set_workspace_prefs(store, ws, patch, clear).await?;
     Ok(())
 }
