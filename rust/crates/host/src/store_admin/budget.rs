@@ -15,6 +15,10 @@
 //!    and re-enqueuing every eligible tick is a recurring write outage for zero reclaimed bytes.
 //!    The driver stops auto-enqueueing and logs "budget too small for this workload" **at the soft
 //!    mark**, and resumes on its own the next time any pass (operator- or budget-triggered) pays.
+//!    It is **not absolute**: past the hard mark a suspended driver still retries, rate-limited to
+//!    [`SUSPENDED_HARD_RETRY_INTERVAL`]. An absolute suspension deadlocked — only an executed pass
+//!    clears it, and the suspension is what stops one being enqueued — and that deadlock is how a
+//!    store blew its budget and grew unbounded with its compaction count frozen (rubix-ai#84).
 //!
 //! The decision itself is pure — no store, no clock, no I/O — so the convergence regression (no
 //! second job over many ticks) is testable without seeding a gigabyte.
@@ -31,6 +35,26 @@ use super::marks::BudgetMarks;
 
 /// Minimum wall time between *automatic* passes (decision 5). A hard-mark crossing is exempt.
 pub const AUTO_COMPACT_MIN_INTERVAL: Duration = Duration::from_secs(60 * 60);
+
+/// How often a **suspended** driver retries at the hard mark (rubix-ai#84).
+///
+/// The convergence suspension used to be absolute, which deadlocked: only an executed pass clears
+/// it and the suspension is what blocks one. But retrying every tick is a permanent write outage on
+/// a store whose live set really is the budget — the compact reactor ticks every 30 s. Five minutes
+/// is the compromise, and the two sides size it:
+///
+/// - **Fast enough to matter.** At the measured ~6.6 MB/min (100 points) the soft→hard span is
+///   ~2.9 min and hard→budget ~1 min, so a retry lands inside the window where reclaiming anything
+///   still prevents a breach. At the 1800-point target those windows are shorter still, but a
+///   *bounded* retry that sometimes arrives late is strictly better than one that never comes.
+/// - **Slow enough not to be an outage.** A pass measured 2.9–4.0 s on a ~100 MB store (7–23 s on
+///   RC-6 storage), so one pass per 5 min is ~1% duty cycle at worst — a real cost, paid only while
+///   the node is over 95% of its budget and already in trouble.
+///
+/// This is deliberately NOT reusing [`AUTO_COMPACT_MIN_INTERVAL`]: an hour is chosen to stop
+/// *pointless* soft-mark churn, and a store past the hard mark that waits an hour to try again has
+/// already blown the budget many times over at any realistic ingest rate.
+pub const SUSPENDED_HARD_RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// `requested_by` on a budget-driven job — deliberately not a real principal, so an operator
 /// reading the job record sees at a glance that the budget driver caused the pause (decision 8).
@@ -56,6 +80,10 @@ pub struct BudgetDriver {
     last_auto_at: Option<Instant>,
     /// Set when a pass reclaimed essentially nothing: auto-enqueueing is suspended until one pays.
     unproductive: bool,
+    /// When the last *suspended* hard-mark retry was enqueued; `None` until the first one. Separate
+    /// from `last_auto_at` because the two intervals are different lengths and answer different
+    /// questions (see [`SUSPENDED_HARD_RETRY_INTERVAL`]).
+    last_suspended_retry_at: Option<Instant>,
 }
 
 impl BudgetDriver {
@@ -64,6 +92,7 @@ impl BudgetDriver {
             marks,
             last_auto_at: None,
             unproductive: false,
+            last_suspended_retry_at: None,
         }
     }
 
@@ -83,13 +112,44 @@ impl BudgetDriver {
         if log_bytes < soft {
             return BudgetAction::Idle;
         }
-        // Compaction has stopped paying: say the useful thing at the soft mark, and keep saying it
-        // past the hard mark. A pass that reclaims nothing at 80% reclaims nothing at 95% — the
-        // hard mark's interval exemption exists to beat the *clock*, not this.
-        if self.unproductive {
-            return BudgetAction::BudgetTooSmall;
-        }
         let hard_mark = log_bytes >= hard;
+
+        // A SUSPENDED DRIVER STILL RETRIES AT THE HARD MARK — on its own slow interval.
+        //
+        // The old ordering checked the suspension first and so returned `BudgetTooSmall` at 95%, at
+        // 100%, and at any size above. That was the AC 1 failure (rubix-ai#84): a store sailed past
+        // its 120 MB budget and grew unbounded with its compaction count frozen at 4, while the log
+        // repeated "budget too small" once a minute. Two things were wrong with it:
+        //
+        //  1. **It deadlocks.** Only an executed pass clears the latch (`note_pass`), and the latch
+        //     is what prevents a pass being enqueued. Nothing inside the node can break the cycle —
+        //     it takes an operator noticing and compacting by hand.
+        //  2. **The verdict is least reliable exactly when it is consulted.** A one-shot ratio
+        //     cannot tell "the live set IS the budget" from "the live set has not started shrinking
+        //     yet". On a fresh deployment retention evicts nothing until data passes `raw_for_ms`,
+        //     so every early pass measures a monotonically growing live set and reads as
+        //     unproductive — true of that instant, false of the steady state minutes later. The
+        //     live breach happened ~4 minutes BEFORE the 30-minute raw horizon was first reachable,
+        //     i.e. before retention could free a single byte.
+        //
+        // But the suspension guards something real, and retrying on EVERY tick would trade a
+        // silent breach for a permanent write outage: the compact reactor ticks every 30 s, so a
+        // store whose live set genuinely is the budget would compact twice a minute forever. The
+        // resolution is that a suspended retry is rate-limited by its own
+        // [`SUSPENDED_HARD_RETRY_INTERVAL`] rather than being either free or forbidden. One pass
+        // per interval is a bounded, self-correcting cost: if the live set really is the budget the
+        // pass reclaims little and `note_pass` re-arms the suspension; if retention has since made
+        // rows deletable, the pass pays and the suspension lifts on its own.
+        //
+        // Below the hard mark nothing changes: a suspended driver holds off at the soft mark and
+        // says the useful thing, which is the write-outage the suspension exists to prevent.
+        if self.unproductive {
+            return if hard_mark && self.suspended_retry_due(now) {
+                BudgetAction::Enqueue { hard_mark: true }
+            } else {
+                BudgetAction::BudgetTooSmall
+            };
+        }
         if hard_mark || self.interval_elapsed(now) {
             return BudgetAction::Enqueue { hard_mark };
         }
@@ -103,9 +163,23 @@ impl BudgetDriver {
         }
     }
 
-    /// Record that an automatic pass was enqueued at `now` (starts the minimum interval).
+    /// Is a suspended hard-mark retry due? Tracked on its own stamp rather than `last_auto_at`, so
+    /// the ordinary hourly interval and the 5-minute suspended retry cannot mask each other.
+    fn suspended_retry_due(&self, now: Instant) -> bool {
+        match self.last_suspended_retry_at {
+            None => true,
+            Some(prev) => now.saturating_duration_since(prev) >= SUSPENDED_HARD_RETRY_INTERVAL,
+        }
+    }
+
+    /// Record that an automatic pass was enqueued at `now` (starts the minimum interval). While
+    /// suspended this also stamps the hard-mark retry clock — the caller does not have to know
+    /// which kind of enqueue it just made, so the two cannot drift apart.
     pub fn note_enqueued(&mut self, now: Instant) {
         self.last_auto_at = Some(now);
+        if self.unproductive {
+            self.last_suspended_retry_at = Some(now);
+        }
     }
 
     /// Fold in the outcome of a pass — **any** pass the node ran, whichever principal asked for

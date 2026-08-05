@@ -421,7 +421,7 @@ pub use store_admin::{
     store_status_run_with_budget, BudgetAction, BudgetDriver, BudgetMarks, StoreAdminError,
     StoreStatusReport, AUTO_COMPACT_MIN_INTERVAL, BUDGET_REQUESTED_BY, HARD_MARK_PCT,
     LOG_ADVISORY_BYTES, PRODUCTIVE_RECLAIM_RATIO, SOFT_MARK_PCT, STORE_COMPACT_JOB_KIND,
-    STORE_COMPACT_PERIOD,
+    STORE_COMPACT_PERIOD, SUSPENDED_HARD_RETRY_INTERVAL,
 };
 pub use store_mutate::{
     authorize_store_mutate, call_store_mutate_tool, store_delete_run, store_write_run,

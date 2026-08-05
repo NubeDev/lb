@@ -27,7 +27,7 @@ mod tool;
 pub use authorize::{authorize_store_compact, authorize_store_status};
 pub use budget::{
     is_productive, BudgetAction, BudgetDriver, AUTO_COMPACT_MIN_INTERVAL, BUDGET_REQUESTED_BY,
-    PRODUCTIVE_RECLAIM_RATIO,
+    PRODUCTIVE_RECLAIM_RATIO, SUSPENDED_HARD_RETRY_INTERVAL,
 };
 pub use compact::{store_compact_enqueue, STORE_COMPACT_JOB_KIND};
 pub use error::StoreAdminError;

@@ -32,7 +32,23 @@ const FIRST_TS_MS: u64 = 1_784_070_000_000;
 /// fails these tests. `OutboxProviders::default()` is the unconfigured embedder (the relay falls
 /// back to its logging no-ops), which is all these two properties need.
 async fn boot_wiring(node: &Arc<Node>, ws: &str) {
-    lb_node::reactors::spawn(node, ws, &OutboxProviders::default(), None, None).await;
+    boot_wiring_every(node, ws, None).await;
+}
+
+/// The same boot wiring with an explicit retention cadence — `None` is the shipped 300 s default.
+/// Threading the parameter rather than adding a second `spawn` call keeps the rule above intact:
+/// every test still boots through the one real function.
+async fn boot_wiring_every(node: &Arc<Node>, ws: &str, retention_period: Option<Duration>) {
+    lb_node::reactors::spawn(
+        node,
+        ws,
+        &OutboxProviders::default(),
+        None,
+        None,
+        None,
+        retention_period,
+    )
+    .await;
 }
 
 /// `n` samples STAGED for `series` — written, deliberately not drained, so the only thing that can
@@ -140,5 +156,81 @@ async fn boot_spawns_the_retention_gc_so_a_capped_series_shrinks_with_nobody_cal
         capped,
         "boot must spawn the retention GC: without it a correctly-configured cap is decorative and \
          the series grows until the disc is full"
+    );
+}
+
+/// BOOT WIRING — the retention **cadence** is config, not a hardcoded const (rubix-ai#84).
+///
+/// The test above cannot see the period at all: `tokio::time::interval` fires its FIRST tick
+/// immediately, so a reactor wired to 300 s and one wired to 1 s are indistinguishable to it. That
+/// is exactly why the cadence went unverified — and why proving it needs a **second** tick.
+///
+/// So: stage a series, boot with a 1 s period, and let the first tick cap it. Then stage MORE rows
+/// and commit them, and require the series to shrink again *without anyone calling the verb*. Only a
+/// recurring tick can do that, and at the 300 s default it could not happen inside this test's
+/// timeout — so the assertion holds only because `retention_period` was honoured.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_retention_cadence_is_configurable_so_a_second_tick_is_observable() {
+    let node = Arc::new(Node::boot().await.unwrap());
+    let ws = "acme";
+    lb_ingest::write(&node.store, ws, &staged("fleet.pi", 60), 0)
+        .await
+        .expect("stage");
+    lb_host::drain_workspace(&node.store, ws)
+        .await
+        .expect("commit");
+    set_policy(
+        &node.store,
+        ws,
+        &Policy {
+            prefix: "fleet.".into(),
+            raw_for_ms: 0,
+            max_samples: 10,
+            tiers: vec![],
+            filter: None,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    boot_wiring_every(&node, ws, Some(Duration::from_secs(1))).await;
+    assert!(
+        eventually(|| async { sample_count(&node.store, ws, "fleet.pi").await.unwrap() == 10 })
+            .await,
+        "first tick must cap the series"
+    );
+
+    // Second round: push the series back OVER the cap. `staged` starts at seq 1, which the committed
+    // rows already own, so continue the sequence — a re-used `(series, producer, seq)` would upsert
+    // the same rows and grow the count by nothing.
+    let more: Vec<Sample> = (0..60)
+        .map(|i| Sample {
+            series: "fleet.pi".into(),
+            producer: "pi-7".into(),
+            ts: FIRST_TS_MS + (1_000 + i) * 1_000,
+            seq: 1_000 + i,
+            payload: json!(i),
+            labels: Default::default(),
+            qos: Qos::BestEffort,
+        })
+        .collect();
+    lb_ingest::write(&node.store, ws, &more, 0)
+        .await
+        .expect("stage more");
+    lb_host::drain_workspace(&node.store, ws)
+        .await
+        .expect("commit more");
+    assert!(
+        sample_count(&node.store, ws, "fleet.pi").await.unwrap() > 10,
+        "the series must actually be over the cap again for the second tick to have work to do"
+    );
+
+    assert!(
+        eventually(|| async { sample_count(&node.store, ws, "fleet.pi").await.unwrap() == 10 })
+            .await,
+        "a SECOND retention tick must fire on the configured period — at the 300 s default this \
+         cannot happen within the timeout, so this is what proves the cadence is honoured rather \
+         than hardcoded"
     );
 }

@@ -20,6 +20,8 @@ use crate::mail::EmailTransport;
 /// `store_budget_bytes` is [`BootConfig::store_budget_bytes`] — the node's disk allowance. `None`
 /// (the default, and what `LB_STORE_MAX_BYTES` unset means) leaves the store-compact reactor
 /// warn-only, exactly as it shipped.
+/// `retention_period` is [`BootConfig::retention_period`] — the retention-GC cadence. `None` (the
+/// default, and what `LB_RETENTION_PERIOD_SECS` unset means) ⇒ [`lb_host::RETENTION_PERIOD`], 300 s.
 pub async fn spawn(
     node: &Arc<Node>,
     ws: &str,
@@ -27,6 +29,7 @@ pub async fn spawn(
     email_transport: Option<&EmailTransport>,
     store_budget_bytes: Option<u64>,
     profile: Option<crate::config::ProfileConfig>,
+    retention_period: Option<Duration>,
 ) {
     // FLOW REACTOR TICK: drive cron/reconcile scans so a `mode:"cron"` trigger actually fires. A
     // few-second period catches a minute-granularity cron promptly; each tick is a cheap ws scan.
@@ -102,10 +105,15 @@ pub async fn spawn(
     // as the ingest drain above. Without this tick the `max_samples` cap is decorative and a series
     // grows until the disc is full. Slow cadence on purpose: a pass counts rows per series behind
     // the store's global session mutex, and nothing waits on an eviction.
+    //
+    // The cadence is config (`BootConfig::retention_period`), defaulting to `RETENTION_PERIOD`. It
+    // is configurable so it can be EXERCISED — a hardcoded const meant the reactor's own loop could
+    // not be observed on a dev box without editing lb — not so it can be run fast; the default is
+    // unchanged and the reasons above are why it should stay that way.
     lb_host::spawn_retention_reactors(
         node.clone(),
         vec![ws.to_string()],
-        lb_host::RETENTION_PERIOD,
+        retention_period.unwrap_or(lb_host::RETENTION_PERIOD),
     );
 
     // STORE-COMPACT REACTOR TICK (online-compaction scope, issue #67): drain `store.compact`

@@ -15,11 +15,14 @@
 //! guarantee hold; the `default()`-then-mutate form is the supported construction path.
 
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use lb_auth::SigningKey;
 use lb_role_gateway::Authenticity;
 
-use crate::store_env::{store_budget_bytes_from_env, store_open_unguarded_from_env};
+use crate::store_env::{
+    retention_period_from_env, store_budget_bytes_from_env, store_open_unguarded_from_env,
+};
 
 /// The default `POST /extensions` upload ceiling (extension-upload-limit fix): 384 MiB. Sized to the
 /// largest real native sidecar artifact observed (the ems modbus bundle ~317 MiB — a 6.2 MB release
@@ -328,6 +331,21 @@ pub struct BootConfig {
     /// `LB_STORE_MAX_BYTES` at the binary boundary — the one place `LB_*` is read.
     pub store_budget_bytes: Option<u64>,
 
+    /// How often the **retention GC reactor** ticks. `None` (the default) ⇒
+    /// [`lb_host::RETENTION_PERIOD`] — 300 s, unchanged.
+    ///
+    /// The default deliberately stays slow. A pass is a full table scan (a `count()` per series
+    /// behind the store's global session mutex, up to 10k series per workspace) and nothing waits on
+    /// an eviction, so a fast tick buys nothing and costs CPU continuously. This field exists so the
+    /// cadence can be **exercised** — before it, the period was a hardcoded `pub const` and checking
+    /// that the reactor evicts on its own schedule meant editing lb and rebuilding, so retention
+    /// proofs drove `series.retention.gc` by hand and the reactor's own loop went untested on a dev
+    /// box (rubix-ai#84).
+    ///
+    /// Config, never a code branch (rule 1). An embedder fills the field; `from_env` reads
+    /// `LB_RETENTION_PERIOD_SECS` at the binary boundary — the one place `LB_*` is read.
+    pub retention_period: Option<Duration>,
+
     /// Force the store open past the **boot memory guard** (`LB_STORE_OPEN_UNGUARDED=1`, parsed in
     /// [`crate::store_env`]): `false` (default) ⇒ a log larger than available RAM is refused with
     /// `StoreError::WontFit` and the binary exits nonzero rather than risking a machine-wide OOM
@@ -491,6 +509,10 @@ impl Default for BootConfig {
             // 256 MiB advisory and no marks, forever. No auto-derivation from filesystem size — a
             // node must not silently acquire a new behaviour on upgrade.
             store_budget_bytes: None,
+            // The stock 300 s retention cadence (disk-budget/series-retention): slow on purpose —
+            // a GC pass is a full table scan and nothing waits on an eviction. Configurable so the
+            // cadence can be TESTED, not so it can be run fast.
+            retention_period: None,
             // `None` ⇒ the node advertises NOTHING on the LAN (today's behaviour). Opting a node
             // into being discoverable is an explicit act by the embedder, never a default: a
             // network broadcast that switches itself on at upgrade is exactly the surprise this
@@ -590,6 +612,9 @@ impl BootConfig {
             // The node's store disk budget from `LB_STORE_MAX_BYTES` (bytes); unset/empty/
             // unparseable ⇒ `None` ⇒ today's flat 256 MiB advisory and no marks. Read only here.
             store_budget_bytes: store_budget_bytes_from_env(),
+            // The retention-GC cadence from `LB_RETENTION_PERIOD_SECS` (whole seconds);
+            // unset/empty/unparseable/`0` ⇒ `None` ⇒ the 300 s default. Read only here.
+            retention_period: retention_period_from_env(),
             // The boot memory-guard override from `LB_STORE_OPEN_UNGUARDED` (exactly `1`);
             // anything else warns and leaves the guard on. Read only here, at the binary boundary —
             // the store crate reads no env and takes this as a parameter.

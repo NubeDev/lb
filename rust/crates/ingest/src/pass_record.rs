@@ -51,6 +51,18 @@ pub struct GcPassRecord {
     /// How many warnings the pass produced before clipping.
     #[serde(default)]
     pub warnings_total: usize,
+    /// Clock skew detected on this pass, in ms — see [`crate::GcPass::clock_skew_ms`].
+    ///
+    /// Persisted rather than left on the return value because the condition outlives the call that
+    /// found it: on the field hardware the clock resets on every power cycle, so by the time an
+    /// operator looks, the pass that noticed is long gone. This makes "was this node's last pass
+    /// inert?" answerable from the store instead of from whoever happened to be watching stdout.
+    ///
+    /// `None` on a healthy pass AND on every row written before this field existed. An older row
+    /// honestly does not know, and `Option` keeps "we did not check" from reading as "the clock was
+    /// fine" — the same distinction `last_pass`'s missing row draws for the pass as a whole.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_skew_ms: Option<u64>,
 }
 
 impl GcPassRecord {
@@ -70,6 +82,7 @@ impl GcPassRecord {
                 .cloned()
                 .collect(),
             warnings_total: pass.warnings.len(),
+            clock_skew_ms: pass.clock_skew_ms,
         }
     }
 }
@@ -100,8 +113,13 @@ pub async fn last_pass(store: &Store, ws: &str) -> Result<Option<GcPassRecord>, 
         .query_ws(
             ws,
             &format!(
+                // Every field is projected BY NAME — a field added to `GcPassRecord` but not to this
+                // list reads back as its serde default forever, with the row on disc perfectly
+                // correct (the closed-struct trap `list_policies` carries the long note about).
+                // `clock_skew_ms` is `Option`, so a row predating it arrives as a present NONE and
+                // deserializes to `None` correctly — no `none_as_default` dance needed here.
                 "SELECT last_run_ms, duration_ms, evicted_raw, capped_raw, rollup_rows, \
-                 evicted_rollup, warnings, warnings_total \
+                 evicted_rollup, warnings, warnings_total, clock_skew_ms \
                  FROM ONLY type::thing('{GC_PASS_TABLE}', $id)"
             ),
             vec![("id".into(), Value::String(GC_PASS_ID.to_string()))],
