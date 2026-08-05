@@ -116,6 +116,19 @@ jobs:
       - name: Build the wasm guest v2 (the S2 hot-reload swap target)
         working-directory: rust/extensions/hello-v2
         run: cargo build --target wasm32-wasip2 --release
+      # proof-panel backs the proof_panel / simulate_* / callback_* / store_* tests, which
+      # panic with "missing component at .../proof_panel_ext.wasm" when it is absent — ~17
+      # failures from one missing build step.
+      #
+      # This list is hand-maintained and MUST match the components the tests load. It is not a
+      # loop over `extensions/*/build.sh` on purpose: the devkit e2e tests generate throwaway
+      # `devkit-e2e-wasm-*` extension dirs, so a glob would build test litter. To re-derive the
+      # list after adding a component:
+      #   grep -rhoE 'extensions/[a-z0-9-]+/target/wasm32-wasip2/release/[a-z0-9_]+\.wasm' \
+      #     rust/crates/*/tests/ rust/role/*/tests/ | sort -u
+      - name: Build the wasm guest (proof-panel — panels, callbacks, store tests)
+        working-directory: rust/extensions/proof-panel
+        run: cargo build --target wasm32-wasip2 --release
       # Every shard needs the real binaries on disk, not just its own crate: the tests spawn a
       # real node and real sidecars (rule 9 — nothing that can run in-process gets mocked), e.g.
       # lb-host's native_test needs the echo-sidecar binary built.
