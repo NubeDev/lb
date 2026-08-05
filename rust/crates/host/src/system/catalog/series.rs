@@ -70,6 +70,16 @@ pub(super) const SERIES: &[HostTool] = &[
                       the producers writing to it (single-subject — never fan this out)",
     },
     HostTool {
+        tool: "series.rollup.read",
+        group: "series",
+        description: "read the STORED rollup rows of ONE series (`series_rollup`) verbatim, on the \
+                      tier's own grid, with the full stat set (min/max/sum/num_count/count/last/ \
+                      first). Distinct from `series.read {mode:\"buckets\"}`, which decimates live \
+                      raw and merges the stored tail beneath it: this never merges and never falls \
+                      back, so an empty result means \"nothing is folded here\" — a real answer, \
+                      not an absence of one (single-subject — never fan this out)",
+    },
+    HostTool {
         tool: "series.producer.health",
         group: "series",
         description: "ask the producers of ONE series what they report about their own ingest \

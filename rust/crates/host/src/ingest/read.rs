@@ -13,8 +13,8 @@
 use lb_auth::Principal;
 use lb_ingest::{
     apply_method, latest as series_latest, latest_many as series_latest_many_read, list_policies,
-    read as series_read, read_buckets, read_page, resolve_policy, Align, Bucket, BucketQuery,
-    Method, Page, PageError, PageQuery, Sample,
+    read as series_read, read_buckets, read_page, read_rollups, resolve_policy, Align, Bucket,
+    BucketQuery, Method, Page, PageError, PageQuery, RollupRow, Sample,
 };
 use lb_store::Store;
 
@@ -46,6 +46,38 @@ pub async fn series_read_page(
 ) -> Result<Page, IngestError> {
     authorize_ingest(principal, ws, "series.read")?;
     read_page(store, ws, series, q).await.map_err(page_err)
+}
+
+/// The STORED rollup rows of `series` in `[from_ts, to_ts)` — `series_rollup` verbatim, no merge.
+///
+/// **Why this exists next to the bucketed read.** `series_read_buckets` answers "what happened over
+/// this window", merging the stored tail under live raw and returning one flat shape. That is the
+/// right answer for a chart, and the wrong one for two questions an operator actually has: *did the
+/// GC fold anything*, and *what exactly is on disc for this tier*. Those cannot be asked of the
+/// merged read at all — [`merge_rollups`](lb_ingest::read_buckets) SUPPRESSES a stored row while the
+/// raw beneath it survives, so a window can hold rollup rows and report none of them.
+///
+/// So this is deliberately NOT a fallback path and never merges: it returns stored rows or an empty
+/// vec. An empty result means "no rows on disc in this window", which is a real, actionable answer —
+/// quietly substituting decimated raw would destroy the only signal the verb exists to carry.
+///
+/// Rows come back at their own `width_ms`, on the tier's own grid, carrying the full stat set
+/// (`min`/`max`/`sum`/`num_count`/`count`/`last`/`first`) — `sum`+`count` rather than a mean, so a
+/// caller re-aggregating into a wider bucket stays exact. Gated by the same `mcp:series.read:call`
+/// as every other projection of this series: same data, same wall, no new grammar.
+pub async fn series_read_rollups(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    series: &str,
+    from_ts: u64,
+    to_ts: u64,
+) -> Result<Vec<RollupRow>, IngestError> {
+    authorize_ingest(principal, ws, "series.read")?;
+    // A fully-qualified series in an equality predicate — `read_rollups` binds `$series` exactly,
+    // never a prefix scan. Load-bearing: a prefix scan over a device's full history blew the
+    // store's ~5s query timeout at 62,663 rows.
+    Ok(read_rollups(store, ws, series, from_ts, to_ts).await?)
 }
 
 /// Bucketed decimation of `series` over a wall-clock window. Same cap as the row read.

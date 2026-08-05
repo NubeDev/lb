@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::bucket::Bucket;
+#[cfg(test)]
+use crate::bucket::Source;
 
 /// The value a rollup tier reads as. Serialized lowercase on the wire (`"avg"`, `"nearest"`, …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,6 +155,11 @@ mod tests {
             first_ts,
             has_first: true,
             value: None,
+            // These fixtures stand in for a plain raw fold; method selection is independent of
+            // which table the bucket came from.
+            source: Source::Raw,
+            raw_count: 2,
+            rollup_count: 0,
         }
     }
 

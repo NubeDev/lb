@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use crate::bucket::Bucket;
+use crate::bucket::{Bucket, Source};
 use crate::rollup::RollupRow;
 
 /// Running aggregate for one bucket.
@@ -37,6 +37,15 @@ pub(crate) struct Acc {
     /// Set when a contributing rollup row predates the `first` column — the bucket then cannot
     /// answer `first`/`nearest` at all, no matter what else merged into it.
     pub(crate) first_missing: bool,
+    /// Samples this bucket absorbed from LIVE RAW rows (`series`).
+    ///
+    /// Tracked separately from `count` — which is the total — because the two sources are the
+    /// question the caller cannot otherwise answer. A merged read returns one flat row shape, so
+    /// without this a bucket folded from an evicted tier is byte-identical to one folded from raw
+    /// that is still on disc, and a UI plotting them has no honest way to say which it drew.
+    pub(crate) raw_count: u64,
+    /// Samples this bucket absorbed from STORED ROLLUP rows (`series_rollup`).
+    pub(crate) rollup_count: u64,
 }
 
 impl Acc {
@@ -68,6 +77,15 @@ pub(crate) fn finish(accs: BTreeMap<u64, Acc>) -> Vec<Bucket> {
             count: a.count,
             first: a.first,
             value: None,
+            source: match (a.raw_count > 0, a.rollup_count > 0) {
+                (true, true) => Source::Mixed,
+                (false, true) => Source::Rollup,
+                // A bucket with neither cannot exist (`finish` never sees an empty acc), and a
+                // raw-only one is the common case; both answer `Raw`.
+                _ => Source::Raw,
+            },
+            raw_count: a.raw_count,
+            rollup_count: a.rollup_count,
             sum: a.sum,
             num_count: a.num_count,
             last_ts: a.last_key.0,
@@ -81,6 +99,7 @@ pub(crate) fn finish(accs: BTreeMap<u64, Acc>) -> Vec<Bucket> {
 /// min/max/avg because the row carries `sum` and `count`, not just the mean.
 pub(crate) fn fold_rollup(acc: &mut Acc, r: &RollupRow) {
     acc.count += r.count;
+    acc.rollup_count += r.count;
     if let (Some(min), Some(max)) = (r.min, r.max) {
         acc.min = Some(acc.min.map_or(min, |m| m.min(min)));
         acc.max = Some(acc.max.map_or(max, |m| m.max(max)));

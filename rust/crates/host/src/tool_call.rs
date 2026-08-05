@@ -250,6 +250,16 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // bundle, so without this alias the outer gate denies the batch verb for every caller —
         // the shipped-but-unusable state the scope's "reuses the grant" clause intended to avoid.
         "series.latest"
+    } else if qualified_tool == "series.rollup.read" {
+        // Reading a series' STORED rollup rows is the same read privilege as reading the series —
+        // it is strictly LESS than what `series.read {mode:"buckets"}` already returns (that read
+        // merges these very rows in, re-aggregated). Its service layer authorizes `series.read`
+        // accordingly, so without this alias the OUTER gate would demand
+        // `mcp:series.rollup.read:call`, which appears in no role bundle — the shipped-but-unusable
+        // state `series.retention.delete` landed in and that the aliases here exist to prevent.
+        // Confirmed against a live node: the token holds `mcp:series.read:call` and the call still
+        // 403'd until this arm existed.
+        "series.read"
     } else if qualified_tool == "series.retention.patch"
         || qualified_tool == "series.retention.delete"
     {

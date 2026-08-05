@@ -75,6 +75,25 @@ pub async fn call_ingest_tool(
                 other => Err(ToolError::BadInput(format!("unknown mode: {other}"))),
             }
         }
+        "series.rollup.read" => {
+            let series = str_arg(input, "series")?;
+            let from = u64_arg(input, "from")
+                .ok_or_else(|| ToolError::BadInput("rollup read needs from (epoch ms)".into()))?;
+            let to = u64_arg(input, "to")
+                .ok_or_else(|| ToolError::BadInput("rollup read needs to (epoch ms)".into()))?;
+            let rows = super::series_read_rollups(store, principal, ws, series, from, to)
+                .await
+                .map_err(ingest_error_to_tool)?;
+            // The distinct tier widths present, ascending, alongside the rows. A caller plotting
+            // stored rollups needs the grid it is plotting ON, and deriving it client-side means
+            // every consumer re-implements the same scan. Empty rows → empty widths, which is the
+            // honest shape for "nothing is stored here" — NOT an error, and never backfilled from
+            // raw (see `series_read_rollups`).
+            let mut widths: Vec<u64> = rows.iter().map(|r| r.width_ms).collect();
+            widths.sort_unstable();
+            widths.dedup();
+            Ok(json!({ "rows": rows, "widths": widths }))
+        }
         "series.retention.set" => {
             let policy: lb_ingest::Policy = serde_json::from_value(input.clone())
                 .map_err(|e| ToolError::BadInput(format!("policy: {e}")))?;

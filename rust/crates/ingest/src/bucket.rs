@@ -38,6 +38,27 @@ pub const MAX_BUCKETS: usize = 2_000;
 /// Chunk size of the internal keyset scan (memory bound per fold step).
 const SCAN_CHUNK: usize = 10_000;
 
+/// Which table's rows a bucket was actually built from.
+///
+/// A merged read ([`merge_rollups`]) draws from two tables with one flat wire shape, so without
+/// this the caller cannot tell a bucket folded from an evicted tier from one folded from live raw
+/// — they are byte-identical. That ambiguity is the whole reason a viewer cannot tell "this window
+/// is empty by retention policy" from "this read is broken".
+///
+/// `Mixed` is not a rounding of the other two: within ONE bucket, raw and rollup rows can both
+/// contribute when the requested width straddles the eviction boundary. Reporting such a bucket as
+/// either pure source would be a lie in one direction or the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    /// Built only from live rows in `series`.
+    Raw,
+    /// Built only from stored rows in `series_rollup`.
+    Rollup,
+    /// Both contributed — the bucket straddles the raw-eviction boundary.
+    Mixed,
+}
+
 /// One decimated bucket. `t` is the bucket's start (epoch ms, aligned to `width_ms`); min/max/avg
 /// are over numeric payloads only; `last` is the raw payload of the chronologically last sample.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -56,6 +77,13 @@ pub struct Bucket {
     /// behaviour: the full stat row and no `value` column (`method.rs`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<Value>,
+    /// Which table(s) this bucket was built from. ON the wire — it is the field that makes a
+    /// merged read honest about itself.
+    pub source: Source,
+    /// The `count` split by origin, so a `Mixed` bucket is not just labelled but quantified. Sums
+    /// to `count` by construction.
+    pub raw_count: u64,
+    pub rollup_count: u64,
     /// Exact-re-aggregation carriers (GC stores these on rollup rows); not part of the wire shape.
     #[serde(skip_serializing)]
     pub sum: f64,
@@ -159,6 +187,7 @@ pub async fn read_buckets_fold(
         for s in &page.rows {
             let acc = accs.entry(floor(s.ts)).or_default();
             acc.count += 1;
+            acc.raw_count += 1;
             if let Some(v) = s.payload.as_f64() {
                 acc.fold_num(v);
             }
@@ -253,6 +282,9 @@ async fn raw_bucket_query(
             .entry(start_of_index(r.b as i128, width_ms, phase))
             .or_default();
         acc.count = r.count;
+        // Assignment, not `+=`, mirrors `count` above: the pushdown populates each bucket once,
+        // before `merge_rollups` runs, so every sample it reports is by definition raw.
+        acc.raw_count = r.count;
         acc.last = r.last;
         acc.last_key = (r.last_ts, 0); // ts only; the ordered subquery already broke the seq tie
                                        // Same ordered subquery, opposite end: `array::first` over `ORDER BY t, seq` is the

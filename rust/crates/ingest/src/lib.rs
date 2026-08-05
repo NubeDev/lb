@@ -54,7 +54,7 @@ mod write;
 
 pub use align::{bucket_start, Align};
 pub use bucket::{
-    effective_width, read_buckets, read_buckets_fold, Bucket, BucketQuery, MAX_BUCKETS,
+    effective_width, read_buckets, read_buckets_fold, Bucket, BucketQuery, Source, MAX_BUCKETS,
 };
 pub use cap::{cap_series, default_cap_notice, sample_count, CAP_EVICT_BATCH, DEFAULT_MAX_SAMPLES};
 pub use clock_sanity::{
