@@ -8,7 +8,7 @@
 //!     depth 5 may hold leaves but no further `group`).
 
 use super::error::NavError;
-use super::model::{NavItem, MAX_GROUP_DEPTH, MAX_ICON_LEN, MAX_ITEMS};
+use super::model::{NavItem, MAX_GROUP_DEPTH, MAX_ICON_COLOR_LEN, MAX_ICON_LEN, MAX_ITEMS};
 
 /// The reserved pick sentinel (no-lockout scope) — a `nav_pref.active` of this value means "force the
 /// built-in sidebar; ignore team/default tiers". It is NOT a real nav id, so `nav.save` must reject it
@@ -83,6 +83,11 @@ fn check_item(item: &NavItem, depth: usize) -> Result<(), NavError> {
     if item.icon.len() > MAX_ICON_LEN {
         return Err(NavError::BadInput(format!(
             "nav item icon name exceeds {MAX_ICON_LEN} chars"
+        )));
+    }
+    if item.icon_color.len() > MAX_ICON_COLOR_LEN {
+        return Err(NavError::BadInput(format!(
+            "nav item icon color exceeds {MAX_ICON_COLOR_LEN} chars"
         )));
     }
     if item.kind == "group" {

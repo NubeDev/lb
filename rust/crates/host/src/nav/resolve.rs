@@ -402,6 +402,7 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         kind: "surface".into(),
         label: label_or(&item.label, &item.surface),
         icon: item.icon.clone(),
+        icon_color: item.icon_color.clone(),
         surface: item.surface.clone(),
         dashboard: String::new(),
         ext: String::new(),
@@ -431,6 +432,7 @@ async fn resolve_dashboard(
             kind: "dashboard".into(),
             label: label_or(&item.label, &d.title),
             icon: item.icon.clone(),
+            icon_color: item.icon_color.clone(),
             surface: String::new(),
             dashboard: format!("dashboard:{id}"),
             ext: String::new(),
@@ -471,6 +473,7 @@ async fn resolve_ext(
         Some(row) => Ok(Some(ResolvedItem {
             kind: "ext".into(),
             icon: item.icon.clone(),
+            icon_color: item.icon_color.clone(),
             // The extension's own declared label (via `ext.list`) when the author left it empty,
             // falling back to the opaque id itself.
             label: label_or(
@@ -525,6 +528,10 @@ async fn resolve_tag_group(
                 kind: "dashboard".into(),
                 label: d.title.clone(),
                 icon: String::new(),
+                // A dynamically expanded child has no authored icon of its own, but it INHERITS the
+                // group's color so the whole fan-out reads as one branch rather than as uncolored
+                // strays under a colored parent.
+                icon_color: item.icon_color.clone(),
                 surface: String::new(),
                 dashboard: format!("dashboard:{id}"),
                 ext: String::new(),
@@ -539,6 +546,7 @@ async fn resolve_tag_group(
         kind: "group".into(),
         label: label_or(&item.label, "Tagged"),
         icon: item.icon.clone(),
+        icon_color: item.icon_color.clone(),
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),
@@ -578,6 +586,7 @@ async fn resolve_group(
         kind: "group".into(),
         label: label_or(&item.label, "Group"),
         icon: item.icon.clone(),
+        icon_color: item.icon_color.clone(),
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),
