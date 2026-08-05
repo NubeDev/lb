@@ -958,7 +958,7 @@ async fn member_kill_switch_off_skips_all_deliveries() {
     let patch: lb_prefs::Prefs =
         serde_json::from_value(serde_json::json!({ "insight_notifications": false }))
             .expect("prefs patch");
-    lb_prefs::set_user_prefs(&node.store, "ws-a", "user:ada", &patch)
+    lb_prefs::set_user_prefs(&node.store, "ws-a", "user:ada", &patch, &[])
         .await
         .expect("set prefs");
 

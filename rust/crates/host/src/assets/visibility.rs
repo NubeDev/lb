@@ -14,6 +14,8 @@
 
 use lb_assets::{list_related, Asset, Doc};
 use lb_auth::Principal;
+
+use crate::teams::bare_team;
 use lb_caps::Action;
 use lb_store::Store;
 
@@ -62,7 +64,7 @@ pub async fn may_read_doc(
             continue;
         }
         // Otherwise treat `subject` as a team and check membership.
-        if list_related(store, ws, MEMBER, subject)
+        if list_related(store, ws, MEMBER, bare_team(subject))
             .await?
             .iter()
             .any(|m| m == principal.sub())

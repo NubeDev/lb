@@ -17,8 +17,9 @@ use lb_authz::Subject;
 
 use super::model::{Cell, DashboardTime, Toolbar, Visibility};
 use super::{
-    dashboard_access_check, dashboard_delete, dashboard_get, dashboard_list, dashboard_pin,
-    dashboard_save_meta, dashboard_share, dashboard_share_closure, DashboardError, PageMeta,
+    dashboard_access_check, dashboard_delete, dashboard_get, dashboard_list, dashboard_list_shares,
+    dashboard_pin, dashboard_save_meta, dashboard_share, dashboard_share_closure,
+    dashboard_unshare, DashboardError, PageMeta,
 };
 
 /// Dispatch a `dashboard.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the
@@ -156,6 +157,28 @@ pub async fn call_dashboard_tool(
             .await
             .map_err(to_tool)?;
             Ok(json!({ "ok": true }))
+        }
+        "dashboard.unshare" => {
+            // The inverse of `dashboard.share`, under the SAME cap (owner-only inside).
+            let d = dashboard_unshare(
+                store,
+                principal,
+                ws,
+                str_arg(input, "id")?,
+                str_arg(input, "team")?,
+                u64_arg(input, "now")?,
+            )
+            .await
+            .map_err(to_tool)?;
+            Ok(serde_json::to_value(d).unwrap_or(Value::Null))
+        }
+        "dashboard.list_shares" => {
+            // The share-roster read under the same `mcp:dashboard.share:call` cap (owner-only inside),
+            // mirroring `nav.list_shares`.
+            let teams = dashboard_list_shares(store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(to_tool)?;
+            Ok(json!({ "teams": teams }))
         }
         "dashboard.share" => {
             let visibility = visibility_arg(input)?;

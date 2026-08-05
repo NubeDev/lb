@@ -446,6 +446,7 @@ async fn the_confusion_fix_the_same_task_narrows_from_the_whole_surface_to_the_f
             agent_persona: Some("builtin.data-analyst".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -529,6 +530,7 @@ async fn a_ws_b_default_persona_never_affects_a_ws_a_run() {
             agent_persona: Some("builtin.data-analyst".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();

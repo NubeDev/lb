@@ -42,7 +42,7 @@ async fn member_with_device_and_lang(store: &Store, ws: &str, sub: &str, lang: O
             language: Some(l.to_string()),
             ..Default::default()
         };
-        set_user_prefs(store, ws, sub, &patch).await.unwrap();
+        set_user_prefs(store, ws, sub, &patch, &[]).await.unwrap();
     }
 }
 

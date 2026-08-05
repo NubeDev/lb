@@ -16,6 +16,7 @@ use tower::ServiceExt; // for `oneshot`
 const SET: &str = "mcp:prefs.set:call";
 const GET: &str = "mcp:prefs.get:call";
 const RESOLVE: &str = "mcp:prefs.resolve:call";
+const SET_DEFAULT: &str = "mcp:prefs.set_default:call";
 
 fn put_req(uri: &str, body: Value) -> Request<Body> {
     Request::builder()
@@ -104,6 +105,182 @@ async fn format_and_convert_need_no_prefs_cap() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body: Value = json_body(resp).await;
     assert_eq!(body["text"], "23.3 kn");
+}
+
+/// The workspace-default theme reaches a member who has NEVER set one — the shape a fresh user in a
+/// branded workspace sees. (The reported bug was the absence of the default, not a broken fold.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn workspace_default_theme_reaches_a_fresh_member() {
+    let (gw, key) = gateway().await;
+    let admin = token(&key, "user:ada", "acme", &[SET, SET_DEFAULT, RESOLVE]);
+    let member = token(&key, "user:test", "acme", &[SET, GET, RESOLVE]);
+
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            put_req(
+                "/prefs/default",
+                json!({ "ui_theme": { "preset": "corporate" } }),
+            ),
+            &admin,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = router(gw.clone())
+        .oneshot(bearer(json_post("/prefs/resolve", json!({})), &member))
+        .await
+        .unwrap();
+    let body: Value = json_body(resp).await;
+    assert_eq!(
+        body["resolved"]["ui_theme"]["preset"], "corporate",
+        "a member with no stored theme inherits the workspace default"
+    );
+}
+
+/// `_clear` over the wire: a member who HAS their own theme releases it and inherits again. This is
+/// what the customizer's Reset sends; before the axis was clearable, resetting wrote the built-in
+/// default explicitly and shadowed the workspace default forever.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clearing_ui_theme_over_http_restores_inheritance() {
+    let (gw, key) = gateway().await;
+    let admin = token(&key, "user:ada", "acme", &[SET, SET_DEFAULT, RESOLVE]);
+    let member = token(&key, "user:test", "acme", &[SET, GET, RESOLVE]);
+
+    router(gw.clone())
+        .oneshot(bearer(
+            put_req(
+                "/prefs/default",
+                json!({ "ui_theme": { "preset": "corporate" } }),
+            ),
+            &admin,
+        ))
+        .await
+        .unwrap();
+
+    // The member picks their own theme — now shadowing the workspace default.
+    router(gw.clone())
+        .oneshot(bearer(
+            put_req("/prefs", json!({ "ui_theme": { "preset": "neon" } })),
+            &member,
+        ))
+        .await
+        .unwrap();
+    let resp = router(gw.clone())
+        .oneshot(bearer(json_post("/prefs/resolve", json!({})), &member))
+        .await
+        .unwrap();
+    let body: Value = json_body(resp).await;
+    assert_eq!(body["resolved"]["ui_theme"]["preset"], "neon");
+
+    // Reset: clear the axis. A bare `_clear` with no other field is a complete request.
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            put_req("/prefs", json!({ "_clear": ["ui_theme"] })),
+            &member,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = router(gw.clone())
+        .oneshot(bearer(json_post("/prefs/resolve", json!({})), &member))
+        .await
+        .unwrap();
+    let body: Value = json_body(resp).await;
+    assert_eq!(
+        body["resolved"]["ui_theme"]["preset"], "corporate",
+        "clearing restores the workspace default rather than pinning the built-in"
+    );
+}
+
+/// `_clear` is lifted out of the body before the patch is parsed, so it never lands as a stored axis
+/// — and a patch alongside it still applies.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clear_key_is_not_stored_as_an_axis() {
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:ada", "acme", &[SET, GET, RESOLVE]);
+
+    router(gw.clone())
+        .oneshot(bearer(
+            put_req("/prefs", json!({ "ui_theme": { "preset": "neon" } })),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            put_req(
+                "/prefs",
+                json!({ "language": "es", "_clear": ["ui_theme"] }),
+            ),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = router(gw.clone())
+        .oneshot(bearer(get_req("/prefs"), &tok))
+        .await
+        .unwrap();
+    let body: Value = json_body(resp).await;
+    assert_eq!(body["prefs"]["language"], "es", "the patch applied");
+    assert!(
+        body["prefs"]["ui_theme"].is_null(),
+        "the cleared axis is unset"
+    );
+    assert!(
+        body["prefs"].get("_clear").is_none(),
+        "`_clear` is a directive, never a stored field"
+    );
+}
+
+/// An unknown axis name is a loud 400, not a silent no-op — a typo'd reset that quietly did nothing
+/// would be indistinguishable from a working one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unknown_clear_axis_is_rejected() {
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:ada", "acme", &[SET, GET, RESOLVE]);
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            put_req("/prefs", json!({ "_clear": ["ui_thmee"] })),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Clearing is gated by the SAME cap as setting — `_clear` must not become a side door for a caller
+/// who cannot write the record.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clear_needs_the_write_cap() {
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:eve", "acme", &[GET, RESOLVE]); // no SET
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            put_req("/prefs", json!({ "_clear": ["ui_theme"] })),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+/// Clearing the workspace default is admin-gated like any other default write.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clearing_the_default_needs_the_admin_cap() {
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:bob", "acme", &[SET]); // no SET_DEFAULT
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            put_req("/prefs/default", json!({ "_clear": ["ui_theme"] })),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

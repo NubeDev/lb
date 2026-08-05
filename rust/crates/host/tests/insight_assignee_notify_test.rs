@@ -702,7 +702,7 @@ async fn the_member_kill_switch_silences_assignment_notifications() {
         .unwrap()
         .unwrap_or_default();
     prefs.insight_notifications = Some(false);
-    lb_prefs::set_user_prefs(&node.store, "acme", "user:priya", &prefs)
+    lb_prefs::set_user_prefs(&node.store, "acme", "user:priya", &prefs, &[])
         .await
         .unwrap();
 

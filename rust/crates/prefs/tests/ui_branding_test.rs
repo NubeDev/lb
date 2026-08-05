@@ -33,7 +33,7 @@ async fn branding_blob_round_trips_unchanged() {
         ui_branding: Some(acme_brand()),
         ..Prefs::default()
     };
-    set_workspace_prefs(&store, "acme", &p).await.unwrap();
+    set_workspace_prefs(&store, "acme", &p, &[]).await.unwrap();
 
     // set_default writes the workspace-default record; resolve returns it for a member who set
     // nothing. (Branding is admin-owned — only the ws-default link ever carries it.)
@@ -58,6 +58,7 @@ async fn branding_patch_leaves_i18n_axes_untouched() {
             language: Some("es".into()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -68,6 +69,7 @@ async fn branding_patch_leaves_i18n_axes_untouched() {
             ui_branding: Some(acme_brand()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -91,6 +93,7 @@ async fn branding_does_not_merge_with_member_ui_theme_patch() {
             ui_branding: Some(acme_brand()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -102,6 +105,7 @@ async fn branding_does_not_merge_with_member_ui_theme_patch() {
             ui_theme: Some(json!({ "mode": "dark" })),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -138,6 +142,7 @@ async fn branding_is_workspace_isolated() {
             ui_branding: Some(brand_a.clone()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -148,6 +153,7 @@ async fn branding_is_workspace_isolated() {
             ui_branding: Some(brand_b.clone()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -201,6 +207,7 @@ async fn user_prefs_ui_branding_is_round_tripped_but_member_never_writes_it() {
             ui_branding: Some(acme_brand()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();

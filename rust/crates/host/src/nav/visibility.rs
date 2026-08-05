@@ -14,6 +14,8 @@
 
 use lb_assets::list_related;
 use lb_auth::Principal;
+
+use crate::teams::bare_team;
 use lb_store::Store;
 
 use super::error::NavError;
@@ -46,7 +48,7 @@ pub async fn may_read_nav(
         Visibility::Team => {
             let teams = list_related(store, ws, SHARE, &nav.id).await?;
             for team in &teams {
-                if list_related(store, ws, MEMBER, team)
+                if list_related(store, ws, MEMBER, bare_team(team))
                     .await?
                     .iter()
                     .any(|m| m == principal.sub())

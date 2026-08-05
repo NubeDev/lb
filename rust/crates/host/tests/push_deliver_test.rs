@@ -163,6 +163,7 @@ async fn quiet_hours_suppresses_muted_member() {
             push_muted: Some(true),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();

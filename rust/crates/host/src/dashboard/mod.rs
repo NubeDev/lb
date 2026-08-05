@@ -30,6 +30,7 @@ mod get;
 mod grafana;
 mod kind;
 mod list;
+mod list_shares;
 mod managed;
 mod model;
 mod pin;
@@ -41,6 +42,7 @@ mod share_closure;
 mod store;
 mod summary;
 mod tool;
+mod unshare;
 mod views;
 mod visibility;
 
@@ -56,6 +58,7 @@ pub use grafana::{
 };
 pub use kind::{KIND_DASHBOARD, KIND_REPORT};
 pub use list::dashboard_list;
+pub use list_shares::dashboard_list_shares;
 pub use managed::managed_by_of;
 pub use model::{
     Action, Cell, Dashboard, DashboardTime, QueryOptions, Source, Target, Toolbar, Variable,
@@ -72,5 +75,6 @@ pub use share_closure::{
 pub use store::scan_dashboards;
 pub use summary::DashboardSummary;
 pub use tool::call_dashboard_tool;
+pub use unshare::dashboard_unshare;
 pub use views::{builtin_view_ids, check_view_cells};
 pub use visibility::may_read_dashboard;

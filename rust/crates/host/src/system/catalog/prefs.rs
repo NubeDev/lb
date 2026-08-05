@@ -15,7 +15,7 @@ pub(super) const PREFS: &[HostTool] = &[
     HostTool {
         tool: "prefs.set",
         group: "prefs",
-        description: "set one of your member preference axes",
+        description: "set your member preference axes (`clear: [axis]` resets one to inherit)",
     },
     HostTool {
         tool: "prefs.resolve",
@@ -25,7 +25,7 @@ pub(super) const PREFS: &[HostTool] = &[
     HostTool {
         tool: "prefs.set_default",
         group: "prefs",
-        description: "set a workspace-default preference axis (admin)",
+        description: "set workspace-default preference axes (admin; `clear: [axis]` to unset)",
     },
     HostTool {
         tool: "prefs.catalog",

@@ -456,6 +456,7 @@ async fn swap_test_in_house_menu_and_identity_reflect_a_record_only_persona() {
             agent_persona: Some("analyst".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .expect("set active persona");
@@ -499,6 +500,7 @@ async fn narrowing_a_persona_tool_the_caller_lacks_is_never_added() {
             agent_persona: Some("greedy".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -675,6 +677,7 @@ async fn a_dangling_active_persona_warns_and_runs_un_narrowed() {
             agent_persona: Some("temp".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -728,6 +731,7 @@ async fn explicit_persona_overrides_the_active_one() {
             agent_persona: Some("active-one".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -803,6 +807,7 @@ async fn extends_unions_parent_tools_and_skips_a_self_cycle() {
             agent_persona: Some("child".into()),
             ..Default::default()
         },
+        &[],
     )
     .await
     .unwrap();

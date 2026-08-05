@@ -5,20 +5,24 @@
 //! no tenant data). The workspace + caps come from the token, never the body.
 //!
 //!   GET  /prefs                 -> prefs.get
-//!   PUT  /prefs                 -> prefs.set            (body: a Prefs patch)
+//!   PUT  /prefs                 -> prefs.set            (body: a Prefs patch + optional `_clear`)
 //!   POST /prefs/resolve         -> prefs.resolve        (body: { override?: Prefs })
-//!   PUT  /prefs/default         -> prefs.set_default    (admin; body: a Prefs patch)
+//!   PUT  /prefs/default         -> prefs.set_default    (admin; body: a Prefs patch + `_clear`)
 //!   POST /format/datetime       -> format.datetime
 //!   POST /format/number         -> format.number
 //!   POST /format/quantity       -> format.quantity
 //!   POST /convert/unit          -> convert.unit
+//!
+//! On the two write routes the body IS the patch (no envelope), so the axes-to-clear list rides an
+//! underscore-reserved `_clear` key alongside the axis fields rather than wrapping the body in a new
+//! shape — the pre-existing clients that send a bare patch keep working untouched.
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use lb_host::{prefs_get, prefs_resolve, prefs_set, prefs_set_default, PrefsSvcError};
 use lb_mcp::ToolError;
-use lb_prefs::Prefs;
+use lb_prefs::{Prefs, PrefsAxis};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -39,16 +43,17 @@ pub async fn get_prefs(
     Ok(Json(serde_json::json!({ "prefs": prefs })))
 }
 
-/// `PUT /prefs` — merge a patch into the caller's own record.
+/// `PUT /prefs` — merge a patch into the caller's own record, clearing any `_clear` axes.
 pub async fn set_prefs(
     State(gw): State<Gateway>,
     headers: HeaderMap,
-    Json(patch): Json<Prefs>,
+    Json(body): Json<Value>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    prefs_set(&gw.node.store, &p, p.ws(), &patch)
+    let (patch, clear) = split_write_body(body)?;
+    prefs_set(&gw.node.store, &p, p.ws(), &patch, &clear)
         .await
         .map_err(svc_status)?;
     Ok(StatusCode::NO_CONTENT)
@@ -80,15 +85,34 @@ pub async fn resolve_prefs(
 pub async fn set_default_prefs(
     State(gw): State<Gateway>,
     headers: HeaderMap,
-    Json(patch): Json<Prefs>,
+    Json(body): Json<Value>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    prefs_set_default(&gw.node.store, &p, p.ws(), &patch)
+    let (patch, clear) = split_write_body(body)?;
+    prefs_set_default(&gw.node.store, &p, p.ws(), &patch, &clear)
         .await
         .map_err(svc_status)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Split a write body into the `Prefs` patch and the `_clear` axis list. `_clear` is lifted out
+/// before deserializing the patch, so it never reaches `Prefs` as an unknown field — and can never be
+/// mistaken for a stored axis. Shared by both write routes.
+fn split_write_body(mut body: Value) -> Result<(Prefs, Vec<PrefsAxis>), (StatusCode, String)> {
+    let clear_val = body
+        .as_object_mut()
+        .and_then(|m| m.remove("_clear"))
+        .unwrap_or(Value::Null);
+    let clear: Vec<PrefsAxis> = match clear_val {
+        Value::Null => Vec::new(),
+        v => serde_json::from_value(v)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("_clear: {e}")))?,
+    };
+    let patch: Prefs = serde_json::from_value(body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("patch: {e}")))?;
+    Ok((patch, clear))
 }
 
 /// `POST /format/datetime` — the grant-free formatter. Authenticated for identity; no cap required.

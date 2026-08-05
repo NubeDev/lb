@@ -249,43 +249,6 @@ pub async fn pin_dashboards(
     Ok(Json(serde_json::to_value(d).unwrap_or(Value::Null)))
 }
 
-/// `POST /dashboards/{id}/share` body — set visibility (`private|team|workspace`) + optional team.
-#[derive(Debug, Deserialize)]
-pub struct ShareDashboard {
-    pub visibility: String,
-    #[serde(default)]
-    pub team: Option<String>,
-}
-
-/// `POST /dashboards/{id}/share` — set a dashboard's visibility / write the S4 share edge. Gated
-/// `dashboard.share`; owner-only. Returns the updated dashboard.
-pub async fn share_dashboard(
-    State(gw): State<Gateway>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-    Json(body): Json<ShareDashboard>,
-) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers)
-        .await
-        .map_err(|e| e.into_response())?;
-    let visibility = parse_visibility(&body.visibility).ok_or((
-        StatusCode::BAD_REQUEST,
-        format!("bad visibility: {}", body.visibility),
-    ))?;
-    let d = lb_host::dashboard_share(
-        &gw.node.store,
-        &p,
-        p.ws(),
-        &id,
-        visibility,
-        body.team.as_deref(),
-        gw.now(),
-    )
-    .await
-    .map_err(status)?;
-    Ok(Json(serde_json::to_value(d).unwrap_or(Value::Null)))
-}
-
 /// `POST /dashboards/import` body — a Grafana dashboard JSON + (on commit) datasource mappings + the
 /// target id. Omit `mappings` for a PREVIEW (report only, no write). The workspace comes from the
 /// token, never the JSON (viz import-export scope, tenancy).
@@ -340,7 +303,7 @@ pub async fn export_dashboard(
     Ok(Json(json))
 }
 
-fn parse_visibility(s: &str) -> Option<DashboardVisibility> {
+pub(super) fn parse_visibility(s: &str) -> Option<DashboardVisibility> {
     match s {
         "private" => Some(DashboardVisibility::Private),
         "team" => Some(DashboardVisibility::Team),
@@ -351,7 +314,7 @@ fn parse_visibility(s: &str) -> Option<DashboardVisibility> {
 
 /// Map a dashboard gate outcome onto an HTTP status. `Denied` is `403` (opaque); `NotFound` `404`;
 /// `BadInput` `400`; a store fault is `403`-opaque like the other gateway routes.
-fn status(e: DashboardError) -> (StatusCode, String) {
+pub(super) fn status(e: DashboardError) -> (StatusCode, String) {
     match e {
         DashboardError::Denied => (StatusCode::FORBIDDEN, e.to_string()),
         // The typed managed-denial: still `403`, but the body names the managing extension

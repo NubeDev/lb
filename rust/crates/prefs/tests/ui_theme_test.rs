@@ -27,7 +27,7 @@ async fn theme_blob_round_trips_unchanged() {
         ui_theme: Some(member_theme()),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &p)
+    set_user_prefs(&store, "acme", "user:ada", &p, &[])
         .await
         .unwrap();
 
@@ -54,6 +54,7 @@ async fn theme_patch_leaves_i18n_axes_untouched() {
             language: Some("es".into()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -65,6 +66,7 @@ async fn theme_patch_leaves_i18n_axes_untouched() {
             ui_theme: Some(member_theme()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -89,6 +91,7 @@ async fn member_theme_wins_whole_over_workspace_default() {
             ui_theme: Some(ws_default_theme()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -100,6 +103,7 @@ async fn member_theme_wins_whole_over_workspace_default() {
             ui_theme: Some(member_theme()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -126,6 +130,7 @@ async fn workspace_default_fills_in_for_member_with_no_theme() {
             ui_theme: Some(ws_default_theme()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -163,6 +168,7 @@ async fn theme_is_workspace_isolated() {
             ui_theme: Some(theme_a.clone()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
@@ -174,6 +180,7 @@ async fn theme_is_workspace_isolated() {
             ui_theme: Some(theme_b.clone()),
             ..Prefs::default()
         },
+        &[],
     )
     .await
     .unwrap();
