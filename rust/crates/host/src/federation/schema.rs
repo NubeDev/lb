@@ -53,7 +53,7 @@ pub async fn federation_schema<L: Launcher>(
     }
     let input = input.to_string();
 
-    let out = crate::native::call_sidecar(
+    let out = crate::native::call_sidecar_mediated(
         node,
         launcher,
         caller,

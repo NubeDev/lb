@@ -71,7 +71,62 @@ pub async fn call_sidecar<L: Launcher>(
     ts: u64,
 ) -> Result<String, NativeServiceError> {
     authorize_native(caller, ws, "call")?;
+    dispatch_sidecar(node, launcher, caller, ws, ext_id, tool, input, ts).await
+}
 
+/// Dispatch to the child for a HOST-MEDIATED verb — one the host has ALREADY gated on its own
+/// capability (`federation.query`, `federation.write`, `datasource.test`, …) and whose arguments the
+/// host built by enumeration rather than passing the caller's blob through.
+///
+/// The difference from [`call_sidecar`] is the absence of the `mcp:native.call:call` check, and that
+/// absence is the point. `mcp:native.<verb>:call` gates the supervisor CONTROL PLANE — install /
+/// start / stop / restart / status, i.e. "may this caller spawn and drive processes" (see
+/// `authorize::authorize_native`). A mediated data-plane read is not that call: the caller never
+/// names the extension, the tool, or the DSN — the host does, exactly as it already mediates the DSN
+/// under the federation extension's own grant rather than the caller's.
+///
+/// Requiring the control-plane cap here made the two gates one, so a role could hold a verb it was
+/// structurally unable to execute. That is what broke the viewer/member tier: the builtin bundle
+/// grants `mcp:federation.query:call` ("a viewer's tiles read series/federation") while
+/// `mcp:native.call:call` sits on the AUTHOR tier with datasource REGISTRATION — so every
+/// datasource-backed panel returned `denied` for a read-only user, and the only workaround was to
+/// hand them authoring reach (`datasource.add`/`remove`, `secret:federation/*:write`) to draw a
+/// chart. The verb gate is not weakened: each mediated caller authorizes first and they are
+/// deliberately DIFFERENT caps (a read is `federation.query`, a mutation is `federation.write`), so
+/// a viewer still cannot write, delete, or migrate.
+///
+/// Identity propagation is unchanged — the real `caller` is still projected into the frame, so a
+/// sidecar's per-caller row visibility sees the same subject either entry point.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
+pub async fn call_sidecar_mediated<L: Launcher>(
+    node: &Node,
+    launcher: &L,
+    caller: &Principal,
+    ws: &str,
+    ext_id: &str,
+    tool: &str,
+    input: &str,
+    ts: u64,
+) -> Result<String, NativeServiceError> {
+    dispatch_sidecar(node, launcher, caller, ws, ext_id, tool, input, ts).await
+}
+
+/// The shared dispatch body: resolve the live child, call it (restart-and-retry once on a transport
+/// fault), decay restart accounting. Gating is the CALLER's responsibility — every entry point above
+/// authorizes before reaching here.
+// Argument count is the explicit dependency list; bundling it into a struct would be a refactor.
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_sidecar<L: Launcher>(
+    node: &Node,
+    launcher: &L,
+    caller: &Principal,
+    ws: &str,
+    ext_id: &str,
+    tool: &str,
+    input: &str,
+    ts: u64,
+) -> Result<String, NativeServiceError> {
     let handle = node
         .sidecars
         .get(ws, ext_id)

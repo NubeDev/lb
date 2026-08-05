@@ -89,7 +89,12 @@ pub async fn federation_query<L: Launcher>(
     }
     let input = input.to_string();
 
-    let out = crate::native::call_sidecar(
+    // MEDIATED dispatch: this verb gated itself on `mcp:federation.query:call` at the top and built
+    // the child input by enumeration above, so the caller needs no supervisor CONTROL-PLANE reach
+    // (`mcp:native.call:call`) to run a read the host has already fully authorized. Requiring it
+    // made a read-only tier hold `federation.query` it could never execute — see
+    // `native::tool::call_sidecar_mediated`.
+    let out = crate::native::call_sidecar_mediated(
         node,
         launcher,
         caller,

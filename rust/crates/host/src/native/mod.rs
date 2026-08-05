@@ -44,4 +44,4 @@ pub use lifecycle::{reset_native, restart_native, status_native, stop_native};
 pub use registry::SidecarMap;
 pub use spec::build_spec;
 pub use status::{read_status, record_status, Lifecycle, NativeStatus};
-pub use tool::{call_native_tool, call_sidecar};
+pub use tool::{call_native_tool, call_sidecar, call_sidecar_mediated};

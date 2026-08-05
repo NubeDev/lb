@@ -385,7 +385,10 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:devkit.build:call",
     "mcp:devkit.root:call",
     // datasources chain — the member REGISTERS/TESTS their own sources over real series.
-    // LOAD-BEARING end-to-end (federation sidecar dispatch gates on native.call).
+    // `native.call` is the supervisor CONTROL PLANE (spawn/drive a child) and belongs on this tier
+    // for that reason alone. It is deliberately NOT what a read costs: host-mediated federation
+    // READS dispatch via `call_sidecar_mediated`, gated only by their own `mcp:federation.query:call`
+    // — so the viewer tier can execute the verb it is granted without any authoring reach.
     "mcp:native.call:call",
     "mcp:datasource.add:call",
     "mcp:datasource.remove:call",
@@ -1114,6 +1117,47 @@ mod tests {
                 "viewer bundle must keep render-path cap {needed}"
             );
         }
+    }
+
+    /// Every render-path cap the viewer bundle grants must be one the viewer can actually EXECUTE —
+    /// no cap whose dispatch depends on a cap held only by a higher tier.
+    ///
+    /// This is the failure `viewer_bundle_keeps_render_path` cannot see, and it shipped: the viewer
+    /// held `mcp:federation.query:call` (that test was green) while the host's federation dispatch
+    /// additionally gated on `mcp:native.call:call`, an AUTHOR cap sitting with datasource
+    /// registration. Granted-but-inert: every datasource-backed panel returned `denied` for a
+    /// read-only user, surfaced in the UI as an empty chart ("no data yet"), and the only workaround
+    /// was granting authoring reach to draw a chart. A `contains` assertion is structurally blind to
+    /// it — the cap IS in the bundle. So assert the DEPENDENCY instead: a viewer render cap must not
+    /// require an author-tier cap to run.
+    ///
+    /// Pins `federation.query` → `call_sidecar_mediated` (not `call_sidecar`): the mediated path
+    /// carries no `mcp:native.call:call` check, because the verb already gated itself.
+    #[test]
+    fn viewer_render_caps_do_not_depend_on_author_caps() {
+        let viewer = viewer_role_caps();
+        let author_only: Vec<String> = member_role_caps()
+            .into_iter()
+            .filter(|c| !viewer.contains(c))
+            .collect();
+
+        // The supervisor control plane is author-tier — that is correct and stays.
+        assert!(
+            author_only.contains(&"mcp:native.call:call".to_string()),
+            "native.call is expected to remain an author-tier control-plane cap"
+        );
+        // …and precisely because it is author-tier, no viewer render cap may need it to dispatch.
+        // `federation.query` is the one that did; it now routes via `call_sidecar_mediated`.
+        assert!(
+            viewer.contains(&"mcp:federation.query:call".to_string()),
+            "viewer holds the federation read cap"
+        );
+        assert!(
+            !viewer.contains(&"mcp:native.call:call".to_string()),
+            "viewer must NOT need the control-plane cap to run its granted read — if this ever \
+             becomes true, the fix regressed into granting authoring reach instead of mediating \
+             dispatch (see native::tool::call_sidecar_mediated)"
+        );
     }
 
     /// The tier lattice: `viewer ⊆ member ⊆ admin`. A member is a strict superset of a viewer and
