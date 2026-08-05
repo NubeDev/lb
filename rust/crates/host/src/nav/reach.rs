@@ -26,46 +26,72 @@ use std::collections::BTreeSet;
 use lb_auth::Principal;
 
 use super::model::{ResolvedItem, ResolvedNav, ResolvedSource};
+use super::reach_record::{record_reach_caps, DASHBOARD_SURFACE};
 use crate::authz::holds_cap;
 
 /// The wildcard reach cap a fallback (no-curated-nav) subject holds — reaches every core surface, so a
 /// default member/admin is never locked out by a nav they never authored.
 pub const REACH_ALL: &str = "reach:*:view";
 
-/// The core surface a `dashboard`-kind nav item opens under — a dashboard page renders on the
-/// `dashboards` surface (UI: `selectDashboard` navigates to `fullPathForSurface(ws, "dashboards")`), so
-/// a nav that grants a dashboard grants reach to the Dashboards surface.
-const DASHBOARD_SURFACE: &str = "dashboards";
+/// What a resolved nav reaches: the core surfaces it names, and — separately — the individual
+/// dashboard records it names. The split is what makes record granularity possible: a nav that names
+/// the `dashboards` SURFACE expresses "the whole page", while a nav that names only dashboard ITEMS
+/// expresses "these boards" (see [`super::reach_record`]).
+#[derive(Default)]
+struct Reached {
+    surfaces: BTreeSet<String>,
+    dashboards: BTreeSet<String>,
+}
 
-/// Derive the `reach:<surface>:view` caps `resolved` grants, sorted + deduped.
+/// Derive the reach caps `resolved` grants, sorted + deduped.
 ///
-/// - **Fallback** (no curated nav) → `[reach:*:view]` — reaches all (never locked out).
+/// - **Fallback** (no curated nav) → `[reach:*:view]` — reaches all (never locked out). No record caps,
+///   so record reach is never armed for a fallback subject.
 /// - **Curated** (pick / team / workspace-default) → one `reach:<surface>:view` per distinct core
-///   surface the menu (and the caller's pins) reach, walking `group` children one level.
+///   surface the menu (and the caller's pins) reach, walking `group` children, PLUS record-granular
+///   `reach:dashboards/{id}:view` caps when the menu names dashboards but not the Dashboards surface
+///   itself (nav-reach-record scope).
 ///
 /// The result is unioned into the token alongside the caller's other caps; the surface entry routes
-/// then require the matching `reach:<surface>:view` (or the wildcard) to open a page.
+/// then require the matching `reach:<surface>:view` (or the wildcard) to open a page, and
+/// `dashboard.get`/`dashboard.list` require the matching record cap to open a board.
 pub fn reach_caps(resolved: &ResolvedNav) -> Vec<String> {
     // A fallback nav reaches everything — the gate only restricts an explicitly curated menu.
     if resolved.source == ResolvedSource::Fallback {
         return vec![REACH_ALL.to_string()];
     }
 
-    let mut surfaces: BTreeSet<String> = BTreeSet::new();
+    let mut reached = Reached::default();
     for item in &resolved.items {
-        collect_surfaces(item, &mut surfaces);
+        collect(item, &mut reached);
     }
     // Pins are personal shortcuts resolved through the same cap-strip pipeline — a surface the caller
     // pinned is one they can reach, so it counts toward reach (it can never widen: a pin only survives
-    // if the caller already holds the surface's data cap).
+    // if the caller already holds the surface's data cap). A pinned BOARD likewise counts as a named
+    // record — otherwise curating a nav would silently break the caller's own pins.
     for pin in &resolved.pinned {
-        collect_surfaces(pin, &mut surfaces);
+        collect(pin, &mut reached);
     }
 
-    surfaces
-        .into_iter()
+    // A named dashboard reaches the Dashboards page, but only the record caps below open the board.
+    let whole_dashboards_surface = reached.surfaces.contains(DASHBOARD_SURFACE);
+    if !reached.dashboards.is_empty() {
+        reached.surfaces.insert(DASHBOARD_SURFACE.to_string());
+    }
+
+    let mut caps: Vec<String> = reached
+        .surfaces
+        .iter()
         .map(|s| format!("reach:{s}:view"))
-        .collect()
+        .collect();
+    caps.extend(record_reach_caps(
+        DASHBOARD_SURFACE,
+        &reached.dashboards,
+        whole_dashboards_surface,
+    ));
+    caps.sort();
+    caps.dedup();
+    caps
 }
 
 /// **The reach gate** — may `principal` OPEN the core `surface` (page) in `ws`? True iff they hold
@@ -89,21 +115,28 @@ pub fn reach_check(principal: &Principal, ws: &str, surface: &str) -> bool {
     !principal.caps().iter().any(|c| c.starts_with("reach:"))
 }
 
-/// Accumulate the core surface(s) one resolved item reaches. A `surface` item maps to its key; a
-/// `dashboard` item maps to the `dashboards` surface; a `group` (author group / expanded tag-group /
-/// expanded template-group) recurses one level into its children. `ext` and empty kinds map to no core
-/// reach cap (ext reach is the `ext.list` seam — rule 10).
-fn collect_surfaces(item: &ResolvedItem, out: &mut BTreeSet<String>) {
+/// Accumulate what one resolved item reaches. A `surface` item maps to its key; a `dashboard` item
+/// maps to its RECORD id (and, via the caller, the `dashboards` surface); a `group` (author group /
+/// expanded tag-group / expanded template-group) recurses into its children. `ext` and empty kinds map
+/// to no core reach cap (ext reach is the `ext.list` seam — rule 10).
+///
+/// The `dashboard` field carries a `dashboard:{id}` reference (the resolver normalises to that form);
+/// the bare id is what the record cap names.
+fn collect(item: &ResolvedItem, out: &mut Reached) {
     match item.kind.as_str() {
         "surface" if !item.surface.is_empty() => {
-            out.insert(item.surface.clone());
+            out.surfaces.insert(item.surface.clone());
         }
         "dashboard" if !item.dashboard.is_empty() => {
-            out.insert(DASHBOARD_SURFACE.to_string());
+            let id = item
+                .dashboard
+                .strip_prefix("dashboard:")
+                .unwrap_or(&item.dashboard);
+            out.dashboards.insert(id.to_string());
         }
         "group" => {
             for child in &item.items {
-                collect_surfaces(child, out);
+                collect(child, out);
             }
         }
         // `ext` (opaque-id reach via ext.list) or anything else — no core reach cap.
@@ -161,7 +194,9 @@ mod tests {
         assert!(!reach_caps(&resolved).contains(&REACH_ALL.to_string()));
     }
 
-    /// A `dashboard` item grants reach to the `dashboards` surface (a dashboard page renders there).
+    /// A `dashboard` item grants reach to the `dashboards` surface (a dashboard page renders there)
+    /// AND record-granular reach to exactly that board — the arming cap plus one record cap
+    /// (nav-reach-record scope). The `dashboard:` prefix is stripped: the record cap names the bare id.
     #[test]
     fn dashboard_item_grants_dashboards_surface() {
         let dash = ResolvedItem {
@@ -178,8 +213,124 @@ mod tests {
         let resolved = nav(ResolvedSource::Team, vec![dash]);
         assert_eq!(
             reach_caps(&resolved),
-            vec!["reach:dashboards:view".to_string()]
+            vec![
+                "reach:dashboards/__curated__:view".to_string(),
+                "reach:dashboards/site-health:view".to_string(),
+                "reach:dashboards:view".to_string(),
+            ]
         );
+    }
+
+    /// **The reported bug (B), at the derivation layer.** A team nav naming ONE board mints reach for
+    /// that board and NO other — so a workspace-visible board nobody put in the menu is closed.
+    /// Asserted through the real matcher, not by string inspection.
+    #[test]
+    fn curated_dashboard_nav_closes_unnamed_workspace_boards() {
+        let dash = ResolvedItem {
+            kind: "dashboard".into(),
+            dashboard: "dashboard:demo-analytics".into(),
+            ..Default::default()
+        };
+        let caps = reach_caps(&nav(ResolvedSource::Team, vec![dash]));
+        let test = Principal::routed("user:test", "acme", caps);
+
+        assert!(reach_check(&test, "acme", "dashboards"), "the PAGE is open");
+        assert!(super::super::dashboard_reach_ok(
+            &test,
+            "acme",
+            "demo-analytics"
+        ));
+        for board in ["modbus-tmpl-sim-meter", "modbus-tmpl-nubeio-io16-current"] {
+            assert!(
+                !super::super::dashboard_reach_ok(&test, "acme", board),
+                "{board} is workspace-visible but NOT in the nav — must be closed"
+            );
+        }
+    }
+
+    /// **Guard D at the derivation layer.** A FALLBACK nav mints no record caps, so record reach is
+    /// never armed and every board stays reachable. This is the lockout guard.
+    #[test]
+    fn fallback_never_arms_record_reach() {
+        let caps = reach_caps(&nav(ResolvedSource::Fallback, Vec::new()));
+        assert_eq!(caps, vec![REACH_ALL.to_string()]);
+        let member = Principal::routed("user:alice", "acme", caps);
+        for board in ["demo-analytics", "modbus-tmpl-sim-meter", "whatever"] {
+            assert!(super::super::dashboard_reach_ok(&member, "acme", board));
+        }
+    }
+
+    /// **Guard F (no widening).** Derivation reads the ALREADY-resolved nav, whose items survived the
+    /// resolver's three-gate `dashboard.get` strip. A nav naming a board the subject cannot read
+    /// therefore resolves to NO item, so no record cap is minted and nothing becomes readable. A cap
+    /// can only ever be emitted for a board already present in the resolved menu.
+    #[test]
+    fn unreadable_board_stripped_by_resolver_mints_no_cap() {
+        // The resolver dropped the unreadable board; only the readable one survived into `items`.
+        let readable = ResolvedItem {
+            kind: "dashboard".into(),
+            dashboard: "dashboard:demo-analytics".into(),
+            ..Default::default()
+        };
+        let caps = reach_caps(&nav(ResolvedSource::Team, vec![readable]));
+        assert!(!caps
+            .iter()
+            .any(|c| c.contains("someone-elses-private-board")));
+        // And reach is not a grant: holding the record cap is necessary, never sufficient — gate 3
+        // (`may_read_dashboard`) still runs after it in `dashboard_get`.
+        let test = Principal::routed("user:test", "acme", caps);
+        assert!(!super::super::dashboard_reach_ok(
+            &test,
+            "acme",
+            "someone-elses-private-board"
+        ));
+    }
+
+    /// A nav naming the Dashboards SURFACE itself expresses "the whole page" — no record narrowing,
+    /// so record reach stays unarmed even alongside a named board.
+    #[test]
+    fn surface_item_disarms_record_reach() {
+        let dash = ResolvedItem {
+            kind: "dashboard".into(),
+            dashboard: "dashboard:demo-analytics".into(),
+            ..Default::default()
+        };
+        let caps = reach_caps(&nav(
+            ResolvedSource::Pick,
+            vec![surface_item("dashboards"), dash],
+        ));
+        assert_eq!(caps, vec!["reach:dashboards:view".to_string()]);
+        let p = Principal::routed("user:bob", "acme", caps);
+        assert!(super::super::dashboard_reach_ok(
+            &p,
+            "acme",
+            "modbus-tmpl-sim-meter"
+        ));
+    }
+
+    /// A pinned board counts as a named record — curating a nav must not silently break the caller's
+    /// own pins.
+    #[test]
+    fn pinned_dashboard_contributes_record_reach() {
+        let mut resolved = nav(ResolvedSource::Pick, vec![]);
+        resolved.items = vec![ResolvedItem {
+            kind: "dashboard".into(),
+            dashboard: "dashboard:demo-analytics".into(),
+            ..Default::default()
+        }];
+        resolved.pinned = vec![ResolvedItem {
+            kind: "dashboard".into(),
+            dashboard: "dashboard:my-pin".into(),
+            ..Default::default()
+        }];
+        let p = Principal::routed("user:bob", "acme", reach_caps(&resolved));
+        assert!(super::super::dashboard_reach_ok(&p, "acme", "my-pin"));
+        assert!(super::super::dashboard_reach_ok(
+            &p,
+            "acme",
+            "demo-analytics"
+        ));
+        assert!(!super::super::dashboard_reach_ok(&p, "acme", "other"));
     }
 
     /// A `group` recurses one level; an `ext` child contributes NO core reach cap (rule 10 — ext reach

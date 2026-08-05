@@ -1,7 +1,13 @@
-//! `dashboard.get(id)` — the three-gate read verb (dashboard scope, "MCP surface"). Gates run in
+//! `dashboard.get(id)` — the four-gate read verb (dashboard scope, "MCP surface"). Gates run in
 //! exact order: 1+2 (`authorize_dashboard`) before any fetch (no existence signal to an outsider),
-//! then fetch, then gate 3 (`may_read_dashboard`) — a non-member of a team-shared dashboard is
-//! denied. A tombstoned dashboard reads as `NotFound`.
+//! then gate 2b — **record reach** (`dashboard_reach_ok`, nav-reach-record scope), also pre-fetch
+//! since it needs only the id — then fetch, then gate 3 (`may_read_dashboard`) — a non-member of a
+//! team-shared dashboard is denied. A tombstoned dashboard reads as `NotFound`.
+//!
+//! Gate 2b is a pure NARROWING: it is unarmed (always true) unless the caller's token carries
+//! record-granular reach derived from a curated nav, so it can only ever subtract from what gate 3
+//! would allow. It runs before the fetch for the same reason gates 1+2 do — a subject whose menu does
+//! not name a board should learn nothing about whether it exists.
 
 use lb_auth::Principal;
 use lb_store::Store;
@@ -11,8 +17,9 @@ use super::error::DashboardError;
 use super::model::Dashboard;
 use super::store::read_dashboard;
 use super::visibility::may_read_dashboard;
+use crate::nav::dashboard_reach_ok;
 
-/// Read dashboard `id` in `ws` for `principal`, if all three gates pass.
+/// Read dashboard `id` in `ws` for `principal`, if all four gates pass.
 pub async fn dashboard_get(
     store: &Store,
     principal: &Principal,
@@ -21,6 +28,13 @@ pub async fn dashboard_get(
 ) -> Result<Dashboard, DashboardError> {
     // Gates 1 + 2: workspace isolation, then the read capability — before any fetch.
     authorize_dashboard(principal, ws, "dashboard.get")?;
+
+    // Gate 2b: record reach — a curated nav that names dashboards IS the boundary at record
+    // granularity, so a board the caller's own menu does not name is closed even if it is
+    // workspace-visible. Unarmed (open) for every non-curated token.
+    if !dashboard_reach_ok(principal, ws, id) {
+        return Err(DashboardError::Denied);
+    }
 
     let mut dashboard = read_dashboard(store, ws, id)
         .await?
