@@ -48,9 +48,17 @@ struct Reached {
 /// - **Fallback** (no curated nav) → `[reach:*:view]` — reaches all (never locked out). No record caps,
 ///   so record reach is never armed for a fallback subject.
 /// - **Curated** (pick / team / workspace-default) → one `reach:<surface>:view` per distinct core
-///   surface the menu (and the caller's pins) reach, walking `group` children, PLUS record-granular
-///   `reach:dashboards/{id}:view` caps when the menu names dashboards but not the Dashboards surface
-///   itself (nav-reach-record scope).
+///   surface the menu (and the caller's pins) reach, walking `group` children.
+/// - **Handed** (team / workspace-default ONLY) → additionally the record-granular
+///   `reach:dashboards/{id}:view` caps, when the menu names dashboards but not the Dashboards
+///   surface itself (nav-reach-record scope).
+///
+/// **A tier-1 PICK never arms record reach.** Surface narrowing from your own pick is the shipped
+/// behaviour and stays; record narrowing does not join it. The reason is an incident (2026-08-05): an
+/// admin's stale self-pick at a one-board nav took away 8 of their 9 dashboards. A preference you set
+/// on yourself must not be able to revoke your own access — and per this scope's own Non-goals a pick
+/// cannot confine anyone anyway (clearing it is one click), so arming on it bought no restriction and
+/// cost a foot-gun. Record reach therefore arms only for a menu you were HANDED.
 ///
 /// The result is unioned into the token alongside the caller's other caps; the surface entry routes
 /// then require the matching `reach:<surface>:view` (or the wildcard) to open a page, and
@@ -79,6 +87,13 @@ pub fn reach_caps(resolved: &ResolvedNav) -> Vec<String> {
         reached.surfaces.insert(DASHBOARD_SURFACE.to_string());
     }
 
+    // Valve 2: record reach arms only for a menu the subject was HANDED (a team share or the
+    // workspace default), never for their own tier-1 pick. See the doc comment above.
+    let handed = matches!(
+        resolved.source,
+        ResolvedSource::Team | ResolvedSource::WorkspaceDefault
+    );
+
     let mut caps: Vec<String> = reached
         .surfaces
         .iter()
@@ -87,7 +102,7 @@ pub fn reach_caps(resolved: &ResolvedNav) -> Vec<String> {
     caps.extend(record_reach_caps(
         DASHBOARD_SURFACE,
         &reached.dashboards,
-        whole_dashboards_surface,
+        whole_dashboards_surface || !handed,
     ));
     caps.sort();
     caps.dedup();
@@ -296,7 +311,7 @@ mod tests {
             ..Default::default()
         };
         let caps = reach_caps(&nav(
-            ResolvedSource::Pick,
+            ResolvedSource::Team,
             vec![surface_item("dashboards"), dash],
         ));
         assert_eq!(caps, vec!["reach:dashboards:view".to_string()]);
@@ -308,11 +323,77 @@ mod tests {
         ));
     }
 
+    /// **Valve 2 — the incident guard.** A tier-1 PICK never arms record reach, so a stale self-pick
+    /// at a one-board nav cannot take away the subject's dashboards. The SURFACE narrowing from a pick
+    /// is unchanged (that is the shipped behaviour); only the record narrowing is withheld.
+    ///
+    /// This is the exact 2026-08-05 shape: an admin whose `/nav/pref` pointed at a throwaway one-board
+    /// nav lost 8 of 9 boards, including ones they owned.
+    #[test]
+    fn a_self_pick_never_arms_record_reach() {
+        let dash = ResolvedItem {
+            kind: "dashboard".into(),
+            dashboard: "dashboard:demo-analytics".into(),
+            ..Default::default()
+        };
+        let caps = reach_caps(&nav(ResolvedSource::Pick, vec![dash.clone()]));
+        // The surface cap is still derived — a pick DOES narrow which pages you see.
+        assert_eq!(caps, vec!["reach:dashboards:view".to_string()]);
+        // ...but no record cap, so every board stays reachable.
+        let p = Principal::routed("user:ada", "acme", caps);
+        for board in [
+            "demo-analytics",
+            "modbus-tmpl-sim-meter",
+            "demo-plant-report",
+        ] {
+            assert!(
+                super::super::dashboard_reach_ok(&p, "acme", board),
+                "a self-pick must not close {board}"
+            );
+        }
+
+        // The SAME nav, handed to them as a team share, DOES arm.
+        let handed = reach_caps(&nav(ResolvedSource::Team, vec![dash]));
+        let h = Principal::routed("user:test", "acme", handed);
+        assert!(super::super::dashboard_reach_ok(
+            &h,
+            "acme",
+            "demo-analytics"
+        ));
+        assert!(!super::super::dashboard_reach_ok(
+            &h,
+            "acme",
+            "modbus-tmpl-sim-meter"
+        ));
+    }
+
+    /// The workspace default is also a menu you were HANDED, so it arms.
+    #[test]
+    fn workspace_default_arms_record_reach() {
+        let dash = ResolvedItem {
+            kind: "dashboard".into(),
+            dashboard: "dashboard:demo-analytics".into(),
+            ..Default::default()
+        };
+        let caps = reach_caps(&nav(ResolvedSource::WorkspaceDefault, vec![dash]));
+        let p = Principal::routed("user:test", "acme", caps);
+        assert!(super::super::dashboard_reach_ok(
+            &p,
+            "acme",
+            "demo-analytics"
+        ));
+        assert!(!super::super::dashboard_reach_ok(
+            &p,
+            "acme",
+            "modbus-tmpl-sim-meter"
+        ));
+    }
+
     /// A pinned board counts as a named record — curating a nav must not silently break the caller's
     /// own pins.
     #[test]
     fn pinned_dashboard_contributes_record_reach() {
-        let mut resolved = nav(ResolvedSource::Pick, vec![]);
+        let mut resolved = nav(ResolvedSource::Team, vec![]);
         resolved.items = vec![ResolvedItem {
             kind: "dashboard".into(),
             dashboard: "dashboard:demo-analytics".into(),

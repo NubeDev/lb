@@ -1,6 +1,6 @@
 //! `dashboard.list()` — the roster verb (dashboard scope, "Get / list"). Returns exactly the
 //! dashboards the caller can reach (own + team-shared + workspace-visible), as cheap summaries
-//! (id/title/visibility/updated_ts, **no cell bodies**). Gates 1+2 first, then gates 2b + 3 filter the
+//! (id/title/visibility/updated_ts, **no cell bodies**). Gates 1+2 first, then gates 3 + 4 filter the
 //! scanned set row-by-row — so a non-member never even sees a team-shared dashboard's title.
 //!
 //! The roster MUST apply the same gates as [`super::get`] or the page advertises boards that 403 on
@@ -11,10 +11,10 @@ use lb_store::Store;
 
 use super::authorize::authorize_dashboard;
 use super::error::DashboardError;
+use super::reach_gate::reach_allows;
 use super::store::scan_dashboards;
 use super::summary::DashboardSummary;
 use super::visibility::may_read_dashboard;
-use crate::nav::dashboard_reach_ok;
 
 /// List the dashboards in `ws` that `principal` may read. Tombstoned dashboards are excluded.
 pub async fn dashboard_list(
@@ -30,8 +30,9 @@ pub async fn dashboard_list(
         if d.deleted {
             continue;
         }
-        // Gate 2b per row — record reach, so the roster never advertises a board that would 403.
-        if !dashboard_reach_ok(principal, ws, &d.id) {
+        // Gate 4 per row — record reach, so the roster never advertises a board that would 403 on
+        // click. Owner-exempt and unarmed-open, exactly as `dashboard.get`.
+        if !reach_allows(principal, ws, d) {
             continue;
         }
         // Gate 3 per row — the roster shows only what the caller may read (membership-filtered).

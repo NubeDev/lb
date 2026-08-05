@@ -31,6 +31,9 @@
 //!
 //! ## Never widens
 //!
+//! The gate additionally NEVER closes a board the subject OWNS — that valve lives with the gate, in
+//! `dashboard::reach_gate`.
+//!
 //! Record caps are minted from the ALREADY-resolved nav, whose every dashboard item survived the
 //! resolver's three-gate `dashboard.get` strip. So a record cap is only ever emitted for a board the
 //! subject could already read, and [`reach_record_check`] is consulted **in addition to** (never
@@ -39,7 +42,9 @@
 //!
 //! ## Degrade-open escape valves
 //!
-//! Two cases mint NOTHING (leaving the subject unnarrowed) rather than risk a lockout:
+//! Several cases mint NOTHING (leaving the subject unnarrowed) rather than risk a lockout:
+//! - **The nav is the subject's own tier-1 pick.** A preference you set on yourself must never revoke
+//!   your own access — the 2026-08-05 incident. Only a menu you were HANDED narrows you.
 //! - **The nav names the Dashboards surface itself.** The menu already says "the whole Dashboards
 //!   page", so there is no per-record intent to enforce.
 //! - **Cardinality / inexpressible id.** Past [`MAX_RECORD_REACH_CAPS`] boards the token would bloat,
@@ -72,16 +77,14 @@ fn record_cap(surface: &str, id: &str) -> String {
 
 /// Derive the record-granular reach caps for `surface` from the resolved nav's `ids`.
 ///
-/// `whole_surface` is true when the nav ALSO names the surface itself (the whole page) — in that case
-/// the menu expresses no per-record intent, so nothing is minted and reach stays surface-granular.
+/// `disarmed` is the caller's "do not narrow this subject at all" signal — true when the nav ALSO
+/// names the surface itself (the menu says "the whole page", so there is no per-record intent), and
+/// true when the nav is the subject's OWN tier-1 pick rather than one they were handed (see
+/// [`super::reach::reach_caps`], valve 2).
 ///
 /// Returns the arming cap plus one cap per id, or an EMPTY vec for every degrade-open case.
-pub fn record_reach_caps(
-    surface: &str,
-    ids: &BTreeSet<String>,
-    whole_surface: bool,
-) -> Vec<String> {
-    if whole_surface || ids.is_empty() {
+pub fn record_reach_caps(surface: &str, ids: &BTreeSet<String>, disarmed: bool) -> Vec<String> {
+    if disarmed || ids.is_empty() {
         return Vec::new();
     }
     if ids.len() > MAX_RECORD_REACH_CAPS {

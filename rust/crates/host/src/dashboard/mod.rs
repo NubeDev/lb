@@ -33,6 +33,7 @@ mod list;
 mod managed;
 mod model;
 mod pin;
+mod reach_gate;
 mod save;
 mod seed;
 mod share;
