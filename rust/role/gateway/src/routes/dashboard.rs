@@ -249,6 +249,46 @@ pub async fn pin_dashboards(
     Ok(Json(serde_json::to_value(d).unwrap_or(Value::Null)))
 }
 
+/// `POST /dashboards/{id}/unshare` body — the team whose share edge to revoke.
+#[derive(Debug, Deserialize)]
+pub struct UnshareDashboard {
+    pub team: String,
+}
+
+/// `POST /dashboards/{id}/unshare` — revoke one team share. Gated `dashboard.share`; owner-only.
+/// The mirror of `POST /navs/{id}/unshare`; without it a share edge could never be removed.
+pub async fn unshare_dashboard(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<UnshareDashboard>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let d = lb_host::dashboard_unshare(&gw.node.store, &p, p.ws(), &id, &body.team, gw.now())
+        .await
+        .map_err(status)?;
+    Ok(Json(serde_json::to_value(d).unwrap_or(Value::Null)))
+}
+
+/// `GET /dashboards/{id}/shares` — enumerate the live team shares. Gated `dashboard.share`;
+/// owner-only. The mirror of `GET /navs/{id}/shares`; the onboarding access preview needs it to say
+/// truthfully whether a person can open the boards a nav names.
+pub async fn list_shares_dashboard(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let teams = lb_host::dashboard_list_shares(&gw.node.store, &p, p.ws(), &id)
+        .await
+        .map_err(status)?;
+    Ok(Json(json!({ "teams": teams })))
+}
+
 /// `POST /dashboards/{id}/share` body — set visibility (`private|team|workspace`) + optional team.
 #[derive(Debug, Deserialize)]
 pub struct ShareDashboard {

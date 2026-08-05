@@ -7,9 +7,11 @@
 mod delete;
 mod error;
 mod rename;
+mod team_ref;
 mod tool;
 
 pub use delete::teams_delete;
 pub use error::TeamsError;
 pub use rename::teams_rename;
+pub use team_ref::bare_team;
 pub use tool::call_teams_tool;

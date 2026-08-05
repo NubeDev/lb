@@ -106,6 +106,26 @@ pub fn reach_caps(resolved: &ResolvedNav) -> Vec<String> {
     ));
     caps.sort();
     caps.dedup();
+
+    // A curated nav that reaches NOTHING — every item cap-stripped, so the menu resolved empty. This
+    // is a broken configuration, not a restriction: the usual cause is a nav naming dashboards the
+    // audience cannot read (the `nested-folders.md` trap), which is invisible because the resolver
+    // strips silently. Minting an empty set here would be indistinguishable from "no reach data",
+    // which degrades OPEN anyway — so the subject already reached everything, and the operator saw a
+    // full rail with no clue why. Mint the wildcard EXPLICITLY and warn: identical (safe) behaviour,
+    // but now it is a legible state rather than an accident of the encoding, and it leaves a trace.
+    //
+    // Deliberately NOT narrowing here: an empty curated nav is exactly the case where narrowing would
+    // lock the subject out of the entire product with no in-app way back.
+    if caps.is_empty() {
+        tracing::warn!(
+            source = ?resolved.source,
+            nav_id = %resolved.nav_id,
+            "curated nav resolved to NO reachable items (every item was cap-stripped) — reaching all; \
+             check that the nav's dashboards are shared with its audience"
+        );
+        return vec![REACH_ALL.to_string()];
+    }
     caps
 }
 
@@ -387,6 +407,24 @@ mod tests {
             "acme",
             "modbus-tmpl-sim-meter"
         ));
+    }
+
+    /// A curated nav whose every item was cap-stripped reaches NOTHING. That is a broken config (a nav
+    /// naming boards its audience cannot read), not a restriction — and minting an empty set would
+    /// degrade OPEN anyway, indistinguishably from "no reach data". Mint the wildcard EXPLICITLY so the
+    /// state is legible (and warned) rather than an accident of the encoding. Narrowing here would lock
+    /// the subject out of the whole product with no way back.
+    #[test]
+    fn a_curated_nav_that_strips_to_nothing_reaches_all_explicitly() {
+        // Every item stripped by the resolver → an empty curated nav.
+        let resolved = nav(ResolvedSource::Team, Vec::new());
+        assert_eq!(reach_caps(&resolved), vec![REACH_ALL.to_string()]);
+
+        // …and the subject is therefore NOT locked out, on either axis.
+        let p = Principal::routed("user:aaa", "acme", reach_caps(&resolved));
+        assert!(reach_check(&p, "acme", "dashboards"));
+        assert!(reach_check(&p, "acme", "rules"));
+        assert!(super::super::dashboard_reach_ok(&p, "acme", "any-board"));
     }
 
     /// A pinned board counts as a named record — curating a nav must not silently break the caller's

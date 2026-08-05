@@ -32,24 +32,24 @@ use crate::routes::{
     list_docs, list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants,
     list_identities, list_inbox, list_insights, list_invites, list_members, list_navs,
     list_occurrences, list_panels, list_reports, list_roles, list_rules, list_series,
-    list_shares_nav, list_tables, list_team_members, list_teams, list_webhooks, list_workspaces,
-    load_skill, mcp_call, mcp_catalog, native_call, node_identity, panel_usage, patch_flow_run,
-    pin_dashboards, post_message, post_redo, post_undo, post_version_restore, post_webhook,
-    provision_workspace, publish_extension, publish_message, purge_workspace, put_asset_bin,
-    put_doc, put_media_chunk, put_skill, put_versions_config, read_graph, read_samples,
-    read_schema, reconcile_workspace, refresh_run_token, remove_datasource, remove_member,
-    remove_team_member, rename_series_route, rename_team, rename_workspace, render_catalog_message,
-    resend_invite, reset_extension, resolve_caps, resolve_inbox, resolve_insight, resolve_nav,
-    resolve_prefs, revoke_apikey, revoke_grant, revoke_invite, revoke_tokens_route, revoke_webhook,
-    rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream,
-    save_brand, save_dashboard, save_flow, save_nav, save_panel, save_report, save_rule,
-    scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
-    set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs, share_dashboard,
-    share_doc, share_nav, share_panel, share_report, start_extension, surface_reach, system_acp,
-    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
-    test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
-    update_flow_node, update_series_samples_route, upload_body_limit, upload_pack, upload_status,
-    write_samples,
+    list_shares_dashboard, list_shares_nav, list_tables, list_team_members, list_teams,
+    list_webhooks, list_workspaces, load_skill, mcp_call, mcp_catalog, native_call, node_identity,
+    panel_usage, patch_flow_run, pin_dashboards, post_message, post_redo, post_undo,
+    post_version_restore, post_webhook, provision_workspace, publish_extension, publish_message,
+    purge_workspace, put_asset_bin, put_doc, put_media_chunk, put_skill, put_versions_config,
+    read_graph, read_samples, read_schema, reconcile_workspace, refresh_run_token,
+    remove_datasource, remove_member, remove_team_member, rename_series_route, rename_team,
+    rename_workspace, render_catalog_message, resend_invite, reset_extension, resolve_caps,
+    resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant,
+    revoke_invite, revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control,
+    run_flow, run_query, run_rule, run_stream, save_brand, save_dashboard, save_flow, save_nav,
+    save_panel, save_report, save_rule, scan_table, series_stream, serve_ext_ui,
+    set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
+    set_nav_hidden, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
+    share_report, start_extension, surface_reach, system_acp, system_overview, system_subsystem,
+    system_tools, system_topology, telemetry_stream, test_active_def, test_datasource, test_def,
+    uninstall_extension, unshare_dashboard, unshare_nav, update_def, update_flow_node,
+    update_series_samples_route, upload_body_limit, upload_pack, upload_status, write_samples,
 };
 use crate::state::Gateway;
 
@@ -399,6 +399,8 @@ pub fn router(gw: Gateway) -> Router {
             get(get_dashboard).delete(delete_dashboard),
         )
         .route("/dashboards/{id}/share", post(share_dashboard))
+        .route("/dashboards/{id}/shares", get(list_shares_dashboard))
+        .route("/dashboards/{id}/unshare", post(unshare_dashboard))
         // viz import-export scope (Phase 4): the Grafana-JSON edge. `POST /dashboards/import` is the
         // two-phase import (preview without mappings, commit with them); `GET /dashboards/{id}/export`
         // serializes a readable dashboard to Grafana JSON. Both re-check their caps server-side.

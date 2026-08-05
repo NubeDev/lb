@@ -111,7 +111,7 @@ pub use catalog::{get_catalog, render_message as render_catalog_message, set_cat
 pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{
     delete_dashboard, export_dashboard, get_dashboard, import_dashboard, list_dashboards,
-    pin_dashboards, save_dashboard, share_dashboard,
+    list_shares_dashboard, pin_dashboards, save_dashboard, share_dashboard, unshare_dashboard,
 };
 pub use datasources::{add_datasource, list_datasources, remove_datasource, test_datasource};
 pub use dbview::{list_tables, read_graph, scan_table};
