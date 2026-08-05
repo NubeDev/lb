@@ -73,6 +73,8 @@ pub async fn resolve_template_group(
             kind: "dashboard".into(),
             label: value,
             icon: String::new(),
+            // Inherit the template-group's color — every instance of one template is one branch.
+            icon_color: item.icon_color.clone(),
             surface: String::new(),
             dashboard: format!("dashboard:{dash_id}"),
             ext: String::new(),
@@ -86,6 +88,7 @@ pub async fn resolve_template_group(
         kind: "group".into(),
         label: label_or(&item.label, &template.title),
         icon: item.icon.clone(),
+        icon_color: item.icon_color.clone(),
         surface: String::new(),
         dashboard: String::new(),
         ext: String::new(),

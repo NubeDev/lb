@@ -15,8 +15,8 @@ use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     add_member, dashboard_save, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list,
     nav_list_shares, nav_pref_get, nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share,
-    nav_unshare, tags_add, Cell, NavError, NavFacet, NavItem, NavResolvedSource, NavVisibility,
-    Node, NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN, NAV_MAX_ITEMS, NAV_MAX_PINNED,
+    nav_unshare, tags_add, Cell, NavError, NavFacet, NavItem, NavResolvedItem, NavResolvedSource,
+    NavVisibility, Node, NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN, NAV_MAX_ITEMS, NAV_MAX_PINNED,
 };
 use lb_store::Store;
 use lb_tags::{Provenance, Source as TagSource, Tag};
@@ -2062,4 +2062,118 @@ async fn ext_subref_pin_without_ext_list_cap_strips_rather_than_faulting() {
         .expect("resolve must not fault");
     assert_eq!(r.pinned.len(), 1);
     assert_eq!(r.pinned[0].surface, "channels");
+}
+
+// --- authored icon colors (`icon_color`) ---------------------------------------------------------
+// The author-picked color is the twin of `icon`: opaque data, bounded at save, echoed through resolve
+// untouched. The core never parses it — the UI decides what a value means.
+
+/// An authored `icon_color` survives save → get → resolve on EVERY kind the author can color, and a
+/// dynamically expanded group's children INHERIT their parent's color (one branch, one color).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn icon_color_round_trips_and_group_children_inherit() {
+    let ws = "ws-nav-icon-color";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let ada = principal(
+        "user:ada",
+        ws,
+        &[
+            GET,
+            SAVE,
+            RESOLVE,
+            DASH_LIST,
+            DASH_GET,
+            DASH_SAVE,
+            "mcp:tags.add:call",
+            "mcp:tags.find:call",
+        ],
+    );
+
+    // A real dashboard, tagged, so the tag-group below expands over something reachable.
+    seed_dashboard(store, &ada, ws, "plant", "Plant").await;
+    tags_add(
+        store,
+        &ada,
+        ws,
+        "dashboard:plant",
+        &Tag::new("site", json!("north")),
+        &Provenance::new(2, "user:ada", TagSource::Human),
+    )
+    .await
+    .unwrap();
+
+    let mut surface = surface_item("Channels", "channels");
+    surface.icon_color = "#ff8800".into();
+    let mut dash = dashboard_item("Plant", "dashboard:plant");
+    dash.icon_color = "#00aaff".into();
+    let mut group = tag_group_item(
+        "By site",
+        vec![NavFacet {
+            key: "site".into(),
+            value: None,
+        }],
+    );
+    group.icon_color = "#22cc44".into();
+
+    nav_save(
+        store,
+        &ada,
+        ws,
+        "colored",
+        "Colored",
+        vec![surface, dash, group],
+        3,
+    )
+    .await
+    .unwrap();
+
+    // Persisted verbatim on the record itself.
+    let got = nav_get(store, &ada, ws, "colored").await.unwrap();
+    assert_eq!(got.items[0].icon_color, "#ff8800");
+    assert_eq!(got.items[1].icon_color, "#00aaff");
+    assert_eq!(got.items[2].icon_color, "#22cc44");
+
+    // And echoed through resolve on each resolved kind.
+    nav_pref_set(store, &ada, ws, Some("colored"), None, 4)
+        .await
+        .unwrap();
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let by_kind = |k: &str| -> &NavResolvedItem {
+        r.items.iter().find(|i| i.kind == k).expect("kind present")
+    };
+    assert_eq!(by_kind("surface").icon_color, "#ff8800");
+    assert_eq!(by_kind("dashboard").icon_color, "#00aaff");
+
+    // The expanded tag-group: the group keeps its color AND its dynamic children inherit it, so the
+    // fan-out reads as one branch rather than uncolored strays under a colored parent.
+    let grp = by_kind("group");
+    assert_eq!(grp.icon_color, "#22cc44");
+    assert!(!grp.items.is_empty(), "tag-group expanded to its match");
+    for child in &grp.items {
+        assert_eq!(
+            child.icon_color, "#22cc44",
+            "expanded child inherits the group's color"
+        );
+    }
+}
+
+/// An over-long `icon_color` is REJECTED at save (`BadInput`) — bounded like every other opaque field,
+/// never silently truncated.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn icon_color_over_cap_is_rejected() {
+    let ws = "ws-nav-icon-color-cap";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let ada = principal("user:ada", ws, ALL);
+
+    let mut item = surface_item("Channels", "channels");
+    item.icon_color = "#".repeat(33); // one past MAX_ICON_COLOR_LEN (32)
+
+    let err = nav_save(&node.store, &ada, ws, "toolong", "Too long", vec![item], 1)
+        .await
+        .expect_err("over-cap icon color must be rejected");
+    assert!(
+        matches!(err, NavError::BadInput(_)),
+        "expected BadInput, got {err:?}"
+    );
 }

@@ -55,6 +55,11 @@ pub const MAX_TAG_GROUP: usize = 50;
 /// name; rejected `BadInput` at save like the other bounds).
 pub const MAX_ICON_LEN: usize = 64;
 
+/// Cap on an item's `icon_color` length (an opaque UI color token — a `#rrggbb` hex or a short
+/// palette name; anything longer is garbage, not a color). Rejected `BadInput` at save like
+/// [`MAX_ICON_LEN`]. The core never parses the value — it is opaque data the UI interprets.
+pub const MAX_ICON_COLOR_LEN: usize = 32;
+
 /// The largest hidden-set `nav.hidden.set` accepts (hide-and-pins scope, "Bounds"). Rejected over-cap
 /// (`BadInput`), never silently truncated.
 pub const MAX_HIDDEN: usize = 200;
@@ -111,6 +116,15 @@ pub struct NavItem {
     /// [`MAX_ICON_LEN`] at save. Meaningful on any kind; empty = the UI's per-kind default.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub icon: String,
+    /// An optional author-chosen icon **color** — opaque data the UI interprets (a `#rrggbb` hex or a
+    /// short palette token; the core never parses it). Bounded by [`MAX_ICON_COLOR_LEN`] at save.
+    /// Meaningful on any kind; empty = the UI's own default coloring for that item.
+    #[serde(
+        default,
+        rename = "iconColor",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub icon_color: String,
     /// `surface`: the opaque core surface key (`"channels"`, `"rules"`, …). Empty otherwise.
     #[serde(default)]
     pub surface: String,
@@ -282,6 +296,14 @@ pub struct ResolvedItem {
     /// kind when empty or unknown).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub icon: String,
+    /// The author's icon color, echoed through untouched (opaque — the UI interprets it, falling back
+    /// to its own coloring when empty).
+    #[serde(
+        default,
+        rename = "iconColor",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub icon_color: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub surface: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
