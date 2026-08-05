@@ -16,6 +16,7 @@ use lb_auth::Principal;
 use lb_supervisor::Launcher;
 use serde_json::{json, Value};
 
+use super::dispatch_principal::sidecar_dispatch_principal;
 use super::error::FederationError;
 use super::net::{enforce_endpoint, FEDERATION_EXT};
 use super::secret::mediate_dsn;
@@ -89,10 +90,16 @@ pub async fn federation_query<L: Launcher>(
     }
     let input = input.to_string();
 
+    // Dispatch under the caller's identity PLUS the one authority `call_sidecar` demands to reach a
+    // supervised child (`mcp:native.call:call`, an AUTHOR cap). `federation.query` is a VIEWER cap,
+    // so without this a viewer passes the gate on line 1 and is then refused the dispatch that
+    // answers them — empty tiles on every datasource-backed dashboard. Composed only AFTER
+    // `authorize` above has passed, so it widens nothing; see `dispatch_principal`.
+    let dispatch = sidecar_dispatch_principal(caller);
     let out = crate::native::call_sidecar(
         node,
         launcher,
-        caller,
+        &dispatch,
         ws,
         FEDERATION_EXT,
         "federation.query",

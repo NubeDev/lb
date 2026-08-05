@@ -28,6 +28,8 @@ mod dbschema_list;
 mod dbschema_record;
 mod dbschema_save;
 mod delete;
+// The dispatch-authority composition the VIEWER-tier read needs to reach the supervised sidecar.
+mod dispatch_principal;
 mod error;
 mod export;
 mod install;
