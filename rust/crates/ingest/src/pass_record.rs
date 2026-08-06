@@ -45,6 +45,9 @@ pub struct GcPassRecord {
     pub capped_raw: usize,
     pub rollup_rows: usize,
     pub evicted_rollup: usize,
+    /// Rollup rows evicted by a tier's `max_rows` FIFO cap — see [`crate::GcPass::capped_rollup`].
+    #[serde(default)]
+    pub capped_rollup: usize,
     /// Advisory warnings, clipped to [`MAX_STORED_WARNINGS`].
     #[serde(default)]
     pub warnings: Vec<String>,
@@ -75,6 +78,7 @@ impl GcPassRecord {
             capped_raw: pass.capped_raw,
             rollup_rows: pass.rollup_rows,
             evicted_rollup: pass.evicted_rollup,
+            capped_rollup: pass.capped_rollup,
             warnings: pass
                 .warnings
                 .iter()

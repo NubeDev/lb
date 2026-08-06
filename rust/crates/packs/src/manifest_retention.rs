@@ -46,6 +46,11 @@ pub struct RetentionTier {
     pub width_ms: u64,
     /// How long (ms) this tier's rollup rows are kept before eviction.
     pub keep_for_ms: u64,
+    /// FIFO cap on stored rollup rows for this tier, PER SERIES. `0` (the default) = unbounded.
+    /// Mirrors `lb_ingest::Tier::max_rows` — the clock-free bound (rollup-row-cap scope): unlike
+    /// `keep_for_ms` it holds when the node's wall clock is stopped, behind, or reset.
+    #[serde(default)]
+    pub max_rows: u64,
     /// The single value this tier reads as: `avg|min|max|sum|count|last|first|nearest`. Absent =
     /// the full stat row (today's behaviour). Held as a `String` because this manifest is a
     /// dependency-free MIRROR of the verb args; `validate` rejects an unknown name before apply, so

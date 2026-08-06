@@ -43,6 +43,7 @@ mod read;
 mod rename;
 mod retention;
 mod rollup;
+mod rollup_cap;
 mod rollup_window;
 mod sample;
 mod samples_delete;
@@ -86,6 +87,7 @@ pub use retention::{
     delete_policy, list_policies, resolve_policy, set_policy, Policy, Tier, RETENTION_TABLE,
 };
 pub use rollup::{read_rollups, rollup_widths, write_rollups, RollupRow};
+pub use rollup_cap::{cap_rollup_rows, rollup_count};
 pub use sample::{Qos, Sample};
 pub use samples_delete::{delete_samples_by_keys, delete_samples_in_range, SampleKey};
 pub use samples_update::{update_samples, SampleUpdate};
