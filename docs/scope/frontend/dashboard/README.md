@@ -150,7 +150,7 @@ because existing session docs point at them; new dashboard notes should live her
     **Page settings** dialog (edit-cap gated) reuses the shared `ui/src/lib/icons` picker; the roster +
     header paint the icon/colour; export/import carries it.
 3r. [`nav-context-builtins-scope.md`](nav-context-builtins-scope.md) — **nav-context built-ins**
-    (scope, the ask): **contract only** — extends the built-in namespace `widget-config-vars-scope.md`
+    (lb half **BUILT 2026-08-06**, unreleased; rendering is the consumer's): **contract only** — extends the built-in namespace `widget-config-vars-scope.md`
     owns with a closed nav/page set (`${__nav.label}`, `${__nav.parent.label}`, `${__nav.path}`,
     `${__nav.id}`, `${__page.title|id|ext}`) so a page's **heading, description and crumb** can name the
     thing the viewer navigated to, the way panel titles already do. **Resolution stays 100% client-side**

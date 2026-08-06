@@ -68,6 +68,9 @@ fn project_nav(n: &NavItem) -> ExtNavItem {
         // never (rule 10). Absent ⇒ an ext-route item, unchanged.
         dashboard: n.dashboard.clone(),
         vars: n.vars.clone(),
+        // The optional heading-override TEMPLATE (nav-context-builtins scope) — relayed verbatim,
+        // expanded never; validated + capped at manifest parse.
+        title_template: n.title_template.clone(),
     }
 }
 
@@ -243,6 +246,55 @@ class = "private"
             Some("site-1")
         );
         assert!(widgets[0].nav.is_empty(), "a widget contributes no nav");
+    }
+
+    #[test]
+    fn ui_nav_title_template_projects_under_the_camel_case_wire_key() {
+        // nav-context-builtins scope: the manifest's heading-override template lands on the durable
+        // `ExtNavItem` verbatim and goes over the `ext.list` wire as `titleTemplate` — the spelling the
+        // shell's `VarScope` builder reads. An item that pins none omits the key entirely.
+        const NAV_TOML: &str = r#"
+[extension]
+id = "meters"
+version = "0.1.0"
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.1.0"
+placement = "either"
+[ui]
+entry = "p.mjs"
+label = "Meters"
+[[ui.nav]]
+id = "test"
+label = "test"
+dashboard = "dashboard:tmpl"
+vars = { device = "test" }
+title_template = "${__nav.parent.label} · ${__nav.label}"
+[[ui.nav]]
+id = "plain"
+label = "Plain"
+[visibility]
+class = "private"
+"#;
+        let m = Manifest::parse(NAV_TOML).unwrap();
+        let page = project(&m, &[]).0.expect("has [ui]");
+        assert_eq!(
+            page.nav[0].title_template.as_deref(),
+            Some("${__nav.parent.label} · ${__nav.label}"),
+            "relayed verbatim — the host expands nothing"
+        );
+        assert_eq!(page.nav[1].title_template, None);
+        let json = serde_json::to_value(&page.nav[0]).unwrap();
+        assert_eq!(
+            json["titleTemplate"],
+            serde_json::json!("${__nav.parent.label} · ${__nav.label}"),
+            "the wire key is camelCase, like `iconColor`/`argsTemplate`"
+        );
+        let plain = serde_json::to_value(&page.nav[1]).unwrap();
+        assert!(
+            plain.get("titleTemplate").is_none(),
+            "absent ⇒ omitted, so an old client reads exactly today's payload"
+        );
     }
 
     #[test]

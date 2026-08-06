@@ -8,8 +8,12 @@
 
 mod grant;
 mod manifest;
+/// The reference-name extractor for the one template grammar (nav-context-builtins scope). Shared so
+/// the manifest path and the host's nav-builder write path validate a template through ONE function.
+pub mod template_refs;
 
 pub use grant::grant;
 pub use manifest::{
     slug, Manifest, ManifestError, Native, NavItem, Tool, UiPage, Visibility, Widget, WidgetOption,
+    NAV_MAX_TITLE_TEMPLATE,
 };

@@ -6,6 +6,8 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+use crate::template_refs;
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ManifestError {
     #[error("manifest is not valid TOML: {0}")]
@@ -51,6 +53,11 @@ const NAV_MAX_DASHBOARD: usize = 128;
 /// STATIC dashboard nav item is bounded at parse the same way a dynamic child is bounded at publish.
 const NAV_MAX_VARS: usize = 32;
 const NAV_MAX_VAR_KV: usize = 128;
+/// The `title_template` cap (nav-context-builtins scope) — the optional heading override an item pins
+/// on the board it opens. Bounded like every other manifest string (`label ≤64`, dashboard ref ≤128)
+/// so an unbounded template cannot be a DoS. Public so a consumer UI echoes the limit rather than
+/// hardcoding `256`, and so the host's nav-builder write path caps the SAME field identically.
+pub const NAV_MAX_TITLE_TEMPLATE: usize = 256;
 
 /// Is `id` a valid `[[ui.nav]]` slug — `[a-z0-9-]{1,32}` (lowercase ascii alphanumerics + hyphen)?
 /// The same grammar `ext:<ext>/<id>` view keys use, so a nav id is a safe URL sub-path segment.
@@ -129,6 +136,61 @@ fn validate_nav(nav: &[NavItem]) -> Result<(), ManifestError> {
                     item.id
                 )));
             }
+        }
+        validate_nav_templates(item)?;
+    }
+    Ok(())
+}
+
+/// The template checks for one item (nav-context-builtins scope, §G4). The host expands **nothing** —
+/// this only refuses a template naming something the item could never bind, so a deploy-time defect
+/// fails loudly instead of rendering raw braces in a rail.
+///
+/// The two fields are deliberately **asymmetric**:
+///   - `title_template` is a NEW field, so nothing shipped can already contain one ⇒ a bad reference
+///     and an over-cap length are HARD REJECTS, with the offending name in the message. It MAY
+///     reference `__nav.*` — naming the board from the item is the whole point.
+///   - `label` is RETROACTIVE. A shipped manifest may carry a literal `$` (`"Cost $USD"`) and the
+///     grammar has no escape (`$$` is deferred to the scope that owns the engine), so hard-failing it
+///     on a node bump would be a breaking change in a scope that claims none. An unbindable reference
+///     in `label` therefore WARNS and loads — the label renders literally, exactly as it does today.
+///     The one hard reject on `label` is `__nav.*`: `__nav.label` is computed FROM the resolved label,
+///     so a label reading it is a cycle, and no shipped manifest can contain a namespace that did not
+///     exist until this change.
+fn validate_nav_templates(item: &NavItem) -> Result<(), ManifestError> {
+    // What this item can bind: its own `vars` keys, plus any `__`-prefixed built-in (supplied by the
+    // client's `VarScope`, classified by prefix — never a closed list, see `template_refs`).
+    let bindable: Vec<&str> = item.vars.keys().map(String::as_str).collect();
+
+    if let Some(name) = template_refs::first_nav_builtin(&item.label) {
+        return Err(ManifestError::InvalidNavBlock(format!(
+            "item '{}' label references '{name}' — `__nav.*` is computed FROM the label, so a label \
+             may not read it (use `title_template` instead)",
+            item.id
+        )));
+    }
+    if let Some(name) = template_refs::first_unbindable(&item.label, &bindable) {
+        // Warn, never reject — retroactivity (a literal `$` was legal yesterday).
+        tracing::warn!(
+            item = %item.id,
+            reference = %name,
+            "nav item label references a name it cannot bind; it will render literally"
+        );
+    }
+
+    if let Some(tpl) = item.title_template.as_ref() {
+        if tpl.is_empty() || tpl.len() > NAV_MAX_TITLE_TEMPLATE {
+            return Err(ManifestError::InvalidNavBlock(format!(
+                "item '{}' title_template must be non-empty and ≤{NAV_MAX_TITLE_TEMPLATE} chars",
+                item.id
+            )));
+        }
+        if let Some(name) = template_refs::first_unbindable(tpl, &bindable) {
+            return Err(ManifestError::InvalidNavBlock(format!(
+                "item '{}' title_template references '{name}', which the item cannot bind (not in \
+                 its `vars`, not a built-in)",
+                item.id
+            )));
         }
     }
     Ok(())
@@ -260,6 +322,16 @@ pub struct NavItem {
     /// segment and the sub-path the shell routes (`/ext/<ext>/<id>`).
     pub id: String,
     /// An i18n key in the extension's own catalog (`≤64` chars, non-empty). Resolved ext-side.
+    ///
+    /// **A TEMPLATE STRING, relayed verbatim** (nav-context-builtins scope, §G3). It may carry
+    /// `$var` / `${var}` / `[[var]]` references, which the SHELL interpolates at render against the
+    /// item's own `vars` binding plus the `__`-prefixed built-ins — the host stores and forwards the
+    /// raw string and expands nothing, the same posture it holds for `Action.args_template`. This is
+    /// what lets an ext write `label = "${device}"` on a dynamic child and get the device name in the
+    /// rail. An unresolvable reference stays literal (the shipped unknown-variable rule), so this is
+    /// non-breaking for every already-shipped label containing a bare `$`.
+    ///
+    /// It may NOT reference `__nav.*` — `__nav.label` is computed FROM this string (`validate_nav`).
     pub label: String,
     /// A lucide icon name (`≤64` chars; empty ⇒ the shell's default).
     #[serde(default)]
@@ -284,6 +356,20 @@ pub struct NavItem {
     /// dashboard's declared variables — rule 10); a `BTreeMap` for a byte-stable serialization.
     #[serde(default)]
     pub vars: BTreeMap<String, String>,
+    /// An OPTIONAL **heading override** the item pins on the board it opens (nav-context-builtins
+    /// scope, §G4) — a TEMPLATE STRING the host stores and relays verbatim, expanding nothing. The
+    /// shell interpolates it against the same `VarScope` the panels use (the item's `vars` plus the
+    /// `__nav.*` / `__page.*` built-ins) and renders it in place of the board's stored `heading`, so
+    /// one generated template board can name itself after the nav item the viewer arrived through.
+    ///
+    /// Unlike `label` it MAY reference `__nav.*`. Bounded at [`NAV_MAX_TITLE_TEMPLATE`] and hard-
+    /// rejected at parse when it names something the item cannot bind (`validate_nav`) — a new field,
+    /// so nothing shipped can already break. Additive + serde-defaulted: `None` on every manifest
+    /// written before this field. The TOML key is `title_template` (this crate's snake_case
+    /// convention, beside `input_schema` / `emits_external`); `titleTemplate` is accepted as an alias
+    /// so the camelCase spelling the SDK publishes for a dynamic child parses here too.
+    #[serde(default, alias = "titleTemplate")]
+    pub title_template: Option<String>,
 }
 
 /// A `[[widget]]` table — an extension that contributes a **dashboard tile** droppable into a grid
@@ -780,6 +866,152 @@ vars = { site = "site-1" }"#,
             Manifest::parse(&toml),
             Err(ManifestError::InvalidNavBlock(_))
         ));
+    }
+
+    // ── nav-context-builtins scope: `title_template`, the heading-override carrier ──
+
+    #[test]
+    fn parses_ui_nav_title_template_round_trip() {
+        // TOML → struct, under the crate's snake_case key AND the camelCase alias the SDK publishes
+        // for a dynamic child. Absent ⇒ `None` (the additive guarantee).
+        let toml = with_runtime(
+            "wasm",
+            r#"[ui]
+entry = "e.mjs"
+label = "Modbus"
+[[ui.nav]]
+id = "test"
+label = "test"
+dashboard = "dashboard:modbus-tmpl-socomec-countis-p44"
+vars = { network = "socomec-rtu", device = "test" }
+title_template = "${__nav.parent.label} · ${__nav.label} — energy meter"
+[[ui.nav]]
+id = "camel"
+label = "Camel"
+titleTemplate = "${device} — ${__page.ext}"
+vars = { device = "d1" }
+[[ui.nav]]
+id = "plain"
+label = "Plain""#,
+        );
+        let nav = Manifest::parse(&toml)
+            .expect("valid title_template parses")
+            .ui
+            .expect("has [ui]")
+            .nav;
+        assert_eq!(
+            nav[0].title_template.as_deref(),
+            Some("${__nav.parent.label} · ${__nav.label} — energy meter"),
+            "stored byte-identical — the host expands nothing"
+        );
+        assert_eq!(
+            nav[1].title_template.as_deref(),
+            Some("${device} — ${__page.ext}"),
+            "the camelCase alias parses too"
+        );
+        assert_eq!(nav[2].title_template, None, "absent ⇒ None, never an error");
+    }
+
+    #[test]
+    fn accepts_title_template_referencing_own_vars_or_a_builtin() {
+        for tpl in [
+            "${network} / ${device}",
+            "$device — readings",
+            "[[device]] — readings",
+            "${device:raw}",
+            "${__nav.path}",
+            "${__page.title} · ${__user.login}",
+            "no references at all",
+        ] {
+            let toml = with_runtime(
+                "wasm",
+                &format!(
+                    "[ui]\nentry = \"e.mjs\"\nlabel = \"M\"\n[[ui.nav]]\nid = \"t\"\nlabel = \"T\"\nvars = {{ network = \"n\", device = \"d\" }}\ntitle_template = \"{tpl}\""
+                ),
+            );
+            assert!(
+                Manifest::parse(&toml).is_ok(),
+                "`{tpl}` binds against its own vars or a built-in"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_title_template_referencing_an_unbindable_name() {
+        // Hard reject — a NEW field, so nothing shipped can already break — and the OFFENDING NAME is
+        // in the message, which is the whole point of validating rather than rendering raw braces.
+        let toml = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"e.mjs\"\nlabel = \"M\"\n[[ui.nav]]\nid = \"t\"\nlabel = \"T\"\nvars = { network = \"n\" }\ntitle_template = \"${network} / ${device}\"",
+        );
+        let err = Manifest::parse(&toml).expect_err("unbindable reference is a load-time reject");
+        let ManifestError::InvalidNavBlock(msg) = err else {
+            panic!("expected InvalidNavBlock");
+        };
+        assert!(msg.contains("device"), "names the offender: {msg}");
+    }
+
+    #[test]
+    fn rejects_over_cap_title_template() {
+        let long = "x".repeat(NAV_MAX_TITLE_TEMPLATE + 1);
+        let toml = with_runtime(
+            "wasm",
+            &format!(
+                "[ui]\nentry = \"e.mjs\"\nlabel = \"M\"\n[[ui.nav]]\nid = \"t\"\nlabel = \"T\"\ntitle_template = \"{long}\""
+            ),
+        );
+        assert!(matches!(
+            Manifest::parse(&toml),
+            Err(ManifestError::InvalidNavBlock(_))
+        ));
+        // Exactly at the cap is fine — the bound is inclusive, like `label ≤64`.
+        let at_cap = "y".repeat(NAV_MAX_TITLE_TEMPLATE);
+        let toml = with_runtime(
+            "wasm",
+            &format!(
+                "[ui]\nentry = \"e.mjs\"\nlabel = \"M\"\n[[ui.nav]]\nid = \"t\"\nlabel = \"T\"\ntitle_template = \"{at_cap}\""
+            ),
+        );
+        assert!(Manifest::parse(&toml).is_ok(), "≤cap is accepted");
+    }
+
+    #[test]
+    fn rejects_nav_builtin_inside_a_nav_label() {
+        // `__nav.label` is computed FROM the resolved label, so a label that reads it is a cycle. A
+        // hard reject is safe here: the namespace did not exist before this change.
+        let toml = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"e.mjs\"\nlabel = \"M\"\n[[ui.nav]]\nid = \"t\"\nlabel = \"${__nav.parent.label} / x\"",
+        );
+        let err = Manifest::parse(&toml).expect_err("self-referential label is rejected");
+        let ManifestError::InvalidNavBlock(msg) = err else {
+            panic!("expected InvalidNavBlock");
+        };
+        assert!(msg.contains("__nav.parent.label"), "names it: {msg}");
+        // The SAME reference in `title_template` is legal — that asymmetry is the design.
+        let ok = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"e.mjs\"\nlabel = \"M\"\n[[ui.nav]]\nid = \"t\"\nlabel = \"T\"\ntitle_template = \"${__nav.parent.label} / x\"",
+        );
+        assert!(Manifest::parse(&ok).is_ok());
+    }
+
+    #[test]
+    fn a_label_with_an_unbindable_reference_warns_and_still_loads() {
+        // RETROACTIVITY GUARD (nav-context-builtins scope, §G3). `label` became a template in a change
+        // that claims no wire break — and the grammar has no escape for a literal `$`. A shipped
+        // manifest carrying `"Cost $USD"` must keep loading, byte-identical. If someone later promotes
+        // this warning to an error without shipping `$$` first, THIS test fails, loudly.
+        let toml = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"e.mjs\"\nlabel = \"M\"\n[[ui.nav]]\nid = \"tariff\"\nlabel = \"Cost $USD\"",
+        );
+        let nav = Manifest::parse(&toml)
+            .expect("a literal `$` in a shipped label must not fail the load")
+            .ui
+            .expect("has [ui]")
+            .nav;
+        assert_eq!(nav[0].label, "Cost $USD", "relayed byte-identical");
     }
 
     #[test]

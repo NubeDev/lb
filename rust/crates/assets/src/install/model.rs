@@ -97,6 +97,18 @@ pub struct ExtNavItem {
     /// active-highlight reverse-lookup matches on the sorted `(id, vars)` tuple).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vars: BTreeMap<String, String>,
+    /// An OPTIONAL **heading override** the item pins on the board it opens (nav-context-builtins
+    /// scope) — a TEMPLATE STRING relayed verbatim through `ext.list`, expanded never. The client
+    /// interpolates it at render against the item's `vars` plus the `__nav.*` / `__page.*` built-ins,
+    /// so one generated template board names itself after the destination the viewer arrived through.
+    /// Bounded + validated at manifest parse (`validate_nav`). `None` for an item that pins none and
+    /// for installs written before this field — serde-defaulted, so a pre-field install reads as today.
+    #[serde(
+        default,
+        rename = "titleTemplate",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub title_template: Option<String>,
 }
 
 /// A persisted mirror of a manifest `WidgetOption` (ext-widget-panel-options scope). Carried on the
@@ -240,6 +252,7 @@ mod tests {
             dynamic: true,
             dashboard: None,
             vars: BTreeMap::new(),
+            title_template: None,
         };
         let json = serde_json::to_string(&item).unwrap();
         let back: ExtNavItem = serde_json::from_str(&json).unwrap();
@@ -267,10 +280,14 @@ mod tests {
             dynamic: false,
             dashboard: Some("dashboard:ems-site-overview".into()),
             vars,
+            title_template: Some("${site} — overview".into()),
         };
         let json = serde_json::to_string(&item).unwrap();
         assert!(json.contains("\"dashboard\":\"dashboard:ems-site-overview\""));
         assert!(json.contains("\"vars\":{\"site\":\"site-1\"}"));
+        // nav-context-builtins scope: the heading-override TEMPLATE rides the same relay, under the
+        // camelCase wire key the rest of the platform speaks (`iconColor`, `argsTemplate`).
+        assert!(json.contains("\"titleTemplate\":\"${site} — overview\""));
         let back: ExtNavItem = serde_json::from_str(&json).unwrap();
         assert_eq!(item, back);
 
@@ -279,5 +296,9 @@ mod tests {
             serde_json::from_str(r#"{"id":"explore","label":"nav.explore","dynamic":false}"#)
                 .unwrap();
         assert!(legacy.dashboard.is_none() && legacy.vars.is_empty());
+        assert!(
+            legacy.title_template.is_none(),
+            "additive: pre-field ⇒ None"
+        );
     }
 }
