@@ -200,6 +200,9 @@ fn merge_tier(stored: &[Tier], supplied: &Value) -> Result<Tier, IngestError> {
     if let Some(v) = obj.get("keep_for_ms") {
         tier.keep_for_ms = num(v, "keep_for_ms")?;
     }
+    if let Some(v) = obj.get("max_rows") {
+        tier.max_rows = num(v, "max_rows")?;
+    }
     if let Some(v) = obj.get("method") {
         tier.method = if v.is_null() {
             None

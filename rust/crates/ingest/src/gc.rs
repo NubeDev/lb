@@ -33,6 +33,7 @@ use crate::page::PageError;
 use crate::pass_record::{last_pass, record_pass, GcPassRecord};
 use crate::retention::{list_policies, resolve_policy, Policy};
 use crate::rollup::{evict_rollups, read_rollups, rollup_widths, write_rollups, RollupRow};
+use crate::rollup_cap::cap_rollup_rows;
 use crate::rollup_window::{evict_cutoff, oldest_raw_ts, tier_cutoff};
 use crate::staging::SERIES_TABLE;
 
@@ -46,6 +47,11 @@ pub struct GcPass {
     /// `evicted_raw`'s time horizon. Eviction is a policy decision, but it must be observable —
     /// never an invisible drop (issue #65).
     pub capped_raw: usize,
+    /// Rollup rows evicted by a tier's FIFO row cap (`Tier::max_rows`), as distinct from
+    /// `evicted_rollup`'s time horizon. The one bound on rollups that never reads `now_ms`
+    /// (rubix-ai#84's dead-clock half) — see [`crate::rollup_cap`].
+    #[serde(default)]
+    pub capped_rollup: usize,
     /// Dead-letter rows evicted by [`DEAD_LETTER_KEEP_MS`] — reported separately from `evicted_raw`
     /// because they are a different table on a different horizon (disk-budget decision 7).
     #[serde(default)]
@@ -167,6 +173,21 @@ pub async fn run_gc(store: &Store, ws: &str, now_ms: u64) -> Result<GcPass, Stor
                     now_ms - tier.keep_for_ms,
                 )
                 .await?;
+            }
+        }
+
+        // The rollup COUNT cap: independent of the horizons above and — deliberately — of `now_ms`.
+        // Every `keep_for_ms` bound is `now_ms - horizon`, so a clock that is stopped, behind, or
+        // reset by a power cycle evicts nothing while the tier grows; this compares the tier's row
+        // count to a number and holds with a dead clock. Runs after the time horizon, so it only
+        // evicts what survived it.
+        for tier in &policy.tiers {
+            if tier.max_rows == 0 {
+                continue; // unbounded — the default, and every pre-existing tier
+            }
+            for series in &owned {
+                pass.capped_rollup +=
+                    cap_rollup_rows(store, ws, series, tier.width_ms, tier.max_rows).await?;
             }
         }
 

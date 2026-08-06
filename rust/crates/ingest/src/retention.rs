@@ -36,6 +36,17 @@ pub struct Tier {
     /// operator never chose. They happen to MEAN the same grid; they do not mean the same intent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub align: Option<Align>,
+    /// FIFO cap on stored rollup rows for this tier, PER SERIES. `0` = unbounded (the default, and
+    /// exactly the behaviour of every row written before this field existed).
+    ///
+    /// The rollup twin of [`Policy::max_samples`], and it exists for a reason `keep_for_ms` cannot
+    /// cover: `keep_for_ms` is a TIME horizon computed as `now_ms - keep_for_ms`, so a clock that is
+    /// stopped, behind, or reset by a power cycle (a no-RTC box) makes it evict nothing — silently,
+    /// while the store grows (rubix-ai#84). A row COUNT compares data to a number and holds with an
+    /// arbitrarily wrong clock. Eviction is oldest-`t`-first; over-cap rows are deleted outright —
+    /// a rollup is already the last resort, there is nothing coarser to fold into.
+    #[serde(default)]
+    pub max_rows: u64,
 }
 
 /// A retention policy for every series whose name starts with `prefix`.
@@ -100,7 +111,7 @@ pub struct Policy {
 /// Deserialize a field that may arrive as `NONE` (a column an older row never wrote, projected by
 /// name) as its type's default. `#[serde(default)]` covers an ABSENT key; this covers a PRESENT null
 /// one — the two are different bugs and only one of them survives an upgrade.
-fn none_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
+pub(crate) fn none_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: serde::Deserialize<'de> + Default,

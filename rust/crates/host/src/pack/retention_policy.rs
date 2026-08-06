@@ -23,6 +23,7 @@ pub(super) fn to_ingest_policy(p: &RetentionPolicy) -> lb_ingest::Policy {
             .map(|t| lb_ingest::Tier {
                 width_ms: t.width_ms,
                 keep_for_ms: t.keep_for_ms,
+                max_rows: t.max_rows,
                 // An unknown name cannot reach here: `packs::validate` errors the apply out first
                 // (a lint an author sees, not a silent no-op). Falling back to `None` rather than
                 // panicking keeps a hypothetical un-linted path at today's behaviour — the full

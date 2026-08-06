@@ -149,6 +149,28 @@ because existing session docs point at them; new dashboard notes should live her
     `dashboard_save_meta` full-form + a preserving `dashboard_save` wrapper, **zero new verbs**. A header
     **Page settings** dialog (edit-cap gated) reuses the shared `ui/src/lib/icons` picker; the roster +
     header paint the icon/colour; export/import carries it.
+3r. [`nav-context-builtins-scope.md`](nav-context-builtins-scope.md) — **nav-context built-ins**
+    (scope, the ask): **contract only** — extends the built-in namespace `widget-config-vars-scope.md`
+    owns with a closed nav/page set (`${__nav.label}`, `${__nav.parent.label}`, `${__nav.path}`,
+    `${__nav.id}`, `${__page.title|id|ext}`) so a page's **heading, description and crumb** can name the
+    thing the viewer navigated to, the way panel titles already do. **Resolution stays 100% client-side**
+    (`dashboard-variables-advanced-scope.md:95`) — lb adds **no templating engine and expands nothing**;
+    the two `$__` macro layers (`viz/macros.rs`, `federation/sql_macros.rs`) stay time/interval-only.
+    What lb *does* add is the typed carriers so **any** client gets the same context over the wire: an
+    optional `NavItem.title_template` on both `ext-loader`'s manifest and `nav/model.rs`, relayed through
+    `ResolvedItem` beside the existing `vars` map (so a `template-group` fan-out names each generated
+    item), plus doc-comments declaring `Dashboard.heading`/`.description`/`Cell.description` to be
+    template strings. Additive `Option<String>` throughout — **no wire break, no migration,
+    `SCHEMA_VERSION` stays 3**. The one genuinely new server behaviour is **`validate_nav` rejecting a
+    `title_template` that references an unbindable name**, load-time, with the offending name in the
+    error — and it runs on the **nav-builder write path too, not only manifest load**, or an ext-authored
+    template would be validated and capped while a hand-authored one is neither (a mediation-path
+    asymmetry, which is exactly what rule 10 catches). `label` only **warns**: it is retroactive, a
+    shipped manifest may carry a literal `$` (`"Cost $USD"`), and the grammar has **no escape sequence**
+    — `$$` is a named ask against the frozen engine in `widget-config-vars-scope.md`, not this scope.
+    Rule 10 holds — `${__page.ext}` reads the generic `managedBy`; no extension is named anywhere.
+    Consumer:
+    `NubeIO/rubix-ai → docs/scope/frontend/dashboard/nav-context-vars-scope.md`.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
