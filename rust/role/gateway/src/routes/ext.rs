@@ -3,11 +3,12 @@
 //! browser threw `unknown command`). Mirror `lb_host::ext_*` 1:1; gated server-side on
 //! `mcp:ext.list:call` / `mcp:ext.disable:call` / `mcp:ext.uninstall:call`.
 
+use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use lb_host::{ExtError, ExtRow};
-use lb_registry::{Artifact, PublisherKey, TrustedKeys, Visibility};
+use lb_registry::{Artifact, CatalogEntry, PublisherKey, TrustedKeys, Visibility};
 use serde::Deserialize;
 
 use crate::session::authenticate;
@@ -25,6 +26,24 @@ pub async fn list_extensions(
         .await
         .map_err(forbid)?;
     Ok(Json(rows))
+}
+
+/// `GET /extensions/{ext}/versions` — every catalog version on record for `ext`, newest first
+/// (`ext.list`'s read-only peer: version *history*, not the current install). `CatalogEntry` already
+/// retains one row per published `(ext_id, version)` — this is a pure projection over it, no new
+/// persistence. `[]` (not `404`) if `ext` has never been published in this workspace.
+pub async fn list_extension_versions(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(ext): Path<String>,
+) -> Result<Json<Vec<CatalogEntry>>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let versions = lb_host::ext_versions(&gw.node, &p, p.ws(), &ext)
+        .await
+        .map_err(forbid)?;
+    Ok(Json(versions))
 }
 
 /// `POST /extensions/{ext}/enable` — durable enable (eligible to auto-start on boot).
@@ -114,15 +133,25 @@ pub async fn uninstall_extension(
 }
 
 /// `POST /extensions` — **publish** (upload) a signed extension artifact (lifecycle-management scope:
-/// the admin console's "publish an extension" path). Body is the [`Artifact`] verbatim (the same wire
-/// shape the registry-host `POST /artifacts` accepts), including the publisher signature. The workspace
-/// comes from the token, never the body (the hard wall, §7). Gated server-side on `mcp:ext.publish:call`
-/// inside the host verb; verify-before-store inside it too. `204` on publish, `403` on a capability
-/// deny, `422` on a verification failure (tampered/unsigned/foreign-key — nothing stored).
+/// the admin console's "publish an extension" path). Permanently dual-format, discriminated on
+/// `Content-Type`, never a second URL:
+/// - `application/zip` — the zip-transport [`Artifact`] (`lb_registry::artifact_from_zip`): the
+///   binary rides as a real archive member instead of a JSON decimal-int array, the fix for a large
+///   native sidecar (~8x smaller on the wire, no browser/curl OOM). Recommended for anything past a
+///   few MB.
+/// - anything else — the original JSON [`Artifact`] body (or the devkit-shortcut `{path: "..."}`
+///   shape), byte-for-byte unchanged. Never removed: small wasm modules and any existing JSON-only
+///   tooling keep working with no flag day.
+///
+/// Either way the workspace comes from the token, never the body (the hard wall, §7), and both paths
+/// converge on the exact same `lb_host::ext_publish` — same capability gate
+/// (`mcp:ext.publish:call`), same verify-before-store. `204` on publish, `403` on a capability deny,
+/// `422` on a malformed upload or a verification failure (tampered/unsigned/foreign-key — nothing
+/// stored either way).
 pub async fn publish_extension(
     State(gw): State<Gateway>,
     headers: HeaderMap,
-    Json(body): Json<serde_json::Value>,
+    body: Bytes,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let p = authenticate(&gw, &headers)
         .await
@@ -146,7 +175,17 @@ pub async fn publish_extension(
             ));
         }
     }
-    let publish = publish_body(body, &gw.trusted)?;
+    let publish = if is_zip_content_type(&headers) {
+        publish_body_zip(&body, gw.max_extension_upload_bytes, &gw.trusted)?
+    } else {
+        let json: serde_json::Value = serde_json::from_slice(&body).map_err(|e| {
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("bad publish body: {e}"),
+            )
+        })?;
+        publish_body_json(json, &gw.trusted)?
+    };
     lb_host::ext_publish(
         &gw.node,
         &p,
@@ -175,7 +214,45 @@ struct DevkitPublish {
     path: String,
 }
 
-fn publish_body(
+/// `Content-Type: application/zip` (case-insensitive, ignoring a `; charset=...`-style suffix) picks
+/// the zip-transport path; everything else (including absent) stays on the JSON path — the safe
+/// default, since a header a proxy strips or a script forgets to set must not silently change what
+/// gets parsed.
+fn is_zip_content_type(headers: &HeaderMap) -> bool {
+    headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| {
+            v.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("application/zip")
+        })
+        .unwrap_or(false)
+}
+
+/// The zip-transport path: unpack straight into the same [`Artifact`] the JSON path produces, no
+/// trust decision made here (mirrors `artifact_from_zip`'s own contract) — `ext_publish` still runs
+/// `verify_artifact_with` on the result exactly as it does for the JSON path.
+fn publish_body_zip(
+    body: &[u8],
+    max_payload_bytes: u64,
+    trusted: &TrustedKeys,
+) -> Result<PublishInput, (StatusCode, String)> {
+    let artifact = lb_registry::artifact_from_zip(body, max_payload_bytes).map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("bad artifact zip: {e}"),
+        )
+    })?;
+    Ok(PublishInput {
+        artifact,
+        trusted: trusted.clone(),
+    })
+}
+
+fn publish_body_json(
     body: serde_json::Value,
     trusted: &TrustedKeys,
 ) -> Result<PublishInput, (StatusCode, String)> {

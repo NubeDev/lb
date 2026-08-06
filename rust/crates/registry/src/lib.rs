@@ -21,8 +21,10 @@ mod digest;
 mod error;
 mod model;
 mod verify;
+mod zip;
 
 pub use digest::{digest, digest_hex};
 pub use error::RegistryError;
 pub use model::{Artifact, CatalogEntry, VerifiedArtifact, Visibility};
 pub use verify::{verify_artifact, verify_artifact_with, Authenticity, PublisherKey, TrustedKeys};
+pub use zip::{artifact_from_zip, artifact_to_zip, PAYLOAD_ENTRY_NAME};

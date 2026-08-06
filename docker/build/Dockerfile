@@ -22,6 +22,11 @@ FROM rust:1-bookworm
 #   - gcc-aarch64-*          linux arm64 (aarch64)
 #   - gcc-arm-linux-gnueabihf armv7 (hard-float) — the Raspberry-Pi-class edge target
 #   - gcc-mingw-w64-x86-64   windows x86_64 (gnu) — for the .exe target
+#   - gcc-x86-64-linux-gnu   real x86_64 cross gcc — build-essential alone only gives a
+#                            native x86_64 compiler on an x86_64 HOST; on an arm64 host
+#                            (e.g. Apple Silicon) there is no x86_64-linux-gnu-gcc at all
+#                            without this package, and cc-rs (vendored OpenSSL/ring) fails
+#                            with "failed to find tool x86_64-linux-gnu-gcc".
 #   - dpkg-dev, fakeroot     building .deb packages (cargo-deb)
 RUN dpkg --add-architecture armhf \
  && apt-get update && apt-get install -y --no-install-recommends \
@@ -29,6 +34,7 @@ RUN dpkg --add-architecture armhf \
       gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
       gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
       gcc-mingw-w64-x86-64 \
+      gcc-x86-64-linux-gnu g++-x86-64-linux-gnu \
       dpkg-dev fakeroot \
       ca-certificates \
  && rm -rf /var/lib/apt/lists/*

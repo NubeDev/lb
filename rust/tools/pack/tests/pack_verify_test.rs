@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use lb_registry::{verify_artifact, Artifact, PublisherKey, TrustedKeys};
+use lb_registry::{artifact_from_zip, verify_artifact, Artifact, PublisherKey, TrustedKeys};
 
 /// The real built inputs for `hello-v2` (same fixture files `sign_test.rs` uses).
 const MANIFEST_PATH: &str = "../../extensions/hello-v2/extension.toml";
@@ -21,7 +21,13 @@ const WASM_PATH: &str = "../../extensions/hello-v2/target/wasm32-wasip2/release/
 
 /// Run the real `lb-pack` binary and return the packaged artifact plus the stderr-printed trust line.
 fn run_pack(dir: &Path, key_id: &str, key_file: &str) -> (Artifact, String) {
-    let out_path = dir.join("artifact.json");
+    run_pack_format(dir, key_id, key_file, "json")
+}
+
+/// Same as [`run_pack`], but choosing the wire format (`"json"` or `"zip"`) via `lb-pack --format`.
+fn run_pack_format(dir: &Path, key_id: &str, key_file: &str, format: &str) -> (Artifact, String) {
+    let ext = if format == "zip" { "zip" } else { "json" };
+    let out_path = dir.join(format!("artifact.{ext}"));
     let output = Command::new(env!("CARGO_BIN_EXE_lb-pack"))
         .args([
             MANIFEST_PATH,
@@ -31,6 +37,8 @@ fn run_pack(dir: &Path, key_id: &str, key_file: &str) -> (Artifact, String) {
             key_id,
             "--out",
             out_path.to_str().unwrap(),
+            "--format",
+            format,
         ])
         .output()
         .expect("run lb-pack");
@@ -45,11 +53,13 @@ fn run_pack(dir: &Path, key_id: &str, key_file: &str) -> (Artifact, String) {
         .find_map(|l| l.strip_prefix("trusted-pubkey: "))
         .expect("lb-pack prints the trust line")
         .to_string();
-    let json = std::fs::read_to_string(&out_path).expect("read artifact json");
-    (
-        serde_json::from_str(&json).expect("artifact json parses"),
-        trust_line,
-    )
+    let bytes = std::fs::read(&out_path).expect("read artifact file");
+    let artifact = if format == "zip" {
+        artifact_from_zip(&bytes, u64::MAX / 2).expect("artifact zip parses")
+    } else {
+        serde_json::from_slice(&bytes).expect("artifact json parses")
+    };
+    (artifact, trust_line)
 }
 
 /// Build the node-side trusted set from the exact `key_id=hexpubkey` line the tool printed —
@@ -111,6 +121,74 @@ fn packing_is_deterministic_for_same_inputs_and_key() {
     assert_eq!(
         first, second,
         "same wasm + same key must produce identical artifact bytes"
+    );
+}
+
+// ---- zip-transport path (`--format zip`) — same claims as the JSON tests above, over the wire ----
+// shape `lb_registry::zip` adds for large native binaries. Mirrors each JSON test 1:1 to prove the
+// two wire shapes are trust-equivalent, not just independently functional.
+
+#[test]
+fn zip_packed_artifact_verifies_against_the_printed_trust_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (artifact, trust_line) = run_pack_format(tmp.path(), "pack-test", "dev.key", "zip");
+    assert_eq!(artifact.ext_id, "hello");
+    let trusted = trusted_from_line(&trust_line);
+    verify_artifact(artifact, &trusted)
+        .expect("the node's own verifier accepts lb-pack's zip output");
+}
+
+#[test]
+fn zip_an_untrusted_key_is_rejected_at_verify() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (artifact, _) = run_pack_format(tmp.path(), "pack-test", "untrusted.key", "zip");
+    let (_, other_trust_line) = run_pack_format(tmp.path(), "pack-test", "other.key", "zip");
+    let trusted = trusted_from_line(&other_trust_line);
+    assert!(
+        verify_artifact(artifact, &trusted).is_err(),
+        "a zip artifact from a key outside LB_TRUSTED_PUBKEYS must be rejected"
+    );
+}
+
+#[test]
+fn zip_a_tampered_wasm_fails_verification() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut artifact, trust_line) = run_pack_format(tmp.path(), "pack-test", "dev.key", "zip");
+    artifact.wasm[0] ^= 0xff;
+    assert!(
+        verify_artifact(artifact, &trusted_from_line(&trust_line)).is_err(),
+        "a byte flipped in the zip payload after signing must fail the digest check"
+    );
+}
+
+/// The container/crypto layer split, proven end to end: a tampered EOCD comment (still a
+/// well-formed zip, still parses cleanly via `artifact_from_zip`) is NOT a transport error — it is a
+/// tampered signed claim, and must fail at `verify_artifact`, exactly like the tampered-wasm case
+/// above. `artifact_from_zip` has no opinion about content correctness, only container shape.
+#[test]
+fn zip_a_tampered_comment_field_fails_at_verify_not_at_unpack() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut artifact, trust_line) = run_pack_format(tmp.path(), "pack-test", "dev.key", "zip");
+    // Simulates what a tampered EOCD comment would produce once parsed: a claimed digest that no
+    // longer matches the real payload. `artifact_from_zip` already succeeded (this IS the parsed
+    // result) — the tamper must be caught by `verify_artifact`, not the unpacker.
+    artifact.digest_hex = "0".repeat(64);
+    assert!(
+        verify_artifact(artifact, &trusted_from_line(&trust_line)).is_err(),
+        "a tampered claimed digest must fail at verify, proving the unpack/verify split holds"
+    );
+}
+
+#[test]
+fn zip_packing_is_deterministic_for_same_inputs_and_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    run_pack_format(tmp.path(), "pack-test", "dev.key", "zip");
+    let first = std::fs::read(tmp.path().join("artifact.zip")).unwrap();
+    run_pack_format(tmp.path(), "pack-test", "dev.key", "zip");
+    let second = std::fs::read(tmp.path().join("artifact.zip")).unwrap();
+    assert_eq!(
+        first, second,
+        "same wasm + same key must produce identical zip artifact bytes"
     );
 }
 

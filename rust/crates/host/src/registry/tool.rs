@@ -73,6 +73,7 @@ fn rs_to_tool(e: RegistryServiceError) -> ToolError {
         RegistryServiceError::NotAvailable(m) => ToolError::BadInput(format!("not available: {m}")),
         RegistryServiceError::Store(s) => ToolError::Extension(s.to_string()),
         RegistryServiceError::Load(l) => ToolError::Extension(l.to_string()),
+        RegistryServiceError::Transport(m) => ToolError::BadInput(format!("bad artifact: {m}")),
     }
 }
 

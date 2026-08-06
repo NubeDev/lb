@@ -196,8 +196,8 @@ pub use devkit::{
 };
 pub use ext::{
     boot_workspaces, call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_start,
-    ext_uninstall, load_enabled, reconcile, spawn_enabled, ExtError, ExtRow, LoadedExt,
-    ReconcileAction, ReconcilePlan, SpawnedExt,
+    ext_uninstall, ext_versions, load_enabled, reconcile, spawn_enabled, ExtError, ExtRow,
+    LoadedExt, ReconcileAction, ReconcilePlan, SpawnedExt,
 };
 pub use federation::{
     call_federation_tool, datasource_add, datasource_list, datasource_remove, datasource_test,

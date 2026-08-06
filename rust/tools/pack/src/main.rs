@@ -1,13 +1,26 @@
-//! `lb-pack` — package a built extension into the signed `Artifact` JSON accepted by the gateway.
+//! `lb-pack` — package a built extension into the signed `Artifact` accepted by the gateway, as
+//! either wire shape: JSON (the original, default — `wasm` inline as a decimal-int array, fine for a
+//! small wasm module) or `.zip` (`--format zip` — the binary as a real archive member instead, for a
+//! native sidecar binary large enough that JSON's ~4-8x inflation would blow past upload/memory
+//! limits; see `lb_registry::zip`). Default stays JSON so nothing depending on today's output shape
+//! breaks; `--format zip` is opt-in.
 //!
 //! The signing implementation lives in `lb-devkit`; this binary is only argument parsing, file I/O,
-//! and operator-facing output. That keeps the SDK path and CLI path on one crypto idiom.
+//! and operator-facing output. That keeps the SDK path and CLI path on one crypto idiom regardless of
+//! which wire shape gets written — both formats carry the exact same signed `Artifact`.
 
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Result};
 use lb_devkit::{load_or_create_key, publisher_trust_line, sign_artifact};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Format {
+    Json,
+    Zip,
+}
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -26,15 +39,24 @@ fn main() -> Result<()> {
         parsed.key_id.clone(),
         &loaded.signing_key,
     )?;
-    let json = serde_json::to_string_pretty(&artifact)?;
+
+    let bytes: Vec<u8> = match parsed.format {
+        Format::Json => serde_json::to_string_pretty(&artifact)?.into_bytes(),
+        Format::Zip => lb_registry::artifact_to_zip(&artifact)?,
+    };
 
     match &parsed.out {
         Some(path) => {
             ensure_parent(path)?;
-            fs::write(path, &json).with_context(|| format!("write artifact {path}"))?;
+            fs::write(path, &bytes).with_context(|| format!("write artifact {path}"))?;
             eprintln!("wrote artifact: {path}");
         }
-        None => println!("{json}"),
+        None if parsed.format == Format::Zip => {
+            std::io::stdout()
+                .write_all(&bytes)
+                .context("write artifact to stdout")?;
+        }
+        None => println!("{}", String::from_utf8_lossy(&bytes)),
     }
 
     if loaded.generated {
@@ -80,12 +102,14 @@ struct ParsedArgs {
     key_file: String,
     key_id: String,
     out: Option<String>,
+    format: Format,
 }
 
 fn parse_args(args: &[String]) -> Result<ParsedArgs> {
     let mut positional = Vec::new();
     let mut key_id = "dev-publisher".to_string();
     let mut out = None;
+    let mut format = Format::Json;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -104,6 +128,18 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs> {
                 );
                 i += 2;
             }
+            "--format" => {
+                let value = args
+                    .get(i + 1)
+                    .cloned()
+                    .ok_or_else(|| anyhow!("--format needs a value (json|zip)"))?;
+                format = match value.as_str() {
+                    "json" => Format::Json,
+                    "zip" => Format::Zip,
+                    other => bail!("unknown --format {other} (expected json|zip)"),
+                };
+                i += 2;
+            }
             other if other.starts_with("--") => bail!("unknown flag {other}"),
             other => {
                 positional.push(other.to_string());
@@ -113,7 +149,8 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs> {
     }
     if positional.len() != 3 {
         bail!(
-            "usage: lb-pack <manifest.toml> <ext.wasm> <key-file> [--key-id <id>] [--out <file>]"
+            "usage: lb-pack <manifest.toml> <ext.wasm> <key-file> [--key-id <id>] [--out <file>] \
+             [--format json|zip]"
         );
     }
     Ok(ParsedArgs {
@@ -122,6 +159,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs> {
         key_file: positional[2].clone(),
         key_id,
         out,
+        format,
     })
 }
 

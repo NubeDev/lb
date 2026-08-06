@@ -191,6 +191,7 @@ mod tests {
             surface: key.into(),
             dashboard: String::new(),
             ext: String::new(),
+            nav: String::new(),
             items: Vec::new(),
             vars: Default::default(),
             ..Default::default()
@@ -241,6 +242,7 @@ mod tests {
             surface: String::new(),
             dashboard: "dashboard:site-health".into(),
             ext: String::new(),
+            nav: String::new(),
             items: Vec::new(),
             vars: Default::default(),
             ..Default::default()
@@ -463,6 +465,7 @@ mod tests {
             surface: String::new(),
             dashboard: String::new(),
             ext: "mqtt".into(),
+            nav: String::new(),
             items: Vec::new(),
             vars: Default::default(),
             ..Default::default()
@@ -474,6 +477,7 @@ mod tests {
             surface: String::new(),
             dashboard: String::new(),
             ext: String::new(),
+            nav: String::new(),
             items: vec![surface_item("flows"), surface_item("rules"), ext_child],
             vars: Default::default(),
             ..Default::default()
