@@ -100,3 +100,7 @@ rust/extensions/ds-hidden-*/
 
 .zcode/
 rust/.logs/sweep.log
+
+# scripts/build-extension-artifact.sh output: signed artifacts + the dev signing key. Never
+# commit — the key is private key material even in dev.
+/dist/
