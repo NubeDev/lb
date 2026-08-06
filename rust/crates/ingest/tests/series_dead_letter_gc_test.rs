@@ -182,3 +182,34 @@ async fn keep_forever_is_zero_and_an_unelapsed_horizon_evicts_nothing() {
     );
     assert_eq!(dead_letter_count(&store, "acme").await, 2);
 }
+
+/// **Deleting a series takes its dead letters with it.**
+///
+/// The 30-day horizon above exists so that tightening RETENTION cannot destroy the evidence of why
+/// rows were diverted — an automatic, prefix-scoped pass. An explicit `delete_series` is the
+/// opposite case: an operator naming one series and destroying it. Leaving its dead letters behind
+/// means "I deleted this to reclaim the disk" reclaims nothing for up to a month, and leaves
+/// diagnostics about a series that no longer exists.
+///
+/// Found from the consumer side: the modbus extension purges a deleted meter's series on
+/// `point/device/network.delete`, and its dead letters were the one part of the footprint that
+/// survived. The other series' rows are the control — the delete is per-series, never a table sweep.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn deleting_a_series_removes_its_dead_letters_and_no_others() {
+    let store = Store::memory().await.unwrap();
+    dead_letter_n(&store, "acme", "doomed", 3).await;
+    dead_letter_n(&store, "acme", "keeper", 2).await;
+    // 3 + 2, plus the single primer row `dead_letter_n` leaves behind (it primes once per workspace).
+    let before = dead_letter_count(&store, "acme").await;
+    assert_eq!(before, 5, "seeded through the real overflow path");
+
+    lb_ingest::delete_series(&store, "acme", "doomed")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        dead_letter_count(&store, "acme").await,
+        2,
+        "only the deleted series' dead letters go — `keeper`'s are none of this delete's business"
+    );
+}

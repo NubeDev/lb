@@ -70,3 +70,27 @@ unrelated to this change).
 - **UI**: wire `SeriesRail`'s `onRename` (inline editor) + `onRemove` (trash + caller-owned confirm) to
   new `renameSeries`/`deleteSeries` API verbs; the `__schema.<name>` meta-series must be deleted/renamed
   alongside the real series (it is itself just another series behind the same verbs).
+
+## Amendment — 2026-08-07: the footprint was missing one table
+
+The table at the top of this doc enumerates what a series owns, and it — like
+`delete_series` itself — omitted `ingest_dead_letter`. A deleted series' dead
+letters survived, for up to the 30-day dead-letter horizon.
+
+Found from the consumer side: the out-of-tree `modbus` extension gained
+delete-cleanup (deleting a network/device/point purges the series that config
+produced, via `series.delete`), and walking the verb's footprint against the
+tables `crates/ingest` actually *writes* turned up the gap. No read path touches
+that table, so every test here — all of which assert on reads — passed.
+
+`delete_series` now clears it. The GC's opposing reasoning is intact and
+deliberate: `prune_dead_letters` keeps dead letters longer than the data that
+produced them so that tightening retention cannot destroy the evidence of *why*
+rows were diverted — an argument about an automatic, prefix-scoped pass, not
+about an operator explicitly destroying one named series.
+
+`rename_series` is unchanged. Whether a rename should carry the old name's
+divert diagnostics is a separate question this did not answer.
+
+Full write-up + regression:
+[`docs/debugging/ingest/delete-series-leaves-its-dead-letters.md`](../../debugging/ingest/delete-series-leaves-its-dead-letters.md).
