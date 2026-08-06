@@ -104,10 +104,63 @@ async fn run_gc_records_the_pass_it_just_ran() {
     assert_eq!(rec.rollup_rows, pass.rollup_rows);
     assert_eq!(rec.capped_raw, pass.capped_raw);
     assert_eq!(rec.evicted_rollup, pass.evicted_rollup);
+    // `last_pass` projects BY NAME, so a counter added to `GcPassRecord` and forgotten here reads
+    // back as its serde default forever while the row on disc is correct. That happened to
+    // `capped_rollup` (rubix-ai#84): the pass returned 15, the operator's status read said 0.
+    assert_eq!(rec.capped_rollup, pass.capped_rollup);
     assert!(
         rec.evicted_raw > 0 && rec.rollup_rows > 0,
         "this pass really did work: {rec:?}"
     );
+}
+
+/// UPGRADE, not fresh install: a pass row written by a build that predates `capped_rollup` must
+/// still read back — and the whole retention pass must still run.
+///
+/// Found live on RC-6 (2026-08-06) immediately after deploying the `max_rows` build onto a node
+/// with existing data. `last_pass` names its columns, so a pre-upgrade row returns `capped_rollup`
+/// as a PRESENT `NONE`, which `#[serde(default)]` never sees and `usize` refuses:
+///
+/// ```text
+/// expected a 64-bit unsigned integer, found None
+/// ```
+///
+/// `run_gc` opens by reading `last_pass`, so that ONE stale row broke `series.retention.gc` AND
+/// `series.retention.status` outright on the upgraded node — the identical failure
+/// `Policy::max_samples` carries `none_as_default` to prevent. Every other test here writes its row
+/// with the current struct, so none of them can see this.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_pass_row_predating_capped_rollup_still_reads_and_gc_still_runs() {
+    let store = Store::memory().await.unwrap();
+
+    // EXACTLY what an older build left on disc: every column the old struct had, and no
+    // `capped_rollup`. Written as raw SQL because the current struct cannot express its own absence.
+    store
+        .query_ws(
+            "acme",
+            "UPSERT type::thing('series_gc_pass', 'last') CONTENT {
+               last_run_ms: 1000, duration_ms: 5, evicted_raw: 0, capped_raw: 0,
+               rollup_rows: 0, evicted_rollup: 0, warnings: [], warnings_total: 0
+             }",
+            vec![],
+        )
+        .await
+        .expect("seed a pre-upgrade pass row");
+
+    let rec = last_pass(&store, "acme")
+        .await
+        .expect("a pre-upgrade row must not fail to deserialize")
+        .expect("the row exists");
+    assert_eq!(rec.last_run_ms, 1000, "the old row's data survives");
+    assert_eq!(
+        rec.capped_rollup, 0,
+        "a column the old build never wrote reads as the unbounded default"
+    );
+
+    // The failure that actually bit: run_gc reads last_pass first, so a stale row broke the pass.
+    run_gc(&store, "acme", 2000)
+        .await
+        .expect("GC must run on a workspace holding a pre-upgrade pass row");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

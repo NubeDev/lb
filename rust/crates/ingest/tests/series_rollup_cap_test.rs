@@ -8,8 +8,8 @@
 //! `series_retention_test.rs`.
 
 use lb_ingest::{
-    commit_batch, read_rollups, run_gc, set_policy, write, write_rollups, Policy, Qos, RollupRow,
-    Sample, Tier,
+    commit_batch, last_pass, read_rollups, run_gc, set_policy, write, write_rollups, Policy, Qos,
+    RollupRow, Sample, Tier,
 };
 use lb_store::Store;
 use serde_json::json;
@@ -102,6 +102,32 @@ async fn a_dead_clock_cannot_grow_a_capped_tier() {
     let mut ts: Vec<u64> = left.iter().map(|r| r.t).collect();
     ts.sort_unstable();
     assert_eq!(ts, (46..=50u64).map(|i| i * WIDTH).collect::<Vec<_>>());
+}
+
+/// The cap must be observable AFTER the pass returns, not merely on its return value: an operator
+/// discovers a capped tier through `series.retention.status`, which reads the persisted row, and
+/// every other test here asserts on the in-memory `GcPass`. `last_pass` projects its columns BY
+/// NAME, so a field added to `GcPassRecord` and omitted from that projection reads back as its
+/// serde default forever — 0 evictions — with the row on disc perfectly correct. That is the
+/// silent-drop failure this feature exists to prevent, reappearing on the one surface that reports
+/// it (issue #65's observable-never-silent rule).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_capped_pass_is_observable_on_the_persisted_record() {
+    let store = Store::memory().await.unwrap();
+    seed(&store, "acme", "m.s", 50).await;
+    set_policy(&store, "acme", &policy(5)).await.unwrap();
+
+    let pass = run_gc(&store, "acme", 0).await.unwrap();
+    assert_eq!(pass.capped_rollup, 45, "the pass itself counted the cap");
+
+    let rec = last_pass(&store, "acme")
+        .await
+        .unwrap()
+        .expect("run_gc records a pass");
+    assert_eq!(
+        rec.capped_rollup, 45,
+        "the persisted record must carry the SAME count the pass returned"
+    );
 }
 
 /// `max_rows: 0` is unbounded — the default, and the exact meaning of every tier written before

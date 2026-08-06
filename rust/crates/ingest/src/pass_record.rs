@@ -21,6 +21,8 @@
 use lb_store::{Store, StoreError};
 use serde_json::{json, Value};
 
+use crate::retention::none_as_default;
+
 /// The per-workspace last-GC-pass table. One row, at the fixed id below.
 pub const GC_PASS_TABLE: &str = "series_gc_pass";
 /// The fixed record id — there is exactly one pass row per workspace namespace.
@@ -46,7 +48,19 @@ pub struct GcPassRecord {
     pub rollup_rows: usize,
     pub evicted_rollup: usize,
     /// Rollup rows evicted by a tier's `max_rows` FIFO cap — see [`crate::GcPass::capped_rollup`].
-    #[serde(default)]
+    ///
+    /// `none_as_default`, not a bare `#[serde(default)]`, for the reason `Policy::max_samples`
+    /// carries the same attribute: [`last_pass`] names this column explicitly, so a row written
+    /// **before this field existed** comes back as a PRESENT `NONE` rather than an absent key —
+    /// which `default` never sees and `usize` refuses ("expected a 64-bit unsigned integer, found
+    /// None"). Absent-key and present-null are different bugs and only one of them survives an
+    /// upgrade.
+    ///
+    /// Found on RC-6 (2026-08-06): the first `series.retention.gc` after upgrading a node whose
+    /// pass row predated the field failed outright, and because `run_gc` reads `last_pass` before
+    /// doing anything, that ONE stale row broke the whole retention pass — the same shape of
+    /// failure `max_samples` documents.
+    #[serde(default, deserialize_with = "none_as_default")]
     pub capped_rollup: usize,
     /// Advisory warnings, clipped to [`MAX_STORED_WARNINGS`].
     #[serde(default)]
@@ -123,7 +137,7 @@ pub async fn last_pass(store: &Store, ws: &str) -> Result<Option<GcPassRecord>, 
                 // `clock_skew_ms` is `Option`, so a row predating it arrives as a present NONE and
                 // deserializes to `None` correctly — no `none_as_default` dance needed here.
                 "SELECT last_run_ms, duration_ms, evicted_raw, capped_raw, rollup_rows, \
-                 evicted_rollup, warnings, warnings_total, clock_skew_ms \
+                 evicted_rollup, capped_rollup, warnings, warnings_total, clock_skew_ms \
                  FROM ONLY type::thing('{GC_PASS_TABLE}', $id)"
             ),
             vec![("id".into(), Value::String(GC_PASS_ID.to_string()))],

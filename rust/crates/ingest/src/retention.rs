@@ -111,7 +111,7 @@ pub struct Policy {
 /// Deserialize a field that may arrive as `NONE` (a column an older row never wrote, projected by
 /// name) as its type's default. `#[serde(default)]` covers an ABSENT key; this covers a PRESENT null
 /// one — the two are different bugs and only one of them survives an upgrade.
-fn none_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
+pub(crate) fn none_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: serde::Deserialize<'de> + Default,
