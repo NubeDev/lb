@@ -333,7 +333,7 @@ pub use nav::{
     BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_GROUP_DEPTH as NAV_MAX_GROUP_DEPTH,
     MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS, MAX_PINNED as NAV_MAX_PINNED,
     MAX_RECORD_REACH_CAPS as NAV_MAX_RECORD_REACH_CAPS, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
-    REACH_ALL,
+    MAX_TITLE_TEMPLATE as NAV_MAX_TITLE_TEMPLATE, REACH_ALL,
 };
 pub use notify::{
     call_notify_tool, device_list, device_register, device_remove, notify_send,

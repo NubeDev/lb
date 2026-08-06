@@ -7,8 +7,12 @@
 //!   - `group` nesting depth is capped at [`MAX_GROUP_DEPTH`] (top-level list = depth 1; a `group` at
 //!     depth 5 may hold leaves but no further `group`).
 
+use lb_ext_loader::template_refs;
+
 use super::error::NavError;
-use super::model::{NavItem, MAX_GROUP_DEPTH, MAX_ICON_COLOR_LEN, MAX_ICON_LEN, MAX_ITEMS};
+use super::model::{
+    NavItem, MAX_GROUP_DEPTH, MAX_ICON_COLOR_LEN, MAX_ICON_LEN, MAX_ITEMS, MAX_TITLE_TEMPLATE,
+};
 
 /// The reserved pick sentinel (no-lockout scope) — a `nav_pref.active` of this value means "force the
 /// built-in sidebar; ignore team/default tiers". It is NOT a real nav id, so `nav.save` must reject it
@@ -70,6 +74,39 @@ fn count(items: &[NavItem]) -> usize {
         .sum()
 }
 
+/// The `title_template` check (nav-context-builtins scope, §G4) — the SAME rule the extension
+/// manifest's `validate_nav` applies, reached through the SAME `template_refs` extractor, so an
+/// admin authoring in the nav builder and an extension authoring in `extension.toml` get one verdict
+/// for one template. Validating only the ext seam would make it the privileged path (rule 10).
+///
+/// Bounded at [`MAX_TITLE_TEMPLATE`], and rejected when it references a name this item cannot bind:
+/// its own `vars` keys, its `template-group` `var`, or a `__`-prefixed built-in the client supplies.
+/// The host still expands NOTHING — the string is stored raw and interpolated client-side.
+///
+/// `label` is deliberately NOT checked here: it is retroactive (a stored label may carry a literal
+/// `$` and the grammar has no escape), so a bad reference renders literally, exactly as today.
+fn check_title_template(item: &NavItem) -> Result<(), NavError> {
+    let Some(tpl) = item.title_template.as_deref() else {
+        return Ok(());
+    };
+    if tpl.is_empty() || tpl.len() > MAX_TITLE_TEMPLATE {
+        return Err(NavError::BadInput(format!(
+            "nav item title template must be non-empty and ≤{MAX_TITLE_TEMPLATE} chars"
+        )));
+    }
+    let mut bindable: Vec<&str> = item.vars.keys().map(String::as_str).collect();
+    if !item.var.is_empty() {
+        bindable.push(item.var.as_str());
+    }
+    if let Some(name) = template_refs::first_unbindable(tpl, &bindable) {
+        return Err(NavError::BadInput(format!(
+            "nav item title template references `{name}`, which the item cannot bind (not in its \
+             `vars`, not its template-group `var`, not a built-in)"
+        )));
+    }
+    Ok(())
+}
+
 /// Validate one item at `depth` (the top-level list is depth 1). A `group` deeper than
 /// [`MAX_GROUP_DEPTH`] is rejected — a `group` at the max depth may still hold leaf kinds, but a
 /// further nested `group` (which would land at `depth + 1`) is refused. An unknown kind is rejected.
@@ -90,6 +127,7 @@ fn check_item(item: &NavItem, depth: usize) -> Result<(), NavError> {
             "nav item icon color exceeds {MAX_ICON_COLOR_LEN} chars"
         )));
     }
+    check_title_template(item)?;
     if item.kind == "group" {
         if depth > MAX_GROUP_DEPTH {
             return Err(NavError::BadInput(format!(

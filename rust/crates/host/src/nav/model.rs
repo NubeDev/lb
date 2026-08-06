@@ -60,6 +60,12 @@ pub const MAX_ICON_LEN: usize = 64;
 /// [`MAX_ICON_LEN`]. The core never parses the value — it is opaque data the UI interprets.
 pub const MAX_ICON_COLOR_LEN: usize = 32;
 
+/// Cap on an item's `title_template` (nav-context-builtins scope) — the heading-override template.
+/// Re-exported from `lb_ext_loader` so the manifest path and the nav-builder write path cap the SAME
+/// field with the SAME number (rule 10: one field, one validator, one bound, whichever door it came
+/// through). Rejected `BadInput` at save like [`MAX_ICON_LEN`].
+pub use lb_ext_loader::NAV_MAX_TITLE_TEMPLATE as MAX_TITLE_TEMPLATE;
+
 /// The largest hidden-set `nav.hidden.set` accepts (hide-and-pins scope, "Bounds"). Rejected over-cap
 /// (`BadInput`), never silently truncated.
 pub const MAX_HIDDEN: usize = 200;
@@ -163,6 +169,24 @@ pub struct NavItem {
     /// `template-group`: the option-source tool's args (opaque; re-checked per call). `Null` otherwise.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub args: serde_json::Value,
+    /// An OPTIONAL **heading override** this item pins on the board it opens (nav-context-builtins
+    /// scope, §G4) — a TEMPLATE STRING the host stores and relays verbatim, expanding nothing (the
+    /// `Action.args_template` posture). The shell interpolates it at render against the page's
+    /// `VarScope` — this item's `vars` (or, on a `template-group`, the fanned-out `var` binding) plus
+    /// the `__nav.*` / `__page.*` built-ins — and shows it in place of the board's stored `heading`.
+    /// That is what lets ONE template board say which thing the viewer is looking at.
+    ///
+    /// Same field, same [`MAX_TITLE_TEMPLATE`] cap and the same validator as the extension manifest's
+    /// `[[ui.nav]] title_template` (rule 10 — the ext seam is not the privileged path; an admin
+    /// authoring in the nav builder is checked identically). Meaningful on `dashboard` /
+    /// `template-group`; carried opaquely on any kind. `None` on every record written before this
+    /// field — additive, so [`SCHEMA_VERSION`] is unchanged and no migration exists.
+    #[serde(
+        default,
+        rename = "titleTemplate",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub title_template: Option<String>,
 }
 
 /// A nav record. The persisted menu + sharing metadata (nav scope, "Data").
@@ -328,4 +352,16 @@ pub struct ResolvedItem {
     /// `{ <var>: <value> }`. Empty for entries with no binding.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vars: BTreeMap<String, String>,
+    /// The authored [`NavItem::title_template`], relayed verbatim beside `vars` (nav-context-builtins
+    /// scope, §G4) — the heading override the client interpolates against the page's `VarScope` at
+    /// render. Present on a `template-group` fan-out's CHILDREN too, so each generated instance names
+    /// itself; the host expands nothing. `None` when the author pinned none, and `None` in a denied
+    /// caller's payload for the trivial reason that a stripped item has no `ResolvedItem` at all.
+    /// Serde-defaulted + skipped-when-absent, so an old client and a pre-field record read as today.
+    #[serde(
+        default,
+        rename = "titleTemplate",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub title_template: Option<String>,
 }

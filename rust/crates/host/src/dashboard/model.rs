@@ -185,6 +185,16 @@ pub struct Cell {
     /// A human title for the cell (widget-config-vars scope, Slice 1). Additive `#[serde(default, deserialize_with = "null_default")]` so a
     /// pre-title cell round-trips unchanged; `dashboard.save`/`get` carry it with no new verb. The header
     /// renders it, falling back to a derived label when empty.
+    ///
+    /// **A TEMPLATE STRING** (nav-context-builtins scope, §G2). It may carry `$var` / `${var}` /
+    /// `[[var]]` references — the page's variables plus the `__`-prefixed built-ins (`${__nav.label}`,
+    /// `${__page.ext}`, `${__user.login}`, …) — which the CLIENT interpolates at render against the
+    /// page's `VarScope`, on the same terms as a panel title. **The host stores it RAW and expands
+    /// nothing**, the same posture it holds for [`Action::args_template`]: interpolating server-side
+    /// would need the viewer's identity, their URL range and their caps at render time, none of which
+    /// the store layer has. An unresolvable reference stays literal (the shipped unknown-variable
+    /// rule), so a stored string containing a bare literal `$` — `"Cost $USD per kWh"` — keeps
+    /// rendering exactly as it does today. No type change, no migration, no validation added here.
     #[serde(default, deserialize_with = "null_default")]
     pub title: String,
     /// v2 render vocabulary: `chart`/`stat`/`gauge`/`table` (read), `plot`/`d3`/`template` (scripted,
@@ -207,6 +217,16 @@ pub struct Cell {
     #[serde(default, deserialize_with = "null_default")]
     pub options: Value,
     /// v3 panel description (Grafana parity). Empty on a v1/v2 cell.
+    ///
+    /// **A TEMPLATE STRING** (nav-context-builtins scope, §G2). It may carry `$var` / `${var}` /
+    /// `[[var]]` references — the page's variables plus the `__`-prefixed built-ins (`${__nav.label}`,
+    /// `${__page.ext}`, `${__user.login}`, …) — which the CLIENT interpolates at render against the
+    /// page's `VarScope`, on the same terms as a panel title. **The host stores it RAW and expands
+    /// nothing**, the same posture it holds for [`Action::args_template`]: interpolating server-side
+    /// would need the viewer's identity, their URL range and their caps at render time, none of which
+    /// the store layer has. An unresolvable reference stays literal (the shipped unknown-variable
+    /// rule), so a stored string containing a bare literal `$` — `"Cost $USD per kWh"` — keeps
+    /// rendering exactly as it does today. No type change, no migration, no validation added here.
     #[serde(default, deserialize_with = "null_default")]
     pub description: String,
     /// v3 targets — supersedes the single `source`. `sources[0]` === `source` for v2 compat (the UI
@@ -482,6 +502,16 @@ pub struct Dashboard {
     /// A one-line human subtitle shown under the page title (dashboard page-settings). Additive/
     /// defaulted — a pre-settings dashboard round-trips unchanged; the UI falls back to a default
     /// blurb when empty. Opaque to the host beyond serde.
+    ///
+    /// **A TEMPLATE STRING** (nav-context-builtins scope, §G2). It may carry `$var` / `${var}` /
+    /// `[[var]]` references — the page's variables plus the `__`-prefixed built-ins (`${__nav.label}`,
+    /// `${__page.ext}`, `${__user.login}`, …) — which the CLIENT interpolates at render against the
+    /// page's `VarScope`, on the same terms as a panel title. **The host stores it RAW and expands
+    /// nothing**, the same posture it holds for [`Action::args_template`]: interpolating server-side
+    /// would need the viewer's identity, their URL range and their caps at render time, none of which
+    /// the store layer has. An unresolvable reference stays literal (the shipped unknown-variable
+    /// rule), so a stored string containing a bare literal `$` — `"Cost $USD per kWh"` — keeps
+    /// rendering exactly as it does today. No type change, no migration, no validation added here.
     #[serde(default, deserialize_with = "null_default")]
     pub description: String,
     /// The page's display HEADING — the human name, distinct from the slug-ish `title`. Shown in the
@@ -489,6 +519,15 @@ pub struct Dashboard {
     ///
     /// Typed for the reason `kind`/`reportIds` are: this struct DROPS unknown top-level keys, so the
     /// client's `heading` vanished on the first save. Opaque to the host beyond serde.
+    /// **A TEMPLATE STRING** (nav-context-builtins scope, §G2). It may carry `$var` / `${var}` /
+    /// `[[var]]` references — the page's variables plus the `__`-prefixed built-ins (`${__nav.label}`,
+    /// `${__page.ext}`, `${__user.login}`, …) — which the CLIENT interpolates at render against the
+    /// page's `VarScope`, on the same terms as a panel title. **The host stores it RAW and expands
+    /// nothing**, the same posture it holds for [`Action::args_template`]: interpolating server-side
+    /// would need the viewer's identity, their URL range and their caps at render time, none of which
+    /// the store layer has. An unresolvable reference stays literal (the shipped unknown-variable
+    /// rule), so a stored string containing a bare literal `$` — `"Cost $USD per kWh"` — keeps
+    /// rendering exactly as it does today. No type change, no migration, no validation added here.
     #[serde(default, deserialize_with = "null_default")]
     pub heading: String,
     /// How large the in-body heading block renders — `"small" | "medium" | "large"`, empty ⇒ medium.

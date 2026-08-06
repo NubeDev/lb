@@ -81,6 +81,11 @@ pub async fn resolve_template_group(
             nav: String::new(),
             items: Vec::new(),
             vars,
+            // nav-context-builtins scope: every instance of ONE template board gets the group's
+            // heading override, so the client can name each generated page from its own binding
+            // (`${site} — energy`) or from the nav context it was reached through. Relayed
+            // verbatim; the host expands nothing.
+            title_template: item.title_template.clone(),
         });
     }
 
@@ -95,6 +100,7 @@ pub async fn resolve_template_group(
         nav: String::new(),
         items: children,
         vars: BTreeMap::new(),
+        title_template: item.title_template.clone(),
     }))
 }
 

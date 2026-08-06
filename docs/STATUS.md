@@ -30,6 +30,43 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-08-06 (unreleased — needs the next `node-v*` tag) — A GENERATED BOARD CAN FINALLY
+SAY WHICH THING YOU ARE LOOKING AT
+([`frontend/dashboard/nav-context-builtins-scope.md`](scope/frontend/dashboard/nav-context-builtins-scope.md),
+session [`dashboard/nav-context-builtins`](sessions/dashboard/nav-context-builtins-session.md), issue
+[#144](https://github.com/NubeDev/lb/issues/144)).** A `template-group` fan-out renders one heading
+for every instance it generates, because the *nav context* the viewer arrived through has no name.
+lb's half is **contract + typed carriers only — no templating engine, no server-side expansion**:
+
+- **`NavItem.title_template: Option<String>`** on the extension manifest (`ext-loader`, TOML key
+  `title_template`, `titleTemplate` accepted as an alias), on the host nav record (`nav/model.rs`),
+  on `ExtNavItem` (so it rides `ext.list`), and relayed on `ResolvedItem` beside `vars` — including
+  onto **every child of a `template-group` fan-out**, which is the case the scope exists for. The
+  wire key is `titleTemplate` everywhere (the `iconColor` / `argsTemplate` convention).
+- **`Dashboard.heading` / `.description`, `Cell.title` / `.description` are doc-declared TEMPLATE
+  STRINGS** the host stores **raw** — the `Action.args_template` posture. No type change, no
+  migration, `SCHEMA_VERSION` stays 3; the whole change is additive `Option<String>`, so an old
+  client ignores the field and an old node returns `None`.
+- **One validator, both doors (rule 10).** A new `lb_ext_loader::template_refs` extracts reference
+  names from the one grammar (`$name` / `${name}` / `[[name]]`, `[A-Za-z_][\w.]*`, optional
+  `:formathint`, `__`-prefixed = built-in). `validate_nav` **and** `nav.save`'s bounds both reject a
+  `title_template` over 256 chars or naming something the item cannot bind, with the offending name
+  in the error — an extension and a workspace admin get one verdict for one template.
+- **`label` warns, `title_template` rejects** — the asymmetry the scope pins (§G3 / open question 4).
+  `label` is retroactive and the grammar has no `$$` escape, so a shipped `"Cost $USD"` still loads,
+  byte-identical, with a WARN. The one hard reject on `label` is `__nav.*` (self-referential —
+  `__nav.label` is computed *from* the label).
+- **Tests:** `crates/host/tests/nav_context_builtins_test.rs` (6, green, real `mem://` node) —
+  the **projection trap** through the path that bites (a plain host nav record, written via
+  `nav.save`, read back through `nav.resolve`), the fan-out carrying the field, the nav-builder
+  cap/reject symmetry, absent ⇒ `None` + key omitted, a templated heading round-tripping
+  byte-identical through `dashboard_save_meta`/`get`, and a literal `$` in existing data untouched.
+  Plus unit tests in `template_refs`, `manifest.rs`, `ui_decl.rs` and `assets/install/model.rs`.
+- **Resolution stays 100% client-side.** The consumer build is `NubeIO/rubix-ai →
+  `docs/scope/frontend/dashboard/nav-context-vars-scope.md`, which bumps to the tag this ships in.
+
+---
+
 **Just shipped 2026-08-03 (unreleased — needs the next `node-v*` tag) — THE INVITE DOOR NOW OPENS
 FROM BOTH SIDES ([`auth-caps/invite-admin-routes-scope.md`](scope/auth-caps/invite-admin-routes-scope.md),
 issue [#130](https://github.com/NubeDev/lb/issues/130)).** `invites-scope.md` shipped the host verbs

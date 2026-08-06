@@ -242,6 +242,9 @@ async fn resolve_ext_nav(
             label: decl.label.clone(),
             icon: decl.icon.clone(),
             vars: decl.vars.clone(),
+            // The extension's declared heading override rides the synthetic item so the ordinary
+            // dashboard path relays it — one relay, not an ext-shaped second one (rule 10).
+            title_template: decl.title_template.clone(),
             ..NavItem::default()
         };
         return Ok(resolve_item(node, principal, ws, &item)
@@ -260,6 +263,7 @@ async fn resolve_ext_nav(
         icon: decl.icon.clone(),
         ext: ext.to_string(),
         nav: nav.to_string(),
+        title_template: decl.title_template.clone(),
         ..ResolvedItem::default()
     }))
 }
@@ -409,6 +413,7 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         nav: String::new(),
         items: Vec::new(),
         vars: BTreeMap::new(),
+        title_template: item.title_template.clone(),
     })
 }
 
@@ -440,6 +445,9 @@ async fn resolve_dashboard(
             items: Vec::new(),
             // reusable-pages scope: a pinned binding rides through to the href as `?var-<name>=…`.
             vars: item.vars.clone(),
+            // nav-context-builtins scope: the heading override rides through beside the binding,
+            // verbatim — the client interpolates it, the host expands nothing.
+            title_template: item.title_template.clone(),
         })),
         // Denied / not-found → stripped (the caller can't read it). Any other is a real fault.
         // (`ManagedDenied` is a WRITE refusal — a read never produces it — but it IS a denial, so it
@@ -489,6 +497,7 @@ async fn resolve_ext(
             nav: String::new(),
             items: Vec::new(),
             vars: BTreeMap::new(),
+            title_template: item.title_template.clone(),
         })),
         None => Ok(None), // uninstalled → stripped silently.
     }
@@ -538,6 +547,10 @@ async fn resolve_tag_group(
                 nav: String::new(),
                 items: Vec::new(),
                 vars: BTreeMap::new(),
+                // A tag-group expands to MANY distinct boards, each with its own stored heading —
+                // unlike a template-group's one-board-many-bindings fan-out, so the group's override
+                // does not descend onto a child that is a different record entirely.
+                title_template: None,
             });
         }
     }
@@ -553,6 +566,7 @@ async fn resolve_tag_group(
         nav: String::new(),
         items: children,
         vars: BTreeMap::new(),
+        title_template: item.title_template.clone(),
     }))
 }
 
@@ -593,6 +607,7 @@ async fn resolve_group(
         nav: String::new(),
         items: children,
         vars: BTreeMap::new(),
+        title_template: item.title_template.clone(),
     }))
 }
 

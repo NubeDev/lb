@@ -1,6 +1,9 @@
 # Dashboard scope — nav-context built-ins (`${__nav.*}`, `${__page.*}`)
 
-Status: **scope (the ask)**. Promotes to `doc-site/content/public/dashboard/dashboard.md` on ship.
+Status: **lb half BUILT 2026-08-06** (unreleased — needs the next `node-v*` tag); the client-side
+rendering half is the consumer's. Session:
+[`../../../sessions/dashboard/nav-context-builtins-session.md`](../../../sessions/dashboard/nav-context-builtins-session.md).
+Promotes to `doc-site/content/public/dashboard/dashboard.md` on ship.
 
 **Owning repo: `lb` — CONTRACT ONLY.** This doc extends the *documented, versioned* built-in namespace
 that [`widget-config-vars-scope.md`](widget-config-vars-scope.md) owns, and adds two small typed carriers
