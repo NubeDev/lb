@@ -31,6 +31,10 @@ fn assert_leaks_nothing(body: &serde_json::Value, status: &str) {
         !obj.contains_key("trust_gate"),
         "trust_gate must be ABSENT when the publisher gate is enforced (the default)"
     );
+    assert!(
+        !obj.contains_key("store_bounds"),
+        "store_bounds must be ABSENT when nobody has reported the store's bounds (the default)"
+    );
     assert_eq!(obj["status"], status);
     assert_eq!(obj["version"], env!("CARGO_PKG_VERSION"));
     let detail = obj["detail"].as_object().expect("detail is an object");
@@ -190,4 +194,141 @@ async fn health_omits_the_trust_gate_field_entirely_when_enforced() {
     let body: serde_json::Value = json_body(resp).await;
     assert!(body.as_object().unwrap().get("trust_gate").is_none());
     assert_leaks_nothing(&body, "ok");
+}
+
+// ---- The store-bounds posture on the health surface (rubix-ai#84). ------------------------
+//
+// A node was rebuilt, came back with its retention bound and byte budget both silently gone, and
+// grew ~1.09 GB of commit log before boot-looping against the store memory guard. Nothing said so
+// on any surface a fleet monitor polls. These pin the "not silent" half — and, just as importantly,
+// that a node which never reports is byte-identical to before, so no existing probe changes.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_omits_store_bounds_when_nobody_has_reported() {
+    // THE BACK-COMPAT PROPERTY. The stock binary never calls `set_store_bounds`, so it must produce
+    // NO field — not `"store_bounds":"unknown"` and not `null`. `assert_leaks_nothing` pins the key
+    // set; this names the reason.
+    let (gw, _key) = gateway().await;
+    let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = json_body(resp).await;
+    assert!(body.as_object().unwrap().get("store_bounds").is_none());
+    assert_leaks_nothing(&body, "ok");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_omits_store_bounds_when_everything_is_bounded() {
+    // Reported AND fine ⇒ still nothing to say. The field materialises only when there is a problem,
+    // the same rule `trust_gate` follows.
+    let (gw, _key) = gateway().await;
+    gw.health.set_store_bounds(true, true);
+    let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = json_body(resp).await;
+    assert!(body.as_object().unwrap().get("store_bounds").is_none());
+    assert_leaks_nothing(&body, "ok");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_names_which_term_is_unbounded() {
+    // Bytes and rows are different nouns and bounding one does not bound the other — a monitor that
+    // could only learn "something is wrong" would send an operator to check the thing that is fine.
+    for (bytes, rows, expected) in [
+        (false, true, "unbounded-bytes"),
+        (true, false, "unbounded-rows"),
+        (false, false, "unbounded-bytes+rows"),
+    ] {
+        let (gw, _key) = gateway().await;
+        gw.health.set_store_bounds(bytes, rows);
+        let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+
+        // Still 200/ok, and that is the point: an unbounded node is serving perfectly well right
+        // now. 503 would evict a box that is fine today and still not say why.
+        assert_eq!(resp.status(), StatusCode::OK, "{expected}");
+        let body: serde_json::Value = json_body(resp).await;
+        assert_eq!(body["status"], "ok");
+        assert_eq!(body["detail"]["store"], "ok");
+        assert_eq!(body["store_bounds"], expected);
+        assert_eq!(
+            body.as_object().unwrap().len(),
+            4,
+            "exactly status/version/detail/store_bounds"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_store_bounds_leaks_no_numbers_prefixes_or_paths() {
+    // The unauthenticated trade, same as `trust_gate`'s: someone who can reach the port learns this
+    // node is not bounded — actionable — and learns nothing about WHAT it stores or WHERE.
+    let (gw, _key) = gateway().await;
+    gw.health.set_store_bounds(false, false);
+    let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+    let body: serde_json::Value = json_body(resp).await;
+    let rendered = body.to_string();
+    for forbidden in [
+        "LB_STORE_MAX_BYTES",
+        "keep_for_ms",
+        "max_rows",
+        "max_samples",
+        "series_retention",
+        "budget",
+        "prefix",
+        "/",
+    ] {
+        assert!(
+            !rendered.contains(forbidden),
+            "the unbounded body must not name {forbidden:?}; got {rendered}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_store_bounds_can_be_re_reported() {
+    // The cell is a latest-known-state, not a one-shot: a node that learns better (an operator
+    // applies a policy, a later boot re-reports) must be able to say so without a restart.
+    let (gw, _key) = gateway().await;
+    gw.health.set_store_bounds(false, false);
+    let resp = router(gw.clone())
+        .oneshot(get_req("/health"))
+        .await
+        .unwrap();
+    assert_eq!(
+        json_body::<serde_json::Value>(resp).await["store_bounds"],
+        "unbounded-bytes+rows"
+    );
+
+    gw.health.set_store_bounds(true, true);
+    let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+    let body: serde_json::Value = json_body(resp).await;
+    assert!(body.as_object().unwrap().get("store_bounds").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_store_bounds_and_trust_gate_coexist() {
+    // Two independent conditional fields. Neither may shadow the other — a bench node that is BOTH
+    // waived and unbounded has two things wrong with it and must report both.
+    let (gw, _key) = gateway().await;
+    gw.health.set_store_bounds(false, true);
+    let gw = gw.with_authenticity(lb_role_gateway::Authenticity::WaivedUntrustedKey);
+    let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = json_body(resp).await;
+    assert_eq!(body["trust_gate"], "waived-untrusted-key");
+    assert_eq!(body["store_bounds"], "unbounded-bytes");
+    assert_eq!(body.as_object().unwrap().len(), 5);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn health_store_bounds_does_not_change_the_status_code_when_degraded() {
+    // An unbounded node that is ALSO degraded stays 503 for the degrade — the bounds marker neither
+    // causes nor masks a status change.
+    let (gw, _key) = gateway().await;
+    gw.health.set_store_bounds(false, false);
+    gw.health.set_store(false);
+    let resp = router(gw).oneshot(get_req("/health")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body: serde_json::Value = json_body(resp).await;
+    assert_eq!(body["status"], "degraded");
+    assert_eq!(body["store_bounds"], "unbounded-bytes+rows");
 }

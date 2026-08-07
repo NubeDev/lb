@@ -23,6 +23,12 @@ fn unix_seconds() -> u64 {
 pub async fn run(node: &Arc<Node>, cfg: &BootConfig) {
     let ws = &cfg.workspace;
 
+    // RETENTION SEED — first, and deliberately so. Everything below this line is identity, skills and
+    // personas; none of it can write a series row. This one bounds how much the node may STORE, and
+    // it has to be in force before the gateway block spawns any native sidecar that could start
+    // ingesting (see `seed_retention`'s module docs on ordering).
+    crate::seed_retention::run(node, cfg).await;
+
     // global-identity seed: ensure the configured dev identity is a `workspace-admin` member. The login
     // gate still enforces membership; this just guarantees the dev user IS a member (provisioning, not a
     // login bypass). `seed_user: None` skips it (an embedder that provisions its own identities).
