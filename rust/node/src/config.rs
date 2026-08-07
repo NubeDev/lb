@@ -346,6 +346,24 @@ pub struct BootConfig {
     /// `LB_RETENTION_PERIOD_SECS` at the binary boundary — the one place `LB_*` is read.
     pub retention_period: Option<Duration>,
 
+    /// Retention policies to stand at boot **if the prefix has no row yet** — empty (the default) ⇒
+    /// seed nothing, and boot is byte-identical to before this field existed.
+    ///
+    /// A retention policy lives in the store, so a rebuilt or wiped instance starts with none, which
+    /// means keep-everything-for-ever. This field is how a host declares the bound as CONFIG instead,
+    /// so a fresh node comes up bounded without an operator remembering to apply anything —
+    /// rubix-ai#84, where exactly that gap let a rebuilt node grow 1.09 GB of commit log in 2.5 h and
+    /// then refuse to boot.
+    ///
+    /// **Only-if-absent, per prefix**: an operator's own policy — including a deliberate keep-forever
+    /// one — is never overwritten, on this or any later boot. See [`crate::seed_retention`], which
+    /// also documents why it must run before native sidecars spawn.
+    ///
+    /// Config, never a code branch (rule 1), and it names nothing: the prefixes and horizons are the
+    /// embedder's. `from_env` does not read it — a policy is structured data, not a scalar knob, so
+    /// the standalone binary seeds none.
+    pub retention_seed: Vec<lb_ingest::Policy>,
+
     /// Force the store open past the **boot memory guard** (`LB_STORE_OPEN_UNGUARDED=1`, parsed in
     /// [`crate::store_env`]): `false` (default) ⇒ a log larger than available RAM is refused with
     /// `StoreError::WontFit` and the binary exits nonzero rather than risking a machine-wide OOM
@@ -460,6 +478,9 @@ impl Default for BootConfig {
             // machine-wide OOM (boot-memory-guard scope, issue #128).
             store_open_unguarded: false,
             store_available_ram_bytes: None,
+            // Seed nothing by default: the embedder declares its own bounds, and an empty vec makes
+            // boot byte-identical to before the field existed.
+            retention_seed: Vec::new(),
             signing_key: SigningKey::generate(),
             workspace: "acme".into(),
             seed_user: Some("user:ada".into()),
@@ -550,6 +571,9 @@ impl BootConfig {
                 .ok()
                 .filter(|p| !p.is_empty()),
             signing_key: gateway_signing_key(),
+            // The standalone binary seeds no policy: a retention policy is structured data, not a
+            // scalar `LB_*` knob, so there is nothing at the binary boundary to read it from.
+            retention_seed: Vec::new(),
             workspace: std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into()),
             seed_user: Some(std::env::var("LB_SEED_USER").unwrap_or_else(|_| "user:ada".into())),
             gateway,

@@ -28,6 +28,11 @@ path = "src/main.rs"
 # has to be a real log line, not a comment.
 tracing.workspace = true
 lb-host.workspace = true
+# The series-retention plane, for `BootConfig::retention_seed` (`seed_retention.rs`). A real
+# dependency, not the dev-only one it used to be: provisioning a retention policy is now part of the
+# boot ritual, because a policy that only an operator can apply is a policy that does not survive a
+# rebuild (rubix-ai#84).
+lb-ingest.workspace = true
 lb-telemetry.workspace = true
 # LAN discovery (`BootConfig::discovery`) — the mDNS bootstrap seam an embedder opts into.
 lb-discovery.workspace = true
@@ -62,10 +67,6 @@ tokio.workspace = true
 # attempts, and the recorded failure reason — to prove an undeliverable email stays OWED rather than
 # being acked away (issue #118). Test-only: the binary reaches the outbox through `lb-host`.
 lb-outbox.workspace = true
-# The boot-wiring test (`tests/boot_wiring_test.rs`, issue #108) seeds and counts real series rows to
-# prove each reactor's property holds with nobody calling its verb. Test-only: the node binary itself
-# reaches the series plane through `lb-host`.
-lb-ingest.workspace = true
 # The embedder-credential-mode integration test drives the REAL gateway `boot_full` builds (its
 # `router()` via a tower oneshot — no HTTP port), proving `BootConfig::credential_mode` reaches the
 # gateway's login check. Same harness the gateway crate's route tests use (no mocks, testing §0).

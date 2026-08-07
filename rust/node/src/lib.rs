@@ -22,6 +22,7 @@ pub mod mail;
 pub mod open_store;
 pub mod reactors;
 pub mod seed_identity;
+pub mod seed_retention;
 pub mod seeds;
 mod store_env;
 
@@ -43,6 +44,10 @@ pub use config::{
 // back for in-process host-verb calls.
 pub use lb_auth::SigningKey;
 pub use lb_host::Node;
+/// The retention policy shape an embedder fills `BootConfig::retention_seed` with — re-exported for
+/// the same reason `CacheConfig` is: a host with only the `lb-node` dep must be able to NAME the
+/// type it is putting in the field, or the setting is unreachable in practice.
+pub use lb_ingest::{Policy as RetentionPolicy, Tier as RetentionTier};
 // `BrowserSessionConfig` fills `BootConfig::browser_session`. It lives in `lb-role-gateway`, but an
 // embedder must be able to NAME it with only the `lb-node` dep — same reason `SigningKey` and `Node`
 // are re-exported above. Without this, opting into the `/api/*` seam forces a direct dep on an
