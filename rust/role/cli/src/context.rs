@@ -14,7 +14,7 @@ use crate::transport::{AnyTransport, Local, Remote};
 /// The default gateway URL when neither env, config, nor `--url` supplies one.
 pub const DEFAULT_GATEWAY_URL: &str = "http://127.0.0.1:8080";
 /// The default dev user for local mode (parity with the node's `LB_SEED_USER` default).
-pub const DEFAULT_LOCAL_USER: &str = "user:ada";
+pub const DEFAULT_LOCAL_USER: &str = "user:test";
 
 /// The resolved global options a command runs under, independent of transport. Built from the parsed
 /// flags + the loaded config + env overrides.
@@ -76,7 +76,7 @@ impl RunContext {
     pub async fn local(&self) -> CliResult<Local> {
         let ws = self
             .resolve_workspace()
-            .unwrap_or_else(|| "acme".to_string());
+            .unwrap_or_else(|| "nube".to_string());
         let user = non_empty_env("LB_SEED_USER").unwrap_or_else(|| DEFAULT_LOCAL_USER.to_string());
         Local::boot(&user, &ws).await
     }
@@ -115,7 +115,7 @@ mod tests {
         // `-w gamma` with no stored gamma credential must error loudly, never silently act elsewhere
         // (the load-bearing `-w` trap the scope names).
         let mut config = Config::default();
-        config.set_token("acme", "tok-acme");
+        config.set_token("nube", "tok-nube");
         let c = ctx(Some("gamma"), false, config);
         match c.remote() {
             Err(CliError::NoCredential { workspace }) => assert_eq!(workspace, "gamma"),
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn dash_w_selects_the_matching_stored_credential() {
         let mut config = Config::default();
-        config.set_token("acme", "tok-acme");
+        config.set_token("nube", "tok-nube");
         config.set_token("beta", "tok-beta");
         // Selecting beta uses beta's token (its own ws reaches the server — no override).
         let c = ctx(Some("beta"), false, config);
@@ -136,9 +136,9 @@ mod tests {
     #[test]
     fn workspace_falls_back_to_config_default() {
         let mut config = Config::default();
-        config.set_token("acme", "tok"); // set_token also sets default_workspace = acme
+        config.set_token("nube", "tok"); // set_token also sets default_workspace = nube
         let c = ctx(None, false, config);
-        assert_eq!(c.resolve_workspace().as_deref(), Some("acme"));
+        assert_eq!(c.resolve_workspace().as_deref(), Some("nube"));
     }
 
     #[test]

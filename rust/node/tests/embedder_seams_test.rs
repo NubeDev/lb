@@ -79,13 +79,13 @@ async fn an_embedder_registered_outbox_target_receives_its_effects() {
 
     let p = lb_node::Principal::routed(
         "user:alice".to_string(),
-        "acme".to_string(),
+        "nube".to_string(),
         vec!["mcp:outbox.enqueue:call".to_string()],
     );
     lb_node::enqueue_outbox(
         &store,
         &p,
-        "acme",
+        "nube",
         "eff-1",
         "report",
         "render",
@@ -126,12 +126,12 @@ async fn a_due_reminder_fires_from_the_boot_spawned_tick() {
     let store = running.node.store.clone();
 
     // The firing runs under the AUTHOR's re-resolved caps, so the author must really hold them.
-    lb_authz::membership_add_raw(&store, "acme", "user:alice", 1)
+    lb_authz::membership_add_raw(&store, "nube", "user:alice", 1)
         .await
         .unwrap();
     let p = lb_node::Principal::routed(
         "user:alice".to_string(),
-        "acme".to_string(),
+        "nube".to_string(),
         vec![
             "mcp:reminder.create:call".to_string(),
             "mcp:outbox.enqueue:call".to_string(),
@@ -141,7 +141,7 @@ async fn a_due_reminder_fires_from_the_boot_spawned_tick() {
     // principal), so the grant has to really be there or the fire is a deny.
     lb_authz::grant_assign(
         &store,
-        "acme",
+        "nube",
         &lb_authz::Subject::User("user:alice".to_string()),
         "mcp:outbox.enqueue:call",
     )
@@ -154,7 +154,7 @@ async fn a_due_reminder_fires_from_the_boot_spawned_tick() {
     lb_host::reminder_create(
         &store,
         &p,
-        "acme",
+        "nube",
         "nightly-report",
         "* * * * *",
         None,
@@ -189,7 +189,7 @@ async fn a_service_session_is_short_lived_and_carries_only_the_principals_caps()
     let key = running.node.key();
 
     let minted = running
-        .mint_service_session("user:alice", "acme", now_secs(), Duration::from_secs(120))
+        .mint_service_session("user:alice", "nube", now_secs(), Duration::from_secs(120))
         .await
         .expect("a gateway-bearing node mints");
 
@@ -197,7 +197,7 @@ async fn a_service_session_is_short_lived_and_carries_only_the_principals_caps()
     // human session — that shortness is the whole reason this seam exists.
     let p = lb_auth::verify(&key, &minted.token, now_secs()).expect("token verifies now");
     assert_eq!(p.sub(), "user:alice");
-    assert_eq!(p.ws(), "acme");
+    assert_eq!(p.ws(), "nube");
     assert!(
         lb_auth::verify(&key, &minted.token, now_secs() + 300).is_err(),
         "a 120s token must be expired 300s later — it must not be a 12h session"
@@ -227,7 +227,7 @@ async fn a_headless_node_mints_no_service_session() {
 
     let running = boot_full(cfg).await.expect("boot headless");
     assert!(running
-        .mint_service_session("user:alice", "acme", now_secs(), Duration::from_secs(120))
+        .mint_service_session("user:alice", "nube", now_secs(), Duration::from_secs(120))
         .await
         .is_none());
 }

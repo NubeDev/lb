@@ -214,7 +214,7 @@ A Raspberry Pi (principal `client:pi-7`, a full node) reporting CPU temperature 
 1. The Pi runs a **`mqtt-bridge` extension** (out-of-core, installed from the registry) — or just its
    own code — that produces `Sample { series: "node.cpu_temp", producer: "client:pi-7", ts, seq,
    payload: 61.4, labels: {host:"pi-7"}, qos: "best-effort" }`.
-2. The Pi **publishes** the sample as Zenoh motion on `ws/acme/series/node.cpu_temp`. Cheap, real-time.
+2. The Pi **publishes** the sample as Zenoh motion on `ws/nube/series/node.cpu_temp`. Cheap, real-time.
    It *also* buffers it in its **local staging** (bounded — see producer overflow), so a must-deliver
    sample survives an offline Pi.
 3. The cloud node (holding the **ingest role**) **drains** the stream with a **cheap append** into its

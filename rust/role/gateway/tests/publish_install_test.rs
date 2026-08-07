@@ -66,7 +66,7 @@ async fn publish_installs_and_loads_a_trusted_artifact_so_it_is_callable() {
     let tok = token(
         &key,
         "user:admin",
-        "acme",
+        "nube",
         &[PUBLISH_CAP, ECHO_CAP, LIST_CAP],
     );
 
@@ -125,7 +125,7 @@ async fn an_untrusted_publisher_is_422_and_nothing_is_installed() {
     let (_trusted_id, _trusted_sk, trusted) = publisher(7);
     let (foreign_id, foreign_sk, _) = publisher(9);
     let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW).with_trusted(trusted);
-    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP, ECHO_CAP]);
+    let tok = token(&key, "user:admin", "nube", &[PUBLISH_CAP, ECHO_CAP]);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -167,7 +167,7 @@ async fn publish_without_the_capability_is_denied_server_side() {
     let (id, sk, trusted) = publisher(7);
     let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW).with_trusted(trusted);
     // A valid session, fully trusted artifact, but NO ext.publish cap — the server must refuse.
-    let tok = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let tok = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -198,7 +198,7 @@ async fn publish_accepts_a_body_larger_than_the_2mib_default_native_binary_size(
     let (gw, key) = gateway().await;
     let (id, sk, trusted) = publisher(7);
     let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW).with_trusted(trusted);
-    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP]);
+    let tok = token(&key, "user:admin", "nube", &[PUBLISH_CAP]);
 
     // A 3 MiB payload in the `wasm` field — comfortably past the old 2 MiB default, the size class of a
     // real native sidecar binary. Signed with a trusted key over its real digest so ONLY the body limit,
@@ -264,7 +264,7 @@ async fn a_body_over_the_configured_limit_is_413_with_a_descriptive_error() {
     let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW)
         .with_trusted(trusted)
         .with_max_extension_upload_bytes(1024 * 1024); // 1 MiB ceiling
-    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP]);
+    let tok = token(&key, "user:admin", "nube", &[PUBLISH_CAP]);
 
     // ~2 MiB of wasm → an encoded body comfortably over the 1 MiB ceiling but under ceiling+16 MiB
     // margin, so the request reaches the handler and gets the descriptive 413 (not the layer's).
@@ -306,7 +306,7 @@ async fn a_body_under_the_configured_limit_clears_the_size_gate() {
     let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW)
         .with_trusted(trusted)
         .with_max_extension_upload_bytes(1024 * 1024); // 1 MiB ceiling
-    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP]);
+    let tok = token(&key, "user:admin", "nube", &[PUBLISH_CAP]);
 
     // A real trusted hello-v2 artifact (tens of KiB) is well under 1 MiB → the size gate passes.
     let resp = router(gw)

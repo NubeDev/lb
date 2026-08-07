@@ -106,15 +106,15 @@ rejected for the workspace claim: a relation you can revoke beats a grant you mu
 
 ## Example flow
 
-1. Ada (`user:ada`, ws `acme`, cap `store:doc/*:write`) calls `put_doc("scope-x", "draft…")`.
-   The host writes `doc:scope-x` with `owner=user:ada`, `visibility=private`. Only Ada can read it.
-2. Ada calls `share_doc("scope-x", team="engineering")`. The host writes `share:scope-x/engineering`.
+1. Test (`user:test`, ws `nube`, cap `store:doc/*:write`) calls `put_doc("scope-x", "draft…")`.
+   The host writes `doc:scope-x` with `owner=user:test`, `visibility=private`. Only Test can read it.
+2. Test calls `share_doc("scope-x", team="engineering")`. The host writes `share:scope-x/engineering`.
 3. Ben (`user:ben`, member of `team:engineering`, cap `store:doc/*:read`) calls
-   `get_doc("scope-x")`. Gate 1 ws=acme ✔, gate 2 cap ✔, gate 3: Ben ∈ engineering ∧ doc shared to
+   `get_doc("scope-x")`. Gate 1 ws=nube ✔, gate 2 cap ✔, gate 3: Ben ∈ engineering ∧ doc shared to
    engineering → **read returns the content.**
 4. Cleo (`user:cleo`, *not* in engineering, holds `store:doc/*:read`) calls `get_doc("scope-x")`.
    Gates 1+2 ✔, gate 3: not owner, not in a shared team, no linked channel grant → **DENIED.**
-5. Ada calls `link_doc("scope-x", channel="eng-general")`. Now anyone with `bus:chan/eng-general:sub`
+5. Test calls `link_doc("scope-x", channel="eng-general")`. Now anyone with `bus:chan/eng-general:sub`
    may also read the doc (the channel-link path), without being in engineering.
 
 ## Testing plan (mandatory categories apply)

@@ -170,7 +170,7 @@ where "what pages exist for me" is answered; fan-out is a navigation question.
 
 ## Example flow
 
-1. Ada builds `dashboard:site-overview`: a Query variable `site` (options from
+1. Test builds `dashboard:site-overview`: a Query variable `site` (options from
    `tags.find {facets:[{key:"site"}]}`), marked **required**; cells read
    `series.read { series: "hvac.${site}.temp" }`, a `store.query` table bound `WHERE site = $site`.
    Several cells are `panel_ref`s to library panels shared across the workspace.
@@ -184,10 +184,10 @@ where "what pages exist for me" is answered; fan-out is a navigation question.
    re-checks under Ben's caps.
 5. A new cooler site is commissioned and its entities get tagged `site:plant-4`. Ben's next visit
    shows **Plant-4** — nobody edited a nav or a dashboard.
-6. The template needs a new gauge: Ada edits `dashboard:site-overview` once; all N instances show it —
+6. The template needs a new gauge: Test edits `dashboard:site-overview` once; all N instances show it —
    and because the gauge is a library panel, the *exec* dashboard referencing the same panel updates
    too. Edit-once at both altitudes.
-7. Plant-2 needs a special one-off chart: that's a **fork** — Ada duplicates into a real
+7. Plant-2 needs a special one-off chart: that's a **fork** — Test duplicates into a real
    `dashboard:plant-2-custom` and pins it as a plain `dashboard` nav entry with
    `vars: { site: "plant-2" }`. Drift is explicit and hers.
 

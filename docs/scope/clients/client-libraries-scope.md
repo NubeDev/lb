@@ -30,7 +30,7 @@ through the universal `POST /mcp/call` bridge the client also exposes.
   prefix in one chokepoint).
 - A `login()` helper that calls `POST /login` with `{user, workspace}` and stores
   the returned dev token — the **local-dev** path (`make cloud` + login as
-  `user:ada`).
+  `user:test`).
 - The two calls that prove the loop end to end, both **typed** in the language:
   - `writeSamples(samples)` → `POST /ingest` (the durable write surface).
   - `latestSample(series)` → `GET /series/{series}/latest` (the read-back).

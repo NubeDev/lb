@@ -134,9 +134,9 @@ already green while the drivers did not exist.
 ## `report_test.rs` was 8/9 RED on master, and is now green
 
 Verified, not assumed: `report_test.rs` was run in a detached worktree at pristine `c05ebb75` and
-8 of its 9 tests failed there, every one on `Store(Decode("invalid workspace id: \"ws:acme\""))`.
+8 of its 9 tests failed there, every one on `Store(Decode("invalid workspace id: \"ws:nube\""))`.
 A colon is not legal in a workspace id — the store's `USE NS` validation, from the `node-v0.11.0`
-per-query namespace work — and this file still used `ws:acme` throughout. It was part of lb's
+per-query namespace work — and this file still used `ws:nube` throughout. It was part of lb's
 recorded failing-test baseline. Since the export tests in it were being rewritten anyway, the file's
 workspace ids were hyphenated; all 11 now pass.
 

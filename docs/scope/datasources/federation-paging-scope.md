@@ -183,9 +183,9 @@ A KFC dashboard pages two external sources — one that pushes down, one that ca
    `mcp:store.query:call` workspace-first, runs slice A's keyset over the indexed order key, returns
    `{ rows, next_cursor }`. The next page sends the cursor back — an index seek, flat latency.
 2. **`federation.query` — pushdown, live-paged.** The Timescale warehouse is registered
-   (`datasource:acme:timescale`, [`datasources-scope.md`](datasources-scope.md) step 1–2). A call
+   (`datasource:nube:timescale`, [`datasources-scope.md`](datasources-scope.md) step 1–2). A call
    `federation.query { source:"timescale", sql:"SELECT ts, store, temp FROM readings ORDER BY ts DESC",
-   limit:500, cursor }` authorizes `mcp:federation.query:call`, resolves `timescale` in `acme`, validates
+   limit:500, cursor }` authorizes `mcp:federation.query:call`, resolves `timescale` in `nube`, validates
    SELECT-only, and **injects the keyset predicate** (`ts < cursor.ts …`). The host **inspects the
    optimized plan**: the Timescale connector reports the filter + `LIMIT` as an **exact pushdown** (executed
    at the source). It serves a live page and echoes `next_cursor`. Fast, fresh, no copy.

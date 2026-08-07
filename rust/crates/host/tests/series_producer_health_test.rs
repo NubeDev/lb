@@ -33,10 +33,10 @@ async fn a_producer_that_is_not_an_extension_says_so_and_nothing_is_wrong() {
     // Most series in a workspace look like this: a human, a flow, a webhook, the hand-write form.
     // The strip must be ABSENT for them, not broken and not empty-looking.
     let node = Arc::new(Node::boot().await.unwrap());
-    seed(&node, "acme", "user:ada/gw-alpha", 1).await;
+    seed(&node, "nube", "user:test/gw-alpha", 1).await;
 
-    let out = health(&node, &admin("acme", &[]), "acme").await.unwrap();
-    let r = row(&out, "user:ada/gw-alpha");
+    let out = health(&node, &admin("nube", &[]), "nube").await.unwrap();
+    let r = row(&out, "user:test/gw-alpha");
     assert_eq!(r["state"], "not-an-extension");
     assert_eq!(r["ext"], Value::Null);
     assert_eq!(r["report"], Value::Null);
@@ -46,9 +46,9 @@ async fn a_producer_that_is_not_an_extension_says_so_and_nothing_is_wrong() {
 async fn an_extension_that_declares_no_health_tool_reports_nothing_and_is_not_an_error() {
     let node = Arc::new(Node::boot().await.unwrap());
     register_silent(&node, "quiet-ext");
-    seed(&node, "acme", "ext:quiet-ext/net-1", 1).await;
+    seed(&node, "nube", "ext:quiet-ext/net-1", 1).await;
 
-    let out = health(&node, &admin("acme", &[]), "acme").await.unwrap();
+    let out = health(&node, &admin("nube", &[]), "nube").await.unwrap();
     let r = row(&out, "ext:quiet-ext/net-1");
     assert_eq!(r["state"], "not-reported");
     // The ext IS identified — we know who is silent, which is itself useful.
@@ -64,9 +64,9 @@ async fn a_refusal_names_the_missing_grant_and_never_looks_like_silence() {
     // conflating them is the silent degrade the scope was written to end.
     let node = Arc::new(Node::boot().await.unwrap());
     register_reporter(&node, "demo-probe", r#"{"state":"connected"}"#, false);
-    seed(&node, "acme", "ext:demo-probe/net-1", 1).await;
+    seed(&node, "nube", "ext:demo-probe/net-1", 1).await;
 
-    let out = health(&node, &admin("acme", &[]), "acme").await.unwrap();
+    let out = health(&node, &admin("nube", &[]), "nube").await.unwrap();
     let r = row(&out, "ext:demo-probe/net-1");
     assert_eq!(r["state"], "denied");
     assert_ne!(r["state"], "not-reported");
@@ -87,10 +87,10 @@ async fn a_reply_in_a_shape_we_cannot_read_is_an_error_not_a_plausible_blank() {
         r#"{"last_write_ms":"yesterday"}"#,
         false,
     );
-    seed(&node, "acme", "ext:broken-ext/net-1", 1).await;
+    seed(&node, "nube", "ext:broken-ext/net-1", 1).await;
 
-    let p = admin("acme", &["mcp:broken-ext.ingest.health:call"]);
-    let out = health(&node, &p, "acme").await.unwrap();
+    let p = admin("nube", &["mcp:broken-ext.ingest.health:call"]);
+    let out = health(&node, &p, "nube").await.unwrap();
     let r = row(&out, "ext:broken-ext/net-1");
     assert_eq!(r["state"], "error");
     assert_eq!(r["report"], Value::Null);
@@ -115,10 +115,10 @@ async fn a_declaring_extension_is_asked_and_its_report_is_carried_verbatim() {
             "details":[{"label":"consecutive timeouts","value":"11"}]}"#,
         false,
     );
-    seed(&node, "acme", "ext:demo-probe/net-1", 1).await;
+    seed(&node, "nube", "ext:demo-probe/net-1", 1).await;
 
-    let p = admin("acme", &["mcp:demo-probe.ingest.health:call"]);
-    let out = health(&node, &p, "acme").await.unwrap();
+    let p = admin("nube", &["mcp:demo-probe.ingest.health:call"]);
+    let out = health(&node, &p, "nube").await.unwrap();
     let r = row(&out, "ext:demo-probe/net-1");
 
     assert_eq!(r["state"], "reported");
@@ -140,10 +140,10 @@ async fn the_producer_is_handed_its_own_stream_id_not_the_rooted_form() {
     // — it would have to guess, or answer for all of them.
     let node = Arc::new(Node::boot().await.unwrap());
     register_reporter(&node, "demo-probe", r#"{"state":"connected"}"#, true);
-    seed(&node, "acme", "ext:demo-probe/net-7@42", 1).await;
+    seed(&node, "nube", "ext:demo-probe/net-7@42", 1).await;
 
-    let p = admin("acme", &["mcp:demo-probe.ingest.health:call"]);
-    let out = health(&node, &p, "acme").await.unwrap();
+    let p = admin("nube", &["mcp:demo-probe.ingest.health:call"]);
+    let out = health(&node, &p, "nube").await.unwrap();
     let details = &row(&out, "ext:demo-probe/net-7@42")["report"]["details"];
 
     assert_eq!(details[0]["value"], "net-7@42", "the leaf it declared");
@@ -156,10 +156,10 @@ async fn a_missing_report_field_stays_absent_and_is_never_defaulted_to_zero() {
     // none", which is a different and possibly false claim from "did not say".
     let node = Arc::new(Node::boot().await.unwrap());
     register_reporter(&node, "terse-ext", r#"{"state":"connected"}"#, false);
-    seed(&node, "acme", "ext:terse-ext/net-1", 1).await;
+    seed(&node, "nube", "ext:terse-ext/net-1", 1).await;
 
-    let p = admin("acme", &["mcp:terse-ext.ingest.health:call"]);
-    let out = health(&node, &p, "acme").await.unwrap();
+    let p = admin("nube", &["mcp:terse-ext.ingest.health:call"]);
+    let out = health(&node, &p, "nube").await.unwrap();
     let rep = &row(&out, "ext:terse-ext/net-1")["report"];
 
     assert_eq!(rep["state"], "connected");
@@ -187,18 +187,18 @@ async fn one_broken_producer_does_not_blank_the_healthy_one_beside_it() {
         false,
     );
     register_reporter(&node, "bad-ext", r#"not json at all"#, false);
-    seed(&node, "acme", "ext:good-ext/net-1", 1).await;
-    seed(&node, "acme", "ext:bad-ext/net-1", 2).await;
-    seed(&node, "acme", "user:ada/manual", 3).await;
+    seed(&node, "nube", "ext:good-ext/net-1", 1).await;
+    seed(&node, "nube", "ext:bad-ext/net-1", 2).await;
+    seed(&node, "nube", "user:test/manual", 3).await;
 
     let p = admin(
-        "acme",
+        "nube",
         &[
             "mcp:good-ext.ingest.health:call",
             "mcp:bad-ext.ingest.health:call",
         ],
     );
-    let out = health(&node, &p, "acme").await.unwrap();
+    let out = health(&node, &p, "nube").await.unwrap();
 
     assert_eq!(row(&out, "ext:good-ext/net-1")["state"], "reported");
     assert_eq!(
@@ -206,14 +206,14 @@ async fn one_broken_producer_does_not_blank_the_healthy_one_beside_it() {
         7
     );
     assert_eq!(row(&out, "ext:bad-ext/net-1")["state"], "error");
-    assert_eq!(row(&out, "user:ada/manual")["state"], "not-an-extension");
+    assert_eq!(row(&out, "user:test/manual")["state"], "not-an-extension");
     assert_eq!(out["producers"].as_array().unwrap().len(), 3);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_series_with_no_samples_is_an_empty_list_not_an_error() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let out = health(&node, &admin("acme", &[]), "acme").await.unwrap();
+    let out = health(&node, &admin("nube", &[]), "nube").await.unwrap();
     assert_eq!(out["series"], SERIES);
     assert_eq!(out["producers"].as_array().expect("an array").len(), 0);
 }

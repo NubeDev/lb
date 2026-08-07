@@ -134,10 +134,10 @@ Arc<dyn RuleModel>, now)` takes the model as a parameter; only `call_rules_tool`
 
 ## Example flow
 
-1. Ada (admin) has picked **"In-house — Z.AI GLM-4.6"** in Settings → Agent (the agent-catalog picker
+1. Test (admin) has picked **"In-house — Z.AI GLM-4.6"** in Settings → Agent (the agent-catalog picker
    wrote `agent.config = { default_runtime: "default", model_endpoint: {provider:"zaicoding",
    model:"glm-4.6", api_key_env:"ZAI_API_KEY", …} }`).
-2. Ada writes a rule:
+2. Test writes a rule:
    ```
    let hot = query("timescale", "SELECT point, value FROM readings WHERE value > 30 ORDER BY ts DESC LIMIT 100");
    let summary = ai.ask("which coolers ran hot today?");

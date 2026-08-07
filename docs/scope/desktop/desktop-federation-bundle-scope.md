@@ -20,7 +20,7 @@ sqlite datasource (the shipped `demo-buildings.db`) end to end, no `make dev`.
 
 - The `full` desktop binary (`make windows-full` / `make linux-full`) ships the **federation
   sidecar binary** alongside the shell, and **auto-installs + supervises** it at boot in the seeded
-  workspace (`acme`), mirroring `node/src/federation.rs::mount` — but driven by the desktop boot,
+  workspace (`nube`), mirroring `node/src/federation.rs::mount` — but driven by the desktop boot,
   not `LB_FEDERATION_ENDPOINTS`.
 - Out of the box, `datasource.test` and `federation.query` against a **local sqlite** source
   succeed: the federation install-grant carries the `net:*` the local-loopback endpoint convention
@@ -94,7 +94,7 @@ already dropped `ensure_builtin_authz_roles` from its `node/main.rs` twin).
 
 ## How it fits the core
 
-- **Tenancy / isolation:** the sidecar is installed in the seeded workspace (`acme`) only; the
+- **Tenancy / isolation:** the sidecar is installed in the seeded workspace (`nube`) only; the
   install record, the `net:*` grant, and the datasource record are all workspace-scoped keys. A
   second workspace on the same desktop node gets no federation until it too installs. Isolation is
   the existing `install_native` / datasource behavior — unchanged, re-tested here for the desktop
@@ -128,13 +128,13 @@ already dropped `ensure_builtin_authz_roles` from its `node/main.rs` twin).
 
 1. User double-clicks `lazybones-shell.exe` (the `full` Windows build). Packaging placed
    `federation.exe` and `demo-buildings.db` beside it.
-2. `boot_full` runs: seeds identity + roles (`ada` → workspace-admin), mounts the loopback gateway,
-   installs the signing key, then **`mount_federation(node, "acme")`** fires.
-3. `mount_federation` resolves `federation.exe` from the exe dir, `install_native`s it in `acme`
+2. `boot_full` runs: seeds identity + roles (`test` → workspace-admin), mounts the loopback gateway,
+   installs the signing key, then **`mount_federation(node, "nube")`** fires.
+3. `mount_federation` resolves `federation.exe` from the exe dir, `install_native`s it in `nube`
    with the approved grant `[net:tls:127.0.0.1:0:connect, secret:federation/*:get]`, and supervises
-   the child. Console: `federation: installed sidecar in 'acme' (tools=[…], approved=[127.0.0.1:0])`.
+   the child. Console: `federation: installed sidecar in 'nube' (tools=[…], approved=[127.0.0.1:0])`.
 4. It then pre-registers `demo-buildings` (sqlite, dsn = the bundled db path) via `datasource_add`.
-5. The user logs in (`user:ada` / `acme`), opens **Datasources**: `demo-buildings` is listed. They
+5. The user logs in (`user:test` / `nube`), opens **Datasources**: `demo-buildings` is listed. They
    click **Test** → `POST /datasources/demo-buildings/test` → host `datasource.test` →
    `enforce_endpoint` passes (`127.0.0.1:0` is approved) → the sidecar opens the sqlite file →
    **green**.
@@ -152,7 +152,7 @@ child, the store/gateway are real, seeded with a real sqlite file:
 - **Capability-deny (mandatory):** a source whose endpoint is NOT in the desktop-approved grant is
   refused by `enforce_endpoint` — opaque, sidecar present. Assert the approved sqlite endpoint
   passes and an unapproved `host:port` denies (the headline wall, both directions).
-- **Workspace-isolation (mandatory):** the federation install + demo source live in `acme` only; a
+- **Workspace-isolation (mandatory):** the federation install + demo source live in `nube` only; a
   second workspace on the same node sees no federation install and cannot query `demo-buildings`.
 - **The end-to-end that was broken:** boot the `full` binary (the existing `full_loopback_test`
   harness pattern), install federation, register the bundled sqlite db, and drive `datasource.test`

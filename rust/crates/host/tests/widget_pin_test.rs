@@ -160,7 +160,7 @@ async fn pin_denied_without_cap_and_allowed_for_a_plain_member() {
     // A PLAIN member holding ONLY the pin + read caps (NOT an admin, NOT dashboard.save) pins — proving
     // the grant is real, not an admin bypass. The pin is its own cap (`mcp:dashboard.pin:call`), distinct
     // from `dashboard.save`; a member who can pin but not free-edit cells still works.
-    let member = principal("user:ada", ws, &[PIN, GET, LIST]);
+    let member = principal("user:test", ws, &[PIN, GET, LIST]);
     let d = call(
         &node,
         &member,
@@ -186,16 +186,16 @@ async fn pin_is_denied_for_a_non_owner_on_an_existing_dashboard() {
     let node = Arc::new(Node::boot().await.unwrap());
 
     // Alice owns "ops" (she creates it via the pin path itself).
-    let ada = principal("user:ada", ws, &[PIN, GET]);
+    let test = principal("user:test", ws, &[PIN, GET]);
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": reminder_list_envelope(), "now": 10 }),
     )
     .await
-    .expect("ada creates + pins");
+    .expect("test creates + pins");
 
     // Bob has the pin cap but does NOT own "ops" — denied.
     let bob = principal("user:bob", ws, &[PIN, GET]);
@@ -218,19 +218,19 @@ async fn pin_in_ws_a_is_invisible_to_ws_b() {
     let node = Arc::new(Node::boot().await.unwrap());
     let (wa, wb) = ("wp-iso-a", "wp-iso-b");
     // Seed a reminder in ws-A so the pinned cell's source has real rows there.
-    let ada = principal("user:ada", wa, &[PIN, GET, REMINDER_CREATE, REMINDER_LIST]);
-    seed_reminder(&node, wa, &ada, "r1").await;
+    let test = principal("user:test", wa, &[PIN, GET, REMINDER_CREATE, REMINDER_LIST]);
+    seed_reminder(&node, wa, &test, "r1").await;
 
-    // Ada pins the reminder widget to her ws-A dashboard "ops".
+    // Test pins the reminder widget to her ws-A dashboard "ops".
     call(
         &node,
-        &ada,
+        &test,
         wa,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": reminder_list_envelope(), "now": 10 }),
     )
     .await
-    .expect("ada pins in ws-A");
+    .expect("test pins in ws-A");
 
     // Bob in ws-B cannot read ws-A's dashboard "ops" — the workspace wall (gate 1).
     let bob = principal("user:bob", wb, &[GET]);
@@ -268,8 +268,8 @@ async fn pin_in_ws_a_is_invisible_to_ws_b() {
 async fn pin_reminder_list_envelope_persists_and_reloads_intact() {
     let ws = "wp-headline";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET, REMINDER_CREATE, REMINDER_LIST]);
-    seed_reminder(&node, ws, &ada, "r1").await;
+    let test = principal("user:test", ws, &[PIN, GET, REMINDER_CREATE, REMINDER_LIST]);
+    seed_reminder(&node, ws, &test, "r1").await;
 
     // Pin `reminder.list`'s declared `result` envelope — ZERO reminder-specific code in the pin path
     // (the mint function treats the tool id as opaque data; the envelope is a normal `x-lb-render`).
@@ -277,7 +277,7 @@ async fn pin_reminder_list_envelope_persists_and_reloads_intact() {
     // persisted cell survives intact (the mint happened host-side, against the real store).
     let _pinned = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": reminder_list_envelope(), "now": 10 }),
@@ -286,7 +286,7 @@ async fn pin_reminder_list_envelope_persists_and_reloads_intact() {
     .expect("pin reminder.list");
 
     // Reload the dashboard — the minted cell survives intact (it was persisted).
-    let got = dashboard_get(&node.store, &ada, ws, "ops")
+    let got = dashboard_get(&node.store, &test, ws, "ops")
         .await
         .expect("get");
     assert_eq!(got.cells.len(), 1);
@@ -317,7 +317,7 @@ async fn pin_path_is_generic_over_an_arbitrary_tool_id() {
     // checks at RENDER under the viewer's grant; here we only prove the MINT+persist is generic).
     let ws = "wp-generic";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET]);
+    let test = principal("user:test", ws, &[PIN, GET]);
 
     let env = json!({
         "view": "table",
@@ -326,7 +326,7 @@ async fn pin_path_is_generic_over_an_arbitrary_tool_id() {
     });
     let d = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "d", "title": "D", "envelope": env, "now": 10 }),
@@ -344,12 +344,12 @@ async fn pin_path_is_generic_over_an_arbitrary_tool_id() {
 async fn re_pin_same_envelope_replaces_in_place_not_duplicates() {
     let ws = "wp-idem";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET]);
+    let test = principal("user:test", ws, &[PIN, GET]);
 
     let env = reminder_list_envelope();
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": env, "now": 10 }),
@@ -361,7 +361,7 @@ async fn re_pin_same_envelope_replaces_in_place_not_duplicates() {
     // cell, not append a duplicate.
     dashboard_pin(
         &node.store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -371,7 +371,7 @@ async fn re_pin_same_envelope_replaces_in_place_not_duplicates() {
     .await
     .expect("re-pin (shell path)");
 
-    let got = dashboard_get(&node.store, &ada, ws, "ops")
+    let got = dashboard_get(&node.store, &test, ws, "ops")
         .await
         .expect("get");
     assert_eq!(got.cells.len(), 1, "re-pin replaces, not duplicates");
@@ -383,12 +383,12 @@ async fn re_pin_same_envelope_replaces_in_place_not_duplicates() {
 async fn pin_a_different_envelope_appends_and_re_pin_preserves_layout() {
     let ws = "wp-append";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET]);
+    let test = principal("user:test", ws, &[PIN, GET]);
 
     // Pin reminder.list first (lands at y=0).
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": reminder_list_envelope(), "now": 10 }),
@@ -404,7 +404,7 @@ async fn pin_a_different_envelope_appends_and_re_pin_preserves_layout() {
     });
     let d = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "envelope": other, "now": 11 }),
@@ -426,7 +426,7 @@ async fn pin_a_different_envelope_appends_and_re_pin_preserves_layout() {
     // Re-pin reminder.list — preserves the EXISTING cell's layout (idempotent position), not the default.
     let d = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "envelope": reminder_list_envelope(), "now": 12 }),
@@ -453,10 +453,10 @@ async fn shell_path_and_headless_mcp_call_produce_the_same_cell() {
     let node = Arc::new(Node::boot().await.unwrap());
 
     // The shell path — direct `dashboard_pin` into dashboard "shell".
-    let ada_shell = principal("user:ada", ws, &[PIN, GET]);
+    let test_shell = principal("user:test", ws, &[PIN, GET]);
     dashboard_pin(
         &node.store,
-        &ada_shell,
+        &test_shell,
         ws,
         "shell",
         "Shell",
@@ -469,7 +469,7 @@ async fn shell_path_and_headless_mcp_call_produce_the_same_cell() {
     // The headless path — the same call over `POST /mcp/call` (`call_tool` → `dashboard.pin`) into "mcp".
     call(
         &node,
-        &ada_shell,
+        &test_shell,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "mcp", "title": "Mcp", "envelope": reminder_list_envelope(), "now": 10 }),
@@ -477,10 +477,10 @@ async fn shell_path_and_headless_mcp_call_produce_the_same_cell() {
     .await
     .expect("headless path pin");
 
-    let shell = dashboard_get(&node.store, &ada_shell, ws, "shell")
+    let shell = dashboard_get(&node.store, &test_shell, ws, "shell")
         .await
         .expect("shell get");
-    let mcp = dashboard_get(&node.store, &ada_shell, ws, "mcp")
+    let mcp = dashboard_get(&node.store, &test_shell, ws, "mcp")
         .await
         .expect("mcp get");
     // The two paths produce the SAME cell shape (view/source/tools-fold/options/fieldConfig/i).
@@ -500,12 +500,12 @@ async fn a_hallucinated_view_in_the_envelope_is_rejected_through_pin() {
     // rejected loudly HERE, too, for the shell path AND a headless writer. Nothing persists.
     let ws = "wp-reject";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET]);
+    let test = principal("user:test", ws, &[PIN, GET]);
 
     let env = json!({ "view": "heatmap", "source": { "tool": "x" } });
     let err = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "d", "title": "D", "envelope": env, "now": 10 }),
@@ -520,7 +520,7 @@ async fn a_hallucinated_view_in_the_envelope_is_rejected_through_pin() {
         other => panic!("expected BadInput over MCP, got {other:?}"),
     }
     // Nothing persisted.
-    assert!(dashboard_get(&node.store, &ada, ws, "d").await.is_err());
+    assert!(dashboard_get(&node.store, &test, ws, "d").await.is_err());
 }
 
 // --- pin coexists with hand-authored cells (a dashboard can mix pinned + saved cells) ---
@@ -529,12 +529,12 @@ async fn a_hallucinated_view_in_the_envelope_is_rejected_through_pin() {
 async fn pin_appends_alongside_hand_authored_cells() {
     let ws = "wp-mix";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, SAVE, GET]);
+    let test = principal("user:test", ws, &[PIN, SAVE, GET]);
 
     // Author a gauge cell the OLD way (dashboard.save).
     dashboard_save(
         &node.store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -548,7 +548,7 @@ async fn pin_appends_alongside_hand_authored_cells() {
     // Pin the reminder widget — appends alongside the gauge; both pass the Slice A validator.
     let d = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "envelope": reminder_list_envelope(), "now": 11 }),
@@ -569,7 +569,7 @@ async fn pin_carries_a_genui_envelopes_declared_sources_through() {
     // hidden extra-tools fold), or the pinned widget renders with no data.
     let ws = "wp-genui-sources";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET]);
+    let test = principal("user:test", ws, &[PIN, GET]);
 
     let env = json!({
         "view": "genui",
@@ -589,7 +589,7 @@ async fn pin_carries_a_genui_envelopes_declared_sources_through() {
     });
     let d = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "d", "title": "D", "envelope": env, "now": 10 }),
@@ -623,7 +623,7 @@ async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
     // `panel.get` is added ONLY so the test can INSPECT the panel record afterwards — personas grant
     // `panel.*` so a real dock user has it; the pin itself never asks for it.
     const PANEL_GET: &str = "mcp:panel.get:call";
-    let ada = principal("user:ada", ws, &[PIN, GET, PANEL_GET]);
+    let test = principal("user:test", ws, &[PIN, GET, PANEL_GET]);
 
     let env = json!({
         "view": "table",
@@ -632,7 +632,7 @@ async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
     });
     let d = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": env, "now": 10 }),
@@ -647,7 +647,7 @@ async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
     assert_eq!(cell["source"]["tool"], "reminder.list");
 
     // The persisted cell (raw store, post-strip) is layout + ref only — no spec on the cell row.
-    let raw = dashboard_get(&node.store, &ada, ws, "ops")
+    let raw = dashboard_get(&node.store, &test, ws, "ops")
         .await
         .expect("get");
     // `dashboard_get` hydrates too — to see the STORED shape we read the raw row via the panel read.
@@ -663,12 +663,12 @@ async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
     );
 
     // The panel record EXISTS in the panel table — the reusable widget library.
-    let panel = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+    let panel = lb_host::panel_get(&node.store, &test, ws, "reminder-list")
         .await
         .expect("panel_get on the just-pinned panel");
     assert_eq!(panel.spec.view, "table");
     assert_eq!(panel.spec.source.tool, "reminder.list");
-    assert_eq!(panel.owner, "user:ada");
+    assert_eq!(panel.owner, "user:test");
     assert_eq!(
         panel.visibility,
         lb_host::PanelVisibility::Private,
@@ -681,14 +681,14 @@ async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
     // the SAME panel. One widget, two dashboards, one source of truth.
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "metrics", "title": "Metrics", "envelope": env, "now": 20 }),
     )
     .await
     .expect("second dashboard pin");
-    let panel2 = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+    let panel2 = lb_host::panel_get(&node.store, &test, ws, "reminder-list")
         .await
         .expect("panel_get on the re-pinned panel");
     assert_eq!(panel2.id, panel.id, "same panel slug reused");
@@ -706,7 +706,7 @@ async fn pin_envelope_title_names_the_cell_and_the_panel() {
     let ws = "wp-title";
     let node = Arc::new(Node::boot().await.unwrap());
     const PANEL_GET: &str = "mcp:panel.get:call";
-    let ada = principal("user:ada", ws, &[PIN, GET, PANEL_GET]);
+    let test = principal("user:test", ws, &[PIN, GET, PANEL_GET]);
 
     let env = json!({
         "view": "table",
@@ -716,7 +716,7 @@ async fn pin_envelope_title_names_the_cell_and_the_panel() {
     });
     let d = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": env, "now": 10 }),
@@ -728,7 +728,7 @@ async fn pin_envelope_title_names_the_cell_and_the_panel() {
         "cell carries the widget name"
     );
 
-    let panel = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+    let panel = lb_host::panel_get(&node.store, &test, ws, "reminder-list")
         .await
         .expect("panel_get");
     assert_eq!(panel.title, "Site Energy Ranking", "panel is named too");
@@ -741,7 +741,7 @@ async fn pin_envelope_title_names_the_cell_and_the_panel() {
     });
     let d2 = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops2", "title": "Ops2", "envelope": env2, "now": 20 }),

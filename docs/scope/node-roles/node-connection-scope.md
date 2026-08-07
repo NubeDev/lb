@@ -125,8 +125,8 @@ token verbs.
 
 ## Example flow
 
-1. Admin runs `appliance.token.issue` for workspace `acme` → the hub mints a long-lived node token
-   `{sub: node:42, ws: acme, role: edge, caps:[…]}` and records the appliance. (Cert enrollment per
+1. Admin runs `appliance.token.issue` for workspace `nube` → the hub mints a long-lived node token
+   `{sub: node:42, ws: nube, role: edge, caps:[…]}` and records the appliance. (Cert enrollment per
    `edge-trust`; the token is its bus-side credential.)
 2. The appliance is configured: `LB_ROLE=edge`, `LB_ZENOH_CONNECT=tcp/hub:7447`,
    `LB_STORE_PATH=/data`, and its token/cert. It boots.
@@ -134,7 +134,7 @@ token verbs.
    hub's router. The hub authenticates the cert; the appliance announces node presence.
 4. The appliance publishes its series; each routed `lb_mcp::call` carries its token → the hub
    `lb_auth::verify`s it → `caps::check` → accepted. It appears **online** in the admin roster.
-5. A **user** with an `appliance:42` grant opens its dashboard → Gate 1 (ws acme) ✓ → Gate 2
+5. A **user** with an `appliance:42` grant opens its dashboard → Gate 1 (ws nube) ✓ → Gate 2
    (`appliance:42` cap) ✓ → sees appliance 42's data. The same user hitting `appliance:99` →
    Gate 2 **denied**.
 6. Admin runs `appliance.token.revoke node:42` → the token/cert is revoked (short-TTL/CRL) → on its

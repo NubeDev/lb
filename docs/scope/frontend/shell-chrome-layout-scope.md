@@ -124,7 +124,7 @@ scope; the ask explicitly says "make sure you use the library").
    Breadcrumbs) and **Navigation** (Sidebar | Top menu) `OptionCard` groups with thumbnails.
 2. They pick **Breadcrumbs**. `setLayout({ header: "breadcrumbs" })` fires; the provider writes the
    new `ThemeLayout` into `ui_theme` via `persistTheme` and updates context. The page header
-   instantly swaps from the icon-chip band to a `Breadcrumb` reading `acme / Settings`. The
+   instantly swaps from the icon-chip band to a `Breadcrumb` reading `nube / Settings`. The
    top-right workspace chip + Settings gear are preserved in the breadcrumb bar's actions slot.
 3. They pick **Top menu**. `setLayout({ nav: "topmenu" })` fires. `RoutedShell` stops rendering the
    left `NavRail` and instead renders `TopMenuNav` as a horizontal `Menubar` above the header:

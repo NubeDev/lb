@@ -81,9 +81,9 @@ async fn live_raw_buckets_report_raw() {
     let samples = (1..=5u64)
         .map(|i| sample_at("m.v", i, i * 1_000, json!(i as f64)))
         .collect();
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
-    let b = buckets(&store, "acme", "m.v", 0, 10_000, 10_000).await;
+    let b = buckets(&store, "nube", "m.v", 0, 10_000, 10_000).await;
     assert_eq!(b.len(), 1);
     assert_eq!(b[0].source, Source::Raw);
     assert_eq!(b[0].raw_count, 5);
@@ -99,24 +99,24 @@ async fn folded_and_evicted_buckets_report_rollup() {
     let samples = (1..=5u64)
         .map(|i| sample_at("m.v", i, i * 1_000, json!(i as f64)))
         .collect();
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
-    tiered(&store, "acme", "m.", 1, 10_000).await;
-    run_gc(&store, "acme", 30_000).await.unwrap();
+    tiered(&store, "nube", "m.", 1, 10_000).await;
+    run_gc(&store, "nube", 30_000).await.unwrap();
     assert_eq!(
-        sample_count(&store, "acme", "m.v").await.unwrap(),
+        sample_count(&store, "nube", "m.v").await.unwrap(),
         0,
         "raw evicted"
     );
     assert_eq!(
-        read_rollups(&store, "acme", "m.v", 0, 30_000)
+        read_rollups(&store, "nube", "m.v", 0, 30_000)
             .await
             .unwrap()
             .len(),
         1
     );
 
-    let b = buckets(&store, "acme", "m.v", 0, 10_000, 10_000).await;
+    let b = buckets(&store, "nube", "m.v", 0, 10_000, 10_000).await;
     assert_eq!(b.len(), 1);
     assert_eq!(
         b[0].source,
@@ -145,22 +145,22 @@ async fn a_bucket_straddling_the_boundary_reports_mixed() {
     samples.extend(
         (1..=3u64).map(|i| sample_at("m.v", 10 + i, 10_000 + i * 1_000, json!(100.0 * i as f64))),
     );
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
     // `now` = 20s with raw kept for 10s puts the horizon at 10s, which is exactly a tier-grid
     // boundary — so the 0–10s bucket folds and evicts while the 10–20s raw survives. (A horizon
     // mid-bucket floors DOWN to the previous boundary and would evict nothing; `evict_cutoff` only
     // lets raw go as far as the least-advanced tier actually reached.)
-    tiered(&store, "acme", "m.", 10_000, 10_000).await;
-    run_gc(&store, "acme", 20_000).await.unwrap();
+    tiered(&store, "nube", "m.", 10_000, 10_000).await;
+    run_gc(&store, "nube", 20_000).await.unwrap();
     assert_eq!(
-        sample_count(&store, "acme", "m.v").await.unwrap(),
+        sample_count(&store, "nube", "m.v").await.unwrap(),
         3,
         "only the pre-horizon half was evicted"
     );
 
     // ONE 20s read bucket over both halves.
-    let b = buckets(&store, "acme", "m.v", 0, 20_000, 20_000).await;
+    let b = buckets(&store, "nube", "m.v", 0, 20_000, 20_000).await;
     assert_eq!(b.len(), 1);
     assert_eq!(b[0].source, Source::Mixed);
     assert_eq!(b[0].rollup_count, 5, "the evicted half");
@@ -181,10 +181,10 @@ async fn pushdown_and_fold_oracle_agree_on_source() {
     samples.extend(
         (1..=3u64).map(|i| sample_at("m.v", 10 + i, 10_000 + i * 1_000, json!(100.0 * i as f64))),
     );
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
-    tiered(&store, "acme", "m.", 10_000, 10_000).await;
-    run_gc(&store, "acme", 20_000).await.unwrap();
+    tiered(&store, "nube", "m.", 10_000, 10_000).await;
+    run_gc(&store, "nube", 20_000).await.unwrap();
 
     let q = BucketQuery {
         from_ts: 0,
@@ -193,10 +193,10 @@ async fn pushdown_and_fold_oracle_agree_on_source() {
         budget: None,
         ..Default::default()
     };
-    let pushed = read_buckets(&store, "acme", "m.v", &q, 10_000)
+    let pushed = read_buckets(&store, "nube", "m.v", &q, 10_000)
         .await
         .unwrap();
-    let folded = read_buckets_fold(&store, "acme", "m.v", &q, 10_000)
+    let folded = read_buckets_fold(&store, "nube", "m.v", &q, 10_000)
         .await
         .unwrap();
 

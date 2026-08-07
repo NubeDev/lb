@@ -103,7 +103,7 @@ linux-full: image ## FULL standalone build (in-process gateway + seeders + feder
 	@test -x "$(FED_BINARY)" || { echo "federation sidecar missing at $(FED_BINARY) (build.sh should have built it)"; exit 1; }
 	@cp -f "$(FED_BINARY)" "$(FULL_DEST_DIR)/federation"
 	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(FULL_DEST_DIR)" DEMO_DB="$(FULL_DEST_DIR)/demo-buildings.db"
-	@echo "Binary (full): $(FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:ada / acme"
+	@echo "Binary (full): $(FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:test / nube"
 	@echo "Sidecar (full): $(FULL_DEST_DIR)/federation  (datasources: sqlite demo pre-registered)"
 	@file "$(FULL_DEST)" 2>/dev/null || true
 
@@ -132,7 +132,7 @@ windows-full: windows-image ## Cross-build the FULL standalone .exe (+ federatio
 	@test -f "$(WIN_FED_BINARY)" || { echo "federation.exe missing at $(WIN_FED_BINARY) (build-windows.sh should have built it)"; exit 1; }
 	@cp -f "$(WIN_FED_BINARY)" "$(WIN_FULL_DEST_DIR)/federation.exe"
 	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(WIN_FULL_DEST_DIR)" DEMO_DB="$(WIN_FULL_DEST_DIR)/demo-buildings.db"
-	@echo "Binary (full): $(WIN_FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:ada / acme"
+	@echo "Binary (full): $(WIN_FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:test / nube"
 	@echo "Sidecar (full): $(WIN_FULL_DEST_DIR)/federation.exe  (datasources: sqlite demo pre-registered)"
 	@file "$(WIN_FULL_DEST)" 2>/dev/null || true
 
@@ -158,7 +158,7 @@ smoke-full: ## Boot the just-built FULL binary under xvfb + prove login AND a da
 	  sleep 8; \
 	  if ! kill -0 $$SH 2>/dev/null; then echo "DEAD within 8s"; exit 1; fi; \
 	  BODY=$$(curl -fsS -X POST http://$(LOOPBACK_ADDR)/login -H "content-type: application/json" \
-	      -d "{\"user\":\"user:ada\",\"workspace\":\"acme\"}" 2>/dev/null || echo ""); \
+	      -d "{\"user\":\"user:test\",\"workspace\":\"nube\"}" 2>/dev/null || echo ""); \
 	  TOKEN=$$(echo "$$BODY" | sed -n "s/.*\"token\":\"\([^\"]*\)\".*/\1/p"); \
 	  if [ -z "$$TOKEN" ]; then echo "LOGIN FAILED (body: $$BODY)"; kill $$SH; exit 1; fi; \
 	  echo "login OK over loopback gateway (http://$(LOOPBACK_ADDR))"; \
@@ -176,7 +176,7 @@ smoke-full-persist: ## Boot the FULL binary TWICE against a fixed store dir + pr
 	  set -e; export LB_STORE_PATH=/tmp/lb-persist-store; rm -rf $$LB_STORE_PATH; \
 	  boot() { cd /lb && xvfb-run -a ./lazybones-shell & echo $$!; }; \
 	  tok() { curl -fsS -X POST http://$(LOOPBACK_ADDR)/login -H "content-type: application/json" \
-	      -d "{\"user\":\"user:ada\",\"workspace\":\"acme\"}" 2>/dev/null | sed -n "s/.*\"token\":\"\([^\"]*\)\".*/\1/p"; }; \
+	      -d "{\"user\":\"user:test\",\"workspace\":\"nube\"}" 2>/dev/null | sed -n "s/.*\"token\":\"\([^\"]*\)\".*/\1/p"; }; \
 	  SH=$$(boot); sleep 8; T=$$(tok); \
 	  if [ -z "$$T" ]; then echo "RUN1 LOGIN FAILED"; kill $$SH; exit 1; fi; \
 	  curl -fsS -X POST http://$(LOOPBACK_ADDR)/mcp/call -H "authorization: Bearer $$T" \

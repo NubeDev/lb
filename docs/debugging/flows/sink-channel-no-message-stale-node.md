@@ -48,7 +48,7 @@ make dev            # rebuilds (cached) + relaunches node + UI
 ```
 
 After restart: gateway serving on `127.0.0.1:8080`, UI on `5173`, and the cron reactor firing
-(`flow cron reactor fired ws=acme fired=1`) — the armed flow now runs on the envelope code, so the sink
+(`flow cron reactor fired ws=nube fired=1`) — the armed flow now runs on the envelope code, so the sink
 auto-wires `payload` and records to the channel.
 
 ## No new regression test

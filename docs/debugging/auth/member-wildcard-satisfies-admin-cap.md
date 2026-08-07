@@ -158,25 +158,25 @@ pinned the *mechanism* (the leaking wildcard) instead of the *contract* (a viewe
 
 ## Live verification
 
-Fresh store, fixture per `rubix-ai/docs/testing/nav/README.md` §2. Member `bob@acme.com`, admin
-`ada@acme.com`, team `ops`, `ops-nav` sharing `ops-page` (team) + `secret-page` (private) + an `admin`
+Fresh store, fixture per `rubix-ai/docs/testing/nav/README.md` §2. Member `bob@nube.com`, admin
+`test@nube-io.com`, team `ops`, `ops-nav` sharing `ops-page` (team) + `secret-page` (private) + an `admin`
 surface.
 
 ```
 bob : {"source":"team","nav_id":"ops-nav","items":["Ops Page"]}   # curated nav applies at last
-ada : {"source":"fallback","items":[]}                            # correct — no-lockout
-GET /admin/teams   ada=200 bob=403                                # was bob=200
+test : {"source":"fallback","items":[]}                            # correct — no-lockout
+GET /admin/teams   test=200 bob=403                                # was bob=200
 ```
 
 All 10 previously-leaked caps → 403 as bob. Every §5 wall assertion held, including after the
 `__builtin__` escape hatch (menu widens, wall does not move). Member authoring verified intact: all 19
 author `.list` reads 200, and a full create→read→delete circle on bob's own dashboard, while
-`POST /navs` stays 403. Ada resolves 274 caps, bob 202.
+`POST /navs` stays 403. Test resolves 274 caps, bob 202.
 
 **What the live node did NOT prove — and why that matters here.** This ran on a store created *after*
 the fix, so it exercises a fresh seed, not an upgrade. The stale-row half cannot be driven from the
 gateway on this node (`store.scan`/`store.tables` aren't registered, and `roles.define` correctly
-refuses to re-plant the wildcards — no-widening now denies ada the `mcp:*.list:call` she'd have to hold
+refuses to re-plant the wildcards — no-widening now denies test the `mcp:*.list:call` she'd have to hold
 to grant it). Its evidence is `builtin_role_upgrade_test`, which drives lb's real bundle through
 `resolve_caps_live` — the same function the login mint calls — against a deliberately stale row: 9
 admin-only caps under the union, 0 under replace.

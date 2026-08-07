@@ -110,11 +110,11 @@ neither; the persona is descriptive metadata the roster displays.
 ## Example flow
 
 1. `workstation` node boots. The config slice gives it `NodeId = node:7f3a…`, `Persona =
-   workstation`, `Role = Edge`, and the workspaces it serves (e.g. `acme`).
-2. On boot it calls `declare_node_presence(bus, "acme", node_id, {persona, role, version})` →
-   a liveliness token at `ws/acme/nodes/node:7f3a…`. The token is **held** for the node's life.
+   workstation`, `Role = Edge`, and the workspaces it serves (e.g. `nube`).
+2. On boot it calls `declare_node_presence(bus, "nube", node_id, {persona, role, version})` →
+   a liveliness token at `ws/nube/nodes/node:7f3a…`. The token is **held** for the node's life.
 3. An operator opens the admin **Fleet** panel. The UI calls `nodes.list` (admin grant present)
-   → the host watches `ws/acme/nodes/*` with `history(true)` and returns the current set:
+   → the host watches `ws/nube/nodes/*` with `history(true)` and returns the current set:
    the hub, this `workstation`, and an `appliance` Pi — each with persona + version + "online".
 4. A second `appliance` joins → its token appears → `nodes.watch` pushes a join delta over
    SSE → the panel adds a row live.

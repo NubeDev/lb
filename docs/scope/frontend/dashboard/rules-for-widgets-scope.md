@@ -119,7 +119,7 @@ what `viz::frame` refuses to do — the author names it, the helper canonicalize
 ## How it fits the core
 
 - **Tenancy / isolation:** unchanged walls, re-proven on this path: the recursive dispatch runs
-  under the **viewer's** principal, workspace-first — a rule saved in `acme` yields nothing for a
+  under the **viewer's** principal, workspace-first — a rule saved in `nube` yields nothing for a
   `beta` viewer (the store read and the caps check both refuse before the cage runs). The helpers
   add zero data access (pure compute over rows already in the run).
 - **Capabilities:** no new grants. The path is gated twice as today: `mcp:viz.query:call` for the
@@ -191,7 +191,7 @@ gateway, seeded rules, no mocks:
 - **Capability-deny (mandatory):** a viewer with `mcp:viz.query:call` but **without**
   `mcp:rules.run:call` gets an empty/denied resolve for that source (and the status bar says
   why) — not a 500, not another source's data.
-- **Workspace-isolation (mandatory):** rule saved in `acme`; a `beta` principal's `viz.query`
+- **Workspace-isolation (mandatory):** rule saved in `nube`; a `beta` principal's `viz.query`
   over it yields no rows; `beta`'s picker never offered it (re-asserting the parent's shipped
   test at the render layer).
 - **Route flag:** a rule body with `alert()` run via `rules.run {route:false}` → findings in the

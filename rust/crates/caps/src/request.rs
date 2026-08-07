@@ -11,7 +11,7 @@ pub enum Surface {
     Bus,
     Secret,
     /// Outbound network — a native (Tier-2) extension opening a socket to an admin-approved
-    /// `host:port` (datasources scope: `net:tls:tsdb.acme:5432`). Enforced pre-connect by the
+    /// `host:port` (datasources scope: `net:tls:tsdb.nube:5432`). Enforced pre-connect by the
     /// supervisor (`requested ∩ admin_approved`); core crates never open sockets.
     Net,
     /// Page **reach** — may this subject OPEN a core surface (page)? `reach:<surface>:view`

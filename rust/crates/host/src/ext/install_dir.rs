@@ -83,11 +83,11 @@ mod tests {
     #[test]
     fn the_dir_is_deterministic_for_a_ws_and_ext() {
         assert_eq!(
-            native_install_dir("acme", "echo-sidecar"),
-            native_install_dir("acme", "echo-sidecar")
+            native_install_dir("nube", "echo-sidecar"),
+            native_install_dir("nube", "echo-sidecar")
         );
         assert_ne!(
-            native_install_dir("acme", "echo-sidecar"),
+            native_install_dir("nube", "echo-sidecar"),
             native_install_dir("other", "echo-sidecar"),
             "the workspace wall is structural in the path, too"
         );

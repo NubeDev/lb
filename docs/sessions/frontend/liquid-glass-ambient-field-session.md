@@ -52,8 +52,8 @@ field show through everywhere without touching a single component.
 
 ## Verification
 
-- Live Playwright screenshots (dark + light glass, subtle/medium) of `/t/acme/system` and
-  `/t/acme/dashboards` with the E2E board open — glass panes now visibly refract the field; System
+- Live Playwright screenshots (dark + light glass, subtle/medium) of `/t/nube/system` and
+  `/t/nube/dashboards` with the E2E board open — glass panes now visibly refract the field; System
   cards carry 8 distinct identity hues; charts pick up the token ramp.
 - `pnpm vitest run src/features/system src/features/charts src/features/dashboard/views src/lib/theme`
   → **20 files, 97 tests, all green**.

@@ -14,7 +14,7 @@ Teams/users e2e is the next slice (`docs/testing/workspace-team-users/`), after 
 
 The live node over its REST/MCP gateway surface — real SurrealDB, real capability wall,
 workspace derived from the token (§7), **no mocks**. Token minted via `POST /login`
-(`ada`/`acme`, `bob`/`globex`). The verbs map 1:1 to `ui/src/lib/{dashboard,nav,system}.api.ts`
+(`test`/`nube`, `bob`/`globex`). The verbs map 1:1 to `ui/src/lib/{dashboard,nav,system}.api.ts`
 + `ui/src/lib/ipc/http.ts`.
 
 Also ran the in-process real-gateway suites (a spawned node, not a fake) to confirm the
@@ -39,17 +39,17 @@ preexisting-failing-tests — not a regression from this work.)
 All against `BASE=http://127.0.0.1:8080`, `A="authorization: Bearer $TOKEN"`.
 
 ### System (read-only admin lens) — [`../../testing/system/README.md`](../../testing/system/README.md)
-- `GET /system/overview` → `ws:"acme", role:"solo"`, subsystems `gateway|bus|mcp|extensions`
+- `GET /system/overview` → `ws:"nube", role:"solo"`, subsystems `gateway|bus|mcp|extensions`
   all `health:"ok"`.
 - `GET /system/topology` → same nodes + wiring edges. `GET /system/tools` → host tool table.
 - **Permissions:** no token → `401`; garbage token → `401`; unknown subsystem id → `403`
-  (opaque deny). **Access:** every response carries `ws:"acme"` (token-scoped).
+  (opaque deny). **Access:** every response carries `ws:"nube"` (token-scoped).
 
 ### Dashboard CRUD — [`../../testing/dashboard/README.md`](../../testing/dashboard/README.md)
-- create `e2e-dash` → `{owner:"user:ada", visibility:"private", schemaVersion:3}`.
+- create `e2e-dash` → `{owner:"user:test", visibility:"private", schemaVersion:3}`.
 - get → matches. update title → `"E2E Dash v2"`. list → shows updated title.
 - delete → `204`; get-after-delete → `404`. Full lifecycle round-tripped the store.
-- **Permissions:** no token → `401`. **Access:** seeded `iso-dash` in `acme` → `acme` `200`;
+- **Permissions:** no token → `401`. **Access:** seeded `iso-dash` in `nube` → `nube` `200`;
   `globex` token → `404` + empty list. **The workspace wall holds.**
 
 ### Chart / panel + series feed — [`../../testing/charts/README.md`](../../testing/charts/README.md)
@@ -57,7 +57,7 @@ All against `BASE=http://127.0.0.1:8080`, `A="authorization: Bearer $TOKEN"`.
   preserved through the round-trip.
 - **Functional (the chart reads real data):** `POST /ingest` a real sample →
   `{accepted:1, committed:1}`; `GET /series?prefix=e2e` → `["e2e.temp"]`;
-  `GET /series/e2e.temp/samples` → the sample, `producer:"user:ada"` **stamped from the
+  `GET /series/e2e.temp/samples` → the sample, `producer:"user:test"` **stamped from the
   token** (a client-supplied producer is ignored — un-spoofable, §7). That round-trip is the
   chart feed working.
 - Wire-shape gotchas found & documented: sample needs a `producer` field present (even though
@@ -77,7 +77,7 @@ All against `BASE=http://127.0.0.1:8080`, `A="authorization: Bearer $TOKEN"`.
 |---|---|---|
 | CRUD | ✅ | dashboard + panel + nav full round-trips (create→read→update→list→delete) |
 | Permissions (cap-deny) | ✅ | live `401`/`403` negative paths; per-cap deny via `signInWithCaps` (NavAdmin suite) + Rust host tests |
-| Access (workspace wall) | ✅ | `globex` cannot read `acme`'s dashboard (`404` + empty list); every system read is token-ws-scoped |
+| Access (workspace wall) | ✅ | `globex` cannot read `nube`'s dashboard (`404` + empty list); every system read is token-ws-scoped |
 | Functional | ✅ | nav resolve/default/pref lens; chart series ingest→read; system snapshot |
 
 ## Findings

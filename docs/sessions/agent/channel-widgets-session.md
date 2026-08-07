@@ -151,7 +151,7 @@ channel: <cid>]`". Suites: lb-host lib 147, channel_agent_worker 11, persona_men
 
 The user tests in the AGENT DOCK, not Channels — so the render proof was moved to the right
 surface: NEW `ui/e2e/agent-dock-genui-preview.spec.ts` seeds a real dock session channel
-(`dock-user-ada-…`, the dockId grammar) over the real gateway with the exact `channel.post` a run
+(`dock-user-test-…`, the dockId grammar) over the real gateway with the exact `channel.post` a run
 makes, opens the dock in Chromium, selects the session, and asserts the composed genui surface
 renders inside the dock panel (screenshot `agent-dock-genui-preview.png`: title + live
 federation-bound table + Pin). 1/1 green. Conclusion: the dock render path works; every "no

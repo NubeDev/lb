@@ -28,14 +28,14 @@ fn endpoint(server: &TestSmtpServer) -> SmtpEndpoint {
 
 fn invite_message() -> MailMessage {
     MailMessage {
-        from_name: "Acme".into(),
-        from_addr: "reports@acme.com".into(),
+        from_name: "Nube".into(),
+        from_addr: "reports@nube.com".into(),
         to: "sam@example.com".into(),
         reply_to: None,
         subject: "Te han invitado a unirte a ácme".into(),
-        text: "Accept: https://acme/accept?token=lbi_abc".into(),
+        text: "Accept: https://nube/accept?token=lbi_abc".into(),
         html: Some(
-            "<p>You are invited. <a href=\"https://acme/accept?token=lbi_abc\">Accept</a></p>"
+            "<p>You are invited. <a href=\"https://nube/accept?token=lbi_abc\">Accept</a></p>"
                 .into(),
         ),
         message_id: Some("invite-hash1@lazybones".into()),
@@ -69,7 +69,7 @@ async fn a_real_session_delivers_a_multipart_message_the_server_can_parse() {
             .mail_from
             .as_deref()
             .unwrap_or_default()
-            .contains("reports@acme.com"),
+            .contains("reports@nube.com"),
         "{:?}",
         received.mail_from
     );
@@ -95,7 +95,7 @@ async fn a_real_session_delivers_a_multipart_message_the_server_can_parse() {
     );
     let text = parsed.body_text(0).expect("a text/plain alternative");
     let html = parsed.body_html(0).expect("a text/html part");
-    assert!(text.contains("https://acme/accept?token=lbi_abc"), "{text}");
+    assert!(text.contains("https://nube/accept?token=lbi_abc"), "{text}");
     assert!(html.contains("<a href="), "{html}");
     assert_eq!(
         parsed.attachments().count(),
@@ -112,7 +112,7 @@ async fn auth_plain_puts_the_exact_sasl_blob_on_the_wire() {
     })
     .await;
     let creds = MailCredentials::Password {
-        username: "reports@acme.com".into(),
+        username: "reports@nube.com".into(),
         password: "hunter2hunter2".into(),
     };
 
@@ -122,7 +122,7 @@ async fn auth_plain_puts_the_exact_sasl_blob_on_the_wire() {
 
     let auth_line = server.received().auth_line.expect("the server saw AUTH");
     let expected = base64::engine::general_purpose::STANDARD
-        .encode("\u{0}reports@acme.com\u{0}hunter2hunter2");
+        .encode("\u{0}reports@nube.com\u{0}hunter2hunter2");
     assert_eq!(auth_line, format!("AUTH PLAIN {expected}"), "{auth_line}");
 }
 
@@ -134,7 +134,7 @@ async fn auth_xoauth2_frames_the_bearer_token_per_the_google_spec() {
     })
     .await;
     let creds = MailCredentials::XOauth2 {
-        username: "reports@acme.com".into(),
+        username: "reports@nube.com".into(),
         access_token: "ya29.a0AfB_access".into(),
     };
 
@@ -146,7 +146,7 @@ async fn auth_xoauth2_frames_the_bearer_token_per_the_google_spec() {
     // The framing Gmail/M365 require: base64("user=<u>\x01auth=Bearer <t>\x01\x01"). Getting this
     // wrong is the whole "supports Gmail" story failing at the last byte.
     let expected = base64::engine::general_purpose::STANDARD
-        .encode("user=reports@acme.com\u{1}auth=Bearer ya29.a0AfB_access\u{1}\u{1}");
+        .encode("user=reports@nube.com\u{1}auth=Bearer ya29.a0AfB_access\u{1}\u{1}");
     assert_eq!(auth_line, format!("AUTH XOAUTH2 {expected}"), "{auth_line}");
 }
 
@@ -199,7 +199,7 @@ async fn a_rejected_auth_never_leaks_the_credential_into_the_error() {
     })
     .await;
     let creds = MailCredentials::Password {
-        username: "reports@acme.com".into(),
+        username: "reports@nube.com".into(),
         password: "hunter2hunter2".into(),
     };
 
@@ -209,7 +209,7 @@ async fn a_rejected_auth_never_leaks_the_credential_into_the_error() {
 
     let text = format!("{err} / {err:?}");
     let wire_blob = base64::engine::general_purpose::STANDARD
-        .encode("\u{0}reports@acme.com\u{0}hunter2hunter2");
+        .encode("\u{0}reports@nube.com\u{0}hunter2hunter2");
     assert!(
         !text.contains("hunter2hunter2"),
         "the password reached the error: {text}"
@@ -263,7 +263,7 @@ async fn starttls_is_required_not_opportunistic() {
     let mut ep = endpoint(&server);
     ep.tls = TlsMode::Starttls;
     let creds = MailCredentials::Password {
-        username: "reports@acme.com".into(),
+        username: "reports@nube.com".into(),
         password: "hunter2hunter2".into(),
     };
 

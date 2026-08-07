@@ -24,7 +24,7 @@ const ADMIN: &[&str] = &[
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn assign_route_persists_the_scope_selector() {
     let (gw, key) = gateway().await;
-    let admin_tok = token(&key, "user:alice", "acme", ADMIN);
+    let admin_tok = token(&key, "user:alice", "nube", ADMIN);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -44,7 +44,7 @@ async fn assign_route_persists_the_scope_selector() {
 
     // The stored grant carries the selector — not Scope::All.
     let admin = verify(&key, &admin_tok, NOW).unwrap();
-    let grants = grants_list_scoped(&gw.node.store, &admin, "acme", &Subject::User("ana".into()))
+    let grants = grants_list_scoped(&gw.node.store, &admin, "nube", &Subject::User("ana".into()))
         .await
         .unwrap();
     assert_eq!(grants.len(), 1);
@@ -72,7 +72,7 @@ async fn assign_route_persists_the_scope_selector() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
-    let grants = grants_list_scoped(&gw.node.store, &admin, "acme", &Subject::User("ana".into()))
+    let grants = grants_list_scoped(&gw.node.store, &admin, "nube", &Subject::User("ana".into()))
         .await
         .unwrap();
     assert!(grants.is_empty());
@@ -82,7 +82,7 @@ async fn assign_route_persists_the_scope_selector() {
 async fn assign_route_without_scope_defaults_to_all() {
     // Additive: the pre-scope body shape still works and means Scope::All (zero migration).
     let (gw, key) = gateway().await;
-    let admin_tok = token(&key, "user:alice", "acme", ADMIN);
+    let admin_tok = token(&key, "user:alice", "nube", ADMIN);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -97,7 +97,7 @@ async fn assign_route_without_scope_defaults_to_all() {
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
     let admin = verify(&key, &admin_tok, NOW).unwrap();
-    let grants = grants_list_scoped(&gw.node.store, &admin, "acme", &Subject::User("ana".into()))
+    let grants = grants_list_scoped(&gw.node.store, &admin, "nube", &Subject::User("ana".into()))
         .await
         .unwrap();
     assert_eq!(grants.len(), 1);
@@ -108,7 +108,7 @@ async fn assign_route_without_scope_defaults_to_all() {
 async fn malformed_scope_in_body_is_rejected_not_widened() {
     // A malformed selector must fail the request — never silently deserialize to All.
     let (gw, key) = gateway().await;
-    let admin_tok = token(&key, "user:alice", "acme", ADMIN);
+    let admin_tok = token(&key, "user:alice", "nube", ADMIN);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -132,7 +132,7 @@ async fn malformed_scope_in_body_is_rejected_not_widened() {
 
     // Nothing was written.
     let admin = verify(&key, &admin_tok, NOW).unwrap();
-    let grants = grants_list_scoped(&gw.node.store, &admin, "acme", &Subject::User("ana".into()))
+    let grants = grants_list_scoped(&gw.node.store, &admin, "nube", &Subject::User("ana".into()))
         .await
         .unwrap();
     assert!(grants.is_empty());
@@ -143,7 +143,7 @@ async fn malformed_scope_in_body_is_rejected_not_widened() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn scoped_assign_denied_without_grants_cap() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:mallory", "acme", &["mcp:hvac.setpoint:call"]);
+    let tok = token(&key, "user:mallory", "nube", &["mcp:hvac.setpoint:call"]);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -166,10 +166,10 @@ async fn scoped_assign_denied_without_grants_cap() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn scoped_grant_stays_inside_its_workspace() {
-    // A scoped grant written through the acme session never appears under globex — the ws in the
+    // A scoped grant written through the nube session never appears under globex — the ws in the
     // grant key comes from the token, and resolution reads only the caller's namespace.
     let (gw, key) = gateway().await;
-    let acme_tok = token(&key, "user:alice", "acme", ADMIN);
+    let nube_tok = token(&key, "user:alice", "nube", ADMIN);
     router(gw.clone())
         .oneshot(bearer(
             json_post(
@@ -180,7 +180,7 @@ async fn scoped_grant_stays_inside_its_workspace() {
                     "scope": { "kind": "ids", "table": "child", "ids": ["leo"] },
                 }),
             ),
-            &acme_tok,
+            &nube_tok,
         ))
         .await
         .unwrap();

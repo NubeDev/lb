@@ -42,7 +42,7 @@ already tag-expanded and cap-stripped, and every page verb is re-checked on clic
 make build-wasm && make dev
 BASE=http://127.0.0.1:8080
 TOKEN=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"ada","workspace":"acme"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+  -d '{"user":"test","workspace":"nube"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 A="authorization: Bearer $TOKEN"; C="content-type: application/json"
 ```
 
@@ -60,7 +60,7 @@ curl -s -X POST   $BASE/navs -H "$A" -H "$C" -d '{"id":"tmp-nav","title":"tmp","
 curl -s -X DELETE $BASE/navs/tmp-nav -H "$A" -o /dev/null -w "%{http_code}\n"   # 204
 ```
 
-**Observed** (2026-07-04, `acme`): create → `{owner:"user:ada", visibility:"private"}` with
+**Observed** (2026-07-04, `nube`): create → `{owner:"user:test", visibility:"private"}` with
 the item normalized to `{kind:"surface", surface:"channels", label:"Chat"}`.
 
 > `e2e-nav` is **kept** — the functional step wires it as the workspace default, and it's
@@ -89,7 +89,7 @@ kind:"surface", surface:"channels", label:"Chat"}]}`. The resolve output is **ca
 curl -s -X POST $BASE/navs -H "$C" -d '{"id":"x","title":"x","items":[]}' -o /dev/null -w "%{http_code}\n"  # NO token → 401
 ```
 
-**Access**: a `globex` token's `/navs` and `/nav/resolve` never surface `acme`'s nav — the
+**Access**: a `globex` token's `/navs` and `/nav/resolve` never surface `nube`'s nav — the
 default pointer and the pref are both workspace-keyed.
 
 ### Read-only (viewer) — nav EDITING is capability-gated, resolving is not

@@ -31,13 +31,13 @@ const CAPS: &[&str] = &["mcp:device.register:call", "mcp:notify.send:call"];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn register_and_list_device() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
 
-    device_register(&store, &p, "acme", "webpush", "sub-endpoint-1", None, 100)
+    device_register(&store, &p, "nube", "webpush", "sub-endpoint-1", None, 100)
         .await
         .unwrap();
 
-    let devices = device_list(&store, &p, "acme").await.unwrap();
+    let devices = device_list(&store, &p, "nube").await.unwrap();
     assert_eq!(devices.len(), 1);
     assert_eq!(devices[0].sub, "user:alice");
 }
@@ -45,16 +45,16 @@ async fn register_and_list_device() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn register_is_idempotent_upsert() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
 
-    device_register(&store, &p, "acme", "webpush", "sub-1", None, 100)
+    device_register(&store, &p, "nube", "webpush", "sub-1", None, 100)
         .await
         .unwrap();
-    device_register(&store, &p, "acme", "webpush", "sub-1", None, 200)
+    device_register(&store, &p, "nube", "webpush", "sub-1", None, 200)
         .await
         .unwrap();
 
-    let devices = device_list(&store, &p, "acme").await.unwrap();
+    let devices = device_list(&store, &p, "nube").await.unwrap();
     assert_eq!(devices.len(), 1, "re-register upserts, not duplicates");
     assert_eq!(devices[0].last_seen, 200);
 }
@@ -62,15 +62,15 @@ async fn register_is_idempotent_upsert() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn remove_own_device() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
 
-    device_register(&store, &p, "acme", "webpush", "sub-1", None, 100)
+    device_register(&store, &p, "nube", "webpush", "sub-1", None, 100)
         .await
         .unwrap();
-    let devices = device_list(&store, &p, "acme").await.unwrap();
+    let devices = device_list(&store, &p, "nube").await.unwrap();
     let id = &devices[0].id;
 
-    let removed = device_remove(&store, &p, "acme", id).await.unwrap();
+    let removed = device_remove(&store, &p, "nube", id).await.unwrap();
     assert!(removed);
 }
 
@@ -79,9 +79,9 @@ async fn remove_own_device() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_register_without_cap() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:mallory", "acme", &[]);
+    let p = principal("user:mallory", "nube", &[]);
 
-    let err = device_register(&store, &p, "acme", "webpush", "sub-1", None, 100)
+    let err = device_register(&store, &p, "nube", "webpush", "sub-1", None, 100)
         .await
         .unwrap_err();
     assert!(matches!(err, NotifyError::Denied));
@@ -90,12 +90,12 @@ async fn denies_register_without_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_notify_send_without_cap() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:mallory", "acme", &["mcp:device.register:call"]);
+    let p = principal("user:mallory", "nube", &["mcp:device.register:call"]);
 
     let err = notify_send(
         &store,
         &p,
-        "acme",
+        "nube",
         &["user:bob".into()],
         "hi",
         "body",
@@ -115,9 +115,9 @@ async fn denies_notify_send_without_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn device_not_visible_from_other_workspace() {
     let store = Store::memory().await.unwrap();
-    let p_a = principal("user:alice", "acme", CAPS);
+    let p_a = principal("user:alice", "nube", CAPS);
 
-    device_register(&store, &p_a, "acme", "webpush", "sub-1", None, 100)
+    device_register(&store, &p_a, "nube", "webpush", "sub-1", None, 100)
         .await
         .unwrap();
 
@@ -131,16 +131,16 @@ async fn device_not_visible_from_other_workspace() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_removing_another_members_device() {
     let store = Store::memory().await.unwrap();
-    let p_a = principal("user:alice", "acme", CAPS);
-    let p_b = principal("user:bob", "acme", CAPS);
+    let p_a = principal("user:alice", "nube", CAPS);
+    let p_b = principal("user:bob", "nube", CAPS);
 
-    device_register(&store, &p_a, "acme", "webpush", "alice-sub", None, 100)
+    device_register(&store, &p_a, "nube", "webpush", "alice-sub", None, 100)
         .await
         .unwrap();
-    let devices = device_list(&store, &p_a, "acme").await.unwrap();
+    let devices = device_list(&store, &p_a, "nube").await.unwrap();
     let alice_device_id = devices[0].id.clone();
 
-    let err = device_remove(&store, &p_b, "acme", &alice_device_id)
+    let err = device_remove(&store, &p_b, "nube", &alice_device_id)
         .await
         .unwrap_err();
     assert!(matches!(err, NotifyError::Denied));
@@ -151,12 +151,12 @@ async fn denies_removing_another_members_device() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn notify_send_enqueues_effect() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
 
     let effect_id = notify_send(
         &store,
         &p,
-        "acme",
+        "nube",
         &["user:bob".into()],
         "Leo checked in",
         "9:00 AM",
@@ -192,7 +192,7 @@ async fn recording_provider_records_sends() {
         deep_link: None,
         collapse_key: None,
         priority: None,
-        workspace: Some("acme".into()),
+        workspace: Some("nube".into()),
     };
     provider.send(&device, &payload).await.unwrap();
     let sends = provider.sends();

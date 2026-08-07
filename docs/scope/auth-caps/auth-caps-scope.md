@@ -33,8 +33,8 @@ with the public key (README §6.6). The claim set is deliberately small:
 
 ```jsonc
 {
-  "sub":  "user:ada",            // global identity (or "key:ci-bot" for an API-key actor)
-  "ws":   "acme",                // THE workspace claim — the hard wall (§6.6, §7)
+  "sub":  "user:test",            // global identity (or "key:ci-bot" for an API-key actor)
+  "ws":   "nube",                // THE workspace claim — the hard wall (§6.6, §7)
   "role": "member",             // super-admin | workspace-admin | member
   "caps": [                      // capability strings (grammar below)
     "mcp:hello.echo:call",
@@ -103,7 +103,7 @@ implicit in the §13 grammar; it is now explicit).
 | `mcp:hello.echo:call` | call tool `hello.secret` | ❌ no match |
 | `store:note:read` | write `note` | ❌ wrong action |
 | `bus:chan/**:sub` | sub `chan/eng/general` | ✅ recursive |
-| (any cap, ws=`acme`) | resource in ws=`other` | ❌ **isolation fails first** |
+| (any cap, ws=`nube`) | resource in ws=`other` | ❌ **isolation fails first** |
 
 The grammar is small on purpose (README §11.1 "expressive, safe, understandable"). It is also
 **fuzzable** (testing §2 property/fuzz): the matcher's invariant is "no `*`/`**` ever matches

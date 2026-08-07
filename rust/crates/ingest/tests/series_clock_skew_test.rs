@@ -71,11 +71,11 @@ async fn seed_an_hour(store: &Store, ws: &str, end_ms: u64) {
 async fn a_skewed_clock_is_distinguishable_from_an_idle_pass() {
     let store = Store::memory().await.unwrap();
     let now = 10_000 * MIN;
-    seed_an_hour(&store, "acme", now).await;
+    seed_an_hour(&store, "nube", now).await;
 
     // The HEALTHY pass: the clock agrees with the data, so the 30-minute horizon is real and the
     // older half of the hour is evicted.
-    let healthy = run_gc(&store, "acme", now).await.unwrap();
+    let healthy = run_gc(&store, "nube", now).await.unwrap();
     assert!(
         healthy.evicted_raw > 0,
         "the control must actually evict, or the comparison below is vacuous"
@@ -92,8 +92,8 @@ async fn a_skewed_clock_is_distinguishable_from_an_idle_pass() {
 
     // The SKEWED pass: the RC-6 shape, 46 minutes behind. Fresh store, identical everything else.
     let store = Store::memory().await.unwrap();
-    seed_an_hour(&store, "acme", now).await;
-    let skewed = run_gc(&store, "acme", now - 46 * MIN).await.unwrap();
+    seed_an_hour(&store, "nube", now).await;
+    let skewed = run_gc(&store, "nube", now - 46 * MIN).await.unwrap();
 
     // The old, indistinguishable half — this is what the box used to show and still shows.
     assert_eq!(
@@ -128,11 +128,11 @@ async fn a_skewed_clock_is_distinguishable_from_an_idle_pass() {
 async fn the_skew_is_persisted_for_someone_who_was_not_watching() {
     let store = Store::memory().await.unwrap();
     let now = 10_000 * MIN;
-    seed_an_hour(&store, "acme", now).await;
+    seed_an_hour(&store, "nube", now).await;
 
-    run_gc(&store, "acme", now - 46 * MIN).await.unwrap();
+    run_gc(&store, "nube", now - 46 * MIN).await.unwrap();
 
-    let rec = last_pass(&store, "acme")
+    let rec = last_pass(&store, "nube")
         .await
         .unwrap()
         .expect("every pass records, including one that evicted nothing");
@@ -149,8 +149,8 @@ async fn the_skew_is_persisted_for_someone_who_was_not_watching() {
 
     // A CORRECTED clock must clear it — a warning that latches forever is a warning that gets
     // ignored, and the recovery path is exactly what an operator checks after fixing the clock.
-    run_gc(&store, "acme", now).await.unwrap();
-    let rec = last_pass(&store, "acme").await.unwrap().unwrap();
+    run_gc(&store, "nube", now).await.unwrap();
+    let rec = last_pass(&store, "nube").await.unwrap().unwrap();
     assert_eq!(
         rec.clock_skew_ms, None,
         "correcting the clock must clear the skew on the next pass"
@@ -165,17 +165,17 @@ async fn the_skew_is_persisted_for_someone_who_was_not_watching() {
 async fn ordinary_producer_skew_does_not_fire() {
     let store = Store::memory().await.unwrap();
     let now = 10_000 * MIN;
-    seed_an_hour(&store, "acme", now).await;
+    seed_an_hour(&store, "nube", now).await;
 
     // The newest sample sits 1 minute in the future — well inside the 5-minute tolerance.
     seed(
         &store,
-        "acme",
+        "nube",
         vec![sample("modbus.meter-1.kwh", 9_999, now + MIN)],
     )
     .await;
 
-    let pass = run_gc(&store, "acme", now).await.unwrap();
+    let pass = run_gc(&store, "nube", now).await.unwrap();
     assert_eq!(
         pass.clock_skew_ms, None,
         "1 minute of producer jitter is not a clock failure"
@@ -199,15 +199,15 @@ async fn ordinary_producer_skew_does_not_fire() {
 async fn a_fast_clock_over_evicts_and_the_floor_is_what_catches_it() {
     let store = Store::memory().await.unwrap();
     let now = 10_000 * MIN;
-    seed_an_hour(&store, "acme", now).await;
+    seed_an_hour(&store, "nube", now).await;
 
     // A control pass on a good clock: the 30-minute horizon keeps the recent half.
     let store_ok = Store::memory().await.unwrap();
-    seed_an_hour(&store_ok, "acme", now).await;
-    let healthy = run_gc(&store_ok, "acme", now).await.unwrap();
+    seed_an_hour(&store_ok, "nube", now).await;
+    let healthy = run_gc(&store_ok, "nube", now).await.unwrap();
 
     // (1) The same data, clock a day fast: every sample is now "older than 30 minutes".
-    let ahead = run_gc(&store, "acme", now + 24 * 60 * MIN).await.unwrap();
+    let ahead = run_gc(&store, "nube", now + 24 * 60 * MIN).await.unwrap();
     assert!(
         ahead.evicted_raw > healthy.evicted_raw,
         "a fast clock must over-evict relative to a good one: {} vs {}",
@@ -224,7 +224,7 @@ async fn a_fast_clock_over_evicts_and_the_floor_is_what_catches_it() {
 
     // (3) The floor is what sees it. The fast pass above wrote its own inflated `last_run_ms`, so
     // when the clock is corrected the next pass is BELOW that floor and says so.
-    let corrected = run_gc(&store, "acme", now).await.unwrap();
+    let corrected = run_gc(&store, "nube", now).await.unwrap();
     let warning = corrected
         .warnings
         .iter()
@@ -260,10 +260,10 @@ async fn a_backwards_clock_is_caught_even_with_no_data_at_all() {
 
     // A pass on a good clock over an EMPTY workspace. Evicts nothing, warns about nothing — and
     // still records the floor, which is the whole point of recording idle passes.
-    let first = run_gc(&store, "acme", now).await.unwrap();
+    let first = run_gc(&store, "nube", now).await.unwrap();
     assert!(first.warnings.is_empty(), "{:?}", first.warnings);
     assert_eq!(
-        last_pass(&store, "acme")
+        last_pass(&store, "nube")
             .await
             .unwrap()
             .unwrap()
@@ -275,7 +275,7 @@ async fn a_backwards_clock_is_caught_even_with_no_data_at_all() {
     // Power cycle: the box comes back with its clock hours behind. The series table is STILL empty,
     // so `skew` has nothing to say...
     let after_reboot = now - 6 * 60 * MIN;
-    let pass = run_gc(&store, "acme", after_reboot).await.unwrap();
+    let pass = run_gc(&store, "nube", after_reboot).await.unwrap();
     assert_eq!(
         pass.clock_skew_ms, None,
         "no data means the data-comparison check is silent — that is the blind spot"
@@ -307,7 +307,7 @@ async fn a_backwards_clock_is_caught_even_with_no_data_at_all() {
 async fn a_node_that_never_ran_a_pass_has_no_floor_to_check() {
     let store = Store::memory().await.unwrap();
     // now_ms = 0 is the most hostile clock there is; with no prior pass there is nothing to compare.
-    let pass = run_gc(&store, "acme", 0).await.unwrap();
+    let pass = run_gc(&store, "nube", 0).await.unwrap();
     assert!(pass.warnings.is_empty(), "{:?}", pass.warnings);
 }
 
@@ -317,10 +317,10 @@ async fn a_node_that_never_ran_a_pass_has_no_floor_to_check() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_empty_workspace_never_alarms() {
     let store = Store::memory().await.unwrap();
-    set_policy(&store, "acme", &modbus_policy()).await.unwrap();
+    set_policy(&store, "nube", &modbus_policy()).await.unwrap();
 
     // now_ms = 0 is the most hostile clock there is, and an empty store still cannot contradict it.
-    let pass = run_gc(&store, "acme", 0).await.unwrap();
+    let pass = run_gc(&store, "nube", 0).await.unwrap();
     assert_eq!(pass.clock_skew_ms, None);
     assert!(pass.warnings.is_empty(), "{:?}", pass.warnings);
 }

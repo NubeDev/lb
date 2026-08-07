@@ -9,7 +9,7 @@
 - Twin (same class, prior instance): [bare-login-handle-not-a-member](bare-login-handle-not-a-member.md)
 
 ## Symptom
-In `acme`, `GET /admin/members` returned `user:ap` — the People tab showed the person on the
+In `nube`, `GET /admin/members` returned `user:ap` — the People tab showed the person on the
 roster — but `GET /admin/identities/user:ap/workspaces` returned `[]`, and `/auth/login` refused
 that person with **403 "not a member of any workspace"**. Two admin reads of "who belongs to this
 workspace", disagreeing, on the same store, at the same moment.

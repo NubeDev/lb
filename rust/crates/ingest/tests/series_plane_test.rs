@@ -45,14 +45,14 @@ async fn keyset_paging_walks_every_row_exactly_once() {
         samples.push(sample("cpu", "prod-a", seq, seq * 1000, json!(seq)));
         samples.push(sample("cpu", "prod-b", seq, seq * 1000, json!(seq * 10)));
     }
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
     let mut seen = Vec::new();
     let mut cursor: Option<String> = None;
     loop {
         let page = read_page(
             &store,
-            "acme",
+            "nube",
             "cpu",
             &PageQuery {
                 limit: Some(7),
@@ -84,7 +84,7 @@ async fn paging_back_direction_and_bad_cursor() {
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         (1..=10u64)
             .map(|s| sample("m", "p", s, s * 1000, json!(s)))
             .collect(),
@@ -93,7 +93,7 @@ async fn paging_back_direction_and_bad_cursor() {
 
     let page = read_page(
         &store,
-        "acme",
+        "nube",
         "m",
         &PageQuery {
             limit: Some(3),
@@ -109,7 +109,7 @@ async fn paging_back_direction_and_bad_cursor() {
     // A malformed cursor is rejected cleanly — never a mis-seek.
     let err = read_page(
         &store,
-        "acme",
+        "nube",
         "m",
         &PageQuery {
             cursor: Some("not-a-cursor!!".into()),
@@ -132,7 +132,7 @@ async fn wall_clock_window_bounds_apply() {
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         (1..=10u64)
             .map(|s| sample("w", "p", s, s * 1000, json!(s)))
             .collect(),
@@ -141,7 +141,7 @@ async fn wall_clock_window_bounds_apply() {
     // Half-open [3000, 7000): ts 3000..=6000 → seqs 3,4,5,6.
     let page = read_page(
         &store,
-        "acme",
+        "nube",
         "w",
         &PageQuery {
             from_ts: Some(3000),
@@ -164,7 +164,7 @@ async fn buckets_bound_budget_and_spikes_survive() {
         let v = if (90..93).contains(&i) { 200.0 } else { 20.0 };
         samples.push(sample("temp", "p", i + 1, i * 1000, json!(v)));
     }
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
     let q = BucketQuery {
         from_ts: 0,
@@ -173,7 +173,7 @@ async fn buckets_bound_budget_and_spikes_survive() {
         budget: None,
         ..Default::default()
     };
-    let buckets = read_buckets(&store, "acme", "temp", &q, 60_000)
+    let buckets = read_buckets(&store, "nube", "temp", &q, 60_000)
         .await
         .unwrap();
     assert_eq!(buckets.len(), 10, "bounded: 10 buckets, never 600 rows");
@@ -212,7 +212,7 @@ async fn pushdown_buckets_are_byte_identical_to_the_fold() {
         sample("m", "p", 5, 121_000, json!(30.0)),
         sample("m", "p", 6, 122_000, json!("offline")), // non-numeric LAST
     ];
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
     let q = BucketQuery {
         from_ts: 0,
@@ -221,8 +221,8 @@ async fn pushdown_buckets_are_byte_identical_to_the_fold() {
         budget: None,
         ..Default::default()
     };
-    let pushed = read_buckets(&store, "acme", "m", &q, 60_000).await.unwrap();
-    let folded = read_buckets_fold(&store, "acme", "m", &q, 60_000)
+    let pushed = read_buckets(&store, "nube", "m", &q, 60_000).await.unwrap();
+    let folded = read_buckets_fold(&store, "nube", "m", &q, 60_000)
         .await
         .unwrap();
 
@@ -277,7 +277,7 @@ async fn pushdown_handles_an_unaligned_from() {
     let samples: Vec<Sample> = (0..300u64)
         .map(|i| sample("m", "p", i + 1, i * 1000, json!(i as f64)))
         .collect();
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
     // from=17_000 is NOT a multiple of width=60_000 — the seam under test.
     let q = BucketQuery {
@@ -287,8 +287,8 @@ async fn pushdown_handles_an_unaligned_from() {
         budget: None,
         ..Default::default()
     };
-    let pushed = read_buckets(&store, "acme", "m", &q, 60_000).await.unwrap();
-    let folded = read_buckets_fold(&store, "acme", "m", &q, 60_000)
+    let pushed = read_buckets(&store, "nube", "m", &q, 60_000).await.unwrap();
+    let folded = read_buckets_fold(&store, "nube", "m", &q, 60_000)
         .await
         .unwrap();
     assert_buckets_eq(&pushed, &folded);
@@ -312,7 +312,7 @@ async fn pushdown_is_o_buckets_not_o_rows() {
     let samples: Vec<Sample> = (0..12_000u64)
         .map(|i| sample("big", "p", i + 1, i * 1000, json!((i % 50) as f64)))
         .collect();
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
     let q = BucketQuery {
         from_ts: 0,
@@ -322,7 +322,7 @@ async fn pushdown_is_o_buckets_not_o_rows() {
         ..Default::default()
     };
     let width = lb_ingest::effective_width(&q).unwrap();
-    let buckets = read_buckets(&store, "acme", "big", &q, width)
+    let buckets = read_buckets(&store, "nube", "big", &q, width)
         .await
         .unwrap();
     assert!(
@@ -330,7 +330,7 @@ async fn pushdown_is_o_buckets_not_o_rows() {
         "decimated to the budget, not 12k rows"
     );
     // Parity with the fold on the large seed — the pushdown didn't cut a corner to be fast.
-    let folded = read_buckets_fold(&store, "acme", "big", &q, width)
+    let folded = read_buckets_fold(&store, "nube", "big", &q, width)
         .await
         .unwrap();
     assert_buckets_eq(&buckets, &folded);
@@ -345,7 +345,7 @@ async fn latest_many_covers_every_name_and_scopes_by_workspace() {
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample("temp", "p", 1, 1000, json!(20.0)),
             sample("temp", "p", 2, 2000, json!(21.0)), // newest of temp by (ts,seq)
@@ -355,7 +355,7 @@ async fn latest_many_covers_every_name_and_scopes_by_workspace() {
     .await;
 
     let names = vec!["temp".to_string(), "ghost".to_string(), "mode".to_string()];
-    let got = latest_many(&store, "acme", &names).await.unwrap();
+    let got = latest_many(&store, "nube", &names).await.unwrap();
 
     // Every requested name present, in request order; unknown → None.
     assert_eq!(
@@ -378,7 +378,7 @@ async fn latest_many_covers_every_name_and_scopes_by_workspace() {
     for (name, s) in &got {
         assert_eq!(
             *s,
-            latest(&store, "acme", name).await.unwrap(),
+            latest(&store, "nube", name).await.unwrap(),
             "{name} == single latest"
         );
     }
@@ -401,21 +401,21 @@ async fn series_cardinality_cap_dead_letters_new_series() {
         sample("b", "p", 2, 1000, json!(2)),
         sample("c", "p", 3, 1000, json!(3)),
     ];
-    write(&store, "acme", &samples, 0).await.unwrap();
-    let pass = commit_batch_capped(&store, "acme", 256, 2).await.unwrap();
+    write(&store, "nube", &samples, 0).await.unwrap();
+    let pass = commit_batch_capped(&store, "nube", 256, 2).await.unwrap();
     assert_eq!(pass.committed, 2);
     assert_eq!(
         pass.dead_lettered, 1,
         "the over-cap series is diverted, not dropped"
     );
 
-    let got = lb_ingest::read(&store, "acme", "c", None, None)
+    let got = lb_ingest::read(&store, "nube", "c", None, None)
         .await
         .unwrap();
     assert!(got.is_empty(), "over-cap series has no committed rows");
     let mut resp = store
         .query_ws(
-            "acme",
+            "nube",
             &format!("SELECT count() FROM {DEAD_LETTER_TABLE} GROUP ALL"),
             vec![],
         )
@@ -429,10 +429,10 @@ async fn series_cardinality_cap_dead_letters_new_series() {
     );
 
     // An EXISTING series is never blocked by the cap.
-    write(&store, "acme", &[sample("a", "p", 4, 2000, json!(4))], 0)
+    write(&store, "nube", &[sample("a", "p", 4, 2000, json!(4))], 0)
         .await
         .unwrap();
-    let pass = commit_batch_capped(&store, "acme", 256, 2).await.unwrap();
+    let pass = commit_batch_capped(&store, "nube", 256, 2).await.unwrap();
     assert_eq!(pass.committed, 1);
 }
 
@@ -441,12 +441,12 @@ async fn labels_convert_to_tag_edges_once_per_series() {
     let store = Store::memory().await.unwrap();
     let mut s = sample("floor2/temp", "p", 1, 1000, json!(21.5));
     s.labels = json!({"host": "pi-7", "kind": "telemetry"});
-    seed(&store, "acme", vec![s]).await;
+    seed(&store, "nube", vec![s]).await;
 
     // series.find's primitive: the tag graph now knows the series ingest wrote.
     let hits = lb_tags::find(
         &store,
-        "acme",
+        "nube",
         &[lb_tags::Facet::exact("host", json!("pi-7"))],
     )
     .await
@@ -471,7 +471,7 @@ async fn labels_convert_to_tag_edges_once_per_series() {
 /// With tiers, the over-cap window folds into the rollups BEFORE it is evicted — coarse history
 /// survives a cap eviction and a bucketed read still renders.
 /// MANDATORY (rule 6): a policy in one workspace never evicts another's rows. Same series name,
-/// same cap, two workspaces — GC in `acme` leaves `globex` untouched.
+/// same cap, two workspaces — GC in `nube` leaves `globex` untouched.
 /// Longest-prefix-wins: a series matching both `fleet.` and `fleet.eu.` is governed by the LONGER
 /// prefix alone — not processed twice with the tighter bound winning by accident.
 /// Release 1's default axis: an unpoliced series past the recommended cap is WARNED about, not
@@ -483,7 +483,7 @@ async fn latest_pointer_advances_forward_only_across_commits() {
     // Commit 1: newest is ts=2000.
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample("p", "prod", 1, 1000, json!(10.0)),
             sample("p", "prod", 2, 2000, json!(20.0)),
@@ -491,19 +491,19 @@ async fn latest_pointer_advances_forward_only_across_commits() {
     )
     .await;
     assert_eq!(
-        latest(&store, "acme", "p").await.unwrap().unwrap().payload,
+        latest(&store, "nube", "p").await.unwrap().unwrap().payload,
         json!(20.0)
     );
 
     // Commit 2 brings a strictly-newer sample (ts=3000) → pointer advances.
     seed(
         &store,
-        "acme",
+        "nube",
         vec![sample("p", "prod", 3, 3000, json!(30.0))],
     )
     .await;
     assert_eq!(
-        latest(&store, "acme", "p").await.unwrap().unwrap().payload,
+        latest(&store, "nube", "p").await.unwrap().unwrap().payload,
         json!(30.0)
     );
 
@@ -511,12 +511,12 @@ async fn latest_pointer_advances_forward_only_across_commits() {
     // (series,producer,seq) doesn't collide) → the pointer must NOT regress off ts=3000.
     seed(
         &store,
-        "acme",
+        "nube",
         vec![sample("p", "late", 1, 1500, json!(99.0))],
     )
     .await;
     assert_eq!(
-        latest(&store, "acme", "p").await.unwrap().unwrap().payload,
+        latest(&store, "nube", "p").await.unwrap().unwrap().payload,
         json!(30.0),
         "a later commit of an OLDER sample never regresses the pointer"
     );
@@ -530,7 +530,7 @@ async fn latest_pointer_is_ts_primary_across_a_producer_restart() {
     // even though its seq is far lower — the pointer must reflect that, exactly as the scan would.
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample("s", "streamA", 9, 9000, json!("old")),
             sample("s", "streamB", 0, 10000, json!("new")),
@@ -538,7 +538,7 @@ async fn latest_pointer_is_ts_primary_across_a_producer_restart() {
     )
     .await;
     assert_eq!(
-        latest(&store, "acme", "s").await.unwrap().unwrap().payload,
+        latest(&store, "nube", "s").await.unwrap().unwrap().payload,
         json!("new"),
         "higher ts wins over higher seq (ts-primary, restart-safe)"
     );
@@ -549,7 +549,7 @@ async fn latest_pointer_survives_replay_and_delete() {
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample("d", "prod", 1, 1000, json!(1.0)),
             sample("d", "prod", 2, 2000, json!(2.0)),
@@ -561,7 +561,7 @@ async fn latest_pointer_survives_replay_and_delete() {
     // the pointer stays on the newest, never duplicated or regressed.
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample("d", "prod", 1, 1000, json!(1.0)),
             sample("d", "prod", 2, 2000, json!(2.0)),
@@ -569,14 +569,14 @@ async fn latest_pointer_survives_replay_and_delete() {
     )
     .await;
     assert_eq!(
-        latest(&store, "acme", "d").await.unwrap().unwrap().payload,
+        latest(&store, "nube", "d").await.unwrap().unwrap().payload,
         json!(2.0)
     );
 
     // After delete_series the pointer is gone with everything else → latest is None (not a stale hit).
-    lb_ingest::delete_series(&store, "acme", "d").await.unwrap();
+    lb_ingest::delete_series(&store, "nube", "d").await.unwrap();
     assert!(
-        latest(&store, "acme", "d").await.unwrap().is_none(),
+        latest(&store, "nube", "d").await.unwrap().is_none(),
         "deleted series → no pointer, None"
     );
 }

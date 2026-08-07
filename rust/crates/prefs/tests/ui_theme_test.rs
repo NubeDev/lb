@@ -27,11 +27,11 @@ async fn theme_blob_round_trips_unchanged() {
         ui_theme: Some(member_theme()),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &p, &[])
+    set_user_prefs(&store, "nube", "user:test", &p, &[])
         .await
         .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -48,8 +48,8 @@ async fn theme_patch_leaves_i18n_axes_untouched() {
     let store = Store::memory().await.unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             language: Some("es".into()),
             ..Prefs::default()
@@ -60,8 +60,8 @@ async fn theme_patch_leaves_i18n_axes_untouched() {
     .unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             ui_theme: Some(member_theme()),
             ..Prefs::default()
@@ -71,7 +71,7 @@ async fn theme_patch_leaves_i18n_axes_untouched() {
     .await
     .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -86,7 +86,7 @@ async fn member_theme_wins_whole_over_workspace_default() {
     let store = Store::memory().await.unwrap();
     set_workspace_prefs(
         &store,
-        "acme",
+        "nube",
         &Prefs {
             ui_theme: Some(ws_default_theme()),
             ..Prefs::default()
@@ -97,8 +97,8 @@ async fn member_theme_wins_whole_over_workspace_default() {
     .unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             ui_theme: Some(member_theme()),
             ..Prefs::default()
@@ -108,7 +108,7 @@ async fn member_theme_wins_whole_over_workspace_default() {
     .await
     .unwrap();
 
-    let r = resolve_chain(&store, "acme", "user:ada", None)
+    let r = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
     assert_eq!(
@@ -125,7 +125,7 @@ async fn workspace_default_fills_in_for_member_with_no_theme() {
     let store = Store::memory().await.unwrap();
     set_workspace_prefs(
         &store,
-        "acme",
+        "nube",
         &Prefs {
             ui_theme: Some(ws_default_theme()),
             ..Prefs::default()
@@ -135,7 +135,7 @@ async fn workspace_default_fills_in_for_member_with_no_theme() {
     .await
     .unwrap();
 
-    let r = resolve_chain(&store, "acme", "user:bob", None)
+    let r = resolve_chain(&store, "nube", "user:bob", None)
         .await
         .unwrap();
     assert_eq!(r.ui_theme, Some(ws_default_theme()));
@@ -145,7 +145,7 @@ async fn workspace_default_fills_in_for_member_with_no_theme() {
 async fn no_theme_anywhere_resolves_none() {
     // Neither member nor workspace set a theme → None (the shell falls back to its compiled default).
     let store = Store::memory().await.unwrap();
-    let r = resolve_chain(&store, "acme", "user:ada", None)
+    let r = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
     assert_eq!(r.ui_theme, None);
@@ -156,7 +156,7 @@ async fn theme_is_workspace_isolated() {
     // Mandatory isolation: the SAME global user has a DIFFERENT theme in ws-A and ws-B; a resolve in
     // ws-B returns ws-B's theme and can never read ws-A's.
     let store = Store::memory().await.unwrap();
-    let user = "user:ada";
+    let user = "user:test";
     let theme_a = json!({ "mode": "dark", "preset": "blue", "radius": "0" });
     let theme_b = json!({ "mode": "light", "preset": "teal", "radius": "1rem" });
 

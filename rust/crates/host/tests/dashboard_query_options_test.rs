@@ -40,11 +40,11 @@ fn principal(sub: &str, ws: &str) -> Principal {
 async fn ui_shaped_query_options_survive_save_get() {
     let ws = "ws-qopts";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws);
+    let test = principal("user:test", ws);
 
     let saved = call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({
@@ -72,7 +72,7 @@ async fn ui_shaped_query_options_survive_save_get() {
         "save's own return already carries queryOptions"
     );
 
-    let got = call_dashboard_tool(&store, &ada, ws, "dashboard.get", &json!({ "id": "ops" }))
+    let got = call_dashboard_tool(&store, &test, ws, "dashboard.get", &json!({ "id": "ops" }))
         .await
         .expect("get succeeds");
     let qo = &got["cells"][0]["queryOptions"];
@@ -90,11 +90,11 @@ async fn ui_shaped_query_options_survive_save_get() {
 async fn p1_additive_fields_survive_save_get() {
     let ws = "ws-p1-fields";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws);
+    let test = principal("user:test", ws);
 
     call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({
@@ -117,7 +117,7 @@ async fn p1_additive_fields_survive_save_get() {
     .await
     .expect("save succeeds");
 
-    let got = call_dashboard_tool(&store, &ada, ws, "dashboard.get", &json!({ "id": "imp" }))
+    let got = call_dashboard_tool(&store, &test, ws, "dashboard.get", &json!({ "id": "imp" }))
         .await
         .expect("get succeeds");
     assert_eq!(got["timezone"], "Australia/Sydney");
@@ -137,11 +137,11 @@ async fn p1_additive_fields_survive_save_get() {
 async fn pre_p1_shapes_still_round_trip() {
     let ws = "ws-p1-guard";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws);
+    let test = principal("user:test", ws);
 
     call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({
@@ -157,7 +157,7 @@ async fn pre_p1_shapes_still_round_trip() {
     .await
     .expect("v1 save succeeds");
 
-    let got = call_dashboard_tool(&store, &ada, ws, "dashboard.get", &json!({ "id": "old" }))
+    let got = call_dashboard_tool(&store, &test, ws, "dashboard.get", &json!({ "id": "old" }))
         .await
         .expect("get succeeds");
     let c = &got["cells"][0];

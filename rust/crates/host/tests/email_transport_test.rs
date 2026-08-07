@@ -64,12 +64,12 @@ async fn an_unauthorized_invite_writes_no_outbox_row_at_all() {
     let store = Store::memory().await.unwrap();
     // Deliberately holds a DIFFERENT, real capability — so this proves the `invite.create` gate, not
     // merely "a principal with no caps is denied everything".
-    let nobody = principal("user:mallory", "acme", &["mcp:outbox.status:call"]);
+    let nobody = principal("user:mallory", "nube", &["mcp:outbox.status:call"]);
 
     let denied = invite_create(
         &store,
         &nobody,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -84,14 +84,14 @@ async fn an_unauthorized_invite_writes_no_outbox_row_at_all() {
     // The load-bearing half: nothing was staged. A denied call that still wrote an effect would mail
     // the invite anyway on the next relay tick — the gate would be decorative.
     assert!(
-        all_effects(&store, "acme").await.is_empty(),
+        all_effects(&store, "nube").await.is_empty(),
         "a denied invite.create must write NO outbox row"
     );
 
     // And the granted caller DOES stage one — so the assertion above is about the gate, not about a
     // staging path that never works.
-    stage_invite(&store, "acme", "sam@example.com", None).await;
-    assert_eq!(all_effects(&store, "acme").await.len(), 1);
+    stage_invite(&store, "nube", "sam@example.com", None).await;
+    assert_eq!(all_effects(&store, "nube").await.len(), 1);
 }
 
 // ── Workspace isolation ───────────────────────────────────────────────────────────────────────────
@@ -128,9 +128,9 @@ async fn a_ws_a_effect_can_never_resolve_a_ws_b_sealed_credential() {
             host: "127.0.0.1".into(),
             port: 1,
             tls: lb_host::TlsMode::None,
-            username: "reports@acme.com".into(),
+            username: "reports@nube.com".into(),
             secret_path: "mail/smtp-password".into(),
-            from_addr: "reports@acme.com".into(),
+            from_addr: "reports@nube.com".into(),
             timeout: std::time::Duration::from_millis(500),
             ..Default::default()
         },
@@ -143,17 +143,17 @@ async fn a_ws_a_effect_can_never_resolve_a_ws_b_sealed_credential() {
         ..Default::default()
     };
 
-    // ws A (acme): the seal lives in globex, so acme has NO credential — permanent, naming the path.
+    // ws A (nube): the seal lives in globex, so nube has NO credential — permanent, naming the path.
     let err = <SmtpEmailProvider as lb_host::EmailProvider>::send(
         &provider,
         &message,
         &lb_host::EmailMeta {
-            workspace: "acme".into(),
+            workspace: "nube".into(),
             action: "send_invite".into(),
         },
     )
     .await
-    .expect_err("acme must not see globex's secret");
+    .expect_err("nube must not see globex's secret");
     assert!(err.permanent, "{err}");
     assert!(err.reason.contains("mail/smtp-password"), "{err}");
     assert!(
@@ -200,7 +200,7 @@ async fn an_effect_without_a_workspace_is_parked_not_defaulted() {
     );
     lb_outbox::enqueue(
         &store,
-        "acme",
+        "nube",
         "invite",
         "invite:noworkspace",
         &serde_json::json!({ "email": "sam@example.com" }),
@@ -209,14 +209,14 @@ async fn an_effect_without_a_workspace_is_parked_not_defaulted() {
     .await
     .unwrap();
 
-    let pass = relay_outbox(&store, "acme", &target, 1).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 1).await.unwrap();
     assert_eq!(
         pass.dead_lettered, 1,
         "a workspace-less effect must be parked at once"
     );
     assert!(provider.sends().is_empty(), "and nothing may be sent");
 
-    let row = &all_effects(&store, "acme").await[0];
+    let row = &all_effects(&store, "nube").await[0];
     assert_eq!(row.status, EffectStatus::DeadLettered);
     assert_eq!(
         row.attempts, 1,
@@ -234,13 +234,13 @@ async fn an_effect_without_a_workspace_is_parked_not_defaulted() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_transient_failure_re_drains_and_sends_exactly_once() {
     let store = Store::memory().await.unwrap();
-    let token = stage_invite(&store, "acme", "sam@example.com", None).await;
+    let token = stage_invite(&store, "nube", "sam@example.com", None).await;
     let provider = Arc::new(RecordingEmailProvider::default());
     let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
 
     // The relay is interrupted the way a real one is: the relay was down / the mail server refused.
     provider.fail_next(DeliveryError::transient("smtp io: connection reset"));
-    let pass = relay_outbox(&store, "acme", &target, 1).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 1).await.unwrap();
     assert_eq!(pass.failed, 1);
     assert_eq!(
         pass.dead_lettered, 0,
@@ -248,7 +248,7 @@ async fn a_transient_failure_re_drains_and_sends_exactly_once() {
     );
     assert!(provider.sends().is_empty());
 
-    let row = &all_effects(&store, "acme").await[0];
+    let row = &all_effects(&store, "nube").await[0];
     assert_eq!(row.status, EffectStatus::Failed);
     assert_eq!(
         row.last_error.as_deref(),
@@ -257,13 +257,13 @@ async fn a_transient_failure_re_drains_and_sends_exactly_once() {
     );
 
     // The next pass (past the backoff gate) delivers it — once.
-    let pass = relay_outbox(&store, "acme", &target, 100).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 100).await.unwrap();
     assert_eq!(pass.delivered, 1);
     assert_eq!(provider.sends().len(), 1);
     assert!(provider.sends()[0].body.contains(&token));
 
     // And a third pass re-sends nothing (delivered is terminal; the marker backs it up).
-    let pass = relay_outbox(&store, "acme", &target, 200).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 200).await.unwrap();
     assert_eq!(pass.delivered, 0);
     assert_eq!(
         provider.sends().len(),
@@ -271,7 +271,7 @@ async fn a_transient_failure_re_drains_and_sends_exactly_once() {
         "exactly once across the re-drain"
     );
 
-    let row = &all_effects(&store, "acme").await[0];
+    let row = &all_effects(&store, "nube").await[0];
     assert_eq!(row.status, EffectStatus::Delivered);
     assert!(
         row.last_error.is_none(),
@@ -287,16 +287,16 @@ async fn a_permanent_failure_is_parked_on_the_first_attempt_with_its_reason() {
     // recorded reason. `550 5.1.2 Host unknown` cannot be fixed by waiting, and the retries only delay
     // the row that tells an operator the address is wrong.
     let store = Store::memory().await.unwrap();
-    stage_invite(&store, "acme", "sam@exmaple.com", None).await;
+    stage_invite(&store, "nube", "sam@exmaple.com", None).await;
     let provider = Arc::new(RecordingEmailProvider::default());
     let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
 
     provider.fail_next(DeliveryError::permanent("smtp 550: 5.1.2 Host unknown"));
-    let pass = relay_outbox(&store, "acme", &target, 1).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 1).await.unwrap();
     assert_eq!(pass.dead_lettered, 1);
     assert_eq!(pass.failed, 0);
 
-    let row = &all_effects(&store, "acme").await[0];
+    let row = &all_effects(&store, "nube").await[0];
     assert_eq!(row.status, EffectStatus::DeadLettered);
     assert_eq!(row.attempts, 1, "no retry ladder for a permanent failure");
     assert_eq!(
@@ -305,7 +305,7 @@ async fn a_permanent_failure_is_parked_on_the_first_attempt_with_its_reason() {
     );
 
     // Terminal: a later pass does not resurrect it.
-    let pass = relay_outbox(&store, "acme", &target, 1000).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 1000).await.unwrap();
     assert_eq!(pass.delivered, 0);
     assert_eq!(pass.dead_lettered, 0);
     assert!(provider.sends().is_empty());
@@ -316,11 +316,11 @@ async fn the_invite_mail_carries_both_body_halves_in_the_effects_locale() {
     // The HTML half is new (two catalog keys, so a translator sees both) and must follow the effect's
     // locale exactly like the text half does.
     let store = Store::memory().await.unwrap();
-    stage_invite(&store, "acme", "sam@example.com", Some("es")).await;
+    stage_invite(&store, "nube", "sam@example.com", Some("es")).await;
     let provider = Arc::new(RecordingEmailProvider::default());
     let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
 
-    relay_outbox(&store, "acme", &target, 1).await.unwrap();
+    relay_outbox(&store, "nube", &target, 1).await.unwrap();
     let send = provider.sends().remove(0);
     assert!(
         send.subject.starts_with("Te han invitado"),

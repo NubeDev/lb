@@ -232,11 +232,11 @@ mod tests {
     /// The digest identifies a repeat without carrying the text — including any literal inside it.
     #[test]
     fn sql_digest_hides_text_but_correlates() {
-        let sql = "SELECT * FROM users WHERE email = 'ada@example.com'";
+        let sql = "SELECT * FROM users WHERE email = 'test@example.com'";
         let d = sql_digest(sql);
         assert_eq!(d, sql_digest(sql), "same SQL → same digest");
         assert_ne!(d, sql_digest("SELECT 1"), "different SQL → different");
-        assert!(!d.contains("ada@example.com"));
+        assert!(!d.contains("test@example.com"));
         assert!(!d.contains("SELECT"));
         assert!(!d.contains("users"));
     }

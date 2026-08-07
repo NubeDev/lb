@@ -1,7 +1,7 @@
 //! The **workspaces** service — list / create the workspaces a session may see (collaboration scope,
 //! slice 2). Workspaces are SurrealDB namespaces (the hard wall §7); this service adds a thin durable
 //! **directory** of them (in a reserved namespace, like the workflow directory) so the UI can show a
-//! workspace list / switcher / create instead of the hardcoded `acme`.
+//! workspace list / switcher / create instead of the hardcoded `nube`.
 //!
 //! The directory is **node-level operator config** (which workspaces exist on this node), not a
 //! tenant's own data — so it lives in a reserved namespace ([`WORKSPACES_NS`]), the one deliberate

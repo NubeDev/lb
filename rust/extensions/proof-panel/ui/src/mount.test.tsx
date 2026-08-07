@@ -9,14 +9,14 @@ describe("mount", () => {
     document.body.appendChild(el);
     const bridge = stubBridge({ "series.find": () => [] });
 
-    const unmount = mount(el, { workspace: "acme" }, bridge);
+    const unmount = mount(el, { workspace: "nube" }, bridge);
     // React 18 createRoot renders asynchronously; flush the microtask + macrotask queues.
     await Promise.resolve();
     await new Promise((r) => setTimeout(r, 0));
 
     expect(typeof unmount).toBe("function");
     expect(el.textContent).toContain("Proof Panel");
-    expect(el.textContent).toContain("acme"); // the host ctx (tenant wall) reached the remote
+    expect(el.textContent).toContain("nube"); // the host ctx (tenant wall) reached the remote
 
     unmount();
     await new Promise((r) => setTimeout(r, 0));

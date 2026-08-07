@@ -9,7 +9,7 @@ import type { Bridge } from "@/app/contract";
 
 function renderNodes(bridge: Bridge) {
   return render(
-    <BridgeContext.Provider value={{ ctx: { workspace: "acme" }, bridge }}>
+    <BridgeContext.Provider value={{ ctx: { workspace: "nube" }, bridge }}>
       <MemoryRouter>
         <Nodes />
       </MemoryRouter>

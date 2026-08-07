@@ -98,7 +98,7 @@ mod tests {
         Dashboard {
             id: "d".into(),
             title: "D".into(),
-            owner: "user:ada".into(),
+            owner: "user:test".into(),
             cells,
             schema_version: 3,
             ..Default::default()

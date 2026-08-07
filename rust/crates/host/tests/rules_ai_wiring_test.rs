@@ -119,7 +119,7 @@ async fn ai_complete_reaches_the_real_model_for_a_configured_workspace() {
     install_model(&node, scripted_gateway(&["boilers ran hot at 14:00"]));
     select_model(&node, ws).await;
 
-    let p = principal("user:ada", ws, RULE_CAPS);
+    let p = principal("user:test", ws, RULE_CAPS);
     let body = r#"let answer = ai.complete("summarize"); emit(#{ summary: answer });"#;
     let res = run_rule(&node, &p, ws, body).await.expect("rule runs");
 
@@ -142,7 +142,7 @@ async fn unconfigured_workspace_runs_data_only_but_errors_on_ai() {
     // A REAL model is installed on the node, but the workspace never SELECTS one (no agent.config).
     let node = Arc::new(Node::boot().await.unwrap());
     install_model(&node, scripted_gateway(&["unused"]));
-    let p = principal("user:ada", ws, RULE_CAPS);
+    let p = principal("user:test", ws, RULE_CAPS);
 
     // Data-only rule runs fine.
     let ok = run_rule(&node, &p, ws, "emit(#{ n: 1 });").await;
@@ -160,7 +160,7 @@ async fn selected_but_node_has_no_provider_errors_on_ai() {
     let ws = "rules-ai-no-provider";
     let node = Arc::new(Node::boot().await.unwrap());
     select_model(&node, ws).await; // selected, but no real model installed
-    let p = principal("user:ada", ws, RULE_CAPS);
+    let p = principal("user:test", ws, RULE_CAPS);
 
     let err = run_rule(&node, &p, ws, r#"emit(#{ a: ai.complete("x") });"#).await;
     assert!(
@@ -203,7 +203,7 @@ async fn ai_ask_proposed_sql_is_refenced_and_denied_without_the_source_cap() {
     select_model(&node, ws).await;
 
     // rules.run but no store.query → the collect of the platform source is denied inside the run.
-    let p = principal("user:ada", ws, &["mcp:rules.run:call"]);
+    let p = principal("user:test", ws, &["mcp:rules.run:call"]);
     let err = run_rule(
         &node,
         &p,
@@ -230,7 +230,7 @@ async fn call_budget_bites_with_a_real_model_behind() {
     let turns: Vec<&str> = vec!["ok"; 9];
     install_model(&node, scripted_gateway(&turns));
     select_model(&node, ws).await;
-    let p = principal("user:ada", ws, RULE_CAPS);
+    let p = principal("user:test", ws, RULE_CAPS);
 
     // 9 ai.complete calls > the default 8-call budget → the meter stops the run.
     let body = r#"for i in 0..9 { ai.complete("x"); } emit("done");"#;

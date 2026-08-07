@@ -60,7 +60,7 @@ server boundary. This is why reach is a page-entry gate, not a per-verb gate.
   - curated one-page nav ⇒ `GET /surface/dashboards` 200 but `/surface/{ingest,rules,flows,datasources,
     telemetry,system}` all **403**; the SHARED `GET /series` still **200** (tile data unaffected); a
     fallback admin 200s every `/surface/{s}` (no lock-out).
-  - workspace-walled: an acme workspace-default curated nav never affects a beta subject (reaches all).
+  - workspace-walled: an nube workspace-default curated nav never affects a beta subject (reaches all).
 - `ui vitest allowed.test.ts` (5) + `App.test.tsx` (3, unchanged, still green after the reach filter).
 - Regression-clean: `viewer_reach_test`, `login_hardening_test`, `gateway_test`, `mcp_bridge_test`,
   host lib `nav::*`. `cargo fmt` + `cargo build --workspace` green.
@@ -75,7 +75,7 @@ server boundary. This is why reach is a page-entry gate, not a per-verb gate.
 ## NavAdmin UX fix — "who sees this nav" (closes the `main`-was-private root cause)
 
 The reach gate has a sharp edge: if the nav is the allow-list, an **invisible** nav locks people out
-entirely. That is exactly what happened live — nav `main` (workspace `acme`, owned by `user:ada`) was
+entirely. That is exactly what happened live — nav `main` (workspace `nube`, owned by `user:test`) was
 saved with its default `private` visibility and **zero team shares**, so `bob` resolved nothing and saw
 nothing. The old editor made this easy to walk into: audience was three disjoint controls (Save + a
 visibility `<Select>` + an "Apply visibility" button + a separate Add-team), so an admin could Save the

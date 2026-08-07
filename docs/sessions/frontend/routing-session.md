@@ -59,7 +59,7 @@ Real gateway (`pnpm test:gateway`) — **83 passed, 0 render-loop warnings**; un
 
 ## Public / scope updates
 - `scope/frontend/routing-scope.md`: rewrote the URL grammar to `/t/<ws>/…`, the tenancy/isolation
-  bullet (guarded hint, not auth input), the example flow (acme→beta rewrite), and resolved the
+  bullet (guarded hint, not auth input), the example flow (nube→beta rewrite), and resolved the
   `?ws=` open question.
 
 ## Dead ends / surprises

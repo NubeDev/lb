@@ -5,8 +5,8 @@ use lb_auth::{mint, verify, AuthError, Claims, Role, SigningKey};
 
 fn claims(exp: u64) -> Claims {
     Claims {
-        sub: "user:ada".into(),
-        ws: "acme".into(),
+        sub: "user:test".into(),
+        ws: "nube".into(),
         role: Role::WorkspaceAdmin,
         caps: vec!["mcp:hello.echo:call".into()],
         iat: 0,
@@ -21,8 +21,8 @@ fn round_trips_and_carries_the_workspace_claim() {
     let key = SigningKey::generate();
     let token = mint(&key, &claims(100));
     let p = verify(&key, &token, 1).expect("valid token verifies");
-    assert_eq!(p.ws(), "acme");
-    assert_eq!(p.sub(), "user:ada");
+    assert_eq!(p.ws(), "nube");
+    assert_eq!(p.sub(), "user:test");
     assert_eq!(p.role(), Role::WorkspaceAdmin);
     assert_eq!(p.caps(), &["mcp:hello.echo:call".to_string()]);
 }

@@ -58,7 +58,7 @@ async fn seed_via_mcp(store: &Store, ws: &str, n: u64) -> Principal {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn paged_read_walks_chain_via_mcp() {
     let store = Store::memory().await.unwrap();
-    let p = seed_via_mcp(&store, "acme", 25).await;
+    let p = seed_via_mcp(&store, "nube", 25).await;
 
     let mut total = 0;
     let mut cursor: Option<String> = None;
@@ -67,7 +67,7 @@ async fn paged_read_walks_chain_via_mcp() {
         if let Some(c) = &cursor {
             input["cursor"] = json!(c);
         }
-        let out = call_ingest_tool(&store, &p, "acme", "series.read", &input)
+        let out = call_ingest_tool(&store, &p, "nube", "series.read", &input)
             .await
             .unwrap();
         total += out["samples"].as_array().unwrap().len();
@@ -83,13 +83,13 @@ async fn paged_read_walks_chain_via_mcp() {
 async fn windowed_read_is_half_open_via_mcp() {
     let store = Store::memory().await.unwrap();
     // seed_via_mcp stamps ts = seq * 1000, seq 1..=10 -> ts 1000..=10000.
-    let p = seed_via_mcp(&store, "acme", 10).await;
+    let p = seed_via_mcp(&store, "nube", 10).await;
 
     // [3000, 7000): seq 3,4,5,6 (seq 7 has ts 7000, excluded — `to` is exclusive).
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "cpu", "from": 3000, "to": 7000 }),
     )
@@ -112,7 +112,7 @@ async fn windowed_read_is_half_open_via_mcp() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "cpu", "from_seq": 3, "to_seq": 6 }),
     )
@@ -130,12 +130,12 @@ async fn windowed_read_is_half_open_via_mcp() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn bucketed_read_via_mcp_and_deny_without_cap() {
     let store = Store::memory().await.unwrap();
-    let p = seed_via_mcp(&store, "acme", 60).await;
+    let p = seed_via_mcp(&store, "nube", 60).await;
 
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "cpu", "mode": "buckets", "from": 0, "to": 61_000, "budget": 6 }),
     )
@@ -151,13 +151,13 @@ async fn bucketed_read_via_mcp_and_deny_without_cap() {
     assert!(buckets[0].get("avg").is_some() && buckets[0].get("last").is_some());
 
     // MANDATORY deny: no `mcp:series.read:call` → opaque denial, for BOTH modes.
-    let no_cap = principal("client:intruder", "acme", &["mcp:series.latest:call"]);
+    let no_cap = principal("client:intruder", "nube", &["mcp:series.latest:call"]);
     for input in [
         json!({ "series": "cpu" }),
         json!({ "series": "cpu", "from": 0, "to": 1000 }),
         json!({ "series": "cpu", "mode": "buckets", "from": 0, "to": 1000, "budget": 1 }),
     ] {
-        let err = call_ingest_tool(&store, &no_cap, "acme", "series.read", &input)
+        let err = call_ingest_tool(&store, &no_cap, "nube", "series.read", &input)
             .await
             .unwrap_err();
         assert!(
@@ -213,20 +213,20 @@ async fn ws_b_replaying_ws_a_cursor_sees_nothing() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn retention_round_trip_and_deny_via_mcp() {
     let store = Store::memory().await.unwrap();
-    let p = seed_via_mcp(&store, "acme", 200).await;
+    let p = seed_via_mcp(&store, "nube", 200).await;
 
     // set → list → gc, all over the MCP bridge.
     call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.retention.set",
         &json!({ "prefix": "cpu", "raw_for_ms": 100_000,
                  "tiers": [{ "width_ms": 10_000, "keep_for_ms": 0 }] }),
     )
     .await
     .unwrap();
-    let out = call_ingest_tool(&store, &p, "acme", "series.retention.list", &json!({}))
+    let out = call_ingest_tool(&store, &p, "nube", "series.retention.list", &json!({}))
         .await
         .unwrap();
     assert_eq!(out["policies"].as_array().unwrap().len(), 1);
@@ -234,7 +234,7 @@ async fn retention_round_trip_and_deny_via_mcp() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.retention.gc",
         &json!({ "now_ms": 200_000 }),
     )
@@ -250,7 +250,7 @@ async fn retention_round_trip_and_deny_via_mcp() {
     );
 
     // MANDATORY deny: retention admin without the caps is refused, opaquely — for every verb.
-    let no_cap = principal("client:intruder", "acme", &["mcp:series.read:call"]);
+    let no_cap = principal("client:intruder", "nube", &["mcp:series.read:call"]);
     for (verb, input) in [
         (
             "series.retention.set",
@@ -260,7 +260,7 @@ async fn retention_round_trip_and_deny_via_mcp() {
         ("series.retention.delete", json!({ "prefix": "cpu" })),
         ("series.retention.gc", json!({ "now_ms": 1 })),
     ] {
-        let err = call_ingest_tool(&store, &no_cap, "acme", verb, &input)
+        let err = call_ingest_tool(&store, &no_cap, "nube", verb, &input)
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::Denied), "{verb} must deny");

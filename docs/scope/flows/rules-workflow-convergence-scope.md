@@ -125,7 +125,7 @@ nothing and deletes a large surface.
 A "webhook → evaluate → gate → deliver" flow, all generic nodes:
 
 1. **`webhook` source** (config `{webhook_id: "gh-hook"}`) is armed when the flow enables:
-   the host subscribes to `webhook:acme:gh-hook`. A real POST to `/hooks/acme/gh-hook`
+   the host subscribes to `webhook:nube:gh-hook`. A real POST to `/hooks/nube/gh-hook`
    (verified by the core service) writes one ingest sample; the source fires a run, the
    sample's payload as the envelope.
 2. **`rhai`** node (`rules.eval`) runs an inline rule over `payload`, emits

@@ -46,7 +46,7 @@ Authenticate (workspace + principal come from the token — the hard wall):
 ```bash
 BASE=http://127.0.0.1:8080/mcp/call
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 auth=(-H "authorization: Bearer $TOKEN" -H 'content-type: application/json')
 ```
 
@@ -161,8 +161,8 @@ curl -s -X POST $BASE -H 'content-type: application/json' -d '{"tool":"insight.l
 - **Host-forced identity:** `producer`/`origin.kind` are stamped from the door + principal — a caller
   can't forge them even by putting them in the args. Raise through the manual door and confirm
   `origin.kind:"manual"` (a rule's handle forces `"rule"`, see 2.5).
-- **Workspace wall:** raise in `acme`; sign in to `globex`; confirm `globex`'s `insight.list` does
-  not see `acme`'s insight and its `insight.get` on the id is not-found. The SSE subject
+- **Workspace wall:** raise in `nube`; sign in to `globex`; confirm `globex`'s `insight.list` does
+  not see `nube`'s insight and its `insight.get` on the id is not-found. The SSE subject
   `ws/{ws}/insight/events` is ws-scoped — no cross-ws leak.
 
 ```bash

@@ -130,8 +130,8 @@ mod tests {
     #[test]
     fn the_path_is_deterministic_for_a_ws_and_digest() {
         assert_eq!(
-            artifact_blob_path("acme", "abc123"),
-            artifact_blob_path("acme", "abc123")
+            artifact_blob_path("nube", "abc123"),
+            artifact_blob_path("nube", "abc123")
         );
     }
 
@@ -140,7 +140,7 @@ mod tests {
     #[test]
     fn two_workspaces_never_share_a_blob_path_for_the_same_digest() {
         assert_ne!(
-            artifact_blob_path("acme", "abc123"),
+            artifact_blob_path("nube", "abc123"),
             artifact_blob_path("other", "abc123"),
             "the workspace wall is structural in the path, too"
         );
@@ -151,7 +151,7 @@ mod tests {
         std::sync::LazyLock::force(&TEST_LB_DIR);
         // A digest unique to this test — the shared root is fixed for the whole binary, so
         // collision-avoidance is on this identifier, not on a per-test LB_DIR.
-        let path = artifact_blob_path("acme", "write-then-read-round-trips");
+        let path = artifact_blob_path("nube", "write-then-read-round-trips");
         write_blob_atomic(&path, b"hello world").unwrap();
         assert_eq!(read_blob(&path).unwrap(), b"hello world");
     }

@@ -63,7 +63,7 @@ const FULL: &[&str] = &[
 ];
 
 fn member(ws: &str) -> Principal {
-    principal("user:ada", ws, FULL)
+    principal("user:test", ws, FULL)
 }
 
 /// Dispatch through the real MCP bridge and decode the JSON result.
@@ -161,7 +161,7 @@ async fn twenty_five_saves_leave_exactly_twenty_ring_rows_newest_first() {
     );
 
     // Provenance is on every row: who, with which verb, and when (epoch MILLIS from the row's ULID).
-    assert_eq!(rows[0]["actor"], json!("user:ada"));
+    assert_eq!(rows[0]["actor"], json!("user:test"));
     assert_eq!(rows[0]["tool"], json!("dashboard.save"));
     assert!(
         rows[0]["ts"].as_u64().expect("a ts") > 1_600_000_000_000,

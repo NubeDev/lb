@@ -93,17 +93,17 @@ local to the stream that must close.
   wherever the stream lives.
 
 ## Example flow (cc-app `care.feed.watch`)
-1. cc-app's care extension, on linking guardian `ada` to child `leo`, calls
-   `grants.assign(subject=user:ada, cap="bus:care.feed.leo:watch")` (generic MCP verb).
-2. `ada` opens `GET /bus/stream?subject=care.feed.leo` (or the mux `bus:care.feed.leo`).
+1. cc-app's care extension, on linking guardian `test` to child `leo`, calls
+   `grants.assign(subject=user:test, cap="bus:care.feed.leo:watch")` (generic MCP verb).
+2. `test` opens `GET /bus/stream?subject=care.feed.leo` (or the mux `bus:care.feed.leo`).
    Coarse gate `mcp:bus.watch:call` passes; the subject gate finds a `bus:*:watch` grant
-   exists for `ada` and one matches `care.feed.leo` ⇒ allow. Stream opens.
-3. `ada` opens `GET /bus/stream?subject=care.feed.mia` (another child). Coarse gate passes,
+   exists for `test` and one matches `care.feed.leo` ⇒ allow. Stream opens.
+3. `test` opens `GET /bus/stream?subject=care.feed.mia` (another child). Coarse gate passes,
    but no `bus:*:watch` grant matches `care.feed.mia` ⇒ **`403`** (Gap 1 closed).
 4. A caller with `mcp:bus.watch:call` and **no** `bus:*:watch` grant at all watches any
    `ext/*` subject exactly as today (back-compat).
-5. cc-app unlinks `ada` from `leo` → `grants.revoke(user:ada, "bus:care.feed.leo:watch")`.
-   Within one re-check tick, `ada`'s open `care.feed.leo` stream **closes** (Gap 2 closed).
+5. cc-app unlinks `test` from `leo` → `grants.revoke(user:test, "bus:care.feed.leo:watch")`.
+   Within one re-check tick, `test`'s open `care.feed.leo` stream **closes** (Gap 2 closed).
 
 ## Testing plan
 Mandatory categories (`scope/testing/testing-scope.md`): **capability-deny** and

@@ -235,7 +235,7 @@ run's effect is durable and the rule is a record (rule 4 — the cage itself hol
 **Integration (real spawned gateway)** — `ui/src/features/rules/RulesMessaging.gateway.test.tsx` (3 tests,
 `pnpm test:gateway`). A rule body runs through the real `rules.run` client and the channel is read back
 through the real `channel.history` client (the UI's own MCP verbs — rule 7, no fake backend):
-- a rule's `channel.post` lands a durable message authored as the signed-in caller (`user:ada`);
+- a rule's `channel.post` lands a durable message authored as the signed-in caller (`user:test`);
 - the worker-kind fence: a rule posting `kind:"agent"` is rejected and spawns NO run (empty channel);
 - caller-gated: a caller lacking `bus:chan/*:pub` (signed in via `/_seed/session`) is denied, opaquely,
   with no partial write.

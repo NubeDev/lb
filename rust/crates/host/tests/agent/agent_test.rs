@@ -101,7 +101,7 @@ async fn an_edge_user_invokes_the_agent_which_calls_the_gateway_and_a_granted_to
 
     // The caller can invoke the agent, call echo, and read/write the substrate.
     let caller = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[INVOKE, ECHO, SKILL_R, SKILL_W, DOC_R, DOC_W],
     );
@@ -185,7 +185,7 @@ async fn invoking_the_agent_is_denied_without_the_invoke_cap() {
     // the loop runs, the same opaque Denied as any tool.
     let ws = "agent-invoke-deny";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[ECHO]); // can echo, but cannot invoke the agent
+    let caller = principal("user:test", ws, &[ECHO]); // can echo, but cannot invoke the agent
     let gw = echo_then_stop();
 
     let err = invoke(
@@ -230,7 +230,7 @@ async fn a_tool_the_caller_cannot_use_is_denied_inside_the_loop_even_if_the_agen
     .unwrap();
 
     // Caller can invoke the agent but CANNOT call echo.
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let gw = echo_then_stop();
     // The agent's own caps DO include echo — but the intersection with the caller's removes it.
     let agent_caps: Vec<String> = vec![ECHO.into()];
@@ -270,7 +270,7 @@ async fn the_agent_cannot_load_a_skill_the_workspace_did_not_grant() {
     // the workspace is invisible to the agent — the S4 grant gate fires under the derived principal.
     let ws = "agent-skill-deny";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, SKILL_R, SKILL_W]);
+    let caller = principal("user:test", ws, &[INVOKE, SKILL_R, SKILL_W]);
 
     // Put the skill but do NOT grant it.
     put_skill(&node.store, &caller, ws, "secret", "1", "d", "body", 1)

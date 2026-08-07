@@ -119,15 +119,15 @@ real — the page remains reachable by deep link. *Rejected:* pin-wins — it ma
 1. An admin opens **Settings → Sidebar**. The tab lists the built-in surfaces and the
    `ext.list` pages. They toggle **Dashboard** off → `nav.hidden_set{hidden:
    ["dashboard"]}` writes `nav_hidden:[ws]`.
-2. **Ada** (no personal nav; workspace has no default) reloads. `nav.resolve` falls back
+2. **Test** (no personal nav; workspace has no default) reloads. `nav.resolve` falls back
    to `SURFACES`, subtracts the hidden-set → her rail has no Dashboard entry. A bookmark
    to `/dashboard/cooler-health` still loads (she holds read; `CoreGate` allows).
-3. Ada stars the **Rules** surface and the `ext:mqtt` status page → her
+3. Test stars the **Rules** surface and the `ext:mqtt` status page → her
    `nav_pref.pinned = ["rules", "ext:mqtt"]`. Her rail now shows **Pinned ▸ Rules ·
    MQTT** above the menu, in her order.
 4. **Ben** (same workspace) sees no Pinned section — pins are per-user — and also no
    Dashboard entry — hide is per-workspace.
-5. The admin later hides `ext:mqtt` too. On Ada's next resolve her pinned MQTT entry is
+5. The admin later hides `ext:mqtt` too. On Test's next resolve her pinned MQTT entry is
    stripped (hide beats pin); her `nav_pref` record is untouched, so un-hiding restores it.
 6. The `mqtt` extension is uninstalled → the pinned ref no longer matches `ext.list` and
    strips silently at resolve, exactly like the shipped uninstalled-ext rule.

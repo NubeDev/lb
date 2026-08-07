@@ -43,7 +43,7 @@ mod tests {
     use lb_auth::Principal;
 
     fn p(sub: &str) -> Principal {
-        Principal::routed(sub, "acme", Vec::new())
+        Principal::routed(sub, "nube", Vec::new())
     }
 
     /// An extension principal yields the BARE id — not the `ext:`-prefixed principal (D1).
@@ -55,7 +55,7 @@ mod tests {
     /// A human (or agent) principal is not managed — the marker stays absent.
     #[test]
     fn human_principal_is_not_managed() {
-        assert_eq!(managed_by_of(&p("user:ada")), None);
+        assert_eq!(managed_by_of(&p("user:test")), None);
         assert_eq!(managed_by_of(&p("agent:reporter")), None);
         // A sub that merely CONTAINS the token is not an extension identity — the prefix anchors.
         assert_eq!(managed_by_of(&p("user:ext:sneaky")), None);

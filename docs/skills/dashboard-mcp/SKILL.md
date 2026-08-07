@@ -28,7 +28,7 @@ wall, README §6/§7). Every verb is capability-gated server-side; a denial is *
 # dev login: who + which workspace. An empty workspace bootstraps the caller as workspace-admin.
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
   -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Send it on every subsequent call as `Authorization: Bearer $TOKEN`.
@@ -59,7 +59,7 @@ A dashboard is a persisted grid of cells + sharing metadata + variables:
 
 ```jsonc
 {
-  "id": "test", "title": "Test", "owner": "user:ada",
+  "id": "test", "title": "Test", "owner": "user:test",
   "visibility": "private",          // private | team | workspace  (set via `share`)
   "variables": [],                   // dashboard variables ($var), optional
   "cells": [ /* … */ ],

@@ -14,7 +14,7 @@
 ## The ask
 
 "A flow must run like a PLC — 100% reliable, backend-driven" and "like Node-RED — a reactive engine."
-Three live failures on `chain4` (`:8080`, ws `acme`): a store `Invalid revision` / `read or write
+Three live failures on `chain4` (`:8080`, ws `nube`): a store `Invalid revision` / `read or write
 conflict` banner; `flows.run` apparently re-firing ~2×/s; Stop/Resume flickering with no values.
 
 ## Reproduced first (HOW-TO-CODE)

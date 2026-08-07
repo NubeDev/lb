@@ -29,12 +29,12 @@ const CAPS: &[&str] = &[
     "mcp:redo:call",
 ];
 
-/// A `user:ada`/`acme` principal that can read the journal — verifying a freshly-minted token gives
+/// A `user:test`/`nube` principal that can read the journal — verifying a freshly-minted token gives
 /// the same `Principal` shape the gateway's own `authenticate` produces.
 fn reader(key: &SigningKey) -> Principal {
     let claims = Claims {
-        sub: "user:ada".into(),
-        ws: "acme".into(),
+        sub: "user:test".into(),
+        ws: "nube".into(),
         role: Role::Member,
         caps: vec!["mcp:history.list:call".into()],
         iat: 0,
@@ -46,10 +46,10 @@ fn reader(key: &SigningKey) -> Principal {
     verify(key, &tok, 1).expect("token verifies")
 }
 
-/// Count the undoable steps on `surface` for `user:ada`'s own stack in `acme`.
+/// Count the undoable steps on `surface` for `user:test`'s own stack in `nube`.
 async fn undoable_on(node: &Arc<Node>, key: &SigningKey, surface: &str) -> usize {
     let p = reader(key);
-    let items = history_list(&node.store, &p, "acme", "user:ada", surface)
+    let items = history_list(&node.store, &p, "nube", "user:test", surface)
         .await
         .expect("history reads")
         .items;
@@ -60,7 +60,7 @@ async fn undoable_on(node: &Arc<Node>, key: &SigningKey, surface: &str) -> usize
 async fn a_rest_save_is_auto_captured_undoable_on_the_dashboard_surface() {
     let (gw, key) = gateway().await;
     let node = gw.node.clone();
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     // Create over the REST route (the UI's `dashboard_save` transport).
     let resp = router(gw.clone())
@@ -88,7 +88,7 @@ async fn a_rest_save_is_auto_captured_undoable_on_the_dashboard_surface() {
 async fn a_rest_delete_is_auto_captured_undoable() {
     let (gw, key) = gateway().await;
     let node = gw.node.clone();
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     // Create, then delete — both over the REST routes.
     let resp = router(gw.clone())

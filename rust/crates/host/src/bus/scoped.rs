@@ -112,7 +112,7 @@ fn holds_any_watch_grant(caps: &[String]) -> bool {
 }
 
 /// Strip the `user:` prefix so the resolver sees the bare name grants are stored under
-/// (`Subject::User("ada")`, not `"user:ada"`). Mirrors `authz::scoped::bare_user`. A non-`user:`
+/// (`Subject::User("test")`, not `"user:test"`). Mirrors `authz::scoped::bare_user`. A non-`user:`
 /// sub (an api key) is returned as-is — it has no subject-scoped bus grants in v1, so
 /// [`holds_any_watch_grant`] is false and it stays in back-compat mode.
 fn bare_user(sub: &str) -> &str {
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn bare_user_strips_prefix() {
-        assert_eq!(bare_user("user:ada"), "ada");
+        assert_eq!(bare_user("user:test"), "test");
         assert_eq!(bare_user("key:k7"), "key:k7");
     }
 }

@@ -67,8 +67,8 @@ gateway IS a node that also speaks HTTP). The slice is wiring, not invention:
    shell (`desktop`) are untouched — the optional-dep seam the packaging scope established
    extends cleanly.
 2. **`src/full.rs`** (one responsibility: "boot the standalone backend onto a node") —
-   `seed_dev_identity` (mirrored from `rust/node/src/main.rs:22`: `user:ada` →
-   `workspace-admin` of `acme`, idempotent), the catalog seeders (`seed_core_skills`,
+   `seed_dev_identity` (mirrored from `rust/node/src/main.rs:22`: `user:test` →
+   `workspace-admin` of `nube`, idempotent), the catalog seeders (`seed_core_skills`,
    `seed_agent_definitions`, `seed_personas`, `migrate_active_persona`,
    `grant_default_core_skills`), the four background reactors (`spawn_flow_reactors`,
    `spawn_agent_reactors`, `spawn_approval_reactors`, `spawn_insight_digest_reactors`),
@@ -119,7 +119,7 @@ the property that keeps every other CI lane webkit-free. New:
   compiles (needs the webkit box for the `desktop` half; the `full` half is pure Rust).
 - **Boot smoke (Linux, the headline):** `make -C desktop linux-full` then `xvfb-run` the
   binary; assert (a) the process stays up, (b) `curl http://127.0.0.1:8800/login` with
-  `{user:"user:ada",workspace:"acme"}` returns a real signed token, (c) that token drives a
+  `{user:"user:test",workspace:"nube"}` returns a real signed token, (c) that token drives a
   real `POST /mcp/call`. Real store, real gateway, real caps (rule 9). This is the proof
   that "login works" against the packaged binary.
 

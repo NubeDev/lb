@@ -24,7 +24,7 @@ The subscriber received a message that a *concurrently running test* published.
 
 `cargo test -p lb-host --test messaging_test` (all three tests, default concurrency). Passes
 with `posted_message_appears_to_a_live_subscriber` run alone; fails when the suite runs
-together. Every test used the same workspace `"acme"` and channel `"general"`.
+together. Every test used the same workspace `"nube"` and channel `"general"`.
 
 ## Investigation
 
@@ -32,10 +32,10 @@ together. Every test used the same workspace `"acme"` and channel `"general"`.
   shared session" was ruled out.
 - But cargo runs a test binary's tests on multiple threads in ONE process. Embedded Zenoh
   peers in the same process **auto-discover each other** (peer-to-peer scouting) and share a
-  single keyspace. Two sessions publishing/subscribing `ws/acme/chan/general/**` therefore see
+  single keyspace. Two sessions publishing/subscribing `ws/nube/chan/general/**` therefore see
   each other's traffic.
 - Key observation: the workspace prefix `ws/{id}/` is the *only* thing that scopes a key. With
-  every test using `ws = "acme"`, the keys collided across tests by construction.
+  every test using `ws = "nube"`, the keys collided across tests by construction.
 
 ## Root cause
 

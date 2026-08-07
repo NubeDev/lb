@@ -77,7 +77,7 @@ async fn a_killed_run_with_pending_calls_heals_on_resume_without_renumbering() {
 
     // Resume through the real entry; the model just wraps up.
     let gw = AiGateway::new(MockProvider::new(vec![AiResponse::stop("wrapped up", 5)]));
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let answer = resume(
         &node,
         &gw,
@@ -178,7 +178,7 @@ async fn a_suspension_parked_call_is_not_cancelled_by_the_heal() {
     // Resume: the decision is still pending, so the run stays parked — and the heal must NOT have
     // cancelled the gated call (it is awaiting a human, not dangling).
     let gw = AiGateway::new(MockProvider::new(vec![AiResponse::stop("never asked", 5)]));
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let _ = resume(
         &node,
         &gw,

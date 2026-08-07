@@ -272,7 +272,7 @@ mod tests {
                 accent: "#db2777".into(),
                 ..Colors::default()
             },
-            header_text: "ACME Corp — Confidential".into(),
+            header_text: "NUBE Corp — Confidential".into(),
             footer_text: "Page footer".into(),
             ..Brand::default()
         };

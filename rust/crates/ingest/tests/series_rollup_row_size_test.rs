@@ -69,7 +69,7 @@ async fn measure_rollup_row_bytes_on_disc() {
     // charging that to the rows would inflate the per-row number.
     let store = Store::open(&path).await.unwrap();
     // Touch the workspace namespace so the baseline includes the namespace, not just the engine.
-    write_rollups(&store, "acme", &[rollup_row("sizing.warmup", 0)])
+    write_rollups(&store, "nube", &[rollup_row("sizing.warmup", 0)])
         .await
         .unwrap();
     compact(&store).await.unwrap();
@@ -81,7 +81,7 @@ async fn measure_rollup_row_bytes_on_disc() {
         .collect();
     // Chunked: one 10k-row statement is a different write shape than a node's incremental passes.
     for chunk in rows.chunks(500) {
-        write_rollups(&store, "acme", chunk).await.unwrap();
+        write_rollups(&store, "nube", chunk).await.unwrap();
     }
 
     let before_compaction = dir_bytes(&dir);

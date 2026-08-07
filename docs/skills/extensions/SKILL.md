@@ -50,7 +50,7 @@ immediately, no restart. Then you manage it.
 # dev login: who + which workspace. An empty workspace bootstraps the caller as workspace-admin.
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
   -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Send `Authorization: Bearer $TOKEN` on every call. To act in another workspace, `login` into it —
@@ -407,7 +407,7 @@ curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN"
 ```bash
 BASE=http://127.0.0.1:8080
 TOKEN=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 mcp(){ curl -s -X POST $BASE/mcp/call -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d "{\"tool\":\"$1\",\"args\":$2}"; }
 
@@ -450,7 +450,7 @@ green:
 
    ```bash
    DENIED=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-     -d '{"user":"user:mallory","workspace":"acme"}' | jq -r .token)   # same ws, NO tool cap
+     -d '{"user":"user:mallory","workspace":"nube"}' | jq -r .token)   # same ws, NO tool cap
    curl -s -o /dev/null -w "%{http_code}\n" -X POST $BASE/mcp/call \
      -H "authorization: Bearer $DENIED" -H 'content-type: application/json' \
      -d '{"tool":"weather-panel.ping","args":{}}'                      # 403 — and indistinguishable
@@ -461,7 +461,7 @@ green:
 
    ```bash
    OTHER=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-     -d '{"user":"user:ada","workspace":"other-ws"}' | jq -r .token)   # different workspace
+     -d '{"user":"user:test","workspace":"other-ws"}' | jq -r .token)   # different workspace
    curl -s $BASE/extensions -H "authorization: Bearer $OTHER" | jq 'length'   # 0 — A's ext invisible
    curl -s -o /dev/null -w "%{http_code}\n" -X POST $BASE/mcp/call \
      -H "authorization: Bearer $OTHER" -H 'content-type: application/json' \

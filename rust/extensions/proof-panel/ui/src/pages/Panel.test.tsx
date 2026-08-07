@@ -28,9 +28,9 @@ function demoBridge(overrides: Record<string, Resolver> = {}) {
 
 describe("Panel — the all-features demo", () => {
   it("renders the header with the workspace badge from the host ctx", () => {
-    render(<App ctx={{ workspace: "acme" }} bridge={demoBridge()} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={demoBridge()} />);
     expect(screen.getByRole("heading", { name: "Proof Panel" })).toBeInTheDocument();
-    expect(screen.getByLabelText("workspace")).toHaveTextContent("acme");
+    expect(screen.getByLabelText("workspace")).toHaveTextContent("nube");
   });
 
   it("ingest → read round-trip: Write sample calls ingest.write then re-reads series.latest", async () => {
@@ -45,7 +45,7 @@ describe("Panel — the all-features demo", () => {
       },
       "series.latest": () => (written ? { sample: { seq: 1, payload: 21 } } : { sample: null }),
     });
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={bridge} />);
 
     await user.click(screen.getByLabelText("write sample"));
 
@@ -66,7 +66,7 @@ describe("Panel — the all-features demo", () => {
     const user = userEvent.setup();
     // ingest.write absent from the stub → rejected `out_of_scope`.
     const bridge = demoBridge();
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={bridge} />);
 
     await user.click(screen.getByLabelText("write sample"));
     expect(await screen.findByText(/Could not write: out_of_scope/i)).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe("Panel — the all-features demo", () => {
       "series.latest": (a) =>
         a?.series === "proof.derived" && derived ? { sample: { seq: 7, payload: 42 } } : { sample: null },
     });
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={bridge} />);
 
     await user.click(screen.getByLabelText("run derive"));
 
@@ -101,7 +101,7 @@ describe("Panel — the all-features demo", () => {
   it("host-callback derive denied → honest error, no fabricated value", async () => {
     const user = userEvent.setup();
     // proof.derive absent from the stub → rejected `out_of_scope` (the deny path).
-    render(<App ctx={{ workspace: "acme" }} bridge={demoBridge()} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={demoBridge()} />);
     await user.click(screen.getByLabelText("run derive"));
     expect(await screen.findByText(/Could not derive: out_of_scope/i)).toBeInTheDocument();
   });
@@ -136,7 +136,7 @@ describe("Panel — the all-features demo", () => {
           ? { pending: [{ id: "proof-sim-effect", target: "demo" }], delivered: [], dead_lettered: [] }
           : { pending: [], delivered: [], dead_lettered: [] },
     });
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={bridge} />);
 
     // Empty before: the inbox shows its honest empty state.
     expect(await screen.findByTestId("inbox-empty")).toBeInTheDocument();
@@ -158,7 +158,7 @@ describe("Panel — the all-features demo", () => {
   it("workflow simulation denied → honest error, no fabricated summary", async () => {
     const user = userEvent.setup();
     // proof.simulate absent from the stub → rejected `out_of_scope` (the deny path).
-    render(<App ctx={{ workspace: "acme" }} bridge={demoBridge()} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={demoBridge()} />);
     await user.click(screen.getByLabelText("run workflow simulation"));
     expect(await screen.findByTestId("simulate-error")).toHaveTextContent(/out_of_scope/i);
   });
@@ -172,7 +172,7 @@ describe("Panel — the all-features demo", () => {
         dead_lettered: [],
       }),
     });
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={bridge} />);
 
     expect(await screen.findByTestId("outbox-pending")).toHaveTextContent("1");
     expect(screen.getByTestId("outbox-delivered")).toHaveTextContent("2");
@@ -195,7 +195,7 @@ describe("Panel — the all-features demo", () => {
       }),
       "inbox.resolve": () => ({ ok: true }),
     });
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={bridge} />);
 
     const list = await screen.findByTestId("inbox-list");
     expect(within(list).getByText("please review")).toBeInTheDocument();
@@ -210,7 +210,7 @@ describe("Panel — the all-features demo", () => {
   });
 
   it("inbox triage: honest empty state when the channel has no items", async () => {
-    render(<App ctx={{ workspace: "acme" }} bridge={demoBridge()} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={demoBridge()} />);
     expect(await screen.findByTestId("inbox-empty")).toBeInTheDocument();
   });
 
@@ -221,7 +221,7 @@ describe("Panel — the all-features demo", () => {
       "series.latest": (a) =>
         a?.series === "edge.temp" ? { sample: { seq: 7, payload: 61.4 } } : { sample: null },
     });
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+    render(<App ctx={{ workspace: "nube" }} bridge={bridge} />);
 
     await user.type(screen.getByLabelText("series facet"), "kind:temperature");
     await user.click(screen.getByLabelText("run search"));

@@ -37,7 +37,7 @@ const TABLE: &str = "widget";
 async fn write_round_trips_and_delete_removes() {
     let ws = "sm-rt";
     let store = Store::memory().await.unwrap();
-    let p = principal("user:ada", ws, &["store:widget:write"]);
+    let p = principal("user:test", ws, &["store:widget:write"]);
 
     let value = json!({ "id": "plant-1", "name": "Plant 1", "mode": "local" });
     let (t, id) = store_write_run(&store, &p, ws, TABLE, "plant-1", &value)
@@ -97,7 +97,7 @@ async fn write_without_the_per_table_cap_is_denied_and_nothing_is_written() {
 async fn delete_without_the_cap_is_denied_and_nothing_is_erased() {
     let ws = "sm-deny-del";
     let store = Store::memory().await.unwrap();
-    let writer = principal("user:ada", ws, &["store:widget:write"]);
+    let writer = principal("user:test", ws, &["store:widget:write"]);
     let nocap = principal("user:mallory", ws, &["store:other_table:write"]);
 
     store_write_run(&store, &writer, ws, TABLE, "keep", &json!({ "a": 1 }))

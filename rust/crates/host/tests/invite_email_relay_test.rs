@@ -30,12 +30,12 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn invite_create_effect_delivers_through_real_relay() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", &["mcp:invite.create:call"]);
+    let admin = principal("user:alice", "nube", &["mcp:invite.create:call"]);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -51,7 +51,7 @@ async fn invite_create_effect_delivers_through_real_relay() {
     // EmailTarget adapter to the recording provider.
     let provider = Arc::new(RecordingEmailProvider::default());
     let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
-    let pass = relay_outbox(&store, "acme", &target, 101).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 101).await.unwrap();
     assert_eq!(
         pass.delivered, 1,
         "the invite email effect must be delivered"
@@ -60,14 +60,14 @@ async fn invite_create_effect_delivers_through_real_relay() {
     let sends = provider.sends();
     assert_eq!(sends.len(), 1);
     assert_eq!(sends[0].to, "sam@example.com");
-    assert_eq!(sends[0].workspace, "acme");
+    assert_eq!(sends[0].workspace, "nube");
     assert!(
         sends[0].body.contains(&token),
         "the mail body must carry the raw one-time token"
     );
 
     // Idempotent second pass: nothing is due, nothing re-sends.
-    let pass = relay_outbox(&store, "acme", &target, 102).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 102).await.unwrap();
     assert_eq!(pass.delivered, 0);
     assert_eq!(provider.sends().len(), 1);
 

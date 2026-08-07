@@ -38,12 +38,12 @@ const ALL: &[&str] = &[SAVE, GET, LIST, DELETE];
 async fn crud_round_trip() {
     let ws = "ws-tpl-crud";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // create
     let t = template_save(
         &store,
-        &ada,
+        &test,
         ws,
         "defrost",
         "Defrost Card",
@@ -54,17 +54,17 @@ async fn crud_round_trip() {
     .await
     .unwrap();
     assert_eq!(t.id, "defrost");
-    assert_eq!(t.author, "user:ada");
+    assert_eq!(t.author, "user:test");
     assert_eq!(t.engine, Engine::Template);
 
     // get reads the code back
-    let got = template_get(&store, &ada, ws, "defrost").await.unwrap();
+    let got = template_get(&store, &test, ws, "defrost").await.unwrap();
     assert_eq!(got.code, "<div>{rows[0].value}</div>");
 
     // update (author-only) changes the code, keeps the author
     let upd = template_save(
         &store,
-        &ada,
+        &test,
         ws,
         "defrost",
         "Defrost Card v2",
@@ -75,27 +75,27 @@ async fn crud_round_trip() {
     .await
     .unwrap();
     assert_eq!(upd.engine, Engine::Plot);
-    assert_eq!(upd.author, "user:ada");
+    assert_eq!(upd.author, "user:test");
     assert_eq!(upd.updated_ts, 20);
 
     // list shows the summary (no code body in the summary type)
-    let rows = template_list(&store, &ada, ws).await.unwrap();
+    let rows = template_list(&store, &test, ws).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, "defrost");
     assert_eq!(rows[0].title, "Defrost Card v2");
 
     // delete tombstones it; get → NotFound, list → empty
-    template_delete(&store, &ada, ws, "defrost", 30)
+    template_delete(&store, &test, ws, "defrost", 30)
         .await
         .unwrap();
     assert!(matches!(
-        template_get(&store, &ada, ws, "defrost").await,
+        template_get(&store, &test, ws, "defrost").await,
         Err(RenderTemplateError::NotFound)
     ));
-    assert!(template_list(&store, &ada, ws).await.unwrap().is_empty());
+    assert!(template_list(&store, &test, ws).await.unwrap().is_empty());
 
     // delete is idempotent (already-tombstoned → Ok)
-    template_delete(&store, &ada, ws, "defrost", 40)
+    template_delete(&store, &test, ws, "defrost", 40)
         .await
         .unwrap();
 }
@@ -106,7 +106,7 @@ async fn deny_per_verb() {
     let store = Store::memory().await.unwrap();
 
     // seed one template as a fully-granted author so the read verbs have something to deny against.
-    let author = principal("user:ada", ws, ALL);
+    let author = principal("user:test", ws, ALL);
     template_save(
         &store,
         &author,
@@ -149,13 +149,13 @@ async fn deny_per_verb() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_isolation() {
     let store = Store::memory().await.unwrap();
-    let ada_a = principal("user:ada", "ws-a", ALL);
+    let test_a = principal("user:test", "ws-a", ALL);
     let ben_b = principal("user:ben", "ws-b", ALL);
 
-    // Ada writes in ws-a.
+    // Test writes in ws-a.
     template_save(
         &store,
-        &ada_a,
+        &test_a,
         "ws-a",
         "shared",
         "A",
@@ -190,7 +190,7 @@ async fn workspace_isolation() {
     .await
     .unwrap();
     assert_eq!(
-        template_get(&store, &ada_a, "ws-a", "shared")
+        template_get(&store, &test_a, "ws-a", "shared")
             .await
             .unwrap()
             .code,
@@ -202,17 +202,17 @@ async fn workspace_isolation() {
 async fn author_ownership_blocks_foreign_update_and_delete() {
     let ws = "ws-tpl-owner";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
     let ben = principal("user:ben", ws, ALL); // fully granted, but NOT the author
 
     template_save(
         &store,
-        &ada,
+        &test,
         ws,
         "t1",
-        "Ada's",
+        "Test's",
         Engine::Template,
-        "ada-code",
+        "test-code",
         1,
     )
     .await
@@ -238,10 +238,10 @@ async fn author_ownership_blocks_foreign_update_and_delete() {
         Err(RenderTemplateError::Denied)
     ));
 
-    // Ada's template is untouched. A teammate (Ben) CAN read it (workspace-shared read).
+    // Test's template is untouched. A teammate (Ben) CAN read it (workspace-shared read).
     assert_eq!(
         template_get(&store, &ben, ws, "t1").await.unwrap().code,
-        "ada-code"
+        "test-code"
     );
 }
 
@@ -249,11 +249,11 @@ async fn author_ownership_blocks_foreign_update_and_delete() {
 async fn over_size_cap_is_rejected() {
     let ws = "ws-tpl-cap";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     let big = "x".repeat(TEMPLATE_MAX_BYTES + 1);
     assert!(matches!(
-        template_save(&store, &ada, ws, "big", "Big", Engine::Template, &big, 1).await,
+        template_save(&store, &test, ws, "big", "Big", Engine::Template, &big, 1).await,
         Err(RenderTemplateError::BadInput(_))
     ));
 }
@@ -264,14 +264,14 @@ async fn upsert_is_idempotent_on_replay() {
     // id at the same logical ts yields the identical record.
     let ws = "ws-tpl-sync";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
-    let first = template_save(&store, &ada, ws, "t1", "T1", Engine::Plot, "Plot.dot()", 5)
+    let first = template_save(&store, &test, ws, "t1", "T1", Engine::Plot, "Plot.dot()", 5)
         .await
         .unwrap();
-    let replay = template_save(&store, &ada, ws, "t1", "T1", Engine::Plot, "Plot.dot()", 5)
+    let replay = template_save(&store, &test, ws, "t1", "T1", Engine::Plot, "Plot.dot()", 5)
         .await
         .unwrap();
     assert_eq!(first, replay);
-    assert_eq!(template_list(&store, &ada, ws).await.unwrap().len(), 1);
+    assert_eq!(template_list(&store, &test, ws).await.unwrap().len(), 1);
 }

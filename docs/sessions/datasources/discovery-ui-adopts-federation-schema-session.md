@@ -3,7 +3,7 @@
 **Date:** 2026-06-29
 **Area:** datasources (frontend) / federation
 **Symptom (UI):** Opening a datasource detail page
-(`#/t/acme/datasources/timescale`) failed to list tables with
+(`#/t/nube/datasources/timescale`) failed to list tables with
 `plan: Error during planning: table 'datafusion.information_schema.tables' not found`.
 The DB (`lb-timescaledb`) was up, healthy, and seeded.
 

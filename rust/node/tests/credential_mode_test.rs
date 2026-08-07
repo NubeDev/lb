@@ -47,7 +47,7 @@ async fn json_body(resp: axum::response::Response) -> Value {
 }
 
 /// Boot an embedded node with the gateway ON, the given credential mode, and a seeded first admin
-/// (`user:ada` / `ada@acme.com` / `pw`). Returns the `Gateway` `boot_full` built — the one whose
+/// (`user:test` / `test@nube-io.com` / `pw`). Returns the `Gateway` `boot_full` built — the one whose
 /// credential check the `credential_mode` field selected.
 async fn boot_gateway(mode: CredentialMode, admin_password: Option<&str>) -> Gateway {
     let mut cfg = BootConfig::default();
@@ -65,8 +65,8 @@ async fn boot_gateway(mode: CredentialMode, admin_password: Option<&str>) -> Gat
 }
 
 /// The seeded first admin (the boot seed's defaults + the email/password this suite pins).
-const ADMIN_SUB: &str = "user:ada";
-const ADMIN_EMAIL: &str = "ada@acme.com";
+const ADMIN_SUB: &str = "user:test";
+const ADMIN_EMAIL: &str = "test@nube-io.com";
 const ADMIN_PASSWORD: &str = "dev-admin-pw";
 
 /// `POST /auth/login {email, password}` — returns the whole reply so a test can assert the status
@@ -118,7 +118,7 @@ async fn boot_full_password_hash_mode_enforces_the_credential() {
     for (uri, body) in [
         (
             "/admin/identities".to_string(),
-            json!({ "sub": "user:bob", "email": "bob@acme.com" }),
+            json!({ "sub": "user:bob", "email": "bob@nube.com" }),
         ),
         (
             "/admin/identities/user:bob/password".to_string(),
@@ -139,16 +139,16 @@ async fn boot_full_password_hash_mode_enforces_the_credential() {
 
     // Now the PasswordHash gateway (built by `boot_full` from the field) enforces it:
     // right password → 200 + token; wrong → 401; absent → 401.
-    let token = login_token(&gw, "bob@acme.com", "hunter2").await;
+    let token = login_token(&gw, "bob@nube.com", "hunter2").await;
     assert!(!token.is_empty(), "right password mints a token");
 
     assert_eq!(
-        login_status(&gw, "bob@acme.com", "WRONG").await,
+        login_status(&gw, "bob@nube.com", "WRONG").await,
         StatusCode::UNAUTHORIZED,
         "wrong password → 401 (this was 200 on an embedded node before credential_mode)"
     );
     assert_eq!(
-        login_status(&gw, "bob@acme.com", "").await,
+        login_status(&gw, "bob@nube.com", "").await,
         StatusCode::UNAUTHORIZED,
         "absent password → 401"
     );
@@ -194,7 +194,7 @@ async fn boot_full_seeds_the_dev_admin_credential_for_password_hash() {
     );
     // And an unknown email is the SAME uniform 401 — no account-enumeration oracle.
     assert_eq!(
-        login_status(&gw, "nobody@acme.com", ADMIN_PASSWORD).await,
+        login_status(&gw, "nobody@nube.com", ADMIN_PASSWORD).await,
         StatusCode::UNAUTHORIZED,
         "unknown email → the same 401 as a wrong password"
     );

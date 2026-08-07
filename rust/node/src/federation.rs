@@ -70,7 +70,7 @@ pub async fn mount(node: Arc<Node>) {
         return;
     }
 
-    let ws = std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into());
+    let ws = std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "nube".into());
     let now = unix_seconds();
 
     // The admin-approved grant: one `net:tls:host:port:connect` per endpoint + the secret read the

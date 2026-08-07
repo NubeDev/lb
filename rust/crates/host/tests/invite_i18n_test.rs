@@ -36,12 +36,12 @@ const ADMIN: &[&str] = &["mcp:invite.create:call"];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn es_invite_email_renders_spanish_through_the_catalog() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -55,16 +55,16 @@ async fn es_invite_email_renders_spanish_through_the_catalog() {
 
     let provider = Arc::new(RecordingEmailProvider::default());
     let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
-    let pass = relay_outbox(&store, "acme", &target, 101).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 101).await.unwrap();
     assert_eq!(pass.delivered, 1);
 
     let sends = provider.sends();
     assert_eq!(sends.len(), 1);
-    assert_eq!(sends[0].subject, "Te han invitado a unirte a acme");
+    assert_eq!(sends[0].subject, "Te han invitado a unirte a nube");
     assert!(
         sends[0]
             .body
-            .starts_with("Has sido invitado al espacio de trabajo acme"),
+            .starts_with("Has sido invitado al espacio de trabajo nube"),
         "Spanish body, got: {}",
         sends[0].body
     );
@@ -75,12 +75,12 @@ async fn es_invite_email_renders_spanish_through_the_catalog() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn default_invite_email_renders_english() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "pat@example.com",
         "member",
         "",
@@ -94,25 +94,25 @@ async fn default_invite_email_renders_english() {
 
     let provider = Arc::new(RecordingEmailProvider::default());
     let target = EmailTarget::new(Box::new(provider.clone()), store.clone());
-    relay_outbox(&store, "acme", &target, 101).await.unwrap();
+    relay_outbox(&store, "nube", &target, 101).await.unwrap();
 
     let sends = provider.sends();
-    assert_eq!(sends[0].subject, "You are invited to join acme");
+    assert_eq!(sends[0].subject, "You are invited to join nube");
     assert!(sends[0]
         .body
-        .starts_with("You have been invited to workspace acme"));
+        .starts_with("You have been invited to workspace nube"));
 }
 
 /// An unknown locale is rejected at mint time (validated against the enabled-language axis).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn unknown_locale_is_rejected_at_create() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let err = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -131,12 +131,12 @@ async fn unknown_locale_is_rejected_at_create() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn verify_exposes_locale_pre_auth() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -148,13 +148,13 @@ async fn verify_exposes_locale_pre_auth() {
     .await
     .unwrap();
 
-    let preview = invite_verify(&store, "acme", &token, 101).await.unwrap();
+    let preview = invite_verify(&store, "nube", &token, 101).await.unwrap();
     assert_eq!(preview.email, "sam@example.com");
     assert_eq!(preview.locale.as_deref(), Some("es"));
     assert!(preview.redeemable);
 
     // A garbage token is NotFound/BadToken — the preview is token-gated like accept.
-    let err = invite_verify(&store, "acme", "lbi_nope", 101)
+    let err = invite_verify(&store, "nube", "lbi_nope", 101)
         .await
         .unwrap_err();
     assert!(matches!(err, InviteError::BadToken | InviteError::NotFound));
@@ -165,13 +165,13 @@ async fn verify_exposes_locale_pre_auth() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn accept_copies_locale_into_language_pref() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
     let key = SigningKey::generate();
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -183,12 +183,12 @@ async fn accept_copies_locale_into_language_pref() {
     .await
     .unwrap();
 
-    let accepted = invite_accept(&store, &key, "acme", &token, "s3cret!", None, 101)
+    let accepted = invite_accept(&store, &key, "nube", &token, "s3cret!", None, 101)
         .await
         .unwrap();
     assert_eq!(accepted.sub, "user:sam@example.com");
 
-    let prefs = get_user_prefs(&store, "acme", "user:sam@example.com")
+    let prefs = get_user_prefs(&store, "nube", "user:sam@example.com")
         .await
         .unwrap()
         .expect("prefs record seeded on accept");

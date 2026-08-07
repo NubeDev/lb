@@ -72,7 +72,7 @@ async fn a_denied_caller_gets_an_opaque_403_even_when_the_args_are_malformed() {
 /// workspace-admin, adds bob, grants `role:viewer`, revokes `role:member`. Bob re-logs in so his
 /// token carries the viewer floor ∪ his one remaining role. Returns bob's viewer bearer.
 async fn seed_viewer(gw: &Gateway) -> String {
-    let admin = login(gw, "user:alice", "acme").await;
+    let admin = login(gw, "user:alice", "nube").await;
     let post = |path: &'static str, body: serde_json::Value, tok: String| {
         let gw = gw.clone();
         async move {
@@ -113,7 +113,7 @@ async fn seed_viewer(gw: &Gateway) -> String {
         StatusCode::NO_CONTENT,
         "admin revokes bob role:member"
     );
-    login(gw, "user:bob", "acme").await
+    login(gw, "user:bob", "nube").await
 }
 
 /// Mint the token `/auth/login` would issue for `(user, ws)` — the SAME role-correct path
@@ -142,7 +142,7 @@ async fn a_viewer_cannot_reach_authoring_pages_but_a_member_can_and_a_viewer_sti
     let (gw, _key) = gateway().await;
 
     // alice bootstraps as workspace-admin (first login into an empty ws); she adds bob as a member.
-    let admin = login(&gw, "user:alice", "acme").await;
+    let admin = login(&gw, "user:alice", "nube").await;
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post("/admin/members", json!({ "sub": "user:bob" })),
@@ -153,7 +153,7 @@ async fn a_viewer_cannot_reach_authoring_pages_but_a_member_can_and_a_viewer_sti
     assert_eq!(resp.status(), StatusCode::NO_CONTENT, "admin adds bob");
 
     // ── (a) A MEMBER authors: bob (role:member) can save a rule. Baseline that must stay green. ──
-    let member = login(&gw, "user:bob", "acme").await;
+    let member = login(&gw, "user:bob", "nube").await;
     let status = mcp_status(
         &gw,
         &member,
@@ -200,7 +200,7 @@ async fn a_viewer_cannot_reach_authoring_pages_but_a_member_can_and_a_viewer_sti
     );
 
     // Bob re-logs in → a VIEWER token (viewer floor ∪ his only remaining role = viewer caps).
-    let viewer = login(&gw, "user:bob", "acme").await;
+    let viewer = login(&gw, "user:bob", "nube").await;
 
     // ── (b) A VIEWER cannot author: every authoring verb the nav must withhold → 403 at the gate. ──
     // Each is the exact reach a one-page nav could never restrict before — the cap gate now denies it.

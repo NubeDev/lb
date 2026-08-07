@@ -125,23 +125,23 @@ rejected out-of-band restores. (d) SurrealDB TTL / reaper retention — age-base
 
 ## Example flow
 
-1. ada edits the "Plant Room" dashboard and hits save → `dashboard.save` dispatches, succeeds.
+1. test edits the "Plant Room" dashboard and hits save → `dashboard.save` dispatches, succeeds.
 2. At depth 0, `versions_capture` classifies the call → `Captured { kind: "dashboard", ... }`,
    reads the record back (`entity_rev = 41`), hashes it (≠ head), and `capped_insert`s
-   `{ kind, entity_id, entity_rev: 41, tool: "dashboard.save", actor: "ada@acme.com", ts,
+   `{ kind, entity_id, entity_rev: 41, tool: "dashboard.save", actor: "test@nube-io.com", ts,
    snapshot }` with `cap_key = "dashboard:plant-room"`, cap 20. The oldest ring row is trimmed in
    the same transaction.
 3. Three saves later the layout is wrecked. `versions.list { kind: "dashboard", id: "plant-room" }`
    → 20 metadata rows newest-first.
 4. `versions.restore { kind: "dashboard", id: "plant-room", version_id: <ulid of rev 41> }` —
-   the host checks ada holds `mcp:dashboard.save:call`, loads the snapshot, re-dispatches
+   the host checks test holds `mcp:dashboard.save:call`, loads the snapshot, re-dispatches
    `dashboard.save` with it. Validators run, caches invalidate, audit logs, undo captures.
 5. The restore's save is itself captured → the ring head is now a copy of rev 41. Ctrl+Z would
    undo the restore.
 6. A flow follows the same path via `flows.save` — restore bumps `flow.version` (the counter
    keeps its run-pinning meaning; history rows carry which counter value each snapshot had). A
    rule likewise via `rules.save`.
-7. ada deletes a rule by mistake → `versions.list { kind: "rule", id }` still answers →
+7. test deletes a rule by mistake → `versions.list { kind: "rule", id }` still answers →
    `versions.restore` of the head recreates it.
 
 ## Testing plan

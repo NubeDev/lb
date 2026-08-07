@@ -78,7 +78,7 @@ fn answer_model() -> Arc<dyn ErasedModel> {
 async fn an_explicit_skill_body_reaches_an_external_runtime_goal() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "ext-substrate";
-    let caller = principal("user:ada", ws, &[INVOKE, SKILL_R, SKILL_W]);
+    let caller = principal("user:test", ws, &[INVOKE, SKILL_R, SKILL_W]);
 
     // Seed + grant the skill whose BODY must reach the external agent (the genui contract, in miniature).
     let body = "Emit OpenUI-Lang: root = Stat(...). Never prose.";

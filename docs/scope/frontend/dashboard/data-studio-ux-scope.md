@@ -159,7 +159,7 @@ Per `docs/scope/testing/testing-scope.md` — real gateway, no fakes:
 - **Gateway (`pnpm test:gateway`)**: frames-in `viz.query` returns shaped frames identical
   to the fetch+shape composition for the same spec (parity test); frames-in with no
   `mcp:viz.query:call` grant → **deny** (mandatory cap-deny); frames-in never touches the
-  store (seed ws `acme`, post frames while authed to `beta`, assert no `acme` data can leak
+  store (seed ws `nube`, post frames while authed to `beta`, assert no `nube` data can leak
   — mandatory ws-isolation, trivially satisfied since nothing resolves, but asserted).
 - **Editor unit (vitest)**: option edit (fieldConfig/transform) does **not** change the
   fetch key / triggers no fetch (spy on the bridge); source edit does; freeze blocks all

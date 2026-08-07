@@ -244,18 +244,18 @@ and gated `mcp:<id>.<tool>:call`.
 
 ## Example flow (the MQTT bridge, end to end)
 
-1. Admin installs `mqtt-bridge`, approving `net:tls:broker.acme:8883`, `secret:mqtt-bridge/*`,
+1. Admin installs `mqtt-bridge`, approving `net:tls:broker.nube:8883`, `secret:mqtt-bridge/*`,
    `mcp:ingest.write:call`. The host stores `granted = requested ∩ approved`.
-2. The supervisor spawns the sidecar; at connect time it checks `net:tls:broker.acme:8883` is in
+2. The supervisor spawns the sidecar; at connect time it checks `net:tls:broker.nube:8883` is in
    the grant (else refuse), pulls the password via `secret:mqtt-bridge/password`, and opens the
    MQTT socket.
-3. A device publishes to `acme/cooler/temp`. The sidecar maps it to series `cooler.temp` and
+3. A device publishes to `nube/cooler/temp`. The sidecar maps it to series `cooler.temp` and
    emits a framed `call-tool("ingest.write", {series:"cooler.temp", payload:4.0, …})`.
 4. The supervisor dispatches it through `call_tool` against `effective_principal = caller ∩
    grant` in the install's `ws` → authorizes `mcp:ingest.write:call` → stages + drains.
 5. `POST /ingest` publishes motion; the dashboard's `GET /series/cooler.temp/stream` SSE shows
    4.0 live. The page never held a token or a socket.
-6. **Deny path:** install without `net:tls:broker.acme:8883` → step 2 refuses the connect, opaque
+6. **Deny path:** install without `net:tls:broker.nube:8883` → step 2 refuses the connect, opaque
    error, sidecar marked degraded — even though the binary is perfectly capable.
 
 ## Testing plan

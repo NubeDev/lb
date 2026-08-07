@@ -85,7 +85,7 @@ async fn ordering_is_by_ts_then_seq_within_producer_never_raw_seq_across_produce
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample_at("o.v", "early", 900, 1_000, json!(11.0)), // earliest ts, HIGHEST seq
             sample_at("o.v", "early", 901, 2_000, json!(22.0)),
@@ -96,7 +96,7 @@ async fn ordering_is_by_ts_then_seq_within_producer_never_raw_seq_across_produce
     .await;
 
     // Over live raw first…
-    let mut b = buckets(&store, "acme", "o.v", 0, 10_000, 10_000).await;
+    let mut b = buckets(&store, "nube", "o.v", 0, 10_000, 10_000).await;
     apply_method(&mut b, Method::First).unwrap();
     assert_eq!(
         b[0].value.as_ref().unwrap(),
@@ -111,11 +111,11 @@ async fn ordering_is_by_ts_then_seq_within_producer_never_raw_seq_across_produce
     );
 
     // …and identically after the fold + eviction, off the stored representatives.
-    tiered(&store, "acme", "o.", 1, 10_000, Some(Method::First)).await;
-    run_gc(&store, "acme", 40_000).await.unwrap();
-    assert_eq!(sample_count(&store, "acme", "o.v").await.unwrap(), 0);
+    tiered(&store, "nube", "o.", 1, 10_000, Some(Method::First)).await;
+    run_gc(&store, "nube", 40_000).await.unwrap();
+    assert_eq!(sample_count(&store, "nube", "o.v").await.unwrap(), 0);
 
-    let mut folded = buckets(&store, "acme", "o.v", 0, 10_000, 10_000).await;
+    let mut folded = buckets(&store, "nube", "o.v", 0, 10_000, 10_000).await;
     apply_method(&mut folded, Method::First).unwrap();
     assert_eq!(folded[0].value.as_ref().unwrap(), &json!(11.0));
     apply_method(&mut folded, Method::Last).unwrap();
@@ -130,7 +130,7 @@ async fn the_pushdown_and_the_fold_oracle_agree_on_the_first_representative() {
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample_at("p.v", "a", 5, 1_500, json!(1.0)),
             sample_at("p.v", "b", 1, 1_000, json!(2.0)), // earliest ts, different producer
@@ -147,10 +147,10 @@ async fn the_pushdown_and_the_fold_oracle_agree_on_the_first_representative() {
         budget: None,
         ..Default::default()
     };
-    let pushed = read_buckets(&store, "acme", "p.v", &q, 10_000)
+    let pushed = read_buckets(&store, "nube", "p.v", &q, 10_000)
         .await
         .unwrap();
-    let folded = lb_ingest::read_buckets_fold(&store, "acme", "p.v", &q, 10_000)
+    let folded = lb_ingest::read_buckets_fold(&store, "nube", "p.v", &q, 10_000)
         .await
         .unwrap();
 

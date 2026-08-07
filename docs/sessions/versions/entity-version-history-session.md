@@ -72,7 +72,7 @@ forced. Recorded because the diff shows the *what*.
    test, exactly like widening the capture floor.
 3. **`ts` is decoded from the row's ULID, not read from a clock.** Core verbs take their logical
    `now` from arguments (the undo journal writes `ts: 0`), but a version list is a *human* surface —
-   "2 minutes ago — ada" is the point — and two of the three v1 save verbs carry no `now` to borrow.
+   "2 minutes ago — test" is the point — and two of the three v1 save verbs carry no `now` to borrow.
    The ring already mints a ULID per row for FIFO ordering, and a ULID encodes its mint time, so
    decoding it adds no clock call to any verb and cannot disagree with the ring's own ordering.
    Unix **millis** on the wire.

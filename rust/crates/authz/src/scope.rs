@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn missing_scope_field_defaults_to_all() {
-        let json = r#"{"subject":"user:ada","cap":"mcp:foo:call"}"#;
+        let json = r#"{"subject":"user:test","cap":"mcp:foo:call"}"#;
         let grant: super::super::grant::Grant = serde_json::from_str(json).unwrap();
         assert_eq!(grant.scope, Scope::All);
     }

@@ -39,7 +39,7 @@ No thecrew change, no backend change.
 ## Verification (real browser)
 
 Playwright repro, after the fix: scene dashboard loads (`data-ext-widget` cell + `canvas` both present →
-widget really mounted), click "Rules" → URL becomes `#/t/acme/rules`, sidebar still present, and the only
+widget really mounted), click "Rules" → URL becomes `#/t/nube/rules`, sidebar still present, and the only
 console line is a clean `THREE.WebGLRenderer: Context Lost` (the now-deferred GL teardown). No
 `synchronously unmount` / `removeChild` / pageerror.
 

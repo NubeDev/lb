@@ -149,7 +149,7 @@ Alternatives rejected:
 // optional field on the kind:"agent" item payload (and agent.invoke args for parity)
 "context": {
   "surface": "dashboards",          // Surface from surfaceForPath — opaque string
-  "path": "/t/acme/dashboards",     // tenant-stripped pathname
+  "path": "/t/nube/dashboards",     // tenant-stripped pathname
   "search": { "d": "sales", "from": "now-24h", "to": "now" }  // typed search params, flat
 }
 ```
@@ -225,7 +225,7 @@ asserts the controls surface while a run is active.
 
 ## Example flow
 
-1. User is on `/t/acme/dashboards?d=sales&from=now-24h` and presses `mod+j` (or the
+1. User is on `/t/nube/dashboards?d=sales&from=now-24h` and presses `mod+j` (or the
    StatusBar button). The panel slides in on the right; the page reflows narrower. The
    session picker shows past `dock.` sessions; the newest is current. A caption shows the
    captured context ("asking about: dashboards · sales").
@@ -236,7 +236,7 @@ asserts the controls surface while a run is active.
    `agent.config`, and drives the run. The dock's run stream shows `reasoning-delta`s and
    a `tool-call-start` live. State: **Working**, elapsed 3 s.
 4. `text-delta`s stream the answer. State: **Answering**.
-5. User navigates to `/t/acme/flows` mid-answer; the panel and stream are untouched
+5. User navigates to `/t/nube/flows` mid-answer; the panel and stream are untouched
    (shell-mounted).
 6. `run-finish`; the worker's durable `agent_result` item arrives on the channel stream
    and reconciles as the final message. A follow-up send captures the **new** page
@@ -307,9 +307,9 @@ doc updated to match (HOW-TO-CODE step 8):
 1. **Session id separator is `-`, not `.`** (`dock-{user-slug}-{ulid}`). The capability
    grammar (`rust/crates/caps/src/grammar.rs`) splits a resource on **both `/` and `.`**,
    and a member's channel grant is `bus:chan/*:pub` where a single `*` matches **exactly
-   one segment**. A dotted id (`dock.ada.01H…`) splits into three segments and would **not**
+   one segment**. A dotted id (`dock.test.01H…`) splits into three segments and would **not**
    match `chan/*` → the create-on-first-post would be **denied** for every ordinary member.
-   A dash is not a grammar delimiter, so `dock-ada-01H…` stays one segment and the existing
+   A dash is not a grammar delimiter, so `dock-test-01H…` stays one segment and the existing
    member grant covers it — no new/wider cap. The reserved-prefix, UI-only convention is
    unchanged; only the delimiter moved. (Proven by `dockId.test.ts` — the mint asserts the id
    carries no `.`/`/`; and the gateway test's create-on-post succeeds for an ordinary member.)

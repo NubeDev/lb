@@ -221,7 +221,7 @@ fn probe_turn(i: usize) -> AiResponse {
 }
 
 async fn drive(node: &Arc<Node>, ws: &str, job: &str, gw: &AiGateway<CapturingScript>) -> String {
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     invoke(
         node,
         gw,

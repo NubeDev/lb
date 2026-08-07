@@ -143,10 +143,10 @@ advertisement takes it in `config.rs` where `ad.version` is already set (today f
 ## Example flow
 
 1. An embedder computes its own version string however it likes and fills the seam:
-   `cfg.build_info = Some(BuildInfo { name: "acme-node".into(), version: "2.4.0+gdeadbee".into() })`.
+   `cfg.build_info = Some(BuildInfo { name: "nube-node".into(), version: "2.4.0+gdeadbee".into() })`.
 2. `NodeBuilder::new(cfg).boot()` clones it into `Gateway` state alongside the health cell.
 3. `curl -s http://box:8099/node` → `"version":"0.1.0"` (lb) **and**
-   `"product":{"name":"acme-node","version":"2.4.0+gdeadbee"}`.
+   `"product":{"name":"nube-node","version":"2.4.0+gdeadbee"}`.
 4. `curl -s http://box:8099/health` → the same `product` object, from the same source value.
 5. A fleet tool reading `version` — written before this landed — reads lb's version, exactly as it
    did yesterday.
@@ -166,7 +166,7 @@ Real boot, real routes, no mocks (rule 9) — the existing `health_route_test.rs
   both bodies carry the same `product` object.
 - **`version` is untouched.** Both routes still report `env!("CARGO_PKG_VERSION")` in `version`
   with `build_info` set — the regression test for the rejected renaming.
-- **Rule 10.** The fixtures use a fabricated product (`"acme-node"`), never `rubix-ai`; a grep for
+- **Rule 10.** The fixtures use a fabricated product (`"nube-node"`), never `rubix-ai`; a grep for
   `rubix` in lb stays empty.
 - **Advertisement parity.** The mDNS TXT record carries the product version in `prod` when set and
   omits the key when not, with `version` reading lb's own in **both** cases — a live browse

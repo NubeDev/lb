@@ -19,7 +19,7 @@ UI (see rubix-ai `scope/frontend/dashboard/share-closure-ui-scope.md`).
 > 2. **The `not_owned` gap cannot be constructed the obvious way.** `dashboard.save`'s
 >    `validate_and_strip_refs` requires every `panel_ref` to resolve **under the saver**, so nobody can
 >    embed a panel they cannot read. The gap arises exactly as the Example Flow describes — the panel's
->    and the page's audiences DIVERGE (aidan shares his panel to `design`; ada shares the page to
+>    and the page's audiences DIVERGE (aidan shares his panel to `design`; test shares the page to
 >    `ops`). The tests build it that way.
 > 3. **The team-read probe must skip the panel's OWNER.** `may_read_panel` short-circuits `Ok` for the
 >    owner before consulting any share edge, so probing "can this team read it?" as an owner-who-is-
@@ -189,17 +189,17 @@ UI show the preview and get a confirmation between "share the page" and "share i
 
 ## Example flow
 
-1. ada owns `dashboard:ops-page` (embeds `panel:cpu` which she owns, `private`) and shares the page to
+1. test owns `dashboard:ops-page` (embeds `panel:cpu` which she owns, `private`) and shares the page to
    team `ops` (`dashboard.share`). bob (a member of `ops`) opens the page: it renders, but the CPU
    widget shows **"Panel not accessible."**
-2. ada (or the UI, on her behalf) calls `dashboard.share_closure("ops-page", "ops", dry_run=true)`.
+2. test (or the UI, on her behalf) calls `dashboard.share_closure("ops-page", "ops", dry_run=true)`.
    Report: `panel:cpu` → `would_share` (she owns it); page already shared; no gaps.
-3. ada confirms → `dry_run=false`. The verb writes `panel:cpu -[share]-> ops`. Report: `panel:cpu` →
+3. test confirms → `dry_run=false`. The verb writes `panel:cpu -[share]-> ops`. Report: `panel:cpu` →
    `shared`.
 4. bob reloads: gate-3 `may_read_panel` now finds him a member of a team `panel:cpu` is shared to → the
    widget renders. The wall did not move for anyone else; a non-`ops` member still gets 403.
 5. Counter-case: the page also embeds `panel:aidan`, owned by aidan, `private`. Report:
-   `panel:aidan` → `not_owned` (a gap ada cannot close). The verb shares everything else and reports
+   `panel:aidan` → `not_owned` (a gap test cannot close). The verb shares everything else and reports
    `aidan` as the one thing that needs the owner — it never force-shares it.
 
 ## Testing plan
@@ -226,7 +226,7 @@ UI show the preview and get a confirmation between "share the page" and "share i
   `ok=false` for that same team — the read and the write agree about the closure across their two
   report shapes. This is what makes the extracted shared enumeration load-bearing rather than cosmetic.
 - **Idempotency + incremental:** re-run shares nothing; add a panel, re-run, only the new one shares.
-- **E2E over the gateway:** ada shares closure → bob (real team-member token) renders the widget;
+- **E2E over the gateway:** test shares closure → bob (real team-member token) renders the widget;
   every 403 for a non-member stays 403 (the wall is unmoved).
 
 ## Risks & hard problems

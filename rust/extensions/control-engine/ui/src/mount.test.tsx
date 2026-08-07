@@ -23,11 +23,11 @@ describe("mount", () => {
       }),
     });
 
-    const unmount = mount(el, { workspace: "acme" }, bridge);
+    const unmount = mount(el, { workspace: "nube" }, bridge);
     await flush();
 
     // Issue #2: the HOST header owns the title + workspace, so the page renders NO header of its
-    // own (no "Control Engine · acme" bar) — that clashed with the host's. A single appliance has
+    // own (no "Control Engine · nube" bar) — that clashed with the host's. A single appliance has
     // nothing to pick, so no picker either; the editor just mounts for it.
     expect(el.textContent).not.toContain("Control Engine");
     expect(el.querySelector('select[aria-label="appliance"]')).toBeNull();
@@ -51,7 +51,7 @@ describe("mount", () => {
       }),
     });
 
-    const unmount = mount(el, { workspace: "acme" }, bridge);
+    const unmount = mount(el, { workspace: "nube" }, bridge);
     await flush();
 
     const picker = el.querySelector('select[aria-label="appliance"]');
@@ -71,7 +71,7 @@ describe("mount", () => {
     document.body.appendChild(el);
     const bridge = stubBridge({ "control-engine.appliance.list": () => ({ appliances: [] }) });
 
-    const unmount = mount(el, { workspace: "acme" }, bridge);
+    const unmount = mount(el, { workspace: "nube" }, bridge);
     await flush();
 
     expect(el.querySelector('form[aria-label="add appliance"]')).not.toBeNull();

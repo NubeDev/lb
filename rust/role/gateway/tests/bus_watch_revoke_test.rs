@@ -52,19 +52,19 @@ async fn revoking_the_scoped_grant_closes_the_open_stream_within_a_tick() {
     let key = SigningKey::generate();
     let gw = gateway_on(node.clone(), &key);
 
-    // ada holds the coarse cap + a scoped grant for leo's feed → scoped mode, leo allowed.
-    seed_watch_grant(&node, WS, "ada", "care.feed.leo").await;
-    let tok = token(&key, "user:ada", WS, COARSE);
-    let ada = verify_token(&gw, &tok).await.expect("token verifies");
+    // test holds the coarse cap + a scoped grant for leo's feed → scoped mode, leo allowed.
+    seed_watch_grant(&node, WS, "test", "care.feed.leo").await;
+    let tok = token(&key, "user:test", WS, COARSE);
+    let test = verify_token(&gw, &tok).await.expect("token verifies");
 
     // Open the real subscription (the subscribe gate authorizes: scoped grant matches leo).
-    let sub = bus_watch(&node.store, &node.bus, &ada, WS, "care.feed.leo")
+    let sub = bus_watch(&node.store, &node.bus, &test, WS, "care.feed.leo")
         .await
         .expect("subscribe authorized");
 
     let mut recheck = WatchRecheck::with_interval(
         node.store.clone(),
-        ada,
+        test,
         WS.into(),
         "care.feed.leo".into(),
         TICK,
@@ -82,7 +82,7 @@ async fn revoking_the_scoped_grant_closes_the_open_stream_within_a_tick() {
     );
 
     // Revoke → the next re-check tick must close the stream (return None) within a bounded window.
-    revoke_watch_grant(&node, WS, "ada", "care.feed.leo").await;
+    revoke_watch_grant(&node, WS, "test", "care.feed.leo").await;
     let closed = tokio::time::timeout(Duration::from_secs(2), driver)
         .await
         .expect("the stream closes within a bounded tick after revoke")
@@ -118,7 +118,7 @@ async fn an_open_backcompat_stream_is_not_closed_by_an_unrelated_revoke() {
     let driver = tokio::spawn(async move { recheck.next_authorized(&sub).await });
 
     // Revoke an unrelated grant for a DIFFERENT user; ben's open-mode stream is unaffected.
-    revoke_watch_grant(&node, WS, "ada", "care.feed.leo").await;
+    revoke_watch_grant(&node, WS, "test", "care.feed.leo").await;
     tokio::time::sleep(Duration::from_millis(250)).await;
     assert!(
         !driver.is_finished(),

@@ -117,7 +117,7 @@ demo data.** Phase 3 can land before 2 if priorities flip; 2 depends on 1.
 
 ## Example flow
 
-1. Ada opens Data Studio. Her saved layout restores: Flows pane (top-left), Rules pane
+1. Test opens Data Studio. Her saved layout restores: Flows pane (top-left), Rules pane
    (bottom-left), a builder tab on `cooler.temp` (right).
 2. She watches the flow fire in the Flows pane (its own live node-state feed), sees the rule
    trigger below, and her builder preview refresh on Run — no route changes.

@@ -22,7 +22,7 @@ fn read_caps() -> Vec<String> {
 #[tokio::test]
 async fn a_key_resolves_its_direct_grant_plus_a_role_expansion() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let key = Subject::Key("k7f3a".into());
 
     role_define(&store, ws, "apikey-read", &read_caps())
@@ -53,7 +53,7 @@ async fn a_key_passed_to_resolve_caps_str_resolves_to_zero_caps() {
     // future edit routed keys through resolve_caps, this fails-before — keys MUST go through
     // resolve_subject_caps(&Subject::Key).
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let key = Subject::Key("k7f3a".into());
     role_define(&store, ws, "apikey-read", &read_caps())
         .await
@@ -72,7 +72,7 @@ async fn a_key_passed_to_resolve_caps_str_resolves_to_zero_caps() {
 #[tokio::test]
 async fn a_revoked_grant_contributes_nothing() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let key = Subject::Key("k1".into());
     grant_assign(&store, ws, &key, "store:note:read")
         .await

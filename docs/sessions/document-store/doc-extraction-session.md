@@ -123,7 +123,7 @@ test-thread counts on this box; instead ran the full blast radius binary-by-bina
 See [[preexisting-failing-tests]].)
 
 ### Live run (SKILL grounding)
-Booted `./target/debug/node` on `127.0.0.1:8099` (in-mem, `LB_DEV_LOGIN=1`, seed `user:ada`@`acme`),
+Booted `./target/debug/node` on `127.0.0.1:8099` (in-mem, `LB_DEV_LOGIN=1`, seed `user:test`@`nube`),
 seeded the committed PDF/HTML fixtures as media via `store.write`, and drove `docs.extract` over
 `POST /mcp/call`. Verified live: first-run `extracted`, re-run `reused:true`, `force_version:2`
 re-derive into the same doc id, `assets.get_doc` returning the real markdown, unsupported-mime and

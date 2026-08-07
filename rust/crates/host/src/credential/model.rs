@@ -1,8 +1,8 @@
 //! The **credential record** — a per-`(workspace, user)` argon2 password hash (login-hardening
 //! scope). State, not motion. Stored in the workspace's OWN namespace (the hard wall §7): a
-//! password set in `acme` is a row in `acme`'s namespace, so it can never authenticate a login into
+//! password set in `nube` is a row in `nube`'s namespace, so it can never authenticate a login into
 //! `beta`. The record holds ONLY a PHC hash string (salt embedded) — never a plaintext, never
-//! returned by any read (secrets rule §6.7). Keyed by the bare user handle (`user:ada`).
+//! returned by any read (secrets rule §6.7). Keyed by the bare user handle (`user:test`).
 
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +17,7 @@ pub const CREDENTIAL_KIND: &str = "credential";
 /// never lands here — `set` hashes before write, `verify` compares against `phc` in constant time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Credential {
-    /// The global identity handle this credential authenticates (`user:ada`).
+    /// The global identity handle this credential authenticates (`user:test`).
     pub sub: String,
     /// Constant discriminant.
     pub kind: String,

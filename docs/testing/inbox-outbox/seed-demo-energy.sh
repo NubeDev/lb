@@ -16,13 +16,13 @@
 #
 # Idempotent: every write is a stable-id UPSERT — re-running replaces the same rows, never dupes.
 #
-# Prereqs: a running `make dev` node + `jq` + `curl`. `user:ada`/`acme` is an admin (holds the
+# Prereqs: a running `make dev` node + `jq` + `curl`. `user:test`/`nube` is an admin (holds the
 # author caps inbox.record / outbox.enqueue / inbox.resolve — see authz/builtin_roles.rs).
 # Usage:  bash docs/testing/inbox-outbox/seed-demo-energy.sh [GATEWAY_URL] [USER] [WORKSPACE]
 set -eu
 GW="${1:-http://127.0.0.1:8080}"
-USER="${2:-user:ada}"
-WS="${3:-acme}"
+USER="${2:-user:test}"
+WS="${3:-nube}"
 CH="energy-ops"   # the channel the CHANNELS page (switcher rail) shows
 APPROVALS="approvals"   # the channel the INBOX page (triage queue) shows — it defaults to `approvals`
 
@@ -85,7 +85,7 @@ approval appr-leak  "Suspected leak: cooling-tower makeup WM-07 at 63 L/min over
 echo "-> outbox: must-deliver effects (the durable follow-through)"
 # A notify effect (facilities manager) — the DR approval's consequence.
 effect eff-notify-dr email notify \
-  "$(jq -n -c '{to:"facilities@acme.example",subject:"DR event dispatched: HQ-North 15:00-16:00 (-60 kW)",body:"Approved by ada. 3 AHU setpoints +1.5C for one hour."}')" 11
+  "$(jq -n -c '{to:"facilities@nube.example",subject:"DR event dispatched: HQ-North 15:00-16:00 (-60 kW)",body:"Approved by test. 3 AHU setpoints +1.5C for one hour."}')" 11
 # A work-order effect to a CMMS-style target.
 effect eff-workorder-b4 workorder create \
   "$(jq -n -c '{asset:"B4/CH-2",priority:"high",title:"Chiller efficiency degraded (kW/ton 0.94)",due:"3d"}')" 12
@@ -94,7 +94,7 @@ effect eff-report-daily report publish \
   "$(jq -n -c '{report:"daily-energy",date:"yesterday",sites:8,total_kwh:4910,peak_window:"14:00-15:00"}')" 13
 # A leak alert to the notify target (from the water-meter notice).
 effect eff-notify-leak email notify \
-  "$(jq -n -c '{to:"facilities@acme.example",subject:"Suspected leak: cooling-tower makeup WM-07",body:"63 L/min sustained overnight — check float valve."}')" 14
+  "$(jq -n -c '{to:"facilities@nube.example",subject:"Suspected leak: cooling-tower makeup WM-07",body:"63 L/min sustained overnight — check float valve."}')" 14
 
 echo
 echo "-> done. Seeded into '$WS':"

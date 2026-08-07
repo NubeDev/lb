@@ -37,7 +37,7 @@ const MANAGE: &[&str] = &["mcp:identity.manage:call", "mcp:members.manage:call"]
 async fn denies_each_identity_membership_verb_without_its_grant() {
     let store = Store::memory().await.unwrap();
     // Holds NEITHER manage cap — every identity/membership verb is denied.
-    let p = principal("user:mallory", "acme", &["mcp:workspace.list:call"]);
+    let p = principal("user:mallory", "nube", &["mcp:workspace.list:call"]);
     for (bridge, verb, input) in [
         (
             "identity",
@@ -64,11 +64,11 @@ async fn denies_each_identity_membership_verb_without_its_grant() {
         ("membership", "membership.list", json!({})),
     ] {
         let err = if bridge == "identity" {
-            call_identity_tool(&store, &p, "acme", verb, &input)
+            call_identity_tool(&store, &p, "nube", verb, &input)
                 .await
                 .unwrap_err()
         } else {
-            call_membership_tool(&store, &p, "acme", verb, &input)
+            call_membership_tool(&store, &p, "nube", verb, &input)
                 .await
                 .unwrap_err()
         };
@@ -81,25 +81,25 @@ async fn denies_each_identity_membership_verb_without_its_grant() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_admin_cannot_see_or_touch_ws_a_membership() {
     let store = Store::memory().await.unwrap();
-    let admin_a = principal("user:alice", "acme", MANAGE);
+    let admin_a = principal("user:alice", "nube", MANAGE);
     let admin_b = principal("user:carol", "globex", MANAGE);
 
-    // ws-A admin adds a member to acme.
-    membership_add(&store, &admin_a, "acme", "user:bob", 10)
+    // ws-A admin adds a member to nube.
+    membership_add(&store, &admin_a, "nube", "user:bob", 10)
         .await
         .unwrap();
 
-    // ws-B admin's membership.list shows only globex (empty) — never acme's roster.
+    // ws-B admin's membership.list shows only globex (empty) — never nube's roster.
     let seen = membership_list(&store, &admin_b, "globex").await.unwrap();
     assert!(seen.is_empty(), "ws-B must not see ws-A's members");
 
-    // ws-B admin cannot add/remove in acme — forged cross-workspace call denied at the bridge (ws
+    // ws-B admin cannot add/remove in nube — forged cross-workspace call denied at the bridge (ws
     // comes from the token, not the body).
     for (verb, input) in [
         ("membership.add", json!({ "sub": "user:eve", "ts": 1 })),
         ("membership.remove", json!({ "sub": "user:bob" })),
     ] {
-        let err = call_membership_tool(&store, &admin_b, "acme", verb, &input)
+        let err = call_membership_tool(&store, &admin_b, "nube", verb, &input)
             .await
             .unwrap_err();
         assert!(
@@ -107,8 +107,8 @@ async fn ws_b_admin_cannot_see_or_touch_ws_a_membership() {
             "ws-B → ws-A {verb} must be denied"
         );
     }
-    // bob is still a member of acme only.
-    assert!(membership_is_member(&store, "acme", "user:bob")
+    // bob is still a member of nube only.
+    assert!(membership_is_member(&store, "nube", "user:bob")
         .await
         .unwrap());
     assert!(!membership_is_member(&store, "globex", "user:bob")
@@ -116,11 +116,11 @@ async fn ws_b_admin_cannot_see_or_touch_ws_a_membership() {
         .unwrap());
 
     // identity.workspaces(bob) from ws-B's session resolves only ws-B's membership (bob is not in
-    // globex → empty), never acme's. The scan is workspace-namespaced; the wall holds.
+    // globex → empty), never nube's. The scan is workspace-namespaced; the wall holds.
     let wss = identity_workspaces(&store, &admin_b, "user:bob")
         .await
         .unwrap();
-    assert!(wss.iter().all(|w| w.ws != "acme"), "acme must not leak");
+    assert!(wss.iter().all(|w| w.ws != "nube"), "nube must not leak");
 }
 
 // ── identity ↔ membership correctness: one identity in N workspaces ───────────────────────────
@@ -129,7 +129,7 @@ async fn ws_b_admin_cannot_see_or_touch_ws_a_membership() {
 async fn one_identity_in_n_workspaces_resolves_n_memberships() {
     let store = Store::memory().await.unwrap();
     // Register two workspaces in the node directory so the scan can find them.
-    lb_authz::identity_create(&store, "user:ada", None, 0)
+    lb_authz::identity_create(&store, "user:test", None, 0)
         .await
         .unwrap();
     let admin_pilot = principal("user:root", "pilot", MANAGE);
@@ -137,18 +137,18 @@ async fn one_identity_in_n_workspaces_resolves_n_memberships() {
     seed_directory(&store, "pilot").await;
     seed_directory(&store, "globex").await;
 
-    membership_add(&store, &admin_pilot, "pilot", "user:ada", 1)
+    membership_add(&store, &admin_pilot, "pilot", "user:test", 1)
         .await
         .unwrap();
-    membership_add(&store, &admin_globex, "globex", "user:ada", 2)
+    membership_add(&store, &admin_globex, "globex", "user:test", 2)
         .await
         .unwrap();
 
-    let wss = identity_workspaces(&store, &admin_pilot, "user:ada")
+    let wss = identity_workspaces(&store, &admin_pilot, "user:test")
         .await
         .unwrap();
     let ids: Vec<&str> = wss.iter().map(|w| w.ws.as_str()).collect();
-    assert_eq!(ids, vec!["globex", "pilot"], "ada is a member of both");
+    assert_eq!(ids, vec!["globex", "pilot"], "test is a member of both");
 }
 
 // ── one source of truth: the roster and the login path agree ─────────────────────────────────
@@ -165,14 +165,14 @@ async fn one_identity_in_n_workspaces_resolves_n_memberships() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn roster_and_login_path_agree_on_the_one_membership_source() {
     let store = Store::memory().await.unwrap();
-    seed_directory(&store, "acme").await;
-    let admin = principal("user:alice", "acme", MANAGE);
+    seed_directory(&store, "nube").await;
+    let admin = principal("user:alice", "nube", MANAGE);
 
     // A member: `membership_add` is the ONE write. Both readers must see it.
-    membership_add(&store, &admin, "acme", "user:ap", 5)
+    membership_add(&store, &admin, "nube", "user:ap", 5)
         .await
         .unwrap();
-    let roster = membership_list(&store, &admin, "acme").await.unwrap();
+    let roster = membership_list(&store, &admin, "nube").await.unwrap();
     assert!(
         roster.iter().any(|m| m.sub == "user:ap"),
         "the roster lists the member it was told about: {roster:?}"
@@ -181,12 +181,12 @@ async fn roster_and_login_path_agree_on_the_one_membership_source() {
         .await
         .unwrap();
     assert!(
-        wss.iter().any(|w| w.ws == "acme"),
+        wss.iter().any(|w| w.ws == "nube"),
         "identity.workspaces resolves the same membership the roster shows: {wss:?}"
     );
     let login = login_workspaces(&store, "user:ap").await.unwrap();
     assert!(
-        login.iter().any(|w| w.ws == "acme"),
+        login.iter().any(|w| w.ws == "nube"),
         "the un-gated login path resolves it too: {login:?}"
     );
 
@@ -215,11 +215,11 @@ async fn roster_and_login_path_agree_on_the_one_membership_source() {
     );
 
     // Removal keeps them in step: gone from the roster ⇒ gone from the login path.
-    membership_remove(&store, &admin, "acme", "user:ap")
+    membership_remove(&store, &admin, "nube", "user:ap")
         .await
         .unwrap();
     assert!(
-        !membership_list(&store, &admin, "acme")
+        !membership_list(&store, &admin, "nube")
             .await
             .unwrap()
             .iter()
@@ -240,32 +240,32 @@ async fn roster_and_login_path_agree_on_the_one_membership_source() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn membership_remove_revokes_grants_and_marks_token() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", MANAGE);
-    membership_add(&store, &admin, "acme", "user:bob", 1)
+    let admin = principal("user:alice", "nube", MANAGE);
+    membership_add(&store, &admin, "nube", "user:bob", 1)
         .await
         .unwrap();
     // join granted role:member.
-    let caps = grant_list(&store, "acme", &Subject::User("bob".into()))
+    let caps = grant_list(&store, "nube", &Subject::User("bob".into()))
         .await
         .unwrap();
     assert!(caps.iter().any(|c| c == "role:member"));
 
-    let revoked = membership_remove(&store, &admin, "acme", "user:bob")
+    let revoked = membership_remove(&store, &admin, "nube", "user:bob")
         .await
         .unwrap();
     assert!(revoked >= 1, "role:member grant was revoked");
     // membership row is tombstoned.
-    assert!(!membership_is_member(&store, "acme", "user:bob")
+    assert!(!membership_is_member(&store, "nube", "user:bob")
         .await
         .unwrap());
     // grants are tombstoned.
-    let caps = grant_list(&store, "acme", &Subject::User("bob".into()))
+    let caps = grant_list(&store, "nube", &Subject::User("bob".into()))
         .await
         .unwrap();
     assert!(!caps.iter().any(|c| c == "role:member"));
     // live-token marker is set → the verify path refuses bob's current token.
     assert!(
-        lb_authz::token_revoked(&store, "acme", &Subject::User("bob".into()))
+        lb_authz::token_revoked(&store, "nube", &Subject::User("bob".into()))
             .await
             .unwrap()
     );
@@ -276,26 +276,26 @@ async fn membership_remove_revokes_grants_and_marks_token() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn removed_membership_tombstone_replays_idempotently() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", MANAGE);
-    membership_add(&store, &admin, "acme", "user:bob", 1)
+    let admin = principal("user:alice", "nube", MANAGE);
+    membership_add(&store, &admin, "nube", "user:bob", 1)
         .await
         .unwrap();
-    membership_remove(&store, &admin, "acme", "user:bob")
+    membership_remove(&store, &admin, "nube", "user:bob")
         .await
         .unwrap();
     // A stale synced edge re-applies the SAME remove tombstone (sync §6.8) — bob stays removed, not
     // resurrected. Re-applying the raw tombstone is a no-op for membership.
-    lb_authz::membership_remove_raw(&store, "acme", "user:bob")
+    lb_authz::membership_remove_raw(&store, "nube", "user:bob")
         .await
         .unwrap();
-    assert!(!membership_is_member(&store, "acme", "user:bob")
+    assert!(!membership_is_member(&store, "nube", "user:bob")
         .await
         .unwrap());
     // And a hub-added membership reaches the read path after "reconnect" (just a fresh read).
-    membership_add(&store, &admin, "acme", "user:carol", 2)
+    membership_add(&store, &admin, "nube", "user:carol", 2)
         .await
         .unwrap();
-    let members = membership_list(&store, &admin, "acme").await.unwrap();
+    let members = membership_list(&store, &admin, "nube").await.unwrap();
     assert!(members.iter().any(|m| m.sub == "user:carol"));
     assert!(members.iter().all(|m| m.sub != "user:bob"));
 }

@@ -175,28 +175,28 @@ where the contract is thin — cheaply, against known-good verbs.
 
 ## Example flow
 
-1. **Schedule via `/remind`.** Ada types `/` → picks **Remind** (visible because she holds
+1. **Schedule via `/remind`.** Test types `/` → picks **Remind** (visible because she holds
    `mcp:reminder.create:call`). The arg rail shows a **cron builder** (`x-lb:{widget:"cron"}`, the shipped
    `react-js-cron`), an **action** `select` (`channel-post`/`mcp-tool`/`outbox`), the action's fields, and
    `max_runs?`. She builds "every Mon & Sun 08:00", action = post "standup" to `#ops`, submits. The palette
    calls `reminder.create` through the bridge (her token, her ws); a small `render:{view:"stat"}` confirms
    "scheduled — next Mon 08:00" in history.
-2. **List via `/reminders`.** Ada types `/reminders`. The `reminder.list` **descriptor's `result`** is
+2. **List via `/reminders`.** Test types `/reminders`. The `reminder.list` **descriptor's `result`** is
    `{ view:"table", source:{tool:"reminder.list"} }` with per-row controls; the generic palette posts it and
    the shipped `table` view renders her workspace's reminders. Each row (supplied as the control's
    `VarScope.values`) has a **pause switch** (`reminder.update{ id:${id}, enabled:{{value}} }`), a **run-now**
    button (`reminder.fire{ id:${id} }`), and a **delete** button (`reminder.delete{ id:${id} }`) — `${id}`
    the shipped row-field var, `{{value}}` the shipped interaction slot.
-3. **Toggle a reminder.** Ada flips the pause switch on one row → the bridge calls `reminder.update` under
+3. **Toggle a reminder.** Test flips the pause switch on one row → the bridge calls `reminder.update` under
    her grant + ws → the host re-checks `mcp:reminder.update:call` + workspace → the reminder pauses. The
    shipped control view, unchanged.
-4. **Run now.** Ada clicks run-now → `reminder.fire{id}` dispatches one firing immediately (idempotent);
+4. **Run now.** Test clicks run-now → `reminder.fire{id}` dispatches one firing immediately (idempotent);
    the reminder's action executes through its shipped seam (channel post / tool / outbox).
 5. **Deny.** Bob holds `reminder.list` but not `reminder.update`. His `/reminders` renders the table, but
    flipping a pause switch is **denied server-side** (opaque) — the bridge filter and the host agree. The
    `/remind` command is **absent** from his palette (no `create` grant) — no existence leak.
 6. **Isolation.** Cleo (a `mcdonalds` session) renders `/reminders`; the `reminder.list` source runs as
-   `mcdonalds` (her token) → only `mcdonalds` reminders; she cannot fire/delete an `acme` reminder even if
+   `mcdonalds` (her token) → only `mcdonalds` reminders; she cannot fire/delete an `nube` reminder even if
    an id leaked into a control's args (host re-checks the ws). The wall holds through the rendered controls.
 7. **Agent schedules a reminder (optional).** An in-channel agent, asked "remind the team every Monday,"
    emits a `reminder.create` call (or a `/remind`-shaped structured response) under its derived

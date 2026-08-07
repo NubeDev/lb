@@ -132,7 +132,7 @@ fn admin_token(key: &SigningKey, ws: &str, cid: &str) -> String {
     let sub_cap = format!("bus:chan/{cid}:sub");
     caps.push(&pub_cap);
     caps.push(&sub_cap);
-    token(key, "user:ada", ws, &caps)
+    token(key, "user:test", ws, &caps)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -152,7 +152,7 @@ async fn posting_a_query_item_round_trips_a_result_with_columns_rows_and_chart()
 
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
-    let ws = "acme";
+    let ws = "nube";
     let cid = "analytics";
 
     let admin = lb_auth::verify(&key, &admin_token(&key, ws, cid), NOW).expect("admin verifies");
@@ -167,7 +167,7 @@ async fn posting_a_query_item_round_trips_a_result_with_columns_rows_and_chart()
         "sql": "SELECT day, signups FROM daily ORDER BY day"
     })
     .to_string();
-    let item = Item::new("q1", cid, "user:ada", body, 1);
+    let item = Item::new("q1", cid, "user:test", body, 1);
     let resp = router(gateway_on(node.clone(), &key))
         .oneshot(bearer(post_req(cid, &item), &tok))
         .await
@@ -248,7 +248,7 @@ async fn assert_streams_result_over_sse(
         &poster,
         ws,
         cid,
-        Item::new("q2", cid, "user:ada", body, 2),
+        Item::new("q2", cid, "user:test", body, 2),
     )
     .await
     .expect("second query posts");
@@ -293,9 +293,9 @@ async fn ws_b_cannot_query_a_ws_a_source_name() {
     let cid = "analytics";
 
     // ws-A registers `warehouse`; ws-B does not.
-    let admin_a = lb_auth::verify(&key, &admin_token(&key, "acme", cid), NOW).unwrap();
-    install_federation(&node, &admin_a, "acme", &dir).await;
-    add_source(&node, &admin_a, "acme", "warehouse", &db).await;
+    let admin_a = lb_auth::verify(&key, &admin_token(&key, "nube", cid), NOW).unwrap();
+    install_federation(&node, &admin_a, "nube", &dir).await;
+    add_source(&node, &admin_a, "nube", "warehouse", &db).await;
 
     // ws-B has the sidecar installed (so the deny is RESOLUTION, not binary-absence) but no source.
     let admin_b = lb_auth::verify(&key, &admin_token(&key, "other", cid), NOW).unwrap();
@@ -305,7 +305,7 @@ async fn ws_b_cannot_query_a_ws_a_source_name() {
     // posts an OPAQUE query_error; ws-B never sees ws-A's rows (the hard wall).
     let tok_b = admin_token(&key, "other", cid);
     let body = json!({ "kind": "query", "source": "warehouse", "sql": "SELECT 1" }).to_string();
-    let item = Item::new("qb", cid, "user:ada", body, 1);
+    let item = Item::new("qb", cid, "user:test", body, 1);
     let resp = router(gateway_on(node.clone(), &key))
         .oneshot(bearer(post_req(cid, &item), &tok_b))
         .await

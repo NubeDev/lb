@@ -1,5 +1,5 @@
 // Dev-only login prefills so the preview is one tap. Mirrors the root Makefile's dev identity
-// (`SEED_USER ?= user:ada`, `WS ?= acme`) so the app and the CLI/browser demos share a workspace.
+// (`SEED_USER ?= user:test`, `WS ?= nube`) so the app and the CLI/browser demos share a workspace.
 //
 // IMPORTANT about the workspace (global-identity, decision #4): whoever logs into an EMPTY
 // workspace first bootstraps it as admin; that same user always gets back in; a DIFFERENT user is
@@ -21,10 +21,10 @@ export interface DevLogin {
    * Default 8080 = the root `make dev` node (the common dev loop). Override with `?node=` — e.g.
    * `?node=http://127.0.0.1:8087` for the app's own throwaway `test_gateway` (`make -C app dev`).
    *
-   * Historically this defaulted to 8087 to dodge a `make dev` login 403: the bare handle `ada` was
-   * treated as a distinct principal from the seeded `user:ada`, so `ada` was "not a member" of the
-   * persistent `acme`. That is fixed at the login edge — the gateway now canonicalizes a bare handle
-   * to the `user:<name>` principal, so `ada` resolves to `user:ada` on any node (an empty in-memory
+   * Historically this defaulted to 8087 to dodge a `make dev` login 403: the bare handle `test` was
+   * treated as a distinct principal from the seeded `user:test`, so `test` was "not a member" of the
+   * persistent `nube`. That is fixed at the login edge — the gateway now canonicalizes a bare handle
+   * to the `user:<name>` principal, so `test` resolves to `user:test` on any node (an empty in-memory
    * node still bootstraps it). Either port works; 8080 matches the default `make dev`.
    */
   nodeUrl: string;
@@ -36,12 +36,12 @@ export interface DevLogin {
  * On NATIVE the `__DEV__` gate is authoritative (Metro sets it true in dev, false in release).
  * The react-native-web PREVIEW is different: `vite-plugin-react-native-web` hardcodes `__DEV__`
  * false, so the web entry (`web/index.web.tsx`, preview-only code) calls `setDevLogin(...)` to
- * seed ada/acme explicitly. Keeping the gate here means a real release app still ships empty
+ * seed test/nube explicitly. Keeping the gate here means a real release app still ships empty
  * fields — the override lives only in preview code that never enters a device bundle.
  */
 export let devLogin: DevLogin = {
-  user: isDev ? 'ada' : '',
-  workspace: isDev ? 'acme' : '',
+  user: isDev ? 'test' : '',
+  workspace: isDev ? 'nube' : '',
   nodeUrl: isDev ? 'http://127.0.0.1:8080' : '',
 };
 

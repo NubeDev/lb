@@ -41,7 +41,7 @@ missed live push is always recoverable from history/list (state vs motion, §3.3
 # dev login: who + which workspace. An empty workspace bootstraps the caller as workspace-admin.
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
   -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Send it on every subsequent call as `Authorization: Bearer $TOKEN`. The SSE stream is the one
@@ -90,7 +90,7 @@ Notes on determinism (README §3 — no wall-clock inside a verb):
 {
   "id": "msg-0001",        // stable, unique within (ws, channel). Re-posting the same id UPSERTS (idempotent).
   "channel": "general",    // forced to {cid} by the host — the path wins.
-  "author": "user:ada",    // normalized source identity (user:… | key:… | ext:…).
+  "author": "user:test",    // normalized source identity (user:… | key:… | ext:…).
   "body": "hello",         // textual body.
   "ts": 1719800000000      // logical, monotone-per-channel ordering timestamp. NOT wall-clock.
 }
@@ -157,7 +157,7 @@ curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN"
   -H 'content-type: application/json' -d '{
   "tool":"outbox.enqueue",
   "args":{"id":"pr:issue-2451","target":"github","action":"create_pr",
-          "payload":{"repo":"acme/app","head":"fix","base":"main","title":"Fix","body":"…"},
+          "payload":{"repo":"nube/app","head":"fix","base":"main","title":"Fix","body":"…"},
           "ts":1719800002000}}'
 
 curl -s http://127.0.0.1:8080/outbox -H "authorization: Bearer $TOKEN" | jq '.pending,.delivered,.dead_lettered'

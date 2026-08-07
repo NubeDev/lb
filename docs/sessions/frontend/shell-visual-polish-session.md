@@ -71,8 +71,8 @@ top light sheen (`fg/0.04`). Glass now reads as glass, not a muddy two-tone tint
 
 ## Testing (real app, screenshots)
 
-Drove the running dev server (`:5173`, real gateway `:8080`) with Playwright as `user:ada` /
-`acme`, screenshotting dashboards, settings, system, channels, datasources before/after, and
+Drove the running dev server (`:5173`, real gateway `:8080`) with Playwright as `user:test` /
+`nube`, screenshotting dashboards, settings, system, channels, datasources before/after, and
 the three glass intensities. Verified live:
 - The glass color clash is gone (single-hue sheen, no amber→teal).
 - The **Glass intensity** control appears under Surface only when Liquid glass is selected,

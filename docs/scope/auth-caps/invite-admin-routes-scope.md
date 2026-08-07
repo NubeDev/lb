@@ -108,12 +108,12 @@ Sequencing: entirely self-contained. Ships in one PR, then a `node-v*` tag that 
 
 ## Example flow
 
-**Ada invites Bob into `acme`.**
+**Test invites Bob into `nube`.**
 
-1. `POST /admin/invites` with bearer, body `{ email: "bob@acme.com", role: "member" }`.
-2. The route resolves principal + `ws=acme` from the token, calls `invite_create`, which checks
+1. `POST /admin/invites` with bearer, body `{ email: "bob@nube.com", role: "member" }`.
+2. The route resolves principal + `ws=nube` from the token, calls `invite_create`, which checks
    `mcp:invite.create:call` and writes the record with a hashed token.
-3. **`200`** `{ "token": "inv_…" }`. Ada's console renders the accept link once.
+3. **`200`** `{ "token": "inv_…" }`. Test's console renders the accept link once.
 4. Bob opens it. `GET /public/invite/verify` previews it in the invite's locale;
    `POST /public/invite/accept` redeems into identity + membership + grants.
 5. `GET /admin/invites` now shows the record as `accepted`, with redeem audit. No token field.
@@ -121,7 +121,7 @@ Sequencing: entirely self-contained. Ships in one PR, then a `node-v*` tag that 
 **The deny path.** A `member`-role principal calls `POST /admin/invites`. `authorize_tool` fails
 in `invite_create` → **`403`**, no record written, no token generated.
 
-**The revoke path.** Ada calls `/revoke` on a pending hash → **`204 No Content`**. Calling it
+**The revoke path.** Test calls `/revoke` on a pending hash → **`204 No Content`**. Calling it
 again — or on a hash already redeemed, or one that never existed — is the same **`404`**: the host
 verb matched nothing, and the response does not distinguish redeemed from revoked from
 never-existed.
@@ -135,7 +135,7 @@ Mandatory categories from `scope/testing/testing-scope.md` that apply:
   is no side effect. Includes the asymmetry case — a principal holding ONLY `mcp:invite.create:call`
   is `403` on `GET /admin/invites`. This is the category that must not be skipped for an admin
   surface.
-- **Workspace-isolation** — an invite minted in `acme` is absent from `GET /admin/invites` under a
+- **Workspace-isolation** — an invite minted in `nube` is absent from `GET /admin/invites` under a
   `beta` bearer, and `/revoke` on its hash from `beta` is `404`, not `403` (no cross-workspace
   existence oracle).
 - **No mocks (CLAUDE §9)** — real `mem://` store, real gateway, real principals through the lib

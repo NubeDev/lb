@@ -102,7 +102,7 @@ mod tests {
             run_job: "run-9".into(),
             context: Some(serde_json::json!({ "surface": "dashboards" })),
             context_items: vec!["i1".into()],
-            poster_sub: "user:ada".into(),
+            poster_sub: "user:test".into(),
             poster_caps: vec!["mcp:agent.invoke:call".into()],
             ts: 42,
         };
@@ -121,7 +121,7 @@ mod tests {
             run_job: "run-2".into(),
             context: None,
             context_items: Vec::new(),
-            poster_sub: "user:ada".into(),
+            poster_sub: "user:test".into(),
             poster_caps: vec![],
             ts: 1,
         };

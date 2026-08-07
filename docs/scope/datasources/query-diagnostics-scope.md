@@ -150,7 +150,7 @@ Per `docs/scope/testing/testing-scope.md` — real gateway, real store, no fakes
     exists or not (no enumeration oracle).
   - **empty vs ok**: a valid query matching 0 rows → `status:"empty"`; matching ≥1 → `status:"ok"`.
   - **workspace isolation (mandatory)**: authed to `beta`, target a `demo-buildings` source seeded in
-    `acme` → `denied` (not `error`, not rows) — the wall holds and the status doesn't leak that `acme`
+    `nube` → `denied` (not `error`, not rows) — the wall holds and the status doesn't leak that `nube`
     has the source.
   - **legacy/compat**: the frames-in (compute-only) path and the stepwise-debug path still return their
     existing shapes; a client that ignores `status` gets identical `frames`/`rows` to today (pin with the

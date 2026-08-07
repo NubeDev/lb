@@ -166,19 +166,19 @@ fn rows(v: &Value) -> Vec<Value> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn warm_reopen_runs_zero_resolver_dispatch() {
     let node = boot_cached().await;
-    let p = principal("user:hi", "acme", &high_caps());
-    seed(&node, &p, "acme", "temp", &[10.0, 20.0, 30.0]).await;
+    let p = principal("user:hi", "nube", &high_caps());
+    seed(&node, &p, "nube", "temp", &[10.0, 20.0, 30.0]).await;
 
-    let first = viz(&node, &p, "acme", panel("temp"), Some(60), 1_000)
+    let first = viz(&node, &p, "nube", panel("temp"), Some(60), 1_000)
         .await
         .unwrap();
-    let second = viz(&node, &p, "acme", panel("temp"), Some(60), 1_010)
+    let second = viz(&node, &p, "nube", panel("temp"), Some(60), 1_010)
         .await
         .unwrap(); // same 60s bucket
     assert_eq!(rows(&first), rows(&second), "warm result equals cold");
     assert_eq!(rows(&first).len(), 3);
 
-    let (hits, misses) = viz_stats(&node, &p, "acme").await;
+    let (hits, misses) = viz_stats(&node, &p, "nube").await;
     assert_eq!(misses, 1, "exactly one cold resolve");
     assert_eq!(
         hits, 1,
@@ -191,24 +191,24 @@ async fn warm_reopen_runs_zero_resolver_dispatch() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn quantiser_collapses_opens_within_a_bucket() {
     let node = boot_cached().await;
-    let p = principal("user:hi", "acme", &high_caps());
-    seed(&node, &p, "acme", "temp", &[1.0, 2.0]).await;
+    let p = principal("user:hi", "nube", &high_caps());
+    seed(&node, &p, "nube", "temp", &[1.0, 2.0]).await;
 
     // now=1000 and now=1010 both floor to the 960 bucket (60 s) → one key.
-    viz(&node, &p, "acme", panel("temp"), Some(60), 1_000)
+    viz(&node, &p, "nube", panel("temp"), Some(60), 1_000)
         .await
         .unwrap();
-    viz(&node, &p, "acme", panel("temp"), Some(60), 1_010)
+    viz(&node, &p, "nube", panel("temp"), Some(60), 1_010)
         .await
         .unwrap();
-    let (hits, misses) = viz_stats(&node, &p, "acme").await;
+    let (hits, misses) = viz_stats(&node, &p, "nube").await;
     assert_eq!((hits, misses), (1, 1), "same bucket → one compute, one hit");
 
     // now=1100 floors to a DIFFERENT bucket (1080) → a fresh compute.
-    viz(&node, &p, "acme", panel("temp"), Some(60), 1_100)
+    viz(&node, &p, "nube", panel("temp"), Some(60), 1_100)
         .await
         .unwrap();
-    let (_, misses2) = viz_stats(&node, &p, "acme").await;
+    let (_, misses2) = viz_stats(&node, &p, "nube").await;
     assert_eq!(misses2, 2, "the next bucket resolves fresh");
 }
 
@@ -216,14 +216,14 @@ async fn quantiser_collapses_opens_within_a_bucket() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn single_flight_collapses_concurrent_cold_opens() {
     let node = boot_cached().await;
-    let p = Arc::new(principal("user:hi", "acme", &high_caps()));
-    seed(&node, &p, "acme", "temp", &[7.0]).await;
+    let p = Arc::new(principal("user:hi", "nube", &high_caps()));
+    seed(&node, &p, "nube", "temp", &[7.0]).await;
 
     let mut handles = Vec::new();
     for _ in 0..12 {
         let (n, pr) = (node.clone(), p.clone());
         handles.push(tokio::spawn(async move {
-            viz(&n, &pr, "acme", panel("temp"), Some(60), 1_000)
+            viz(&n, &pr, "nube", panel("temp"), Some(60), 1_000)
                 .await
                 .unwrap()
         }));
@@ -236,7 +236,7 @@ async fn single_flight_collapses_concurrent_cold_opens() {
         outs.windows(2).all(|w| rows(&w[0]) == rows(&w[1])),
         "all coalesced callers agree"
     );
-    let (_, misses) = viz_stats(&node, &p, "acme").await;
+    let (_, misses) = viz_stats(&node, &p, "nube").await;
     assert_eq!(
         misses, 1,
         "12 concurrent cold opens → ONE resolve (single-flight)"
@@ -281,7 +281,7 @@ async fn workspace_isolation_and_purge_scoping() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cross_grant_caller_never_receives_warm_privileged_frame() {
     let node = boot_cached().await;
-    let ws = "acme";
+    let ws = "nube";
     let high = principal("user:hi", ws, &high_caps());
     // LOW holds viz.query (+ stats to observe) but NOT mcp:store.query:call → the target is denied.
     let low = principal("user:lo", ws, &[VIZ, STATS]);
@@ -325,11 +325,11 @@ async fn cross_grant_caller_never_receives_warm_privileged_frame() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn batch_denied_without_viz_cap() {
     let node = boot_cached().await;
-    let capless = principal("user:none", "acme", &[STATS]);
+    let capless = principal("user:none", "nube", &[STATS]);
     let err = viz_batch(
         &node,
         &capless,
-        "acme",
+        "nube",
         vec![panel("temp")],
         Some(60),
         1_000,
@@ -351,16 +351,16 @@ async fn batch_denied_without_viz_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn directive_is_source_blind_and_zero_ttl_bypasses() {
     let node = boot_cached().await;
-    let p = principal("user:hi", "acme", &high_caps());
-    seed(&node, &p, "acme", "temp", &[3.0, 4.0]).await;
+    let p = principal("user:hi", "nube", &high_caps());
+    seed(&node, &p, "nube", "temp", &[3.0, 4.0]).await;
 
-    let without = viz(&node, &p, "acme", panel("temp"), None, 1_000)
+    let without = viz(&node, &p, "nube", panel("temp"), None, 1_000)
         .await
         .unwrap();
-    let with_zero = viz(&node, &p, "acme", panel("temp"), Some(0), 1_000)
+    let with_zero = viz(&node, &p, "nube", panel("temp"), Some(0), 1_000)
         .await
         .unwrap();
-    let with_ttl = viz(&node, &p, "acme", panel("temp"), Some(60), 1_000)
+    let with_ttl = viz(&node, &p, "nube", panel("temp"), Some(60), 1_000)
         .await
         .unwrap();
     assert_eq!(
@@ -375,13 +375,13 @@ async fn directive_is_source_blind_and_zero_ttl_bypasses() {
     );
 
     // Two opens with ttl_s:0 and two with absent → the gateway cache never populated (live bypass).
-    viz(&node, &p, "acme", panel("temp"), Some(0), 1_000)
+    viz(&node, &p, "nube", panel("temp"), Some(0), 1_000)
         .await
         .unwrap();
-    viz(&node, &p, "acme", panel("temp"), None, 1_000)
+    viz(&node, &p, "nube", panel("temp"), None, 1_000)
         .await
         .unwrap();
-    let (hits, _) = viz_stats(&node, &p, "acme").await;
+    let (hits, _) = viz_stats(&node, &p, "nube").await;
     assert_eq!(hits, 0, "ttl_s:0 / absent never serve a warm gateway frame");
 }
 
@@ -395,15 +395,15 @@ async fn directive_is_source_blind_and_zero_ttl_bypasses() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn batch_warm_reopen_runs_zero_db_queries() {
     let node = boot_cached().await;
-    let p = principal("user:hi", "acme", &high_caps());
+    let p = principal("user:hi", "nube", &high_caps());
     let n = 8u64;
     for i in 0..n {
-        seed(&node, &p, "acme", &format!("s{i}"), &[i as f64 + 1.0]).await;
+        seed(&node, &p, "nube", &format!("s{i}"), &[i as f64 + 1.0]).await;
     }
     let panels: Vec<Value> = (0..n).map(|i| panel(&format!("s{i}"))).collect();
 
     // Cold: one batch call, N distinct resolves.
-    let cold = viz_batch(&node, &p, "acme", panels.clone(), Some(60), 1_000)
+    let cold = viz_batch(&node, &p, "nube", panels.clone(), Some(60), 1_000)
         .await
         .unwrap();
     assert_eq!(
@@ -411,17 +411,17 @@ async fn batch_warm_reopen_runs_zero_db_queries() {
         n as usize,
         "one call resolved N panels"
     );
-    let (_, cold_misses) = viz_stats(&node, &p, "acme").await;
+    let (_, cold_misses) = viz_stats(&node, &p, "nube").await;
     assert_eq!(
         cold_misses, n,
         "cold batch = N resolves (one concurrent wave)"
     );
 
     // Warm: the same batch, same bucket → every panel a hit, ZERO new resolves.
-    let warm = viz_batch(&node, &p, "acme", panels, Some(60), 1_010)
+    let warm = viz_batch(&node, &p, "nube", panels, Some(60), 1_010)
         .await
         .unwrap();
-    let (warm_hits, warm_misses) = viz_stats(&node, &p, "acme").await;
+    let (warm_hits, warm_misses) = viz_stats(&node, &p, "nube").await;
     assert_eq!(
         warm_misses, n,
         "warm re-open added ZERO resolver dispatches"
@@ -443,17 +443,17 @@ async fn batch_warm_reopen_runs_zero_db_queries() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn batch_result_equals_single_query_per_panel() {
     let node = boot_cached().await;
-    let p = principal("user:hi", "acme", &high_caps());
-    seed(&node, &p, "acme", "a", &[1.0, 2.0]).await;
-    seed(&node, &p, "acme", "b", &[3.0]).await;
+    let p = principal("user:hi", "nube", &high_caps());
+    seed(&node, &p, "nube", "a", &[1.0, 2.0]).await;
+    seed(&node, &p, "nube", "b", &[3.0]).await;
 
-    let single_a = viz(&node, &p, "acme", panel("a"), None, 1_000)
+    let single_a = viz(&node, &p, "nube", panel("a"), None, 1_000)
         .await
         .unwrap();
-    let single_b = viz(&node, &p, "acme", panel("b"), None, 1_000)
+    let single_b = viz(&node, &p, "nube", panel("b"), None, 1_000)
         .await
         .unwrap();
-    let batch = viz_batch(&node, &p, "acme", vec![panel("a"), panel("b")], None, 1_000)
+    let batch = viz_batch(&node, &p, "nube", vec![panel("a"), panel("b")], None, 1_000)
         .await
         .unwrap();
     assert_eq!(
@@ -471,12 +471,12 @@ async fn batch_result_equals_single_query_per_panel() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn batch_partial_failure_isolates_the_bad_panel() {
     let node = boot_cached().await;
-    let p = principal("user:hi", "acme", &high_caps());
-    seed(&node, &p, "acme", "ok", &[5.0, 6.0]).await;
+    let p = principal("user:hi", "nube", &high_caps());
+    seed(&node, &p, "nube", "ok", &[5.0, 6.0]).await;
 
     // A syntactically invalid SELECT → the store's parse error → `BadInput` → an `error` frame.
     let bad = json!({ "sources": [{ "refId": "A", "tool": "store.query", "args": { "sql": "SELECT payload FROM" } }] });
-    let batch = viz_batch(&node, &p, "acme", vec![panel("ok"), bad], None, 1_000)
+    let batch = viz_batch(&node, &p, "nube", vec![panel("ok"), bad], None, 1_000)
         .await
         .unwrap();
     let results = batch["results"].as_array().unwrap();
@@ -502,9 +502,9 @@ async fn batch_partial_failure_isolates_the_bad_panel() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn batch_over_cap_is_bad_input() {
     let node = boot_cached().await;
-    let p = principal("user:hi", "acme", &high_caps());
+    let p = principal("user:hi", "nube", &high_caps());
     let panels: Vec<Value> = (0..65).map(|_| panel("temp")).collect();
-    let err = viz_batch(&node, &p, "acme", panels, Some(60), 1_000).await;
+    let err = viz_batch(&node, &p, "nube", panels, Some(60), 1_000).await;
     assert!(
         matches!(err, Err(ToolError::BadInput(_))),
         "65 panels → BadInput, got {err:?}"

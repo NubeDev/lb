@@ -13,16 +13,16 @@ async fn add_then_of_returns_the_tag() {
     let store = Store::memory().await.unwrap();
     add(
         &store,
-        "acme",
+        "nube",
         "series:cpu",
         &Tag::new("unit", "celsius".into()),
-        &prov(1, "user:ada", Source::Producer),
+        &prov(1, "user:test", Source::Producer),
         0,
     )
     .await
     .unwrap();
 
-    let tags = of(&store, "acme", "series:cpu").await.unwrap();
+    let tags = of(&store, "nube", "series:cpu").await.unwrap();
     assert_eq!(tags.len(), 1);
     assert_eq!(tags[0].key, "unit");
     assert_eq!(tags[0].value, serde_json::json!("celsius"));
@@ -36,24 +36,24 @@ async fn same_source_retag_upserts_different_source_coexists() {
     // Human asserts.
     add(
         &store,
-        "acme",
+        "nube",
         "series:cpu",
         &tag,
-        &prov(1, "user:ada", Source::Human),
+        &prov(1, "user:test", Source::Human),
         0,
     )
     .await
     .unwrap();
     // Same source re-tags with higher confidence — upserts in place (still ONE edge for human).
-    let mut p = prov(2, "user:ada", Source::Human);
+    let mut p = prov(2, "user:test", Source::Human);
     p.confidence = 0.5;
-    add(&store, "acme", "series:cpu", &tag, &p, 0)
+    add(&store, "nube", "series:cpu", &tag, &p, 0)
         .await
         .unwrap();
     // A DIFFERENT source (AI inferred) coexists as a second edge.
     add(
         &store,
-        "acme",
+        "nube",
         "series:cpu",
         &tag,
         &prov(3, "agent:x", Source::Inferred),
@@ -62,7 +62,7 @@ async fn same_source_retag_upserts_different_source_coexists() {
     .await
     .unwrap();
 
-    let tags = of(&store, "acme", "series:cpu").await.unwrap();
+    let tags = of(&store, "nube", "series:cpu").await.unwrap();
     assert_eq!(tags.len(), 2, "human (upserted) + inferred = two edges");
     let human = tags.iter().find(|t| t.source == Source::Human).unwrap();
     assert_eq!(
@@ -83,7 +83,7 @@ async fn find_exact_key_only_and_faceted() {
     ] {
         add(
             &store,
-            "acme",
+            "nube",
             entity,
             &Tag::new("region", region.into()),
             &prov(1, "p", Source::Producer),
@@ -93,7 +93,7 @@ async fn find_exact_key_only_and_faceted() {
         .unwrap();
         add(
             &store,
-            "acme",
+            "nube",
             entity,
             &Tag::new("kind", kind.into()),
             &prov(1, "p", Source::Producer),
@@ -104,14 +104,14 @@ async fn find_exact_key_only_and_faceted() {
     }
 
     // Exact: region=eu-west → cpu, mem.
-    let eu = find(&store, "acme", &[Facet::exact("region", "eu-west".into())])
+    let eu = find(&store, "nube", &[Facet::exact("region", "eu-west".into())])
         .await
         .unwrap();
     assert_eq!(eu.len(), 2);
     assert!(eu.contains(&"series:cpu".to_string()) && eu.contains(&"series:mem".to_string()));
 
     // Key-only: has any region → all three.
-    let any_region = find(&store, "acme", &[Facet::key_only("region")])
+    let any_region = find(&store, "nube", &[Facet::key_only("region")])
         .await
         .unwrap();
     assert_eq!(any_region.len(), 3);
@@ -119,7 +119,7 @@ async fn find_exact_key_only_and_faceted() {
     // Faceted intersection: eu-west AND telemetry → only cpu.
     let facet = find(
         &store,
-        "acme",
+        "nube",
         &[
             Facet::exact("region", "eu-west".into()),
             Facet::exact("kind", "telemetry".into()),
@@ -136,7 +136,7 @@ async fn remove_drops_the_edge_not_other_entities() {
     let tag = Tag::new("region", "eu".into());
     add(
         &store,
-        "acme",
+        "nube",
         "series:a",
         &tag,
         &prov(1, "p", Source::Producer),
@@ -146,7 +146,7 @@ async fn remove_drops_the_edge_not_other_entities() {
     .unwrap();
     add(
         &store,
-        "acme",
+        "nube",
         "series:b",
         &tag,
         &prov(1, "p", Source::Producer),
@@ -157,7 +157,7 @@ async fn remove_drops_the_edge_not_other_entities() {
 
     remove(
         &store,
-        "acme",
+        "nube",
         "series:a",
         "region",
         Some(&serde_json::json!("eu")),
@@ -165,9 +165,9 @@ async fn remove_drops_the_edge_not_other_entities() {
     .await
     .unwrap();
 
-    assert!(of(&store, "acme", "series:a").await.unwrap().is_empty());
+    assert!(of(&store, "nube", "series:a").await.unwrap().is_empty());
     // series:b still points at the shared node.
-    let b = find(&store, "acme", &[Facet::exact("region", "eu".into())])
+    let b = find(&store, "nube", &[Facet::exact("region", "eu".into())])
         .await
         .unwrap();
     assert_eq!(b, vec!["series:b".to_string()]);
@@ -179,7 +179,7 @@ async fn tag_node_cap_denies_new_nodes_over_the_bound() {
     // Cap of 2 distinct tag nodes.
     add(
         &store,
-        "acme",
+        "nube",
         "ent:e1",
         &Tag::new("k", "a".into()),
         &prov(1, "p", Source::System),
@@ -189,7 +189,7 @@ async fn tag_node_cap_denies_new_nodes_over_the_bound() {
     .unwrap();
     add(
         &store,
-        "acme",
+        "nube",
         "ent:e1",
         &Tag::new("k", "b".into()),
         &prov(1, "p", Source::System),
@@ -200,7 +200,7 @@ async fn tag_node_cap_denies_new_nodes_over_the_bound() {
     // A THIRD distinct node is denied.
     let err = add(
         &store,
-        "acme",
+        "nube",
         "ent:e1",
         &Tag::new("k", "c".into()),
         &prov(1, "p", Source::System),
@@ -212,7 +212,7 @@ async fn tag_node_cap_denies_new_nodes_over_the_bound() {
     // But re-using an EXISTING node (applying to a new entity) is allowed past the cap.
     add(
         &store,
-        "acme",
+        "nube",
         "ent:e2",
         &Tag::new("k", "a".into()),
         &prov(1, "p", Source::System),
@@ -222,7 +222,7 @@ async fn tag_node_cap_denies_new_nodes_over_the_bound() {
     .expect("re-using an existing tag node never counts toward the cap");
 
     // And the standalone cap check agrees.
-    assert!(check_cap(&store, "acme", &Tag::new("k", "z".into()), 2)
+    assert!(check_cap(&store, "nube", &Tag::new("k", "z".into()), 2)
         .await
         .unwrap()
         .is_err());

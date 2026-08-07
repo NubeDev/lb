@@ -33,10 +33,10 @@ const ALL: &[&str] = &[GET, SET];
 #[tokio::test]
 async fn round_trip_and_lww_upsert() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
 
     // Absent → a default record (empty model), not an error.
-    let empty = layout_get(&store, &ada, "ws-a", "data-studio")
+    let empty = layout_get(&store, &test, "ws-a", "data-studio")
         .await
         .unwrap();
     assert_eq!(empty.model, serde_json::Value::Null);
@@ -44,21 +44,21 @@ async fn round_trip_and_lww_upsert() {
 
     // Set → get returns the same model; a second set wins (LWW).
     let m1 = json!({ "layout": { "type": "row", "children": [] }, "rev": 1 });
-    let saved = layout_set(&store, &ada, "ws-a", "data-studio", m1.clone(), 100)
+    let saved = layout_set(&store, &test, "ws-a", "data-studio", m1.clone(), 100)
         .await
         .unwrap();
     assert_eq!(saved.model, m1);
     assert_eq!(saved.updated_ts, 100);
-    let got = layout_get(&store, &ada, "ws-a", "data-studio")
+    let got = layout_get(&store, &test, "ws-a", "data-studio")
         .await
         .unwrap();
     assert_eq!(got.model, m1);
 
     let m2 = json!({ "rev": 2 });
-    layout_set(&store, &ada, "ws-a", "data-studio", m2.clone(), 200)
+    layout_set(&store, &test, "ws-a", "data-studio", m2.clone(), 200)
         .await
         .unwrap();
-    let got = layout_get(&store, &ada, "ws-a", "data-studio")
+    let got = layout_get(&store, &test, "ws-a", "data-studio")
         .await
         .unwrap();
     assert_eq!(got.model, m2);
@@ -68,22 +68,22 @@ async fn round_trip_and_lww_upsert() {
 #[tokio::test]
 async fn member_owned_two_users_never_cross() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
     let ben = principal("user:ben", "ws-a", ALL);
 
     layout_set(
         &store,
-        &ada,
+        &test,
         "ws-a",
         "data-studio",
-        json!({"who": "ada"}),
+        json!({"who": "test"}),
         1,
     )
     .await
     .unwrap();
 
-    // Ben, same workspace + same surface, sees HIS OWN (absent) layout — never Ada's. The record is
-    // keyed to the token `sub`; there is no argument through which Ben could name Ada.
+    // Ben, same workspace + same surface, sees HIS OWN (absent) layout — never Test's. The record is
+    // keyed to the token `sub`; there is no argument through which Ben could name Test.
     let bens = layout_get(&store, &ben, "ws-a", "data-studio")
         .await
         .unwrap();
@@ -99,37 +99,37 @@ async fn member_owned_two_users_never_cross() {
     )
     .await
     .unwrap();
-    let adas = layout_get(&store, &ada, "ws-a", "data-studio")
+    let adas = layout_get(&store, &test, "ws-a", "data-studio")
         .await
         .unwrap();
     assert_eq!(
         adas.model,
-        json!({"who": "ada"}),
-        "ben's write must not clobber ada's"
+        json!({"who": "test"}),
+        "ben's write must not clobber test's"
     );
 }
 
 #[tokio::test]
 async fn per_surface_keying() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
 
-    layout_set(&store, &ada, "ws-a", "data-studio", json!({"s": 1}), 1)
+    layout_set(&store, &test, "ws-a", "data-studio", json!({"s": 1}), 1)
         .await
         .unwrap();
-    layout_set(&store, &ada, "ws-a", "flows", json!({"s": 2}), 2)
+    layout_set(&store, &test, "ws-a", "flows", json!({"s": 2}), 2)
         .await
         .unwrap();
 
     assert_eq!(
-        layout_get(&store, &ada, "ws-a", "data-studio")
+        layout_get(&store, &test, "ws-a", "data-studio")
             .await
             .unwrap()
             .model,
         json!({"s": 1})
     );
     assert_eq!(
-        layout_get(&store, &ada, "ws-a", "flows")
+        layout_get(&store, &test, "ws-a", "flows")
             .await
             .unwrap()
             .model,
@@ -140,28 +140,35 @@ async fn per_surface_keying() {
 #[tokio::test]
 async fn workspace_isolation() {
     let store = Store::memory().await.unwrap();
-    let ada_a = principal("user:ada", "ws-a", ALL);
-    let ada_b = principal("user:ada", "ws-b", ALL);
+    let test_a = principal("user:test", "ws-a", ALL);
+    let test_b = principal("user:test", "ws-b", ALL);
 
-    layout_set(&store, &ada_a, "ws-a", "data-studio", json!({"ws": "a"}), 1)
-        .await
-        .unwrap();
+    layout_set(
+        &store,
+        &test_a,
+        "ws-a",
+        "data-studio",
+        json!({"ws": "a"}),
+        1,
+    )
+    .await
+    .unwrap();
 
     // Same user, different workspace: the hard wall — nothing crosses.
-    let in_b = layout_get(&store, &ada_b, "ws-b", "data-studio")
+    let in_b = layout_get(&store, &test_b, "ws-b", "data-studio")
         .await
         .unwrap();
     assert_eq!(in_b.model, serde_json::Value::Null);
 
     // A ws-A token calling with ws-B is refused before the verb runs (workspace-first).
-    let denied = layout_get(&store, &ada_a, "ws-b", "data-studio").await;
+    let denied = layout_get(&store, &test_a, "ws-b", "data-studio").await;
     assert!(matches!(denied, Err(LayoutError::Denied)));
 }
 
 #[tokio::test]
 async fn capability_deny_per_verb() {
     let store = Store::memory().await.unwrap();
-    let only_get = principal("user:ada", "ws-a", &[GET]);
+    let only_get = principal("user:test", "ws-a", &[GET]);
     let only_set = principal("user:ben", "ws-a", &[SET]);
     let none = principal("user:cat", "ws-a", &[]);
 
@@ -180,20 +187,20 @@ async fn capability_deny_per_verb() {
 #[tokio::test]
 async fn bounds_and_bad_input() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
 
     // An over-cap model is rejected loudly (never truncated).
     let big = json!({ "blob": "x".repeat(MAX_LAYOUT_BYTES) });
-    let denied = layout_set(&store, &ada, "ws-a", "data-studio", big, 1).await;
+    let denied = layout_set(&store, &test, "ws-a", "data-studio", big, 1).await;
     assert!(matches!(denied, Err(LayoutError::BadInput(_))));
 
     // An empty surface key is bad input on both verbs.
     assert!(matches!(
-        layout_get(&store, &ada, "ws-a", "").await,
+        layout_get(&store, &test, "ws-a", "").await,
         Err(LayoutError::BadInput(_))
     ));
     assert!(matches!(
-        layout_set(&store, &ada, "ws-a", "", json!({}), 1).await,
+        layout_set(&store, &test, "ws-a", "", json!({}), 1).await,
         Err(LayoutError::BadInput(_))
     ));
 }

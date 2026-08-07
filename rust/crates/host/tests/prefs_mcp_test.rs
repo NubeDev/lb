@@ -68,15 +68,15 @@ async fn format_and_convert_are_grant_free() {
 async fn prefs_set_then_resolve_round_trips_through_the_bridge() {
     let ws = "prefs-rt";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &["mcp:prefs.set:call", "mcp:prefs.resolve:call"],
     );
 
     call_tool(
         &node,
-        &ada,
+        &test,
         ws,
         "prefs.set",
         &json!({ "patch": { "language": "es", "unit_system": "imperial" } }).to_string(),
@@ -84,7 +84,7 @@ async fn prefs_set_then_resolve_round_trips_through_the_bridge() {
     .await
     .expect("prefs.set with the grant");
 
-    let out = call_tool(&node, &ada, ws, "prefs.resolve", "{}")
+    let out = call_tool(&node, &test, ws, "prefs.resolve", "{}")
         .await
         .expect("prefs.resolve with the grant");
     let v: Value = serde_json::from_str(&out).unwrap();
@@ -96,7 +96,7 @@ async fn prefs_set_then_resolve_round_trips_through_the_bridge() {
     // A self-scoped request override previews without writing the record.
     let out = call_tool(
         &node,
-        &ada,
+        &test,
         ws,
         "prefs.resolve",
         &json!({ "override": { "language": "en" } }).to_string(),

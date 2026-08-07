@@ -157,7 +157,7 @@ Two non-trivial breakages this session, each with a debug entry + regression tes
   `messaging_test::history_survives_independent_of_the_bus`.
 - [bus/in-process-peers-share-the-keyspace](../../debugging/bus/in-process-peers-share-the-keyspace.md)
   — in-process Zenoh peers auto-discover and share a workspace's keyspace, so concurrent tests
-  reusing `ws="acme"` cross-talked. Not a product bug (it's the multi-node design); fixed by a
+  reusing `ws="nube"` cross-talked. Not a product bug (it's the multi-node design); fixed by a
   unique workspace id per test. Standing rule recorded in the bus scope.
 
 ## Public / scope updates

@@ -49,7 +49,7 @@ Then in another terminal, from any of the four folders (see its README for the
 exact command):
 
 1. **Get a bearer.** Mint an API key via the admin console (`/admin/apikeys`
-   with a session token) for a long-lived producer, OR call `login("ada", "acme")`
+   with a session token) for a long-lived producer, OR call `login("test", "nube")`
    for a dev script.
 2. `writeSamples([{series, ts, seq, payload}])` → `accepted=N committed=N`.
 3. `latestSample(series)` → the value you just wrote.

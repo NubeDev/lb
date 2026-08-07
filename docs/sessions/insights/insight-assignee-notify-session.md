@@ -130,7 +130,7 @@ bulk assign 3 findings to team:mechanical (ONE gesture)
 
 single assign  → “insight solo — “solo finding” was assigned to team:mechanical [view]”
 re-assign ×3 to the SAME owner → assignment posts still 2                     ← no duplicate paging
-ada assigns to user:ada, sub {assignee:"me"} → 0 posts                        ← self-assign silent
+test assigns to user:test, sub {assignee:"me"} → 0 posts                        ← self-assign silent
 un-assign      → assignment posts still 2                                     ← un-assign is silent
 ```
 

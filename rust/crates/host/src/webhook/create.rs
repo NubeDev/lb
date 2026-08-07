@@ -288,17 +288,17 @@ mod tests {
 
     #[test]
     fn parse_bearer_key_id_splits_three_fields() {
-        let k = parse_bearer_key_id("lbk_acme.k7f3a.sss").unwrap();
+        let k = parse_bearer_key_id("lbk_nube.k7f3a.sss").unwrap();
         assert_eq!(k, "k7f3a");
     }
 
     #[test]
     fn parse_bearer_key_id_rejects_non_lbk() {
-        assert!(parse_bearer_key_id("xxx_acme.k.s").is_err());
+        assert!(parse_bearer_key_id("xxx_nube.k.s").is_err());
     }
 
     #[test]
     fn parse_bearer_key_id_rejects_two_fields() {
-        assert!(parse_bearer_key_id("lbk_acme.k7f3a").is_err());
+        assert!(parse_bearer_key_id("lbk_nube.k7f3a").is_err());
     }
 }

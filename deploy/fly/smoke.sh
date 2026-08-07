@@ -9,8 +9,8 @@
 set -euo pipefail
 
 BASE="${1:-http://127.0.0.1:8080}"
-EMAIL="${2:-ada@acme.local}"
-WS="${3:-acme}"
+EMAIL="${2:-test@nube.local}"
+WS="${3:-nube}"
 PASSWORD="${4:-dev-admin-pw}"
 
 pass() { echo "  ok: $1"; }

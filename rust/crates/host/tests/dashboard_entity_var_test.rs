@@ -40,11 +40,11 @@ fn principal(sub: &str, ws: &str) -> Principal {
 async fn entity_var_binding_survives_save_get() {
     let ws = "ws-entity-var";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws);
+    let test = principal("user:test", ws);
 
     let saved = call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({
@@ -80,7 +80,7 @@ async fn entity_var_binding_survives_save_get() {
 
     let got = call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.get",
         &json!({ "id": "ems-meter-detail" }),
@@ -112,11 +112,11 @@ async fn entity_var_binding_survives_save_get() {
 async fn non_entity_var_keeps_entity_off_the_wire() {
     let ws = "ws-entity-guard";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws);
+    let test = principal("user:test", ws);
 
     call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({
@@ -128,9 +128,15 @@ async fn non_entity_var_keeps_entity_off_the_wire() {
     .await
     .expect("save succeeds");
 
-    let got = call_dashboard_tool(&store, &ada, ws, "dashboard.get", &json!({ "id": "plain" }))
-        .await
-        .expect("get succeeds");
+    let got = call_dashboard_tool(
+        &store,
+        &test,
+        ws,
+        "dashboard.get",
+        &json!({ "id": "plain" }),
+    )
+    .await
+    .expect("get succeeds");
     let v = &got["variables"][0];
     assert_eq!(v["name"], "env");
     assert!(

@@ -270,8 +270,8 @@ never a raw call — exactly like `dashboard.api.ts`.
 
 1. The `kfc` admin opens **Datasources** (cap-gated on `mcp:datasource.list:call`). `datasource.list`
    shows the registered sources — kind + endpoint + a **redacted** secret ref, never a DSN.
-2. **Add** → a form for `{name:"timescale", kind:"postgres", endpoint:"tsdb.acme:5432", dsn:…}`. The
-   form shows the implied grants (`net:tls:tsdb.acme:5432:connect`, `secret:federation/timescale:get`).
+2. **Add** → a form for `{name:"timescale", kind:"postgres", endpoint:"tsdb.nube:5432", dsn:…}`. The
+   form shows the implied grants (`net:tls:tsdb.nube:5432:connect`, `secret:federation/timescale:get`).
    Submit → `datasource.add` writes the record + the DSN to the secret store (host-side); the page never
    reads the DSN back.
 3. **Test** → `datasource.test {source:"timescale"}` → the host runs `net:*` pre-connect, mediates the

@@ -62,8 +62,8 @@ setup:
 
 ## build (if needed) and run the REAL gateway node the preview/tests talk to. The store is
 ## IN-MEMORY (test_gateway sets no LB_STORE_PATH → Store::memory in host boot), so every boot is
-## fresh by construction and the prefilled dev login (ada/acme) always bootstraps cleanly — a
-## workspace is owned by whoever logs in FIRST (global-identity decision #4). If ada/acme ever
+## fresh by construction and the prefilled dev login (test/nube) always bootstraps cleanly — a
+## workspace is owned by whoever logs in FIRST (global-identity decision #4). If test/nube ever
 ## 403s "not a member", the cause is a STALE test_gateway still holding $(GW_PORT) (the new one
 ## fails to bind and exits, so you keep talking to the old node's memory) — which is why we free
 ## the port first. LB_DIR below only holds node keys/config, not the store.

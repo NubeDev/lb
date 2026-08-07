@@ -170,20 +170,20 @@ Install a signed extension, run it offline, then roll back — the exit-gate wal
    Ed25519-sign(digest) with the publisher key. The `Artifact` + its `CatalogEntry` live at the
    registry origin (in the test, the in-memory `Source`; the workspace's publisher allow-list holds
    the matching verifying key).
-2. An admin calls `registry.install(ws="acme", ext_id="hello", version="0.2.0", admin_approved=[…])`.
+2. An admin calls `registry.install(ws="nube", ext_id="hello", version="0.2.0", admin_approved=[…])`.
    The host authorizes `mcp:registry.install:call` (workspace-first) → **denied without the grant**.
-3. With the grant: `pull("acme","hello","0.2.0")` — digest not cached → `Source::fetch` returns the
+3. With the grant: `pull("nube","hello","0.2.0")` — digest not cached → `Source::fetch` returns the
    artifact → **`verify_artifact`**: recompute digest, check it matches, verify the signature against
    the allow-listed publisher key. A **tampered** wasm (digest mismatch) or an **unsigned/foreign-key**
    artifact → `Unverified`, **nothing cached, nothing loaded**.
-4. Verified → `cache_artifact` writes `cached:{digest}` + `catalog:hello:0.2.0` in ws `acme`. Then the
+4. Verified → `cache_artifact` writes `cached:{digest}` + `catalog:hello:0.2.0` in ws `nube`. Then the
    existing `install_extension` persists `Install{ ext_id:"hello", version:"0.2.0", granted:requested∩
    admin_approved }` and loads the component. `hello.echo` is now callable (subject to its own
    `mcp:hello.echo:call` grant).
-5. **Offline:** the `Source` is switched to "offline" (every `fetch` errors). `install("acme","hello",
+5. **Offline:** the `Source` is switched to "offline" (every `fetch` errors). `install("nube","hello",
    "0.2.0")` again → `pull` finds `cached:{digest}` → returns cached bytes, **no `Source` call** →
    install succeeds. The edge ran fully offline from its cache.
-6. **Rollback:** `install("acme","hello","0.1.0")` (the prior version, already cached from an earlier
+6. **Rollback:** `install("nube","hello","0.1.0")` (the prior version, already cached from an earlier
    pull, or pulled+verified if not). The `Install` record upserts to `version:"0.1.0"`; the v0.1.0
    component loads. A channel message posted at step 4 and a job step are **still present** — no
    durable state was tied to the instance (stateless-extension guarantee).

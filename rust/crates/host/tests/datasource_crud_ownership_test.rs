@@ -74,16 +74,16 @@ async fn stored_dsn(node: &Node, ws: &str, name: &str) -> Result<String, lb_secr
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn two_admins_crud_one_source_without_owner_wall_denial() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
     install_federation_record(&node, ws).await;
 
-    let ada = admin_named("user:ada", ws);
+    let test = admin_named("user:test", ws);
     let bob = admin_named("user:bob", ws);
 
     // A adds it.
     datasource_add(
         &node,
-        &ada,
+        &test,
         ws,
         "timescale",
         "postgres",
@@ -119,7 +119,7 @@ async fn two_admins_crud_one_source_without_owner_wall_denial() {
     );
 
     // A removes it — forgets the secret (owned by ext:federation, so the delete passes the wall).
-    datasource_remove(&node, &ada, ws, "timescale", 3)
+    datasource_remove(&node, &test, ws, "timescale", 3)
         .await
         .expect("admin A remove");
     assert!(matches!(
@@ -152,7 +152,7 @@ async fn two_admins_crud_one_source_without_owner_wall_denial() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn heals_a_secret_owned_by_the_boot_bootstrap_principal() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
     install_federation_record(&node, ws).await;
 
     // Simulate the poisoned store: the DSN owned by `ext:federation-bootstrap` (the old seed sub).
@@ -176,10 +176,10 @@ async fn heals_a_secret_owned_by_the_boot_bootstrap_principal() {
     .unwrap();
 
     // A normal admin updates the source — must succeed (reclaim heals the owner drift).
-    let ada = admin_named("user:ada", ws);
+    let test = admin_named("user:test", ws);
     datasource_add(
         &node,
-        &ada,
+        &test,
         ws,
         "timescale",
         "postgres",
@@ -196,19 +196,19 @@ async fn heals_a_secret_owned_by_the_boot_bootstrap_principal() {
     );
 }
 
-/// Workspace isolation (mandatory): a source added in `acme` is invisible in `beta`, and the DSN
+/// Workspace isolation (mandatory): a source added in `nube` is invisible in `beta`, and the DSN
 /// secret never crosses the wall.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn crud_is_workspace_isolated() {
     let node = Arc::new(Node::boot().await.unwrap());
-    install_federation_record(&node, "acme").await;
+    install_federation_record(&node, "nube").await;
     install_federation_record(&node, "beta").await;
 
-    let ada = admin_named("user:ada", "acme");
+    let test = admin_named("user:test", "nube");
     datasource_add(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "timescale",
         "postgres",
         "127.0.0.1:5433",
@@ -222,7 +222,7 @@ async fn crud_is_workspace_isolated() {
     // Not visible in beta.
     let beta_admin = admin_named("user:zoe", "beta");
     let beta_list = datasource_list(&node, &beta_admin, "beta").await.unwrap();
-    assert!(beta_list.is_empty(), "beta must not see acme's source");
+    assert!(beta_list.is_empty(), "beta must not see nube's source");
 
     // The DSN secret is not readable in beta.
     assert!(stored_dsn(&node, "beta", "timescale").await.is_err());
@@ -232,14 +232,14 @@ async fn crud_is_workspace_isolated() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn list_never_leaks_the_dsn() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
     install_federation_record(&node, ws).await;
 
-    let ada = admin_named("user:ada", ws);
+    let test = admin_named("user:test", ws);
     let dsn = "postgres://topsecret@127.0.0.1:5433/db";
     datasource_add(
         &node,
-        &ada,
+        &test,
         ws,
         "timescale",
         "postgres",
@@ -251,7 +251,7 @@ async fn list_never_leaks_the_dsn() {
     .await
     .unwrap();
 
-    let list = datasource_list(&node, &ada, ws).await.unwrap();
+    let list = datasource_list(&node, &test, ws).await.unwrap();
     let json = serde_json::to_string(&list).unwrap();
     assert!(
         !json.contains("topsecret"),
@@ -268,7 +268,7 @@ async fn add_self_approves_a_new_endpoint() {
     use lb_assets::read_install;
 
     let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
 
     // Install with ONLY the sqlite convention endpoint approved — the real "fresh node" boot state.
     let install = Install::new(
@@ -282,7 +282,7 @@ async fn add_self_approves_a_new_endpoint() {
     );
     record_install(&node.store, ws, &install).await.unwrap();
 
-    let ada = admin_named("user:ada", ws);
+    let test = admin_named("user:test", ws);
     let new_grant = "net:tls:db.example.com:5432:connect";
 
     // Precondition: the new endpoint is NOT yet permitted.
@@ -295,7 +295,7 @@ async fn add_self_approves_a_new_endpoint() {
     // Add a source at that endpoint — the UI path.
     datasource_add(
         &node,
-        &ada,
+        &test,
         ws,
         "warehouse",
         "postgres",
@@ -325,7 +325,7 @@ async fn add_self_approves_a_new_endpoint() {
     // Idempotent: re-adding the same endpoint does not duplicate the grant.
     datasource_add(
         &node,
-        &ada,
+        &test,
         ws,
         "warehouse2",
         "postgres",

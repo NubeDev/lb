@@ -85,7 +85,7 @@ pub async fn apply_entity_reach(
     entity: &EntityReach,
     rows: Vec<Value>,
 ) -> Vec<Value> {
-    // The bare subject the grants are stored under (`Subject::User("ada")`, not `"user:ada"`), matching
+    // The bare subject the grants are stored under (`Subject::User("test")`, not `"user:test"`), matching
     // the host `authz.scope_filter` bridge. A non-user subject has no scoped grants ⇒ empty reach.
     let user = caller.sub().strip_prefix("user:").unwrap_or(caller.sub());
 

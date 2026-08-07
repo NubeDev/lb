@@ -24,7 +24,7 @@ function insight(over: Partial<Insight> = {}): Insight {
     count: 3,
     first_ts: 1_000,
     last_ts: 2_000,
-    producer: "user:ada",
+    producer: "user:test",
     tags: { building: "chullora-dc", asset_type: "water-meter", priority: "medium" },
     evidence: { source: "demo-buildings" },
     ...over,

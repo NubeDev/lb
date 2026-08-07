@@ -20,10 +20,10 @@ example. The channel `post` gate checks `bus:chan/{cid}:pub` via the **capabilit
 
 ```
 grant   bus:chan/*:pub        pattern segments: ["chan", "*"]
-resource chan/dock.ada.01H…   resource segments: ["chan", "dock", "ada", "01H…"]
+resource chan/dock.test.01H…   resource segments: ["chan", "dock", "test", "01H…"]
 ```
 
-A single `*` matches **exactly one** segment, so it matched `dock` and left `ada`, `01H…`
+A single `*` matches **exactly one** segment, so it matched `dock` and left `test`, `01H…`
 unmatched → `Decision::Denied`. The create-on-first-post was refused for every ordinary
 member (only a `bus:chan/**:pub` recursive grant, which members do NOT hold, would match).
 `useChannel.postBody` folds the 403 into `error` and never appends the item — hence the
@@ -32,8 +32,8 @@ silent "nothing happened".
 ## Fix
 
 Make the dock id a **single cap segment**: switch the separator from `.` to `-`
-(`dock-{user-slug}-{ulid}`). `-` is not a grammar delimiter, so `chan/dock-ada-01H…` is
-`["chan", "dock-ada-01H…"]` and the existing `bus:chan/*:pub` grant matches. No new/wider
+(`dock-{user-slug}-{ulid}`). `-` is not a grammar delimiter, so `chan/dock-test-01H…` is
+`["chan", "dock-test-01H…"]` and the existing `bus:chan/*:pub` grant matches. No new/wider
 cap; the reserved-prefix, UI-only convention is unchanged. `dockId.ts` owns the grammar;
 the scope's `dock.` examples were updated to `dock-` (scope "Resolved during implementation"
 #1).

@@ -50,13 +50,13 @@ fn run_named(
     now: u64,
 ) -> Result<(lb_rules::RuleOutput, Vec<lb_rules::LogLine>), RuleError> {
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: rule_name.into(),
         body: body.into(),
         params: vec![],
     };
     let mut rr = RuleRun::new(
-        "acme".into(),
+        "nube".into(),
         Arc::new(HashSet::new()),
         rhai::Map::new(),
         now,
@@ -109,14 +109,14 @@ fn raise_defaults_origin_to_the_rules_provenance() {
     let eng = engine(m.clone(), 32, true);
     run_named(
         &eng,
-        "rule:acme:cooler-watch",
+        "rule:nube:cooler-watch",
         r#"insight.raise(#{ dedup_key: "k", severity: "critical", title: "t" });"#,
         1,
     )
     .unwrap();
     let calls = m.calls();
     assert_eq!(calls[0].1["origin"]["kind"], "rule");
-    assert_eq!(calls[0].1["origin"]["ref"], "rule:acme:cooler-watch");
+    assert_eq!(calls[0].1["origin"]["ref"], "rule:nube:cooler-watch");
 }
 
 #[test]

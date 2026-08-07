@@ -42,7 +42,7 @@ Details: [debugging/extensions/sidecar-callback-401-key-minted-before-gateway.md
 
 ## Proof (real gateway, e2e)
 Against a hand-launched real node (gateway + CE env, ce-studio on :7979):
-- boot: `control-engine: installed sidecar in 'acme' (tools=[…13…], granted=[…21…])`.
+- boot: `control-engine: installed sidecar in 'nube' (tools=[…13…], granted=[…21…])`.
 - dev login token now carries all `mcp:control-engine.*:call` caps **resolved from the grant store**
   (verified via `/login` caps).
 - `/native/call control-engine.appliance.add` → `{"id":"local"}` **200**; `appliance.list` → the seeded

@@ -43,7 +43,7 @@ async function getDocTitle(client: ReturnType<typeof realClient>, id: string) {
 describe("the undo journal through the app seam", () => {
   it("undoes_and_redoes_a_real_captured_step", async () => {
     const c = realClient();
-    await signInWithCaps(c, "ada", "app-undo-a", UNDO_CAPS);
+    await signInWithCaps(c, "test", "app-undo-a", UNDO_CAPS);
 
     // Two real saves → the second is the newest undoable step.
     await putDoc(c, "d1", "v1");
@@ -63,7 +63,7 @@ describe("the undo journal through the app seam", () => {
 
   it("lists_the_captured_step_in_history", async () => {
     const c = realClient();
-    await signInWithCaps(c, "ada", "app-undo-b", UNDO_CAPS);
+    await signInWithCaps(c, "test", "app-undo-b", UNDO_CAPS);
     await putDoc(c, "d1", "v1");
 
     const history = await c.invoke<UndoHistory>("undo_history");
@@ -76,7 +76,7 @@ describe("the undo journal through the app seam", () => {
   // A refusal is a normal outcome the shell renders — it must NOT throw.
   it("returns_an_empty_stack_as_typed_data_not_an_error", async () => {
     const c = realClient();
-    await signInWithCaps(c, "ada", "app-undo-c", UNDO_CAPS);
+    await signInWithCaps(c, "test", "app-undo-c", UNDO_CAPS);
 
     const out = await c.invoke<UndoOutcome>("undo");
     expect(out.ok).toBe(false);
@@ -111,14 +111,14 @@ describe("the undo journal through the app seam", () => {
   // The no-escalation rule: undo may not reach past the caps the caller already holds.
   it("denies_undo_without_the_original_tools_cap", async () => {
     const c = realClient();
-    await signInWithCaps(c, "ada", "app-undo-esc", UNDO_CAPS);
+    await signInWithCaps(c, "test", "app-undo-esc", UNDO_CAPS);
     await putDoc(c, "d1", "v1");
 
     // Re-sign the SAME actor+workspace without the doc-write cap: their own step is now un-undoable.
     const weak = UNDO_CAPS.filter(
       (x) => x !== "mcp:assets.put_doc:call" && x !== "store:doc/*:write",
     );
-    await signInWithCaps(c, "ada", "app-undo-esc", weak);
+    await signInWithCaps(c, "test", "app-undo-esc", weak);
 
     const denied = await c.invoke("undo").catch((e: unknown) => e);
     expect(denied).toBeInstanceOf(InvokeError);
@@ -128,12 +128,12 @@ describe("the undo journal through the app seam", () => {
   // MANDATORY workspace isolation (testing §2.2): the journal never crosses the hard wall.
   it("walls_the_journal_per_workspace", async () => {
     const a = realClient();
-    await signInWithCaps(a, "ada", "app-undo-ws-a", UNDO_CAPS);
+    await signInWithCaps(a, "test", "app-undo-ws-a", UNDO_CAPS);
     await putDoc(a, "d1", "v1");
 
     // A different workspace — same node, same actor name — sees nothing of ws-A's stack.
     const b = realClient();
-    await signInWithCaps(b, "ada", "app-undo-ws-b", UNDO_CAPS);
+    await signInWithCaps(b, "test", "app-undo-ws-b", UNDO_CAPS);
     const history = await b.invoke<UndoHistory>("undo_history");
     expect(history.items).toHaveLength(0);
 

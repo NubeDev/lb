@@ -32,7 +32,7 @@ capability-gated; denials are opaque.
 
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
-  -H 'content-type: application/json' -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -H 'content-type: application/json' -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Capabilities — one per verb: `mcp:rules.run:call`, `rules.save`, `rules.get`, `rules.list`,
@@ -81,7 +81,7 @@ materializes only on `collect`/a `Col` reduction/`return`), so chaining never co
 > **External-source examples need a registered datasource first.** The `demo-buildings` source used
 > below is the Docker-free SQLite building dataset — seed + register it in one command against a
 > running node: `make dev` then `make seed-demo-sqlite` (generates `.lazybones/data/demo/buildings.db`
-> and `datasource.add {kind:"sqlite", …}` in `acme`). See
+> and `datasource.add {kind:"sqlite", …}` in `nube`). See
 > [`../../testing/datasources/README.md`](../../testing/datasources/README.md) Step 0. Until then a
 > rule that reads `demo-buildings` is denied at the `source(...)` seam — the source doesn't exist yet.
 

@@ -30,10 +30,10 @@ make seed-demo-energy    # or: bash docs/testing/inbox-outbox/seed-demo-energy.s
 ```
 
 Idempotent — every write is a stable-id upsert, so re-running replaces the same rows, never dupes.
-Logs in as `user:ada`/`acme` (an admin — holds the author caps `inbox.record` / `outbox.enqueue` /
+Logs in as `user:test`/`nube` (an admin — holds the author caps `inbox.record` / `outbox.enqueue` /
 `inbox.resolve`; a bare `viewer` deliberately does not).
 
-## What it seeds (workspace `acme`)
+## What it seeds (workspace `nube`)
 
 **Inbox** — channel `energy-ops`, 7 items ordered by logical `ts` (oldest→newest):
 
@@ -67,7 +67,7 @@ exactly what you want to *show*: durable, must-deliver, not-yet-delivered intent
 ```bash
 BASE=http://127.0.0.1:8080
 TOKEN=$(curl -fsS -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 
 # inbox items, oldest→newest
 curl -fsS -X POST $BASE/mcp/call -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
@@ -85,8 +85,8 @@ effects show up in `outbox.status.pending` with their payloads intact.
 
 - `ts` is a **logical** timestamp (monotone per channel — no wall-clock in core, testing §3). The
   demo uses small increasing integers for deterministic ordering; the channel view sorts on it.
-- **Workspace-scoped:** everything lands in `acme`. Seed a second workspace by passing it as the 3rd
+- **Workspace-scoped:** everything lands in `nube`. Seed a second workspace by passing it as the 3rd
   arg (`… seed-demo-energy.sh $BASE user:bob globex`) — a `globex` `inbox.list` never returns
-  `acme`'s items (the workspace wall).
-- The `author` of each item is forced to the caller's principal (`user:ada`), never the `--arg`
+  `nube`'s items (the workspace wall).
+- The `author` of each item is forced to the caller's principal (`user:test`), never the `--arg`
   input — you can't spoof it (see `tool_call.rs`).

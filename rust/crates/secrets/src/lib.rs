@@ -362,13 +362,13 @@ mod tests {
     async fn set_then_get_roundtrips_with_grant() {
         let store = Store::memory().await.unwrap();
         let p = user(
-            "acme",
+            "nube",
             &["secret:federation/*:write", "secret:federation/*:get"],
         );
-        set(&store, &p, "acme", "federation/tsdb", "postgres://x")
+        set(&store, &p, "nube", "federation/tsdb", "postgres://x")
             .await
             .unwrap();
-        let v = get(&store, &p, "acme", "federation/tsdb").await.unwrap();
+        let v = get(&store, &p, "nube", "federation/tsdb").await.unwrap();
         assert_eq!(v, "postgres://x");
     }
 
@@ -377,13 +377,13 @@ mod tests {
     #[tokio::test]
     async fn get_denied_without_get_cap() {
         let store = Store::memory().await.unwrap();
-        let setter = user("acme", &["secret:federation/*:write"]);
-        set(&store, &setter, "acme", "federation/tsdb", "postgres://x")
+        let setter = user("nube", &["secret:federation/*:write"]);
+        set(&store, &setter, "nube", "federation/tsdb", "postgres://x")
             .await
             .unwrap();
         // Different path grant — no :get on federation/*.
-        let reader = user("acme", &["secret:other/*:get"]);
-        let err = get(&store, &reader, "acme", "federation/tsdb")
+        let reader = user("nube", &["secret:other/*:get"]);
+        let err = get(&store, &reader, "nube", "federation/tsdb")
             .await
             .unwrap_err();
         assert!(matches!(err, SecretsError::Denied));
@@ -392,8 +392,8 @@ mod tests {
     #[tokio::test]
     async fn set_denied_without_write_cap() {
         let store = Store::memory().await.unwrap();
-        let p = user("acme", &["secret:federation/*:get"]);
-        let err = set(&store, &p, "acme", "federation/tsdb", "v")
+        let p = user("nube", &["secret:federation/*:get"]);
+        let err = set(&store, &p, "nube", "federation/tsdb", "v")
             .await
             .unwrap_err();
         assert!(matches!(err, SecretsError::Denied));
@@ -406,15 +406,15 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let mqtt = ext(
             "mqtt",
-            "acme",
+            "nube",
             &["secret:ext/mqtt/*:write", "secret:ext/mqtt/*:get"],
         );
-        set(&store, &mqtt, "acme", "ext/mqtt/broker-pw", "s3cr3t")
+        set(&store, &mqtt, "nube", "ext/mqtt/broker-pw", "s3cr3t")
             .await
             .unwrap();
         // A reporting extension holds the literal path grant but is NOT the owner.
-        let reporting = ext("reporting", "acme", &["secret:ext/mqtt/broker-pw:get"]);
-        let err = get(&store, &reporting, "acme", "ext/mqtt/broker-pw")
+        let reporting = ext("reporting", "nube", &["secret:ext/mqtt/broker-pw:get"]);
+        let err = get(&store, &reporting, "nube", "ext/mqtt/broker-pw")
             .await
             .unwrap_err();
         assert!(
@@ -428,15 +428,15 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let mqtt = ext(
             "mqtt",
-            "acme",
+            "nube",
             &["secret:ext/mqtt/*:write", "secret:ext/mqtt/*:get"],
         );
-        set(&store, &mqtt, "acme", "ext/mqtt/broker-pw", "s3cr3t")
+        set(&store, &mqtt, "nube", "ext/mqtt/broker-pw", "s3cr3t")
             .await
             .unwrap();
         // An admin holding the broad secret:**:get grant — still denied the Private secret.
-        let admin = principal_with("user:admin", "acme", &["secret:**:get", "secret:**:write"]);
-        let err = get(&store, &admin, "acme", "ext/mqtt/broker-pw")
+        let admin = principal_with("user:admin", "nube", &["secret:**:get", "secret:**:write"]);
+        let err = get(&store, &admin, "nube", "ext/mqtt/broker-pw")
             .await
             .unwrap_err();
         assert!(
@@ -452,21 +452,21 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let mqtt = ext(
             "mqtt",
-            "acme",
+            "nube",
             &[
                 "secret:ext/mqtt/*:write",
                 "secret:ext/mqtt/*:get",
                 "secret:**:write",
             ],
         );
-        set(&store, &mqtt, "acme", "ext/mqtt/weather-key", "k")
+        set(&store, &mqtt, "nube", "ext/mqtt/weather-key", "k")
             .await
             .unwrap();
-        let reporting = ext("reporting", "acme", &["secret:ext/mqtt/weather-key:get"]);
+        let reporting = ext("reporting", "nube", &["secret:ext/mqtt/weather-key:get"]);
 
         // Private by default → sibling denied.
         assert!(matches!(
-            get(&store, &reporting, "acme", "ext/mqtt/weather-key")
+            get(&store, &reporting, "nube", "ext/mqtt/weather-key")
                 .await
                 .unwrap_err(),
             SecretsError::Denied
@@ -476,14 +476,14 @@ mod tests {
         set_visibility(
             &store,
             &mqtt,
-            "acme",
+            "nube",
             "ext/mqtt/weather-key",
             Visibility::Workspace,
         )
         .await
         .unwrap();
         assert_eq!(
-            get(&store, &reporting, "acme", "ext/mqtt/weather-key")
+            get(&store, &reporting, "nube", "ext/mqtt/weather-key")
                 .await
                 .unwrap(),
             "k"
@@ -493,14 +493,14 @@ mod tests {
         set_visibility(
             &store,
             &mqtt,
-            "acme",
+            "nube",
             "ext/mqtt/weather-key",
             Visibility::Private,
         )
         .await
         .unwrap();
         assert!(matches!(
-            get(&store, &reporting, "acme", "ext/mqtt/weather-key")
+            get(&store, &reporting, "nube", "ext/mqtt/weather-key")
                 .await
                 .unwrap_err(),
             SecretsError::Denied
@@ -512,18 +512,18 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let mqtt = ext(
             "mqtt",
-            "acme",
+            "nube",
             &["secret:ext/mqtt/*:write", "secret:ext/mqtt/*:get"],
         );
-        set(&store, &mqtt, "acme", "ext/mqtt/broker-pw", "s3cr3t")
+        set(&store, &mqtt, "nube", "ext/mqtt/broker-pw", "s3cr3t")
             .await
             .unwrap();
         // Sibling holds the write cap on the path but is not the owner.
-        let reporting = ext("reporting", "acme", &["secret:ext/mqtt/broker-pw:write"]);
+        let reporting = ext("reporting", "nube", &["secret:ext/mqtt/broker-pw:write"]);
         let err = set_visibility(
             &store,
             &reporting,
-            "acme",
+            "nube",
             "ext/mqtt/broker-pw",
             Visibility::Workspace,
         )
@@ -537,44 +537,44 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let mqtt = ext(
             "mqtt",
-            "acme",
+            "nube",
             &["secret:ext/mqtt/*:write", "secret:ext/mqtt/*:get"],
         );
-        set(&store, &mqtt, "acme", "ext/mqtt/broker-pw", "s3cr3t")
+        set(&store, &mqtt, "nube", "ext/mqtt/broker-pw", "s3cr3t")
             .await
             .unwrap();
-        let reporting = ext("reporting", "acme", &["secret:ext/mqtt/broker-pw:write"]);
+        let reporting = ext("reporting", "nube", &["secret:ext/mqtt/broker-pw:write"]);
 
         // Non-owner overwrite denied.
         assert!(matches!(
-            set(&store, &reporting, "acme", "ext/mqtt/broker-pw", "x")
+            set(&store, &reporting, "nube", "ext/mqtt/broker-pw", "x")
                 .await
                 .unwrap_err(),
             SecretsError::Denied
         ));
         // Non-owner delete denied.
         assert!(matches!(
-            delete(&store, &reporting, "acme", "ext/mqtt/broker-pw")
+            delete(&store, &reporting, "nube", "ext/mqtt/broker-pw")
                 .await
                 .unwrap_err(),
             SecretsError::Denied
         ));
 
         // Owner may overwrite + delete.
-        set(&store, &mqtt, "acme", "ext/mqtt/broker-pw", "new")
+        set(&store, &mqtt, "nube", "ext/mqtt/broker-pw", "new")
             .await
             .unwrap();
         assert_eq!(
-            get(&store, &mqtt, "acme", "ext/mqtt/broker-pw")
+            get(&store, &mqtt, "nube", "ext/mqtt/broker-pw")
                 .await
                 .unwrap(),
             "new"
         );
-        delete(&store, &mqtt, "acme", "ext/mqtt/broker-pw")
+        delete(&store, &mqtt, "nube", "ext/mqtt/broker-pw")
             .await
             .unwrap();
         assert!(matches!(
-            get(&store, &mqtt, "acme", "ext/mqtt/broker-pw")
+            get(&store, &mqtt, "nube", "ext/mqtt/broker-pw")
                 .await
                 .unwrap_err(),
             SecretsError::NotFound
@@ -592,13 +592,13 @@ mod tests {
         // The stale record: owned by the boot bootstrap principal.
         let bootstrap = ext(
             "federation-bootstrap",
-            "acme",
+            "nube",
             &["secret:federation/*:write", "secret:federation/*:get"],
         );
         set(
             &store,
             &bootstrap,
-            "acme",
+            "nube",
             "federation/tsdb",
             "postgres://old",
         )
@@ -608,11 +608,11 @@ mod tests {
         // The canonical mediator (a DIFFERENT sub) cannot overwrite via the owner-walled `set`...
         let fed = ext(
             "federation",
-            "acme",
+            "nube",
             &["secret:federation/*:write", "secret:federation/*:get"],
         );
         assert!(matches!(
-            set(&store, &fed, "acme", "federation/tsdb", "postgres://new")
+            set(&store, &fed, "nube", "federation/tsdb", "postgres://new")
                 .await
                 .unwrap_err(),
             SecretsError::Denied
@@ -622,7 +622,7 @@ mod tests {
         reclaim(
             &store,
             &fed,
-            "acme",
+            "nube",
             "federation/tsdb",
             "postgres://new",
             Visibility::Workspace,
@@ -630,14 +630,14 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            get(&store, &fed, "acme", "federation/tsdb").await.unwrap(),
+            get(&store, &fed, "nube", "federation/tsdb").await.unwrap(),
             "postgres://new"
         );
         // Now the mediator is the owner: it may overwrite and delete without denial.
-        set(&store, &fed, "acme", "federation/tsdb", "postgres://newer")
+        set(&store, &fed, "nube", "federation/tsdb", "postgres://newer")
             .await
             .unwrap();
-        delete(&store, &fed, "acme", "federation/tsdb")
+        delete(&store, &fed, "nube", "federation/tsdb")
             .await
             .unwrap();
     }
@@ -646,12 +646,12 @@ mod tests {
     #[tokio::test]
     async fn reclaim_still_requires_the_write_cap() {
         let store = Store::memory().await.unwrap();
-        let no_write = ext("federation", "acme", &["secret:federation/*:get"]);
+        let no_write = ext("federation", "nube", &["secret:federation/*:get"]);
         assert!(matches!(
             reclaim(
                 &store,
                 &no_write,
-                "acme",
+                "nube",
                 "federation/tsdb",
                 "x",
                 Visibility::Workspace,
@@ -669,10 +669,10 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let a = ext(
             "mqtt",
-            "acme",
+            "nube",
             &["secret:ext/mqtt/*:write", "secret:ext/mqtt/*:get"],
         );
-        set(&store, &a, "acme", "ext/mqtt/broker-pw", "secret-a")
+        set(&store, &a, "nube", "ext/mqtt/broker-pw", "secret-a")
             .await
             .unwrap();
         // ws-B principal with the same caps — gate 1 refuses before resolve: ws-B's read cannot
@@ -695,7 +695,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            get(&store, &a, "acme", "ext/mqtt/broker-pw").await.unwrap(),
+            get(&store, &a, "nube", "ext/mqtt/broker-pw").await.unwrap(),
             "secret-a",
             "ws-B's write did NOT clobber ws-A's secret (the namespace wall)"
         );
@@ -708,7 +708,7 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let mqtt = ext(
             "mqtt",
-            "acme",
+            "nube",
             &[
                 "secret:ext/mqtt/*:write",
                 "secret:ext/mqtt/*:get",
@@ -716,11 +716,11 @@ mod tests {
             ],
         );
         let sensitive = "super-secret-value-leaked-via-list";
-        set(&store, &mqtt, "acme", "ext/mqtt/broker-pw", sensitive)
+        set(&store, &mqtt, "nube", "ext/mqtt/broker-pw", sensitive)
             .await
             .unwrap();
 
-        let metas = list(&store, &mqtt, "acme").await.unwrap();
+        let metas = list(&store, &mqtt, "nube").await.unwrap();
         let dumped = serde_json::to_string(&metas).unwrap();
         assert!(
             !dumped.contains(sensitive),
@@ -736,15 +736,15 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let mqtt = ext(
             "mqtt",
-            "acme",
+            "nube",
             &["secret:ext/mqtt/*:write", "secret:ext/mqtt/*:get"],
         );
         let sensitive = "the-real-password";
-        set(&store, &mqtt, "acme", "ext/mqtt/broker-pw", sensitive)
+        set(&store, &mqtt, "nube", "ext/mqtt/broker-pw", sensitive)
             .await
             .unwrap();
-        let reporting = ext("reporting", "acme", &["secret:ext/mqtt/broker-pw:get"]);
-        let err = get(&store, &reporting, "acme", "ext/mqtt/broker-pw")
+        let reporting = ext("reporting", "nube", &["secret:ext/mqtt/broker-pw:get"]);
+        let err = get(&store, &reporting, "nube", "ext/mqtt/broker-pw")
             .await
             .unwrap_err();
         assert!(!format!("{err}").contains(sensitive));
@@ -759,22 +759,22 @@ mod tests {
         // DIFFERENT ext principal, so it must read a Workspace secret.
         let admin = principal_with(
             "user:admin",
-            "acme",
+            "nube",
             &["secret:federation/*:write", "secret:**:write"],
         );
         set_with(
             &store,
             &admin,
-            "acme",
+            "nube",
             "federation/tsdb",
             "postgres://pool",
             Visibility::Workspace,
         )
         .await
         .unwrap();
-        let pool = ext("federation", "acme", &["secret:federation/tsdb:get"]);
+        let pool = ext("federation", "nube", &["secret:federation/tsdb:get"]);
         assert_eq!(
-            get(&store, &pool, "acme", "federation/tsdb").await.unwrap(),
+            get(&store, &pool, "nube", "federation/tsdb").await.unwrap(),
             "postgres://pool"
         );
     }

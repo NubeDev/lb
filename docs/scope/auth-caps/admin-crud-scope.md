@@ -159,7 +159,7 @@ mis-click.
 
 ## Example flow
 
-1. **Admin lists users** in `acme` (`user.list`) → `alice (active)`, `bob (active)`, `carol (active)`.
+1. **Admin lists users** in `nube` (`user.list`) → `alice (active)`, `bob (active)`, `carol (active)`.
 2. Admin **disables `bob`** (`user.disable`) → his record flips `active=false`. Bob attempts to **log in**
    → the login path refuses to mint (no session). Existing tokens expire within TTL.
 3. Admin **removes `bob` from `facilities`** (`members.remove`) → the `member` edge is gone; a doc shared
@@ -172,7 +172,7 @@ mis-click.
 6. Admin **hard-deletes `pilot`** (`workspace.delete --hard`, separate confirm + `mcp:workspace.delete:call`
    + the hard gate) → the namespace's data is destroyed; the directory tombstone remains so it can't
    resurrect via a stale sync.
-7. A **ws-B admin** attempts any of the above against `acme` ids → opaque deny / empty list. The wall holds
+7. A **ws-B admin** attempts any of the above against `nube` ids → opaque deny / empty list. The wall holds
    across every destructive verb.
 
 ## Testing plan

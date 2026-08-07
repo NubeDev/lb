@@ -56,7 +56,7 @@ async fn the_model_activates_a_granted_skill() {
     // completes.
     let ws = "skill-activate";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, SKILL_R, SKILL_W]);
+    let caller = principal("user:test", ws, &[INVOKE, SKILL_R, SKILL_W]);
 
     put_skill(
         &node.store,
@@ -116,7 +116,7 @@ async fn activation_survives_resume() {
     // activated skill is in the rehydrated `active_skills` (the transcript carries SkillActivated).
     let ws = "skill-resume";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, SKILL_R, SKILL_W]);
+    let caller = principal("user:test", ws, &[INVOKE, SKILL_R, SKILL_W]);
 
     put_skill(
         &node.store,
@@ -177,7 +177,7 @@ async fn activating_an_ungranted_skill_is_denied() {
     // activation is NEVER recorded, and no body enters context. The loop still completes.
     let ws = "skill-deny";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, SKILL_R, SKILL_W]);
+    let caller = principal("user:test", ws, &[INVOKE, SKILL_R, SKILL_W]);
 
     // Put the skill but do NOT grant it.
     put_skill(
@@ -236,7 +236,7 @@ async fn the_catalog_lists_only_granted_skills_without_the_body() {
     // with title + description ONLY (no body field on the entry to leak).
     let ws = "skill-catalog";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[SKILL_R, SKILL_W]);
+    let caller = principal("user:test", ws, &[SKILL_R, SKILL_W]);
 
     put_skill(
         &node.store,
@@ -285,10 +285,10 @@ async fn workspace_isolation_for_catalog_and_activation() {
 
     // ws-A: seed + grant a skill.
     let ws_a = "iso-ws-a";
-    let ada = principal("user:ada", ws_a, &[INVOKE, SKILL_R, SKILL_W]);
+    let test = principal("user:test", ws_a, &[INVOKE, SKILL_R, SKILL_W]);
     put_skill(
         &node.store,
-        &ada,
+        &test,
         ws_a,
         "a-only",
         "1",
@@ -298,7 +298,7 @@ async fn workspace_isolation_for_catalog_and_activation() {
     )
     .await
     .unwrap();
-    grant_skill(&node.store, &ada, ws_a, "a-only")
+    grant_skill(&node.store, &test, ws_a, "a-only")
         .await
         .unwrap();
 

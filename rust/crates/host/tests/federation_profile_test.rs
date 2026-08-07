@@ -99,7 +99,7 @@ fn seed_db(who: &str) -> String {
          CREATE TABLE wide (wide_text TEXT);
          INSERT INTO point VALUES (1,'Demand kW','Westend'),(2,'Zone Temp','Westend'),
                                   (3,'Occupied','Northside');
-         INSERT INTO login VALUES ('ada','hunter2'),('grace','trustno1');",
+         INSERT INTO login VALUES ('test','hunter2'),('grace','trustno1');",
     )
     .expect("seed schema");
     // Bands: point 1 spans ~100..260, point 2 spans ~18..24, point 3 spans 0..1.
@@ -199,7 +199,7 @@ fn column_of<'a>(table: &'a Value, name: &str) -> &'a Value {
 async fn profile_end_to_end_shape_bounds_and_idempotence() {
     let dir = federation_dir();
     let db = seed_db("e2e");
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -358,7 +358,7 @@ async fn profile_end_to_end_shape_bounds_and_idempotence() {
 async fn profile_bounds_truncate_a_wide_source() {
     let dir = federation_dir();
     let db = seed_many_tables("bounds");
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -401,7 +401,7 @@ async fn profile_bounds_truncate_a_wide_source() {
 async fn profile_denies_and_isolates() {
     let dir = federation_dir();
     let db = seed_db("deny");
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -499,7 +499,7 @@ async fn profile_denies_and_isolates() {
 async fn profile_reactor_enqueues_stale_once_and_isolates_workspaces() {
     let dir = federation_dir();
     let db = seed_db("reactor");
-    let ws = "acme";
+    let ws = "nube";
     let ws_b = "other";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);

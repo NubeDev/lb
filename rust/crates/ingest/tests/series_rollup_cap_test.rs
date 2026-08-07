@@ -84,10 +84,10 @@ fn policy(max_rows: u64) -> Policy {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_dead_clock_cannot_grow_a_capped_tier() {
     let store = Store::memory().await.unwrap();
-    seed(&store, "acme", "m.s", 50).await;
-    set_policy(&store, "acme", &policy(5)).await.unwrap();
+    seed(&store, "nube", "m.s", 50).await;
+    set_policy(&store, "nube", &policy(5)).await.unwrap();
 
-    let pass = run_gc(&store, "acme", 0).await.unwrap();
+    let pass = run_gc(&store, "nube", 0).await.unwrap();
 
     assert_eq!(pass.capped_rollup, 45, "the 45 oldest rows are evicted");
     assert_eq!(
@@ -96,7 +96,7 @@ async fn a_dead_clock_cannot_grow_a_capped_tier() {
     );
 
     // WHICH rows survived, not merely how many: the NEWEST 5 by the rows' own `t` axis.
-    let left = read_rollups(&store, "acme", "m.s", 0, 1_000_000_000)
+    let left = read_rollups(&store, "nube", "m.s", 0, 1_000_000_000)
         .await
         .unwrap();
     let mut ts: Vec<u64> = left.iter().map(|r| r.t).collect();
@@ -114,13 +114,13 @@ async fn a_dead_clock_cannot_grow_a_capped_tier() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_capped_pass_is_observable_on_the_persisted_record() {
     let store = Store::memory().await.unwrap();
-    seed(&store, "acme", "m.s", 50).await;
-    set_policy(&store, "acme", &policy(5)).await.unwrap();
+    seed(&store, "nube", "m.s", 50).await;
+    set_policy(&store, "nube", &policy(5)).await.unwrap();
 
-    let pass = run_gc(&store, "acme", 0).await.unwrap();
+    let pass = run_gc(&store, "nube", 0).await.unwrap();
     assert_eq!(pass.capped_rollup, 45, "the pass itself counted the cap");
 
-    let rec = last_pass(&store, "acme")
+    let rec = last_pass(&store, "nube")
         .await
         .unwrap()
         .expect("run_gc records a pass");
@@ -135,13 +135,13 @@ async fn a_capped_pass_is_observable_on_the_persisted_record() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn zero_keeps_the_tier_unbounded() {
     let store = Store::memory().await.unwrap();
-    seed(&store, "acme", "m.s", 50).await;
-    set_policy(&store, "acme", &policy(0)).await.unwrap();
+    seed(&store, "nube", "m.s", 50).await;
+    set_policy(&store, "nube", &policy(0)).await.unwrap();
 
-    let pass = run_gc(&store, "acme", 0).await.unwrap();
+    let pass = run_gc(&store, "nube", 0).await.unwrap();
 
     assert_eq!(pass.capped_rollup, 0);
-    let left = read_rollups(&store, "acme", "m.s", 0, 1_000_000_000)
+    let left = read_rollups(&store, "nube", "m.s", 0, 1_000_000_000)
         .await
         .unwrap();
     assert_eq!(left.len(), 50, "keep-forever is honoured as written");
@@ -151,27 +151,27 @@ async fn zero_keeps_the_tier_unbounded() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_under_cap_tier_is_untouched() {
     let store = Store::memory().await.unwrap();
-    seed(&store, "acme", "m.s", 5).await;
-    set_policy(&store, "acme", &policy(5)).await.unwrap();
+    seed(&store, "nube", "m.s", 5).await;
+    set_policy(&store, "nube", &policy(5)).await.unwrap();
 
-    let pass = run_gc(&store, "acme", 0).await.unwrap();
+    let pass = run_gc(&store, "nube", 0).await.unwrap();
 
     assert_eq!(pass.capped_rollup, 0);
-    let left = read_rollups(&store, "acme", "m.s", 0, 1_000_000_000)
+    let left = read_rollups(&store, "nube", "m.s", 0, 1_000_000_000)
         .await
         .unwrap();
     assert_eq!(left.len(), 5);
 }
 
-/// The workspace wall: capping `acme` must not touch the same series name in `globex`.
+/// The workspace wall: capping `nube` must not touch the same series name in `globex`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_cap_stops_at_the_workspace_wall() {
     let store = Store::memory().await.unwrap();
-    seed(&store, "acme", "m.s", 50).await;
+    seed(&store, "nube", "m.s", 50).await;
     seed(&store, "globex", "m.s", 50).await;
-    set_policy(&store, "acme", &policy(5)).await.unwrap();
+    set_policy(&store, "nube", &policy(5)).await.unwrap();
 
-    run_gc(&store, "acme", 0).await.unwrap();
+    run_gc(&store, "nube", 0).await.unwrap();
 
     let other = read_rollups(&store, "globex", "m.s", 0, 1_000_000_000)
         .await

@@ -80,7 +80,7 @@ pub fn producer_leaf(producer: &str) -> &str {
 
 /// The extension id a producer is rooted at, or `None` when it is not an extension's stream.
 ///
-/// A producer rooted at `user:ada` or an api key has no extension behind it to ask anything of, and
+/// A producer rooted at `user:test` or an api key has no extension behind it to ask anything of, and
 /// that is a first-class answer, not a failure — most series in a workspace are written by humans,
 /// flows, or webhooks. Rule 10: the id is READ OUT of the principal grammar, never matched against a
 /// list of known extensions.
@@ -161,8 +161,8 @@ mod tests {
         for (sub, declared) in [
             ("ext:modbus", "modbus.sim-net@1784031000"),
             ("ext:modbus", ""),
-            ("user:ada", "gw-alpha"),
-            ("user:ada", ""),
+            ("user:test", "gw-alpha"),
+            ("user:test", ""),
             ("apikey:gw-1", "shed-3"),
         ] {
             let stored = root_producer(sub, declared);
@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(producer_ext_id("ext:modbus"), Some("modbus"));
         assert_eq!(producer_ext_id("ext:weather"), Some("weather"));
         // Humans, agents and api keys write series too — "not an extension" is a first-class answer.
-        assert_eq!(producer_ext_id("user:ada/gw-alpha"), None);
+        assert_eq!(producer_ext_id("user:test/gw-alpha"), None);
         assert_eq!(producer_ext_id("agent:reporter"), None);
         assert_eq!(producer_ext_id("apikey:gw-1/shed-3"), None);
         // The prefix ANCHORS — a principal that merely contains "ext:" is not an extension.

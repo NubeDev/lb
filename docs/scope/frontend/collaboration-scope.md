@@ -24,7 +24,7 @@ verb is workspace- and principal-scoped).
   plumbed but unused) and is the groundwork for token-on-the-bus. Minimal but **real** — a verifiable
   signed token, not a hardcoded string.
 - **Workspace setup** — list / select / (create) the workspaces a principal may see, bound to the
-  session. No more hardcoded `acme`.
+  session. No more hardcoded `nube`.
 - **Channels as first-class** — a thin **channel registry** (list + create) so the UI shows a channel
   list / switcher / create, instead of one hardcoded `general`. Posting still works as today.
 - **Users / teams / members** — surface the existing S4 membership backend: list members, see teams, add
@@ -113,8 +113,8 @@ S6 approval gate becomes a real UI action.
 
 ## Example flow
 
-1. **Alice logs in** (workspace `acme`) → the gateway issues a signed token; the UI stores it.
-2. Alice sees the **workspace** `acme`, its **channel list** (`#general`, `#hvac-alerts`), the **member
+1. **Alice logs in** (workspace `nube`) → the gateway issues a signed token; the UI stores it.
+2. Alice sees the **workspace** `nube`, its **channel list** (`#general`, `#hvac-alerts`), the **member
    list**, and **who's online** — `Bob` shows present (rendered presence).
 3. Alice **posts** in `#general`; **Bob's** session sees it live over SSE (two real principals, real
    messaging between people).
@@ -122,7 +122,7 @@ S6 approval gate becomes a real UI action.
    `lb-inbox`, not a fake. She **approves** it in `features/inbox/`; the resolution persists.
 5. The approval drives the **outbox**; Alice sees the effect move **pending → delivered** in the
    read-only **outbox status** view.
-6. A **ws-B user (Carol)** logs in and sees **none** of `acme`'s channels/inbox/members — the wall,
+6. A **ws-B user (Carol)** logs in and sees **none** of `nube`'s channels/inbox/members — the wall,
    demonstrated with real identities.
 
 ## Testing plan

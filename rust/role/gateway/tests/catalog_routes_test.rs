@@ -31,7 +31,7 @@ fn put_req(uri: &str, body: Value) -> Request<Body> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn set_catalog_then_render_uses_override() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:adm", "acme", &[SET_CATALOG, RENDER, CATALOG]);
+    let admin = token(&key, "user:adm", "nube", &[SET_CATALOG, RENDER, CATALOG]);
 
     // PUT /message/catalog (admin) -> 204
     let resp = router(gw.clone())
@@ -51,7 +51,7 @@ async fn set_catalog_then_render_uses_override() {
         .oneshot(bearer(
             json_post(
                 "/message/render",
-                json!({ "key": "notify.welcome", "args": { "name": "Ada" } }),
+                json!({ "key": "notify.welcome", "args": { "name": "Test" } }),
             ),
             &admin,
         ))
@@ -59,7 +59,7 @@ async fn set_catalog_then_render_uses_override() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: Value = json_body(resp).await;
-    assert_eq!(body["text"], "Hey Ada!");
+    assert_eq!(body["text"], "Hey Test!");
     assert_eq!(body["locale_used"], "en");
 
     // POST /prefs/catalog returns the merged map with the override.
@@ -79,12 +79,12 @@ async fn set_catalog_then_render_uses_override() {
 async fn render_for_another_recipient_needs_fanout_grant() {
     let (gw, key) = gateway().await;
     // Only the base render grant -> rendering for another recipient is a 403.
-    let tok = token(&key, "user:ada", "acme", &[RENDER]);
+    let tok = token(&key, "user:test", "nube", &[RENDER]);
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post(
                 "/message/render",
-                json!({ "key": "notify.welcome", "args": { "name": "Ada" }, "recipient": "user:bob" }),
+                json!({ "key": "notify.welcome", "args": { "name": "Test" }, "recipient": "user:bob" }),
             ),
             &tok,
         ))
@@ -96,7 +96,7 @@ async fn render_for_another_recipient_needs_fanout_grant() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn set_catalog_denied_without_admin_cap() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:bob", "acme", &[RENDER, CATALOG]); // no SET_CATALOG
+    let tok = token(&key, "user:bob", "nube", &[RENDER, CATALOG]); // no SET_CATALOG
     let resp = router(gw.clone())
         .oneshot(bearer(
             put_req(
@@ -113,7 +113,7 @@ async fn set_catalog_denied_without_admin_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn render_denied_without_any_grant() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:eve", "acme", &[]);
+    let tok = token(&key, "user:eve", "nube", &[]);
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post(
@@ -130,7 +130,7 @@ async fn render_denied_without_any_grant() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn out_of_subset_override_is_bad_request_not_denied() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:adm", "acme", &[SET_CATALOG]);
+    let tok = token(&key, "user:adm", "nube", &[SET_CATALOG]);
     let resp = router(gw.clone())
         .oneshot(bearer(
             put_req(
@@ -192,10 +192,10 @@ async fn fanout_two_members_two_renders_over_gateway() {
     let (gw, key) = gateway().await;
     let ws = "team";
     // Seed two members' prefs via the real gateway PUT /prefs (real write path, no seed shortcut).
-    let ada = token(&key, "user:ada", ws, &[SET_PREFS]);
+    let test = token(&key, "user:test", ws, &[SET_PREFS]);
     let bob = token(&key, "user:bob", ws, &[SET_PREFS]);
     router(gw.clone())
-        .oneshot(bearer(put_req("/prefs", json!({ "language": "es", "timezone": "Europe/Madrid", "date_style": "eu", "number_format": "comma_dot" })), &ada))
+        .oneshot(bearer(put_req("/prefs", json!({ "language": "es", "timezone": "Europe/Madrid", "date_style": "eu", "number_format": "comma_dot" })), &test))
         .await
         .unwrap();
     router(gw.clone())
@@ -209,7 +209,7 @@ async fn fanout_two_members_two_renders_over_gateway() {
 
     let resp = router(gw.clone())
         .oneshot(bearer(
-            json_post("/message/render", render_for("user:ada")),
+            json_post("/message/render", render_for("user:test")),
             &producer,
         ))
         .await

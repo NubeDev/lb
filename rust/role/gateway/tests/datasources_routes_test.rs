@@ -40,7 +40,7 @@ fn add_body() -> Value {
     json!({
         "name": "timescale",
         "kind": "postgres",
-        "endpoint": "tsdb.acme:5432",
+        "endpoint": "tsdb.nube:5432",
         "dsn": DSN,
     })
 }
@@ -53,7 +53,7 @@ fn add_body() -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn add_without_a_dsn_is_accepted_over_the_gateway() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let body = json!({
         "name": "buildings",
@@ -95,7 +95,7 @@ async fn add_without_a_dsn_is_accepted_over_the_gateway() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn add_then_list_round_trip_over_the_gateway() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     // add → ok
     let resp = router(gw.clone())
@@ -118,7 +118,7 @@ async fn add_then_list_round_trip_over_the_gateway() {
     let s = &sources[0];
     assert_eq!(s["name"], "timescale");
     assert_eq!(s["kind"], "postgres");
-    assert_eq!(s["endpoint"], "tsdb.acme:5432");
+    assert_eq!(s["endpoint"], "tsdb.nube:5432");
     assert!(s.get("secret_ref").is_some(), "list shows the ref: {s}");
 
     // REDACTION: the serialized list body never contains the submitted DSN (or its password).
@@ -134,7 +134,7 @@ async fn add_then_list_round_trip_over_the_gateway() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn remove_drops_the_source() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     router(gw.clone())
         .oneshot(bearer(json_post("/datasources", add_body()), &tok))
@@ -170,7 +170,7 @@ async fn each_verb_is_denied_without_its_cap() {
     for (missing, verb, _) in cases {
         let (gw, key) = gateway().await;
         let caps: Vec<&str> = CAPS.iter().copied().filter(|c| c != missing).collect();
-        let tok = token(&key, "user:ada", "acme", &caps);
+        let tok = token(&key, "user:test", "nube", &caps);
 
         let req = match *verb {
             "add" => bearer(json_post("/datasources", add_body()), &tok),
@@ -193,11 +193,11 @@ async fn two_sessions_are_workspace_isolated() {
     // One node, two sessions in different workspaces — ws-B sees none of ws-A's datasources.
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
-    let ada = token(&key, "user:ada", "ws-a", CAPS);
+    let test = token(&key, "user:test", "ws-a", CAPS);
     let ben = token(&key, "user:ben", "ws-b", CAPS);
 
     router(gateway_on(node.clone(), &key))
-        .oneshot(bearer(json_post("/datasources", add_body()), &ada))
+        .oneshot(bearer(json_post("/datasources", add_body()), &test))
         .await
         .unwrap();
 
@@ -220,7 +220,7 @@ async fn test_probe_without_a_sidecar_is_an_honest_red() {
     // fabricated green. The green path is proven against a spawned Postgres in federation_test.rs; here
     // we assert the route fails honestly (a non-200 → the page renders RED). It is never 200/ok.
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     router(gw.clone())
         .oneshot(bearer(json_post("/datasources", add_body()), &tok))

@@ -104,7 +104,7 @@ fn marks_derive_from_the_budget_when_set() {
 async fn status_reports_budget_and_headroom_against_a_real_store() {
     let path = temp_path("status");
     let store = seeded_store(&path).await;
-    let p = principal("user:ada", "bud-ws", &[STATUS]);
+    let p = principal("user:test", "bud-ws", &[STATUS]);
 
     // Unbudgeted — byte-for-byte today's report.
     let plain = store_status_run(&store, &p, "bud-ws").expect("status with cap");

@@ -203,13 +203,13 @@ spine flags). Two disciplines, both reused, never new machinery:
 
 ## Example flow
 
-A 4-node flow `A → B → C → D` (linear, one Tool node each), run by `acme`.
+A 4-node flow `A → B → C → D` (linear, one Tool node each), run by `nube`.
 
 1. **Run.** `flows.run {id, params}` validates the pinned graph (it validated at save —
-   re-checked cheaply), pins `flow_version = 7` into `flow_run:acme:R1` (Pending), seeds the
-   in-degree-0 frontier (`A`), and **returns `{run_id: R1}` immediately**. `flow_run:acme:R1` is
+   re-checked cheaply), pins `flow_version = 7` into `flow_run:nube:R1` (Pending), seeds the
+   in-degree-0 frontier (`A`), and **returns `{run_id: R1}` immediately**. `flow_run:nube:R1` is
    the coordinator; the driver enqueues a `flow-step` job for `A`.
-2. **A, B run.** `A`'s job claims `A` (CAS `Enqueued→Running` on `flow_step_output:acme:R1:A`),
+2. **A, B run.** `A`'s job claims `A` (CAS `Enqueued→Running` on `flow_step_output:nube:R1:A`),
    runs its Tool (gated under `caller ∩ grant`), records `Ok` + output, `on_step_done` releases
    `B` and the driver enqueues `B`'s job. `B` runs the same way. `C` is the next frontier. The
    canvas (over `flows.watch` SSE) shows `A`,`B` green, `C` enqueued.

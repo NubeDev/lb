@@ -34,9 +34,9 @@ async fn a_provisioned_session_token_authenticates_subsequent_requests() {
     // was deleted in the pre-production legacy sweep — `/auth/login`'s own end-to-end mint is pinned
     // in `email_login_test.rs`, so this test keeps its focus on the token→route spine.)
     let (gw, _key) = gateway().await;
-    let tok = common::bootstrap::provision_admin(&gw, "user:ada", "acme").await;
+    let tok = common::bootstrap::provision_admin(&gw, "user:test", "nube").await;
 
-    let item = Item::new("m1", "general", "user:ada", "hello with a real token", 1);
+    let item = Item::new("m1", "general", "user:test", "hello with a real token", 1);
     let resp = router(gw)
         .oneshot(bearer(post_req("general", &item), &tok))
         .await
@@ -49,7 +49,7 @@ async fn a_provisioned_session_token_authenticates_subsequent_requests() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_request_without_a_token_is_401() {
     let (gw, _key) = gateway().await;
-    let item = Item::new("m1", "general", "user:ada", "no token", 1);
+    let item = Item::new("m1", "general", "user:test", "no token", 1);
     let resp = router(gw)
         .oneshot(post_req("general", &item))
         .await
@@ -62,7 +62,7 @@ async fn a_forged_token_is_rejected() {
     // A token signed by a DIFFERENT key than the gateway holds → verify fails → 401.
     let (gw, _key) = gateway().await;
     let attacker = SigningKey::generate();
-    let forged = token(&attacker, "user:mallory", "acme", &["bus:chan/general:pub"]);
+    let forged = token(&attacker, "user:mallory", "nube", &["bus:chan/general:pub"]);
     let item = Item::new("m1", "general", "user:mallory", "forged", 1);
     let resp = router(gw)
         .oneshot(bearer(post_req("general", &item), &forged))
@@ -80,8 +80,8 @@ async fn an_expired_token_is_rejected() {
     let (gw, key) = gateway().await;
     let expired = {
         let claims = Claims {
-            sub: "user:ada".into(),
-            ws: "acme".into(),
+            sub: "user:test".into(),
+            ws: "nube".into(),
             role: Role::Member,
             caps: vec!["bus:chan/general:pub".into()],
             iat: 0,
@@ -91,7 +91,7 @@ async fn an_expired_token_is_rejected() {
         };
         mint(&key, &claims)
     };
-    let item = Item::new("m1", "general", "user:ada", "stale", 1);
+    let item = Item::new("m1", "general", "user:test", "stale", 1);
     let resp = router(gw)
         .oneshot(bearer(post_req("general", &item), &expired))
         .await
@@ -124,7 +124,7 @@ async fn the_workspace_comes_from_the_token_not_the_request() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let tok_a = token(&key, "user:ada", "ws-a", &["bus:chan/general:sub"]);
+    let tok_a = token(&key, "user:test", "ws-a", &["bus:chan/general:sub"]);
     let resp = router(gateway_on(node, &key))
         .oneshot(bearer(get_req("/channels/general/messages"), &tok_a))
         .await
@@ -141,8 +141,8 @@ async fn the_workspace_comes_from_the_token_not_the_request() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_post_without_the_grant_is_403() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &["bus:chan/general:sub"]); // sub only, no pub
-    let item = Item::new("m1", "general", "user:ada", "blocked", 1);
+    let tok = token(&key, "user:test", "nube", &["bus:chan/general:sub"]); // sub only, no pub
+    let item = Item::new("m1", "general", "user:test", "blocked", 1);
     let resp = router(gw)
         .oneshot(bearer(post_req("general", &item), &tok))
         .await
@@ -157,7 +157,7 @@ async fn a_post_without_the_grant_is_403() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn inbox_list_without_the_grant_is_403() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &["bus:chan/general:sub"]); // no inbox.list
+    let tok = token(&key, "user:test", "nube", &["bus:chan/general:sub"]); // no inbox.list
     let resp = router(gw)
         .oneshot(bearer(get_req("/inbox/triage"), &tok))
         .await
@@ -172,7 +172,7 @@ async fn inbox_list_without_the_grant_is_403() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn members_add_without_the_grant_is_403() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &["mcp:members.list:call"]); // list but not add
+    let tok = token(&key, "user:test", "nube", &["mcp:members.list:call"]); // list but not add
     let resp = router(gw)
         .oneshot(bearer(
             json_post(
@@ -206,11 +206,11 @@ async fn a_ws_b_token_cannot_read_ws_a_channels_inbox_or_members() {
         "mcp:members.add:call",
         "mcp:inbox.list:call",
     ];
-    let tok_a = token(&key, "user:ada", "ws-a", caps);
+    let tok_a = token(&key, "user:test", "ws-a", caps);
     let tok_b = token(&key, "user:bob", "ws-b", caps);
 
     // ws-A seeds: a channel message (also registers the channel) + a team member.
-    let item = Item::new("m1", "general", "user:ada", "ws-a secret", 1);
+    let item = Item::new("m1", "general", "user:test", "ws-a secret", 1);
     assert_eq!(
         router(gateway_on(node.clone(), &key))
             .oneshot(bearer(post_req("general", &item), &tok_a))
@@ -224,7 +224,7 @@ async fn a_ws_b_token_cannot_read_ws_a_channels_inbox_or_members() {
             .oneshot(bearer(
                 json_post(
                     "/teams/eng/members",
-                    serde_json::json!({ "user": "user:ada" })
+                    serde_json::json!({ "user": "user:test" })
                 ),
                 &tok_a,
             ))

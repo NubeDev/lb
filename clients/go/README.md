@@ -32,7 +32,7 @@ client := lbclient.New("http://127.0.0.1:8080", os.Getenv("LB_KEY"))
 
 // or dev/admin script: log in to get a 12h session token
 client := lbclient.New("http://127.0.0.1:8080", "placeholder")
-c, reply, err := client.Login(ctx, "ada", "acme")
+c, reply, err := client.Login(ctx, "test", "nube")
 if err != nil { /* ... */ }
 client = c
 ```
@@ -73,7 +73,7 @@ POSTs to `/hooks/{ws}/{id}`. **Sign the exact bytes you POST.**
 body := []byte(`{"event":"furnace-on"}`)
 sig := lbclient.SignWebhook([]byte(sharedSecret), body)
 accepted, err := client.PostWebhook(
-    ctx, "acme", "wh_x",
+    ctx, "nube", "wh_x",
     map[string]string{"X-Signature": sig},
     body,
 )
@@ -97,9 +97,9 @@ if errors.As(err, &apiErr) && apiErr.IsDenied() {
 ```bash
 make cloud                              # terminal 1: boot 127.0.0.1:8080
 cd clients/go
-LB_URL=http://127.0.0.1:8080 LB_USER=ada LB_WORKSPACE=acme go run ./cmd/roundtrip
+LB_URL=http://127.0.0.1:8080 LB_USER=test LB_WORKSPACE=nube go run ./cmd/roundtrip
 # or with an API key:
-LB_KEY=lbk_acme.k7f3a.ABCDEF23 go run ./cmd/roundtrip
+LB_KEY=lbk_nube.k7f3a.ABCDEF23 go run ./cmd/roundtrip
 ```
 
 ## Lay of the land

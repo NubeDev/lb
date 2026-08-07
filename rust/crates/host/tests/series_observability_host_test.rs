@@ -78,14 +78,14 @@ async fn set_policy(store: &Store, p: &Principal, ws: &str, prefix: &str, max_sa
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_two_verbs_carry_separate_capabilities_in_both_directions() {
     let store = Store::memory().await.unwrap();
-    seed_via_mcp(&store, "acme", 12).await;
+    seed_via_mcp(&store, "nube", 12).await;
 
     // A data-console client: stats YES, admin bookkeeping NO.
-    let reader = principal("client:console", "acme", &[STATS]);
+    let reader = principal("client:console", "nube", &[STATS]);
     let out = call_ingest_tool(
         &store,
         &reader,
-        "acme",
+        "nube",
         "series.stats",
         &json!({"series": "cpu"}),
     )
@@ -95,7 +95,7 @@ async fn the_two_verbs_carry_separate_capabilities_in_both_directions() {
     let err = call_ingest_tool(
         &store,
         &reader,
-        "acme",
+        "nube",
         "series.retention.status",
         &json!({"series": "cpu"}),
     )
@@ -108,11 +108,11 @@ async fn the_two_verbs_carry_separate_capabilities_in_both_directions() {
 
     // The REVERSE principal — this direction is what catches a gate wired to the wrong cap: a gate
     // that checked `series.stats` for BOTH verbs would pass the block above and fail here.
-    let admin = principal("client:ops", "acme", &[STATUS]);
+    let admin = principal("client:ops", "nube", &[STATUS]);
     let out = call_ingest_tool(
         &store,
         &admin,
-        "acme",
+        "nube",
         "series.retention.status",
         &json!({"series": "cpu"}),
     )
@@ -122,7 +122,7 @@ async fn the_two_verbs_carry_separate_capabilities_in_both_directions() {
     let err = call_ingest_tool(
         &store,
         &admin,
-        "acme",
+        "nube",
         "series.stats",
         &json!({"series": "cpu"}),
     )
@@ -142,14 +142,14 @@ async fn a_denial_is_not_an_empty_success() {
     // means "this series has no data" and the other means "you may not ask". `Ok(raw_count: 0)` vs
     // `Err(ToolError::Denied)` is exactly that distinction, asserted side by side below.
     let store = Store::memory().await.unwrap();
-    seed_via_mcp(&store, "acme", 5).await;
+    seed_via_mcp(&store, "nube", 5).await;
 
     // GRANTED, on a series that genuinely holds nothing → Ok with zeroes and null extents.
-    let granted = principal("client:console", "acme", &[STATS]);
+    let granted = principal("client:console", "nube", &[STATS]);
     let out = call_ingest_tool(
         &store,
         &granted,
-        "acme",
+        "nube",
         "series.stats",
         &json!({"series": "never.written"}),
     )
@@ -161,11 +161,11 @@ async fn a_denial_is_not_an_empty_success() {
     assert_eq!(out["producers"].as_array().unwrap().len(), 0);
 
     // REFUSED, on the very same subject → Err. Same shape on screen, different type in the wire.
-    let denied = principal("client:intruder", "acme", &["mcp:series.read:call"]);
+    let denied = principal("client:intruder", "nube", &["mcp:series.read:call"]);
     let err = call_ingest_tool(
         &store,
         &denied,
-        "acme",
+        "nube",
         "series.stats",
         &json!({"series": "never.written"}),
     )
@@ -180,9 +180,9 @@ async fn a_denial_is_not_an_empty_success() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_longest_matching_prefix_is_resolved_server_side() {
     let store = Store::memory().await.unwrap();
-    let p = seed_via_mcp(&store, "acme", 3).await;
-    set_policy(&store, &p, "acme", "a.", 100).await;
-    set_policy(&store, &p, "acme", "a.b.", 200).await;
+    let p = seed_via_mcp(&store, "nube", 3).await;
+    set_policy(&store, &p, "nube", "a.", 100).await;
+    set_policy(&store, &p, "nube", "a.b.", 200).await;
 
     // `a.b.c` matches BOTH rows; the LONGER one governs. Getting this wrong is silent — the UI would
     // confidently name the wrong governing prefix — which is why it is resolved here and not in each
@@ -190,7 +190,7 @@ async fn the_longest_matching_prefix_is_resolved_server_side() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.retention.status",
         &json!({"series": "a.b.c"}),
     )
@@ -213,7 +213,7 @@ async fn the_longest_matching_prefix_is_resolved_server_side() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.retention.status",
         &json!({"series": "z.unmatched"}),
     )
@@ -231,7 +231,7 @@ async fn the_longest_matching_prefix_is_resolved_server_side() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.retention.status",
         &json!({"series": "a."}),
     )
@@ -249,13 +249,13 @@ async fn the_longest_matching_prefix_is_resolved_server_side() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_on_demand_gc_verb_updates_the_same_record_the_reactor_would() {
     let store = Store::memory().await.unwrap();
-    let p = seed_via_mcp(&store, "acme", 50).await;
+    let p = seed_via_mcp(&store, "nube", 50).await;
 
     // Before any pass: honestly `null`, not a zero row.
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.retention.status",
         &json!({"series": "cpu"}),
     )
@@ -272,7 +272,7 @@ async fn the_on_demand_gc_verb_updates_the_same_record_the_reactor_would() {
     call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.retention.gc",
         &json!({ "now_ms": 424_242 }),
     )
@@ -281,7 +281,7 @@ async fn the_on_demand_gc_verb_updates_the_same_record_the_reactor_would() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.retention.status",
         &json!({"series": "cpu"}),
     )

@@ -43,7 +43,7 @@ Authenticate (workspace + principal come from the token — host-set, never scri
 ```bash
 BASE=http://127.0.0.1:8080
 TOKEN=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 auth=(-H "authorization: Bearer $TOKEN" -H 'content-type: application/json')
 ```
 
@@ -227,8 +227,8 @@ authB=(-H "authorization: Bearer $TOK_B" -H 'content-type: application/json')
 curl -s -X POST $BASE/mcp/call "${authB[@]}" -d '{"tool":"rules.get","args":{"id":"e2e-intensity"}}'   # → not found (ws-A rule invisible)
 ```
 
-`globex` can neither `get`/`run` the `acme` rule `e2e-intensity` nor read `acme`'s `demo-buildings`
-source — workspace is checked *before* caps. (`demo-buildings` was registered in `acme` only; the
+`globex` can neither `get`/`run` the `nube` rule `e2e-intensity` nor read `nube`'s `demo-buildings`
+source — workspace is checked *before* caps. (`demo-buildings` was registered in `nube` only; the
 same file path registered in `globex` would be an independent grant.)
 
 ---

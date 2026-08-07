@@ -84,7 +84,7 @@ impl EntityVersion {
 ///
 /// **Why the id and not a clock.** Core verbs take their logical `now` from call arguments and never
 /// read a wall clock (the determinism discipline the undo journal follows by writing `ts: 0`). But a
-/// version list is a *human* surface — "2 minutes ago — ada" is the whole point — and two of the
+/// version list is a *human* surface — "2 minutes ago — test" is the whole point — and two of the
 /// three v1 save verbs carry no `now` argument to borrow. A ULID already encodes the mint time, and
 /// the ring already mints one per row for FIFO ordering, so decoding it costs nothing, adds no clock
 /// call to any verb, and cannot disagree with the ring's own ordering. Recorded as a judgment call

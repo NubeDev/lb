@@ -35,7 +35,7 @@ capability; the caller passes the resolved prefs (or the individual axes) inline
 
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
-  -H 'content-type: application/json' -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -H 'content-type: application/json' -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Capabilities: `prefs.get`/`prefs.resolve` read **own** prefs; `prefs.set` writes **own**;

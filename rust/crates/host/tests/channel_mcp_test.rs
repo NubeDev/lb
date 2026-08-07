@@ -63,13 +63,13 @@ async fn call(
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn post_history_edit_delete_list_roundtrip() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &full_caps());
+    let p = principal("user:test", "nube", &full_caps());
 
     // POST a plain-text message.
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.post",
         json!({ "cid": "ops", "id": "m1", "body": "hello ops", "ts": 1 }),
     )
@@ -80,7 +80,7 @@ async fn post_history_edit_delete_list_roundtrip() {
     let hist = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.history",
         json!({ "cid": "ops" }),
     )
@@ -89,13 +89,13 @@ async fn post_history_edit_delete_list_roundtrip() {
     let msgs = hist["messages"].as_array().unwrap();
     assert_eq!(msgs.len(), 1);
     assert_eq!(msgs[0]["body"], "hello ops");
-    assert_eq!(msgs[0]["author"], "user:ada");
+    assert_eq!(msgs[0]["author"], "user:test");
 
     // EDIT the body.
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.edit",
         json!({ "cid": "ops", "id": "m1", "body": "hello ops (edited)", "ts": 2 }),
     )
@@ -104,7 +104,7 @@ async fn post_history_edit_delete_list_roundtrip() {
     let hist = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.history",
         json!({ "cid": "ops" }),
     )
@@ -113,7 +113,7 @@ async fn post_history_edit_delete_list_roundtrip() {
     assert_eq!(hist["messages"][0]["body"], "hello ops (edited)");
 
     // LIST surfaces the channel (create-on-post registered it).
-    let list = call(&node, &p, "acme", "channel.list", json!({}))
+    let list = call(&node, &p, "nube", "channel.list", json!({}))
         .await
         .expect("list ok");
     let cids: Vec<&str> = list["channels"]
@@ -128,7 +128,7 @@ async fn post_history_edit_delete_list_roundtrip() {
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.delete",
         json!({ "cid": "ops", "id": "m1" }),
     )
@@ -137,7 +137,7 @@ async fn post_history_edit_delete_list_roundtrip() {
     let hist = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.history",
         json!({ "cid": "ops" }),
     )
@@ -149,13 +149,13 @@ async fn post_history_edit_delete_list_roundtrip() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn create_makes_channel_listable_before_any_post_and_is_idempotent() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &full_caps());
+    let p = principal("user:test", "nube", &full_caps());
 
     // CREATE a channel — no post yet.
     let rec = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.create",
         json!({ "cid": "care-child-7", "ts": 1 }),
     )
@@ -168,7 +168,7 @@ async fn create_makes_channel_listable_before_any_post_and_is_idempotent() {
     );
 
     // LIST surfaces it immediately, before any post.
-    let list = call(&node, &p, "acme", "channel.list", json!({}))
+    let list = call(&node, &p, "nube", "channel.list", json!({}))
         .await
         .expect("list ok");
     let cids: Vec<&str> = list["channels"]
@@ -186,7 +186,7 @@ async fn create_makes_channel_listable_before_any_post_and_is_idempotent() {
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.create",
         json!({ "cid": "care-child-7", "ts": 2 }),
     )
@@ -200,7 +200,7 @@ async fn create_denied_without_pub_cap_is_opaque() {
     // Holds the MCP door but NOT `bus:chan/*:pub` — must DENY, not NotFound.
     let p = principal(
         "user:eve",
-        "acme",
+        "nube",
         &[
             "bus:chan/*:sub",
             "mcp:channel.create:call",
@@ -210,7 +210,7 @@ async fn create_denied_without_pub_cap_is_opaque() {
     let err = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.create",
         json!({ "cid": "care-child-7" }),
     )
@@ -218,7 +218,7 @@ async fn create_denied_without_pub_cap_is_opaque() {
     .unwrap_err();
     assert!(matches!(err, ToolError::Denied), "opaque deny, got {err:?}");
     // NO channel was registered.
-    let list = call(&node, &p, "acme", "channel.list", json!({}))
+    let list = call(&node, &p, "nube", "channel.list", json!({}))
         .await
         .expect("list ok");
     assert!(
@@ -230,12 +230,12 @@ async fn create_denied_without_pub_cap_is_opaque() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn author_is_forced_not_request_supplied() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &full_caps());
+    let p = principal("user:test", "nube", &full_caps());
     // A forged `author` in the request is ignored — the stored author is the caller's sub.
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.post",
         json!({ "cid": "ops", "id": "m1", "body": "x", "ts": 1, "author": "user:mallory" }),
     )
@@ -244,13 +244,13 @@ async fn author_is_forced_not_request_supplied() {
     let hist = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.history",
         json!({ "cid": "ops" }),
     )
     .await
     .unwrap();
-    assert_eq!(hist["messages"][0]["author"], "user:ada");
+    assert_eq!(hist["messages"][0]["author"], "user:test");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -259,7 +259,7 @@ async fn post_denied_without_pub_cap_is_opaque_with_no_write() {
     // Holds the MCP door + `sub` (to read) but NOT `bus:chan/*:pub`.
     let p = principal(
         "user:eve",
-        "acme",
+        "nube",
         &[
             "bus:chan/*:sub",
             "mcp:channel.post:call",
@@ -269,7 +269,7 @@ async fn post_denied_without_pub_cap_is_opaque_with_no_write() {
     let err = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.post",
         json!({ "cid": "ops", "id": "m1", "body": "sneak", "ts": 1 }),
     )
@@ -280,7 +280,7 @@ async fn post_denied_without_pub_cap_is_opaque_with_no_write() {
     let hist = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.history",
         json!({ "cid": "ops" }),
     )
@@ -294,13 +294,13 @@ async fn history_denied_without_sub_cap() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let p = principal(
         "user:eve",
-        "acme",
+        "nube",
         &["bus:chan/*:pub", "mcp:channel.history:call"],
     );
     let err = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "channel.history",
         json!({ "cid": "ops" }),
     )
@@ -312,16 +312,16 @@ async fn history_denied_without_sub_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_isolation_ws_b_cannot_touch_ws_a() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let a = principal("user:ada", "acme", &full_caps());
+    let a = principal("user:test", "nube", &full_caps());
     let b = principal("user:bo", "beta", &full_caps());
 
     // ws-A seeds a channel via the real verb.
     call(
         &node,
         &a,
-        "acme",
+        "nube",
         "channel.post",
-        json!({ "cid": "ops", "id": "m1", "body": "acme secret", "ts": 1 }),
+        json!({ "cid": "ops", "id": "m1", "body": "nube secret", "ts": 1 }),
     )
     .await
     .expect("ws-A post ok");
@@ -368,12 +368,12 @@ async fn workspace_isolation_ws_b_cannot_touch_ws_a() {
     let hist_a = call(
         &node,
         &a,
-        "acme",
+        "nube",
         "channel.history",
         json!({ "cid": "ops" }),
     )
     .await
     .unwrap();
     assert_eq!(hist_a["messages"].as_array().unwrap().len(), 1);
-    assert_eq!(hist_a["messages"][0]["body"], "acme secret");
+    assert_eq!(hist_a["messages"][0]["body"], "nube secret");
 }

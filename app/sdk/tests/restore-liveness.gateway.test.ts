@@ -39,7 +39,7 @@ function storageHolding(sessions: StoredSessions): SessionStorage {
 function stored(ws: string, token: string): StoredSessions {
   return {
     active: ws,
-    sessions: { [ws]: { token, principal: "user:ada", workspace: ws, caps: [] } },
+    sessions: { [ws]: { token, principal: "user:test", workspace: ws, caps: [] } },
   };
 }
 
@@ -51,7 +51,7 @@ describe("client.restore() drops a rehydrated-but-invalid session (stale-preview
   it("keeps a LIVE session: a real token the running gateway still honours survives restore", async () => {
     // Log in for real to mint a genuine token, capture what the shell would have persisted.
     const source = clientWith(memorySessionStorage());
-    const issued = await source.login("ada", "restore-live-ws");
+    const issued = await source.login("test", "restore-live-ws");
     expect(issued.token).not.toBe("");
 
     // A fresh client boots against the SAME running gateway with that session pre-persisted.

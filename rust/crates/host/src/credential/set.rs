@@ -42,7 +42,7 @@ pub async fn identity_set_credential(
 }
 
 /// Canonicalize a login handle to the `user:<name>` form the identity model keys on (the same
-/// canonicalization the login route applies), so a credential set for `ada` and a login as `user:ada`
+/// canonicalization the login route applies), so a credential set for `test` and a login as `user:test`
 /// resolve to the same record.
 pub fn normalize_sub(sub: &str) -> String {
     if sub.starts_with("user:") {

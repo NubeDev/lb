@@ -23,11 +23,11 @@ container. Verbs map 1:1 to `ui/src/lib/ipc/http.ts` + `ui/src/lib/dashboard/das
 
 ```
 BASE=http://127.0.0.1:8080
-TOKEN=$(curl -s -X POST $BASE/login -d '{"user":"ada","workspace":"acme"}' | jq -r .token)
+TOKEN=$(curl -s -X POST $BASE/login -d '{"user":"test","workspace":"nube"}' | jq -r .token)
 A="authorization: Bearer $TOKEN"; C="content-type: application/json"
 ```
 
-Dev-login `ada`/`acme` is a full-cap **member** carrying `mcp:datasource.{add,list,remove,test}:call`,
+Dev-login `test`/`nube` is a full-cap **member** carrying `mcp:datasource.{add,list,remove,test}:call`,
 `mcp:federation.query:call`, `mcp:dashboard.*`, `mcp:panel.*`, `mcp:viz.query:call`, `mcp:ingest.write:call`.
 
 ## ⚠️ Step 0 — DB up + seeded (hard prerequisite, verified)
@@ -109,14 +109,14 @@ so it can't be driven from the HTTP edge. The harder gate, the workspace wall, i
 
 ### 3.3 Access — the workspace wall holds — GREEN
 
-`timescale` lives in `acme`. From a `globex` token (`bob`):
+`timescale` lives in `nube`. From a `globex` token (`bob`):
 
 ```
 $ curl -s $BASE/datasources -H "$AB"
 {"datasources":[]}
 $ curl -s -X POST $BASE/mcp/call -H "$AB" -H "$C" \
     -d '{"tool":"federation.query","args":{"source":"timescale","sql":"SELECT value FROM point_reading LIMIT 1"}}'
-bad input: no such datasource        # globex cannot even NAME acme's source (opaque)
+bad input: no such datasource        # globex cannot even NAME nube's source (opaque)
 ```
 
 ### 3.4 Functional — the chart renders the seeded data — GREEN (the payoff)
@@ -162,9 +162,9 @@ axis** — the datasources runbook's headline check.
 
 ```
 $ curl -s -X POST $BASE/dashboards -H "$A" -H "$C" -d '{"id":"e2e-dash","title":"E2E Dash","cells":[],"variables":[]}'
-{"id":"e2e-dash","title":"E2E Dash","owner":"user:ada","visibility":"private","cells":[],"variables":[],"schemaVersion":3,"updated_ts":1783140823,"deleted":false}
+{"id":"e2e-dash","title":"E2E Dash","owner":"user:test","visibility":"private","cells":[],"variables":[],"schemaVersion":3,"updated_ts":1783140823,"deleted":false}
 $ curl -s $BASE/dashboards/e2e-dash -H "$A"          # read-back: round-tripped the store
-{"id":"e2e-dash","title":"E2E Dash","owner":"user:ada",…,"schemaVersion":3,…}
+{"id":"e2e-dash","title":"E2E Dash","owner":"user:test",…,"schemaVersion":3,…}
 # update title → 200, re-read shows "E2E Dash v2"
 # delete e2e-dash → 204 ; get-after-delete → 404 ; no-token list → 401
 delete=204   get-after-delete=404   no-token=401
@@ -173,7 +173,7 @@ delete=204   get-after-delete=404   no-token=401
 ### Access — workspace wall — GREEN
 
 ```
-acme create iso-dash = 200
+nube create iso-dash = 200
 globex get iso-dash  = 404 (want 404)
 globex list          = {"dashboards":[]}
 cleanup iso-dash     = 204   (isolation scaffold removed; keep-dash untouched)
@@ -187,7 +187,7 @@ cleanup iso-dash     = 204   (isolation scaffold removed; keep-dash untouched)
 
 ```
 $ curl -s -X POST $BASE/panels -H "$A" -H "$C" -d '{"id":"e2e-chart","title":"E2E Chart","spec":{…series_read…}}'
-{"id":"e2e-chart","owner":"user:ada","visibility":"private",…,"sources":[{…"tool":"series_read"…}]}
+{"id":"e2e-chart","owner":"user:test","visibility":"private",…,"sources":[{…"tool":"series_read"…}]}
 read-back src0.tool: series_read ; usage: {"usage":[]} ; delete e2e-chart: 204
 ```
 
@@ -198,7 +198,7 @@ renders — distinct from the datasource path above):
 $ curl -s -X POST $BASE/ingest -H "$A" -H "$C" -d '{"samples":[{"series":"e2e.temp","producer":"","ts":1783138000,"seq":1,"payload":21.5,…,"qos":"best-effort"}]}'
 {"accepted":1,"committed":1}
 $ curl -s "$BASE/series?prefix=e2e" -H "$A"          → {"series":["e2e.temp"]}
-$ curl -s "$BASE/series/e2e.temp/latest" -H "$A"     → producer stamped "user:ada" (un-spoofable §7)
+$ curl -s "$BASE/series/e2e.temp/latest" -H "$A"     → producer stamped "user:test" (un-spoofable §7)
 ```
 
 ---
@@ -209,9 +209,9 @@ Created durable, cross-referenced artifacts and confirmed the panel→dashboard 
 
 ```
 $ curl -s -X POST $BASE/panels     …  keep-chart  (spec.sources[0].tool = federation.query, bound to pt-001)
-{"id":"keep-chart","owner":"user:ada","spec":{…"sources":[{"tool":"federation.query","args":{"source":"timescale","sql":"…point_id='pt-001'… LIMIT 500"}}]…}}
+{"id":"keep-chart","owner":"user:test","spec":{…"sources":[{"tool":"federation.query","args":{"source":"timescale","sql":"…point_id='pt-001'… LIMIT 500"}}]…}}
 $ curl -s -X POST $BASE/dashboards …  keep-dash   (cell panelRef = panel:keep-chart)
-{"id":"keep-dash","owner":"user:ada","cells":[{"i":"c1","w":12,"h":8,"panelRef":"panel:keep-chart"…}]}
+{"id":"keep-dash","owner":"user:test","cells":[{"i":"c1","w":12,"h":8,"panelRef":"panel:keep-chart"…}]}
 $ curl -s $BASE/panels/keep-chart/usage -H "$A"
 {"usage":[{"dashboard":"keep-dash","title":"E2E — Energy kWh dashboard (left for inspection)","cells":1}]}
 

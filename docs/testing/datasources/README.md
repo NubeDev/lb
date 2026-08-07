@@ -58,7 +58,7 @@ make seed-demo-sqlite                # generates .lazybones/data/demo/buildings.
   ~2880 slots ≈ **950k readings**, seconds to generate, a few MB) into
   `.lazybones/data/demo/buildings.db` under the node's
   own data dir (so the sidecar — which resolves the DSN as a **node-local file path** — can see it);
-- logs in as `user:ada` / `acme` and calls `datasource.add {name:"demo-buildings",
+- logs in as `user:test` / `nube` and calls `datasource.add {name:"demo-buildings",
   kind:"sqlite", endpoint:"127.0.0.1:0", dsn:<path>}`.
 
 It builds the **same** model the charts expect (identical `inventory`/`generators`/`tags`
@@ -77,7 +77,7 @@ sqlite3 .lazybones/data/demo/buildings.db "SELECT COUNT(*) FROM point_reading;" 
 # the source is registered and reachable (probe/list via the running node)
 BASE=http://127.0.0.1:8080
 TOKEN=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"ada","workspace":"acme"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+  -d '{"user":"test","workspace":"nube"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 curl -s $BASE/datasources -H "authorization: Bearer $TOKEN"     # 'demo-buildings' present, probe green
 ```
 
@@ -155,7 +155,7 @@ Every verb needs its grant; without it, refused:
   silently attempted). Assert the deny.
 
 ### 3.3 Access — the workspace wall holds
-A datasource is workspace-scoped. `demo-buildings` was registered in workspace `acme`;
+A datasource is workspace-scoped. `demo-buildings` was registered in workspace `nube`;
 assert another workspace (e.g. `globex`) can neither `list` nor query it — the same file
 path registered in two workspaces would be two independent grants. Ownership is checked
 before caps (see the ownership test).

@@ -145,18 +145,18 @@ renders the page through the renderer its trust tier dictates:
 ## Example flow
 
 1. A first-party **`hello-ui`** extension is published (signed, allow-listed key) and installed into
-   `acme` (the upload/console path, already shipped). Its manifest declares
+   `nube` (the upload/console path, already shipped). Its manifest declares
    `[ui] entry=… label="Hello" icon=… scope=["channel.list"]`.
-2. Alice (admin) opens **acme**; the shell reads the install's UI decl and shows a **Hello** nav slot
+2. Alice (admin) opens **nube**; the shell reads the install's UI decl and shows a **Hello** nav slot
    (cap-gated). Bob, lacking the extension's grant, never sees it.
 3. Alice opens **Hello**. The publisher key is allow-listed → the shell **module-federates** the remote
    in-process and calls its `mount(el, bridge, tokens)`. The page looks native (shared tokens).
 4. The page asks the bridge for `channel.list`; the shell forwards through `invoke`; the host re-checks
-   `mcp:channel.list:call` + the workspace and returns **acme's** channels. The page renders them.
+   `mcp:channel.list:call` + the workspace and returns **nube's** channels. The page renders them.
 5. The page tries `channel.delete` (not in its scope) — the shell filters it out **and** the host would
    deny it anyway: **denied**. The page shows the deny; nothing happens.
 6. A **third-party** `widgets` extension (publisher key NOT allow-listed) declares a UI. Its slot opens
-   into a **sandboxed iframe**; it talks to the host only via `postMessage`, gets `acme`-scoped,
+   into a **sandboxed iframe**; it talks to the host only via `postMessage`, gets `nube`-scoped,
    cap-checked results, and can touch neither the parent DOM nor the token.
 7. Carol (ws-B admin) opens her shell: the same `hello-ui` page, but every bridged call is **ws-B**.
    The wall holds across the extension-page surface.

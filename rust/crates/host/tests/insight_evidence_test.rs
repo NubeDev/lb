@@ -82,11 +82,11 @@ fn raise_input(dedup_key: &str, ts: u64, ev: Option<Value>) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn get_echoes_the_evidence_the_producer_stated() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET]);
+    let p = principal("user:test", "nube", &[RAISE, GET]);
     let out = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k1", 1, Some(evidence())),
     )
@@ -94,7 +94,7 @@ async fn get_echoes_the_evidence_the_producer_stated() {
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert_eq!(
@@ -115,11 +115,11 @@ async fn get_echoes_the_evidence_the_producer_stated() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_record_with_no_evidence_key_still_lists_and_gets() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST]);
     let out = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("legacy", 1, None),
     )
@@ -127,14 +127,14 @@ async fn a_record_with_no_evidence_key_still_lists_and_gets() {
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
 
-    let page = call(&node, &p, "acme", "insight.list", json!({}))
+    let page = call(&node, &p, "nube", "insight.list", json!({}))
         .await
         .expect("list ok");
     let items = page["items"].as_array().unwrap();
     assert_eq!(items.len(), 1, "a pre-field-shaped record still lists");
     assert_eq!(items[0]["dedup_key"], "legacy");
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert!(
@@ -148,12 +148,12 @@ async fn a_record_with_no_evidence_key_still_lists_and_gets() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn re_raise_refreshes_evidence_but_leaves_title_and_body_first_raise_wins() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET]);
+    let p = principal("user:test", "nube", &[RAISE, GET]);
 
     let first = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k", 1, Some(evidence())),
     )
@@ -172,11 +172,11 @@ async fn re_raise_refreshes_evidence_but_leaves_title_and_body_first_raise_wins(
     );
     second["title"] = json!("a different title");
     second["body"] = json!({ "kwh_per_m2": 9.9 });
-    call(&node, &p, "acme", "insight.raise", second)
+    call(&node, &p, "nube", "insight.raise", second)
         .await
         .expect("raise 2");
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": &id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": &id }))
         .await
         .expect("get ok");
     assert_eq!(got["count"], 2, "dedup bumped, not duplicated");
@@ -201,13 +201,13 @@ async fn re_raise_refreshes_evidence_but_leaves_title_and_body_first_raise_wins(
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k", 3, None),
     )
     .await
     .expect("raise 3");
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": &id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": &id }))
         .await
         .expect("get ok");
     assert_eq!(
@@ -221,11 +221,11 @@ async fn re_raise_refreshes_evidence_but_leaves_title_and_body_first_raise_wins(
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn list_omits_evidence_while_get_echoes_it() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST]);
     let out = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k", 1, Some(evidence())),
     )
@@ -233,7 +233,7 @@ async fn list_omits_evidence_while_get_echoes_it() {
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
 
-    let page = call(&node, &p, "acme", "insight.list", json!({}))
+    let page = call(&node, &p, "nube", "insight.list", json!({}))
         .await
         .expect("list ok");
     let item = &page["items"].as_array().unwrap()[0];
@@ -243,7 +243,7 @@ async fn list_omits_evidence_while_get_echoes_it() {
     );
     assert_eq!(item["dedup_key"], "k", "the rest of the record is intact");
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert_eq!(got["evidence"]["source"], "demo-buildings", "get echoes it");
@@ -255,11 +255,11 @@ async fn list_omits_evidence_while_get_echoes_it() {
 async fn raise_with_evidence_is_denied_without_the_raise_cap() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     // Holds every READ cap but not raise.
-    let p = principal("user:mallory", "acme", &[GET, LIST]);
+    let p = principal("user:mallory", "nube", &[GET, LIST]);
     let r = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k", 1, Some(evidence())),
     )
@@ -273,11 +273,11 @@ async fn raise_with_evidence_is_denied_without_the_raise_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_lister_without_get_never_receives_an_evidence_payload() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let author = principal("user:ada", "acme", &[RAISE]);
+    let author = principal("user:test", "nube", &[RAISE]);
     call(
         &node,
         &author,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k", 1, Some(evidence())),
     )
@@ -285,8 +285,8 @@ async fn a_lister_without_get_never_receives_an_evidence_payload() {
     .expect("raise ok");
 
     // A principal holding LIST but not GET has no path to the descriptor at all.
-    let reader = principal("user:bob", "acme", &[LIST]);
-    let page = call(&node, &reader, "acme", "insight.list", json!({}))
+    let reader = principal("user:bob", "nube", &[LIST]);
+    let page = call(&node, &reader, "nube", "insight.list", json!({}))
         .await
         .expect("list ok");
     let dump = page.to_string();
@@ -301,7 +301,7 @@ async fn a_lister_without_get_never_receives_an_evidence_payload() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn evidence_never_leaks_across_workspaces() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let a = principal("user:ada", "ws-a", &[RAISE, GET, LIST]);
+    let a = principal("user:test", "ws-a", &[RAISE, GET, LIST]);
     let out = call(
         &node,
         &a,
@@ -335,7 +335,7 @@ async fn evidence_never_leaks_across_workspaces() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn oversize_evidence_rejects_the_whole_raise() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &[RAISE, LIST]);
+    let p = principal("user:test", "ws-a", &[RAISE, LIST]);
     let big = "x".repeat(5000);
     let r = call(
         &node,
@@ -365,11 +365,11 @@ async fn oversize_evidence_rejects_the_whole_raise() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_bare_string_series_decodes_to_a_full_series_object() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET]);
+    let p = principal("user:test", "nube", &[RAISE, GET]);
     let out = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input(
             "k",
@@ -381,7 +381,7 @@ async fn a_bare_string_series_decodes_to_a_full_series_object() {
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     // One stored shape regardless of which authoring shape was used.
@@ -397,18 +397,18 @@ async fn a_bare_string_series_decodes_to_a_full_series_object() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn evidence_with_only_a_source_is_accepted() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET]);
+    let p = principal("user:test", "nube", &[RAISE, GET]);
     let out = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k", 1, Some(json!({ "source": "s" }))),
     )
     .await
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert_eq!(got["evidence"]["source"], "s");

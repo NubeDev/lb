@@ -37,7 +37,7 @@ async fn seed(node: &Node, ws: &str, ext: &str, tier: Tier) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_each_lifecycle_verb_without_its_cap() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     seed(&node, ws, "hello", Tier::Wasm).await;
     let none = principal("user:mallory", ws, &[]);
 
@@ -50,7 +50,7 @@ async fn denies_each_lifecycle_verb_without_its_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_cannot_list_or_uninstall_ws_a_extensions() {
     let node = Node::boot().await.unwrap();
-    seed(&node, "acme", "hello", Tier::Wasm).await;
+    seed(&node, "nube", "hello", Tier::Wasm).await;
     let admin_b = principal("user:carol", "globex", ALL);
 
     // ws-B lists its own (empty) namespace — never ws-A's install.
@@ -62,9 +62,9 @@ async fn ws_b_cannot_list_or_uninstall_ws_a_extensions() {
     ext_uninstall(&node, &admin_b, "globex", "hello", 2)
         .await
         .unwrap();
-    let admin_a = principal("user:alice", "acme", ALL);
+    let admin_a = principal("user:alice", "nube", ALL);
     assert_eq!(
-        ext_list(&node, &admin_a, "acme").await.unwrap().len(),
+        ext_list(&node, &admin_a, "nube").await.unwrap().len(),
         1,
         "ws-A's extension survived a ws-B uninstall"
     );
@@ -73,7 +73,7 @@ async fn ws_b_cannot_list_or_uninstall_ws_a_extensions() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn list_unions_both_tiers_and_reflects_enable_disable_uninstall() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let admin = principal("user:alice", ws, ALL);
     seed(&node, ws, "hello", Tier::Wasm).await;
     seed(&node, ws, "echo-sidecar", Tier::Native).await;
@@ -108,7 +108,7 @@ async fn list_unions_both_tiers_and_reflects_enable_disable_uninstall() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn boot_reconcile_honors_disable_intent() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let admin = principal("user:alice", ws, ALL);
     seed(&node, ws, "hello", Tier::Wasm).await; // enabled
     seed(&node, ws, "echo-sidecar", Tier::Native).await; // enabled

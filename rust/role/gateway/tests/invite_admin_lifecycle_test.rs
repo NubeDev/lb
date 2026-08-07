@@ -24,22 +24,22 @@ use tower::ServiceExt;
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_roster_never_carries_a_redeemable_token_for_any_status() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:ada", "acme", BOTH);
+    let admin = token(&key, "user:test", "nube", BOTH);
 
     // One of each status: pending, accepted, revoked, and expired-but-stored-pending.
-    let pending_raw = mint(&gw, &admin, json!({ "email": "pending@acme.com" })).await;
-    let accept_raw = mint(&gw, &admin, json!({ "email": "accepted@acme.com" })).await;
-    let revoke_raw = mint(&gw, &admin, json!({ "email": "revoked@acme.com" })).await;
+    let pending_raw = mint(&gw, &admin, json!({ "email": "pending@nube.com" })).await;
+    let accept_raw = mint(&gw, &admin, json!({ "email": "accepted@nube.com" })).await;
+    let revoke_raw = mint(&gw, &admin, json!({ "email": "revoked@nube.com" })).await;
     // The gateway clock is pinned at NOW=1000, so an expiry BELOW it is already past.
     let expired_raw = mint(
         &gw,
         &admin,
-        json!({ "email": "expired@acme.com", "expires_ts": NOW - 500 }),
+        json!({ "email": "expired@nube.com", "expires_ts": NOW - 500 }),
     )
     .await;
 
     let rows = roster(&gw, &admin, "").await;
-    let revoked_hash = hash_of(&rows, "revoked@acme.com");
+    let revoked_hash = hash_of(&rows, "revoked@nube.com");
     let _ = router(gw.clone())
         .oneshot(bearer(
             post_empty(&format!("/admin/invites/{revoked_hash}/revoke")),
@@ -50,7 +50,7 @@ async fn the_roster_never_carries_a_redeemable_token_for_any_status() {
     let _ = router(gw.clone())
         .oneshot(json_post(
             "/public/invite/accept",
-            json!({ "token": accept_raw, "workspace": "acme", "secret": "hunter2hunter2" }),
+            json!({ "token": accept_raw, "workspace": "nube", "secret": "hunter2hunter2" }),
         ))
         .await
         .unwrap();
@@ -83,9 +83,9 @@ async fn the_roster_never_carries_a_redeemable_token_for_any_status() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn revoke_is_204_then_404_and_kills_the_token() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:ada", "acme", BOTH);
-    let raw = mint(&gw, &admin, json!({ "email": "bob@acme.com" })).await;
-    let hash = hash_of(&roster(&gw, &admin, "").await, "bob@acme.com");
+    let admin = token(&key, "user:test", "nube", BOTH);
+    let raw = mint(&gw, &admin, json!({ "email": "bob@nube.com" })).await;
+    let hash = hash_of(&roster(&gw, &admin, "").await, "bob@nube.com");
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -125,7 +125,7 @@ async fn revoke_is_204_then_404_and_kills_the_token() {
     let resp = router(gw.clone())
         .oneshot(json_post(
             "/public/invite/accept",
-            json!({ "token": raw, "workspace": "acme", "secret": "hunter2hunter2" }),
+            json!({ "token": raw, "workspace": "nube", "secret": "hunter2hunter2" }),
         ))
         .await
         .unwrap();
@@ -140,9 +140,9 @@ async fn revoke_is_204_then_404_and_kills_the_token() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn resend_mints_a_new_token_and_invalidates_the_prior_one() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:ada", "acme", BOTH);
-    let old_raw = mint(&gw, &admin, json!({ "email": "bob@acme.com" })).await;
-    let hash = hash_of(&roster(&gw, &admin, "").await, "bob@acme.com");
+    let admin = token(&key, "user:test", "nube", BOTH);
+    let old_raw = mint(&gw, &admin, json!({ "email": "bob@nube.com" })).await;
+    let hash = hash_of(&roster(&gw, &admin, "").await, "bob@nube.com");
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -160,7 +160,7 @@ async fn resend_mints_a_new_token_and_invalidates_the_prior_one() {
     let resp = router(gw.clone())
         .oneshot(json_post(
             "/public/invite/accept",
-            json!({ "token": old_raw, "workspace": "acme", "secret": "hunter2hunter2" }),
+            json!({ "token": old_raw, "workspace": "nube", "secret": "hunter2hunter2" }),
         ))
         .await
         .unwrap();
@@ -174,7 +174,7 @@ async fn resend_mints_a_new_token_and_invalidates_the_prior_one() {
     let resp = router(gw.clone())
         .oneshot(json_post(
             "/public/invite/accept",
-            json!({ "token": new_raw, "workspace": "acme", "secret": "hunter2hunter2" }),
+            json!({ "token": new_raw, "workspace": "nube", "secret": "hunter2hunter2" }),
         ))
         .await
         .unwrap();
@@ -199,23 +199,23 @@ async fn resend_mints_a_new_token_and_invalidates_the_prior_one() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn status_filter_treats_a_lapsed_pending_record_as_expired() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:ada", "acme", BOTH);
+    let admin = token(&key, "user:test", "nube", BOTH);
 
     // `status` is STORED, not derived: this record is written `pending` and stays that way until
     // someone tries to redeem it. Past its expiry it must NOT be offered as pending.
     mint(
         &gw,
         &admin,
-        json!({ "email": "lapsed@acme.com", "expires_ts": NOW - 1 }),
+        json!({ "email": "lapsed@nube.com", "expires_ts": NOW - 1 }),
     )
     .await;
     mint(
         &gw,
         &admin,
-        json!({ "email": "live@acme.com", "expires_ts": NOW + 10_000 }),
+        json!({ "email": "live@nube.com", "expires_ts": NOW + 10_000 }),
     )
     .await;
-    mint(&gw, &admin, json!({ "email": "forever@acme.com" })).await; // expires_ts 0 = never
+    mint(&gw, &admin, json!({ "email": "forever@nube.com" })).await; // expires_ts 0 = never
 
     let all = roster(&gw, &admin, "").await;
     assert_eq!(all.len(), 3, "the unfiltered roster is everything");
@@ -234,11 +234,11 @@ async fn status_filter_treats_a_lapsed_pending_record_as_expired() {
         2,
         "only the redeemable ones are pending: {emails:?}"
     );
-    assert!(emails.contains(&"live@acme.com") && emails.contains(&"forever@acme.com"));
+    assert!(emails.contains(&"live@nube.com") && emails.contains(&"forever@nube.com"));
 
     let expired = roster(&gw, &admin, "?status=expired").await;
     assert_eq!(expired.len(), 1);
-    assert_eq!(expired[0]["email"], "lapsed@acme.com");
+    assert_eq!(expired[0]["email"], "lapsed@nube.com");
 
     assert!(roster(&gw, &admin, "?status=accepted").await.is_empty());
     assert!(roster(&gw, &admin, "?status=revoked").await.is_empty());
@@ -247,7 +247,7 @@ async fn status_filter_treats_a_lapsed_pending_record_as_expired() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_unknown_status_value_is_a_400_not_an_empty_list() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:ada", "acme", BOTH);
+    let admin = token(&key, "user:test", "nube", BOTH);
     let resp = router(gw.clone())
         .oneshot(bearer(get_req("/admin/invites?status=banana"), &admin))
         .await

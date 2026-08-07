@@ -9,32 +9,32 @@
 
 ## Symptom
 In the RN-web browser preview the login screen showed **"Failed to fetch"** on Sign in, or the
-gateway returned **403 "not a member of any workspace"** for the prefilled `ada` / `acme`. The
+gateway returned **403 "not a member of any workspace"** for the prefilled `test` / `nube`. The
 preview looked broken even though the node was healthy.
 
 ## Reproduce
-1. `make dev` (root) — node + gateway on **8080**, persistent store, seeded `LB_SEED_USER=user:ada`.
-2. Open the RN preview pointed at that node: `…5310/?node=http://127.0.0.1:8080`, prefill `ada`/`acme`.
+1. `make dev` (root) — node + gateway on **8080**, persistent store, seeded `LB_SEED_USER=user:test`.
+2. Open the RN preview pointed at that node: `…5310/?node=http://127.0.0.1:8080`, prefill `test`/`nube`.
 3. Sign in → 403 "not a member". (With no node on the prefilled port at all → "Failed to fetch".)
 
 ## Investigation
 - "Failed to fetch" was the shallow half: the preview defaulted `?node=` to **8087** (the app's own
   `test_gateway`), but the user runs `make dev` whose node is on **8080** — nothing was listening on
   8087, so `fetch` rejected. Pointing at 8080 replaced that with a real reply: **403**.
-- `curl -d '{"user":"ada",...}'` to 8080 → 403; `curl -d '{"user":"user:ada",...}'` → **200** with a
-  token whose `sub` is `user:ada` and which lists the real channels. So the node was fine; the
+- `curl -d '{"user":"test",...}'` to 8080 → 403; `curl -d '{"user":"user:test",...}'` → **200** with a
+  token whose `sub` is `user:test` and which lists the real channels. So the node was fine; the
   *handle form* was the difference.
-- The node log showed `boot seed: user:ada is a workspace-admin member of acme` and live telemetry
-  `actor=user:ada` — the member is `user:ada`, not `ada`.
+- The node log showed `boot seed: user:test is a workspace-admin member of nube` and live telemetry
+  `actor=user:test` — the member is `user:test`, not `test`.
 
 ## Root cause
 The identity model keys on the **`user:<name>` principal** everywhere (the token `sub`, the
-`membership` row, `created_by`, the seed `LB_SEED_USER=user:ada`), but the dev-login route
-(`role/gateway/src/routes/login.rs`) used the request's `user` string **verbatim**. So a bare `ada`
-was treated as a principal literally named `ada` — a different identity from the seeded `user:ada`.
-`membership_login_resolve` then found `acme` already had members but not `ada` → `NotAMember` (403).
-It only "worked" against an empty in-memory `test_gateway` because there `acme` had no members, so
-the stranger `ada` bootstrapped itself as the first member (decision #3) — masking the bug until the
+`membership` row, `created_by`, the seed `LB_SEED_USER=user:test`), but the dev-login route
+(`role/gateway/src/routes/login.rs`) used the request's `user` string **verbatim**. So a bare `test`
+was treated as a principal literally named `test` — a different identity from the seeded `user:test`.
+`membership_login_resolve` then found `nube` already had members but not `test` → `NotAMember` (403).
+It only "worked" against an empty in-memory `test_gateway` because there `nube` had no members, so
+the stranger `test` bootstrapped itself as the first member (decision #3) — masking the bug until the
 preview met a *populated* store.
 
 ## Fix
@@ -48,7 +48,7 @@ let principal = if req.user.starts_with("user:") { req.user.clone() }
 
 `user_login_check`, `membership_login_resolve`, `dev_claims` (the token `sub`), the grant resolution
 (which re-strips the prefix — grants are stored bare), and the `LoginReply.principal` all use
-`principal`. So `ada` and `user:ada` resolve to the **same** identity on any node; an empty node
+`principal`. So `test` and `user:test` resolve to the **same** identity on any node; an empty node
 still bootstraps it. This is an edge normalization — core membership/`Subject` handling is unchanged
 and nothing branches on an extension.
 
@@ -65,9 +65,9 @@ Two follow-ons that the fix exposed / needed:
   `user:bob` — the form `membership_add` documents it wants, which also lands the role grant.
 
 ## Verification
-- `curl` bare `ada` → 200, `sub: user:ada`, channels listed (against both a rebuilt fixture node and
+- `curl` bare `test` → 200, `sub: user:test`, channels listed (against both a rebuilt fixture node and
   the user's live `make dev` node).
-- Playwright e2e (`…5310/?node=http://127.0.0.1:8080`, bare `ada` prefill): logs in and shows the real
+- Playwright e2e (`…5310/?node=http://127.0.0.1:8080`, bare `test` prefill): logs in and shows the real
   channels (`#123`, `#abc`, `#general`) — no "Failed to fetch", no "not a member".
 - `cargo test -p lb-role-gateway` (incl. the new `login_canonicalizes_a_bare_handle_to_the_user_principal`)
   and `cargo test -p lb-host --test identity_membership_test --test authz_test` green;

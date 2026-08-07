@@ -30,7 +30,7 @@ fn put_req(uri: &str, body: Value) -> Request<Body> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn prefs_set_get_resolve_round_trip() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[SET, GET, RESOLVE]);
+    let tok = token(&key, "user:test", "nube", &[SET, GET, RESOLVE]);
 
     // PUT /prefs (set) -> 204
     let resp = router(gw.clone())
@@ -70,7 +70,7 @@ async fn prefs_set_get_resolve_round_trip() {
 async fn format_and_convert_need_no_prefs_cap() {
     let (gw, key) = gateway().await;
     // A session with NO prefs caps at all still reaches the utility tier.
-    let tok = token(&key, "user:eve", "acme", &[]);
+    let tok = token(&key, "user:eve", "nube", &[]);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -112,8 +112,8 @@ async fn format_and_convert_need_no_prefs_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn workspace_default_theme_reaches_a_fresh_member() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:ada", "acme", &[SET, SET_DEFAULT, RESOLVE]);
-    let member = token(&key, "user:test", "acme", &[SET, GET, RESOLVE]);
+    let admin = token(&key, "user:test", "nube", &[SET, SET_DEFAULT, RESOLVE]);
+    let member = token(&key, "user:test", "nube", &[SET, GET, RESOLVE]);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -144,8 +144,8 @@ async fn workspace_default_theme_reaches_a_fresh_member() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clearing_ui_theme_over_http_restores_inheritance() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:ada", "acme", &[SET, SET_DEFAULT, RESOLVE]);
-    let member = token(&key, "user:test", "acme", &[SET, GET, RESOLVE]);
+    let admin = token(&key, "user:test", "nube", &[SET, SET_DEFAULT, RESOLVE]);
+    let member = token(&key, "user:test", "nube", &[SET, GET, RESOLVE]);
 
     router(gw.clone())
         .oneshot(bearer(
@@ -199,7 +199,7 @@ async fn clearing_ui_theme_over_http_restores_inheritance() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clear_key_is_not_stored_as_an_axis() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[SET, GET, RESOLVE]);
+    let tok = token(&key, "user:test", "nube", &[SET, GET, RESOLVE]);
 
     router(gw.clone())
         .oneshot(bearer(
@@ -241,7 +241,7 @@ async fn clear_key_is_not_stored_as_an_axis() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unknown_clear_axis_is_rejected() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[SET, GET, RESOLVE]);
+    let tok = token(&key, "user:test", "nube", &[SET, GET, RESOLVE]);
     let resp = router(gw.clone())
         .oneshot(bearer(
             put_req("/prefs", json!({ "_clear": ["ui_thmee"] })),
@@ -257,7 +257,7 @@ async fn unknown_clear_axis_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clear_needs_the_write_cap() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:eve", "acme", &[GET, RESOLVE]); // no SET
+    let tok = token(&key, "user:eve", "nube", &[GET, RESOLVE]); // no SET
     let resp = router(gw.clone())
         .oneshot(bearer(
             put_req("/prefs", json!({ "_clear": ["ui_theme"] })),
@@ -272,7 +272,7 @@ async fn clear_needs_the_write_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clearing_the_default_needs_the_admin_cap() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:bob", "acme", &[SET]); // no SET_DEFAULT
+    let tok = token(&key, "user:bob", "nube", &[SET]); // no SET_DEFAULT
     let resp = router(gw.clone())
         .oneshot(bearer(
             put_req("/prefs/default", json!({ "_clear": ["ui_theme"] })),
@@ -286,7 +286,7 @@ async fn clearing_the_default_needs_the_admin_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn set_default_denied_without_admin_cap() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:bob", "acme", &[SET]); // no SET_DEFAULT
+    let tok = token(&key, "user:bob", "nube", &[SET]); // no SET_DEFAULT
     let resp = router(gw.clone())
         .oneshot(bearer(
             put_req("/prefs/default", json!({ "unit_system": "imperial" })),
@@ -300,7 +300,7 @@ async fn set_default_denied_without_admin_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn prefs_get_denied_without_cap() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:eve", "acme", &[]);
+    let tok = token(&key, "user:eve", "nube", &[]);
     let resp = router(gw.clone())
         .oneshot(bearer(get_req("/prefs"), &tok))
         .await
@@ -312,8 +312,8 @@ async fn prefs_get_denied_without_cap() {
 async fn two_sessions_resolve_per_workspace() {
     // The SAME global user in two workspaces resolves to each workspace's own value over the gateway.
     let (gw_a, key) = gateway().await;
-    let tok_a = token(&key, "user:ada", "ws-a", &[SET, RESOLVE]);
-    let tok_b = token(&key, "user:ada", "ws-b", &[SET, RESOLVE]);
+    let tok_a = token(&key, "user:test", "ws-a", &[SET, RESOLVE]);
+    let tok_b = token(&key, "user:test", "ws-b", &[SET, RESOLVE]);
 
     router(gw_a.clone())
         .oneshot(bearer(

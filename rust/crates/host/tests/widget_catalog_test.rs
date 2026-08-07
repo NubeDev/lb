@@ -127,7 +127,7 @@ async fn catalog_denied_without_cap_and_allowed_for_a_plain_member() {
 
     // A PLAIN member holding ONLY the palette read cap (not an admin) reads it — proving the grant is
     // real, not an admin bypass. `ext.list` cap absent → no ext tiles, but the built-in palette is full.
-    let member = principal("user:ada", ws, &[CATALOG]);
+    let member = principal("user:test", ws, &[CATALOG]);
     let out = call(&node, &member, ws, "dashboard.catalog", json!({}))
         .await
         .expect("plain member reads the palette");
@@ -152,10 +152,10 @@ async fn catalog_ext_tiles_are_workspace_isolated() {
     // ws-A has a real installed widget extension; ws-B has none.
     seed_widget_ext(&node, wa, "proof-panel", "Proof Tile").await;
 
-    let ada = principal("user:ada", wa, &[CATALOG, EXT_LIST]);
+    let test = principal("user:test", wa, &[CATALOG, EXT_LIST]);
     let bob = principal("user:bob", wb, &[CATALOG, EXT_LIST]);
 
-    let a = call(&node, &ada, wa, "dashboard.catalog", json!({}))
+    let a = call(&node, &test, wa, "dashboard.catalog", json!({}))
         .await
         .unwrap();
     let b = call(&node, &bob, wb, "dashboard.catalog", json!({}))
@@ -196,12 +196,12 @@ async fn catalog_ext_tiles_are_workspace_isolated() {
 /// The shell path (direct `dashboard_save`) and the headless path (`call_tool` → `dashboard.save`)
 /// must reject an unknown view IDENTICALLY. Run the given cell down both and assert the same message.
 async fn assert_rejected_both_paths(node: &Arc<Node>, ws: &str, bad_cell: Cell, needle: &str) {
-    let ada = principal("user:ada", ws, &[SAVE, GET]);
+    let test = principal("user:test", ws, &[SAVE, GET]);
 
     // (1) shell path — direct `dashboard_save`.
     let err = dashboard_save(
         &node.store,
-        &ada,
+        &test,
         ws,
         "d",
         "D",
@@ -225,7 +225,7 @@ async fn assert_rejected_both_paths(node: &Arc<Node>, ws: &str, bad_cell: Cell, 
     let cells = serde_json::to_value(vec![bad_cell]).unwrap();
     let herr = call_tool(
         node,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({ "id": "d", "title": "D", "cells": cells, "now": 10 }).to_string(),
@@ -244,7 +244,7 @@ async fn assert_rejected_both_paths(node: &Arc<Node>, ws: &str, bad_cell: Cell, 
 
     // Nothing persisted (the whole save is refused).
     assert!(
-        dashboard_get(&node.store, &ada, ws, "d").await.is_err(),
+        dashboard_get(&node.store, &test, ws, "d").await.is_err(),
         "a rejected save must persist nothing"
     );
 }
@@ -253,12 +253,12 @@ async fn assert_rejected_both_paths(node: &Arc<Node>, ws: &str, bad_cell: Cell, 
 async fn valid_builtin_view_persists() {
     let ws = "wc-ok-builtin";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[SAVE, GET]);
+    let test = principal("user:test", ws, &[SAVE, GET]);
     let c = cell("a", "gauge", json!({ "min": 0, "max": 100 }));
-    dashboard_save(&node.store, &ada, ws, "d", "D", vec![c], vec![], 10)
+    dashboard_save(&node.store, &test, ws, "d", "D", vec![c], vec![], 10)
         .await
         .expect("a known built-in view saves");
-    let got = dashboard_get(&node.store, &ada, ws, "d").await.unwrap();
+    let got = dashboard_get(&node.store, &test, ws, "d").await.unwrap();
     assert_eq!(got.cells[0].view, "gauge");
 }
 
@@ -269,10 +269,10 @@ async fn unknown_view_rejected_both_paths_and_nothing_persisted() {
     let c = cell("a", "heatmap", json!({}));
     assert_rejected_both_paths(&node, "wc-bad-view", c, "unknown view 'heatmap'").await;
     // The error names the palette verb so the fix is one edit away.
-    let ada = principal("user:ada", "wc-bad-view2", &[SAVE]);
+    let test = principal("user:test", "wc-bad-view2", &[SAVE]);
     let err = dashboard_save(
         &node.store,
-        &ada,
+        &test,
         "wc-bad-view2",
         "d",
         "D",
@@ -291,15 +291,15 @@ async fn unknown_view_rejected_both_paths_and_nothing_persisted() {
 async fn well_formed_ext_key_persists_structurally() {
     let ws = "wc-ext-ok";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[SAVE, GET]);
+    let test = principal("user:test", ws, &[SAVE, GET]);
     // NOT installed anywhere — accepted structurally (widget-catalog scope: not install-resolved, so
     // uninstalling never makes a dashboard unsavable, and `dashboard.save` stays store-only).
-    let c = cell("a", "ext:acme-charts/heat", json!({}));
-    dashboard_save(&node.store, &ada, ws, "d", "D", vec![c], vec![], 10)
+    let c = cell("a", "ext:nube-charts/heat", json!({}));
+    dashboard_save(&node.store, &test, ws, "d", "D", vec![c], vec![], 10)
         .await
         .expect("a well-formed ext:<id>/<widget> key persists");
-    let got = dashboard_get(&node.store, &ada, ws, "d").await.unwrap();
-    assert_eq!(got.cells[0].view, "ext:acme-charts/heat");
+    let got = dashboard_get(&node.store, &test, ws, "d").await.unwrap();
+    assert_eq!(got.cells[0].view, "ext:nube-charts/heat");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -327,7 +327,7 @@ async fn genui_still_routed_through_the_existing_check() {
     // check) — the regression that the view-name validator does not shadow the IR validator.
     let ws = "wc-genui";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[SAVE, GET]);
+    let test = principal("user:test", ws, &[SAVE, GET]);
 
     // A well-formed genui cell (valid view name, valid IR) still saves.
     let good = cell(
@@ -339,7 +339,7 @@ async fn genui_still_routed_through_the_existing_check() {
             "components": { "r": { "id": "r", "component": "stat", "props": { "value": 1 } } }
         } } }),
     );
-    dashboard_save(&node.store, &ada, ws, "dg", "D", vec![good], vec![], 10)
+    dashboard_save(&node.store, &test, ws, "dg", "D", vec![good], vec![], 10)
         .await
         .expect("a well-formed genui cell saves");
 
@@ -354,7 +354,7 @@ async fn genui_still_routed_through_the_existing_check() {
             "components": { "r": { "id": "r", "component": "Frobnicate", "props": {} } }
         } } }),
     );
-    let err = dashboard_save(&node.store, &ada, ws, "dg2", "D", vec![bad], vec![], 11)
+    let err = dashboard_save(&node.store, &test, ws, "dg2", "D", vec![bad], vec![], 11)
         .await
         .unwrap_err();
     assert!(
@@ -372,10 +372,10 @@ async fn round_trip_a_cell_authored_from_catalog_ids() {
     // everything fallback) — the discovery→author→persist loop the slice exists to make correct.
     let ws = "wc-roundtrip";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[CATALOG, SAVE, GET]);
+    let test = principal("user:test", ws, &[CATALOG, SAVE, GET]);
 
     // Discover the palette and confirm `gauge` + its `min`/`max`/`unit` option ids exist.
-    let cat = call(&node, &ada, ws, "dashboard.catalog", json!({}))
+    let cat = call(&node, &test, ws, "dashboard.catalog", json!({}))
         .await
         .unwrap();
     let gauge = cat["views"]
@@ -400,12 +400,12 @@ async fn round_trip_a_cell_authored_from_catalog_ids() {
     // Author + save the cell from those ids.
     let mut c = cell("a", "gauge", json!({ "min": 0, "max": 120 }));
     c.field_config = json!({ "defaults": { "unit": "celsius" } });
-    dashboard_save(&node.store, &ada, ws, "d", "Ops", vec![c], vec![], 10)
+    dashboard_save(&node.store, &test, ws, "d", "Ops", vec![c], vec![], 10)
         .await
         .expect("catalog-authored cell saves");
 
     // Reload: the view + options survive intact.
-    let got = dashboard_get(&node.store, &ada, ws, "d").await.unwrap();
+    let got = dashboard_get(&node.store, &test, ws, "d").await.unwrap();
     assert_eq!(got.cells[0].view, "gauge");
     assert_eq!(got.cells[0].options["max"], json!(120));
     assert_eq!(

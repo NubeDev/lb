@@ -45,7 +45,7 @@ from the token (§7); visibility is set via `/share`.
 make build-wasm && make dev
 BASE=http://127.0.0.1:8080
 TOKEN=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"ada","workspace":"acme"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+  -d '{"user":"test","workspace":"nube"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 A="authorization: Bearer $TOKEN"; C="content-type: application/json"
 ```
 
@@ -64,7 +64,7 @@ curl -s -X DELETE $BASE/panels/e2e-chart -H "$A" -o /dev/null -w "%{http_code}\n
 curl -s -X POST $BASE/panels -H "$A" -H "$C" -d "{\"id\":\"keep-chart\",\"title\":\"E2E — leave for inspection\",\"spec\":$SPEC}"
 ```
 
-**Observed** (2026-07-04, `acme`): create → `{owner:"user:ada", visibility:"private"}` with
+**Observed** (2026-07-04, `nube`): create → `{owner:"user:test", visibility:"private"}` with
 `sources[0].tool:"series_read"` preserved; usage → `[]`; delete → `204`.
 
 > Delete is proven on the throwaway `e2e-chart`; **`keep-chart` is left in place**, bound to
@@ -87,7 +87,7 @@ curl -s "$BASE/series/e2e.temp/samples"     -H "$A"   # the chart's feed
 ```
 
 **Observed** (2026-07-04): `accepted:1, committed:1`; `series` → `["e2e.temp"]`; the read
-returns the sample with `producer:"user:ada"` (stamped from the token, un-spoofable — a
+returns the sample with `producer:"user:test"` (stamped from the token, un-spoofable — a
 client-supplied producer is ignored). That round-trip **is** the chart working: a widget
 bound to `series_read{series:"e2e.temp"}` now has a point to draw.
 
@@ -103,7 +103,7 @@ curl -s $BASE/panels -o /dev/null -w "%{http_code}\n"   # NO token → 401
 
 A per-verb capability deny (missing `mcp:panel.save:call` / `mcp:ingest.write:call`) is
 proven server-side in the Rust tests + `signInWithCaps` suite. **Access**: seed a series in
-`acme`, sign in to `globex`, confirm `globex`'s `series?prefix=e2e` is empty — the workspace
+`nube`, sign in to `globex`, confirm `globex`'s `series?prefix=e2e` is empty — the workspace
 wall gates the series store too.
 
 ## Step 3–5. What you found / findings / done

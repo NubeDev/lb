@@ -31,7 +31,7 @@ Two choices, both taken as recommended:
 `full_loopback_test.rs`, `full_federation_test.rs`) — those need isolated, ephemeral stores per test
 run. Defaulting `LB_STORE_PATH` inside `NodeHandle::boot` would make every test share one on-disk
 store (cross-contamination, flaky concurrent runs). So the default is resolved and set **only at the
-windowed binary boundary** (`desktop.rs::run`, before `NodeHandle::boot("acme")`) — the one code path
+windowed binary boundary** (`desktop.rs::run`, before `NodeHandle::boot("nube")`) — the one code path
 only the shipped app takes. `Node::boot`/`open_store` are **completely unchanged**; they already did
 the right thing whenever `LB_STORE_PATH` was set (used today by `make cloud`/`edge`).
 

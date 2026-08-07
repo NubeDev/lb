@@ -30,7 +30,7 @@ use lb_authz::{
 };
 use lb_store::{Store, StoreError};
 
-const WS: &str = "acme";
+const WS: &str = "nube";
 
 /// A live built-in cap source that knows `member` carries `mcp:report.save:call` (the cap the
 /// reports feature added — the one the stale row in the dev store was missing). This stands in for

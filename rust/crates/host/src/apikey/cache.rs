@@ -100,7 +100,7 @@ mod tests {
     fn principal(sub: &str) -> Principal {
         Principal::for_key(
             sub.to_string(),
-            "acme".to_string(),
+            "nube".to_string(),
             vec!["store:*:read".into()],
         )
     }

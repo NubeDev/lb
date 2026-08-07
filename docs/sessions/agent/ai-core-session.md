@@ -208,7 +208,7 @@ One non-trivial discovery, with an entry:
 
 - [agent/agent-reads-doc-it-doesnt-own-is-denied](../../debugging/agent/agent-reads-doc-it-doesnt-own-is-denied.md)
   — the happy path failed `Denied`: the agent's derived principal had sub `agent:session`, so the S4
-  doc membership gate (owner = `user:ada`) refused the substrate read. Root cause: substrate reads
+  doc membership gate (owner = `user:test`) refused the substrate read. Root cause: substrate reads
   are membership-gated and must resolve as the **caller**, not a distinct agent actor. Fixed by
   reading substrate on the caller's behalf (caller's sub + intersected caps); tool calls keep the
   `agent:*` sub (they're ws+cap-gated only). Regression: `agent_test::an_edge_user_invokes…` (the

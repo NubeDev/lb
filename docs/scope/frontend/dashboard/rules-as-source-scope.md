@@ -129,7 +129,7 @@ Per [`../../testing/testing-scope.md`](../../testing/testing-scope.md):
   it and the source resolves to real rows. (Extends the package's gateway coverage where it exists;
   otherwise noted as the shell-side integration test on adoption.)
 - **Capability-deny + workspace-isolation** (mandatory): a workspace without `mcp:rules.list:call`
-  gets no Rules group; a rule saved in `acme` is not offered to `beta` (the ws wall — the loader is
+  gets no Rules group; a rule saved in `nube` is not offered to `beta` (the ws wall — the loader is
   ws-keyed and the host gates `rules.list` workspace-first).
 
 ## Open questions

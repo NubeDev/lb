@@ -65,7 +65,7 @@ async fn seed_sample(
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn write_then_list_latest_and_read_round_trips_over_the_gateway() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[WRITE, READ, LATEST, LIST]);
+    let tok = token(&key, "user:test", "nube", &[WRITE, READ, LATEST, LIST]);
 
     seed_sample(&gw, &tok, "node.cpu_temp", 1, json!(60.0)).await;
     seed_sample(&gw, &tok, "node.cpu_temp", 2, json!(61.4)).await;
@@ -104,7 +104,7 @@ async fn write_then_list_latest_and_read_round_trips_over_the_gateway() {
 async fn ingest_write_without_the_cap_is_denied_server_side() {
     let (gw, key) = gateway().await;
     // A token with reads but no write cap — the deny is from the TOKEN, server-side.
-    let tok = token(&key, "user:ada", "acme", &[READ, LATEST, LIST]);
+    let tok = token(&key, "user:test", "nube", &[READ, LATEST, LIST]);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -125,7 +125,7 @@ async fn ingest_write_without_the_cap_is_denied_server_side() {
 async fn series_read_list_latest_find_each_denied_without_their_cap() {
     let (gw, key) = gateway().await;
     // No series caps at all → every read verb is refused before it runs.
-    let tok = token(&key, "user:mallory", "acme", &[]);
+    let tok = token(&key, "user:mallory", "nube", &[]);
 
     for req in [
         get_req("/series"),
@@ -150,18 +150,18 @@ async fn series_read_list_latest_find_each_denied_without_their_cap() {
 async fn series_find_filters_by_tag_facet() {
     // Seed a series + tag it `kind:temperature`, then find it by facet over the gateway.
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[WRITE, FIND]);
+    let tok = token(&key, "user:test", "nube", &[WRITE, FIND]);
     seed_sample(&gw, &tok, "node.cpu_temp", 1, json!(60.0)).await;
 
     // Tag the series entity via the real tag verb (the producer/system path).
-    let p = Principal::routed("user:ada", "acme", vec!["mcp:tags.add:call".into()]);
+    let p = Principal::routed("user:test", "nube", vec!["mcp:tags.add:call".into()]);
     tags_add(
         &gw.node.store,
         &p,
-        "acme",
+        "nube",
         "series:node.cpu_temp",
         &Tag::new("kind", json!("temperature")),
-        &Provenance::new(1, "user:ada", TagSource::Human),
+        &Provenance::new(1, "user:test", TagSource::Human),
     )
     .await
     .expect("tag the series");
@@ -188,7 +188,7 @@ async fn series_find_filters_by_tag_facet() {
 async fn tables_scan_graph_round_trip_for_an_admin() {
     let (gw, key) = gateway().await;
     // An admin token: holds the store.* caps AND the write cap to seed real rows.
-    let tok = token(&key, "user:root", "acme", &[WRITE, TABLES, SCAN, GRAPH]);
+    let tok = token(&key, "user:root", "nube", &[WRITE, TABLES, SCAN, GRAPH]);
     seed_sample(&gw, &tok, "node.cpu_temp", 1, json!(60.0)).await;
     seed_sample(&gw, &tok, "node.cpu_temp", 2, json!(61.4)).await;
 
@@ -218,11 +218,11 @@ async fn tables_scan_graph_round_trip_for_an_admin() {
     assert!(page["next"].is_null(), "short page → no next cursor");
 
     // store.graph: tag the series so there's a real relation edge, then read the graph.
-    let p = Principal::routed("user:root", "acme", vec!["mcp:tags.add:call".into()]);
+    let p = Principal::routed("user:root", "nube", vec!["mcp:tags.add:call".into()]);
     tags_add(
         &gw.node.store,
         &p,
-        "acme",
+        "nube",
         "series:node.cpu_temp",
         &Tag::new("host", json!("pi-7")),
         &Provenance::new(1, "user:root", TagSource::Human),
@@ -261,7 +261,7 @@ async fn store_verbs_denied_without_the_admin_cap_the_gate3_relaxation_stays_adm
     let tok = token(
         &key,
         "user:member",
-        "acme",
+        "nube",
         &[WRITE, READ, LATEST, LIST, FIND],
     );
 
@@ -289,8 +289,8 @@ async fn ws_b_session_cannot_browse_or_read_ws_a() {
 
     let tok_a = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &[WRITE, TABLES, SCAN, GRAPH, LIST],
     );
     seed_sample(&gw, &tok_a, "node.cpu_temp", 1, json!(60.0)).await;
@@ -353,7 +353,7 @@ async fn ws_b_session_cannot_browse_or_read_ws_a() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn buckets_mode_decimates_instead_of_silently_serving_a_raw_read() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[WRITE, READ]);
+    let tok = token(&key, "user:test", "nube", &[WRITE, READ]);
 
     // Four samples inside one 60 s bucket, plus one in the next.
     for (seq, ts, v) in [(1u64, 1_000u64, 10.0), (2, 2_000, 30.0), (3, 3_000, 20.0)] {
@@ -403,7 +403,7 @@ async fn buckets_mode_decimates_instead_of_silently_serving_a_raw_read() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn buckets_mode_without_a_window_is_a_named_bad_request() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[WRITE, READ]);
+    let tok = token(&key, "user:test", "nube", &[WRITE, READ]);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -419,7 +419,7 @@ async fn buckets_mode_without_a_window_is_a_named_bad_request() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_read_without_mode_is_still_the_raw_range_read() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[WRITE, READ]);
+    let tok = token(&key, "user:test", "nube", &[WRITE, READ]);
     seed_sample(&gw, &tok, "b.plain", 1, json!(1.5)).await;
 
     let resp = router(gw)

@@ -43,10 +43,10 @@ async fn an_agent_in_ws_b_cannot_read_ws_a_substrate_doc() {
     let node = Arc::new(Node::boot().await.unwrap());
 
     // ws-A: owner writes a secret doc.
-    let ada_a = principal("user:ada", "agent-iso-a", &[INVOKE, DOC_R, DOC_W]);
+    let test_a = principal("user:test", "agent-iso-a", &[INVOKE, DOC_R, DOC_W]);
     put_doc(
         &node.store,
-        &ada_a,
+        &test_a,
         "agent-iso-a",
         "secret",
         "Secret",
@@ -59,11 +59,11 @@ async fn an_agent_in_ws_b_cannot_read_ws_a_substrate_doc() {
     .unwrap();
 
     // ws-B: a principal (even same sub) invokes the agent in ws-B, asking for ws-A's doc id.
-    let ada_b = principal("user:ada", "agent-iso-b", &[INVOKE, DOC_R]);
+    let test_b = principal("user:test", "agent-iso-b", &[INVOKE, DOC_R]);
     let err = invoke(
         &node,
         &just_stop(),
-        &ada_b,
+        &test_b,
         &[DOC_R.into()],
         "agent-iso-b",
         Invocation {
@@ -83,7 +83,7 @@ async fn an_agent_in_ws_b_cannot_read_ws_a_substrate_doc() {
     ));
 
     // And ws-A's doc is intact + unreadable from ws-B at the store verb directly (belt + suspenders).
-    let from_b = lb_host::get_doc(&node.store, &ada_b, "agent-iso-b", "secret").await;
+    let from_b = lb_host::get_doc(&node.store, &test_b, "agent-iso-b", "secret").await;
     assert!(
         from_b.is_err(),
         "ws-B must not read ws-A's doc via the store verb either"
@@ -95,12 +95,12 @@ async fn an_agents_job_is_invisible_across_the_workspace_wall() {
     // The session record itself is ws-scoped: a job created by an agent in ws-A is invisible to
     // ws-B (a ws-B resume can never read a ws-A session). The hard wall on the durable session.
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada_a = principal("user:ada", "agent-jobiso-a", &[INVOKE]);
+    let test_a = principal("user:test", "agent-jobiso-a", &[INVOKE]);
 
     invoke(
         &node,
         &just_stop(),
-        &ada_a,
+        &test_a,
         &[],
         "agent-jobiso-a",
         Invocation {

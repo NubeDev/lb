@@ -50,12 +50,12 @@ const ASSET_W: &str = "store:asset/*:write";
 async fn markdown_save_seeds_backlinks_and_embeds() {
     let ws = "ds-backlinks";
     let store = lb_store::Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[DOC_R, DOC_W, ASSET_W]);
+    let test = principal("user:test", ws, &[DOC_R, DOC_W, ASSET_W]);
 
     // Target doc + asset exist.
     put_doc(
         &store,
-        &ada,
+        &test,
         ws,
         "alarm-matrix",
         "Alarms",
@@ -66,14 +66,14 @@ async fn markdown_save_seeds_backlinks_and_embeds() {
     )
     .await
     .unwrap();
-    put_asset(&store, &ada, ws, "wiring", "image/png", vec![1, 2, 3], 2)
+    put_asset(&store, &test, ws, "wiring", "image/png", vec![1, 2, 3], 2)
         .await
         .unwrap();
 
     // A runbook markdown body references both.
     put_doc(
         &store,
-        &ada,
+        &test,
         ws,
         "runbook",
         "Runbook",
@@ -86,7 +86,7 @@ async fn markdown_save_seeds_backlinks_and_embeds() {
     .unwrap();
 
     // backlinks(alarm-matrix) names the runbook; the embed edge lets the asset's embedder resolve.
-    let bl = backlinks(&store, &ada, ws, "alarm-matrix").await.unwrap();
+    let bl = backlinks(&store, &test, ws, "alarm-matrix").await.unwrap();
     assert!(
         bl.iter().any(|s| s == "runbook"),
         "backlink resolves: {bl:?}"
@@ -100,12 +100,12 @@ async fn markdown_save_seeds_backlinks_and_embeds() {
 async fn links_and_embeds_never_widen_access() {
     let ws = "ds-no-widen";
     let store = lb_store::Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[DOC_R, DOC_W, ASSET_R, ASSET_W]);
+    let test = principal("user:test", ws, &[DOC_R, DOC_W, ASSET_R, ASSET_W]);
     let ben = principal("user:ben", ws, &[DOC_R, ASSET_R]); // read-only
 
     put_doc(
         &store,
-        &ada,
+        &test,
         ws,
         "alarm-matrix",
         "Alarms",
@@ -116,11 +116,11 @@ async fn links_and_embeds_never_widen_access() {
     )
     .await
     .unwrap();
-    // Ada's private asset — embedded ONLY by a doc Ben canNOT read, so the embed path does not
+    // Test's private asset — embedded ONLY by a doc Ben canNOT read, so the embed path does not
     // gate Ben in (the load-bearing embed deny).
     put_asset(
         &store,
-        &ada,
+        &test,
         ws,
         "secret-img",
         "image/png",
@@ -131,7 +131,7 @@ async fn links_and_embeds_never_widen_access() {
     .unwrap();
     put_doc(
         &store,
-        &ada,
+        &test,
         ws,
         "private-notes",
         "Private",
@@ -142,10 +142,10 @@ async fn links_and_embeds_never_widen_access() {
     )
     .await
     .unwrap();
-    // Ada's runbook links the alarm doc, then is shared to Ben.
+    // Test's runbook links the alarm doc, then is shared to Ben.
     put_doc(
         &store,
-        &ada,
+        &test,
         ws,
         "runbook",
         "Runbook",
@@ -156,7 +156,7 @@ async fn links_and_embeds_never_widen_access() {
     )
     .await
     .unwrap();
-    share_doc(&store, &ada, ws, "runbook", "user:ben")
+    share_doc(&store, &test, ws, "runbook", "user:ben")
         .await
         .unwrap();
 
@@ -174,9 +174,9 @@ async fn links_and_embeds_never_widen_access() {
         AssetError::Denied
     ));
 
-    // Ada (owner) reads both the target doc and the embedded asset fine.
-    assert!(get_doc(&store, &ada, ws, "alarm-matrix").await.is_ok());
-    assert!(get_asset(&store, &ada, ws, "secret-img").await.is_ok());
+    // Test (owner) reads both the target doc and the embedded asset fine.
+    assert!(get_doc(&store, &test, ws, "alarm-matrix").await.is_ok());
+    assert!(get_asset(&store, &test, ws, "secret-img").await.is_ok());
 }
 
 /// An embedded asset IS reachable through the embed path: Ben reads the runbook (shared), and
@@ -185,15 +185,15 @@ async fn links_and_embeds_never_widen_access() {
 async fn an_embedded_asset_is_readable_through_the_embedding_doc() {
     let ws = "ds-embed-read";
     let store = lb_store::Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[DOC_R, DOC_W, ASSET_R, ASSET_W]);
+    let test = principal("user:test", ws, &[DOC_R, DOC_W, ASSET_R, ASSET_W]);
     let ben = principal("user:ben", ws, &[DOC_R, ASSET_R]);
 
-    put_asset(&store, &ada, ws, "diag", "image/png", vec![1, 2, 3, 4], 1)
+    put_asset(&store, &test, ws, "diag", "image/png", vec![1, 2, 3, 4], 1)
         .await
         .unwrap();
     put_doc(
         &store,
-        &ada,
+        &test,
         ws,
         "runbook",
         "Runbook",
@@ -204,7 +204,7 @@ async fn an_embedded_asset_is_readable_through_the_embedding_doc() {
     )
     .await
     .unwrap();
-    share_doc(&store, &ada, ws, "runbook", "user:ben")
+    share_doc(&store, &test, ws, "runbook", "user:ben")
         .await
         .unwrap();
 
@@ -219,13 +219,13 @@ async fn an_embedded_asset_is_readable_through_the_embedding_doc() {
 async fn share_to_user_then_revoke_removes_visibility() {
     let ws = "ds-user-share";
     let store = lb_store::Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[DOC_R, DOC_W]);
+    let test = principal("user:test", ws, &[DOC_R, DOC_W]);
     let ben = principal("user:ben", ws, &[DOC_R]);
     let cleo = principal("user:cleo", ws, &[DOC_R]); // never shared to
 
     put_doc(
         &store,
-        &ada,
+        &test,
         ws,
         "d",
         "D",
@@ -236,7 +236,7 @@ async fn share_to_user_then_revoke_removes_visibility() {
     )
     .await
     .unwrap();
-    share_doc(&store, &ada, ws, "d", "user:ben").await.unwrap();
+    share_doc(&store, &test, ws, "d", "user:ben").await.unwrap();
 
     // Ben (shared user) reads; Cleo (anyone else) is denied.
     assert_eq!(
@@ -249,7 +249,7 @@ async fn share_to_user_then_revoke_removes_visibility() {
     ));
 
     // Revoke → Ben is denied on the next read (the relation is re-resolved live).
-    unshare_doc(&store, &ada, ws, "d", "user:ben")
+    unshare_doc(&store, &test, ws, "d", "user:ben")
         .await
         .unwrap();
     assert!(matches!(
@@ -264,20 +264,20 @@ async fn share_to_user_then_revoke_removes_visibility() {
 async fn asset_round_trips_byte_identical_and_bounds_size() {
     let ws = "ds-asset-rt";
     let store = lb_store::Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[ASSET_R, ASSET_W]);
+    let test = principal("user:test", ws, &[ASSET_R, ASSET_W]);
     let payload = (0u8..255).collect::<Vec<u8>>();
 
-    put_asset(&store, &ada, ws, "img", "image/png", payload.clone(), 1)
+    put_asset(&store, &test, ws, "img", "image/png", payload.clone(), 1)
         .await
         .unwrap();
-    let got = get_asset(&store, &ada, ws, "img").await.unwrap();
+    let got = get_asset(&store, &test, ws, "img").await.unwrap();
     assert_eq!(got.bytes, payload, "byte-identical round-trip");
     assert_eq!(got.mime, "image/png");
 
     // Over-bound payload is rejected with TooLarge — a clear, honest error.
     let too_big = vec![0u8; lb_host::MAX_ASSET_BYTES + 1];
     assert!(matches!(
-        put_asset(&store, &ada, ws, "huge", "image/png", too_big, 2)
+        put_asset(&store, &test, ws, "huge", "image/png", too_big, 2)
             .await
             .unwrap_err(),
         AssetError::TooLarge
@@ -290,12 +290,12 @@ async fn asset_round_trips_byte_identical_and_bounds_size() {
 async fn delete_doc_tombstones_and_is_owner_gated() {
     let ws = "ds-delete";
     let store = lb_store::Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[DOC_R, DOC_W]);
+    let test = principal("user:test", ws, &[DOC_R, DOC_W]);
     let mallory = principal("user:mallory", ws, &[DOC_R, DOC_W]);
 
     put_doc(
         &store,
-        &ada,
+        &test,
         ws,
         "d",
         "D",
@@ -314,13 +314,13 @@ async fn delete_doc_tombstones_and_is_owner_gated() {
     ));
 
     // The owner deletes; the doc is gone (tombstone reads as NotFound).
-    delete_doc(&store, &ada, ws, "d").await.unwrap();
+    delete_doc(&store, &test, ws, "d").await.unwrap();
     assert!(matches!(
-        get_doc(&store, &ada, ws, "d").await.unwrap_err(),
+        get_doc(&store, &test, ws, "d").await.unwrap_err(),
         AssetError::NotFound
     ));
     // Idempotent: deleting again is still Ok (the tombstone upsert is a no-op).
-    delete_doc(&store, &ada, ws, "d").await.unwrap();
+    delete_doc(&store, &test, ws, "d").await.unwrap();
 }
 
 /// The save↔undo seam (document-store scope + undo scope): a markdown save through the dispatch
@@ -330,7 +330,7 @@ async fn markdown_save_participates_in_undo() {
     let ws = "ds-undo";
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:assets.put_doc:call",
@@ -370,7 +370,7 @@ async fn markdown_save_participates_in_undo() {
     );
 
     // The save was auto-captured as an undoable step.
-    let items = history_list(&node.store, &p, ws, "user:ada", "")
+    let items = history_list(&node.store, &p, ws, "user:test", "")
         .await
         .expect("history reads")
         .items;
@@ -382,7 +382,7 @@ async fn markdown_save_participates_in_undo() {
     );
 
     // Undo restores rev1's body through the real journal (no app-side guessing).
-    undo(&node.store, &p, ws, "user:ada", "")
+    undo(&node.store, &p, ws, "user:test", "")
         .await
         .expect("undo");
     assert_eq!(
@@ -401,7 +401,7 @@ async fn assets_put_doc_is_reachable_over_the_mcp_contract() {
     let ws = "ds-reuse";
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:assets.put_doc:call",
@@ -439,16 +439,16 @@ async fn a_ws_b_principal_cannot_read_a_ws_a_asset() {
     let ws_a = "ds-iso-a";
     let ws_b = "ds-iso-b";
     let store = lb_store::Store::memory().await.unwrap();
-    let ada_a = principal("user:ada", ws_a, &[ASSET_R, ASSET_W]);
-    let ada_b = principal("user:ada", ws_b, &[ASSET_R]); // same sub, OTHER workspace
+    let test_a = principal("user:test", ws_a, &[ASSET_R, ASSET_W]);
+    let test_b = principal("user:test", ws_b, &[ASSET_R]); // same sub, OTHER workspace
 
-    put_asset(&store, &ada_a, ws_a, "img", "image/png", vec![1, 2, 3], 1)
+    put_asset(&store, &test_a, ws_a, "img", "image/png", vec![1, 2, 3], 1)
         .await
         .unwrap();
 
     // The same principal in ws-B cannot reach ws-A's asset — the workspace wall holds.
     assert!(matches!(
-        get_asset(&store, &ada_b, ws_a, "img").await.unwrap_err(),
+        get_asset(&store, &test_b, ws_a, "img").await.unwrap_err(),
         AssetError::Denied
     ));
 }

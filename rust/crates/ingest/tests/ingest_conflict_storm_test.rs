@@ -29,7 +29,7 @@ use lb_store::Store;
 use serde_json::json;
 use tokio::sync::Mutex;
 
-const WS: &str = "acme";
+const WS: &str = "nube";
 const SERIES: &str = "cpu";
 const PRODUCERS: u64 = 6;
 const PER_PRODUCER: u64 = 350; // > COMMIT_BATCH (256) so every drain loop must iterate

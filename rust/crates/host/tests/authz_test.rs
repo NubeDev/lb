@@ -48,7 +48,7 @@ const ADMIN: &[&str] = &[
 async fn denies_each_admin_verb_without_its_grant() {
     let store = Store::memory().await.unwrap();
     // Holds only grants.list — every mutating/other verb is denied.
-    let p = principal("user:mallory", "acme", &["mcp:grants.list:call"]);
+    let p = principal("user:mallory", "nube", &["mcp:grants.list:call"]);
     for (verb, input) in [
         (
             "grants.assign",
@@ -69,7 +69,7 @@ async fn denies_each_admin_verb_without_its_grant() {
         ),
         ("teams.list", json!({})),
     ] {
-        let err = call_authz_tool(&store, &p, "acme", verb, &input)
+        let err = call_authz_tool(&store, &p, "nube", verb, &input)
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::Denied), "{verb} must be denied");
@@ -78,7 +78,7 @@ async fn denies_each_admin_verb_without_its_grant() {
     call_authz_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "grants.list",
         &json!({ "subject": "user:bob" }),
     )
@@ -91,18 +91,18 @@ async fn denies_each_admin_verb_without_its_grant() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_admin_cannot_see_or_touch_ws_a_authz() {
     let store = Store::memory().await.unwrap();
-    let admin_a = principal("user:alice", "acme", ADMIN);
+    let admin_a = principal("user:alice", "nube", ADMIN);
     // A ws-B admin: full admin caps, but in workspace `globex`.
     let admin_b = principal("user:carol", "globex", ADMIN);
 
-    // ws-A admin seeds a team + a grant in acme.
-    teams_create(&store, &admin_a, "acme", "facilities", "Facilities")
+    // ws-A admin seeds a team + a grant in nube.
+    teams_create(&store, &admin_a, "nube", "facilities", "Facilities")
         .await
         .unwrap();
     grants_assign(
         &store,
         &admin_a,
-        "acme",
+        "nube",
         &Subject::User("bob".into()),
         "mcp:hvac.setpoint:call",
         &Scope::All,
@@ -110,7 +110,7 @@ async fn ws_b_admin_cannot_see_or_touch_ws_a_authz() {
     .await
     .unwrap();
 
-    // ws-B admin targeting acme: gate 1 (workspace) denies — opaque, over the MCP bridge.
+    // ws-B admin targeting nube: gate 1 (workspace) denies — opaque, over the MCP bridge.
     for (verb, input) in [
         ("teams.list", json!({})),
         ("grants.list", json!({ "subject": "user:bob" })),
@@ -119,7 +119,7 @@ async fn ws_b_admin_cannot_see_or_touch_ws_a_authz() {
             json!({ "subject": "user:bob", "cap": "mcp:hvac.setpoint:call" }),
         ),
     ] {
-        let err = call_authz_tool(&store, &admin_b, "acme", verb, &input)
+        let err = call_authz_tool(&store, &admin_b, "nube", verb, &input)
             .await
             .unwrap_err();
         assert!(
@@ -143,13 +143,13 @@ async fn ws_b_admin_cannot_see_or_touch_ws_a_authz() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn resolve_unions_direct_role_and_team_inherited_caps() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     // Direct user grant.
     grants_assign(
         &store,
         &admin,
-        "acme",
+        "nube",
         &Subject::User("bob".into()),
         "mcp:hvac.setpoint:call",
         &Scope::All,
@@ -161,19 +161,19 @@ async fn resolve_unions_direct_role_and_team_inherited_caps() {
     roles_define(
         &store,
         &admin,
-        "acme",
+        "nube",
         "operator",
         &["store:series/hvac:read".to_string()],
     )
     .await
     .unwrap();
-    teams_create(&store, &admin, "acme", "facilities", "Facilities")
+    teams_create(&store, &admin, "nube", "facilities", "Facilities")
         .await
         .unwrap();
     grants_assign(
         &store,
         &admin,
-        "acme",
+        "nube",
         &Subject::Team("facilities".into()),
         "role:operator",
         &Scope::All,
@@ -183,15 +183,15 @@ async fn resolve_unions_direct_role_and_team_inherited_caps() {
     // Bob joins facilities (the member edge the resolver walks).
     lb_host::add_team_member(
         &store,
-        &principal("user:alice", "acme", &["mcp:members.add:call"]),
-        "acme",
+        &principal("user:alice", "nube", &["mcp:members.add:call"]),
+        "nube",
         "facilities",
         "bob",
     )
     .await
     .unwrap();
 
-    let mut caps = resolve_caps(&store, "acme", "bob").await.unwrap();
+    let mut caps = resolve_caps(&store, "nube", "bob").await.unwrap();
     caps.sort();
     assert_eq!(
         caps,
@@ -203,7 +203,7 @@ async fn resolve_unions_direct_role_and_team_inherited_caps() {
     );
 
     // A non-member gets none of the team-inherited caps.
-    assert!(resolve_caps(&store, "acme", "eve")
+    assert!(resolve_caps(&store, "nube", "eve")
         .await
         .unwrap()
         .is_empty());
@@ -213,11 +213,11 @@ async fn resolve_unions_direct_role_and_team_inherited_caps() {
 async fn no_widening_blocks_granting_a_cap_the_admin_lacks() {
     let store = Store::memory().await.unwrap();
     // Admin can assign grants, but does NOT hold the hvac cap.
-    let admin = principal("user:alice", "acme", &["mcp:grants.assign:call"]);
+    let admin = principal("user:alice", "nube", &["mcp:grants.assign:call"]);
     let err = grants_assign(
         &store,
         &admin,
-        "acme",
+        "nube",
         &Subject::User("bob".into()),
         "mcp:hvac.setpoint:call",
         &Scope::All,
@@ -230,14 +230,14 @@ async fn no_widening_blocks_granting_a_cap_the_admin_lacks() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn assign_and_revoke_are_idempotent_and_revoke_seam_strips_all() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
     let bob = Subject::User("bob".into());
 
     // Double-assign the same grant → still just one live cap.
     grants_assign(
         &store,
         &admin,
-        "acme",
+        "nube",
         &bob,
         "mcp:hvac.setpoint:call",
         &Scope::All,
@@ -247,25 +247,25 @@ async fn assign_and_revoke_are_idempotent_and_revoke_seam_strips_all() {
     grants_assign(
         &store,
         &admin,
-        "acme",
+        "nube",
         &bob,
         "mcp:hvac.setpoint:call",
         &Scope::All,
     )
     .await
     .unwrap();
-    assert_eq!(resolve_caps(&store, "acme", "bob").await.unwrap().len(), 1);
+    assert_eq!(resolve_caps(&store, "nube", "bob").await.unwrap().len(), 1);
 
     // The revoke seam strips every grant (admin-crud calls this on user.delete). Returns the count.
-    let n = revoke_subject(&store, "acme", &bob).await.unwrap();
+    let n = revoke_subject(&store, "nube", &bob).await.unwrap();
     assert_eq!(n, 1);
-    assert!(resolve_caps(&store, "acme", "bob")
+    assert!(resolve_caps(&store, "nube", "bob")
         .await
         .unwrap()
         .is_empty());
 
     // Re-running the seam is a harmless no-op (idempotent replay).
-    assert_eq!(revoke_subject(&store, "acme", &bob).await.unwrap(), 0);
+    assert_eq!(revoke_subject(&store, "nube", &bob).await.unwrap(), 0);
 }
 
 // ── access-console scope: the three new verbs (authz.resolve, authz.revoke-tokens, roles.delete) —
@@ -276,13 +276,13 @@ async fn assign_and_revoke_are_idempotent_and_revoke_seam_strips_all() {
 async fn denies_each_access_console_verb_without_its_grant() {
     let store = Store::memory().await.unwrap();
     // Holds grants.list only — none of the access-console admin caps.
-    let p = principal("user:mallory", "acme", &["mcp:grants.list:call"]);
+    let p = principal("user:mallory", "nube", &["mcp:grants.list:call"]);
     for (verb, input) in [
         ("authz.resolve", json!({ "subject": "user:bob" })),
         ("authz.revoke-tokens", json!({ "subject": "user:bob" })),
         ("roles.delete", json!({ "name": "operator" })),
     ] {
-        let err = call_authz_tool(&store, &p, "acme", verb, &input)
+        let err = call_authz_tool(&store, &p, "nube", verb, &input)
             .await
             .unwrap_err();
         assert!(
@@ -305,13 +305,13 @@ async fn access_console_verbs_cannot_cross_the_workspace_wall() {
             "mcp:roles.manage:call",
         ],
     );
-    // Calling into "acme" (gate 1 — the caller's ws is globex) is denied for every verb.
+    // Calling into "nube" (gate 1 — the caller's ws is globex) is denied for every verb.
     for (verb, input) in [
         ("authz.resolve", json!({ "subject": "user:bob" })),
         ("authz.revoke-tokens", json!({ "subject": "user:bob" })),
         ("roles.delete", json!({ "name": "operator" })),
     ] {
-        let err = call_authz_tool(&store, &ws_b, "acme", verb, &input)
+        let err = call_authz_tool(&store, &ws_b, "nube", verb, &input)
             .await
             .unwrap_err();
         assert!(

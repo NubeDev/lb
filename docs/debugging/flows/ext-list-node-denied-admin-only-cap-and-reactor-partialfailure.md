@@ -8,7 +8,7 @@
 
 ## Symptom
 
-Flow `aaa` (`flipflop-1` → `counter-1` + `ext-list-1` → `debug-1`) on `http://localhost:5099/#/t/acme/flows/aaa`:
+Flow `aaa` (`flipflop-1` → `counter-1` + `ext-list-1` → `debug-1`) on `http://localhost:5099/#/t/nube/flows/aaa`:
 
 ```
 # manual run (author's gateway token) — after fault 1 fixed:
@@ -30,7 +30,7 @@ the flow author had never seen because no prior flow mixed a denied node with a 
 **Fault 1 — `mcp:ext.list:call` was admin-only.** The ext-store-nodes scope moved `store.tables` into
 the member `AUTHOR_CAPS` bundle for the store-table picker but left `ext.list` in `ADMIN_ONLY_CAPS`
 (`authz/builtin_roles.rs`). The `ext-list` node and the `lb:extension` picker both dispatch `ext.list`
-under the flow author's own principal (`execute_node/ext_call.rs`), and the seeded dev user `ada` is a
+under the flow author's own principal (`execute_node/ext_call.rs`), and the seeded dev user `test` is a
 `member`, not an admin — so the outer gate `mcp:ext.list:call` denied it. (A stale dev store masked
 this: an OLDER binary had seeded/compiled `member` WITH the broad `ext.*` caps, and the running node
 was that old binary — a fresh build from current source denies, matching the user's report.
@@ -67,7 +67,7 @@ even though the scope's own headline example is a *nightly-cron* flow using `ext
 
 ## Verified live
 
-Rebuilt + restarted the dev node; `ada` (member) login now carries `mcp:ext.list:call` but NOT the ext
+Rebuilt + restarted the dev node; `test` (member) login now carries `mcp:ext.list:call` but NOT the ext
 mutators (`resolve_caps_live` replaced the stale row). Flip-flop auto-runs flipped `partialFailure` →
 `success` (`ext-list-1: ok`, 2 extensions). Store nodes e2e: `store-write` → `store-read` round-trips a
 row; `store-write` to reserved table `flow` → `bad input: reserved table: flow` (wall holds through the

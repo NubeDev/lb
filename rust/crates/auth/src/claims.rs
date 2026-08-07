@@ -10,7 +10,7 @@ use crate::principal::Role;
 /// The signed claim set inside a token.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Claims {
-    /// Global identity, e.g. `user:ada` or `key:ci-bot`.
+    /// Global identity, e.g. `user:test` or `key:ci-bot`.
     pub sub: String,
     /// THE workspace claim — the hard isolation wall. Singular: one token, one workspace.
     pub ws: String,

@@ -3,7 +3,7 @@
 //! `subject ∈ {user, team, role, key}`; the `key:` prefix was reserved by auth-caps-scope and is
 //! fulfilled by the api-keys scope).
 //!
-//! Wire form is a single `kind:name` string (`user:ada`, `team:facilities`, `role:operator`,
+//! Wire form is a single `kind:name` string (`user:test`, `team:facilities`, `role:operator`,
 //! `key:k7f3a`) so a grant record is flat and the store filters on it directly. One concept, four
 //! constructors.
 
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// `subject` column the store can equality-filter (list a subject's grants in one query).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Subject {
-    /// A single principal — `user:ada`.
+    /// A single principal — `user:test`.
     User(String),
     /// A team — `team:facilities`. A user inherits a team's grants via the `member` edge.
     Team(String),
@@ -25,7 +25,7 @@ pub enum Subject {
 }
 
 impl Subject {
-    /// The `kind:name` wire string (`user:ada`).
+    /// The `kind:name` wire string (`user:test`).
     pub fn as_key(&self) -> String {
         match self {
             Subject::User(n) => format!("user:{n}"),
@@ -72,7 +72,7 @@ mod tests {
     #[test]
     fn round_trips_each_kind() {
         for s in [
-            Subject::User("ada".into()),
+            Subject::User("test".into()),
             Subject::Team("facilities".into()),
             Subject::Role("operator".into()),
             Subject::Key("k7f3a".into()),
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_kind_and_empty_name() {
-        assert_eq!(Subject::parse("org:acme"), None);
+        assert_eq!(Subject::parse("org:nube"), None);
         assert_eq!(Subject::parse("user:"), None);
         assert_eq!(Subject::parse("nope"), None);
     }

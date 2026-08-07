@@ -64,11 +64,11 @@ async fn booted_node_drains_email_and_push_through_the_spawned_relay() {
 
     // EMAIL: mint an invite — the effect is staged transactionally; ONLY the spawned reactor
     // delivers it (nothing here calls relay_outbox).
-    let admin = principal("user:alice", "acme", &["mcp:invite.create:call"]);
+    let admin = principal("user:alice", "nube", &["mcp:invite.create:call"]);
     invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -86,25 +86,25 @@ async fn booted_node_drains_email_and_push_through_the_spawned_relay() {
     );
     let sends = email.sends();
     assert_eq!(sends[0].to, "sam@example.com");
-    assert_eq!(sends[0].workspace, "acme");
+    assert_eq!(sends[0].workspace, "nube");
 
     // PUSH: a member with a live device; notify.send stages the effect; the same spawned relay
     // (RouterTarget route "push") delivers it.
-    membership_add_raw(&store, "acme", "user:bob", 1)
+    membership_add_raw(&store, "nube", "user:bob", 1)
         .await
         .unwrap();
     let bob = principal(
         "user:bob",
-        "acme",
+        "nube",
         &["mcp:device.register:call", "mcp:notify.send:call"],
     );
-    device_register(&store, &bob, "acme", "webpush", "bob-endpoint", None, 100)
+    device_register(&store, &bob, "nube", "webpush", "bob-endpoint", None, 100)
         .await
         .unwrap();
     notify_send(
         &store,
         &bob,
-        "acme",
+        "nube",
         &["user:bob".into()],
         "Hello",
         "World",
@@ -138,11 +138,11 @@ async fn booted_node_without_providers_still_boots_and_drains() {
     let running = boot_full(cfg).await.expect("boot without providers");
     let store = running.node.store.clone();
 
-    let admin = principal("user:alice", "acme", &["mcp:invite.create:call"]);
+    let admin = principal("user:alice", "nube", &["mcp:invite.create:call"]);
     invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "pat@example.com",
         "member",
         "",
@@ -156,10 +156,10 @@ async fn booted_node_without_providers_still_boots_and_drains() {
 
     // The logging provider acks, so the effect leaves the pending set (drained, not stranded).
     // Probe the durable due set directly on a cadence (an async probe, so no `eventually` here).
-    let reader = principal("user:alice", "acme", &["mcp:outbox.due:call"]);
+    let reader = principal("user:alice", "nube", &["mcp:outbox.due:call"]);
     let mut ok = false;
     for _ in 0..150 {
-        let due = lb_host::outbox_due(&store, &reader, "acme", None, u64::MAX)
+        let due = lb_host::outbox_due(&store, &reader, "nube", None, u64::MAX)
             .await
             .unwrap();
         if due.is_empty() {
@@ -193,7 +193,7 @@ async fn a_node_with_an_unreachable_smtp_relay_boots_and_keeps_its_effects_owed(
         port: 1,
         tls: lb_host::TlsMode::None,
         auth: lb_host::MailAuthMechanism::None,
-        from_addr: "reports@acme.com".into(),
+        from_addr: "reports@nube.com".into(),
         timeout: Duration::from_millis(500),
         ..Default::default()
     }));
@@ -203,11 +203,11 @@ async fn a_node_with_an_unreachable_smtp_relay_boots_and_keeps_its_effects_owed(
         .expect("boot with an unreachable relay");
     let store = running.node.store.clone();
 
-    let admin = principal("user:alice", "acme", &["mcp:invite.create:call"]);
+    let admin = principal("user:alice", "nube", &["mcp:invite.create:call"]);
     invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -221,10 +221,10 @@ async fn a_node_with_an_unreachable_smtp_relay_boots_and_keeps_its_effects_owed(
 
     // Give the relay reactor several ticks, then assert the effect was NOT acked away: it is still
     // schedulable (failed-with-backoff), and its row records why.
-    let reader = principal("user:alice", "acme", &["mcp:outbox.due:call"]);
+    let reader = principal("user:alice", "nube", &["mcp:outbox.due:call"]);
     let mut attempted = None;
     for _ in 0..100 {
-        let rows = lb_outbox::pending(&store, "acme").await.unwrap();
+        let rows = lb_outbox::pending(&store, "nube").await.unwrap();
         if let Some(row) = rows.into_iter().find(|e| e.attempts > 0) {
             attempted = Some(row);
             break;
@@ -239,7 +239,7 @@ async fn a_node_with_an_unreachable_smtp_relay_boots_and_keeps_its_effects_owed(
         "the failure reason must reach the row: {reason}"
     );
     // Still owed: `due` at a far-future `now` returns it, so no mail was silently lost.
-    let due = lb_host::outbox_due(&store, &reader, "acme", None, u64::MAX)
+    let due = lb_host::outbox_due(&store, &reader, "nube", None, u64::MAX)
         .await
         .unwrap();
     assert!(

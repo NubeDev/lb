@@ -1,7 +1,7 @@
 //! The CLI's ONLY persistence: its own config file (operator-cli scope, Non-goals: "no new
 //! persistence layer"). One TOML file at `$LB_DIR/config` holding the gateway URL, the default
-//! workspace, and the session token **keyed by the workspace it was minted for** — so `-w acme` loads
-//! the `acme` credential and a ws-A token can never address ws-B (the wall holds by construction; `-w`
+//! workspace, and the session token **keyed by the workspace it was minted for** — so `-w nube` loads
+//! the `nube` credential and a ws-A token can never address ws-B (the wall holds by construction; `-w`
 //! is a credential selector, never an override).
 //!
 //! The token is secret material: the file is written `0600`, the token is NEVER logged and NEVER
@@ -147,13 +147,13 @@ mod tests {
             gateway_url: Some("http://127.0.0.1:8080".into()),
             ..Config::default()
         };
-        cfg.set_token("acme", "tok-acme");
+        cfg.set_token("nube", "tok-nube");
         cfg.set_token("beta", "tok-beta");
         save_to(&cfg, &path).unwrap();
 
         let loaded = load_from(&path).unwrap();
         assert_eq!(loaded, cfg);
-        assert_eq!(loaded.token_for("acme"), Some("tok-acme"));
+        assert_eq!(loaded.token_for("nube"), Some("tok-nube"));
         assert_eq!(loaded.token_for("beta"), Some("tok-beta"));
         // login set the default to the last workspace.
         assert_eq!(loaded.default_workspace.as_deref(), Some("beta"));
@@ -164,7 +164,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config");
         let mut cfg = Config::default();
-        cfg.set_token("acme", "secret-token");
+        cfg.set_token("nube", "secret-token");
         save_to(&cfg, &path).unwrap();
 
         #[cfg(unix)]

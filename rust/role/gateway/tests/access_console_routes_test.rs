@@ -35,7 +35,7 @@ const ADMIN: &[&str] = &[
 async fn forged_call_by_non_admin_is_denied_server_side() {
     let (gw, key) = gateway().await;
     // A valid session token holding NO access-console caps.
-    let tok = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let tok = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
 
     for req in [
         get_req("/admin/authz/resolve?subject=user:bob"),
@@ -59,7 +59,7 @@ async fn forged_call_by_non_admin_is_denied_server_side() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn resolve_returns_sourced_caps_direct_role_and_team() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:alice", "acme", ADMIN);
+    let admin = token(&key, "user:alice", "nube", ADMIN);
 
     // bob gets a DIRECT grant.
     router(gw.clone())
@@ -157,12 +157,12 @@ async fn resolve_returns_sourced_caps_direct_role_and_team() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn revoke_tokens_refuses_bobs_prior_token_on_next_verify() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:alice", "acme", ADMIN);
+    let admin = token(&key, "user:alice", "nube", ADMIN);
     // bob holds a real, valid (unexpired) session token, including the read cap the probe uses.
     let bob_tok = token(
         &key,
         "user:bob",
-        "acme",
+        "nube",
         &["mcp:hvac.setpoint:call", "mcp:workspace.list:call"],
     );
 
@@ -209,7 +209,7 @@ async fn revoke_tokens_refuses_bobs_prior_token_on_next_verify() {
 
     // A FRESHLY minted token for a different subject (carol) still works — the marker is per-
     // subject, not a global lockout.
-    let carol_tok = token(&key, "user:carol", "acme", &["mcp:workspace.list:call"]);
+    let carol_tok = token(&key, "user:carol", "nube", &["mcp:workspace.list:call"]);
     let resp = router(gw)
         .oneshot(bearer(get_req("/workspaces"), &carol_tok))
         .await
@@ -222,7 +222,7 @@ async fn revoke_tokens_refuses_bobs_prior_token_on_next_verify() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn roles_delete_cascades_and_builtins_are_rejected() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:alice", "acme", ADMIN);
+    let admin = token(&key, "user:alice", "nube", ADMIN);
 
     // Define `operator` and assign it to two subjects.
     router(gw.clone())
@@ -285,16 +285,16 @@ async fn roles_delete_cascades_and_builtins_are_rejected() {
 
 // ── Mandatory: two-workspace isolation. The wall is token-derived (ws comes from the token, never
 //    the request), so a ws-B admin's resolve/revoke/delete CANNOT target ws-A: they operate in
-//    ws-B (globex), resolve-empty / delete-nothing there, and leave acme's state intact. ────────
+//    ws-B (globex), resolve-empty / delete-nothing there, and leave nube's state intact. ────────
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_admin_cannot_touch_ws_a_access_state() {
     let (gw, key) = gateway().await;
-    let admin_a = token(&key, "user:alice", "acme", ADMIN);
+    let admin_a = token(&key, "user:alice", "nube", ADMIN);
     // ws-B admin: full caps, but in workspace `globex`.
     let admin_b = token(&key, "user:carol", "globex", ADMIN);
 
-    // ws-A seeds a role + a grant in acme.
+    // ws-A seeds a role + a grant in nube.
     router(gw.clone())
         .oneshot(bearer(
             json_post(
@@ -315,11 +315,11 @@ async fn ws_b_admin_cannot_touch_ws_a_access_state() {
         ))
         .await
         .unwrap();
-    // bob's acme token (carries the workspace.list cap so the probe reads through).
-    let bob_acme = token(&key, "user:bob", "acme", &["mcp:workspace.list:call"]);
+    // bob's nube token (carries the workspace.list cap so the probe reads through).
+    let bob_nube = token(&key, "user:bob", "nube", &["mcp:workspace.list:call"]);
 
     // ws-B resolve of "user:bob" → 200 but EMPTY: the workspace is globex (from carol's token), so
-    // acme's grant does NOT leak across the wall.
+    // nube's grant does NOT leak across the wall.
     let resp = router(gw.clone())
         .oneshot(bearer(
             get_req("/admin/authz/resolve?subject=user:bob"),
@@ -334,7 +334,7 @@ async fn ws_b_admin_cannot_touch_ws_a_access_state() {
         "bob has no caps in globex — the wall holds"
     );
 
-    // ws-B revoke-tokens of "user:bob" lands in globex, NOT acme: bob's acme token still works.
+    // ws-B revoke-tokens of "user:bob" lands in globex, NOT nube: bob's nube token still works.
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post(
@@ -351,17 +351,17 @@ async fn ws_b_admin_cannot_touch_ws_a_access_state() {
         "ws-B revoke operates in its own ws"
     );
     let resp = router(gw.clone())
-        .oneshot(bearer(get_req("/workspaces"), &bob_acme))
+        .oneshot(bearer(get_req("/workspaces"), &bob_nube))
         .await
         .unwrap();
     assert_eq!(
         resp.status(),
         StatusCode::OK,
-        "bob's acme token is unaffected — the marker landed in globex"
+        "bob's nube token is unaffected — the marker landed in globex"
     );
 
-    // ws-B roles.delete of "operator" deletes nothing in acme: the role is absent in globex (0
-    // affected), and acme's operator role is still listed.
+    // ws-B roles.delete of "operator" deletes nothing in nube: the role is absent in globex (0
+    // affected), and nube's operator role is still listed.
     let resp = router(gw.clone())
         .oneshot(bearer(delete_req("/admin/roles/operator"), &admin_b))
         .await
@@ -376,6 +376,6 @@ async fn ws_b_admin_cannot_touch_ws_a_access_state() {
     let roles: Vec<Value> = json_body(resp).await;
     assert!(
         roles.iter().any(|r| r["name"] == "operator"),
-        "acme's operator role survived the ws-B delete: {roles:?}"
+        "nube's operator role survived the ws-B delete: {roles:?}"
     );
 }

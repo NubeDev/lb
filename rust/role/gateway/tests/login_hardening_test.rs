@@ -35,9 +35,9 @@ async fn a_member_login_cannot_run_admin_verbs_but_admin_bootstrap_still_can() {
 
     // The operator provisions `alice` as the workspace-admin (the explicit first-admin path): the
     // seeded `role:workspace-admin` record + the role grant resolve to the admin caps.
-    let admin = provision_admin(&gw, "user:alice", "acme").await;
+    let admin = provision_admin(&gw, "user:alice", "nube").await;
 
-    // The admin adds `bob` as a plain member (so acme now has members → bob is not the bootstrap).
+    // The admin adds `bob` as a plain member (so nube now has members → bob is not the bootstrap).
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post("/admin/members", json!({ "sub": "user:bob" })),
@@ -52,7 +52,7 @@ async fn a_member_login_cannot_run_admin_verbs_but_admin_bootstrap_still_can() {
     );
 
     // Bob's session → a MEMBER token (viewer floor ∪ his resolved caps = only `role:member`).
-    let bob = session_token(&gw, "user:bob", "acme").await;
+    let bob = session_token(&gw, "user:bob", "nube").await;
 
     // (a) Every admin verb bob abused in the live session is now 403 server-side.
     // members.manage — add another member to the workspace (bob adding carol).
@@ -138,7 +138,7 @@ async fn a_member_login_cannot_run_admin_verbs_but_admin_bootstrap_still_can() {
 async fn a_member_cannot_set_a_credential() {
     let (gw, _key) = gateway().await;
     // alice is the provisioned admin; bob is a plain member.
-    let admin = provision_admin(&gw, "user:alice", "acme").await;
+    let admin = provision_admin(&gw, "user:alice", "nube").await;
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post("/admin/members", json!({ "sub": "user:bob" })),
@@ -147,7 +147,7 @@ async fn a_member_cannot_set_a_credential() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
-    let bob = session_token(&gw, "user:bob", "acme").await;
+    let bob = session_token(&gw, "user:bob", "nube").await;
 
     // bob (member) tries to set carol's password over the bridge → the `identity.manage` gate denies.
     let resp = router(gw.clone())

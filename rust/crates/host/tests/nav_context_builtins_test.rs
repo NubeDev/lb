@@ -107,12 +107,12 @@ async fn title_template_survives_the_store_read_on_a_plain_host_nav_record() {
     let ws = "ws-navctx-projection";
     let node = Arc::new(lb_host::Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal("user:ada", ws, &[SAVE, GET, RESOLVE, DASH_SAVE, DASH_GET]);
-    seed_dashboard(store, &ada, ws, "meter", "Socomec COUNTIS P44").await;
+    let test = principal("user:test", ws, &[SAVE, GET, RESOLVE, DASH_SAVE, DASH_GET]);
+    seed_dashboard(store, &test, ws, "meter", "Socomec COUNTIS P44").await;
 
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Operations",
@@ -128,7 +128,7 @@ async fn title_template_survives_the_store_read_on_a_plain_host_nav_record() {
     .unwrap();
 
     // Door 1 — the record read.
-    let got = nav_get(store, &ada, ws, "ops").await.unwrap();
+    let got = nav_get(store, &test, ws, "ops").await.unwrap();
     assert_eq!(
         got.items[0].title_template.as_deref(),
         Some(HEADING_TEMPLATE),
@@ -136,10 +136,10 @@ async fn title_template_survives_the_store_read_on_a_plain_host_nav_record() {
     );
 
     // Door 2 — the resolved payload the client actually renders from.
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 11)
+    nav_pref_set(store, &test, ws, Some("ops"), None, 11)
         .await
         .unwrap();
-    let resolved = nav_resolve(&node, &ada, ws).await.unwrap();
+    let resolved = nav_resolve(&node, &test, ws).await.unwrap();
     let item = find(&resolved.items, "test").expect("the item resolved");
     assert_eq!(
         item.title_template.as_deref(),
@@ -164,11 +164,11 @@ async fn an_item_without_a_template_resolves_to_none_and_omits_the_key() {
     let ws = "ws-navctx-absent";
     let node = Arc::new(lb_host::Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal("user:ada", ws, &[SAVE, GET, RESOLVE, DASH_SAVE, DASH_GET]);
-    seed_dashboard(store, &ada, ws, "plain", "Plain Board").await;
+    let test = principal("user:test", ws, &[SAVE, GET, RESOLVE, DASH_SAVE, DASH_GET]);
+    seed_dashboard(store, &test, ws, "plain", "Plain Board").await;
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -182,11 +182,11 @@ async fn an_item_without_a_template_resolves_to_none_and_omits_the_key() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 2)
+    nav_pref_set(store, &test, ws, Some("ops"), None, 2)
         .await
         .unwrap();
 
-    let resolved = nav_resolve(&node, &ada, ws).await.unwrap();
+    let resolved = nav_resolve(&node, &test, ws).await.unwrap();
     let item = find(&resolved.items, "Plain").expect("resolved");
     assert_eq!(item.title_template, None);
     let json = serde_json::to_value(item).unwrap();
@@ -208,23 +208,23 @@ async fn template_group_fan_out_gives_every_instance_the_title_template() {
     let ws = "ws-navctx-fanout";
     let node = Arc::new(lb_host::Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, RESOLVE, DASH_SAVE, DASH_GET, TAGS_ADD, TAGS_FIND],
     );
-    seed_dashboard(store, &ada, ws, "site-overview", "Site Overview").await;
+    seed_dashboard(store, &test, ws, "site-overview", "Site Overview").await;
     for (entity, value, at) in [
         ("series:hvac.plant-1.temp", "plant-1", 2u64),
         ("series:hvac.plant-2.temp", "plant-2", 3),
     ] {
         tags_add(
             store,
-            &ada,
+            &test,
             ws,
             entity,
             &Tag::new("site", serde_json::json!(value)),
-            &Provenance::new(at, ada.sub(), TagSource::Human),
+            &Provenance::new(at, test.sub(), TagSource::Human),
         )
         .await
         .unwrap();
@@ -243,14 +243,14 @@ async fn template_group_fan_out_gives_every_instance_the_title_template() {
         title_template: Some("${site} — ${__nav.parent.label}".into()),
         ..Default::default()
     };
-    nav_save(store, &ada, ws, "ops", "Ops", vec![group], 5)
+    nav_save(store, &test, ws, "ops", "Ops", vec![group], 5)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 6)
+    nav_pref_set(store, &test, ws, Some("ops"), None, 6)
         .await
         .unwrap();
 
-    let resolved = nav_resolve(&node, &ada, ws).await.unwrap();
+    let resolved = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = resolved.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 2, "one instance per option value");
     assert_eq!(
@@ -277,13 +277,13 @@ async fn template_group_fan_out_gives_every_instance_the_title_template() {
 async fn nav_save_caps_and_validates_the_template_like_the_manifest_path() {
     let ws = "ws-navctx-validate";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[SAVE, GET]);
+    let test = principal("user:test", ws, &[SAVE, GET]);
 
     // Over the cap → BadInput, nothing persists.
     let over = "x".repeat(NAV_MAX_TITLE_TEMPLATE + 1);
     let err = nav_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -302,7 +302,7 @@ async fn nav_save_caps_and_validates_the_template_like_the_manifest_path() {
     // An unbindable reference → BadInput NAMING the offender (the same verdict the manifest gives).
     let err = nav_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -324,7 +324,7 @@ async fn nav_save_caps_and_validates_the_template_like_the_manifest_path() {
     // A bound reference and a built-in both pass — and `__nav.*` IS allowed in `title_template`.
     nav_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -338,7 +338,7 @@ async fn nav_save_caps_and_validates_the_template_like_the_manifest_path() {
     )
     .await
     .expect("bound names + built-ins are accepted");
-    assert!(nav_get(&store, &ada, ws, "ops").await.unwrap().items[0]
+    assert!(nav_get(&store, &test, ws, "ops").await.unwrap().items[0]
         .title_template
         .is_some());
 }
@@ -351,7 +351,7 @@ async fn a_templated_heading_round_trips_byte_identical() {
     // read them back — any server-side interpolation, trimming or escaping shows up here.
     let ws = "ws-navctx-heading";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[DASH_SAVE, DASH_GET]);
+    let test = principal("user:test", ws, &[DASH_SAVE, DASH_GET]);
 
     let meta = PageMeta {
         heading: Some(HEADING_TEMPLATE.to_string()),
@@ -360,7 +360,7 @@ async fn a_templated_heading_round_trips_byte_identical() {
     };
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "meter",
         "Socomec COUNTIS P44",
@@ -372,7 +372,7 @@ async fn a_templated_heading_round_trips_byte_identical() {
     .await
     .unwrap();
 
-    let got = dashboard_get(&store, &ada, ws, "meter").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "meter").await.unwrap();
     assert_eq!(got.heading, HEADING_TEMPLATE, "stored RAW, never resolved");
     assert_eq!(
         got.description,
@@ -382,7 +382,7 @@ async fn a_templated_heading_round_trips_byte_identical() {
     // A heading of ONLY a reference is still just a string to the host.
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "meter",
         "Socomec COUNTIS P44",
@@ -397,7 +397,7 @@ async fn a_templated_heading_round_trips_byte_identical() {
     .await
     .unwrap();
     assert_eq!(
-        dashboard_get(&store, &ada, ws, "meter")
+        dashboard_get(&store, &test, ws, "meter")
             .await
             .unwrap()
             .heading,
@@ -411,11 +411,11 @@ async fn existing_data_with_a_bare_literal_dollar_is_untouched() {
     // invalidate what is already stored, and the grammar has no escape for a literal `$`.
     let ws = "ws-navctx-legacy";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[DASH_SAVE, DASH_GET]);
+    let test = principal("user:test", ws, &[DASH_SAVE, DASH_GET]);
 
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "tariff",
         "Tariff",
@@ -431,7 +431,7 @@ async fn existing_data_with_a_bare_literal_dollar_is_untouched() {
     .await
     .expect("a literal `$` must still save — no validator rejects stored prose");
 
-    let got = dashboard_get(&store, &ada, ws, "tariff").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "tariff").await.unwrap();
     assert_eq!(got.heading, "Cost $USD per kWh");
     assert_eq!(got.description, "Spot price in $/kWh");
 }

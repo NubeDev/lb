@@ -51,60 +51,60 @@ fn sample_def() -> serde_json::Value {
 async fn crud_round_trip_def_survives() {
     let ws = "ws-form-crud";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
     let def = sample_def();
 
     // create
-    let f = forms_save(&store, &ada, ws, "intake", "Intake", def.clone(), 10)
+    let f = forms_save(&store, &test, ws, "intake", "Intake", def.clone(), 10)
         .await
         .unwrap();
     assert_eq!(f.title, "Intake");
-    assert_eq!(f.owner, "user:ada");
+    assert_eq!(f.owner, "user:test");
     assert_eq!(f.schema_version, 1);
     assert_eq!(f.def, def, "def stored byte-identical on save");
 
     // get reflects it, def survives byte-identical
-    let got = forms_get(&store, &ada, ws, "intake").await.unwrap();
+    let got = forms_get(&store, &test, ws, "intake").await.unwrap();
     assert_eq!(got.def, def, "def survives save→get byte-identical");
     assert_eq!(got.updated_ts, 10);
 
     // update (same id) — title + def change, owner preserved
     let def2 = json!({ "schema": { "type": "object" }, "mode": "edit" });
-    forms_save(&store, &ada, ws, "intake", "Intake v2", def2.clone(), 20)
+    forms_save(&store, &test, ws, "intake", "Intake v2", def2.clone(), 20)
         .await
         .unwrap();
-    let got = forms_get(&store, &ada, ws, "intake").await.unwrap();
+    let got = forms_get(&store, &test, ws, "intake").await.unwrap();
     assert_eq!(got.title, "Intake v2");
     assert_eq!(got.def, def2);
-    assert_eq!(got.owner, "user:ada", "owner preserved across update");
+    assert_eq!(got.owner, "user:test", "owner preserved across update");
     assert_eq!(got.updated_ts, 20);
 
     // list includes it (summary, no def body)
-    let roster = forms_list(&store, &ada, ws).await.unwrap();
+    let roster = forms_list(&store, &test, ws).await.unwrap();
     assert!(roster
         .iter()
         .any(|s| s.id == "intake" && s.title == "Intake v2"));
 
     // delete → list excludes it; get is NotFound
-    forms_delete(&store, &ada, ws, "intake", 30).await.unwrap();
-    let roster = forms_list(&store, &ada, ws).await.unwrap();
+    forms_delete(&store, &test, ws, "intake", 30).await.unwrap();
+    let roster = forms_list(&store, &test, ws).await.unwrap();
     assert!(!roster.iter().any(|s| s.id == "intake"));
     assert!(matches!(
-        forms_get(&store, &ada, ws, "intake").await.unwrap_err(),
+        forms_get(&store, &test, ws, "intake").await.unwrap_err(),
         FormError::NotFound
     ));
 
     // re-delete is an idempotent no-op
-    forms_delete(&store, &ada, ws, "intake", 40).await.unwrap();
+    forms_delete(&store, &test, ws, "intake", 40).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn each_verb_is_denied_without_its_cap() {
     let ws = "ws-form-deny";
     let store = Store::memory().await.unwrap();
-    // Ada owns a form (so get has a target); the denied principal holds NO forms cap.
-    let ada = principal("user:ada", ws, ALL);
-    forms_save(&store, &ada, ws, "intake", "Intake", sample_def(), 1)
+    // Test owns a form (so get has a target); the denied principal holds NO forms cap.
+    let test = principal("user:test", ws, ALL);
+    forms_save(&store, &test, ws, "intake", "Intake", sample_def(), 1)
         .await
         .unwrap();
 
@@ -136,8 +136,8 @@ async fn each_verb_is_denied_without_its_cap() {
 async fn non_owner_cannot_overwrite() {
     let ws = "ws-form-owner";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
-    forms_save(&store, &ada, ws, "intake", "Intake", sample_def(), 1)
+    let test = principal("user:test", ws, ALL);
+    forms_save(&store, &test, ws, "intake", "Intake", sample_def(), 1)
         .await
         .unwrap();
 
@@ -149,9 +149,9 @@ async fn non_owner_cannot_overwrite() {
         FormError::Denied
     ));
     // Untouched — the denied save did not change the owner's form.
-    let got = forms_get(&store, &ada, ws, "intake").await.unwrap();
+    let got = forms_get(&store, &test, ws, "intake").await.unwrap();
     assert_eq!(got.title, "Intake");
-    assert_eq!(got.owner, "user:ada");
+    assert_eq!(got.owner, "user:test");
 }
 
 /// The `delete_any` admin override: a non-owner with only the base DELETE cap stays denied; granting
@@ -160,8 +160,8 @@ async fn non_owner_cannot_overwrite() {
 async fn delete_any_cap_lets_a_non_owner_admin_delete() {
     let ws = "ws-form-delete-any";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
-    forms_save(&store, &ada, ws, "intake", "Intake", sample_def(), 1)
+    let test = principal("user:test", ws, ALL);
+    forms_save(&store, &test, ws, "intake", "Intake", sample_def(), 1)
         .await
         .unwrap();
 
@@ -172,7 +172,7 @@ async fn delete_any_cap_lets_a_non_owner_admin_delete() {
             .unwrap_err(),
         FormError::Denied
     ));
-    assert!(forms_list(&store, &ada, ws)
+    assert!(forms_list(&store, &test, ws)
         .await
         .unwrap()
         .iter()
@@ -186,7 +186,7 @@ async fn delete_any_cap_lets_a_non_owner_admin_delete() {
     forms_delete(&store, &admin_with, ws, "intake", 3)
         .await
         .unwrap();
-    assert!(!forms_list(&store, &ada, ws)
+    assert!(!forms_list(&store, &test, ws)
         .await
         .unwrap()
         .iter()
@@ -196,10 +196,10 @@ async fn delete_any_cap_lets_a_non_owner_admin_delete() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_isolation() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
     let ben = principal("user:ben", "ws-b", ALL);
 
-    forms_save(&store, &ada, "ws-a", "intake", "Intake A", sample_def(), 1)
+    forms_save(&store, &test, "ws-a", "intake", "Intake A", sample_def(), 1)
         .await
         .unwrap();
 
@@ -217,13 +217,13 @@ async fn workspace_isolation() {
 async fn call_forms_tool_wire_round_trip() {
     let ws = "ws-form-wire";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
     let def = sample_def();
 
     // save via the MCP bridge.
     let saved = call_forms_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "forms.save",
         &json!({ "id": "intake", "title": "Intake", "def": def, "now": 100 }),
@@ -238,16 +238,16 @@ async fn call_forms_tool_wire_round_trip() {
         "updated_ts present on wire"
     );
     assert_eq!(saved["schemaVersion"], json!(1), "schemaVersion camelCase");
-    assert_eq!(saved["owner"], json!("user:ada"));
+    assert_eq!(saved["owner"], json!("user:test"));
 
     // get via the bridge returns the same def.
-    let got = call_forms_tool(&store, &ada, ws, "forms.get", &json!({ "id": "intake" }))
+    let got = call_forms_tool(&store, &test, ws, "forms.get", &json!({ "id": "intake" }))
         .await
         .unwrap();
     assert_eq!(got["def"], def);
 
     // list via the bridge returns the summary under `forms`.
-    let listed = call_forms_tool(&store, &ada, ws, "forms.list", &json!({}))
+    let listed = call_forms_tool(&store, &test, ws, "forms.list", &json!({}))
         .await
         .unwrap();
     let rows = listed["forms"].as_array().expect("forms is an array");
@@ -260,7 +260,7 @@ async fn call_forms_tool_wire_round_trip() {
     // A JSON-ENCODED-STRING `def` (the AI-caller shape) decodes to the same value at the boundary.
     let saved2 = call_forms_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "forms.save",
         &json!({ "id": "intake2", "title": "Intake2", "def": def.to_string(), "now": 200 }),
@@ -275,7 +275,7 @@ async fn call_forms_tool_wire_round_trip() {
     // delete via the bridge is idempotent and returns ok.
     let del = call_forms_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "forms.delete",
         &json!({ "id": "intake", "now": 300 }),
@@ -291,27 +291,27 @@ async fn call_forms_tool_wire_round_trip() {
 async fn tombstone_hides_from_get_and_list() {
     let ws = "ws-form-tomb";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
-    let saved: Form = forms_save(&store, &ada, ws, "intake", "Intake", sample_def(), 1)
+    let saved: Form = forms_save(&store, &test, ws, "intake", "Intake", sample_def(), 1)
         .await
         .unwrap();
     assert!(!saved.deleted);
 
-    forms_delete(&store, &ada, ws, "intake", 2).await.unwrap();
+    forms_delete(&store, &test, ws, "intake", 2).await.unwrap();
     assert!(matches!(
-        forms_get(&store, &ada, ws, "intake").await.unwrap_err(),
+        forms_get(&store, &test, ws, "intake").await.unwrap_err(),
         FormError::NotFound
     ));
-    assert!(forms_list(&store, &ada, ws).await.unwrap().is_empty());
+    assert!(forms_list(&store, &test, ws).await.unwrap().is_empty());
 
     // A save with the same id after delete resurrects it (create — the tombstone is treated as absent).
-    let resurrected = forms_save(&store, &ada, ws, "intake", "Intake again", json!({}), 3)
+    let resurrected = forms_save(&store, &test, ws, "intake", "Intake again", json!({}), 3)
         .await
         .unwrap();
     assert!(!resurrected.deleted);
     assert_eq!(
-        forms_get(&store, &ada, ws, "intake").await.unwrap().title,
+        forms_get(&store, &test, ws, "intake").await.unwrap().title,
         "Intake again"
     );
 }

@@ -12,7 +12,7 @@ use serde::Deserialize;
 use crate::session::authenticate;
 use crate::state::Gateway;
 
-/// The `?subject=user:ada` query for `GET /admin/grants`.
+/// The `?subject=user:test` query for `GET /admin/grants`.
 #[derive(Debug, Deserialize)]
 pub struct SubjectQuery {
     pub subject: String,

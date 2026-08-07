@@ -33,12 +33,12 @@ const ALL: &[&str] = &[
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn add_of_find_round_trip_via_mcp() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:ada", "acme", ALL);
+    let p = principal("user:test", "nube", ALL);
 
     call_tags_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "tags.add",
         &json!({ "entity": "series:cpu", "key": "region", "value": "eu", "source": "producer" }),
     )
@@ -47,7 +47,7 @@ async fn add_of_find_round_trip_via_mcp() {
     call_tags_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "tags.add",
         &json!({ "entity": "series:cpu", "key": "kind", "value": "telemetry" }),
     )
@@ -57,7 +57,7 @@ async fn add_of_find_round_trip_via_mcp() {
     let of = call_tags_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "tags.of",
         &json!({ "entity": "series:cpu" }),
     )
@@ -65,7 +65,7 @@ async fn add_of_find_round_trip_via_mcp() {
     .unwrap();
     assert_eq!(of["tags"].as_array().unwrap().len(), 2);
 
-    let found = call_tags_tool(&store, &p, "acme", "tags.find",
+    let found = call_tags_tool(&store, &p, "nube", "tags.find",
         &json!({ "facets": [{"key": "region", "value": "eu"}, {"key": "kind", "value": "telemetry"}] }))
         .await.unwrap();
     assert_eq!(found["entities"], json!(["series:cpu"]));
@@ -75,7 +75,7 @@ async fn add_of_find_round_trip_via_mcp() {
 async fn denies_each_verb_without_its_grant() {
     let store = Store::memory().await.unwrap();
     // Holds only tags.of — every OTHER verb is denied.
-    let p = principal("user:ada", "acme", &["mcp:tags.of:call"]);
+    let p = principal("user:test", "nube", &["mcp:tags.of:call"]);
     for (verb, input) in [
         (
             "tags.add",
@@ -84,7 +84,7 @@ async fn denies_each_verb_without_its_grant() {
         ("tags.remove", json!({ "entity": "series:x", "key": "k" })),
         ("tags.find", json!({ "facets": [{"key": "k"}] })),
     ] {
-        let err = call_tags_tool(&store, &p, "acme", verb, &input)
+        let err = call_tags_tool(&store, &p, "nube", verb, &input)
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::Denied), "{verb} must be denied");
@@ -93,7 +93,7 @@ async fn denies_each_verb_without_its_grant() {
     call_tags_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "tags.of",
         &json!({ "entity": "series:x" }),
     )
@@ -106,7 +106,7 @@ async fn series_find_discovers_by_tags() {
     let store = Store::memory().await.unwrap();
     let p = principal(
         "client:pi",
-        "acme",
+        "nube",
         &[
             "mcp:ingest.write:call",
             "mcp:series.read:call",
@@ -116,11 +116,11 @@ async fn series_find_discovers_by_tags() {
     );
 
     // Commit a series, then tag it.
-    call_ingest_tool(&store, &p, "acme", "ingest.write",
+    call_ingest_tool(&store, &p, "nube", "ingest.write",
         &json!({ "samples": [{"series":"node.cpu_temp","producer":"x","ts":1,"seq":1,"payload":61.4,"qos":"best-effort"}] }))
         .await.unwrap();
-    drain_workspace(&store, "acme").await.unwrap();
-    call_tags_tool(&store, &p, "acme", "tags.add",
+    drain_workspace(&store, "nube").await.unwrap();
+    call_tags_tool(&store, &p, "nube", "tags.add",
         &json!({ "entity": "series:node.cpu_temp", "key": "region", "value": "eu", "source": "producer" }))
         .await.unwrap();
 
@@ -128,7 +128,7 @@ async fn series_find_discovers_by_tags() {
     let found = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.find",
         &json!({ "facets": [{"key": "region", "value": "eu"}] }),
     )

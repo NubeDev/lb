@@ -75,27 +75,27 @@ async fn dead_letters_past_the_horizon_are_pruned_and_fresh_ones_survive() {
     let store = Store::memory().await.unwrap();
     let now = 400 * DAY_MS; // a logical clock well past the horizon, so `now - keep` is meaningful
 
-    dead_letter_n(&store, "acme", "old", 2).await;
-    dead_letter_n(&store, "acme", "fresh", 3).await;
-    assert_eq!(dead_letter_count(&store, "acme").await, 5, "seeded");
+    dead_letter_n(&store, "nube", "old", 2).await;
+    dead_letter_n(&store, "nube", "fresh", 3).await;
+    assert_eq!(dead_letter_count(&store, "nube").await, 5, "seeded");
 
     // "old" is 40 days back; "fresh" is 1 day back — one side of the 30-day horizon each.
-    backdate(&store, "acme", "old", now - 40 * DAY_MS).await;
-    backdate(&store, "acme", "fresh", now - DAY_MS).await;
+    backdate(&store, "nube", "old", now - 40 * DAY_MS).await;
+    backdate(&store, "nube", "fresh", now - DAY_MS).await;
 
-    let evicted = prune_dead_letters(&store, "acme", now, DEAD_LETTER_KEEP_MS)
+    let evicted = prune_dead_letters(&store, "nube", now, DEAD_LETTER_KEEP_MS)
         .await
         .unwrap();
     assert_eq!(evicted, 2, "the two rows past the horizon went");
     assert_eq!(
-        dead_letter_count(&store, "acme").await,
+        dead_letter_count(&store, "nube").await,
         3,
         "entries INSIDE the horizon survive — the evidence outlives the data that produced it"
     );
 
     // Idempotent: nothing left to prune.
     assert_eq!(
-        prune_dead_letters(&store, "acme", now, DEAD_LETTER_KEEP_MS)
+        prune_dead_letters(&store, "nube", now, DEAD_LETTER_KEEP_MS)
             .await
             .unwrap(),
         0
@@ -108,15 +108,15 @@ async fn the_gc_pass_prunes_dead_letters_and_reports_it() {
     // it retention rather than a function nobody invokes.
     let store = Store::memory().await.unwrap();
     let now = 400 * DAY_MS;
-    dead_letter_n(&store, "acme", "stale", 4).await;
-    backdate(&store, "acme", "stale", now - 31 * DAY_MS).await;
+    dead_letter_n(&store, "nube", "stale", 4).await;
+    backdate(&store, "nube", "stale", now - 31 * DAY_MS).await;
 
-    let pass = run_gc(&store, "acme", now).await.unwrap();
+    let pass = run_gc(&store, "nube", now).await.unwrap();
     assert_eq!(
         pass.evicted_dead_letters, 4,
         "the pass reports what it took"
     );
-    assert_eq!(dead_letter_count(&store, "acme").await, 0);
+    assert_eq!(dead_letter_count(&store, "nube").await, 0);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -125,35 +125,35 @@ async fn a_row_with_no_dead_at_falls_back_to_the_samples_own_ts() {
     // expires" — an unbounded table is exactly what this horizon is for.
     let store = Store::memory().await.unwrap();
     let now = 400 * DAY_MS;
-    dead_letter_n(&store, "acme", "legacy", 1).await;
+    dead_letter_n(&store, "nube", "legacy", 1).await;
     store
         .query_ws(
-            "acme",
+            "nube",
             &format!("UPDATE {DEAD_LETTER_TABLE} SET dead_at = NONE"),
             vec![],
         )
         .await
         .unwrap();
     // The sample's own ts is 1_000 ms — ancient against a 400-day clock.
-    let evicted = prune_dead_letters(&store, "acme", now, DEAD_LETTER_KEEP_MS)
+    let evicted = prune_dead_letters(&store, "nube", now, DEAD_LETTER_KEEP_MS)
         .await
         .unwrap();
     assert_eq!(evicted, 1, "the fallback age applies");
-    assert_eq!(dead_letter_count(&store, "acme").await, 0);
+    assert_eq!(dead_letter_count(&store, "nube").await, 0);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_dead_letter_horizon_never_crosses_the_workspace_wall() {
     let store = Store::memory().await.unwrap();
     let now = 400 * DAY_MS;
-    for ws in ["acme", "globex"] {
+    for ws in ["nube", "globex"] {
         dead_letter_n(&store, ws, "shared.name", 2).await;
         backdate(&store, ws, "shared.name", now - 40 * DAY_MS).await;
     }
 
-    let pass = run_gc(&store, "acme", now).await.unwrap();
+    let pass = run_gc(&store, "nube", now).await.unwrap();
     assert_eq!(pass.evicted_dead_letters, 2);
-    assert_eq!(dead_letter_count(&store, "acme").await, 0);
+    assert_eq!(dead_letter_count(&store, "nube").await, 0);
     assert_eq!(
         dead_letter_count(&store, "globex").await,
         2,
@@ -164,23 +164,23 @@ async fn the_dead_letter_horizon_never_crosses_the_workspace_wall() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn keep_forever_is_zero_and_an_unelapsed_horizon_evicts_nothing() {
     let store = Store::memory().await.unwrap();
-    dead_letter_n(&store, "acme", "s", 2).await;
+    dead_letter_n(&store, "nube", "s", 2).await;
     let old_clock = 400 * DAY_MS;
     assert_eq!(
-        prune_dead_letters(&store, "acme", old_clock, 0)
+        prune_dead_letters(&store, "nube", old_clock, 0)
             .await
             .unwrap(),
         0,
         "0 = unbounded, the same grammar every other horizon in this crate uses"
     );
     assert_eq!(
-        prune_dead_letters(&store, "acme", DAY_MS, DEAD_LETTER_KEEP_MS)
+        prune_dead_letters(&store, "nube", DAY_MS, DEAD_LETTER_KEEP_MS)
             .await
             .unwrap(),
         0,
         "a clock younger than the horizon evicts nothing rather than underflowing to 'everything'"
     );
-    assert_eq!(dead_letter_count(&store, "acme").await, 2);
+    assert_eq!(dead_letter_count(&store, "nube").await, 2);
 }
 
 /// **Deleting a series takes its dead letters with it.**
@@ -197,18 +197,18 @@ async fn keep_forever_is_zero_and_an_unelapsed_horizon_evicts_nothing() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn deleting_a_series_removes_its_dead_letters_and_no_others() {
     let store = Store::memory().await.unwrap();
-    dead_letter_n(&store, "acme", "doomed", 3).await;
-    dead_letter_n(&store, "acme", "keeper", 2).await;
+    dead_letter_n(&store, "nube", "doomed", 3).await;
+    dead_letter_n(&store, "nube", "keeper", 2).await;
     // 3 + 2, plus the single primer row `dead_letter_n` leaves behind (it primes once per workspace).
-    let before = dead_letter_count(&store, "acme").await;
+    let before = dead_letter_count(&store, "nube").await;
     assert_eq!(before, 5, "seeded through the real overflow path");
 
-    lb_ingest::delete_series(&store, "acme", "doomed")
+    lb_ingest::delete_series(&store, "nube", "doomed")
         .await
         .unwrap();
 
     assert_eq!(
-        dead_letter_count(&store, "acme").await,
+        dead_letter_count(&store, "nube").await,
         2,
         "only the deleted series' dead letters go — `keeper`'s are none of this delete's business"
     );

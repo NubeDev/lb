@@ -111,11 +111,11 @@ bounding/truncation. One verb, one bounded pass, one contract.
 
 ## Example flow
 
-1. Admin has registered `warehouse` (sqlite kind) in workspace `acme`; endpoint approved,
+1. Admin has registered `warehouse` (sqlite kind) in workspace `nube`; endpoint approved,
    DSN in `lb-secrets`.
 2. The agent (or the Datasource UI's "Copy AI context" button, a follow-up) calls
    `federation.sample {source: "warehouse"}`.
-3. Host: cap check (`mcp:federation.query:call`) → resolve `datasource:acme:warehouse` →
+3. Host: cap check (`mcp:federation.query:call`) → resolve `datasource:nube:warehouse` →
    `net:*` check → mediate DSN → one sidecar call.
 4. Sidecar: lists 6 tables; per table reads columns, `PRAGMA foreign_key_list`, and
    `SELECT * LIMIT 10`; truncates a 4 KB `notes` value to 256 chars; returns the snapshot.

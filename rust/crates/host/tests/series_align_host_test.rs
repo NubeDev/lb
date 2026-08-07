@@ -39,7 +39,7 @@ fn principal(sub: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
         sub: sub.into(),
-        ws: "acme".into(),
+        ws: "nube".into(),
         role: Role::Member,
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
@@ -51,7 +51,7 @@ fn principal(sub: &str, caps: &[&str]) -> Principal {
 }
 
 async fn call(store: &Store, p: &Principal, tool: &str, args: Value) -> Result<Value, ToolError> {
-    call_ingest_tool(store, p, "acme", tool, &args).await
+    call_ingest_tool(store, p, "nube", tool, &args).await
 }
 
 /// Two tiers: a 15-minute one with no anchor, and a daily one anchored at local midnight.
@@ -98,7 +98,7 @@ async fn tiers(store: &Store, p: &Principal) -> Vec<Value> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_anchor_round_trips_and_absence_is_not_a_zero() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:ada", &[SET, LIST]);
+    let admin = principal("user:test", &[SET, LIST]);
     seed_policy(&store, &admin).await;
 
     let t = tiers(&store, &admin).await;
@@ -115,7 +115,7 @@ async fn an_anchor_round_trips_and_absence_is_not_a_zero() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn patching_a_tier_without_naming_its_anchor_keeps_it() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:ada", &[SET, LIST]);
+    let admin = principal("user:test", &[SET, LIST]);
     seed_policy(&store, &admin).await;
 
     call(
@@ -150,7 +150,7 @@ async fn patching_a_tier_without_naming_its_anchor_keeps_it() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_explicit_null_clears_an_anchor() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:ada", &[SET, LIST]);
+    let admin = principal("user:test", &[SET, LIST]);
     seed_policy(&store, &admin).await;
 
     call(
@@ -176,7 +176,7 @@ async fn an_explicit_null_clears_an_anchor() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn retuning_a_width_inherits_the_anchor() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:ada", &[SET, LIST]);
+    let admin = principal("user:test", &[SET, LIST]);
     seed_policy(&store, &admin).await;
 
     // 1 day → 12 hours. No stored tier has that width, so this is a NEW tier as far as the merge is
@@ -208,7 +208,7 @@ async fn retuning_a_width_inherits_the_anchor() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_zero_width_tier_is_refused() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:ada", &[SET, LIST]);
+    let admin = principal("user:test", &[SET, LIST]);
     let err = call(
         &store,
         &admin,
@@ -236,7 +236,7 @@ async fn a_zero_width_tier_is_refused() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn writing_an_anchor_needs_the_retention_set_grant() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:ada", &[SET, LIST]);
+    let admin = principal("user:test", &[SET, LIST]);
     seed_policy(&store, &admin).await;
 
     // A principal that may LIST policies but not set them.
@@ -280,7 +280,7 @@ async fn writing_an_anchor_needs_the_retention_set_grant() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_bucketed_read_resolves_the_governing_anchor_and_reports_it() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:ada", &[SET, LIST, READ, WRITE]);
+    let admin = principal("user:test", &[SET, LIST, READ, WRITE]);
     seed_policy(&store, &admin).await;
 
     // Real samples through the real write verb (which drains to the committed table).

@@ -30,12 +30,12 @@ fn engine(limits: RuleLimits) -> RuleEngine {
 
 fn run_body(eng: &RuleEngine, body: &str) -> Result<lb_rules::RuleOutput, RuleError> {
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: body.into(),
         params: vec![],
     };
-    let mut run = RuleRun::new("acme".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
+    let mut run = RuleRun::new("nube".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
     eng.run(&rule, &mut run)
 }
 

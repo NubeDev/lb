@@ -51,11 +51,11 @@ async fn embedded_node_denies_a_caller_without_the_cap() {
     let store = &running.node.store;
 
     // No write cap → Denied at the capability gate (workspace matches, so it's the cap, not gate 1).
-    let no_cap = principal("client:reader", "acme", &["mcp:series.read:call"]);
+    let no_cap = principal("client:reader", "nube", &["mcp:series.read:call"]);
     let denied = call_ingest_tool(
         store,
         &no_cap,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [{ "series": "m", "producer": "x", "ts": 1, "seq": 1, "payload": 1, "qos": "must-deliver" }] }),
     )
@@ -64,11 +64,11 @@ async fn embedded_node_denies_a_caller_without_the_cap() {
     assert!(matches!(denied, ToolError::Denied), "no cap ⇒ Denied");
 
     // With the cap → the same call succeeds (the verb is really wired through the embedded node).
-    let writer = principal("client:writer", "acme", &["mcp:ingest.write:call"]);
+    let writer = principal("client:writer", "nube", &["mcp:ingest.write:call"]);
     call_ingest_tool(
         store,
         &writer,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [{ "series": "m", "producer": "x", "ts": 1, "seq": 1, "payload": 1, "qos": "must-deliver" }] }),
     )
@@ -132,14 +132,14 @@ async fn embedded_node_isolates_workspaces() {
     assert!(matches!(cross, ToolError::Denied), "cross-ws read ⇒ Denied");
 }
 
-/// `BootConfig::from_env` with a clean env reproduces the binary's defaults (workspace `acme`, dev seed
+/// `BootConfig::from_env` with a clean env reproduces the binary's defaults (workspace `nube`, dev seed
 /// on, gateway off, reactors on, hello demo ON) — the parity guard that the env seam matches today.
 #[test]
 fn from_env_defaults_match_the_binary() {
     // No LB_* set in the test process → the documented defaults.
     let cfg = BootConfig::from_env();
-    assert_eq!(cfg.workspace, "acme");
-    assert_eq!(cfg.seed_user.as_deref(), Some("user:ada"));
+    assert_eq!(cfg.workspace, "nube");
+    assert_eq!(cfg.seed_user.as_deref(), Some("user:test"));
     assert!(cfg.reactors, "reactors default on for the binary");
     assert!(cfg.hello_demo, "the binary loads the hello demo");
     assert!(matches!(cfg.gateway, lb_node::GatewayMode::Off));

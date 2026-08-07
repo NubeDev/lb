@@ -262,7 +262,7 @@ gateway node, seeded via the real write path:
 Full shell `test:gateway` suite: **65 passed (21 files)**, no regressions.
 
 **Live Playwright e2e — `e2e/proof-panel.spec.ts` (1 passed):** built shell on :4173 → real node on
-:8080 → login `user:ada`/`acme` → open Proof Panel → **click Write sample → `demo-latest` renders the
+:8080 → login `user:test`/`nube` → open Proof Panel → **click Write sample → `demo-latest` renders the
 committed value** → **Refresh outbox → counts render** → NO "Invalid hook call" / two-React / console
 errors. Fresh screenshot at `ui/e2e/__screenshots__/proof-panel-mounted.png` (all four sections live).
 

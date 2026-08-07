@@ -133,7 +133,7 @@ Mandatory categories from `scope/testing/testing-scope.md` that apply:
 - **`from_env` parity:** `BootConfig::from_env()` with `LB_DEV_LOGIN` unset yields `PasswordHash`;
   set/non-empty yields `DevTrustAny` — matching `credential_check_from_env()` so the standalone
   binary is unchanged (assert the field, and that the standalone login behaviour is untouched).
-- **Workspace-isolation (reaffirmed, not re-implemented):** a password set in `acme` does not
+- **Workspace-isolation (reaffirmed, not re-implemented):** a password set in `nube` does not
   authenticate in `beta` on an embedded node — inherited from login-hardening; assert it still
   holds once the check is reachable through the seam.
 - **No mocks (CLAUDE §9):** all against the real gateway + real SurrealDB + real argon2, seeded via
@@ -158,7 +158,7 @@ Mandatory categories from `scope/testing/testing-scope.md` that apply:
   (below the seam). The env→mode mapping lives in `from_env()`; the field carries it down. This
   keeps the `BootConfig` "no env below the seam" invariant intact.
 - **Absent-credential `401` in prod mode** means an embedder that flips to `PasswordHash` without
-  seeding credentials for its bootstrap identities locks them out (e.g. cc-app's dev `user:ada`
+  seeding credentials for its bootstrap identities locks them out (e.g. cc-app's dev `user:test`
   has no credential). `BootConfig::seed_credential` resolves this for the dev `seed_user` (the boot
   seed sets its argon2 credential); any *other* identity an embedder needs to log in under
   `PasswordHash` must likewise get a credential (via invite-accept, or `identity.set_credential`

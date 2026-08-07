@@ -90,7 +90,7 @@ independently testable), **change 2 second** (needs a credential store + argon2 
 
 - **Tenancy / isolation:** unchanged and reaffirmed — the workspace still comes from the token,
   never the body (login.rs derives `ws` into the claim; every route reads the token's ws). A
-  credential is verified *within* a workspace; a password for `(ada, acme)` cannot mint a token
+  credential is verified *within* a workspace; a password for `(test, nube)` cannot mint a token
   for `beta`.
 - **Capabilities:** this scope's whole point. The deny path becomes real for members: a
   member-role token lacks `mcp:members.add:call` etc., so the route's existing capability check
@@ -124,9 +124,9 @@ independently testable), **change 2 second** (needs a credential store + argon2 
 ## Example flow
 
 **A — the escalation, closed (change 1):**
-1. Admin `ada` adds `user:bob` as a plain member (`members.add`, role `member`).
+1. Admin `test` adds `user:bob` as a plain member (`members.add`, role `member`).
 2. `bob` logs in. `login` resolves bob's role = `member`, mints `caps = trimmed_member_caps ∪
-   resolve_caps(acme, bob)`. Bob holds no admin grants, so no admin caps are in the token.
+   resolve_caps(nube, bob)`. Bob holds no admin grants, so no admin caps are in the token.
 3. Bob calls `POST /admin/members` → the route's `mcp:members.add:call` check finds the cap
    absent → **`403`** (today: `204`). Same for `teams.manage`, `grants.assign`, `workspace.*`.
 4. Bob calls `dashboard.get` for a dashboard shared to his team → still `200`. Member reach intact.
@@ -134,7 +134,7 @@ independently testable), **change 2 second** (needs a credential store + argon2 
 **B — real credential (change 2):**
 1. Admin sets bob's password: `identity.set_credential {user, secret}` (gated
    `mcp:identity.manage:call`) → argon2 hash written to the workspace's identity directory.
-2. `POST /login {user:"user:bob", workspace:"acme", secret:"…"}` → `PasswordHash::verify` checks
+2. `POST /login {user:"user:bob", workspace:"nube", secret:"…"}` → `PasswordHash::verify` checks
    argon2 → pass → token minted (with role-correct caps from A). Wrong secret → **`401`**, no token.
 3. Local dev: `LB_DEV_LOGIN=1 make dev` selects `DevTrustAny` → today's password-less login, but
    *still role-scoped* — a dev "member" login still can't add members.
@@ -148,8 +148,8 @@ Mandatory categories from `scope/testing/testing-scope.md` that apply:
   `workspace.delete`, `dashboard.delete_any` at the **route/MCP layer** (not just missing from
   the `caps` list) — this is the regression test for the exact live finding (bob's `204`s must
   become `403`s). A `workspace-admin` token still passes all of them.
-- **Workspace-isolation (required):** a credential/token for `(user, acme)` cannot mint or
-  authorize anything in `beta`; a password set in `acme` does not authenticate in `beta`.
+- **Workspace-isolation (required):** a credential/token for `(user, nube)` cannot mint or
+  authorize anything in `beta`; a password set in `nube` does not authenticate in `beta`.
 - **Credential check:** correct secret → `200` + token; wrong/absent secret → `401`, **no token
   minted**; `DevTrustAny` only reachable under the explicit dev flag (default build refuses
   password-less login).

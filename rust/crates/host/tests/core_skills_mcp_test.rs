@@ -32,7 +32,7 @@ const WRITE: &str = "store:skill/**:write";
 /// The full per-verb MCP cap set the caller holds for the happy path.
 fn full(ws: &str) -> Principal {
     principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:assets.list_skills:call",
@@ -52,30 +52,30 @@ async fn list_skills_over_the_bridge_carries_tier_rows() {
     let ws = "ws-mcp-list-skills";
     let node = Node::boot().await.unwrap();
     seed_core_skills(&node.store, "0.1.0", 1).await.unwrap();
-    let ada = full(ws);
+    let test = full(ws);
 
     // Author + grant a user skill; grant a core skill.
     call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.put_skill",
-        &json!({"id":"acme-runbook","version":"1.0.0","description":"the runbook","body":"b","ts":1}),
+        &json!({"id":"nube-runbook","version":"1.0.0","description":"the runbook","body":"b","ts":1}),
     )
     .await
     .unwrap();
     call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.grant_skill",
-        &json!({"id":"acme-runbook"}),
+        &json!({"id":"nube-runbook"}),
     )
     .await
     .unwrap();
     call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.grant_skill",
         &json!({"id":"core.lb-cli"}),
@@ -83,7 +83,7 @@ async fn list_skills_over_the_bridge_carries_tier_rows() {
     .await
     .unwrap();
 
-    let out = call_asset_tool(&node.store, &ada, ws, "assets.list_skills", &json!({}))
+    let out = call_asset_tool(&node.store, &test, ws, "assets.list_skills", &json!({}))
         .await
         .unwrap();
     let skills = out["skills"].as_array().unwrap();
@@ -91,7 +91,7 @@ async fn list_skills_over_the_bridge_carries_tier_rows() {
     assert_eq!(core["tier"], "core");
     assert_eq!(core["granted"], true);
     assert!(!core["description"].as_str().unwrap().is_empty());
-    let user = skills.iter().find(|s| s["id"] == "acme-runbook").unwrap();
+    let user = skills.iter().find(|s| s["id"] == "nube-runbook").unwrap();
     assert_eq!(user["tier"], "user");
     assert_eq!(user["description"], "the runbook");
     // No body field leaks into the catalog rows.
@@ -102,11 +102,11 @@ async fn list_skills_over_the_bridge_carries_tier_rows() {
 async fn deprecate_and_revoke_over_the_bridge() {
     let ws = "ws-mcp-deprecate";
     let node = Node::boot().await.unwrap();
-    let ada = full(ws);
+    let test = full(ws);
 
     call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.put_skill",
         &json!({"id":"r","version":"1.0.0","description":"d","body":"b","ts":1}),
@@ -115,7 +115,7 @@ async fn deprecate_and_revoke_over_the_bridge() {
     .unwrap();
     call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.grant_skill",
         &json!({"id":"r"}),
@@ -123,7 +123,7 @@ async fn deprecate_and_revoke_over_the_bridge() {
     .await
     .unwrap();
     // In the catalog.
-    let out = call_asset_tool(&node.store, &ada, ws, "assets.list_skills", &json!({}))
+    let out = call_asset_tool(&node.store, &test, ws, "assets.list_skills", &json!({}))
         .await
         .unwrap();
     assert_eq!(out["skills"].as_array().unwrap().len(), 1);
@@ -131,14 +131,14 @@ async fn deprecate_and_revoke_over_the_bridge() {
     // Deprecate over the bridge → gone from the catalog.
     call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.deprecate_skill",
         &json!({"id":"r"}),
     )
     .await
     .unwrap();
-    let out = call_asset_tool(&node.store, &ada, ws, "assets.list_skills", &json!({}))
+    let out = call_asset_tool(&node.store, &test, ws, "assets.list_skills", &json!({}))
         .await
         .unwrap();
     assert!(out["skills"].as_array().unwrap().is_empty());
@@ -146,7 +146,7 @@ async fn deprecate_and_revoke_over_the_bridge() {
     // Revoke over the bridge (idempotent, ok).
     call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.revoke_skill",
         &json!({"id":"r"}),
@@ -159,10 +159,10 @@ async fn deprecate_and_revoke_over_the_bridge() {
 async fn put_core_over_the_bridge_is_a_clear_bad_input_not_an_opaque_deny() {
     let ws = "ws-mcp-core-reserved";
     let node = Node::boot().await.unwrap();
-    let ada = full(ws);
+    let test = full(ws);
     let err = call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.put_skill",
         &json!({"id":"core.lb-cli","version":"9.9.9","description":"x","body":"x","ts":1}),
@@ -180,7 +180,7 @@ async fn each_new_verb_is_denied_at_the_mcp_gate_without_its_cap() {
     let ws = "ws-mcp-deny";
     let node = Node::boot().await.unwrap();
     // Holds the STORE caps but NONE of the mcp:assets.*:call verb caps → refused at the MCP gate.
-    let no_mcp = principal("user:ada", ws, &[READ, WRITE]);
+    let no_mcp = principal("user:test", ws, &[READ, WRITE]);
 
     for (verb, args) in [
         ("assets.list_skills", json!({})),

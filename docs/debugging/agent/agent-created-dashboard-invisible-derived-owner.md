@@ -34,4 +34,4 @@ not migrated.
 still pass (the wall is unchanged — only ownership resolution moved).
 
 **Verified live:** the retest run saved a new cell into the user's open dashboard (`keep-dash`,
-owner `user:ada`) and the user's `dashboard.get` returned it with the new cell hydrated.
+owner `user:test`) and the user's `dashboard.get` returned it with the new cell hydrated.

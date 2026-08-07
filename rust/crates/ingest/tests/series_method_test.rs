@@ -94,18 +94,18 @@ async fn every_method_reads_its_own_value_over_a_real_folded_tier() {
             json!(100.0 * i as f64),
         ));
     }
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
     // Fold everything into the tier and evict the raw beneath it — the state a history read sees.
-    tiered(&store, "acme", "m.", 1, 10_000, Some(Method::Avg)).await;
-    run_gc(&store, "acme", 30_000).await.unwrap();
+    tiered(&store, "nube", "m.", 1, 10_000, Some(Method::Avg)).await;
+    run_gc(&store, "nube", 30_000).await.unwrap();
     assert_eq!(
-        sample_count(&store, "acme", "m.v").await.unwrap(),
+        sample_count(&store, "nube", "m.v").await.unwrap(),
         0,
         "raw evicted"
     );
     assert_eq!(
-        read_rollups(&store, "acme", "m.v", 0, 30_000)
+        read_rollups(&store, "nube", "m.v", 0, 30_000)
             .await
             .unwrap()
             .len(),
@@ -122,7 +122,7 @@ async fn every_method_reads_its_own_value_over_a_real_folded_tier() {
         (Method::First, json!(1.0)),
         (Method::Last, json!(5.0)),
     ] {
-        let mut b = buckets(&store, "acme", "m.v", 0, 30_000, 10_000).await;
+        let mut b = buckets(&store, "nube", "m.v", 0, 30_000, 10_000).await;
         apply_method(&mut b, method).unwrap();
         assert_eq!(b[0].t, 0);
         assert_eq!(
@@ -143,13 +143,13 @@ async fn avg_is_exact_across_a_two_pass_re_aggregation_never_a_mean_of_means() {
     for i in 1..=9u64 {
         samples.push(sample_at("a.v", "p", 10 + i, 10_000 + i * 100, json!(2.0)));
     }
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
-    tiered(&store, "acme", "a.", 1, 10_000, Some(Method::Avg)).await;
-    run_gc(&store, "acme", 40_000).await.unwrap();
+    tiered(&store, "nube", "a.", 1, 10_000, Some(Method::Avg)).await;
+    run_gc(&store, "nube", 40_000).await.unwrap();
 
     // Re-aggregate the two 10s tier rows into ONE 20s read bucket — the second pass.
-    let mut wide = buckets(&store, "acme", "a.v", 0, 20_000, 20_000).await;
+    let mut wide = buckets(&store, "nube", "a.v", 0, 20_000, 20_000).await;
     assert_eq!(wide.len(), 1);
     assert_eq!(wide[0].count, 10);
     apply_method(&mut wide, Method::Avg).unwrap();
@@ -168,7 +168,7 @@ async fn nearest_snaps_to_the_grid_across_a_bucket_boundary() {
     // 10:00" honestly means. `first` would report 19_000's value instead.
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample_at("n.v", "p", 1, 1_000, json!(1.0)),
             sample_at("n.v", "p", 2, 9_900, json!(2.0)),
@@ -177,10 +177,10 @@ async fn nearest_snaps_to_the_grid_across_a_bucket_boundary() {
         ],
     )
     .await;
-    tiered(&store, "acme", "n.", 1, 10_000, Some(Method::Nearest)).await;
-    run_gc(&store, "acme", 40_000).await.unwrap();
+    tiered(&store, "nube", "n.", 1, 10_000, Some(Method::Nearest)).await;
+    run_gc(&store, "nube", 40_000).await.unwrap();
 
-    let mut b = buckets(&store, "acme", "n.v", 0, 20_000, 10_000).await;
+    let mut b = buckets(&store, "nube", "n.v", 0, 20_000, 10_000).await;
     assert_eq!(b.len(), 2);
     apply_method(&mut b, Method::Nearest).unwrap();
     assert_eq!(
@@ -209,12 +209,12 @@ async fn last_gives_a_state_series_step_chart_semantics() {
         samples.push(sample_at("s.coil", "p", i + 1, i * 1_000, json!(0)));
     }
     samples.push(sample_at("s.coil", "p", 5, 4_000, json!(1)));
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
-    tiered(&store, "acme", "s.", 1, 10_000, Some(Method::Last)).await;
-    run_gc(&store, "acme", 40_000).await.unwrap();
+    tiered(&store, "nube", "s.", 1, 10_000, Some(Method::Last)).await;
+    run_gc(&store, "nube", 40_000).await.unwrap();
 
-    let mut b = buckets(&store, "acme", "s.coil", 0, 10_000, 10_000).await;
+    let mut b = buckets(&store, "nube", "s.coil", 0, 10_000, 10_000).await;
     apply_method(&mut b, Method::Last).unwrap();
     // `last` returns the payload VERBATIM — the coil's integer `1`, not a float. A representative
     // method must not retype the value it kept; only the computed statistics are floats.
@@ -232,12 +232,12 @@ async fn a_bucket_folded_before_the_first_column_existed_refuses_first_and_neare
     // Simulate a rollup row written by the pre-normalize GC: `first_ts` absent. This is the exact
     // shape on disc in any workspace that ran retention before this slice.
     let store = Store::memory().await.unwrap();
-    lb_ingest::ensure_series_schema(&store, "acme")
+    lb_ingest::ensure_series_schema(&store, "nube")
         .await
         .unwrap();
     lb_ingest::write_rollups(
         &store,
-        "acme",
+        "nube",
         &[lb_ingest::RollupRow {
             series: "legacy.v".into(),
             width_ms: 10_000,
@@ -256,7 +256,7 @@ async fn a_bucket_folded_before_the_first_column_existed_refuses_first_and_neare
     .await
     .unwrap();
 
-    let mut b = buckets(&store, "acme", "legacy.v", 0, 10_000, 10_000).await;
+    let mut b = buckets(&store, "nube", "legacy.v", 0, 10_000, 10_000).await;
     assert_eq!(b.len(), 1);
 
     for m in [Method::First, Method::Nearest] {
@@ -289,16 +289,16 @@ async fn a_second_gc_pass_is_idempotent_and_the_method_value_is_unchanged() {
     let samples: Vec<Sample> = (1..=8u64)
         .map(|i| sample_at("i.v", "p", i, i * 1_000, json!(i as f64)))
         .collect();
-    seed(&store, "acme", samples).await;
-    tiered(&store, "acme", "i.", 1, 10_000, Some(Method::Avg)).await;
+    seed(&store, "nube", samples).await;
+    tiered(&store, "nube", "i.", 1, 10_000, Some(Method::Avg)).await;
 
-    run_gc(&store, "acme", 40_000).await.unwrap();
-    let mut first_pass = buckets(&store, "acme", "i.v", 0, 10_000, 10_000).await;
+    run_gc(&store, "nube", 40_000).await.unwrap();
+    let mut first_pass = buckets(&store, "nube", "i.v", 0, 10_000, 10_000).await;
     apply_method(&mut first_pass, Method::Avg).unwrap();
 
-    let second = run_gc(&store, "acme", 40_000).await.unwrap();
+    let second = run_gc(&store, "nube", 40_000).await.unwrap();
     assert_eq!(second.evicted_raw, 0, "nothing left to evict");
-    let rows = read_rollups(&store, "acme", "i.v", 0, 10_000)
+    let rows = read_rollups(&store, "nube", "i.v", 0, 10_000)
         .await
         .unwrap();
     assert_eq!(
@@ -307,7 +307,7 @@ async fn a_second_gc_pass_is_idempotent_and_the_method_value_is_unchanged() {
         "the re-run upserts the SAME row id, never a duplicate"
     );
 
-    let mut again = buckets(&store, "acme", "i.v", 0, 10_000, 10_000).await;
+    let mut again = buckets(&store, "nube", "i.v", 0, 10_000, 10_000).await;
     apply_method(&mut again, Method::Avg).unwrap();
     assert_eq!(again[0].value, first_pass[0].value);
     assert_eq!(again[0].count, first_pass[0].count);

@@ -106,14 +106,14 @@ workspace-write granted to members too (collaboration-first), revocable where th
 
 ## Example flow
 
-1. Ada (ws `acme`) runs the agent: "our staging DB is the replica, never write to it." The agent
+1. Test (ws `nube`) runs the agent: "our staging DB is the replica, never write to it." The agent
    calls `agent.memory.set { scope:"workspace", slug:"staging-db-readonly", kind:"project", … }` —
-   cap ✔ under `ada ∩ agent` → persisted.
+   cap ✔ under `test ∩ agent` → persisted.
 2. Bob's run next day starts: the runtime lists `workspace + member:bob` → the index line
    `staging-db-readonly — staging DB is a read replica…` is injected. Bob's agent `get`s the body
    before touching staging.
 3. Bob tells his agent he prefers terse answers → `set { scope:"member", slug:"terse-answers",
-   kind:"user" }`. Ada's runs never see it (`member:bob` is structurally out of her resolution).
+   kind:"user" }`. Test's runs never see it (`member:bob` is structurally out of her resolution).
 4. A run by Carol, whose grants exclude `agent.memory.set`, tries to remember something → **denied,
    opaquely**; her runs still recall (list/get granted). The workspace decided writers ≠ readers.
 5. An admin spots a wrong fact planted by a bad run → `agent.memory.delete { scope:"workspace",
@@ -129,7 +129,7 @@ Mandatory categories (`scope/testing/testing-scope.md`):
 - **Capability-deny (§2.1):** per verb — no cap → denied; `set` cap present but workspace-scope
   write gate absent → workspace `set` denied while `member` `set` succeeds.
 - **Workspace-isolation (§2.2):** ws-B lists/gets nothing of ws-A across **store + MCP**; and the
-  **member wall**: bob's run resolution never returns `member:ada` rows even with slugs known —
+  **member wall**: bob's run resolution never returns `member:test` rows even with slugs known —
   scope is derived from the principal, asserted directly.
 - **Offline/sync:** double-apply of a `set` is idempotent (composite id, LWW).
 - **Injection (real agent, rule 9):** a real in-house run's context contains the index after a

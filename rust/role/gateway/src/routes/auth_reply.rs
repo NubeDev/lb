@@ -38,7 +38,7 @@ pub struct AuthReply {
     /// or a completed select/switch).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
-    /// The resolved principal (`user:ada`) — present with `token`.
+    /// The resolved principal (`user:test`) — present with `token`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub principal: Option<String>,
     /// The workspace the token is scoped to — present with `token`.

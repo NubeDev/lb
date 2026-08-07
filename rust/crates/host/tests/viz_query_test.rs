@@ -95,7 +95,7 @@ fn sql_panel(sql: &str, transforms: Value) -> Value {
 async fn store_target_with_pipeline_returns_expected_frames() {
     let ws = "viz-pipe";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, QUERY, WRITE]);
     seed_series(&node, &p, ws, "cpu", &[10.0, 50.0, 30.0, 5.0]).await;
 
     // filterByValue keeps payload > 9, then sortBy payload desc → [50, 30, 10].
@@ -127,7 +127,7 @@ async fn store_target_with_pipeline_returns_expected_frames() {
 async fn no_transform_panel_parity() {
     let ws = "viz-parity";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, QUERY, WRITE]);
     seed_series(&node, &p, ws, "cpu", &[1.0, 2.0, 3.0]).await;
 
     let sql = "SELECT seq, payload FROM series ORDER BY seq";
@@ -161,7 +161,7 @@ async fn no_transform_panel_parity() {
 async fn multi_target_join_assembles() {
     let ws = "viz-join";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, QUERY, WRITE]);
     seed_series(&node, &p, ws, "a", &[10.0, 20.0]).await;
     seed_series(&node, &p, ws, "b", &[100.0, 200.0]).await;
 
@@ -190,7 +190,7 @@ async fn viz_query_denied_without_cap() {
     let ws = "viz-deny";
     let node = Arc::new(Node::boot().await.unwrap());
     // holds QUERY + WRITE but NOT viz.query.
-    let p = principal("user:ada", ws, &[QUERY, WRITE]);
+    let p = principal("user:test", ws, &[QUERY, WRITE]);
     seed_series(&node, &p, ws, "cpu", &[1.0]).await;
 
     let err = viz_query(
@@ -213,7 +213,7 @@ async fn denied_target_is_honest_empty_not_a_bypass() {
     let writer = principal("user:seed", ws, &[QUERY, WRITE]);
     seed_series(&node, &writer, ws, "cpu", &[1.0, 2.0, 3.0]).await;
 
-    let caller = principal("user:ada", ws, &[VIZ]); // no store.query
+    let caller = principal("user:test", ws, &[VIZ]); // no store.query
     let out = viz_query(
         &node,
         &caller,
@@ -233,7 +233,7 @@ async fn denied_target_is_honest_empty_not_a_bypass() {
 async fn workspace_isolation() {
     let node = Arc::new(Node::boot().await.unwrap());
     // ws-A seeded with rows; ws-B seeded with NONE.
-    let a = principal("user:ada", "ws-a", &[VIZ, QUERY, WRITE]);
+    let a = principal("user:test", "ws-a", &[VIZ, QUERY, WRITE]);
     seed_series(&node, &a, "ws-a", "cpu", &[1.0, 2.0, 3.0]).await;
 
     // Sanity FIRST: ws-A DOES see its own rows through the same path.
@@ -277,7 +277,7 @@ async fn frames_in_shapes_without_resolving_a_source() {
     //   2. Parity: the pipeline over inline frames equals the same pipeline over a resolved source.
     let ws = "viz-frames-in";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[VIZ]); // NO store.query — proves no source is touched
+    let caller = principal("user:test", ws, &[VIZ]); // NO store.query — proves no source is touched
 
     // One inline frame (two columns), + the same filter+sort pipeline the store test uses.
     let pipeline = json!([
@@ -330,7 +330,7 @@ fn frame_status(out: &Value, ref_id: &str) -> Value {
 async fn status_ok_vs_empty() {
     let ws = "viz-status-oe";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, QUERY, WRITE]);
     seed_series(&node, &p, ws, "cpu", &[10.0, 20.0]).await;
 
     // ≥1 row → ok, no message.
@@ -374,7 +374,7 @@ async fn status_ok_vs_empty() {
 async fn status_error_surfaces_message_frame_still_empty() {
     let ws = "viz-status-err";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, QUERY, WRITE]);
     seed_series(&node, &p, ws, "cpu", &[1.0]).await;
 
     // A syntactically invalid SELECT → the store's parse error → `BadInput` → surfaced as `error`.
@@ -410,8 +410,8 @@ async fn status_denied_is_opaque_with_no_enumeration_oracle() {
     seed_series(&node, &writer, "ws-full", "cpu", &[1.0, 2.0, 3.0]).await;
 
     // The caller holds viz.query but NOT store.query, in each workspace.
-    let caller_full = principal("user:ada", "ws-full", &[VIZ]);
-    let caller_empty = principal("user:ada", "ws-empty", &[VIZ]);
+    let caller_full = principal("user:test", "ws-full", &[VIZ]);
+    let caller_empty = principal("user:test", "ws-empty", &[VIZ]);
 
     let out_full = viz_query(
         &node,
@@ -454,7 +454,7 @@ async fn status_denied_is_opaque_with_no_enumeration_oracle() {
 async fn status_absent_on_frames_in_path() {
     let ws = "viz-status-fi";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[VIZ]);
+    let caller = principal("user:test", ws, &[VIZ]);
 
     let panel = json!({
         "frames": [{
@@ -507,7 +507,7 @@ async fn rules_target_scalar_array_renders_rows() {
     let ws = "viz-rules-scalar";
     let node = Arc::new(Node::boot().await.unwrap());
     let caps = &[VIZ, RUN, SAVE, GET, RULE_READ, RULE_WRITE];
-    let p = principal("user:ada", ws, caps);
+    let p = principal("user:test", ws, caps);
     save_rule(
         &node,
         &p,
@@ -541,7 +541,7 @@ async fn rules_target_denied_without_run_cap_is_honest_empty() {
     save_rule(&node, &writer, ws, "hourly", "[#{ v: 1 }, #{ v: 2 }]").await;
 
     // The caller holds viz.query but NOT rules.run → the recursive dispatch denies inside → empty.
-    let caller = principal("user:ada", ws, &[VIZ]);
+    let caller = principal("user:test", ws, &[VIZ]);
     let out = viz_query(&node, &caller, ws, rules_panel("hourly"))
         .await
         .expect("viz.query itself is granted");
@@ -557,7 +557,7 @@ async fn rules_target_denied_without_run_cap_is_honest_empty() {
 async fn rules_target_workspace_isolation() {
     let node = Arc::new(Node::boot().await.unwrap());
     let caps = &[VIZ, RUN, SAVE, GET, RULE_READ, RULE_WRITE];
-    let a = principal("user:ada", "ws-a", caps);
+    let a = principal("user:test", "ws-a", caps);
     save_rule(
         &node,
         &a,
@@ -601,7 +601,7 @@ async fn federation_bound_target_resolves_through_federation_query() {
     const FED: &str = "mcp:federation.query:call";
     let ws = "viz-fed";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[VIZ, FED]); // granted, but no source registered
+    let caller = principal("user:test", ws, &[VIZ, FED]); // granted, but no source registered
 
     let panel = json!({
         "sources": [{
@@ -634,7 +634,7 @@ async fn panel_time_override_applies_to_target_dispatch() {
     const READ: &str = "mcp:series.read:call";
     let ws = "viz-timeover";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, READ, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, READ, WRITE]);
     seed_series(&node, &p, ws, "cpu", &[10.0, 20.0, 30.0, 40.0]).await; // ts = 1..4
 
     let series_panel = |query_options: Value, args: Value| {
@@ -700,7 +700,7 @@ async fn panel_time_override_applies_to_target_dispatch() {
 async fn tranche_2a_pipeline_runs_end_to_end() {
     let ws = "viz-t2a";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, QUERY, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, QUERY, WRITE]);
     seed_series(
         &node,
         &p,

@@ -11,7 +11,7 @@ use lb_store::Store;
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn same_user_resolves_per_workspace_never_cross_reads() {
     let store = Store::memory().await.unwrap();
-    let user = "user:ada"; // the SAME global identity in both workspaces
+    let user = "user:test"; // the SAME global identity in both workspaces
 
     // ws-A: Tokyo, imperial. ws-B: Madrid, metric.
     set_user_prefs(
@@ -59,7 +59,7 @@ async fn same_user_resolves_per_workspace_never_cross_reads() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_default_change_in_a_does_not_move_b() {
     let store = Store::memory().await.unwrap();
-    let user = "user:ada";
+    let user = "user:test";
 
     // Both workspaces have a default; the user sets nothing, so resolution = the ws default.
     set_workspace_prefs(

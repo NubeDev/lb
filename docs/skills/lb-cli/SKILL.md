@@ -40,8 +40,8 @@ server did not grant.
 
 ```
 $ lb whoami
-ws: acme  user: user:ada  role: member  mode: remote      # ← stderr (context)
-{ "user": "user:ada", "workspace": "acme", "role": "member", "caps": [ … ] }   # ← stdout (data)
+ws: nube  user: user:test  role: member  mode: remote      # ← stderr (context)
+{ "user": "user:test", "workspace": "nube", "role": "member", "caps": [ … ] }   # ← stdout (data)
 ```
 
 Global flags (all commands): `-w/--workspace` (credential selector), `-o/--output table|json`,
@@ -50,9 +50,9 @@ Global flags (all commands): `-w/--workspace` (credential selector), `-o/--outpu
 ## 1. `lb login` — the front door
 
 ```bash
-lb login --url http://127.0.0.1:8080 --email ada@acme.local   # password: --password or LB_LOGIN_PASSWORD
-# ws: acme  user: user:ada  role: member  mode: remote
-# logged in to http://127.0.0.1:8080 as user:ada (workspace acme); credential stored in "…/.lazybones/config"
+lb login --url http://127.0.0.1:8080 --email test@nube.local   # password: --password or LB_LOGIN_PASSWORD
+# ws: nube  user: user:test  role: member  mode: remote
+# logged in to http://127.0.0.1:8080 as user:test (workspace nube); credential stored in "…/.lazybones/config"
 ```
 
 `login` POSTs `{email, password}` to the gateway's **`/auth/login`** (the same door the browser uses,
@@ -82,7 +82,7 @@ in one command:
 
 ```bash
 lb call inbox.list '{"channel":"ops"}' -o json
-# ws: acme  user: user:ada  role: member  mode: remote
+# ws: nube  user: user:test  role: member  mode: remote
 # { "items": [] }
 
 lb call series.list '{}' -o json
@@ -114,7 +114,7 @@ invented shape:
 
 ```bash
 lb inbox list ops
-# ws: acme  user: user:ada  role: member  mode: remote
+# ws: nube  user: user:test  role: member  mode: remote
 # (no rows)
 ```
 
@@ -190,7 +190,7 @@ session (`lb login` / `lb local`) already carries the caps.
 # create → prints the ID (D4), not the record. The id is derived from the body (a kebab slug + a short
 # suffix) unless you pass --id; the schedule is a 5-field cron string (defaults to daily 09:00).
 lb reminder create --channel team --body "standup time" --cron "0 9 * * 1"
-# ws: acme  user: user:ada  role: member  mode: remote      # ← stderr
+# ws: nube  user: user:test  role: member  mode: remote      # ← stderr
 # standup-time-thhn28                                        # ← stdout: just the id
 
 lb reminder ls                                    # every reminder (ws-scoped), oldest→newest
@@ -220,7 +220,7 @@ which verifies-before-stores and installs + loads it live.
 ```bash
 # Sign a BUILT extension (under $LB_DEVKIT_ROOT, default rust/extensions) into an artifact:
 lb devkit sign hello-v2 --out /tmp/hello.artifact.json
-# ws: acme  user: user:ada  role: member  mode: remote
+# ws: nube  user: user:test  role: member  mode: remote
 # signed hello v0.2.0 → /tmp/hello.artifact.json  (publisher: dev-publisher)
 
 # Publish it (needs mcp:ext.publish:call + the gateway trusting the publisher key):
@@ -251,19 +251,19 @@ login issues, scoped by `-w`, so local is **not** an admin backdoor — it denie
 member token would:
 
 ```bash
-lb local -w acme whoami
-# ws: acme  user: user:ada  role: member  mode: local
+lb local -w nube whoami
+# ws: nube  user: user:test  role: member  mode: local
 
-lb local -w acme call inbox.list '{"channel":"general"}'
-# ws: acme  user: user:ada  role: member  mode: local
+lb local -w nube call inbox.list '{"channel":"general"}'
+# ws: nube  user: user:test  role: member  mode: local
 # (no rows)
 
-lb local -w acme call telemetry.purge '{}'        # parity deny — same as a member token
+lb local -w nube call telemetry.purge '{}'        # parity deny — same as a member token
 # DENIED  mcp:telemetry.purge:call    (exit 3)
 ```
 
 Local output is identical to remote (same claim set, same dispatch) — only the header's `mode:`
-differs. The `-w` scopes the minted principal's workspace, which **is** the wall; a local `-w acme`
+differs. The `-w` scopes the minted principal's workspace, which **is** the wall; a local `-w nube`
 principal cannot reach ws `beta`'s data.
 
 ## `-w` is a credential SELECTOR, never a workspace override
@@ -279,8 +279,8 @@ lb -w beta inbox list ops
 echo $?    # 4
 ```
 
-So after `lb login -w acme` and `lb login -w beta`, `lb -w beta …` acts in beta and `lb -w acme …`
-in acme — each with its own token. Passing `-w beta` while an acme token is loaded is not a
+So after `lb login -w nube` and `lb login -w beta`, `lb -w beta …` acts in beta and `lb -w nube …`
+in nube — each with its own token. Passing `-w beta` while an nube token is loaded is not a
 cross-workspace hop: the beta token's own workspace is what reaches the server.
 
 ## Config & env
@@ -308,15 +308,15 @@ LB=rust/target/debug/lb
 URL=http://127.0.0.1:8080
 
 # remote: log in, prove the spine, publish an extension
-$LB login --url $URL -w acme
+$LB login --url $URL -w nube
 $LB call inbox.list '{"channel":"ops"}' -o json          # { "items": [] }
 $LB devkit sign hello-v2 --out /tmp/a.json               # signed hello v0.2.0 → …
 $LB ext publish /tmp/a.json                              # published hello v0.2.0 — installed, live
 $LB call telemetry.purge '{}'; echo $?             # DENIED … ; 3  (honest deny)
 
 # offline: the same commands, no gateway
-$LB local -w acme whoami
-$LB local -w acme call inbox.list '{"channel":"general"}'   # (no rows)
+$LB local -w nube whoami
+$LB local -w nube call inbox.list '{"channel":"general"}'   # (no rows)
 ```
 
 ## Non-negotiable rules this encodes

@@ -59,9 +59,9 @@ const MON_JAN1_0000: u64 = 1_704_067_200;
 async fn channel_post_firing_writes_a_real_inbox_item_and_advances() {
     let ws = "react-chan";
     let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:ada", ws, &["mcp:reminder.create:call"]);
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
     // Grant the action's own cap to the creator's subject — the fire-time re-resolve sees it.
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
 
     // A recurring every-minute reminder; first fire is the next minute strictly after create-time.
     let r = reminder_create(
@@ -90,7 +90,7 @@ async fn channel_post_firing_writes_a_real_inbox_item_and_advances() {
     let items = lb_inbox::list(&node.store, ws, "team").await.unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].body, "standup time");
-    assert_eq!(items[0].author, "user:ada");
+    assert_eq!(items[0].author, "user:test");
     assert_eq!(items[0].id, fire_job_id("standup", first));
 
     // The firing job is durable at the deterministic per-firing id.
@@ -115,9 +115,9 @@ async fn channel_post_firing_writes_a_real_inbox_item_and_advances() {
 async fn mcp_tool_firing_runs_the_real_tool_under_the_stored_principal() {
     let ws = "react-tool";
     let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:ada", ws, &["mcp:reminder.create:call"]);
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
     // The action calls `store.schema` — grant it to the creator so the fire-time re-check passes.
-    grant(&node.store, ws, "user:ada", "mcp:store.schema:call").await;
+    grant(&node.store, ws, "user:test", "mcp:store.schema:call").await;
 
     let action = Action::McpTool {
         tool: "store.schema".into(),
@@ -154,8 +154,8 @@ async fn mcp_tool_firing_runs_the_real_tool_under_the_stored_principal() {
 async fn outbox_firing_enqueues_a_real_effect_relayed_via_the_outbox() {
     let ws = "react-outbox";
     let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:ada", ws, &["mcp:reminder.create:call"]);
-    grant(&node.store, ws, "user:ada", "mcp:outbox.enqueue:call").await;
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
+    grant(&node.store, ws, "user:test", "mcp:outbox.enqueue:call").await;
 
     let action = Action::Outbox {
         target: "email".into(),
@@ -211,8 +211,8 @@ async fn a_re_scan_before_advance_fires_nothing_twice() {
     // addresses a NEW instant.)
     let ws = "react-idem";
     let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:ada", ws, &["mcp:reminder.create:call"]);
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     let r = reminder_create(
         &node.store,
         &creator,
@@ -248,8 +248,8 @@ async fn a_re_scan_before_advance_fires_nothing_twice() {
 async fn max_runs_counts_down_to_done() {
     let ws = "react-maxruns";
     let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:ada", ws, &["mcp:reminder.create:call"]);
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     let r = reminder_create(
         &node.store,
         &creator,
@@ -303,11 +303,11 @@ async fn disabled_is_skipped_and_resumes_at_the_next_future_slot() {
     let ws = "react-enabled";
     let node = Arc::new(Node::boot().await.unwrap());
     let creator = principal(
-        "user:ada",
+        "user:test",
         ws,
         &["mcp:reminder.create:call", "mcp:reminder.update:call"],
     );
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     let r = reminder_create(
         &node.store,
         &creator,
@@ -380,8 +380,8 @@ async fn a_due_during_outage_fires_exactly_once_on_catch_up() {
     // next FUTURE slot (fire-once-then-skip — no backfill storm).
     let ws = "react-offline";
     let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:ada", ws, &["mcp:reminder.create:call"]);
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     let r = reminder_create(
         &node.store,
         &creator,
@@ -428,8 +428,8 @@ async fn a_revoked_action_grant_is_a_logged_deny_with_no_effect() {
     // a re-scan from double-firing the instant).
     let ws = "react-deny";
     let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:ada", ws, &["mcp:reminder.create:call"]);
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     let r = reminder_create(
         &node.store,
         &creator,
@@ -447,7 +447,7 @@ async fn a_revoked_action_grant_is_a_logged_deny_with_no_effect() {
     .unwrap();
 
     // Revoke the action grant AFTER create — the principal no longer holds it.
-    revoke(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    revoke(&node.store, ws, "user:test", "bus:chan/team:pub").await;
 
     let pass = react_to_reminders(&node, ws, r.next_attempt_ts)
         .await
@@ -488,8 +488,8 @@ async fn a_ws_b_reactor_never_fires_or_advances_a_ws_a_reminder() {
     // pass over ws-B's namespace sees nothing, fires nothing, advances nothing. The hard wall holds
     // at the `due` scan.
     let node = Arc::new(Node::boot().await.unwrap());
-    let a = principal("user:ada", "react-iso-a", &["mcp:reminder.create:call"]);
-    grant(&node.store, "react-iso-a", "user:ada", "bus:chan/team:pub").await;
+    let a = principal("user:test", "react-iso-a", &["mcp:reminder.create:call"]);
+    grant(&node.store, "react-iso-a", "user:test", "bus:chan/team:pub").await;
     let r = reminder_create(
         &node.store,
         &a,
@@ -537,8 +537,8 @@ async fn recurring_multi_day_schedule_on_the_injected_clock() {
     // at Mon 00:00 first fires Mon 08:00, then advances to Sun 08:00 (the multi-value day field).
     let ws = "react-multiday";
     let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:ada", ws, &["mcp:reminder.create:call"]);
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     let r = reminder_create(
         &node.store,
         &creator,

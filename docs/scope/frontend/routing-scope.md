@@ -117,16 +117,16 @@ shared link degrades to sane defaults instead of crashing.
 Share a dashboard date-range, recipient on a different machine/shell:
 
 1. User A opens Dashboards, picks Jan–Mar 2026. The view writes the range to search params →
-   address bar reads `#/t/acme/dashboards?from=2026-01-01&to=2026-03-31` (A is in workspace `acme`).
+   address bar reads `#/t/nube/dashboards?from=2026-01-01&to=2026-03-31` (A is in workspace `nube`).
 2. A clicks the page's **Share** affordance (the `Share2` icon already in `DashboardView`) → it
-   copies `window.location.href` (tenant prefix included — the link names workspace `acme`).
+   copies `window.location.href` (tenant prefix included — the link names workspace `nube`).
 3. User B (in the **browser**; A was in **Tauri**), whose token is for workspace `beta`, pastes the
-   URL. The `/t/$ws` guard sees `acme ≠ beta` and **rewrites** to `#/t/beta/dashboards?from=…&to=…`
+   URL. The `/t/$ws` guard sees `nube ≠ beta` and **rewrites** to `#/t/beta/dashboards?from=…&to=…`
    — same surface + args, B's own workspace. `validateSearch` parses `from`/`to`; `DashboardView`
    opens scoped to that range.
 4. B's session token sets B's workspace (`beta`); the gateway re-checks B's dashboard-read caps and
    reads only `beta`'s data. The link shared *the view+args*, never A's workspace or authority —
-   the `acme` segment was a hint the guard corrected, not a key.
+   the `nube` segment was a hint the guard corrected, not a key.
 5. B hits back → returns to B's prior route. Reloads → same dashboard+range (URL is the state).
 
 ## Testing plan
@@ -168,7 +168,7 @@ CLAUDE §9; the `*.gateway.test.tsx` harness already mounts the shell against a 
   segment (`/t/<ws>`) rather than a query hint — self-describing links, but the segment is never
   trusted (the `/t/$ws` guard rewrites a mismatch to the recipient's workspace; the gateway re-checks
   from the token). Still open: should a mismatched `<ws>` *offer* a switch-workspace (re-login) flow
-  ("this link is for `acme` — switch?") instead of silently rewriting to the current workspace?
+  ("this link is for `nube` — switch?") instead of silently rewriting to the current workspace?
   (Lean: silent rewrite for v1 — safest; an explicit switch prompt is a follow-up if cross-workspace
   sharing becomes common.)
 - **Path mode later?** Is a prettier `/dashboards` URL ever worth solving the Tauri custom-protocol

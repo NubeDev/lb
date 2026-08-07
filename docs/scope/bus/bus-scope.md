@@ -37,7 +37,7 @@ the bus just as namespace does in the store.
 ## TESTING RULE (constraint): bus tests use a UNIQUE workspace id per test
 
 In-process Zenoh peers **auto-discover each other and share a workspace's keyspace** — two
-sessions on `ws/acme/...` see each other's traffic (debugging/bus/
+sessions on `ws/nube/...` see each other's traffic (debugging/bus/
 in-process-peers-share-the-keyspace.md). So every bus test must use its own workspace id, or
 concurrent tests in one binary cross-talk. This is also the correct semantic (the workspace is
 the wall); the isolation test encodes the converse (distinct ids never cross).

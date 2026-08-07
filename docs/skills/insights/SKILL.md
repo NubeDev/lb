@@ -38,7 +38,7 @@ denials are opaque.
 
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
-  -H 'content-type: application/json' -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -H 'content-type: application/json' -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Capabilities — one per verb: `mcp:insight.raise:call` (producer-grade write),
@@ -217,7 +217,7 @@ curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.comment","args":{
 # 3. The drawer: the record AND the whole thread, newest-first.
 curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.get","args":{"id":"01H…"}}'
 # → {…,"assigned_to":"user:priya",
-#     "comments":[{"cseq":1,"text":"Site was shut…","author":"user:ada","ts":…}]}
+#     "comments":[{"cseq":1,"text":"Site was shut…","author":"user:test","ts":…}]}
 
 # 4. My work — resolves to your sub AND every team you're on.
 curl -s -X POST $BASE "${auth[@]}" -d '{"tool":"insight.list","args":{"assigned_to":"me"}}'
@@ -384,7 +384,7 @@ $180/day"), never assert it as measured. When `analysis` is absent, `body` is st
 **The comment thread is HUMAN testimony — the highest-value context on a re-opened finding, and the
 one thing on the record you must not treat as fact.** `insight.get` returns it; read it, because it
 is where "we checked this last quarter and it was a shut site" lives, and nothing else on the record
-carries that. But attribute every claim to its author and its time ("on the 3rd, Ada noted…") rather
+carries that. But attribute every claim to its author and its time ("on the 3rd, Test noted…") rather
 than restating it as the current state — a note is what one person believed then, it is never
 corrected in place (the thread is append-only, so a later comment may contradict an earlier one, and
 **both remain**), and the finding may have re-opened since. Where a comment and the producer's

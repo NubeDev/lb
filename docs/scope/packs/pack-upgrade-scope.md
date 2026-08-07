@@ -147,7 +147,7 @@ upgrade's schema effect before `pack.apply`. Reuses the migrate planner's dry-ru
 
 ## Example flow (the exact case that motivated this)
 
-1. `bas` v1 is applied to `acme`; an operator has CRUD'd a few sites (their rows).
+1. `bas` v1 is applied to `nube`; an operator has CRUD'd a few sites (their rows).
 2. The pack author bumps `bas` to v4: adds the entity→table bindings (manifest metadata) AND `lat`/`lng`
    columns to `site` (schema).
 3. `make pack-validate PACK=bas` → `decision: upgrade (v1 → v4)`, datasource plans `2 ADD COLUMN
@@ -156,7 +156,7 @@ upgrade's schema effect before `pack.apply`. Reuses the migrate planner's dry-ru
    (nullable, empty for existing rows), the bindings land in the new receipt, rules/dashboards
    re-author to v4. The result lists `upgraded bas: v1 → v4` + every object outcome.
 5. `pack.get` now returns the v4 manifest with bindings → the rubix-ai Entities pages light up on
-   `acme`, and the operator backfills `lat`/`lng` per site via the row editor (or leaves them null — a
+   `nube`, and the operator backfills `lat`/`lng` per site via the row editor (or leaves them null — a
    real BAS condition).
 6. Re-running `make pack-apply PACK=bas` is a NoOp (same version, same checksum).
 

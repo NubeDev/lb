@@ -12,7 +12,7 @@
 //!
 //! - The **union** is deliberate, not belt-and-braces. The workspace directory is written by
 //!   `workspace_create`, so a node whose boot workspace was never created through that verb (the
-//!   default `acme`, every test, an embedder that provisions its own identities) has NO row for it.
+//!   default `nube`, every test, an embedder that provisions its own identities) has NO row for it.
 //!   Keying bring-up off the directory alone would start nothing at all on those nodes — trading a
 //!   one-workspace gap for a zero-workspace one. `cfg.workspace` is always in the set, whether or not
 //!   anyone registered it.

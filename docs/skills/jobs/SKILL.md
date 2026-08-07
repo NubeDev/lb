@@ -35,7 +35,7 @@ each verb single-responsibility and means an extension can't raw-write the jobs 
   "cursor": 3,              // the resume point — the next step index
   "steps": [ /* steps[i] = the durable result of step i */ ],
   "attempts": 1,
-  "ws": "acme",             // the hard wall — every job is workspace-scoped
+  "ws": "nube",             // the hard wall — every job is workspace-scoped
   "ts": 1719800000000       // injected logical clock — no wall-clock (determinism, §3)
 }
 ```

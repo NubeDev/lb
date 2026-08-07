@@ -28,9 +28,9 @@ use tower::ServiceExt;
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn every_admin_invite_route_denies_a_principal_without_the_cap() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let tok = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
     for req in [
-        json_post("/admin/invites", json!({ "email": "bob@acme.com" })),
+        json_post("/admin/invites", json!({ "email": "bob@nube.com" })),
         get_req("/admin/invites"),
         post_empty("/admin/invites/deadbeef/revoke"),
         post_empty("/admin/invites/deadbeef/resend"),
@@ -51,7 +51,7 @@ async fn the_two_invite_caps_are_not_interchangeable() {
     // granted only the mint cap must still be denied the roster (and vice versa).
     let (gw, key) = gateway().await;
 
-    let create_only = token(&key, "user:ada", "acme", &[CREATE]);
+    let create_only = token(&key, "user:test", "nube", &[CREATE]);
     let resp = router(gw.clone())
         .oneshot(bearer(get_req("/admin/invites"), &create_only))
         .await
@@ -62,9 +62,9 @@ async fn the_two_invite_caps_are_not_interchangeable() {
         "`mcp:invite.create:call` alone must NOT open GET /admin/invites"
     );
 
-    let list_only = token(&key, "user:lee", "acme", &[LIST]);
+    let list_only = token(&key, "user:lee", "nube", &[LIST]);
     for req in [
-        json_post("/admin/invites", json!({ "email": "bob@acme.com" })),
+        json_post("/admin/invites", json!({ "email": "bob@nube.com" })),
         post_empty("/admin/invites/deadbeef/revoke"),
         post_empty("/admin/invites/deadbeef/resend"),
     ] {
@@ -80,7 +80,7 @@ async fn the_two_invite_caps_are_not_interchangeable() {
     }
 
     // ...and no invite was written by any of the denied calls.
-    let admin = token(&key, "user:root", "acme", BOTH);
+    let admin = token(&key, "user:root", "nube", BOTH);
     assert!(
         roster(&gw, &admin, "").await.is_empty(),
         "a denied mint must leave no record behind"
@@ -92,22 +92,22 @@ async fn the_two_invite_caps_are_not_interchangeable() {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn an_invite_minted_in_acme_is_invisible_and_unrevokable_from_beta() {
+async fn an_invite_minted_in_nube_is_invisible_and_unrevokable_from_beta() {
     let (gw, key) = gateway().await;
-    let acme = token(&key, "user:ada", "acme", BOTH);
+    let nube = token(&key, "user:test", "nube", BOTH);
     let beta = token(&key, "user:eve", "beta", BOTH);
 
-    let _raw = mint(&gw, &acme, json!({ "email": "bob@acme.com" })).await;
-    let hash = hash_of(&roster(&gw, &acme, "").await, "bob@acme.com");
+    let _raw = mint(&gw, &nube, json!({ "email": "bob@nube.com" })).await;
+    let hash = hash_of(&roster(&gw, &nube, "").await, "bob@nube.com");
 
     // Absent from beta's roster.
     let beta_rows = roster(&gw, &beta, "").await;
     assert!(
         beta_rows.is_empty(),
-        "beta must not see acme's invites: {beta_rows:?}"
+        "beta must not see nube's invites: {beta_rows:?}"
     );
 
-    // Revoking acme's hash from beta is 404 — not 403, and not a success. A cross-workspace caller
+    // Revoking nube's hash from beta is 404 — not 403, and not a success. A cross-workspace caller
     // must not learn whether the hash exists at all.
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -122,9 +122,9 @@ async fn an_invite_minted_in_acme_is_invisible_and_unrevokable_from_beta() {
         "cross-workspace revoke must be an opaque 404, never an existence oracle"
     );
 
-    // And the invite is untouched in acme.
-    let still = roster(&gw, &acme, "?status=pending").await;
-    assert_eq!(still.len(), 1, "acme's invite must survive beta's attempt");
+    // And the invite is untouched in nube.
+    let still = roster(&gw, &nube, "?status=pending").await;
+    assert_eq!(still.len(), 1, "nube's invite must survive beta's attempt");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -134,12 +134,12 @@ async fn an_invite_minted_in_acme_is_invisible_and_unrevokable_from_beta() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn mint_then_accept_onboards_the_invitee_and_flips_the_record_to_accepted() {
     let (gw, key) = gateway().await;
-    let admin = token(&key, "user:ada", "acme", BOTH);
+    let admin = token(&key, "user:test", "nube", BOTH);
 
     let raw = mint(
         &gw,
         &admin,
-        json!({ "email": "bob@acme.com", "role": "member" }),
+        json!({ "email": "bob@nube.com", "role": "member" }),
     )
     .await;
 
@@ -147,7 +147,7 @@ async fn mint_then_accept_onboards_the_invitee_and_flips_the_record_to_accepted(
     let resp = router(gw.clone())
         .oneshot(json_post(
             "/public/invite/accept",
-            json!({ "token": raw, "workspace": "acme", "secret": "hunter2hunter2" }),
+            json!({ "token": raw, "workspace": "nube", "secret": "hunter2hunter2" }),
         ))
         .await
         .unwrap();
@@ -157,7 +157,7 @@ async fn mint_then_accept_onboards_the_invitee_and_flips_the_record_to_accepted(
         "the minted token must redeem"
     );
     let accepted: serde_json::Value = json_body(resp).await;
-    assert_eq!(accepted["principal"], "user:bob@acme.com");
+    assert_eq!(accepted["principal"], "user:bob@nube.com");
     assert!(
         accepted["caps"]
             .as_array()
@@ -167,23 +167,23 @@ async fn mint_then_accept_onboards_the_invitee_and_flips_the_record_to_accepted(
         "the new member's caps resolve live on first login"
     );
 
-    // The identity exists globally, the membership exists in acme, and the invite's role is granted.
+    // The identity exists globally, the membership exists in nube, and the invite's role is granted.
     let manage = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &["mcp:identity.manage:call", "mcp:members.manage:call"],
     );
     let resp = router(gw.clone())
         .oneshot(bearer(
-            get_req("/admin/identities/user:bob@acme.com"),
+            get_req("/admin/identities/user:bob@nube.com"),
             &manage,
         ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let identity: serde_json::Value = json_body(resp).await;
-    assert_eq!(identity["sub"], "user:bob@acme.com", "identity was created");
+    assert_eq!(identity["sub"], "user:bob@nube.com", "identity was created");
 
     let resp = router(gw.clone())
         .oneshot(bearer(get_req("/admin/members"), &manage))
@@ -191,14 +191,14 @@ async fn mint_then_accept_onboards_the_invitee_and_flips_the_record_to_accepted(
         .unwrap();
     let members: Vec<serde_json::Value> = json_body(resp).await;
     assert!(
-        members.iter().any(|m| m["sub"] == "user:bob@acme.com"),
-        "the invitee joined acme: {members:?}"
+        members.iter().any(|m| m["sub"] == "user:bob@nube.com"),
+        "the invitee joined nube: {members:?}"
     );
 
     let resp = router(gw.clone())
         .oneshot(bearer(
-            get_req("/admin/grants?subject=user:bob@acme.com"),
-            &token(&key, "user:ada", "acme", &["mcp:grants.list:call"]),
+            get_req("/admin/grants?subject=user:bob@nube.com"),
+            &token(&key, "user:test", "nube", &["mcp:grants.list:call"]),
         ))
         .await
         .unwrap();
@@ -213,7 +213,7 @@ async fn mint_then_accept_onboards_the_invitee_and_flips_the_record_to_accepted(
     let rows = roster(&gw, &admin, "").await;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["status"], "accepted");
-    assert_eq!(rows[0]["accepted_by"], "user:bob@acme.com");
+    assert_eq!(rows[0]["accepted_by"], "user:bob@nube.com");
     assert!(
         roster(&gw, &admin, "?status=pending").await.is_empty(),
         "an accepted invite is no longer pending"

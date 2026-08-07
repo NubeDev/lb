@@ -80,7 +80,7 @@ verb is capability-gated server-side; a denial is **opaque**.
 
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)   # empty ws bootstraps a ws-admin
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)   # empty ws bootstraps a ws-admin
 ```
 
 Send `Authorization: Bearer $TOKEN` on every call. Caps you need for the inner loop:
@@ -391,9 +391,9 @@ after publish. This is the exact sequence the energy-dashboard live run used (gr
 
 ```bash
 GW=http://127.0.0.1:8080
-# 1. Login (dev-login bootstraps a workspace-admin member of `acme`).
+# 1. Login (dev-login bootstraps a workspace-admin member of `nube`).
 TOKEN=$(curl -s -X POST $GW/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 
 # 2. Scaffold a UI + datasources extension over MCP.
 EXT=$(curl -s -X POST $GW/mcp/call -H "authorization: Bearer $TOKEN" \

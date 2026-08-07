@@ -122,7 +122,7 @@ mod tests {
     /// The old-child path, and the one that must stay bit-identical: no declaration at all.
     #[test]
     fn no_declaration_falls_back_to_name_only() {
-        let out = join_descriptors("acme", &manifest(&["point.read", "point.write"]), None);
+        let out = join_descriptors("nube", &manifest(&["point.read", "point.write"]), None);
         assert_eq!(
             out,
             vec![
@@ -136,14 +136,14 @@ mod tests {
     #[test]
     fn an_empty_declaration_falls_back_to_name_only() {
         let empty = declared(vec![]);
-        let out = join_descriptors("acme", &manifest(&["point.read"]), Some(&empty));
+        let out = join_descriptors("nube", &manifest(&["point.read"]), Some(&empty));
         assert_eq!(out, vec![ToolDescriptor::name_only("point.read")]);
     }
 
     #[test]
     fn a_declared_tool_keeps_its_schema_and_flags() {
         let d = declared(vec![schemad("point.write")]);
-        let out = join_descriptors("acme", &manifest(&["point.write"]), Some(&d));
+        let out = join_descriptors("nube", &manifest(&["point.write"]), Some(&d));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].name, "point.write");
         assert_eq!(out[0].title, "Write point");
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn undeclared_manifest_tools_still_register() {
         let d = declared(vec![schemad("point.write")]);
-        let out = join_descriptors("acme", &manifest(&["point.read", "point.write"]), Some(&d));
+        let out = join_descriptors("nube", &manifest(&["point.read", "point.write"]), Some(&d));
         assert_eq!(out.len(), 2);
         let read = out.iter().find(|d| d.name == "point.read").unwrap();
         assert!(read.input_schema.is_none());
@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn declared_tools_absent_from_the_manifest_are_dropped() {
         let d = declared(vec![schemad("point.write"), schemad("secret.exfil")]);
-        let out = join_descriptors("acme", &manifest(&["point.write"]), Some(&d));
+        let out = join_descriptors("nube", &manifest(&["point.write"]), Some(&d));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].name, "point.write");
         assert!(!out.iter().any(|d| d.name == "secret.exfil"));
@@ -180,12 +180,12 @@ mod tests {
     #[test]
     fn qualified_and_bare_names_match_each_other() {
         let d = declared(vec![schemad("point.write")]);
-        let out = join_descriptors("acme", &manifest(&["acme.point.write"]), Some(&d));
+        let out = join_descriptors("nube", &manifest(&["nube.point.write"]), Some(&d));
         assert_eq!(out[0].name, "point.write");
         assert!(out[0].input_schema.is_some(), "the join must still match");
 
-        let d = declared(vec![schemad("acme.point.write")]);
-        let out = join_descriptors("acme", &manifest(&["point.write"]), Some(&d));
+        let d = declared(vec![schemad("nube.point.write")]);
+        let out = join_descriptors("nube", &manifest(&["point.write"]), Some(&d));
         assert_eq!(out[0].name, "point.write");
         assert!(out[0].input_schema.is_some(), "and in the other direction");
     }

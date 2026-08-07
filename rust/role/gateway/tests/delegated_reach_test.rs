@@ -86,7 +86,7 @@ async fn mcp_call(
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn delegated_check_scoped_resolves_the_subject_not_the_caller() {
     let (gw, key) = gateway().await;
-    let ws = "acme";
+    let ws = "nube";
     // ana (the guardian/subject) may reach child:leo; the caller (the extension identity) holds NO
     // reach grant of its own — only the reach-verb cap + the delegation cap.
     seed_scoped_grant(&gw, &key, ws, "user:ana", "leo").await;
@@ -127,7 +127,7 @@ async fn delegated_check_scoped_resolves_the_subject_not_the_caller() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn delegated_scope_filter_returns_the_subjects_rows() {
     let (gw, key) = gateway().await;
-    let ws = "acme";
+    let ws = "nube";
     seed_scoped_grant(&gw, &key, ws, "user:ana", "leo").await;
 
     let ext = token(
@@ -160,7 +160,7 @@ async fn delegated_scope_filter_returns_the_subjects_rows() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn subject_without_delegation_cap_is_denied_never_falls_back() {
     let (gw, key) = gateway().await;
-    let ws = "acme";
+    let ws = "nube";
     seed_scoped_grant(&gw, &key, ws, "user:ana", "leo").await;
 
     // The caller holds the reach VERB cap but NOT the delegation cap. Naming a `subject` must be a
@@ -200,7 +200,7 @@ async fn subject_without_delegation_cap_is_denied_never_falls_back() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn absent_subject_resolves_the_callers_own_reach_without_the_delegation_cap() {
     let (gw, key) = gateway().await;
-    let ws = "acme";
+    let ws = "nube";
     // The CALLER itself (user:sam) holds a scoped grant; it names no subject and holds no delegation
     // cap — the original behaviour, byte-for-byte, every existing call site unchanged.
     seed_scoped_grant(&gw, &key, ws, "user:sam", "mia").await;

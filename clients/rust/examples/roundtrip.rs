@@ -5,11 +5,11 @@
 //!   make cloud                  # in one terminal — boots 127.0.0.1:8080
 //!   cd clients/rust && \
 //!     cargo run --example roundtrip -- \
-//!       --url http://127.0.0.1:8080 --user ada --workspace acme
+//!       --url http://127.0.0.1:8080 --user test --workspace nube
 //!
 //! Or, with an API key (no `/login`):
 //!   cargo run --example roundtrip -- \
-//!     --url http://127.0.0.1:8080 --key lbk_acme.k7f3a.ABCDEF23
+//!     --url http://127.0.0.1:8080 --key lbk_nube.k7f3a.ABCDEF23
 
 use lb_client::{call_mcp, latest_sample, write_samples, Client};
 use serde_json::json;
@@ -19,8 +19,8 @@ use std::env;
 async fn main() -> anyhow::Result<()> {
     let url = env::var("LB_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".into());
     let key = env::var("LB_KEY"); // API key, optional
-    let user = env::var("LB_USER").unwrap_or_else(|_| "ada".into());
-    let ws = env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into());
+    let user = env::var("LB_USER").unwrap_or_else(|_| "test".into());
+    let ws = env::var("LB_WORKSPACE").unwrap_or_else(|_| "nube".into());
 
     let client = Client::new(&url, "placeholder"); // bearer set below
     let client = match key {

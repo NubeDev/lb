@@ -40,12 +40,12 @@ fn engine() -> RuleEngine {
 fn scalar_rows(body: &str) -> Vec<Value> {
     let eng = engine();
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: body.into(),
         params: vec![],
     };
-    let mut run = RuleRun::new("acme".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
+    let mut run = RuleRun::new("nube".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
     match eng.run(&rule, &mut run).expect("rule runs") {
         RuleOutput::Scalar(Value::Array(rows)) => rows,
         other => panic!("expected a scalar array output, got {other:?}"),
@@ -55,12 +55,12 @@ fn scalar_rows(body: &str) -> Vec<Value> {
 fn run_err(body: &str) -> RuleError {
     let eng = engine();
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: body.into(),
         params: vec![],
     };
-    let mut run = RuleRun::new("acme".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
+    let mut run = RuleRun::new("nube".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
     eng.run(&rule, &mut run).unwrap_err()
 }
 

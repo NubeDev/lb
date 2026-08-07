@@ -52,10 +52,10 @@ because `resolve_subject_caps` expanded a held `role:X` grant only via `role_cap
 
 After (1)–(3), an admin STILL resolved to 0 caps. Root cause: grants are stored under the **bare**
 user name — the boot seed and the first-member bootstrap both do
-`grant_assign(Subject::User(sub.strip_prefix("user:")), …)` → subject `user:ada`'s grant row is keyed
-`user:ada` from `Subject::User("ada")`. But `routes/login.rs` called `resolve_caps(ws, req.user)` with
+`grant_assign(Subject::User(sub.strip_prefix("user:")), …)` → subject `user:test`'s grant row is keyed
+`user:test` from `Subject::User("test")`. But `routes/login.rs` called `resolve_caps(ws, req.user)` with
 the **`user:`-prefixed** form, and `resolve_caps` re-wraps its arg as `Subject::User(arg)` →
-`Subject::User("user:ada")` → key `user:user:ada` → matches **zero** rows. So even the user's own
+`Subject::User("user:test")` → key `user:user:test` → matches **zero** rows. So even the user's own
 `role:member`/`role:workspace-admin` grants didn't resolve, let alone the role's folded ext caps.
 Fixed by stripping an optional `user:` prefix before `resolve_caps` (grants live under the bare name).
 This was the last mile: with it, the dev token resolves **12** `mcp:control-engine.*:call` caps and

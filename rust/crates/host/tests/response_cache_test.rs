@@ -111,15 +111,15 @@ fn u(v: &Value, k: &str) -> u64 {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn warm_reopen_runs_zero_engine_dispatches() {
     let node = boot_cached().await;
-    let p = principal("acme", CAPS);
-    ingest(&node, &p, "acme", "temp", 1, 20.0).await;
+    let p = principal("nube", CAPS);
+    ingest(&node, &p, "nube", "temp", 1, 20.0).await;
 
-    let first = series_list(&node, &p, "acme", None).await; // cold → miss + compute
-    let second = series_list(&node, &p, "acme", None).await; // warm → hit, no engine work
+    let first = series_list(&node, &p, "nube", None).await; // cold → miss + compute
+    let second = series_list(&node, &p, "nube", None).await; // warm → hit, no engine work
     assert_eq!(first, second);
     assert!(first.contains(&"temp".to_string()));
 
-    let s = stats(&node, &p, "acme").await;
+    let s = stats(&node, &p, "nube").await;
     assert_eq!(u(&s, "misses"), 1, "exactly one cold compute");
     assert_eq!(
         u(&s, "hits"),
@@ -133,14 +133,14 @@ async fn warm_reopen_runs_zero_engine_dispatches() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn single_flight_coalesces_concurrent_cold_reads() {
     let node = boot_cached().await;
-    let p = Arc::new(principal("acme", CAPS));
-    ingest(&node, &p, "acme", "temp", 1, 20.0).await;
+    let p = Arc::new(principal("nube", CAPS));
+    ingest(&node, &p, "nube", "temp", 1, 20.0).await;
 
     let mut handles = Vec::new();
     for _ in 0..16 {
         let (n, pr) = (node.clone(), p.clone());
         handles.push(tokio::spawn(async move {
-            call_tool(&n, &pr, "acme", "series.list", "{}")
+            call_tool(&n, &pr, "nube", "series.list", "{}")
                 .await
                 .unwrap()
         }));
@@ -155,7 +155,7 @@ async fn single_flight_coalesces_concurrent_cold_reads() {
         "all coalesced callers see one value"
     );
 
-    let s = stats(&node, &p, "acme").await;
+    let s = stats(&node, &p, "nube").await;
     assert_eq!(
         u(&s, "misses"),
         1,
@@ -169,15 +169,15 @@ async fn single_flight_coalesces_concurrent_cold_reads() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn write_invalidates_immediately() {
     let node = boot_cached().await;
-    let p = principal("acme", CAPS);
-    ingest(&node, &p, "acme", "a", 1, 1.0).await;
+    let p = principal("nube", CAPS);
+    ingest(&node, &p, "nube", "a", 1, 1.0).await;
 
-    let before = series_list(&node, &p, "acme", None).await; // caches {a}
+    let before = series_list(&node, &p, "nube", None).await; // caches {a}
     assert_eq!(before, vec!["a".to_string()]);
 
     // A dirtying write (ingest.write → Series) must be visible immediately, not after the TTL.
-    ingest(&node, &p, "acme", "b", 2, 2.0).await;
-    let after = series_list(&node, &p, "acme", None).await;
+    ingest(&node, &p, "nube", "b", 2, 2.0).await;
+    let after = series_list(&node, &p, "nube", None).await;
     assert!(
         after.contains(&"b".to_string()),
         "the just-written series is visible at once: {after:?}"
@@ -185,19 +185,19 @@ async fn write_invalidates_immediately() {
 
     // The generic store.write nukes every class — prove the coarse path also re-dispatches. Warm the
     // key (a hit), then store.write, then the next read must be a fresh MISS (miss count climbs).
-    let _ = series_list(&node, &p, "acme", None).await; // hit
-    let s1 = stats(&node, &p, "acme").await;
+    let _ = series_list(&node, &p, "nube", None).await; // hit
+    let s1 = stats(&node, &p, "nube").await;
     call_tool(
         &node,
         &p,
-        "acme",
+        "nube",
         "store.write",
         &json!({ "table": "note", "id": "n1", "value": { "x": 1 } }).to_string(),
     )
     .await
     .expect("store.write");
-    let _ = series_list(&node, &p, "acme", None).await; // must be a MISS again (nuked)
-    let s2 = stats(&node, &p, "acme").await;
+    let _ = series_list(&node, &p, "nube", None).await; // must be a MISS again (nuked)
+    let s2 = stats(&node, &p, "nube").await;
     assert!(
         u(&s2, "misses") > u(&s1, "misses"),
         "store.write nuked the class → the next read re-dispatched (a miss, not a stale hit)"
@@ -237,15 +237,15 @@ async fn workspace_isolation_and_purge_scope() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn deny_is_identical_on_warm_and_cold_keys() {
     let node = boot_cached().await;
-    let capable = principal("acme", CAPS);
-    let capless = principal("acme", &["mcp:tools.catalog:call"]); // no series.list
-    ingest(&node, &capable, "acme", "temp", 1, 1.0).await;
+    let capable = principal("nube", CAPS);
+    let capless = principal("nube", &["mcp:tools.catalog:call"]); // no series.list
+    ingest(&node, &capable, "nube", "temp", 1, 1.0).await;
 
     // Warm the key as the capable caller.
-    let _ = series_list(&node, &capable, "acme", None).await;
+    let _ = series_list(&node, &capable, "nube", None).await;
 
     // The capless caller is denied on the WARM key exactly as on a cold one.
-    let err = call_tool(&node, &capless, "acme", "series.list", "{}")
+    let err = call_tool(&node, &capless, "nube", "series.list", "{}")
         .await
         .unwrap_err();
     assert!(
@@ -258,15 +258,15 @@ async fn deny_is_identical_on_warm_and_cold_keys() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cache_admin_verbs_require_their_caps() {
     let node = boot_cached().await;
-    let no_admin = principal("acme", &["mcp:series.list:call"]);
+    let no_admin = principal("nube", &["mcp:series.list:call"]);
     assert!(matches!(
-        call_tool(&node, &no_admin, "acme", "cache.stats", "{}")
+        call_tool(&node, &no_admin, "nube", "cache.stats", "{}")
             .await
             .unwrap_err(),
         lb_mcp::ToolError::Denied
     ));
     assert!(matches!(
-        call_tool(&node, &no_admin, "acme", "cache.purge", "{}")
+        call_tool(&node, &no_admin, "nube", "cache.purge", "{}")
             .await
             .unwrap_err(),
         lb_mcp::ToolError::Denied
@@ -279,16 +279,16 @@ async fn cache_admin_verbs_require_their_caps() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn uncacheable_verb_never_hits() {
     let node = boot_cached().await;
-    let p = principal("acme", CAPS);
+    let p = principal("nube", CAPS);
 
     // `tools.catalog` is not on the read allowlist — two calls, still zero cache activity.
-    let _ = call_tool(&node, &p, "acme", "tools.catalog", "{}")
+    let _ = call_tool(&node, &p, "nube", "tools.catalog", "{}")
         .await
         .expect("tools.catalog");
-    let _ = call_tool(&node, &p, "acme", "tools.catalog", "{}")
+    let _ = call_tool(&node, &p, "nube", "tools.catalog", "{}")
         .await
         .expect("tools.catalog");
-    let s = stats(&node, &p, "acme").await;
+    let s = stats(&node, &p, "nube").await;
     assert_eq!(
         u(&s, "hits"),
         0,
@@ -305,16 +305,16 @@ async fn budget_bounds_the_cache() {
     let mut cfg = CacheConfig::default();
     cfg.memory_budget_bytes = 512; // deliberately tiny
     node.install_response_cache(Some(cfg));
-    let p = principal("acme", CAPS);
+    let p = principal("nube", CAPS);
 
     // Seed some series, then read with many DISTINCT prefixes → many distinct cache keys.
     for i in 0..20 {
-        ingest(&node, &p, "acme", &format!("s{i}"), i + 1, i as f64).await;
+        ingest(&node, &p, "nube", &format!("s{i}"), i + 1, i as f64).await;
     }
     for i in 0..60 {
-        let _ = series_list(&node, &p, "acme", Some(&format!("s{i}"))).await;
+        let _ = series_list(&node, &p, "nube", Some(&format!("s{i}"))).await;
     }
-    let s = stats(&node, &p, "acme").await;
+    let s = stats(&node, &p, "nube").await;
     let entries = u(&s, "entry_count");
     assert!(
         entries < 60,

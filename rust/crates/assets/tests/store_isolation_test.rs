@@ -18,13 +18,13 @@ const WS_B: &str = "ws-assets-iso-b";
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn doc_written_in_a_is_invisible_in_b() {
     let store = Store::memory().await.unwrap();
-    put_doc(&store, WS_A, &Doc::new("d1", "user:ada", "T", "secret", 1))
+    put_doc(&store, WS_A, &Doc::new("d1", "user:test", "T", "secret", 1))
         .await
         .unwrap();
 
     // Same id, other workspace → nothing.
     assert!(get_doc(&store, WS_B, "d1").await.unwrap().is_none());
-    assert!(list_docs(&store, WS_B, "user:ada")
+    assert!(list_docs(&store, WS_B, "user:test")
         .await
         .unwrap()
         .is_empty());
@@ -38,7 +38,7 @@ async fn skill_published_in_a_is_invisible_in_b() {
     put_skill(
         &store,
         WS_A,
-        &Skill::new("s1", "1.0.0", "user:ada", "d", "body", 1),
+        &Skill::new("s1", "1.0.0", "user:test", "d", "body", 1),
     )
     .await
     .unwrap();

@@ -75,9 +75,9 @@ the UI is built and tested against, with zero UI changes beyond the priority fli
 - **`full.rs` unit:** 2/2 (loopback addr valid + distinct from dev 8080; env fallback).
 - **The headline (`ui/src-tauri/tests/full_loopback_test.rs`):** a NON-windowed boot of
   `boot_full` on `127.0.0.1:0` + reqwest — `login_then_mcp_call_works_over_the_loopback_gateway`
-  (login returns a real signed token for `user:ada`/`acme`; that token drives a real
+  (login returns a real signed token for `user:test`/`nube`; that token drives a real
   `tools.catalog` `POST /mcp/call`, non-empty) + `login_refuses_an_unseeded_user` (the
-  mandatory capability/deny: `user:stranger`/`acme` → 403, the wall holds). 2/2 green.
+  mandatory capability/deny: `user:stranger`/`nube` → 403, the wall holds). 2/2 green.
   This is the portable proof — no display, no webkit, no Tauri window.
 - **fmt:** `cargo fmt` clean on both the `ui/src-tauri` crate and the `rust/` workspace.
 

@@ -18,8 +18,8 @@ lands in `../windows/` via `make windows-executable`.
 
 WebView2 is OS-provided on Win10/11, so the `.exe` is genuinely standalone — double-click it.
 On boot, the console window (or the terminal that launched it) prints
-`full: loopback gateway on http://127.0.0.1:8800 (login as user:ada / acme)`. The window opens
-against `acme`; the login screen accepts `user:ada` / `acme`.
+`full: loopback gateway on http://127.0.0.1:8800 (login as user:test / nube)`. The window opens
+against `nube`; the login screen accepts `user:test` / `nube`.
 
 ## What's different from `../windows/`
 

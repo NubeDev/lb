@@ -152,7 +152,7 @@ the child's claims *in*.
 
 The proactive-restart proof (the new exit-gate path), end to end:
 
-1. A `lifecycle=started` native sidecar `mqtt-bridge` is running in workspace `acme`; the reactor
+1. A `lifecycle=started` native sidecar `mqtt-bridge` is running in workspace `nube`; the reactor
    has it in the `SidecarMap` and polls `health` every `health_interval`.
 2. **The child hangs** (deadlocks — PID alive, stops replying). The next reactor poll's `health`
    request **times out**. The reactor treats the timeout as a fault: emits `native:health-miss`,

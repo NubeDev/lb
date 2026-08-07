@@ -6,7 +6,7 @@
 //! starts from,
 //! scoped by `-w` (the local-vs-remote parity decision) — so local is NOT silently more privileged
 //! than a real login. The workspace the principal is scoped to IS the wall (`call_tool` gate 1): a
-//! local `-w acme` principal cannot reach outside `acme`, exactly like a remote `acme` token.
+//! local `-w nube` principal cannot reach outside `nube`, exactly like a remote `nube` token.
 //!
 //! A local DENY (`ToolError::Denied`) maps to the same `DENIED  mcp:<tool>:call` a remote `403` does —
 //! so the two modes produce identical honest output (the parity test: local denies the same verbs a

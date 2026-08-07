@@ -103,10 +103,10 @@ mod tests {
             desc: None,
             body: "Hello {{name}}: {{input}}".to_string(),
         };
-        let vars = BTreeMap::from([("name".to_string(), "Ada".to_string())]);
+        let vars = BTreeMap::from([("name".to_string(), "Test".to_string())]);
 
         let rendered = render_role(&role, "ship it".to_string(), &vars).unwrap();
 
-        assert_eq!(rendered, "Hello Ada: ship it");
+        assert_eq!(rendered, "Hello Test: ship it");
     }
 }

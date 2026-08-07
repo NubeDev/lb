@@ -28,7 +28,7 @@ surface that issues tokens and administers the walls; every other skill starts w
 # dev login: who + which workspace. Logging into an EMPTY workspace bootstraps the caller as its
 # workspace-admin (the first-principal bootstrap — how a brand-new tenant gets its first admin).
 RESP=$(curl -s -X POST http://127.0.0.1:8080/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}')
+  -d '{"user":"user:test","workspace":"nube"}')
 TOKEN=$(echo "$RESP" | jq -r .token)
 echo "$RESP" | jq '{principal, workspace, caps}'   # caps: what this token carries (UI-gating convenience)
 ```

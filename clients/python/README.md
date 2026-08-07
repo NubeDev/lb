@@ -36,7 +36,7 @@ client = Client("http://127.0.0.1:8080", os.environ["LB_KEY"])
 
 # or dev/admin script: log in to get a 12h session token
 client = Client("http://127.0.0.1:8080", "placeholder")
-client, reply = client.login("ada", "acme")
+client, reply = client.login("test", "nube")
 ```
 
 ## The round-trip
@@ -82,7 +82,7 @@ from lb_client import sign_webhook, post_webhook
 body = b'{"event":"furnace-on"}'
 sig = sign_webhook(shared_secret.encode(), body)
 accepted = post_webhook(
-    client, "acme", "wh_x",
+    client, "nube", "wh_x",
     {"X-Signature": sig},
     body,
 )
@@ -111,9 +111,9 @@ except ApiError as e:
 ```bash
 make cloud                              # terminal 1: boot 127.0.0.1:8080
 cd clients/python && pip install --user -e .
-LB_URL=http://127.0.0.1:8080 LB_USER=ada LB_WORKSPACE=acme python example.py
+LB_URL=http://127.0.0.1:8080 LB_USER=test LB_WORKSPACE=nube python example.py
 # or with an API key:
-LB_KEY=lbk_acme.k7f3a.ABCDEF23 python example.py
+LB_KEY=lbk_nube.k7f3a.ABCDEF23 python example.py
 ```
 
 ## Lay of the land

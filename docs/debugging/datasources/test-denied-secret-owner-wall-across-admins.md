@@ -4,7 +4,7 @@
 
 ## Symptom
 
-From the Datasources UI (`#/t/acme/datasources`), pressing **Test** on a source
+From the Datasources UI (`#/t/nube/datasources`), pressing **Test** on a source
 failed with `Failed: denied`. Telemetry showed the tool ran and was refused:
 
 ```
@@ -26,14 +26,14 @@ The DSN secret for a federated source was **owned by whichever admin ran
 
 - `datasource.add` wrote the DSN via `lb_secrets::set_with(caller, …)` → the secret's
   `owner` was the *caller's* subject (the boot seed's `ext:federation-bootstrap`, or a
-  dev login's `user:ada`).
+  dev login's `user:test`).
 - `secret::mediate_dsn` reads the DSN as `ext:federation` (the install-grant principal).
 
 The secrets crate has a **gate-3 owner wall** (`crates/secrets/src/lib.rs`):
 `set`/`delete` are **owner-only**, and `get` on a `Private` secret is owner-only. So:
 
 1. A source seeded at boot (owner `ext:federation-bootstrap`) could not be **overwritten
-   or removed** by a UI admin (`user:ada`) — the owner-only mutation wall returned
+   or removed** by a UI admin (`user:test`) — the owner-only mutation wall returned
    `SecretsError::Denied`.
 2. Every one of these collapsed to the **same opaque `denied` string**: `FederationError::Denied`,
    `EndpointRefused`, and a secret-owner denial all mapped to `ToolError::Denied` → 403

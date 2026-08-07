@@ -25,10 +25,10 @@ async fn seed_big(store: &Store, ws: &str, rows: usize) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn foreground_reads_do_not_stall_behind_a_continuous_scan() {
     let store = Store::memory().await.unwrap();
-    seed_big(&store, "acme", 8000).await;
+    seed_big(&store, "nube", 8000).await;
     write(
         &store,
-        "acme",
+        "nube",
         "kv",
         "target",
         &serde_json::json!({ "v": 1 }),
@@ -45,7 +45,7 @@ async fn foreground_reads_do_not_stall_behind_a_continuous_scan() {
             while !stop.load(Ordering::Relaxed) {
                 // A raw unbounded scan — the shape a reactor's `SELECT` takes; on the old design this
                 // held the global session mutex for its whole duration.
-                let _ = store.query_ws("acme", "SELECT data FROM big", vec![]).await;
+                let _ = store.query_ws("nube", "SELECT data FROM big", vec![]).await;
             }
         })
     };
@@ -56,7 +56,7 @@ async fn foreground_reads_do_not_stall_behind_a_continuous_scan() {
     let mut worst = 0u128;
     for _ in 0..10 {
         let t = Instant::now();
-        let got = read(&store, "acme", "kv", "target").await.unwrap();
+        let got = read(&store, "nube", "kv", "target").await.unwrap();
         assert!(
             got.is_some(),
             "read must see the record while scans run concurrently"

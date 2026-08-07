@@ -24,7 +24,7 @@ const MANAGE: &[&str] = &["mcp:identity.manage:call", "mcp:members.manage:call"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn forged_identity_membership_call_by_non_admin_is_denied() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let tok = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
     for req in [
         json_post("/admin/identities", json!({ "sub": "user:x" })),
         get_req("/admin/identities"),
@@ -46,10 +46,10 @@ async fn forged_identity_membership_call_by_non_admin_is_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn admin_creates_identity_adds_member_lists_roster() {
     let (gw, key) = gateway().await;
-    // Provision alice as the workspace-admin — this also registers `acme` in the node directory, which
+    // Provision alice as the workspace-admin — this also registers `nube` in the node directory, which
     // `identity.workspaces` scans (the legacy `/login` used to do that lazily).
-    let _ = provision_admin(&gw, "user:alice", "acme").await;
-    let tok = token(&key, "user:alice", "acme", MANAGE);
+    let _ = provision_admin(&gw, "user:alice", "nube").await;
+    let tok = token(&key, "user:alice", "nube", MANAGE);
 
     // Provision a global identity (in no workspace).
     let resp = router(gw.clone())
@@ -83,7 +83,7 @@ async fn admin_creates_identity_adds_member_lists_roster() {
     let members: Vec<serde_json::Value> = json_body(resp).await;
     assert!(members.iter().any(|m| m["sub"] == "user:bob"));
 
-    // identity.workspaces(bob) resolves acme.
+    // identity.workspaces(bob) resolves nube.
     let resp = router(gw.clone())
         .oneshot(bearer(
             get_req("/admin/identities/user:bob/workspaces"),
@@ -92,13 +92,13 @@ async fn admin_creates_identity_adds_member_lists_roster() {
         .await
         .unwrap();
     let wss: Vec<serde_json::Value> = json_body(resp).await;
-    assert!(wss.iter().any(|w| w["ws"] == "acme"));
+    assert!(wss.iter().any(|w| w["ws"] == "nube"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn membership_remove_is_a_clean_exit() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:alice", "acme", MANAGE);
+    let tok = token(&key, "user:alice", "nube", MANAGE);
     // Add bob.
     let _ = router(gw.clone())
         .oneshot(bearer(
@@ -118,7 +118,7 @@ async fn membership_remove_is_a_clean_exit() {
 
     // bob's live token (minted with member_caps) is now refused on the next verify — the
     // token_revoke marker the verify chokepoint reads was written by membership.remove.
-    let bob_tok = token(&key, "user:bob", "acme", MANAGE);
+    let bob_tok = token(&key, "user:bob", "nube", MANAGE);
     let resp = router(gw.clone())
         .oneshot(bearer(get_req("/admin/members"), &bob_tok))
         .await

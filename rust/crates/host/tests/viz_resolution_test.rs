@@ -106,7 +106,7 @@ async fn viz_rows(node: &Arc<Node>, p: &Principal, ws: &str, panel: Value) -> Ve
 async fn wide_window_returns_bounded_buckets_not_raw_rows() {
     let ws = "viz-res-budget";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, READ, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, READ, WRITE]);
     // 2k samples over ~33min (ts 1_000 .. 2_000_000) at a default budget of 1000 → ~400 buckets:
     // enough to prove the injection decimates (≪ budget buckets, never the raw rows) and stays fast
     // against mem-SurrealDB. The O(buckets) scaling to 1M is proven in `lb_ingest`'s decimation tests.
@@ -148,7 +148,7 @@ async fn wide_window_returns_bounded_buckets_not_raw_rows() {
 async fn spike_survives_in_bucket_max_at_the_dashboard_layer() {
     let ws = "viz-res-spike";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, READ, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, READ, WRITE]);
     // Baseline 20.0 everywhere; a single 200.0 spike at seq 1_000 (ts 1_000_000).
     seed_series(&node, &p, ws, "cpu", 2_000, Some((1_000, 200.0))).await;
 
@@ -180,7 +180,7 @@ async fn spike_survives_in_bucket_max_at_the_dashboard_layer() {
 async fn explicit_rows_mode_still_returns_raw_rows() {
     let ws = "viz-res-rows";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, READ, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, READ, WRITE]);
     seed_series(&node, &p, ws, "cpu", 50, None).await;
 
     // Explicit mode:"rows" always wins — tables/exports/the raw inspector keep raw rows.
@@ -211,7 +211,7 @@ async fn explicit_rows_mode_still_returns_raw_rows() {
 async fn derivation_is_deterministic_and_zoom_refines() {
     let ws = "viz-res-zoom";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, READ, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, READ, WRITE]);
     seed_series(&node, &p, ws, "cpu", 2_000, None).await;
 
     let wide = json!({ "series": "cpu", "from": 0u64, "to": 2_000_001u64 });
@@ -257,7 +257,7 @@ async fn bucket_injection_denied_without_series_cap() {
     let writer = principal("user:seed", ws, &[READ, WRITE]);
     seed_series(&node, &writer, ws, "cpu", 100, None).await;
 
-    let caller = principal("user:ada", ws, &[VIZ]); // no series.read
+    let caller = principal("user:test", ws, &[VIZ]); // no series.read
     let rows = viz_rows(
         &node,
         &caller,
@@ -278,7 +278,7 @@ async fn bucket_injection_denied_without_series_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn bucket_injection_workspace_isolation() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let a = principal("user:ada", "ws-a", &[VIZ, READ, WRITE]);
+    let a = principal("user:test", "ws-a", &[VIZ, READ, WRITE]);
     seed_series(&node, &a, "ws-a", "cpu", 200, None).await;
 
     let panel = series_panel(

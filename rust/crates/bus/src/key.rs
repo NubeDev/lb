@@ -16,11 +16,11 @@ mod tests {
 
     #[test]
     fn prefixes_workspace() {
-        assert_eq!(ws_key("acme", "chan/general"), "ws/acme/chan/general");
+        assert_eq!(ws_key("nube", "chan/general"), "ws/nube/chan/general");
     }
 
     #[test]
     fn tolerates_leading_slash() {
-        assert_eq!(ws_key("acme", "/chan/general"), "ws/acme/chan/general");
+        assert_eq!(ws_key("nube", "/chan/general"), "ws/nube/chan/general");
     }
 }

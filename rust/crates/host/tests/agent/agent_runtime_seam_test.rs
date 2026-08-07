@@ -52,7 +52,7 @@ fn default_registry(answer: &str) -> RuntimeRegistry {
 async fn absent_runtime_resolves_to_the_in_house_default() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "seam-default";
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let registry = default_registry("in-house answer");
 
     // No `runtime` arg → the default in-house loop runs through the seam and returns its answer.
@@ -80,7 +80,7 @@ async fn absent_runtime_resolves_to_the_in_house_default() {
 async fn explicitly_named_default_resolves_the_same() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "seam-named-default";
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let registry = default_registry("in-house answer");
 
     let answer = invoke_via_runtime(
@@ -109,7 +109,7 @@ async fn an_explicitly_named_unknown_runtime_is_an_error_not_a_silent_downgrade(
     // downgraded to the default engine. Feature-off / unconfigured node has no such entry → error.
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "seam-unknown";
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let registry = default_registry("in-house answer");
 
     let err = invoke_via_runtime(
@@ -142,7 +142,7 @@ async fn invoke_is_denied_without_the_cap_identically_through_the_seam() {
     // any runtime is selected (so an unknown runtime + missing cap is still a Denied, not BadInput).
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "seam-deny";
-    let caller = principal("user:ada", ws, &[]); // no invoke cap
+    let caller = principal("user:test", ws, &[]); // no invoke cap
     let registry = default_registry("unreachable");
 
     let err = invoke_via_runtime(

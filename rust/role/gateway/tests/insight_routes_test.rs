@@ -61,7 +61,7 @@ async fn mcp(app: &axum::Router, tok: &str, tool: &str, args: Value) -> Value {
 async fn list_denied_without_the_cap() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = token(&key, "user:bob", "acme", &["mcp:insight.get:call"]); // no LIST
+    let tok = token(&key, "user:bob", "nube", &["mcp:insight.get:call"]); // no LIST
     let r = app
         .clone()
         .oneshot(bearer(get_req("/insights"), &tok))
@@ -78,7 +78,7 @@ async fn ack_denied_without_the_cap() {
     let tok = token(
         &key,
         "user:bob",
-        "acme",
+        "nube",
         &["mcp:insight.raise:call", "mcp:insight.get:call"], // no ACK
     );
     let r = app
@@ -96,7 +96,7 @@ async fn ack_denied_without_the_cap() {
 async fn cross_workspace_insight_is_opaque_to_the_other_ws() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let a = member(&key, "user:ada", "ws-a");
+    let a = member(&key, "user:test", "ws-a");
     let b = member(&key, "user:bea", "ws-b");
     let _ = mcp(
         &app,
@@ -134,7 +134,7 @@ async fn cross_workspace_insight_is_opaque_to_the_other_ws() {
 async fn raise_list_get_ack_resolve_round_trip() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = member(&key, "user:ada", "ws-happy");
+    let tok = member(&key, "user:test", "ws-happy");
 
     // raise over the MCP bridge
     let _raised = mcp(
@@ -221,7 +221,7 @@ async fn raise_list_get_ack_resolve_round_trip() {
 async fn delete_route_removes_the_insight_and_its_occurrences() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = member(&key, "user:ada", "ws-del");
+    let tok = member(&key, "user:test", "ws-del");
 
     // raise (one occurrence) over the MCP bridge.
     mcp(
@@ -261,7 +261,7 @@ async fn delete_route_removes_the_insight_and_its_occurrences() {
 async fn occurrence_delete_route_removes_one_row() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = member(&key, "user:ada", "ws-occ");
+    let tok = member(&key, "user:test", "ws-occ");
 
     // Two raises on one dedup_key → two occurrence rows.
     for ts in [1, 2] {

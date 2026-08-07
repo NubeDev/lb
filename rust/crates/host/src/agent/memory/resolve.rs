@@ -8,9 +8,9 @@
 //!     another member — `member` always binds to the authenticated principal. An unknown tier is a
 //!     `BadInput` (never silently a different member).
 //!
-//! The principal's `sub` is the member key (`user:ada` → `member:user:ada`). Because the write
+//! The principal's `sub` is the member key (`user:test` → `member:user:test`). Because the write
 //! target is derived here and the list query is walled to the read set, bob's resolution never
-//! returns `member:ada` rows even if bob knows ada's slugs — the member wall is structural.
+//! returns `member:test` rows even if bob knows test's slugs — the member wall is structural.
 
 use lb_auth::Principal;
 

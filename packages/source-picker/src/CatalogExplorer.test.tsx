@@ -86,7 +86,7 @@ describe("CatalogExplorer", () => {
     const sections: CatalogSections = {
       datasources: {
         status: "ready",
-        data: [{ name: "timescale", kind: "postgres", endpoint: "tsdb.acme:5432" }],
+        data: [{ name: "timescale", kind: "postgres", endpoint: "tsdb.nube:5432" }],
       },
     };
     const onSelect = vi.fn();
@@ -97,7 +97,7 @@ describe("CatalogExplorer", () => {
       id: "datasource:timescale",
       name: "timescale",
       rowKind: "postgres",
-      endpoint: "tsdb.acme:5432",
+      endpoint: "tsdb.nube:5432",
     });
   });
 

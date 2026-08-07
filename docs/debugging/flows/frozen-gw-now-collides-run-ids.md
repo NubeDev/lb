@@ -12,7 +12,7 @@
 
 ## Symptom
 
-On the live canvas (`:8080`, ws `acme`, flow `chain4`), three failures at once: a store banner
+On the live canvas (`:8080`, ws `nube`, flow `chain4`), three failures at once: a store banner
 `Invalid revision '174' for type 'Value'` / `read or write conflict … can be retried`; `flows.run`
 appearing to re-fire ~2×/second for one flow; and the Stop/Resume controls flashing ~0.5 s then
 vanishing with "chain4 runs but no values."
@@ -24,7 +24,7 @@ single isolated run settled `success` cleanly.
 ## Reproduce
 
 ```
-TOK=$(curl -s -X POST :8080/login -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+TOK=$(curl -s -X POST :8080/login -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 for i in $(seq 1 8); do curl -s -X POST :8080/flows/chain4/run -H "authorization: Bearer $TOK" -d '{}' & done; wait
 ```
 

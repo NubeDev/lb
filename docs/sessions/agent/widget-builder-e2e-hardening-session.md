@@ -52,7 +52,7 @@ regression-tested, and re-verified live.
 
 Headless `POST /agent/invoke` with the user's exact goal + page context `{d:"keep-dash"}`:
 the run discovered the source, wrote a working SQL over `point_reading`, **appended** an
-`avg-meter-usage` timeseries cell to `keep-dash` (existing cells preserved, owner `user:ada`), and
+`avg-meter-usage` timeseries cell to `keep-dash` (existing cells preserved, owner `user:test`), and
 `viz.query` over the saved cell's source returns real frames. Sidecar survives 8 consecutive failed
 queries; `COUNT(*)` steers; `information_schema.tables` answers.
 

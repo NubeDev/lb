@@ -53,24 +53,24 @@ async fn write_commit_read_round_trips_typed() {
             Qos::BestEffort,
         ),
     ];
-    let n = write(&store, "acme", &samples, 0).await.unwrap();
+    let n = write(&store, "nube", &samples, 0).await.unwrap();
     assert_eq!(n, 2);
 
-    let pass = commit_batch(&store, "acme", 100).await.unwrap();
+    let pass = commit_batch(&store, "nube", 100).await.unwrap();
     assert_eq!(pass.committed, 2);
     // Staging is drained after commit (atomic dequeue).
     assert_eq!(
-        commit_batch(&store, "acme", 100).await.unwrap().committed,
+        commit_batch(&store, "nube", 100).await.unwrap().committed,
         0
     );
 
-    let got = read(&store, "acme", "cpu", None, None).await.unwrap();
+    let got = read(&store, "nube", "cpu", None, None).await.unwrap();
     assert_eq!(got.len(), 2);
     // Typed payloads preserved (scalar stays a number; structured stays a nested object).
     assert_eq!(got[0].payload, serde_json::json!(61.4));
     assert_eq!(got[1].payload, serde_json::json!({"v": 62, "ok": true}));
 
-    let last = latest(&store, "acme", "cpu").await.unwrap().unwrap();
+    let last = latest(&store, "nube", "cpu").await.unwrap().unwrap();
     assert_eq!(last.seq, 2);
 }
 
@@ -105,19 +105,19 @@ async fn latest_follows_wall_clock_across_a_producer_restart() {
             serde_json::json!(230.9),
         ),
     ];
-    write(&store, "acme", &old, 0).await.unwrap();
-    commit_batch(&store, "acme", 100).await.unwrap();
-    assert_eq!(latest(&store, "acme", "v").await.unwrap().unwrap().seq, 807);
+    write(&store, "nube", &old, 0).await.unwrap();
+    commit_batch(&store, "nube", 100).await.unwrap();
+    assert_eq!(latest(&store, "nube", "v").await.unwrap().unwrap().seq, 807);
 
     // Epoch 2: the process restarted — seq resets to 0, but the clock moved FORWARD.
     let new = vec![
         sample_at("v", "ext:modbus/net@2", 0, 9_000, serde_json::json!(239.8)),
         sample_at("v", "ext:modbus/net@2", 1, 9_001, serde_json::json!(240.1)),
     ];
-    write(&store, "acme", &new, 0).await.unwrap();
-    commit_batch(&store, "acme", 100).await.unwrap();
+    write(&store, "nube", &new, 0).await.unwrap();
+    commit_batch(&store, "nube", 100).await.unwrap();
 
-    let last = latest(&store, "acme", "v").await.unwrap().unwrap();
+    let last = latest(&store, "nube", "v").await.unwrap().unwrap();
     assert_eq!(
         last.payload,
         serde_json::json!(240.1),
@@ -134,7 +134,7 @@ async fn latest_follows_wall_clock_across_a_producer_restart() {
 
     // Both epochs' rows survive — a restart is not data loss (the two-producer guarantee).
     assert_eq!(
-        read(&store, "acme", "v", None, None).await.unwrap().len(),
+        read(&store, "nube", "v", None, None).await.unwrap().len(),
         4
     );
 }
@@ -147,9 +147,9 @@ async fn latest_breaks_a_ts_tie_by_seq() {
         sample_at("v", "p", 1, 5_000, serde_json::json!("first")),
         sample_at("v", "p", 2, 5_000, serde_json::json!("second")),
     ];
-    write(&store, "acme", &s, 0).await.unwrap();
-    commit_batch(&store, "acme", 100).await.unwrap();
-    let last = latest(&store, "acme", "v").await.unwrap().unwrap();
+    write(&store, "nube", &s, 0).await.unwrap();
+    commit_batch(&store, "nube", 100).await.unwrap();
+    let last = latest(&store, "nube", "v").await.unwrap().unwrap();
     assert_eq!(last.payload, serde_json::json!("second"));
 }
 
@@ -159,13 +159,13 @@ async fn commit_is_idempotent_on_redrain() {
     // is [series, producer, seq].
     let store = Store::memory().await.unwrap();
     let s = vec![sample("m", "p", 5, serde_json::json!(1), Qos::MustDeliver)];
-    write(&store, "acme", &s, 0).await.unwrap();
-    commit_batch(&store, "acme", 100).await.unwrap();
+    write(&store, "nube", &s, 0).await.unwrap();
+    commit_batch(&store, "nube", 100).await.unwrap();
     // Replay (offline producer reconnecting): same sample again.
-    write(&store, "acme", &s, 0).await.unwrap();
-    commit_batch(&store, "acme", 100).await.unwrap();
+    write(&store, "nube", &s, 0).await.unwrap();
+    commit_batch(&store, "nube", 100).await.unwrap();
 
-    let got = read(&store, "acme", "m", None, None).await.unwrap();
+    let got = read(&store, "nube", "m", None, None).await.unwrap();
     assert_eq!(got.len(), 1, "a replayed sample commits exactly once");
 }
 
@@ -190,10 +190,10 @@ async fn two_producers_same_seq_both_survive() {
             Qos::MustDeliver,
         ),
     ];
-    write(&store, "acme", &s, 0).await.unwrap();
-    commit_batch(&store, "acme", 100).await.unwrap();
+    write(&store, "nube", &s, 0).await.unwrap();
+    commit_batch(&store, "nube", 100).await.unwrap();
 
-    let got = read(&store, "acme", "shared", None, None).await.unwrap();
+    let got = read(&store, "nube", "shared", None, None).await.unwrap();
     assert_eq!(got.len(), 2, "both producers' seq=5 must coexist");
     let payloads: Vec<_> = got.iter().map(|s| s.payload.clone()).collect();
     assert!(payloads.contains(&serde_json::json!("a")));
@@ -212,11 +212,11 @@ async fn best_effort_overflow_drops_oldest() {
             serde_json::json!(seq),
             Qos::BestEffort,
         )];
-        write(&store, "acme", &s, 2).await.unwrap();
+        write(&store, "nube", &s, 2).await.unwrap();
     }
     let mut resp = store
         .query_ws(
-            "acme",
+            "nube",
             &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
             vec![],
         )
@@ -243,12 +243,12 @@ async fn one_batch_larger_than_the_bound_still_stays_bounded() {
     let batch: Vec<_> = (1..=10)
         .map(|seq| sample("t", "p", seq, serde_json::json!(seq), Qos::BestEffort))
         .collect();
-    let accepted = write(&store, "acme", &batch, 3).await.unwrap();
+    let accepted = write(&store, "nube", &batch, 3).await.unwrap();
     assert_eq!(accepted, 10, "every sample is handled");
 
     let mut resp = store
         .query_ws(
-            "acme",
+            "nube",
             &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
             vec![],
         )
@@ -271,8 +271,8 @@ async fn a_batch_within_headroom_stages_every_sample() {
     let batch: Vec<_> = (1..=5)
         .map(|seq| sample("t", "p", seq, serde_json::json!(seq), Qos::BestEffort))
         .collect();
-    write(&store, "acme", &batch, 100).await.unwrap();
-    let got = read(&store, "acme", "t", None, None).await.unwrap();
+    write(&store, "nube", &batch, 100).await.unwrap();
+    let got = read(&store, "nube", "t", None, None).await.unwrap();
     assert!(
         got.is_empty(),
         "staged, not committed — read sees nothing yet"
@@ -280,7 +280,7 @@ async fn a_batch_within_headroom_stages_every_sample() {
 
     let mut resp = store
         .query_ws(
-            "acme",
+            "nube",
             &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
             vec![],
         )
@@ -296,7 +296,7 @@ async fn must_deliver_overflow_dead_letters() {
     let store = Store::memory().await.unwrap();
     write(
         &store,
-        "acme",
+        "nube",
         &[sample("t", "p", 1, serde_json::json!(1), Qos::MustDeliver)],
         1,
     )
@@ -304,7 +304,7 @@ async fn must_deliver_overflow_dead_letters() {
     .unwrap();
     write(
         &store,
-        "acme",
+        "nube",
         &[sample("t", "p", 2, serde_json::json!(2), Qos::MustDeliver)],
         1,
     )
@@ -313,7 +313,7 @@ async fn must_deliver_overflow_dead_letters() {
 
     let mut resp = store
         .query_ws(
-            "acme",
+            "nube",
             &format!("SELECT count() FROM {DEAD_LETTER_TABLE} GROUP ALL"),
             vec![],
         )

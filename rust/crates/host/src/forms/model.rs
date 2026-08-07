@@ -79,7 +79,7 @@ mod tests {
     #[test]
     fn form_tolerates_explicit_null_deleted() {
         let f: Form = serde_json::from_value(serde_json::json!({
-            "id": "f1", "title": "Intake", "owner": "user:ada", "updated_ts": 10,
+            "id": "f1", "title": "Intake", "owner": "user:test", "updated_ts": 10,
             "deleted": null
         }))
         .expect("null deleted decodes to default");
@@ -94,7 +94,7 @@ mod tests {
             id: "f1".into(),
             title: "Intake".into(),
             def: serde_json::json!({ "schema": {} }),
-            owner: "user:ada".into(),
+            owner: "user:test".into(),
             schema_version: SCHEMA_VERSION,
             updated_ts: 42,
             deleted: false,

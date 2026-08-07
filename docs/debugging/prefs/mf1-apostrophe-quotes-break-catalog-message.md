@@ -13,7 +13,7 @@ literals** (`invite.email.subject`) instead of the authored text — in both loc
 ```
 assertion `left == right` failed
   left: "invite.email.subject"
- right: "You're invited to join acme"
+ right: "You're invited to join nube"
 ```
 
 ## Root cause

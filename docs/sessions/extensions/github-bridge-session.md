@@ -86,7 +86,7 @@ per-tool deny) — split to keep each file under the 400-line FILE-LAYOUT limit.
 applied at this slice's surfaces, all through the **real** `github_bridge_ext.wasm`:
 
 - **happy / round-trip:** a signed bridge installs through the registry; a raw webhook → normalize →
-  `ingest_issue` lands one canonical `triage` item (`acme/api#2451`, `needs:triage`), idempotent on retry.
+  `ingest_issue` lands one canonical `triage` item (`nube/api#2451`, `needs:triage`), idempotent on retry.
 - **capability-deny:** install refused without `mcp:registry.install:call`; `normalize` refused without
   its grant (gate 1); `ingest_issue` refused without its grant (gate 2, after the transform ran).
 - **workspace-isolation:** ws-B has no `Install` record; a granted ws-B caller runs the node-global

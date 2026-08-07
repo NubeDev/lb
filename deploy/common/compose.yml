@@ -18,8 +18,8 @@ services:
     ports:
       - "8080:8080"
     environment:
-      LB_WORKSPACE: acme
-      LB_SEED_USER: "user:ada"
+      LB_WORKSPACE: nube
+      LB_SEED_USER: "user:test"
       # No LB_SIGNING_KEY set here on purpose — a throwaway local smoke test doesn't need session
       # persistence across restarts. Set it (64 hex chars) to test that path too.
     volumes:

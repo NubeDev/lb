@@ -92,7 +92,7 @@ async fn mcp_bridge_denies_an_ungranted_call() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
     // Authenticated but ungranted → 403.
-    let tok = token(&key, "user:page", "acme", &[]);
+    let tok = token(&key, "user:page", "nube", &[]);
     let resp = router(gw)
         .oneshot(bearer(json_post("/mcp/call", body), &tok))
         .await

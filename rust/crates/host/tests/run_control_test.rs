@@ -66,7 +66,7 @@ async fn worker_item(node: &Node, p: &Principal, ws: &str, cid: &str) -> Option<
 async fn pause_then_resume_moves_the_status_and_rearms_the_enqueue() {
     let node = Arc::new(Node::boot().await.unwrap());
     let ws = "ctl-lifecycle";
-    let ctl = principal("user:ada", ws, &[CONTROL]);
+    let ctl = principal("user:test", ws, &[CONTROL]);
     let run_job = "run-ctl-1";
 
     // A Running run job + its RETIRED (Done) channel enqueue job — the state right after a drive that
@@ -108,7 +108,7 @@ async fn pause_then_resume_moves_the_status_and_rearms_the_enqueue() {
 async fn stop_cancels_the_run_terminally() {
     let node = Arc::new(Node::boot().await.unwrap());
     let ws = "ctl-stop";
-    let ctl = principal("user:ada", ws, &[CONTROL]);
+    let ctl = principal("user:test", ws, &[CONTROL]);
     let run_job = "run-ctl-stop";
     create(
         &node.store,
@@ -134,10 +134,10 @@ async fn a_paused_run_drives_to_suspended_without_completing_then_resume_finishe
     let node = Arc::new(Node::boot().await.unwrap());
     install_answer_runtime(&node, "the finished answer");
     let ws = "ctl-loop";
-    let cid = "dock-user-ada-x";
+    let cid = "dock-user-test-x";
     let run_job = "run-ctl-loop";
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             &format!("bus:chan/{cid}:pub"),
@@ -153,7 +153,7 @@ async fn a_paused_run_drives_to_suspended_without_completing_then_resume_finishe
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", agent_body("summarize", run_job), 1),
+        Item::new("q1", cid, "user:test", agent_body("summarize", run_job), 1),
     )
     .await
     .expect("agent request posts");
@@ -197,10 +197,10 @@ async fn a_stopped_run_posts_the_honest_run_stopped_error() {
     let node = Arc::new(Node::boot().await.unwrap());
     install_answer_runtime(&node, "unused answer");
     let ws = "ctl-stopped";
-    let cid = "dock-user-ada-y";
+    let cid = "dock-user-test-y";
     let run_job = "run-ctl-stopped";
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             &format!("bus:chan/{cid}:pub"),
@@ -214,7 +214,7 @@ async fn a_stopped_run_posts_the_honest_run_stopped_error() {
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", agent_body("go", run_job), 1),
+        Item::new("q1", cid, "user:test", agent_body("go", run_job), 1),
     )
     .await
     .expect("posts");
@@ -292,10 +292,10 @@ async fn status(node: &Node, ws: &str, id: &str) -> JobStatus {
 /// The enqueue payload the worker persists (a `ChannelAgentJob`) — enough for `resume_run` to re-arm it.
 fn enqueue_payload(run_job: &str) -> String {
     serde_json::json!({
-        "cid": "dock-user-ada-x",
+        "cid": "dock-user-test-x",
         "goal": "goal",
         "run_job": run_job,
-        "poster_sub": "user:ada",
+        "poster_sub": "user:test",
         "poster_caps": ["mcp:agent.invoke:call"],
         "ts": 1
     })

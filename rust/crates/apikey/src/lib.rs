@@ -43,6 +43,6 @@ mod tests {
 
     #[test]
     fn display_prefix_never_includes_the_secret() {
-        assert_eq!(display_prefix("acme", "k7f3a"), "lbk_acme.k7f3a");
+        assert_eq!(display_prefix("nube", "k7f3a"), "lbk_nube.k7f3a");
     }
 }

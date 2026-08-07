@@ -83,7 +83,7 @@ fn assert_secret_refusal(err: StoreQueryError, sql: &str) {
 async fn direct_select_from_secret_is_refused() {
     let ws = "sw-direct";
     let store = seeded(ws).await;
-    let p = principal("user:ada", ws, &[QUERY]);
+    let p = principal("user:test", ws, &[QUERY]);
 
     let err = store_query_run(&store, &p, ws, "SELECT * FROM secret", vec![])
         .await
@@ -104,7 +104,7 @@ async fn direct_select_from_secret_is_refused() {
 async fn every_indirect_route_into_the_secret_plane_is_refused() {
     let ws = "sw-indirect";
     let store = seeded(ws).await;
-    let p = principal("user:ada", ws, &[QUERY]);
+    let p = principal("user:test", ws, &[QUERY]);
 
     for sql in [
         // aliased / projected — the secret table only appears in the FROM
@@ -140,7 +140,7 @@ async fn every_indirect_route_into_the_secret_plane_is_refused() {
 async fn a_dynamic_table_expression_is_refused_even_when_innocent() {
     let ws = "sw-dynamic";
     let store = seeded(ws).await;
-    let p = principal("user:ada", ws, &[QUERY]);
+    let p = principal("user:test", ws, &[QUERY]);
 
     // The live bypass: the AST names no table at all; `vars` supplies it at run time.
     let err = store_query_run(
@@ -177,7 +177,7 @@ async fn a_dynamic_table_expression_is_refused_even_when_innocent() {
 async fn an_ordinary_table_still_queries_fine() {
     let ws = "sw-ok";
     let store = seeded(ws).await;
-    let p = principal("user:ada", ws, &[QUERY]);
+    let p = principal("user:test", ws, &[QUERY]);
 
     let result = store_query_run(&store, &p, ws, "SELECT data.name AS name FROM site", vec![])
         .await

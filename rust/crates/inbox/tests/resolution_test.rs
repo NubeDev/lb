@@ -12,14 +12,14 @@ async fn records_and_reads_a_decision() {
     resolve(
         &store,
         "a",
-        &Resolution::new("approve-1", Decision::Approved, "user:ada", 1),
+        &Resolution::new("approve-1", Decision::Approved, "user:test", 1),
     )
     .await
     .unwrap();
 
     let r = resolution(&store, "a", "approve-1").await.unwrap().unwrap();
     assert_eq!(r.decision, Decision::Approved);
-    assert_eq!(r.actor, "user:ada");
+    assert_eq!(r.actor, "user:test");
 }
 
 #[tokio::test]
@@ -29,7 +29,7 @@ async fn re_resolving_upserts_last_decision_wins() {
     resolve(
         &store,
         "a",
-        &Resolution::new("ap", Decision::Deferred, "user:ada", 1),
+        &Resolution::new("ap", Decision::Deferred, "user:test", 1),
     )
     .await
     .unwrap();
@@ -60,7 +60,7 @@ async fn a_resolution_is_invisible_across_the_workspace_wall() {
     resolve(
         &store,
         "iso-a",
-        &Resolution::new("ap", Decision::Approved, "user:ada", 1),
+        &Resolution::new("ap", Decision::Approved, "user:test", 1),
     )
     .await
     .unwrap();

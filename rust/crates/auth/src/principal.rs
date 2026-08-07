@@ -35,7 +35,7 @@ pub struct Principal {
     /// The delegation upper bound: when `Some`, the check layer ALSO requires a match here. `None`
     /// for an ordinary (non-delegated) principal. Set only by [`derive`](Principal::derive).
     constraint: Option<Vec<String>>,
-    /// The ROOT caller a derived principal acts for (`user:ada` behind `agent:session`). `None` for
+    /// The ROOT caller a derived principal acts for (`user:test` behind `agent:session`). `None` for
     /// an ordinary principal. Set only by [`derive`](Principal::derive), preserved across nested
     /// derives (same rule as `constraint`). Read via [`owner_sub`](Principal::owner_sub) so a record
     /// the agent creates on the caller's behalf belongs to the CALLER — audit still shows the

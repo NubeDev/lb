@@ -48,7 +48,7 @@ per-item result for each media id:
 } }
 
 // response
-{ "job_id": "docs-extract-user:ada-…", "items": [
+{ "job_id": "docs-extract-user:test-…", "items": [
     { "status": "extracted",  "media_id": "report-q3", "doc_ids": ["derived_from-report-q3:pdf-text"], "reused": false },
     { "status": "unsupported", "media_id": "sales-book", "reason": "no extractor for mime …" }
 ] }

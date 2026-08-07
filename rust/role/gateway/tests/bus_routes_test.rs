@@ -45,7 +45,7 @@ async fn publish_without_the_cap_is_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_reserved_subject_is_refused() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "gw-bus-wall", BUS);
+    let tok = token(&key, "user:test", "gw-bus-wall", BUS);
     let resp = router(gw)
         .oneshot(bearer(
             json_post(
@@ -68,7 +68,7 @@ async fn publish_over_post_arrives_on_the_watch_sse() {
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
     let ws = "gw-bus-sse";
-    let tok = token(&key, "user:ada", ws, BUS);
+    let tok = token(&key, "user:test", ws, BUS);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

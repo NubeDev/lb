@@ -1,6 +1,6 @@
 //! The **identity** service — the global identity directory verbs over the reserved `_lb_identity`
 //! namespace (global-identity scope). The genuinely-new primitive: before this, "a user" was a row
-//! inside a workspace namespace, so `bob` in `acme` and `bob` in `globex` were unrelated records and
+//! inside a workspace namespace, so `bob` in `nube` and `bob` in `globex` were unrelated records and
 //! the workspace switcher could not carry one identity across. Now a person is one record in a system
 //! directory, linked to workspaces by a `membership` row (the `membership` service).
 //!

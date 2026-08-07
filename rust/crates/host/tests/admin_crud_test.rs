@@ -61,16 +61,16 @@ fn cleanup(path: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_destructive_verbs_without_their_cap() {
     let store = Store::memory().await.unwrap();
-    let none = principal("user:mallory", "acme", &[]); // holds nothing
+    let none = principal("user:mallory", "nube", &[]); // holds nothing
 
-    assert!(workspace_delete(&store, &none, "acme").await.is_err());
-    assert!(workspace_rename(&store, &none, "acme", "x", 1)
+    assert!(workspace_delete(&store, &none, "nube").await.is_err());
+    assert!(workspace_rename(&store, &none, "nube", "x", 1)
         .await
         .is_err());
-    assert!(teams_delete(&store, &none, "acme", "facilities")
+    assert!(teams_delete(&store, &none, "nube", "facilities")
         .await
         .is_err());
-    assert!(remove_member(&store, &none, "acme", "facilities", "bob")
+    assert!(remove_member(&store, &none, "nube", "facilities", "bob")
         .await
         .is_err());
 }
@@ -79,23 +79,23 @@ async fn denies_destructive_verbs_without_their_cap() {
 async fn hard_delete_needs_the_purge_cap_above_the_soft_cap() {
     let store = Store::memory().await.unwrap();
     // Holds only the SOFT delete cap — purge (hard) is refused.
-    let soft = principal("user:alice", "acme", &["mcp:workspace.delete:call"]);
+    let soft = principal("user:alice", "nube", &["mcp:workspace.delete:call"]);
     assert!(
-        workspace_purge(&store, &soft, "acme", "acme")
+        workspace_purge(&store, &soft, "nube", "nube")
             .await
             .is_err(),
         "soft cap must not authorize purge"
     );
     // Even WITH the purge cap, a wrong confirm token is refused.
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
     assert!(
-        workspace_purge(&store, &admin, "acme", "WRONG")
+        workspace_purge(&store, &admin, "nube", "WRONG")
             .await
             .is_err(),
         "purge needs the typed confirm token"
     );
     // With both the purge cap AND the matching confirm token → succeeds.
-    workspace_purge(&store, &admin, "acme", "acme")
+    workspace_purge(&store, &admin, "nube", "nube")
         .await
         .unwrap();
 }
@@ -105,30 +105,30 @@ async fn hard_delete_needs_the_purge_cap_above_the_soft_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_admin_cannot_touch_ws_a() {
     let store = Store::memory().await.unwrap();
-    let admin_a = principal("user:alice", "acme", ADMIN);
+    let admin_a = principal("user:alice", "nube", ADMIN);
     let admin_b = principal("user:carol", "globex", ADMIN);
 
     // ws-A seeds a team + member.
-    teams_create(&store, &admin_a, "acme", "facilities", "Facilities")
+    teams_create(&store, &admin_a, "nube", "facilities", "Facilities")
         .await
         .unwrap();
-    add_team_member(&store, &admin_a, "acme", "facilities", "bob")
+    add_team_member(&store, &admin_a, "nube", "facilities", "bob")
         .await
         .unwrap();
 
-    // ws-B admin targeting acme is denied / sees nothing across the verbs.
-    assert!(teams_delete(&store, &admin_b, "acme", "facilities")
+    // ws-B admin targeting nube is denied / sees nothing across the verbs.
+    assert!(teams_delete(&store, &admin_b, "nube", "facilities")
         .await
         .is_err());
-    assert!(remove_member(&store, &admin_b, "acme", "facilities", "bob")
+    assert!(remove_member(&store, &admin_b, "nube", "facilities", "bob")
         .await
         .is_err());
 
     // And ws-A's records are intact — the wall held (bob still a member, still listed).
     let members = list_members(
         &store,
-        &principal("user:alice", "acme", &["mcp:members.list:call"]),
-        "acme",
+        &principal("user:alice", "nube", &["mcp:members.list:call"]),
+        "nube",
         "facilities",
     )
     .await
@@ -141,20 +141,20 @@ async fn ws_b_admin_cannot_touch_ws_a() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn teams_delete_cascades_members_and_revokes_grants() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
-    teams_create(&store, &admin, "acme", "facilities", "Facilities")
+    let admin = principal("user:alice", "nube", ADMIN);
+    teams_create(&store, &admin, "nube", "facilities", "Facilities")
         .await
         .unwrap();
-    add_team_member(&store, &admin, "acme", "facilities", "bob")
+    add_team_member(&store, &admin, "nube", "facilities", "bob")
         .await
         .unwrap();
-    add_team_member(&store, &admin, "acme", "facilities", "carol")
+    add_team_member(&store, &admin, "nube", "facilities", "carol")
         .await
         .unwrap();
     grants_assign(
         &store,
         &admin,
-        "acme",
+        "nube",
         &Subject::Team("facilities".into()),
         "mcp:hvac.setpoint:call",
         &Scope::All,
@@ -163,28 +163,28 @@ async fn teams_delete_cascades_members_and_revokes_grants() {
     .unwrap();
 
     // Delete cascades: returns 2 members removed, edges gone, team grant revoked.
-    let removed = teams_delete(&store, &admin, "acme", "facilities")
+    let removed = teams_delete(&store, &admin, "nube", "facilities")
         .await
         .unwrap();
     assert_eq!(removed, 2);
     let members = list_members(
         &store,
-        &principal("user:alice", "acme", &["mcp:members.list:call"]),
-        "acme",
+        &principal("user:alice", "nube", &["mcp:members.list:call"]),
+        "nube",
         "facilities",
     )
     .await
     .unwrap();
     assert!(members.is_empty(), "edges cascade-removed");
     // Bob (no longer a member) inherits nothing from the deleted team.
-    assert!(resolve_caps(&store, "acme", "bob")
+    assert!(resolve_caps(&store, "nube", "bob")
         .await
         .unwrap()
         .is_empty());
 
     // Idempotent re-delete.
     assert_eq!(
-        teams_delete(&store, &admin, "acme", "facilities")
+        teams_delete(&store, &admin, "nube", "facilities")
             .await
             .unwrap(),
         0
@@ -194,7 +194,7 @@ async fn teams_delete_cascades_members_and_revokes_grants() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_soft_then_hard_and_tombstone_not_resurrected() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
     workspace_create(&store, &admin, "pilot", "Pilot", 1)
         .await
         .unwrap();
@@ -244,14 +244,14 @@ async fn workspace_directory_survives_store_reopen() {
 
     {
         let store = Store::open(&path).await.unwrap();
-        let admin = principal("user:alice", "acme", ADMIN);
+        let admin = principal("user:alice", "nube", ADMIN);
         workspace_create(&store, &admin, "pilot", "Pilot", 1)
             .await
             .unwrap();
     }
 
     let store = Store::open(&path).await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
     let listed = workspace_list(&store, &admin).await.unwrap();
     assert!(
         listed.iter().any(|w| w.ws == "pilot"),

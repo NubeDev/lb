@@ -8,7 +8,7 @@ use lb_store::{increment, read, Store};
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn increment_accumulates_and_resets() {
     let store = Store::memory().await.expect("open store");
-    let ws = "acme";
+    let ws = "nube";
     let (tb, id) = ("flow_node_memory", "flow1:counter1");
 
     assert_eq!(
@@ -34,7 +34,7 @@ async fn increment_accumulates_and_resets() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_increments_never_lose_a_count() {
     let store = Store::memory().await.expect("open store");
-    let ws = "acme";
+    let ws = "nube";
     let (tb, id) = ("flow_node_memory", "flow1:c");
     let n = 64;
 

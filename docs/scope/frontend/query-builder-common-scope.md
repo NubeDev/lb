@@ -174,7 +174,7 @@ The headline path — author a federation panel through the builder, end to end:
    Sources tab → "open in builder"). A stacked builder tab opens; stage 1 is the Query surface.
 2. The Datasource dropdown reflects the saved `target.datasource`. The user picks `demo-buildings`
    (a registered sqlite federation source). `QueryTab.selectDatasource` writes a federation target:
-   `{ tool:"federation.query", args:{ source:"demo-buildings", sql:"" }, datasource:{ type:"federation", uid:"datasource:acme:demo-buildings" } }`.
+   `{ tool:"federation.query", args:{ source:"demo-buildings", sql:"" }, datasource:{ type:"federation", uid:"datasource:nube:demo-buildings" } }`.
 3. The Query surface renders `<SqlQueryEditor dialect="standard" schema={...} value={state.sql ?? emptySqlSource()} .../>`
    instead of the legacy `<Textarea>`. The header shows the same Builder⇄Code toggle and Format
    (Table | Time series) the surreal path shows.

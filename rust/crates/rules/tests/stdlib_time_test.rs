@@ -42,13 +42,13 @@ fn run_pinned(body: &str, now_ms: u64) -> Result<RuleOutput, lb_rules::RuleError
         32,
     );
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: body.into(),
         params: vec![],
     };
     let mut rr = RuleRun::new(
-        "acme".into(),
+        "nube".into(),
         Arc::new(HashSet::new()),
         rhai::Map::new(),
         now_ms,

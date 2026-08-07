@@ -852,9 +852,9 @@ mod tests {
         // mechanism. This once read `viewer.contains("mcp:*.list:call")`, which pinned the very
         // wildcard that leaked `teams.list`/`roles.list`; the reach is the contract, the wildcard was
         // only ever one way to supply it (now: named concretely in VIEWER_CAPS).
-        let v = Principal::routed("user:probe", "acme", viewer.clone());
+        let v = Principal::routed("user:probe", "nube", viewer.clone());
         assert!(
-            holds_cap(&v, "acme", "mcp:history.list:call"),
+            holds_cap(&v, "nube", "mcp:history.list:call"),
             "viewer must still reach history.list"
         );
     }
@@ -1009,14 +1009,14 @@ mod tests {
     /// the contract and the bundle listing is only one way to supply it.
     #[test]
     fn share_closure_cap_reaches_for_a_member_only() {
-        let member = Principal::routed("user:m", "acme", member_role_caps());
-        let viewer = Principal::routed("user:v", "acme", viewer_role_caps());
+        let member = Principal::routed("user:m", "nube", member_role_caps());
+        let viewer = Principal::routed("user:v", "nube", viewer_role_caps());
         assert!(
-            holds_cap(&member, "acme", "mcp:dashboard.share_closure:call"),
+            holds_cap(&member, "nube", "mcp:dashboard.share_closure:call"),
             "a member must reach share_closure"
         );
         assert!(
-            !holds_cap(&viewer, "acme", "mcp:dashboard.share_closure:call"),
+            !holds_cap(&viewer, "nube", "mcp:dashboard.share_closure:call"),
             "a viewer must NOT reach share_closure"
         );
     }
@@ -1051,10 +1051,10 @@ mod tests {
             ("apikey-read", lb_apikey::apikey_read_caps()),
             ("apikey-write", lb_apikey::apikey_write_caps()),
         ] {
-            let principal = Principal::routed("user:probe", "acme", caps);
+            let principal = Principal::routed("user:probe", "nube", caps);
             let spanned: Vec<String> = admin_only_caps()
                 .into_iter()
-                .filter(|cap| holds_cap(&principal, "acme", cap))
+                .filter(|cap| holds_cap(&principal, "nube", cap))
                 .collect();
             assert!(
                 spanned.is_empty(),

@@ -53,7 +53,7 @@ async fn get(gw: &Gateway, token: &str, uri: &str) -> axum::response::Response {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn save_then_get_round_trips_three_block_kinds_in_order() {
     let (gw, key) = gateway().await;
-    let t = token(&key, "user:ada", "acme", REPORT_CAPS);
+    let t = token(&key, "user:test", "nube", REPORT_CAPS);
 
     let blocks = json!([
         { "kind": "markdown", "body": "# Hello", "pageBreak": true },
@@ -95,7 +95,7 @@ async fn save_then_get_round_trips_three_block_kinds_in_order() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn export_returns_pdf_bytes() {
     let (gw, key) = gateway().await;
-    let t = token(&key, "user:ada", "acme", REPORT_CAPS);
+    let t = token(&key, "user:test", "nube", REPORT_CAPS);
 
     let cells = json!([
         { "i": "p1", "x": 0, "y": 0, "w": 6, "h": 5, "view": "stat", "title": "Temp" },
@@ -153,7 +153,7 @@ async fn export_returns_pdf_bytes() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn exporting_a_plain_dashboard_is_refused() {
     let (gw, key) = gateway().await;
-    let t = token(&key, "user:ada", "acme", REPORT_CAPS);
+    let t = token(&key, "user:test", "nube", REPORT_CAPS);
     let resp = post(
         &gw,
         &t,
@@ -181,7 +181,7 @@ async fn exporting_a_plain_dashboard_is_refused() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_unknown_dashboard_kind_is_refused_at_save() {
     let (gw, key) = gateway().await;
-    let t = token(&key, "user:ada", "acme", REPORT_CAPS);
+    let t = token(&key, "user:test", "nube", REPORT_CAPS);
     let resp = post(
         &gw,
         &t,
@@ -202,7 +202,7 @@ async fn missing_caps_are_denied() {
     let (gw, key) = gateway().await;
 
     // No report.save → POST /reports 403.
-    let no_save = token(&key, "user:ada", "acme", &["mcp:report.get:call"]);
+    let no_save = token(&key, "user:test", "nube", &["mcp:report.get:call"]);
     let resp = post(
         &gw,
         &no_save,
@@ -213,16 +213,16 @@ async fn missing_caps_are_denied() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN, "save denied");
 
     // No brand.save → POST /brands 403.
-    let no_brand = token(&key, "user:ada", "acme", &["mcp:brand.get:call"]);
+    let no_brand = token(&key, "user:test", "nube", &["mcp:brand.get:call"]);
     let resp = post(&gw, &no_brand, "/brands", json!({ "id": "b", "name": "B" })).await;
     assert_eq!(resp.status(), StatusCode::FORBIDDEN, "brand save denied");
 
     // Author a report with a full-cap token, then try to export WITHOUT report.export.
-    let full = token(&key, "user:ada", "acme", REPORT_CAPS);
+    let full = token(&key, "user:test", "nube", REPORT_CAPS);
     let resp = post(&gw, &full, "/reports", json!({ "id": "r3", "title": "R3" })).await;
     assert_eq!(resp.status(), StatusCode::OK);
     // No report.export (but holds get) → export 403.
-    let no_export = token(&key, "user:ada", "acme", &["mcp:report.get:call"]);
+    let no_export = token(&key, "user:test", "nube", &["mcp:report.get:call"]);
     let resp = post(
         &gw,
         &no_export,
@@ -238,19 +238,19 @@ async fn missing_caps_are_denied() {
 async fn workspace_isolation_blocks_cross_ws_read() {
     let (gw, key) = gateway().await;
 
-    // ada authors a report in workspace `acme`.
-    let a = token(&key, "user:ada", "acme", REPORT_CAPS);
+    // test authors a report in workspace `nube`.
+    let a = token(&key, "user:test", "nube", REPORT_CAPS);
     let resp = post(
         &gw,
         &a,
         "/reports",
-        json!({ "id": "secret", "title": "Acme only" }),
+        json!({ "id": "secret", "title": "Nube only" }),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK, "ws-A save 200");
 
     // bob in workspace `globex` (same node, same key) holds the SAME cap grammar but scoped to his
-    // own ws — his caps never satisfy the `acme` workspace gate, so the read is opaque `404`.
+    // own ws — his caps never satisfy the `nube` workspace gate, so the read is opaque `404`.
     let b = token(&key, "user:bob", "globex", REPORT_CAPS);
     let resp = get(&gw, &b, "/reports/secret").await;
     assert_ne!(

@@ -286,7 +286,7 @@ No new persistence findings this session.
   pick "thecrew · Scene" → pick the AHU-1 scene → Save — instead of a seeded cell (finding 7 fixed), and
   the cell renders the fit scene (blank fixed). Screenshots refreshed: `docs/shots/scene-widget-dashboard.png`
   (palette-built, scene framed), `docs/shots/graphics-ahu-1-live.png` (page).
-- Live publish/install: `make publish-ext EXT=thecrew` (204 as the member `user:ada` — the dev-login user
+- Live publish/install: `make publish-ext EXT=thecrew` (204 as the member `user:test` — the dev-login user
   isn't a member here) + `make seed-thecrew` (now also seeds an EMPTY `scene-build` dashboard the palette
   e2e builds onto). Bundle rebuilt via the preset: `process.env.NODE_ENV` fully replaced (0 occurrences),
   `mount`/`mountPage`/`mountWidget`/default all exported.

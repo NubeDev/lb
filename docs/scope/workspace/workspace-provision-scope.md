@@ -158,26 +158,26 @@ this fix needs. Kept as an explicit non-goal and a future scope.
 
 ## Example flow
 
-An operator in `acme` stands up `nube` with `alice` (an existing identity) as its admin:
+An operator in `nube` stands up `other-ws` with `alice` (an existing identity) as its admin:
 
-1. Operator's token: `sub = user:ada`, `ws = acme`, holding `role:workspace-admin`.
-2. `POST /workspaces/nube/provision  { "name": "Nube iO", "admin": "user:alice" }`.
-3. Gateway authenticates, then `authorize_tool(principal, principal.ws() /* acme */,
+1. Operator's token: `sub = user:test`, `ws = nube`, holding `role:workspace-admin`.
+2. `POST /workspaces/other-ws/provision  { "name": "Other Co", "admin": "user:alice" }`.
+3. Gateway authenticates, then `authorize_tool(principal, principal.ws() /* nube */,
    "workspace.provision")` → allowed.
-4. Tombstone check on `_lb_workspaces/workspace/nube` → not purged. Existing-active check → absent, so
+4. Tombstone check on `_lb_workspaces/workspace/other-ws` → not purged. Existing-active check → absent, so
    this is a genuine first provision.
-5. Build the write set: built-in role records for `nube`; `Membership { sub: "user:alice" }` in `nube`;
+5. Build the write set: built-in role records for `other-ws`; `Membership { sub: "user:alice" }` in `other-ws`;
    grants `role:member` + `role:workspace-admin` to `user:alice`; default core-skill grants; and **last**,
    the `_lb_workspaces` directory row.
 6. Apply as one batch, then flush. Any failure → `ProvisionFailed { stage }`, nothing left behind, and
-   `nube` does not appear in `workspace_list`.
-7. Reply: `{ record: {ws:"nube", name:"Nube iO", status:"active", …}, admin_sub:"user:alice",
+   `other-ws` does not appear in `workspace_list`.
+7. Reply: `{ record: {ws:"other-ws", name:"Other Co", status:"active", …}, admin_sub:"user:alice",
    roles_granted:["role:member","role:workspace-admin"], skills_granted:[…] }`.
-8. **Ada's session is untouched** — still `acme`, no re-mint, no switch-back needed.
-9. Alice logs in: `login_workspaces` finds the `nube` membership, so `nube` is in her roster and
+8. **Test's session is untouched** — still `nube`, no re-mint, no switch-back needed.
+9. Alice logs in: `login_workspaces` finds the `other-ws` membership, so `other-ws` is in her roster and
    `auth.switch`/`auth.select` into it succeeds. She is its admin.
-10. Repair case: for a `nube` orphaned by the *old* code path,
-    `POST /workspaces/nube/reconcile` re-runs step 5's bootstrap and reports
+10. Repair case: for a `other-ws` orphaned by the *old* code path,
+    `POST /workspaces/other-ws/reconcile` re-runs step 5's bootstrap and reports
     `{ fixed: ["membership", "role_grants"] }`.
 
 ## Testing plan
@@ -198,15 +198,15 @@ Mandatory categories that apply: **capability-deny**, **workspace-isolation**, *
   row, no membership), assert `auth.switch` fails with `not a member of that workspace` (documenting the
   symptom), then `reconcile` and assert the switch succeeds.
 - **Admin-other-than-caller** — provision with `admin = user:alice`; assert alice is a member with both
-  roles, that the caller (`ada`) is **not** silently a member of `nube`, and that ada's session still
-  names `acme`.
+  roles, that the caller (`test`) is **not** silently a member of `other-ws`, and that test's session still
+  names `nube`.
 - **No re-mint** — assert the provision response carries no token and the caller's token is byte-identical
   before and after (the "does not force the user to leave the workspace" guarantee, asserted not assumed).
 - **Idempotency & tombstones** — re-provision an active workspace ⇒ returns the current record, grants
   unchanged (specifically: a previously *revoked* `role:workspace-admin` is **not** re-granted).
   Provision over a purged tombstone ⇒ refused, no resurrection.
-- **Workspace-isolation** — provisioning `nube` writes nothing readable in `acme`; a `nube` membership
-  grants no `acme` cap; cross-namespace reads stay absent.
+- **Workspace-isolation** — provisioning `other-ws` writes nothing readable in `nube`; a `other-ws` membership
+  grants no `nube` cap; cross-namespace reads stay absent.
 - **`workspace_create` parity** — the existing create-then-switch path (the UI switcher) still works
   end-to-end and now inherits atomicity: the same failure injection that orphaned a workspace before now
   leaves none.

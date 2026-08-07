@@ -76,7 +76,7 @@ async fn drive(
     job: &str,
     gw: &AiGateway<CapturingScript>,
 ) -> (String, JobStatus) {
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let answer = invoke(
         node,
         gw,

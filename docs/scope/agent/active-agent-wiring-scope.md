@@ -137,7 +137,7 @@ correct and the failures peripheral:
 
 ## Example flow
 
-1. Ada opens Settings → Agent and clicks **Use** on "Open Interpreter — Z.AI GLM-4.6". The pick
+1. Test opens Settings → Agent and clicks **Use** on "Open Interpreter — Z.AI GLM-4.6". The pick
    writes `agent.config { default_runtime, model_endpoint, active_definition }`.
 2. In a channel she types `/agent summarize today's boiler alerts` and hits send without
    touching the dropdown (it reads "Active — Open Interpreter — Z.AI GLM-4.6"). The post
@@ -151,7 +151,7 @@ correct and the failures peripheral:
 5. Bob's workspace has no active pick and no node-level model: the channel run and the widget
    return the honest "unconfigured" answer; `ai.complete` returns "AI not configured for
    rules". Nothing pretends.
-6. A rule in ws-B fires while Ada's ws-A pick exists: ws-B resolves **its own** config —
+6. A rule in ws-B fires while Test's ws-A pick exists: ws-B resolves **its own** config —
    `DisabledModel` — never ws-A's endpoint or key. The wall held.
 
 ## Testing plan

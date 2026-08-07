@@ -124,7 +124,7 @@ admin-approved install set — that intersection is the blast-radius rule (`ext-
 1. A workspace admin **creates a team** `facilities` and **defines a role** `operator` bundling
    `mcp:hvac.setpoint:call`, `store:series/hvac.*:read`.
 2. Admin **assigns** `operator` to the `facilities` team, and **adds Bob** to `facilities`.
-3. **Bob logs in** → the session resolves his caps = `operator`'s caps (inherited via the team) ∩ `acme`,
+3. **Bob logs in** → the session resolves his caps = `operator`'s caps (inherited via the team) ∩ `nube`,
    and mints his token.
 4. Bob **sees the HVAC extension's pages** (his grants include its tool) and can **call `hvac.setpoint`** —
    each page action re-runs the three gates server-side and passes.

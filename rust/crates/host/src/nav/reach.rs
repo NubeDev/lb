@@ -269,17 +269,17 @@ mod tests {
             ..Default::default()
         };
         let caps = reach_caps(&nav(ResolvedSource::Team, vec![dash]));
-        let test = Principal::routed("user:test", "acme", caps);
+        let test = Principal::routed("user:test", "nube", caps);
 
-        assert!(reach_check(&test, "acme", "dashboards"), "the PAGE is open");
+        assert!(reach_check(&test, "nube", "dashboards"), "the PAGE is open");
         assert!(super::super::dashboard_reach_ok(
             &test,
-            "acme",
+            "nube",
             "demo-analytics"
         ));
         for board in ["modbus-tmpl-sim-meter", "modbus-tmpl-nubeio-io16-current"] {
             assert!(
-                !super::super::dashboard_reach_ok(&test, "acme", board),
+                !super::super::dashboard_reach_ok(&test, "nube", board),
                 "{board} is workspace-visible but NOT in the nav — must be closed"
             );
         }
@@ -291,9 +291,9 @@ mod tests {
     fn fallback_never_arms_record_reach() {
         let caps = reach_caps(&nav(ResolvedSource::Fallback, Vec::new()));
         assert_eq!(caps, vec![REACH_ALL.to_string()]);
-        let member = Principal::routed("user:alice", "acme", caps);
+        let member = Principal::routed("user:alice", "nube", caps);
         for board in ["demo-analytics", "modbus-tmpl-sim-meter", "whatever"] {
-            assert!(super::super::dashboard_reach_ok(&member, "acme", board));
+            assert!(super::super::dashboard_reach_ok(&member, "nube", board));
         }
     }
 
@@ -315,10 +315,10 @@ mod tests {
             .any(|c| c.contains("someone-elses-private-board")));
         // And reach is not a grant: holding the record cap is necessary, never sufficient — gate 3
         // (`may_read_dashboard`) still runs after it in `dashboard_get`.
-        let test = Principal::routed("user:test", "acme", caps);
+        let test = Principal::routed("user:test", "nube", caps);
         assert!(!super::super::dashboard_reach_ok(
             &test,
-            "acme",
+            "nube",
             "someone-elses-private-board"
         ));
     }
@@ -337,10 +337,10 @@ mod tests {
             vec![surface_item("dashboards"), dash],
         ));
         assert_eq!(caps, vec!["reach:dashboards:view".to_string()]);
-        let p = Principal::routed("user:bob", "acme", caps);
+        let p = Principal::routed("user:bob", "nube", caps);
         assert!(super::super::dashboard_reach_ok(
             &p,
-            "acme",
+            "nube",
             "modbus-tmpl-sim-meter"
         ));
     }
@@ -362,29 +362,29 @@ mod tests {
         // The surface cap is still derived — a pick DOES narrow which pages you see.
         assert_eq!(caps, vec!["reach:dashboards:view".to_string()]);
         // ...but no record cap, so every board stays reachable.
-        let p = Principal::routed("user:ada", "acme", caps);
+        let p = Principal::routed("user:test", "nube", caps);
         for board in [
             "demo-analytics",
             "modbus-tmpl-sim-meter",
             "demo-plant-report",
         ] {
             assert!(
-                super::super::dashboard_reach_ok(&p, "acme", board),
+                super::super::dashboard_reach_ok(&p, "nube", board),
                 "a self-pick must not close {board}"
             );
         }
 
         // The SAME nav, handed to them as a team share, DOES arm.
         let handed = reach_caps(&nav(ResolvedSource::Team, vec![dash]));
-        let h = Principal::routed("user:test", "acme", handed);
+        let h = Principal::routed("user:test", "nube", handed);
         assert!(super::super::dashboard_reach_ok(
             &h,
-            "acme",
+            "nube",
             "demo-analytics"
         ));
         assert!(!super::super::dashboard_reach_ok(
             &h,
-            "acme",
+            "nube",
             "modbus-tmpl-sim-meter"
         ));
     }
@@ -398,15 +398,15 @@ mod tests {
             ..Default::default()
         };
         let caps = reach_caps(&nav(ResolvedSource::WorkspaceDefault, vec![dash]));
-        let p = Principal::routed("user:test", "acme", caps);
+        let p = Principal::routed("user:test", "nube", caps);
         assert!(super::super::dashboard_reach_ok(
             &p,
-            "acme",
+            "nube",
             "demo-analytics"
         ));
         assert!(!super::super::dashboard_reach_ok(
             &p,
-            "acme",
+            "nube",
             "modbus-tmpl-sim-meter"
         ));
     }
@@ -423,10 +423,10 @@ mod tests {
         assert_eq!(reach_caps(&resolved), vec![REACH_ALL.to_string()]);
 
         // …and the subject is therefore NOT locked out, on either axis.
-        let p = Principal::routed("user:aaa", "acme", reach_caps(&resolved));
-        assert!(reach_check(&p, "acme", "dashboards"));
-        assert!(reach_check(&p, "acme", "rules"));
-        assert!(super::super::dashboard_reach_ok(&p, "acme", "any-board"));
+        let p = Principal::routed("user:aaa", "nube", reach_caps(&resolved));
+        assert!(reach_check(&p, "nube", "dashboards"));
+        assert!(reach_check(&p, "nube", "rules"));
+        assert!(super::super::dashboard_reach_ok(&p, "nube", "any-board"));
     }
 
     /// A pinned board counts as a named record — curating a nav must not silently break the caller's
@@ -444,14 +444,14 @@ mod tests {
             dashboard: "dashboard:my-pin".into(),
             ..Default::default()
         }];
-        let p = Principal::routed("user:bob", "acme", reach_caps(&resolved));
-        assert!(super::super::dashboard_reach_ok(&p, "acme", "my-pin"));
+        let p = Principal::routed("user:bob", "nube", reach_caps(&resolved));
+        assert!(super::super::dashboard_reach_ok(&p, "nube", "my-pin"));
         assert!(super::super::dashboard_reach_ok(
             &p,
-            "acme",
+            "nube",
             "demo-analytics"
         ));
-        assert!(!super::super::dashboard_reach_ok(&p, "acme", "other"));
+        assert!(!super::super::dashboard_reach_ok(&p, "nube", "other"));
     }
 
     /// A `group` recurses one level; an `ext` child contributes NO core reach cap (rule 10 — ext reach
@@ -496,21 +496,21 @@ mod tests {
     /// wildcard reaches all; a token with NO reach cap degrades OPEN (reach unknown ≠ reach denied).
     #[test]
     fn reach_check_enforces_present_reach_and_degrades_open_on_absence() {
-        let curated = Principal::routed("user:bob", "acme", vec!["reach:dashboards:view".into()]);
-        assert!(reach_check(&curated, "acme", "dashboards"));
-        assert!(!reach_check(&curated, "acme", "rules"));
-        assert!(!reach_check(&curated, "acme", "ingest"));
+        let curated = Principal::routed("user:bob", "nube", vec!["reach:dashboards:view".into()]);
+        assert!(reach_check(&curated, "nube", "dashboards"));
+        assert!(!reach_check(&curated, "nube", "rules"));
+        assert!(!reach_check(&curated, "nube", "ingest"));
 
-        let fallback = Principal::routed("user:alice", "acme", vec![REACH_ALL.into()]);
+        let fallback = Principal::routed("user:alice", "nube", vec![REACH_ALL.into()]);
         for s in ["dashboards", "rules", "ingest", "system"] {
-            assert!(reach_check(&fallback, "acme", s), "wildcard reaches {s}");
+            assert!(reach_check(&fallback, "nube", s), "wildcard reaches {s}");
         }
 
         // A token with data caps but NO reach cap at all — reach unknown, degrade open (legacy/API key).
-        let no_reach = Principal::routed("key:svc", "acme", vec!["mcp:series.list:call".into()]);
+        let no_reach = Principal::routed("key:svc", "nube", vec!["mcp:series.list:call".into()]);
         for s in ["dashboards", "rules", "ingest"] {
             assert!(
-                reach_check(&no_reach, "acme", s),
+                reach_check(&no_reach, "nube", s),
                 "a token with no reach cap degrades open for {s}"
             );
         }

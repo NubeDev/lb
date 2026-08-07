@@ -32,7 +32,7 @@ const SKILL_W: &str = "store:skill/*:write";
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn put_then_get_own_doc_round_trips_over_the_gateway() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[DOC_R, DOC_W]);
+    let tok = token(&key, "user:test", "nube", &[DOC_R, DOC_W]);
 
     // Create a doc owned by the token's principal.
     let resp = router(gw.clone())
@@ -55,7 +55,7 @@ async fn put_then_get_own_doc_round_trips_over_the_gateway() {
     assert_eq!(resp.status(), StatusCode::OK);
     let doc: serde_json::Value = json_body(resp).await;
     assert_eq!(doc["content"], "hello");
-    assert_eq!(doc["owner"], "user:ada");
+    assert_eq!(doc["owner"], "user:test");
 
     // And it appears in the owner's doc list.
     let resp = router(gw)
@@ -72,7 +72,7 @@ async fn put_doc_without_the_write_cap_is_denied_server_side() {
     let (gw, key) = gateway().await;
     // A read-only token — no `store:doc/*:write`. The deny is from the TOKEN's caps, server-side,
     // not the body (the hard wall, §7).
-    let tok = token(&key, "user:ada", "acme", &[DOC_R]);
+    let tok = token(&key, "user:test", "nube", &[DOC_R]);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -92,7 +92,7 @@ async fn ws_b_session_cannot_read_ws_a_doc() {
     let key = SigningKey::generate();
     let gw = gateway_on(node.clone(), &key);
 
-    let tok_a = token(&key, "user:ada", "acme", &[DOC_R, DOC_W]);
+    let tok_a = token(&key, "user:test", "nube", &[DOC_R, DOC_W]);
     router(gw.clone())
         .oneshot(bearer(
             json_post(
@@ -117,7 +117,7 @@ async fn ws_b_session_cannot_read_ws_a_doc() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn grant_then_load_skill_round_trips_and_ungranted_load_is_denied() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", &[SKILL_R, SKILL_W]);
+    let tok = token(&key, "user:test", "nube", &[SKILL_R, SKILL_W]);
 
     // Put a skill version.
     let resp = router(gw.clone())

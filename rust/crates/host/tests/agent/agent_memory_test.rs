@@ -5,7 +5,7 @@
 //!   - **capability-deny (per verb)**: no cap → denied; `set` with the verb cap but WITHOUT the
 //!     workspace-scope write gate → workspace `set` denied while member `set` succeeds.
 //!   - **workspace-isolation**: ws-B lists/gets nothing of ws-A (store + MCP).
-//!   - **member wall**: bob's resolution never returns `member:ada` rows even with slugs known — the
+//!   - **member wall**: bob's resolution never returns `member:test` rows even with slugs known — the
 //!     scope is derived from the principal, asserted directly.
 //!   - **offline/sync**: a double-applied `set` is idempotent (composite id, LWW).
 //!   - **injection (real run)**: a real in-house run's context contains the index after a `set`,
@@ -54,7 +54,7 @@ const MEMBER: &[&str] = &[LIST, GET, SET, DELETE];
 async fn each_verb_is_denied_without_its_cap() {
     let ws = "ws-mem-deny";
     let store = Store::memory().await.unwrap();
-    let nobody = principal("user:ada", ws, &[]); // no caps
+    let nobody = principal("user:test", ws, &[]); // no caps
 
     assert!(memory_list(&store, &nobody, ws).await.is_err());
     assert!(memory_get(&store, &nobody, ws, None, "s").await.is_err());
@@ -65,7 +65,7 @@ async fn each_verb_is_denied_without_its_cap() {
     );
     assert!(memory_list(&store, &nobody, ws).await.is_err());
     // Holding only `list` does NOT grant `set`.
-    let list_only = principal("user:ada", ws, &[LIST]);
+    let list_only = principal("user:test", ws, &[LIST]);
     assert!(matches!(
         memory_set(&store, &list_only, ws, None, "s", "d", "user", "b", 1)
             .await
@@ -81,7 +81,7 @@ async fn member_set_ok_but_workspace_set_needs_the_ws_write_gate() {
     let ws = "ws-mem-wsgate";
     let store = Store::memory().await.unwrap();
     // Has the verb caps but NOT the workspace-scope write gate.
-    let member = principal("user:ada", ws, MEMBER);
+    let member = principal("user:test", ws, MEMBER);
 
     // Member-scope set succeeds (a run may always curate its own member memory).
     memory_set(
@@ -118,7 +118,7 @@ async fn member_set_ok_but_workspace_set_needs_the_ws_write_gate() {
     // With the ws-write gate, the workspace set succeeds.
     let mut caps = MEMBER.to_vec();
     caps.push(WS_WRITE);
-    let curator = principal("user:ada", ws, &caps);
+    let curator = principal("user:test", ws, &caps);
     memory_set(
         &store,
         &curator,
@@ -134,23 +134,23 @@ async fn member_set_ok_but_workspace_set_needs_the_ws_write_gate() {
     .unwrap();
 }
 
-// ── the member wall: a run under bob NEVER sees member:ada ───────────────────────────────────────
+// ── the member wall: a run under bob NEVER sees member:test ───────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_member_can_never_read_another_members_memory() {
     let ws = "ws-mem-wall";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, MEMBER);
+    let test = principal("user:test", ws, MEMBER);
     let bob = principal("user:bob", ws, MEMBER);
 
-    // Ada writes a private member fact.
+    // Test writes a private member fact.
     memory_set(
         &store,
-        &ada,
+        &test,
         ws,
         Some("member"),
-        "ada-secret",
-        "ada only",
+        "test-secret",
+        "test only",
         "user",
         "xyz",
         1,
@@ -158,23 +158,23 @@ async fn a_member_can_never_read_another_members_memory() {
     .await
     .unwrap();
 
-    // Bob's list resolves `workspace + member:bob` — never `member:ada`.
+    // Bob's list resolves `workspace + member:bob` — never `member:test`.
     let bobs = memory_list(&store, &bob, ws).await.unwrap();
     assert!(
-        bobs.iter().all(|m| m.slug != "ada-secret"),
-        "bob's list never returns ada's member row"
+        bobs.iter().all(|m| m.slug != "test-secret"),
+        "bob's list never returns test's member row"
     );
 
-    // Even knowing the slug, bob's `get member` binds to member:bob — ada's fact is NOT returned.
+    // Even knowing the slug, bob's `get member` binds to member:bob — test's fact is NOT returned.
     assert!(
-        memory_get(&store, &bob, ws, Some("member"), "ada-secret")
+        memory_get(&store, &bob, ws, Some("member"), "test-secret")
             .await
             .unwrap()
             .is_none(),
-        "bob cannot get ada's member fact by slug (scope is derived from the principal)"
+        "bob cannot get test's member fact by slug (scope is derived from the principal)"
     );
-    // Ada herself sees it (sanity — the fact exists, it's just walled).
-    assert!(memory_get(&store, &ada, ws, Some("member"), "ada-secret")
+    // Test herself sees it (sanity — the fact exists, it's just walled).
+    assert!(memory_get(&store, &test, ws, Some("member"), "test-secret")
         .await
         .unwrap()
         .is_some());
@@ -185,10 +185,10 @@ async fn a_member_can_never_read_another_members_memory() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_sees_nothing_of_ws_a() {
     let store = Store::memory().await.unwrap();
-    let ada_a = principal("user:ada", "ws-a", MEMBER);
+    let test_a = principal("user:test", "ws-a", MEMBER);
     memory_set(
         &store,
-        &ada_a,
+        &test_a,
         "ws-a",
         Some("member"),
         "a-fact",
@@ -201,15 +201,17 @@ async fn ws_b_sees_nothing_of_ws_a() {
     .unwrap();
 
     // Same user id, different workspace → a different namespace. Nothing bleeds across.
-    let ada_b = principal("user:ada", "ws-b", MEMBER);
-    assert!(memory_list(&store, &ada_b, "ws-b")
+    let test_b = principal("user:test", "ws-b", MEMBER);
+    assert!(memory_list(&store, &test_b, "ws-b")
         .await
         .unwrap()
         .is_empty());
-    assert!(memory_get(&store, &ada_b, "ws-b", Some("member"), "a-fact")
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        memory_get(&store, &test_b, "ws-b", Some("member"), "a-fact")
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 // ── idempotent upsert (LWW) + one index row ──────────────────────────────────────────────────────
@@ -218,11 +220,11 @@ async fn ws_b_sees_nothing_of_ws_a() {
 async fn set_is_an_idempotent_upsert() {
     let ws = "ws-mem-upsert";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, MEMBER);
+    let test = principal("user:test", ws, MEMBER);
 
     memory_set(
         &store,
-        &ada,
+        &test,
         ws,
         Some("member"),
         "pref",
@@ -236,7 +238,7 @@ async fn set_is_an_idempotent_upsert() {
     // Second set, same {scope, slug} → replaces (LWW), one row.
     memory_set(
         &store,
-        &ada,
+        &test,
         ws,
         Some("member"),
         "pref",
@@ -248,9 +250,9 @@ async fn set_is_an_idempotent_upsert() {
     .await
     .unwrap();
 
-    let rows = memory_list(&store, &ada, ws).await.unwrap();
+    let rows = memory_list(&store, &test, ws).await.unwrap();
     assert_eq!(rows.iter().filter(|m| m.slug == "pref").count(), 1);
-    let got = memory_get(&store, &ada, ws, Some("member"), "pref")
+    let got = memory_get(&store, &test, ws, Some("member"), "pref")
         .await
         .unwrap()
         .unwrap();
@@ -265,12 +267,12 @@ async fn set_is_an_idempotent_upsert() {
 async fn set_enforces_bounds_and_the_secret_lint() {
     let ws = "ws-mem-bounds";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, MEMBER);
+    let test = principal("user:test", ws, MEMBER);
 
     // description > 120 chars.
     let long_desc = "x".repeat(121);
     assert!(matches!(
-        memory_set(&store, &ada, ws, None, "s", &long_desc, "user", "b", 1)
+        memory_set(&store, &test, ws, None, "s", &long_desc, "user", "b", 1)
             .await
             .unwrap_err(),
         ToolError::BadInput(_)
@@ -278,14 +280,14 @@ async fn set_enforces_bounds_and_the_secret_lint() {
     // body > 8 KB.
     let big_body = "y".repeat(8 * 1024 + 1);
     assert!(matches!(
-        memory_set(&store, &ada, ws, None, "s", "d", "user", &big_body, 1)
+        memory_set(&store, &test, ws, None, "s", "d", "user", &big_body, 1)
             .await
             .unwrap_err(),
         ToolError::BadInput(_)
     ));
     // unknown kind.
     assert!(matches!(
-        memory_set(&store, &ada, ws, None, "s", "d", "bogus", "b", 1)
+        memory_set(&store, &test, ws, None, "s", "d", "bogus", "b", 1)
             .await
             .unwrap_err(),
         ToolError::BadInput(_)
@@ -294,7 +296,7 @@ async fn set_enforces_bounds_and_the_secret_lint() {
     assert!(matches!(
         memory_set(
             &store,
-            &ada,
+            &test,
             ws,
             None,
             "s",
@@ -310,7 +312,7 @@ async fn set_enforces_bounds_and_the_secret_lint() {
     // an sk- key is refused.
     assert!(memory_set(
         &store,
-        &ada,
+        &test,
         ws,
         None,
         "s",
@@ -324,7 +326,7 @@ async fn set_enforces_bounds_and_the_secret_lint() {
     // a benign fact that merely mentions the word "password" in prose is fine.
     memory_set(
         &store,
-        &ada,
+        &test,
         ws,
         None,
         "s",
@@ -343,12 +345,12 @@ async fn set_enforces_bounds_and_the_secret_lint() {
 async fn the_mcp_surface_roundtrips_and_denies_per_verb() {
     let ws = "ws-mem-mcp";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, MEMBER);
+    let test = principal("user:test", ws, MEMBER);
 
     // set → get → list → delete over the bridge.
     call_agent_memory_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "agent.memory.set",
         &json!({"scope":"member","slug":"pref","description":"terse","kind":"user","body":"be terse","ts":1}),
@@ -358,7 +360,7 @@ async fn the_mcp_surface_roundtrips_and_denies_per_verb() {
     .unwrap();
     let got = call_agent_memory_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "agent.memory.get",
         &json!({"slug":"pref"}),
@@ -367,7 +369,7 @@ async fn the_mcp_surface_roundtrips_and_denies_per_verb() {
     .unwrap()
     .unwrap();
     assert_eq!(got["body"], "be terse");
-    let list = call_agent_memory_tool(&store, &ada, ws, "agent.memory.list", &json!({}))
+    let list = call_agent_memory_tool(&store, &test, ws, "agent.memory.list", &json!({}))
         .await
         .unwrap()
         .unwrap();
@@ -377,7 +379,7 @@ async fn the_mcp_surface_roundtrips_and_denies_per_verb() {
 
     call_agent_memory_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "agent.memory.delete",
         &json!({"slug":"pref"}),
@@ -385,14 +387,14 @@ async fn the_mcp_surface_roundtrips_and_denies_per_verb() {
     .await
     .unwrap()
     .unwrap();
-    let list = call_agent_memory_tool(&store, &ada, ws, "agent.memory.list", &json!({}))
+    let list = call_agent_memory_tool(&store, &test, ws, "agent.memory.list", &json!({}))
         .await
         .unwrap()
         .unwrap();
     assert!(list["memories"].as_array().unwrap().is_empty());
 
     // per-verb deny at the MCP gate.
-    let nobody = principal("user:ada", ws, &[]);
+    let nobody = principal("user:test", ws, &[]);
     for (verb, args) in [
         ("agent.memory.list", json!({})),
         ("agent.memory.get", json!({"slug":"pref"})),
@@ -471,7 +473,7 @@ async fn a_real_run_injects_the_memory_index_after_set_and_loses_it_after_delete
     let ws = "ws-mem-inject";
     let node = Arc::new(Node::boot().await.unwrap());
     let caller = principal(
-        "user:ada",
+        "user:test",
         ws,
         &["mcp:agent.invoke:call", LIST, GET, SET, DELETE],
     );

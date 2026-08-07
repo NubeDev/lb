@@ -50,9 +50,9 @@ async fn a_series_more_than_one_evict_slice_over_cap_converges_in_one_call() {
     const CAP: u64 = 100;
     // Over-cap by 5 900 — two slices (5 000 + 900), so the loop MUST iterate.
     let n = CAP + CAP_EVICT_BATCH as u64 + 900;
-    seed(&store, "acme", "wide", n).await;
+    seed(&store, "nube", "wide", n).await;
 
-    let evicted = cap_series(&store, "acme", "wide", CAP).await.unwrap();
+    let evicted = cap_series(&store, "nube", "wide", CAP).await.unwrap();
     assert_eq!(
         evicted,
         (n - CAP) as usize,
@@ -60,10 +60,10 @@ async fn a_series_more_than_one_evict_slice_over_cap_converges_in_one_call() {
          stopped after its first slice would strand the remainder",
         n - CAP
     );
-    assert_eq!(sample_count(&store, "acme", "wide").await.unwrap(), CAP);
+    assert_eq!(sample_count(&store, "nube", "wide").await.unwrap(), CAP);
 
     // FIFO: the NEWEST `CAP` survive (the oldest `ts` go first).
-    let kept = lb_ingest::read(&store, "acme", "wide", None, None)
+    let kept = lb_ingest::read(&store, "nube", "wide", None, None)
         .await
         .unwrap();
     assert_eq!(kept.len(), CAP as usize);
@@ -74,7 +74,7 @@ async fn a_series_more_than_one_evict_slice_over_cap_converges_in_one_call() {
     );
 
     // Idempotent: a second call at the bound evicts nothing.
-    assert_eq!(cap_series(&store, "acme", "wide", CAP).await.unwrap(), 0);
+    assert_eq!(cap_series(&store, "nube", "wide", CAP).await.unwrap(), 0);
 }
 
 /// The same convergence through the GC pass the reactor actually calls — `run_gc` must report the
@@ -84,11 +84,11 @@ async fn the_gc_pass_reports_a_multi_slice_cap_eviction_in_full() {
     let store = Store::memory().await.unwrap();
     const CAP: u64 = 50;
     let n = CAP + CAP_EVICT_BATCH as u64 + 500;
-    seed(&store, "acme", "fleet.a", n).await;
+    seed(&store, "nube", "fleet.a", n).await;
 
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "fleet.".into(),
             raw_for_ms: 0, // the count axis only — isolate the cap loop
@@ -101,17 +101,17 @@ async fn the_gc_pass_reports_a_multi_slice_cap_eviction_in_full() {
     .await
     .unwrap();
 
-    let pass = run_gc(&store, "acme", n * 1_000 + 1).await.unwrap();
+    let pass = run_gc(&store, "nube", n * 1_000 + 1).await.unwrap();
     assert_eq!(
         pass.capped_raw,
         (n - CAP) as usize,
         "the GC pass accounts for every evicted row, across both slices"
     );
-    assert_eq!(sample_count(&store, "acme", "fleet.a").await.unwrap(), CAP);
+    assert_eq!(sample_count(&store, "nube", "fleet.a").await.unwrap(), CAP);
 
     // A second pass is a no-op — the first one converged rather than needing another tick.
     assert_eq!(
-        run_gc(&store, "acme", n * 1_000 + 1)
+        run_gc(&store, "nube", n * 1_000 + 1)
             .await
             .unwrap()
             .capped_raw,

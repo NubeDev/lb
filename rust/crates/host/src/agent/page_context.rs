@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn present_context_is_fenced_into_the_goal() {
-        let ctx = json!({ "surface": "dashboards", "path": "/t/acme/dashboards", "search": { "d": "sales" } });
+        let ctx = json!({ "surface": "dashboards", "path": "/t/nube/dashboards", "search": { "d": "sales" } });
         let out = fence_into_goal("q", Some(&ctx)).unwrap();
         assert!(out.starts_with("q\n\n"), "goal stays first: {out}");
         assert!(

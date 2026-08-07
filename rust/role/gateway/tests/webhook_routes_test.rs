@@ -92,7 +92,7 @@ fn with_header(mut req: Request<Body>, name: &'static str, value: &str) -> Reque
 async fn management_verbs_denied_without_webhook_manage() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = token(&key, "user:bob", "acme", NO_MANAGE);
+    let tok = token(&key, "user:bob", "nube", NO_MANAGE);
 
     // list
     let r = app
@@ -134,7 +134,7 @@ async fn escalation_denied_when_creator_lacks_ingest_write() {
     let narrow = token(
         &key,
         "user:narrow",
-        "acme",
+        "nube",
         &["mcp:webhook.manage:call", "secret:webhook/*:write"],
     );
 
@@ -160,7 +160,7 @@ async fn escalation_denied_when_creator_lacks_ingest_write() {
 async fn cross_workspace_url_is_opaque_404() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok_a = admin(&key, "acme");
+    let tok_a = admin(&key, "nube");
 
     // Create a webhook in ws-A.
     let created = create(
@@ -185,7 +185,7 @@ async fn cross_workspace_url_is_opaque_404() {
 async fn ws_b_admin_cannot_see_ws_a_webhooks() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok_a = admin(&key, "acme");
+    let tok_a = admin(&key, "nube");
     let tok_b = admin(&key, "wsB");
 
     let _ = create(
@@ -212,7 +212,7 @@ async fn ws_b_admin_cannot_see_ws_a_webhooks() {
 async fn bearer_mode_create_post_sample_committed() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     // Create a bearer-mode webhook.
     let created = create(
@@ -223,14 +223,14 @@ async fn bearer_mode_create_post_sample_committed() {
     .await;
     let id = created["id"].as_str().unwrap().to_string();
     let secret = created["secret"].as_str().unwrap().to_string();
-    assert!(secret.starts_with("lbk_acme."), "bearer secret shape");
+    assert!(secret.starts_with("lbk_nube."), "bearer secret shape");
 
     // POST a hit with the bearer — accepted, sample committed.
     let body = br#"{"event":"furnace-on"}"#.to_vec();
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, body),
+            hook_req("nube", &id, body),
             "authorization",
             &format!("Bearer {secret}"),
         ))
@@ -239,7 +239,7 @@ async fn bearer_mode_create_post_sample_committed() {
     assert_eq!(r.status(), StatusCode::ACCEPTED);
     let reply: Value = json_body(r).await;
     let series = reply["series"].as_str().unwrap();
-    assert_eq!(series, format!("webhook:acme:{id}"));
+    assert_eq!(series, format!("webhook:nube:{id}"));
 
     // series.read over the MCP bridge returns the sample (the round-trip — the headline).
     let r = app
@@ -264,7 +264,7 @@ async fn bearer_mode_create_post_sample_committed() {
 async fn bearer_mode_wrong_secret_is_opaque_404() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created = create(&app, &tok, json!({"name":"x","auth_mode":"bearer"})).await;
     let id = created["id"].as_str().unwrap().to_string();
@@ -273,9 +273,9 @@ async fn bearer_mode_wrong_secret_is_opaque_404() {
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, b"{}".to_vec()),
+            hook_req("nube", &id, b"{}".to_vec()),
             "authorization",
-            "Bearer lbk_acme.wrongkey.deadbeef",
+            "Bearer lbk_nube.wrongkey.deadbeef",
         ))
         .await
         .unwrap();
@@ -286,22 +286,22 @@ async fn bearer_mode_wrong_secret_is_opaque_404() {
 async fn bearer_mode_wrong_ws_in_bearer_refused() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created = create(&app, &tok, json!({"name":"x","auth_mode":"bearer"})).await;
     let id = created["id"].as_str().unwrap().to_string();
     let real_secret = created["secret"].as_str().unwrap();
 
-    // POST to /hooks/acme/{id} but present a bearer whose ws field is "wsB". Even though the
-    // apikey row would resolve in ws-B, the URL is /hooks/acme/... and the bearer ws must match
+    // POST to /hooks/nube/{id} but present a bearer whose ws field is "wsB". Even though the
+    // apikey row would resolve in ws-B, the URL is /hooks/nube/... and the bearer ws must match
     // the URL ws — refused (opaque 404, same as a wrong secret).
-    // Strip "lbk_acme." and prepend "lbk_wsB." to forge a ws mismatch.
-    let tail = real_secret.strip_prefix("lbk_acme.").unwrap();
+    // Strip "lbk_nube." and prepend "lbk_wsB." to forge a ws mismatch.
+    let tail = real_secret.strip_prefix("lbk_nube.").unwrap();
     let forged = format!("lbk_wsB.{tail}");
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, b"{}".to_vec()),
+            hook_req("nube", &id, b"{}".to_vec()),
             "authorization",
             &format!("Bearer {forged}"),
         ))
@@ -316,7 +316,7 @@ async fn bearer_mode_wrong_ws_in_bearer_refused() {
 async fn signature_mode_create_post_sample_committed() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created = create(
         &app,
@@ -334,7 +334,7 @@ async fn signature_mode_create_post_sample_committed() {
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, body.to_vec()),
+            hook_req("nube", &id, body.to_vec()),
             "x-signature",
             &sig,
         ))
@@ -348,7 +348,7 @@ async fn signature_mode_create_post_sample_committed() {
         .oneshot(bearer(
             json_post(
                 "/mcp/call",
-                json!({"tool":"series.read","args":{"series": format!("webhook:acme:{id}")}}),
+                json!({"tool":"series.read","args":{"series": format!("webhook:nube:{id}")}}),
             ),
             &tok,
         ))
@@ -364,7 +364,7 @@ async fn signature_mode_create_post_sample_committed() {
 async fn signature_mode_wrong_signature_is_opaque_404() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created = create(&app, &tok, json!({"name":"x","auth_mode":"signature"})).await;
     let id = created["id"].as_str().unwrap().to_string();
@@ -373,7 +373,7 @@ async fn signature_mode_wrong_signature_is_opaque_404() {
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, b"{}".to_vec()),
+            hook_req("nube", &id, b"{}".to_vec()),
             "x-signature",
             "sha256=0000000000000000000000000000000000000000000000000000000000000000",
         ))
@@ -386,7 +386,7 @@ async fn signature_mode_wrong_signature_is_opaque_404() {
 async fn signature_mode_missing_header_is_opaque_404() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created = create(&app, &tok, json!({"name":"x","auth_mode":"signature"})).await;
     let id = created["id"].as_str().unwrap().to_string();
@@ -394,7 +394,7 @@ async fn signature_mode_missing_header_is_opaque_404() {
     // No signature header at all — opaque 404.
     let r = app
         .clone()
-        .oneshot(hook_req("acme", &id, b"{}".to_vec()))
+        .oneshot(hook_req("nube", &id, b"{}".to_vec()))
         .await
         .unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
@@ -408,7 +408,7 @@ async fn signature_mode_missing_header_is_opaque_404() {
 async fn signature_mode_body_tamper_breaks_signature() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created = create(&app, &tok, json!({"name":"x","auth_mode":"signature"})).await;
     let id = created["id"].as_str().unwrap().to_string();
@@ -423,7 +423,7 @@ async fn signature_mode_body_tamper_breaks_signature() {
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, pretty.to_vec()),
+            hook_req("nube", &id, pretty.to_vec()),
             "x-signature",
             &sig,
         ))
@@ -442,7 +442,7 @@ async fn signature_mode_body_tamper_breaks_signature() {
 async fn rotate_signature_old_dead_new_works() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created = create(&app, &tok, json!({"name":"x","auth_mode":"signature"})).await;
     let id = created["id"].as_str().unwrap().to_string();
@@ -470,7 +470,7 @@ async fn rotate_signature_old_dead_new_works() {
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, body.to_vec()),
+            hook_req("nube", &id, body.to_vec()),
             "x-signature",
             &old_sig,
         ))
@@ -483,7 +483,7 @@ async fn rotate_signature_old_dead_new_works() {
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, body.to_vec()),
+            hook_req("nube", &id, body.to_vec()),
             "x-signature",
             &new_sig,
         ))
@@ -496,7 +496,7 @@ async fn rotate_signature_old_dead_new_works() {
 async fn revoke_then_route_410s_no_further_samples() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created = create(&app, &tok, json!({"name":"x","auth_mode":"signature"})).await;
     let id = created["id"].as_str().unwrap().to_string();
@@ -508,7 +508,7 @@ async fn revoke_then_route_410s_no_further_samples() {
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, body.to_vec()),
+            hook_req("nube", &id, body.to_vec()),
             "x-signature",
             &sig,
         ))
@@ -531,7 +531,7 @@ async fn revoke_then_route_410s_no_further_samples() {
     let r = app
         .clone()
         .oneshot(with_header(
-            hook_req("acme", &id, body.to_vec()),
+            hook_req("nube", &id, body.to_vec()),
             "x-signature",
             &sig,
         ))
@@ -546,7 +546,7 @@ async fn revoke_then_route_410s_no_further_samples() {
 async fn list_and_get_carry_no_secret_material() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let created_bearer = create(
         &app,
@@ -608,7 +608,7 @@ async fn list_and_get_carry_no_secret_material() {
 async fn create_signature_returns_hmac_header_for_the_wizard() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     // Default header (admin did not pick one) → X-Signature.
     let created = create(&app, &tok, json!({"name":"x","auth_mode":"signature"})).await;
@@ -617,7 +617,7 @@ async fn create_signature_returns_hmac_header_for_the_wizard() {
     assert!(created["url_path"]
         .as_str()
         .unwrap()
-        .starts_with("/hooks/acme/wh_"));
+        .starts_with("/hooks/nube/wh_"));
 
     // Admin-picked header is echoed.
     let created = create(
@@ -633,7 +633,7 @@ async fn create_signature_returns_hmac_header_for_the_wizard() {
 async fn unknown_auth_mode_is_bad_input() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     let r = app
         .clone()

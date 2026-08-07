@@ -138,7 +138,7 @@ async fn an_ordinary_session_token_on_the_refresh_route_is_400() {
     seed_run(&gw, ws, "run-n").await;
     // An ordinary session token (no run_id claim) hitting the route → 400. The route is for
     // run-scoped tokens only; a browser session has no business here.
-    let tok = token(&key, "user:ada", ws, &["mcp:tools.catalog:call"]);
+    let tok = token(&key, "user:test", ws, &["mcp:tools.catalog:call"]);
     let resp = router(gw)
         .oneshot(bearer(
             json_post("/agent/runs/run-n/token/refresh", serde_json::json!({})),

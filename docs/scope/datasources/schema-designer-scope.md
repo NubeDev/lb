@@ -143,7 +143,7 @@ streams data into it:
 
 1. **Design.** Datasources → Schemas → New. On the canvas the admin adds `customers` and `orders`
    table nodes, fills columns inline, marks PKs, drags `orders.customer_id` → `customers.id` to
-   create the FK edge. Save → `dbschema.save {name: "shop", …}` → `db_schema:acme:shop` (layout
+   create the FK edge. Save → `dbschema.save {name: "shop", …}` → `db_schema:nube:shop` (layout
    included). Alternatively **Import from source** seeds the canvas via `federation.schema`.
 2. **Migrate (dry-run).** "Apply to pg-main" → `federation.migrate {source: "pg-main", schema:
    "shop"}` returns the planned DDL (`CREATE TABLE customers …; CREATE TABLE orders …; ALTER …

@@ -80,7 +80,7 @@ async fn ext_publish_signs_and_installs_over_the_real_gateway() {
     let tok = token(
         &key,
         "user:admin",
-        "acme",
+        "nube",
         &["mcp:ext.publish:call", "mcp:hello.echo:call"],
     );
     let remote = Remote::new(&base_url, tok);
@@ -117,7 +117,7 @@ async fn ext_publish_without_the_cap_is_denied_server_side() {
 
     let (base_url, _node, key, handle) = spawn_trusting_gateway().await;
     // A valid session, a fully trusted artifact, but NO ext.publish cap → the server must refuse.
-    let tok = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let tok = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
     let remote = Remote::new(&base_url, tok);
 
     let artifact = lb_cli::sign::sign_extension("hello-v2").expect("sign");

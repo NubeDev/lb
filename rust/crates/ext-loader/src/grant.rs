@@ -11,7 +11,7 @@ use crate::manifest::Manifest;
 /// request; an exact-string match that the admin approved is granted.
 ///
 /// For the `net:*` surface (datasources scope) the admin approves a SPECIFIC endpoint
-/// (`net:tls:tsdb.acme:5432:connect`) while the manifest can only request a STATIC pattern
+/// (`net:tls:tsdb.nube:5432:connect`) while the manifest can only request a STATIC pattern
 /// (`net:tls:*:*:connect`). So a net approval is granted when some requested net cap *pattern-covers*
 /// it (the lb-caps grammar) — the approved specific string becomes the live grant. This is the
 /// per-endpoint approval the scope requires (a source whose endpoint the admin did not approve is

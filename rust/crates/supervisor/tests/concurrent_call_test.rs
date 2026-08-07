@@ -93,7 +93,7 @@ async fn each_caller_identity_stays_with_its_own_call() {
         tasks.push(tokio::spawn(async move {
             let caller = lb_supervisor::Caller {
                 sub: format!("user:{i}"),
-                ws: "acme".into(),
+                ws: "nube".into(),
                 role: "member".into(),
                 delegated: false,
                 admin: false,

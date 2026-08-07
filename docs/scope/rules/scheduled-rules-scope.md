@@ -158,7 +158,7 @@ A facilities analyst schedules `cooler-foodsafety` from the Rules page — no ca
 2. `rules.save` persists the rule (body not executed), then the **syncer** extracts the directive →
    `natural-cron` compiles `"every 15 minutes"` → `"*/15 * * * *"` → `croner` validates → stores
    `schedule: { raw: "every 15 minutes", cron: "*/15 * * * *" }` on the rule.
-3. The syncer **builds the managed flow** `flow:acme:schedule:cooler-foodsafety` —
+3. The syncer **builds the managed flow** `flow:nube:schedule:cooler-foodsafety` —
    `cron trigger (config.cron="*/15 * * * *") → rule node (config.rule="cooler-foodsafety")`, enabled,
    `start_on_boot`, `managed_by="rule-schedule:cooler-foodsafety"` — via `flows.save`.
 4. The **rule page** now shows: `● scheduled · every 15 minutes · next: 14:15 · 14:30 · 14:45 …` with

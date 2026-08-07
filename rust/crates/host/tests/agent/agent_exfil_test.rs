@@ -138,7 +138,7 @@ async fn drive(
         menus: menus.clone(),
         turns: Mutex::new(0),
     });
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     invoke(
         node,
         &gw,

@@ -21,7 +21,7 @@ fn accept_req(ip: &str) -> Request<Body> {
         .header("content-type", "application/json")
         .header("x-forwarded-for", ip)
         .body(Body::from(
-            r#"{"token":"lbi_nope","workspace":"acme","secret":"pw"}"#,
+            r#"{"token":"lbi_nope","workspace":"nube","secret":"pw"}"#,
         ))
         .unwrap()
 }

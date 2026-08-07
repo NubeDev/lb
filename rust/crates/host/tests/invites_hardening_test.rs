@@ -44,12 +44,12 @@ const ADMIN: &[&str] = &[
 async fn double_redeem_loses_before_credential_mutation() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -61,17 +61,17 @@ async fn double_redeem_loses_before_credential_mutation() {
     .await
     .unwrap();
 
-    invite_accept(&store, &key, "acme", &token, "winner-pass", None, 200)
+    invite_accept(&store, &key, "nube", &token, "winner-pass", None, 200)
         .await
         .unwrap();
 
-    let err = invite_accept(&store, &key, "acme", &token, "loser-pass", None, 201)
+    let err = invite_accept(&store, &key, "nube", &token, "loser-pass", None, 201)
         .await
         .unwrap_err();
     assert!(matches!(err, InviteError::AlreadyAccepted));
 
     // The loser never mutated the credential: the winner's password still verifies…
-    let check = credential_verify(&store, "acme", "user:sam@example.com", "winner-pass")
+    let check = credential_verify(&store, "nube", "user:sam@example.com", "winner-pass")
         .await
         .unwrap();
     assert!(
@@ -79,7 +79,7 @@ async fn double_redeem_loses_before_credential_mutation() {
         "winner's credential must be intact"
     );
     // …and the loser's never took.
-    let check = credential_verify(&store, "acme", "user:sam@example.com", "loser-pass")
+    let check = credential_verify(&store, "nube", "user:sam@example.com", "loser-pass")
         .await
         .unwrap();
     assert!(matches!(check, CredentialCheck::BadSecret));
@@ -91,7 +91,7 @@ async fn double_redeem_loses_before_credential_mutation() {
 async fn existing_identity_requires_current_secret() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     // Sam already exists WITH a credential in this workspace.
     lb_authz::identity_create(&store, "user:sam@example.com", Some("sam@example.com"), 10)
@@ -104,7 +104,7 @@ async fn existing_identity_requires_current_secret() {
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -117,7 +117,7 @@ async fn existing_identity_requires_current_secret() {
     .unwrap();
 
     // No current_secret → rejected (409 at the route), and the credential is untouched.
-    let err = invite_accept(&store, &key, "acme", &token, "attacker-pass", None, 200)
+    let err = invite_accept(&store, &key, "nube", &token, "attacker-pass", None, 200)
         .await
         .unwrap_err();
     assert!(matches!(err, InviteError::IdentityExists(_)));
@@ -126,7 +126,7 @@ async fn existing_identity_requires_current_secret() {
     let err = invite_accept(
         &store,
         &key,
-        "acme",
+        "nube",
         &token,
         "attacker-pass",
         Some("wrong-guess"),
@@ -138,9 +138,9 @@ async fn existing_identity_requires_current_secret() {
 
     // Both rejects happened pre-claim AND pre-mutation: the invite is still pending and the
     // original credential still verifies (the attacker's never took).
-    let invites = invite_list(&store, &admin, "acme").await.unwrap();
+    let invites = invite_list(&store, &admin, "nube").await.unwrap();
     assert_eq!(invites[0].status, lb_authz::InviteStatus::Pending);
-    let check = credential_verify(&store, "acme", "user:sam@example.com", "sams-real-pass")
+    let check = credential_verify(&store, "nube", "user:sam@example.com", "sams-real-pass")
         .await
         .unwrap();
     assert!(matches!(check, CredentialCheck::Ok));
@@ -149,7 +149,7 @@ async fn existing_identity_requires_current_secret() {
     let accepted = invite_accept(
         &store,
         &key,
-        "acme",
+        "nube",
         &token,
         "sams-new-pass",
         Some("sams-real-pass"),
@@ -175,12 +175,12 @@ async fn existing_identity_requires_current_secret() {
 async fn accept_then_first_call_passes_a_real_cap_gate() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -192,14 +192,14 @@ async fn accept_then_first_call_passes_a_real_cap_gate() {
     .await
     .unwrap();
 
-    let accepted = invite_accept(&store, &key, "acme", &token, "password123", None, 200)
+    let accepted = invite_accept(&store, &key, "nube", &token, "password123", None, 200)
         .await
         .unwrap();
 
     // The minted token IS the session: verify it with the same key and make a real cap-gated
     // call through the normal authorize_tool path (`mcp:members.list:call` is a member cap).
     let sam = verify(&key, &accepted.token, 201).expect("minted session token verifies");
-    let members = list_members(&store, &sam, "acme", "some-team")
+    let members = list_members(&store, &sam, "nube", "some-team")
         .await
         .expect("first call after accept must pass the cap gate without re-login");
     assert!(members.is_empty());
@@ -211,13 +211,13 @@ async fn accept_then_first_call_passes_a_real_cap_gate() {
 async fn resend_refreshes_expiry_old_token_dead_new_token_works() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     // Created at 100, expires at 200 (TTL 100).
     let old_token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -229,16 +229,16 @@ async fn resend_refreshes_expiry_old_token_dead_new_token_works() {
     .await
     .unwrap();
 
-    let invites = invite_list(&store, &admin, "acme").await.unwrap();
+    let invites = invite_list(&store, &admin, "nube").await.unwrap();
     let old_hash = invites[0].token_hash.clone();
 
     // Resend at 180 (invite nearly expired): the new invite gets the SAME TTL from now.
-    let new_token = invite_resend(&store, &admin, "acme", &old_hash, 180)
+    let new_token = invite_resend(&store, &admin, "nube", &old_hash, 180)
         .await
         .unwrap();
     assert_ne!(new_token, old_token, "resend must rotate the token");
 
-    let invites = invite_list(&store, &admin, "acme").await.unwrap();
+    let invites = invite_list(&store, &admin, "nube").await.unwrap();
     let pending: Vec<_> = invites
         .iter()
         .filter(|i| i.status == lb_authz::InviteStatus::Pending)
@@ -251,13 +251,13 @@ async fn resend_refreshes_expiry_old_token_dead_new_token_works() {
     );
 
     // The old token is dead.
-    let err = invite_accept(&store, &key, "acme", &old_token, "password123", None, 190)
+    let err = invite_accept(&store, &key, "nube", &old_token, "password123", None, 190)
         .await
         .unwrap_err();
     assert!(matches!(err, InviteError::Revoked));
 
     // The new token works — even past the ORIGINAL expiry (the refresh is the point).
-    let accepted = invite_accept(&store, &key, "acme", &new_token, "password123", None, 250)
+    let accepted = invite_accept(&store, &key, "nube", &new_token, "password123", None, 250)
         .await
         .unwrap();
     assert_eq!(accepted.sub, "user:sam@example.com");

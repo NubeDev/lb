@@ -170,7 +170,7 @@ explicit bound, don't hide it.
 
 Two producers, one workspace, a backlog — the measured scenario, after the fix:
 
-1. Producer A (a bridge) has been pushing hard; 4,671 rows sit in `ingest_staging` for `ws=acme`.
+1. Producer A (a bridge) has been pushing hard; 4,671 rows sit in `ingest_staging` for `ws=nube`.
 2. Producer B calls `ingest.write` with **one** sample. `authorize_ingest` passes; the sample is
    stamped `{principal}/{declared}` and durably appended to staging. **~20ms.**
 3. `tool.rs` calls `drain_workspace_bounded(store, ws, 1)`. One `commit_batch` of ≤256 rows runs in
@@ -179,7 +179,7 @@ Two producers, one workspace, a backlog — the measured scenario, after the fix
 4. `ingest.write` returns `{accepted: 1}`. **Total: tens of ms, not 18.5s.** B's next
    `series.latest` over the same bridge reads its value — the round-trip holds.
 5. Meanwhile the ingest drain reactor ticks every few seconds, calling `drain_workspace` (unbounded)
-   on `acme`, chewing the remaining backlog off everyone's call path. It logs
+   on `nube`, chewing the remaining backlog off everyone's call path. It logs
    `committed=N` per non-empty pass, exactly as the relay reactor logs `delivered=N`.
 6. The backlog reaches 0. Nothing stalled, nothing was lost, no producer paid for another's rows.
 

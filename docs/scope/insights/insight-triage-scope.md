@@ -220,7 +220,7 @@ Key cases beyond the mandatory set:
    does. **Membership validation** (resolved decision 2): a `user:` non-member is refused, a
    `team:` of this workspace is **accepted**, and a member/team of *another* workspace is refused
    with the same opaque error as a subject that doesn't exist (a probe must not confirm that
-   `user:ada` exists in ws-B).
+   `user:test` exists in ws-B).
 4. **Author is un-forgeable.** A comment body supplying `author: "user:someone-else"` stores
    the principal's `sub` instead (the `ack.rs` host-stamp precedent).
 5. **List filter.** `assigned_to: "me"` resolves to the calling principal **and their teams**

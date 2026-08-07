@@ -30,7 +30,7 @@ const NOW_MS: u64 = 1_784_070_999_999;
 fn admin(ws: &str) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
-        sub: "user:ada".into(),
+        sub: "user:test".into(),
         ws: ws.into(),
         role: Role::Member,
         caps: [
@@ -72,7 +72,7 @@ async fn gc(store: &Store, p: &Principal, ws: &str) -> u64 {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_new_global_cap_governs_only_after_the_previous_builds_per_network_row_is_removed() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let p = admin(ws);
 
     // ── PRIOR STATE: what the previous build left on disc ──────────────────────────────────────
@@ -144,7 +144,7 @@ async fn the_new_global_cap_governs_only_after_the_previous_builds_per_network_r
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_policy_row_written_before_the_cap_existed_reads_back_unbounded_and_upgrades_in_place() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let p = admin(ws);
 
     PriorSeries::in_ws(ws)

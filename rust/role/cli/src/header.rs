@@ -100,16 +100,16 @@ mod tests {
 
     #[test]
     fn renders_ws_user_role_mode() {
-        let h = Header::new("acme", "user:ada", Role::Member, false);
+        let h = Header::new("nube", "user:test", Role::Member, false);
         assert_eq!(
             h.render(),
-            "ws: acme  user: user:ada  role: member  mode: remote"
+            "ws: nube  user: user:test  role: member  mode: remote"
         );
     }
 
     #[test]
     fn local_mode_is_visible_in_the_header() {
-        let h = Header::new("acme", "user:ada", Role::Member, true);
+        let h = Header::new("nube", "user:test", Role::Member, true);
         assert!(h.render().contains("mode: local"));
     }
 
@@ -131,10 +131,10 @@ mod tests {
 
     #[test]
     fn header_from_token_decodes_the_claims() {
-        let tok = sample_token("acme", "user:ada", Role::Member);
+        let tok = sample_token("nube", "user:test", Role::Member);
         let h = header_from_token(&tok, false).expect("token decodes");
-        assert_eq!(h.workspace, "acme");
-        assert_eq!(h.user, "user:ada");
+        assert_eq!(h.workspace, "nube");
+        assert_eq!(h.user, "user:test");
         assert_eq!(h.role, Role::Member);
     }
 
@@ -142,7 +142,7 @@ mod tests {
     fn the_header_never_contains_the_token() {
         // The token-custody discipline: the header renders identity, never the secret it was decoded
         // from. A regression here would leak the bearer into every command's first line.
-        let tok = sample_token("acme", "user:ada", Role::Member);
+        let tok = sample_token("nube", "user:test", Role::Member);
         let h = header_from_token(&tok, false).unwrap();
         assert!(
             !h.render().contains(&tok),

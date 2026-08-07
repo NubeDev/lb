@@ -29,7 +29,7 @@ after the initial build, both demo-driven and both deliberate:
 
 1. **Live-store role reseed.** New `report.*`/`brand.*` caps didn't reach the already-seeded
    dev store (the frozen built-in-role-row footgun). Fixed for the demo by reseeding
-   (`rust/node/examples/reseed_roles.rs -- acme`). **RESOLVED (durable):** the resolver now UNIONES
+   (`rust/node/examples/reseed_roles.rs -- nube`). **RESOLVED (durable):** the resolver now UNIONES
    the live built-in cap bundle on top of the stored record for granted built-in roles, so a new
    built-in cap takes effect the moment code ships — no re-seed. The throwaway `reseed_roles.rs` is
    deleted. Scope note: `../auth-caps/builtin-role-freshness-scope.md`;

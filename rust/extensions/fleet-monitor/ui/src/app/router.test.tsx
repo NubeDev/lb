@@ -9,7 +9,7 @@ function renderApp() {
     "series.find": () => [{ name: "node-a" }, { name: "node-b" }],
     "series.latest": () => ({ series: "node-a", value: 42 }),
   });
-  render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+  render(<App ctx={{ workspace: "nube" }} bridge={bridge} />);
   return bridge;
 }
 

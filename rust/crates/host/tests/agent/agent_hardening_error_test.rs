@@ -33,7 +33,7 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 const INVOKE: &str = "mcp:agent.invoke:call";
 
 async fn run(node: &Arc<Node>, ws: &str, job: &str, gw: &AiGateway<MockProvider>) -> String {
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     invoke(
         node,
         gw,

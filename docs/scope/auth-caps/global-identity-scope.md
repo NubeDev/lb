@@ -7,7 +7,7 @@ The README's tenancy model (`§7`) and the S0 auth decision (`auth-caps-scope.md
 identity") say **one person is a global identity who belongs to many workspaces and switches between
 them** — the Slack pattern, named as the first collaboration target (README line 387). The current
 code does not implement this: `user.create` / `listUsers` read+write a user row **inside a workspace's
-SurrealDB namespace**, so "bob" in `acme` and "bob" in `globex` are two unrelated records; login
+SurrealDB namespace**, so "bob" in `nube` and "bob" in `globex` are two unrelated records; login
 re-creates the user per workspace; the workspace switcher just re-issues a different token rather
 than carrying one identity across. This scope closes that drift: make identity **global and
 hub-authoritative**, link it to workspaces via a **membership record**, and resolve a login to the
@@ -21,12 +21,12 @@ workspace switcher behave the way the README already says they do.
   (not a workspace namespace), authoritative on the hub (README §6.6). The token's `sub` already
   carries it (`auth-caps-scope.md`); this scope makes the directory + verbs behind it real.
 - **Membership, not per-workspace user rows.** A person joins a workspace via a **`membership`
-  record** (`global_sub → ws`) that lives in that workspace. "The users of acme" becomes "the
-  members of acme" — a roster of global identities, not a fresh row each.
+  record** (`global_sub → ws`) that lives in that workspace. "The users of nube" becomes "the
+  members of nube" — a roster of global identities, not a fresh row each.
 - **Login resolves to workspaces.** Authenticate the global identity ONCE → enumerate the
   workspaces it is a member of → pick one → mint the existing `(sub, ws, caps)` token. The workspace
   switcher becomes real: switching re-mints for another workspace the **same identity** belongs to.
-- **Caps/grants stay workspace-scoped.** Your role and grants in `acme` are independent of `globex`
+- **Caps/grants stay workspace-scoped.** Your role and grants in `nube` are independent of `globex`
   (unchanged). Only *identity* is global; *authority* remains per-workspace. The three gates and the
   Access console operate unchanged on resolved per-workspace caps.
 - **Invite/join flow.** An admin (or a self-join link) adds a global identity to a workspace; removal
@@ -130,23 +130,23 @@ minted per-workspace.
 
 ## Example flow
 
-1. **Provision** → admin `identity.create("user:ada")` (hub-only) creates the global identity in
-   `_lb_identity`. Ada now exists as a person, **in no workspace** — she cannot mint a token yet
+1. **Provision** → admin `identity.create("user:test")` (hub-only) creates the global identity in
+   `_lb_identity`. Test now exists as a person, **in no workspace** — she cannot mint a token yet
    (login requires ≥1 membership).
-2. **Create a workspace (bootstrap)** → Ada `create_workspace("pilot")`: the system auto-`membership.add`s
-   Ada to `pilot` AND grants her `role:workspace-admin`, so a fresh workspace always has exactly one
+2. **Create a workspace (bootstrap)** → Test `create_workspace("pilot")`: the system auto-`membership.add`s
+   Test to `pilot` AND grants her `role:workspace-admin`, so a fresh workspace always has exactly one
    admin and is never orphaned. (For an existing workspace, step 3 is the path.)
-3. **Invite** → a `pilot` admin `membership.add("pilot", "user:ada", …)` writes a `membership:user:ada`
+3. **Invite** → a `pilot` admin `membership.add("pilot", "user:test", …)` writes a `membership:user:test`
    record in `pilot`'s namespace (re-checks `members.manage` server-side; ws from the token) AND grants
-   `role:member` (the default-on-join). Ada is now a member of pilot at the member tier.
-4. **Login** → Ada authenticates (dev-login) → `identity.workspaces("user:ada")` (a hub-only scan of
+   `role:member` (the default-on-join). Test is now a member of pilot at the member tier.
+4. **Login** → Test authenticates (dev-login) → `identity.workspaces("user:test")` (a hub-only scan of
    each workspace's `membership` table) returns `["pilot"]` → she picks `pilot` → the hub mints the
-   existing token `(sub=user:ada, ws=pilot, caps=resolve_caps(...))`. Everything downstream (gates,
+   existing token `(sub=user:test, ws=pilot, caps=resolve_caps(...))`. Everything downstream (gates,
    Access console, teams) is unchanged.
-5. **Second workspace** → a `globex` admin `membership.add("globex", "user:ada")`. Ada's switcher now
-   shows both. She switches → re-mint `(user:ada, globex, …)` — same identity, different workspace,
+5. **Second workspace** → a `globex` admin `membership.add("globex", "user:test")`. Test's switcher now
+   shows both. She switches → re-mint `(user:test, globex, …)` — same identity, different workspace,
    independent caps.
-6. **Leave** → `membership.remove("pilot", "user:ada")` drops the record AND composes `revoke_subject`
+6. **Leave** → `membership.remove("pilot", "user:test")` drops the record AND composes `revoke_subject`
    + `revoke_tokens` (the Access console lever) so her pilot access + live token end cleanly. She is
    still a member of globex; her global identity is untouched. If pilot was her last membership, her
    next login returns "not a member of any workspace."
@@ -245,7 +245,7 @@ on join, first-member bootstrap, login/provisioning rule) plus the two retrofit-
    (bounded — a hub hosts few workspaces; this is NOT a per-request hot path, it runs once at login +
    when the switcher opens). No denormalized reverse index in v1 (it would be a second source of truth
    and drift); add one only if a real hub proves the scan slow.
-6. **Opaque `sub` → NO. Keep the human-handle `sub` (`user:ada`), globally unique.** Grants already key
+6. **Opaque `sub` → NO. Keep the human-handle `sub` (`user:test`), globally unique.** Grants already key
    on `Subject::User(sub)` and every existing grant uses `user:<name>`; switching to opaque `user:<uuid>`
    would retrofit every grant row. Instead the system directory enforces **global uniqueness of `sub`**;
    `display_name` is a separate, non-unique, per-identity field. Rename (changing a `sub`) is an

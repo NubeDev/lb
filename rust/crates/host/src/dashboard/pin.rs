@@ -432,7 +432,7 @@ fn panel_title_from_envelope(envelope: &Value, cell: &Cell) -> String {
 
 /// Slugify an opaque id string into a stable cell-key segment — lowercase, non-alphanumeric → `-`,
 /// collapsed trailing runs. Pure string ops; the input is treated as DATA (a tool id, a view id) never
-/// branched on. `reminder.list` → `reminder-list`; `ext:acme/heat` → `ext-acme-heat`.
+/// branched on. `reminder.list` → `reminder-list`; `ext:nube/heat` → `ext-nube-heat`.
 fn slug(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut prev_dash = false;
@@ -583,7 +583,7 @@ mod tests {
     #[test]
     fn slug_is_pure_string_ops() {
         assert_eq!(slug("reminder.list"), "reminder-list");
-        assert_eq!(slug("ext:acme/heat"), "ext-acme-heat");
+        assert_eq!(slug("ext:nube/heat"), "ext-nube-heat");
         assert_eq!(slug("__test__.x"), "test-x");
         assert_eq!(slug("table"), "table");
         assert_eq!(slug("---"), "");

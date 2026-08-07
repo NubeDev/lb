@@ -76,7 +76,7 @@ async fn dashboard_list_returns_target_past_one_scan_page() {
     let ws = "ws-dash-page";
     let store = Store::memory().await.unwrap();
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &["mcp:dashboard.save:call", "mcp:dashboard.list:call"],
     );
@@ -117,7 +117,7 @@ async fn dashboard_list_returns_target_past_one_scan_page() {
 async fn rules_list_returns_target_past_one_scan_page() {
     let ws = "ws-rules-page";
     let store = Store::memory().await.unwrap();
-    let p = principal("user:ada", ws, &["store:rule:read"]);
+    let p = principal("user:test", ws, &["store:rule:read"]);
 
     // 240 filler rows that fail SavedRule decode (junk) — they occupy pages but `rules_list` swallows
     // them, so the one real rule sorting last is the only thing that can come back.

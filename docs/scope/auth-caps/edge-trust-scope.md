@@ -140,9 +140,9 @@ must match; `caps::check`'s Gate 1 still refuses any cross-workspace key.
 
 ## Example flow
 
-1. An admin issues a **one-time enrollment token** for a new Pi in workspace `acme` (out of band).
+1. An admin issues a **one-time enrollment token** for a new Pi in workspace `nube` (out of band).
 2. The Pi boots, generates a keypair, builds a CSR, and calls `enroll(token, csr)` on the cloud CA.
-3. The CA verifies the token (unused, unexpired), **issues a node cert** (`node:pi-7 / ws:acme / exp`),
+3. The CA verifies the token (unused, unexpired), **issues a node cert** (`node:pi-7 / ws:nube / exp`),
    records it, and burns the enrollment token.
 4. The Pi opens its **Zenoh session to the router with mTLS** using the cert; the router authenticates it.
 5. The Pi makes a routed `ingest.write` call **carrying its principal's signed token**; the **hub

@@ -22,8 +22,8 @@ kill_timeout    = "30s"
 [env]
   # Non-secret runtime knobs. LB_SIGNING_KEY (the stable gateway signing seed — see
   # rust/node/src/main.rs `gateway_signing_key()`) is set via `fly secrets set`, never here.
-  LB_WORKSPACE  = "acme"
-  LB_SEED_USER  = "user:ada"
+  LB_WORKSPACE  = "nube"
+  LB_SEED_USER  = "user:test"
   RUST_LOG      = "info"
 
 [http_service]

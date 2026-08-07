@@ -20,11 +20,11 @@ async fn login_persists_a_credential_a_later_command_loads_and_uses() {
     let cfg_path = dir.path().join("config");
 
     // Invocation 1: login → store the token in the config (as `lb login` does).
-    common::seed_person(&gw.node, "acme", "user:ada", "ada@acme.com").await;
+    common::seed_person(&gw.node, "nube", "user:test", "test@nube-io.com").await;
     let reply = do_login(
         &reqwest::Client::new(),
         &gw.base_url,
-        "ada@acme.com",
+        "test@nube-io.com",
         "any-password-on-a-dev-node",
         None,
     )
@@ -40,7 +40,7 @@ async fn login_persists_a_credential_a_later_command_loads_and_uses() {
     // Invocation 2 (separate): a fresh load of the config selects the stored credential and calls.
     let loaded = load_from(&cfg_path).unwrap();
     let ctx = RunContext {
-        workspace: Some("acme".into()),
+        workspace: Some("nube".into()),
         gateway_url: gw.base_url.clone(),
         local: false,
         config: loaded,
@@ -55,10 +55,10 @@ async fn login_persists_a_credential_a_later_command_loads_and_uses() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn selecting_an_unstored_workspace_errors_loudly() {
-    // `-w gamma` with only an `acme` credential stored → a loud NoCredential error, never a silent
+    // `-w gamma` with only an `nube` credential stored → a loud NoCredential error, never a silent
     // hop to another workspace (the load-bearing `-w` credential-selector rule).
     let mut cfg = Config::default();
-    cfg.set_token("acme", "tok-acme");
+    cfg.set_token("nube", "tok-nube");
     let ctx = RunContext {
         workspace: Some("gamma".into()),
         gateway_url: "http://127.0.0.1:1".into(),
@@ -82,11 +82,11 @@ async fn no_command_output_ever_emits_the_stored_token() {
     // contains the secret token. Runs `whoami` (which reads the token) and `inbox list` and asserts the
     // token appears in neither.
     let gw = spawn_gateway().await;
-    common::seed_person(&gw.node, "acme", "user:ada", "ada@acme.com").await;
+    common::seed_person(&gw.node, "nube", "user:test", "test@nube-io.com").await;
     let reply = do_login(
         &reqwest::Client::new(),
         &gw.base_url,
-        "ada@acme.com",
+        "test@nube-io.com",
         "any-password-on-a-dev-node",
         None,
     )

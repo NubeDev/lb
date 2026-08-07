@@ -90,7 +90,7 @@ fn raise_input(dedup_key: &str, severity: &str, ts: u64) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn raise_without_ts_backfills_wall_clock_not_epoch() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ada = principal("user:ada", "acme", &member_caps());
+    let test = principal("user:test", "nube", &member_caps());
     // The raise input WITHOUT a `ts` field (a caller that forgot to stamp it).
     let input = json!({
         "dedup_key": "no-ts",
@@ -98,11 +98,11 @@ async fn raise_without_ts_backfills_wall_clock_not_epoch() {
         "title": "raised with no ts",
         "origin": { "kind": "rule", "ref": "rule:adhoc" },
     });
-    let out = call(&node, &ada, "acme", "insight.raise", input)
+    let out = call(&node, &test, "nube", "insight.raise", input)
         .await
         .expect("raise ok");
     let id = out["id"].as_str().unwrap();
-    let got = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &test, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     // A real epoch-millis wall-clock, not 0 (1970). 1.7e12 ms ≈ 2023 — any real run clears it.
@@ -121,20 +121,20 @@ async fn raise_without_ts_backfills_wall_clock_not_epoch() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn raise_with_epoch_seconds_ts_is_normalized_to_millis() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ada = principal("user:ada", "acme", &member_caps());
+    let test = principal("user:test", "nube", &member_caps());
     // A real epoch-SECONDS wall-clock (~2026-07-10) — exactly what `gw.now()` produces.
     let secs: u64 = 1_783_632_013;
     let out = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.raise",
         raise_input("secs-ts", "warning", secs),
     )
     .await
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
-    let got = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &test, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     // Stored as millis (×1000), so `new Date(first_ts)` renders as 2026, not 1970.
@@ -143,8 +143,8 @@ async fn raise_with_epoch_seconds_ts_is_normalized_to_millis() {
     // The occurrence row carries the same normalized ts (it derives from the raise's `ts`).
     let ring = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.occurrences",
         json!({ "insight_id": id }),
     )
@@ -161,14 +161,14 @@ async fn raise_with_epoch_seconds_ts_is_normalized_to_millis() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn heal_rewrites_seconds_band_ts_to_millis_and_is_idempotent() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ada = principal("user:ada", "acme", &member_caps());
+    let test = principal("user:test", "nube", &member_caps());
     // Raise with a millis clock, then STOMP the stored ts back to seconds to simulate a legacy row
     // (a record the pre-fix `rules/run` route wrote before normalization existed).
     let secs: u64 = 1_783_632_013;
     let out = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.raise",
         raise_input("legacy", "warning", secs * 1000),
     )
@@ -178,7 +178,7 @@ async fn heal_rewrites_seconds_band_ts_to_millis_and_is_idempotent() {
     // The parent is stored under a `data` envelope; the occurrence row is flat.
     node.store
         .query_ws(
-            "acme",
+            "nube",
             "UPDATE type::thing('insight', $rid) SET data.first_ts = $s, data.last_ts = $s; \
              UPDATE type::table('insight_occ') SET ts = $s WHERE insight_id = $rid",
             vec![
@@ -190,19 +190,19 @@ async fn heal_rewrites_seconds_band_ts_to_millis_and_is_idempotent() {
         .expect("stomp to seconds");
 
     // Heal: seconds-band rows scale ×1000.
-    let fixed = lb_host::heal_insight_timestamps(&node.store, "acme").await;
+    let fixed = lb_host::heal_insight_timestamps(&node.store, "nube").await;
     assert!(
         fixed >= 3,
         "healed the two parent columns + the occurrence row (got {fixed})"
     );
-    let got = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &test, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert_eq!(got["first_ts"].as_u64().unwrap(), secs * 1000);
     assert_eq!(got["last_ts"].as_u64().unwrap(), secs * 1000);
 
     // Idempotent: a millis value is out of the seconds band, so a re-run touches nothing.
-    let again = lb_host::heal_insight_timestamps(&node.store, "acme").await;
+    let again = lb_host::heal_insight_timestamps(&node.store, "nube").await;
     assert_eq!(again, 0, "re-heal is a no-op on already-millis rows");
 }
 
@@ -211,19 +211,19 @@ async fn heal_rewrites_seconds_band_ts_to_millis_and_is_idempotent() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn raise_denied_without_the_cap() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:bob", "acme", &[GET, LIST]); // no RAISE
+    let p = principal("user:bob", "nube", &[GET, LIST]); // no RAISE
     let r = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k1", "critical", 1),
     )
     .await;
     assert!(matches!(r, Err(ToolError::Denied)));
     // The deny left no record — a reader with LIST sees an empty workspace.
-    let reader = principal("user:bob", "acme", &[LIST]);
-    let page = call(&node, &reader, "acme", "insight.list", json!({}))
+    let reader = principal("user:bob", "nube", &[LIST]);
+    let page = call(&node, &reader, "nube", "insight.list", json!({}))
         .await
         .expect("list ok");
     assert_eq!(page["items"].as_array().unwrap().len(), 0);
@@ -232,22 +232,22 @@ async fn raise_denied_without_the_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ack_denied_without_the_cap() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let raiser = principal("user:ada", "acme", &member_caps());
+    let raiser = principal("user:test", "nube", &member_caps());
     let out = call(
         &node,
         &raiser,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k1", "warning", 1),
     )
     .await
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
-    let p = principal("user:bob", "acme", &[RAISE, GET, LIST]); // no ACK
+    let p = principal("user:bob", "nube", &[RAISE, GET, LIST]); // no ACK
     let r = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.ack",
         json!({ "id": id, "ts": 2 }),
     )
@@ -258,22 +258,22 @@ async fn ack_denied_without_the_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn occurrences_denied_without_the_cap_even_with_get() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let raiser = principal("user:ada", "acme", &member_caps());
+    let raiser = principal("user:test", "nube", &member_caps());
     let out = call(
         &node,
         &raiser,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k1", "warning", 1),
     )
     .await
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
-    let p = principal("user:bob", "acme", &[RAISE, GET]); // no OCC
+    let p = principal("user:bob", "nube", &[RAISE, GET]); // no OCC
     let r = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.occurrences",
         json!({ "insight_id": id }),
     )
@@ -287,11 +287,11 @@ async fn occurrences_denied_without_the_cap_even_with_get() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn sub_create_denied_without_the_channel_pub() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:bob", "acme", &[SUB_CREATE]); // no bus:chan/*:pub
+    let p = principal("user:bob", "nube", &[SUB_CREATE]); // no bus:chan/*:pub
     let r = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.sub.create",
         json!({
             "sink": { "kind": "channel", "channel": "ops" },
@@ -309,22 +309,22 @@ async fn sub_create_denied_without_the_channel_pub() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn delete_denied_without_the_cap() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let raiser = principal("user:ada", "acme", &member_caps());
+    let raiser = principal("user:test", "nube", &member_caps());
     let out = call(
         &node,
         &raiser,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k1", "warning", 1),
     )
     .await
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
-    let p = principal("user:bob", "acme", &[RAISE, GET, LIST]); // no DELETE
-    let r = call(&node, &p, "acme", "insight.delete", json!({ "id": id })).await;
+    let p = principal("user:bob", "nube", &[RAISE, GET, LIST]); // no DELETE
+    let r = call(&node, &p, "nube", "insight.delete", json!({ "id": id })).await;
     assert!(matches!(r, Err(ToolError::Denied)), "delete denied opaque");
     // The deny left the record intact — a reader still sees it.
-    let got = call(&node, &raiser, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &raiser, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert_eq!(
@@ -337,11 +337,11 @@ async fn delete_denied_without_the_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn occurrence_delete_denied_without_the_cap() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let raiser = principal("user:ada", "acme", &member_caps());
+    let raiser = principal("user:test", "nube", &member_caps());
     let out = call(
         &node,
         &raiser,
-        "acme",
+        "nube",
         "insight.raise",
         raise_input("k1", "warning", 1),
     )
@@ -349,11 +349,11 @@ async fn occurrence_delete_denied_without_the_cap() {
     .expect("raise ok");
     let id = out["id"].as_str().unwrap();
     // occurrence.delete is NOT implied by the occurrences READ cap.
-    let p = principal("user:bob", "acme", &[RAISE, GET, OCC]);
+    let p = principal("user:bob", "nube", &[RAISE, GET, OCC]);
     let r = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.occurrence.delete",
         json!({ "insight_id": id, "oseq": 1 }),
     )
@@ -367,12 +367,12 @@ async fn occurrence_delete_denied_without_the_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn delete_removes_the_insight_and_cascades_its_occurrence_ring() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ada = principal("user:ada", "acme", &member_caps());
+    let test = principal("user:test", "nube", &member_caps());
     // Raise twice on the same dedup_key → one insight, two occurrence rows (ring).
     let out = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.raise",
         raise_input("k1", "warning", 1),
     )
@@ -381,8 +381,8 @@ async fn delete_removes_the_insight_and_cascades_its_occurrence_ring() {
     let id = out["id"].as_str().unwrap().to_string();
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.raise",
         raise_input("k1", "critical", 2),
     )
@@ -390,8 +390,8 @@ async fn delete_removes_the_insight_and_cascades_its_occurrence_ring() {
     .expect("raise 2");
     let ring = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.occurrences",
         json!({ "insight_id": id }),
     )
@@ -404,17 +404,17 @@ async fn delete_removes_the_insight_and_cascades_its_occurrence_ring() {
     );
 
     // Delete cascades: parent gone AND its ring emptied.
-    call(&node, &ada, "acme", "insight.delete", json!({ "id": id }))
+    call(&node, &test, "nube", "insight.delete", json!({ "id": id }))
         .await
         .expect("delete ok");
-    let got = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &test, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get after delete");
     assert!(got.is_null(), "insight is gone after delete");
     let ring_after = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.occurrences",
         json!({ "insight_id": id }),
     )
@@ -427,7 +427,7 @@ async fn delete_removes_the_insight_and_cascades_its_occurrence_ring() {
     );
 
     // Idempotent — a second delete is still Ok.
-    call(&node, &ada, "acme", "insight.delete", json!({ "id": id }))
+    call(&node, &test, "nube", "insight.delete", json!({ "id": id }))
         .await
         .expect("second delete idempotent");
 }
@@ -435,11 +435,11 @@ async fn delete_removes_the_insight_and_cascades_its_occurrence_ring() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ada = principal("user:ada", "acme", &member_caps());
+    let test = principal("user:test", "nube", &member_caps());
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.raise",
         raise_input("k1", "warning", 1),
     )
@@ -447,8 +447,8 @@ async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
     .expect("raise 1");
     let out2 = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.raise",
         raise_input("k1", "critical", 2),
     )
@@ -456,7 +456,7 @@ async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
     .expect("raise 2");
     let id = out2["id"].as_str().unwrap().to_string();
     // `count` is the lifetime firing total (2 after two raises).
-    let before = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+    let before = call(&node, &test, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get before");
     assert_eq!(before["count"].as_u64().unwrap(), 2);
@@ -464,8 +464,8 @@ async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
     // The ring has two rows; grab the oldest oseq and delete just that one.
     let ring = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.occurrences",
         json!({ "insight_id": id }),
     )
@@ -476,8 +476,8 @@ async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
     let oseq = items.last().unwrap()["oseq"].as_u64().unwrap();
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.occurrence.delete",
         json!({ "insight_id": id, "oseq": oseq }),
     )
@@ -487,8 +487,8 @@ async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
     // One row gone; the parent record + its lifetime count are untouched.
     let ring_after = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.occurrences",
         json!({ "insight_id": id }),
     )
@@ -499,7 +499,7 @@ async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
     assert!(after_items
         .iter()
         .all(|o| o["oseq"].as_u64().unwrap() != oseq));
-    let after = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+    let after = call(&node, &test, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get after");
     assert_eq!(
@@ -514,7 +514,7 @@ async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn list_in_one_workspace_never_returns_another_workspaces_insights() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let a = principal("user:ada", "ws-a", &member_caps());
+    let a = principal("user:test", "ws-a", &member_caps());
     let b = principal("user:bea", "ws-b", &member_caps());
     call(
         &node,
@@ -542,7 +542,7 @@ async fn list_in_one_workspace_never_returns_another_workspaces_insights() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn delete_in_one_workspace_cannot_reach_another_workspaces_insight() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let a = principal("user:ada", "ws-a", &member_caps());
+    let a = principal("user:test", "ws-a", &member_caps());
     let b = principal("user:bea", "ws-b", &member_caps());
     let out = call(
         &node,
@@ -572,7 +572,7 @@ async fn delete_in_one_workspace_cannot_reach_another_workspaces_insight() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn occurrences_never_leak_across_workspaces() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let a = principal("user:ada", "ws-a", &member_caps());
+    let a = principal("user:test", "ws-a", &member_caps());
     let b = principal("user:bea", "ws-b", &member_caps());
     let out = call(
         &node,
@@ -602,7 +602,7 @@ async fn occurrences_never_leak_across_workspaces() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn raise_dedup_bumps_count_and_preserves_acked_status() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &member_caps());
+    let p = principal("user:test", "ws-a", &member_caps());
     let o1 = call(
         &node,
         &p,
@@ -659,7 +659,7 @@ async fn raise_dedup_bumps_count_and_preserves_acked_status() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn raise_after_resolve_reopens() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &member_caps());
+    let p = principal("user:test", "ws-a", &member_caps());
     let o1 = call(
         &node,
         &p,
@@ -703,7 +703,7 @@ async fn raise_after_resolve_reopens() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ring_cap_evicts_oldest_but_count_is_lifetime() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &member_caps());
+    let p = principal("user:test", "ws-a", &member_caps());
     // Shrink the ring so the test is cheap: cap = 3.
     call(
         &node,
@@ -754,7 +754,7 @@ async fn ring_cap_evicts_oldest_but_count_is_lifetime() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn oversize_occurrence_data_rejects_the_whole_raise() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &member_caps());
+    let p = principal("user:test", "ws-a", &member_caps());
     // A >2 KB string payload.
     let big = "x".repeat(3000);
     let input = json!({
@@ -790,7 +790,7 @@ async fn oversize_occurrence_data_rejects_the_whole_raise() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn matcher_delivers_to_a_matching_tag_sub_and_not_a_nonmatching_one() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &member_caps());
+    let p = principal("user:test", "ws-a", &member_caps());
     // Sub 1 matches tag kind=anomaly into channel "ops"; sub 2 filters a different tag.
     call(
         &node,
@@ -851,7 +851,7 @@ async fn matcher_delivers_to_a_matching_tag_sub_and_not_a_nonmatching_one() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ladder_first_raise_posts_then_cooldown_holds_the_rest() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &member_caps());
+    let p = principal("user:test", "ws-a", &member_caps());
     call(
         &node,
         &p,
@@ -895,7 +895,7 @@ async fn ladder_first_raise_posts_then_cooldown_holds_the_rest() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn digest_reactor_is_idempotent_on_rerun() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &member_caps());
+    let p = principal("user:test", "ws-a", &member_caps());
     call(
         &node,
         &p,
@@ -953,12 +953,12 @@ async fn digest_reactor_is_idempotent_on_rerun() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn member_kill_switch_off_skips_all_deliveries() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "ws-a", &member_caps());
-    // Turn OFF ada's per-member insight notifications (the prefs kill switch).
+    let p = principal("user:test", "ws-a", &member_caps());
+    // Turn OFF test's per-member insight notifications (the prefs kill switch).
     let patch: lb_prefs::Prefs =
         serde_json::from_value(serde_json::json!({ "insight_notifications": false }))
             .expect("prefs patch");
-    lb_prefs::set_user_prefs(&node.store, "ws-a", "user:ada", &patch, &[])
+    lb_prefs::set_user_prefs(&node.store, "ws-a", "user:test", &patch, &[])
         .await
         .expect("set prefs");
 

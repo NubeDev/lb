@@ -142,21 +142,21 @@ affordances.
 
 ## Example flow
 
-1. Ada builds a "Cooler temp (24h)" chart on `dashboard:ops`. In the panel editor she hits **Save as
+1. Test builds a "Cooler temp (24h)" chart on `dashboard:ops`. In the panel editor she hits **Save as
    library panel** → `panel.save` writes `panel:cooler-temp-24h` (spec extracted); her cell becomes
    `{ i,x,y,w,h, panel_ref: "panel:cooler-temp-24h" }`.
 2. She sets the panel `visibility: workspace`. On `dashboard:exec-summary` she picks **Add library
    panel** → `panel.list` → inserts a ref cell; only geometry is authored there.
-3. A month later the sensor series is renamed. Ada edits the panel **once** (from either dashboard, or
+3. A month later the sensor series is renamed. Test edits the panel **once** (from either dashboard, or
    the standalone page — the editor banner shows "library panel — used on 2 dashboards" via
    `panel.usage`). Both dashboards show the fix on next load.
 4. Ben (no `series:hvac.*:read`) opens `dashboard:exec-summary`: the ref hydrates (he can read the
    panel record) but `viz.query` denies the data — the cell shows the honest deny, exactly as an
    inline cell would.
-5. Ada shares the direct link `/t/ops/panel/cooler-temp-24h` in a channel; it renders the panel
+5. Test shares the direct link `/t/ops/panel/cooler-temp-24h` in a channel; it renders the panel
    full-bleed with its own range picker — no dashboard involved. (Later, a nav entry can point at the
    same page.)
-6. The exec dashboard needs a variant with a different threshold: Ada duplicates the ref and hits
+6. The exec dashboard needs a variant with a different threshold: Test duplicates the ref and hits
    **Unlink** on the copy — the spec is copied inline, drift is now explicit and hers.
 7. She tries `panel.delete` on a panel used by 2 dashboards → refused with the usage list; `force:true`
    tombstones it and referencing cells render the "panel deleted" placeholder until relinked/removed.

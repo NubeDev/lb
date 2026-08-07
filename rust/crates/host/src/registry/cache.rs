@@ -134,8 +134,8 @@ mod tests {
         let digest_hex = verified.artifact().digest_hex.clone();
         let expected = verified.artifact().clone();
 
-        cache_artifact(&store, "acme", &verified).await.unwrap();
-        let read_back = read_cached(&store, "acme", &digest_hex)
+        cache_artifact(&store, "nube", &verified).await.unwrap();
+        let read_back = read_cached(&store, "nube", &digest_hex)
             .await
             .unwrap()
             .expect("cached");
@@ -147,7 +147,7 @@ mod tests {
         // No blob is ever written on a cache miss (the metadata read short-circuits first), so this
         // test never touches the filesystem — no LB_DIR setup needed.
         let store = Store::memory().await.unwrap();
-        assert!(read_cached(&store, "acme", &"a".repeat(64))
+        assert!(read_cached(&store, "nube", &"a".repeat(64))
             .await
             .unwrap()
             .is_none());
@@ -161,9 +161,9 @@ mod tests {
         let store = Store::memory().await.unwrap();
         let verified = sample_verified(vec![0xABu8; 2 * 1024 * 1024]);
         let digest_hex = verified.artifact().digest_hex.clone();
-        cache_artifact(&store, "acme", &verified).await.unwrap();
+        cache_artifact(&store, "nube", &verified).await.unwrap();
 
-        let raw_row = read(&store, "acme", TABLE, &digest_hex)
+        let raw_row = read(&store, "nube", TABLE, &digest_hex)
             .await
             .unwrap()
             .expect("row exists");

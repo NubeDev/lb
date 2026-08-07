@@ -89,20 +89,20 @@ GW_URL  := http://$(GW_HOST):$(GW_PORT)
 UI_PORT ?= 5173
 
 # The workspace the node serves. One workspace is enough for the demo (= tenant).
-WS ?= acme
+WS ?= nube
 
 # The dev identity the node seeds as a `workspace-admin` member of $(WS) at boot (global-identity
 # scope). The login gate requires membership, so the node boot-straps this identity into the workspace
 # (provisioning + joining — NOT a login bypass). Override with the handle you log in as; clear it
 # (LB_SEED_USER=) to skip seeding entirely.
-SEED_USER ?= user:ada
+SEED_USER ?= user:test
 
 # The dev identity's GLOBAL email + password — the handle `POST /auth/login {email, password}` (the
 # ONLY human door since the legacy `POST /login` was deleted, 2026-08-03) authenticates. The boot seed
 # writes both onto $(SEED_USER); without an email there is literally no way to sign in, so these are
 # defaulted rather than left unset. `LB_DEV_LOGIN=1` on the dev targets keeps the check password-less
 # (dev/CI only — a release build without the flag demands the real argon2 password).
-SEED_EMAIL ?= ada@$(WS).local
+SEED_EMAIL ?= test@$(WS).local
 SEED_PASSWORD ?= dev-admin-pw
 SEED_ENV := LB_SEED_USER=$(SEED_USER) LB_SEED_EMAIL=$(SEED_EMAIL) LB_SEED_PASSWORD=$(SEED_PASSWORD) LB_DEV_LOGIN=1
 

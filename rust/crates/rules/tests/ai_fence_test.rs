@@ -71,12 +71,12 @@ fn proposed_sql_is_revalidated_through_the_gate() {
         32,
     );
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: r#"ai.ask("how much is payroll?").records()"#.into(),
         params: vec![],
     };
-    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new(), 0);
+    let mut rr = RuleRun::new("nube".into(), allow_series(), rhai::Map::new(), 0);
     let err = eng.run(&rule, &mut rr).unwrap_err();
     // The proposed SQL was rejected at the collect gate — the fence held (routed through the same
     // deny the host's caps::check + workspace pin produces; never reached execution).
@@ -114,12 +114,12 @@ fn budget_caps_calls_a_loop_cannot_overspend() {
         32,
     );
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: r#"for i in 0..100 { ai.complete("hi"); } 1"#.into(),
         params: vec![],
     };
-    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new(), 0);
+    let mut rr = RuleRun::new("nube".into(), allow_series(), rhai::Map::new(), 0);
     let err = eng.run(&rule, &mut rr).unwrap_err();
     assert!(matches!(err, RuleError::Eval(_)), "got {err:?}");
     // exactly the cap was charged (the rejected call rolled back, not counted past the cap)
@@ -150,12 +150,12 @@ fn budget_caps_summed_tokens() {
         32,
     );
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: r#"for i in 0..100 { ai.complete("hi"); } 1"#.into(),
         params: vec![],
     };
-    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new(), 0);
+    let mut rr = RuleRun::new("nube".into(), allow_series(), rhai::Map::new(), 0);
     let err = eng.run(&rule, &mut rr).unwrap_err();
     assert!(matches!(err, RuleError::Eval(_)), "got {err:?}");
     // 500 + 500 ok (1000), third call's tokens push over 1200 -> abort after 3 calls
@@ -181,13 +181,13 @@ fn source_not_in_allowlist_is_denied_mid_run() {
         32,
     );
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: r#"source("payroll_db").records()"#.into(),
         params: vec![],
     };
     // allowlist has only "series" — payroll_db is denied before any query runs.
-    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new(), 0);
+    let mut rr = RuleRun::new("nube".into(), allow_series(), rhai::Map::new(), 0);
     let err = eng.run(&rule, &mut rr).unwrap_err();
     assert!(matches!(err, RuleError::SourceNotAllowed(_)), "got {err:?}");
 }

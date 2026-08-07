@@ -154,7 +154,7 @@ record.
 - **Data (SurrealDB):** one table `apikey`, records `apikey:{ws}:{id}`:
   `{ id, label, kind, key_hash, prefix, expires_at?, created_ts, last_used_at?, status }`
   where `key_hash = HMAC-SHA256(pepper, secret)` and `prefix` is the non-secret display stub
-  (e.g. `lbk_acme.k7f3a…`) for the list view, tombstone `__revoked__`. Grants/roles for the key
+  (e.g. `lbk_nube.k7f3a…`) for the list view, tombstone `__revoked__`. Grants/roles for the key
   live in the existing `grant`/`role` tables under subject `key:{id}`. **This record is shared,
   cloud-authoritative workspace data — it syncs like grants** (the key's grants under
   `key:{id}` already sync §6.8; a non-syncing key record would orphan them on peers). State only
@@ -187,17 +187,17 @@ record.
    narrowing cap `mcp:series.write:call` only.
 2. The UI calls `apikey.create`. The host generates id `k7f3a…` (base32, no `_`), a 32-byte
    base32 secret, **first checks the key's effective resolved caps ⊆ the admin's caps** (else
-   `Denied`), stores `apikey:acme:k7f3a…` with `key_hash = HMAC-SHA256(pepper, secret)`, assigns
+   `Denied`), stores `apikey:nube:k7f3a…` with `key_hash = HMAC-SHA256(pepper, secret)`, assigns
    role `apikey-write` to subject `key:k7f3a…` via the existing `grant_assign`, and returns the
-   one-time string `lbk_acme.k7f3a….<secret>`. The UI shows it once with a copy button and a
+   one-time string `lbk_nube.k7f3a….<secret>`. The UI shows it once with a copy button and a
    "you won't see this again" warning.
 3. The appliance stores the string and calls the gateway with
-   `Authorization: Bearer lbk_acme.k7f3a….<secret>`.
-4. Gateway auth middleware sees `lbk_`, splits the three dot fields → ws `acme`, id `k7f3a…`,
+   `Authorization: Bearer lbk_nube.k7f3a….<secret>`.
+4. Gateway auth middleware sees `lbk_`, splits the three dot fields → ws `nube`, id `k7f3a…`,
    secret, fetches the record, constant-time-compares `HMAC-SHA256(pepper, secret_field)` to
    `key_hash`, confirms `status==active` and `now < expires_at`, runs
-   `resolve_subject_caps(store, "acme", &Subject::Key("k7f3a…"))`, and builds
-   `Principal::for_key(sub="key:k7f3a…", ws="acme", caps)`. It caches hash→principal briefly.
+   `resolve_subject_caps(store, "nube", &Subject::Key("k7f3a…"))`, and builds
+   `Principal::for_key(sub="key:k7f3a…", ws="nube", caps)`. It caches hash→principal briefly.
 5. The appliance calls `series.write` → `caps::check` passes (gate 1 ws match, gate 2 the
    resolved write cap). It calls `series.delete` → **denied** (not in its caps). A read-only
    key would be denied `series.write` too — read-only is just the cap set.

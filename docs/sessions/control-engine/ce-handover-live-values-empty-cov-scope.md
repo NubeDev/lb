@@ -68,7 +68,7 @@ cd /home/user/code/rust/lb/rust && cargo build -p control-engine
 
 # 2. mint a token, arm the watch with the REAL appliance id, read the stream:
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login -H 'Content-Type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+  -d '{"user":"user:test","workspace":"nube"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 S=$(curl -s -X POST http://127.0.0.1:8080/mcp/call -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"tool":"control-engine.watch","args":{"appliance":"aaaa"}}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["series"])')

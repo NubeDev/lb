@@ -131,8 +131,8 @@ error body that echoes the submitted secrets producing an error carrying neither
   (not merely an error), and the caller under test holds a *different real* capability so the assertion
   is about the `invite.create` gate rather than "a capless principal is denied everything"; the granted
   path then stages one, so the emptiness assertion cannot be vacuous.
-- **workspace isolation** — a password sealed in `globex` is unreachable from an `acme` effect. Observable
-  without a relay: acme fails **permanently** with "no credential at secret path …" while globex gets
+- **workspace isolation** — a password sealed in `globex` is unreachable from an `nube` effect. Observable
+  without a relay: nube fails **permanently** with "no credential at secret path …" while globex gets
   past resolution and fails with a **transient** connection error against a closed port.
 - the `push_target` hardcoded-workspace regression cross-checked: an effect with no `workspace` is parked
   on the first attempt with a reason, and nothing is sent.

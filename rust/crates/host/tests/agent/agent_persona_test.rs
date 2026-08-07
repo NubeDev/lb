@@ -235,7 +235,7 @@ async fn crud_roundtrips_for_an_admin() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-crud";
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[P_CREATE, P_GET, P_UPDATE, P_DELETE, P_LIST],
     );
@@ -306,7 +306,7 @@ async fn builtin_write_is_rejected_before_the_caps_gate() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-builtin";
     // Even a fully-capped admin cannot write a `builtin.*` id — read-only tier, checked FIRST.
-    let admin = principal("user:ada", ws, &[P_CREATE, P_UPDATE, P_DELETE]);
+    let admin = principal("user:test", ws, &[P_CREATE, P_UPDATE, P_DELETE]);
 
     let err = agent_persona_create(&node, &admin, ws, &analyst_persona("builtin.forged"))
         .await
@@ -357,20 +357,20 @@ async fn builtins_seed_readable_everywhere_writable_nowhere_idempotent() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_cannot_get_ws_a_custom_persona() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let admin_a = principal("user:ada", "ws-a", &[P_CREATE]);
-    agent_persona_create(&node, &admin_a, "ws-a", &analyst_persona("ada-only"))
+    let admin_a = principal("user:test", "ws-a", &[P_CREATE]);
+    agent_persona_create(&node, &admin_a, "ws-a", &analyst_persona("test-only"))
         .await
         .expect("create in ws-a");
 
     // A ws-B admin reading the same id → NotFound (the hard wall). Different namespace.
     let admin_b = principal("user:bo", "ws-b", &[P_GET]);
     assert!(matches!(
-        agent_persona_get(&node, &admin_b, "ws-b", "ada-only").await,
+        agent_persona_get(&node, &admin_b, "ws-b", "test-only").await,
         Err(lb_mcp::ToolError::NotFound)
     ));
     // But ws-A still has it.
-    let reader_a = principal("user:ada", "ws-a", &[P_GET]);
-    assert!(agent_persona_get(&node, &reader_a, "ws-a", "ada-only")
+    let reader_a = principal("user:test", "ws-a", &[P_GET]);
+    assert!(agent_persona_get(&node, &reader_a, "ws-a", "test-only")
         .await
         .is_ok());
 }
@@ -415,7 +415,7 @@ async fn swap_test_in_house_menu_and_identity_reflect_a_record_only_persona() {
     let ws = "persona-swap-inhouse";
     // The caller is granted BOTH memory reads + invoke; the persona will narrow to just `.list`.
     let caller = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             INVOKE,
@@ -483,7 +483,7 @@ async fn narrowing_a_persona_tool_the_caller_lacks_is_never_added() {
     // reachable menu, so narrowing can't conjure it. `persona ∩ reachable` can only shrink.
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-nowiden";
-    let caller = principal("user:ada", ws, &[INVOKE, P_CREATE, CFG_SET, MEM_LIST_CAP]);
+    let caller = principal("user:test", ws, &[INVOKE, P_CREATE, CFG_SET, MEM_LIST_CAP]);
 
     // A persona that lists a tool the caller does NOT have a cap for.
     let mut p = analyst_persona("greedy");
@@ -532,7 +532,7 @@ async fn swap_test_external_runtime_advertises_narrowed_tools_and_folds_identity
     let ws = "persona-swap-external";
     let ext_id = "ext-runtime";
     let caller = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[INVOKE, P_CREATE, MEM_LIST_CAP, MEM_GET_CAP, CATALOG_CAP],
     );
@@ -582,7 +582,7 @@ async fn swap_test_external_runtime_advertises_narrowed_tools_and_folds_identity
 async fn a_pinned_ungranted_skill_fails_the_run_at_start_with_a_named_error() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-failclosed";
-    let caller = principal("user:ada", ws, &[INVOKE, P_CREATE]);
+    let caller = principal("user:test", ws, &[INVOKE, P_CREATE]);
 
     // A persona pinning a skill the workspace has NOT granted.
     let mut p = analyst_persona("grounded");
@@ -620,7 +620,7 @@ async fn a_pinned_ungranted_skill_fails_the_run_at_start_with_a_named_error() {
 async fn an_explicit_unknown_persona_is_a_named_error_not_a_silent_run() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-explicit-unknown";
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let (registry, _c) = recording_registry("x");
 
     let err = invoke_via_runtime(
@@ -653,7 +653,7 @@ async fn a_dangling_active_persona_warns_and_runs_un_narrowed() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-dangling";
     let caller = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             INVOKE,
@@ -700,7 +700,7 @@ async fn explicit_persona_overrides_the_active_one() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-precedence";
     let caller = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             INVOKE,
@@ -773,7 +773,7 @@ async fn extends_unions_parent_tools_and_skips_a_self_cycle() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-extends";
     let caller = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             INVOKE,
@@ -841,7 +841,7 @@ async fn extends_unions_parent_tools_and_skips_a_self_cycle() {
 async fn a_two_node_extends_cycle_is_rejected_at_write() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-cycle";
-    let caller = principal("user:ada", ws, &[P_CREATE, P_UPDATE]);
+    let caller = principal("user:test", ws, &[P_CREATE, P_UPDATE]);
 
     agent_persona_create(&node, &caller, ws, &analyst_persona("a"))
         .await
@@ -878,7 +878,7 @@ const POLICY_SET: &str = "mcp:agent.policy.set:call";
 async fn resolve_verb_returns_the_extends_unioned_effective_persona() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-resolve-verb";
-    let caller = principal("user:ada", ws, &[P_CREATE, P_RESOLVE]);
+    let caller = principal("user:test", ws, &[P_CREATE, P_RESOLVE]);
 
     // parent → get; child adds list + extends parent.
     let mut parent = analyst_persona("p");
@@ -935,7 +935,7 @@ async fn resolve_verb_is_denied_without_the_cap() {
 async fn policy_get_round_trips_the_set_policy() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-policy-rt";
-    let admin = principal("user:ada", ws, &[POLICY_SET, POLICY_GET]);
+    let admin = principal("user:test", ws, &[POLICY_SET, POLICY_GET]);
 
     // Empty by default.
     let empty = call_agent_tool(
@@ -1014,7 +1014,7 @@ async fn a_persona_grounded_run_is_fed_its_pinned_skill_body_not_the_repo() {
     seed_core_skills(&node.store, "0.1.0", 1)
         .await
         .expect("seed core skills");
-    let admin = principal("user:ada", ws, &[SKILL_READ, SKILL_WRITE]);
+    let admin = principal("user:test", ws, &[SKILL_READ, SKILL_WRITE]);
     grant_skill(&node.store, &admin, ws, "core.e2e-backend")
         .await
         .expect("grant the runbook");
@@ -1022,7 +1022,7 @@ async fn a_persona_grounded_run_is_fed_its_pinned_skill_body_not_the_repo() {
     // A persona that PINS the runbook and narrows the menu to data verbs — crucially, NO fs/repo/shell
     // tool is granted (there is no such host verb anyway; the point is the menu is the persona's focus).
     let caller = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             INVOKE,
@@ -1088,7 +1088,7 @@ async fn a_persona_pinning_an_ungranted_real_seed_fails_closed() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "persona-grounding-deny";
     seed_core_skills(&node.store, "0.1.0", 1).await.unwrap();
-    let caller = principal("user:ada", ws, &[INVOKE, P_CREATE]);
+    let caller = principal("user:test", ws, &[INVOKE, P_CREATE]);
     let mut p = analyst_persona("wants-runbook");
     p.grounding_skills = vec!["core.e2e-backend".into()]; // seeded but NOT granted in this ws
     agent_persona_create(&node, &caller, ws, &p).await.unwrap();

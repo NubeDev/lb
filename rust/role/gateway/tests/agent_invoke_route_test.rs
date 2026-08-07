@@ -39,7 +39,7 @@ struct Reply {
 async fn granted_invoke_drives_the_active_agent() {
     let (gw, key) = gateway().await;
     let ws = "gw-agent-invoke";
-    let tok = token(&key, "user:ada", ws, INVOKE);
+    let tok = token(&key, "user:test", ws, INVOKE);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -96,7 +96,7 @@ async fn the_run_is_keyed_to_the_tokens_workspace() {
     let key = SigningKey::generate();
     let goal = "same goal in both workspaces";
 
-    let tok_b = token(&key, "user:ada", "ws-b", INVOKE);
+    let tok_b = token(&key, "user:test", "ws-b", INVOKE);
     let resp = router(gateway_on(node.clone(), &key))
         .oneshot(bearer(
             json_post("/agent/invoke", json!({ "goal": goal })),
@@ -130,7 +130,7 @@ async fn invoke_accepts_the_optional_page_context() {
     // channel `kind:"agent"` payload). A well-formed context drives the run normally (the fence is
     // appended to the goal server-side; the unconfigured model still answers).
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "gw-agent-ctx", INVOKE);
+    let tok = token(&key, "user:test", "gw-agent-ctx", INVOKE);
     let resp = router(gw)
         .oneshot(bearer(
             json_post(
@@ -156,7 +156,7 @@ async fn invoke_rejects_an_oversize_page_context() {
     // The 4 KB cap is enforced at the fence: an oversize context is a `400` (BadInput), not a run
     // fault — the client sent too much prompt material, and the reject is honest (not the opaque 403).
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "gw-agent-ctx-big", INVOKE);
+    let tok = token(&key, "user:test", "gw-agent-ctx-big", INVOKE);
     let big = "x".repeat(5000); // > 4 KB serialized
     let resp = router(gw)
         .oneshot(bearer(

@@ -98,11 +98,11 @@ async fn list_row(node: &Arc<Node>, p: &Principal, ws: &str, id: &str, filter: V
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn echo_lands_on_raise_and_appears_in_both_get_and_list() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST]);
     let id = raise_id(
         &node,
         &p,
-        "acme",
+        "nube",
         raise_input(
             "k",
             1,
@@ -111,7 +111,7 @@ async fn echo_lands_on_raise_and_appears_in_both_get_and_list() {
     )
     .await;
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": &id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": &id }))
         .await
         .expect("get ok");
     assert_eq!(
@@ -121,7 +121,7 @@ async fn echo_lands_on_raise_and_appears_in_both_get_and_list() {
     );
 
     // THE POINT OF THE SCOPE: the same map on the roster page, from ONE call and no `tags.find`.
-    let row = list_row(&node, &p, "acme", &id, json!({})).await;
+    let row = list_row(&node, &p, "nube", &id, json!({})).await;
     assert_eq!(
         row["tags"],
         json!({ "building": "chullora-dc", "asset_type": "water-meter", "priority": "medium" }),
@@ -137,12 +137,12 @@ async fn echo_lands_on_raise_and_appears_in_both_get_and_list() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn echo_is_the_union_across_raises_not_this_raises_declaration() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST]);
 
     let id = raise_id(
         &node,
         &p,
-        "acme",
+        "nube",
         raise_input("k", 1, json!({ "building": "chullora-dc" })),
     )
     .await;
@@ -150,13 +150,13 @@ async fn echo_is_the_union_across_raises_not_this_raises_declaration() {
     let again = raise_id(
         &node,
         &p,
-        "acme",
+        "nube",
         raise_input("k", 2, json!({ "asset_type": "water-meter" })),
     )
     .await;
     assert_eq!(again, id, "dedup bumped the same record");
 
-    let row = list_row(&node, &p, "acme", &id, json!({})).await;
+    let row = list_row(&node, &p, "nube", &id, json!({})).await;
     assert_eq!(
         row["tags"],
         json!({ "building": "chullora-dc", "asset_type": "water-meter" }),
@@ -169,11 +169,11 @@ async fn echo_is_the_union_across_raises_not_this_raises_declaration() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn echo_self_heals_on_the_next_raise_after_an_out_of_band_tag() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST, TAGS_ADD]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST, TAGS_ADD]);
     let id = raise_id(
         &node,
         &p,
-        "acme",
+        "nube",
         raise_input("k", 1, json!({ "building": "chullora-dc" })),
     )
     .await;
@@ -185,13 +185,13 @@ async fn echo_self_heals_on_the_next_raise_after_an_out_of_band_tag() {
     call_tags_tool(
         &node.store,
         &p,
-        "acme",
+        "nube",
         "tags.add",
         &json!({ "entity": format!("insight:{id}"), "key": "classification", "value": "mechanical" }),
     )
     .await
     .expect("tags.add ok");
-    let stale = call(&node, &p, "acme", "insight.get", json!({ "id": &id }))
+    let stale = call(&node, &p, "nube", "insight.get", json!({ "id": &id }))
         .await
         .expect("get ok");
     assert!(
@@ -203,11 +203,11 @@ async fn echo_self_heals_on_the_next_raise_after_an_out_of_band_tag() {
     raise_id(
         &node,
         &p,
-        "acme",
+        "nube",
         raise_input("k", 2, json!({ "building": "chullora-dc" })),
     )
     .await;
-    let healed = call(&node, &p, "acme", "insight.get", json!({ "id": &id }))
+    let healed = call(&node, &p, "nube", "insight.get", json!({ "id": &id }))
         .await
         .expect("get ok");
     assert_eq!(
@@ -224,11 +224,11 @@ async fn echo_self_heals_on_the_next_raise_after_an_out_of_band_tag() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn list_filtering_reads_the_graph_not_the_stale_echo() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST, TAGS_ADD]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST, TAGS_ADD]);
     let id = raise_id(
         &node,
         &p,
-        "acme",
+        "nube",
         raise_input("k", 1, json!({ "building": "chullora-dc" })),
     )
     .await;
@@ -239,7 +239,7 @@ async fn list_filtering_reads_the_graph_not_the_stale_echo() {
     call_tags_tool(
         &node.store,
         &p,
-        "acme",
+        "nube",
         "tags.add",
         &json!({ "entity": format!("insight:{id}"), "key": "classification", "value": "mechanical" }),
     )
@@ -249,7 +249,7 @@ async fn list_filtering_reads_the_graph_not_the_stale_echo() {
     let row = list_row(
         &node,
         &p,
-        "acme",
+        "nube",
         &id,
         json!({ "tags": { "classification": "mechanical" } }),
     )
@@ -269,11 +269,11 @@ async fn list_filtering_reads_the_graph_not_the_stale_echo() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_echo_is_not_caller_writable() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST]);
     let id = raise_id(
         &node,
         &p,
-        "acme",
+        "nube",
         raise_input("k", 1, json!({ "building": "chullora-dc" })),
     )
     .await;
@@ -284,11 +284,11 @@ async fn the_echo_is_not_caller_writable() {
     let mut sneaky = raise_input("k", 2, json!({}));
     sneaky["tags"] = json!({});
     sneaky["producer"] = json!("user:someone-else");
-    call(&node, &p, "acme", "insight.raise", sneaky)
+    call(&node, &p, "nube", "insight.raise", sneaky)
         .await
         .expect("raise ok");
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": &id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": &id }))
         .await
         .expect("get ok");
     assert_eq!(
@@ -297,7 +297,7 @@ async fn the_echo_is_not_caller_writable() {
         "the echo tracks the graph, not the caller: {got}"
     );
     assert_eq!(
-        got["producer"], "user:ada",
+        got["producer"], "user:test",
         "the host-stamp precedent this follows still holds"
     );
 }
@@ -309,11 +309,11 @@ async fn the_echo_is_not_caller_writable() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn echo_is_written_with_zero_subscriptions_in_the_workspace() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST, SUB_LIST]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST, SUB_LIST]);
 
     // Pin the precondition — otherwise this test silently becomes case 1 the day a fixture seeds a
     // subscription somewhere.
-    let subs = call(&node, &p, "acme", "insight.sub.list", json!({}))
+    let subs = call(&node, &p, "nube", "insight.sub.list", json!({}))
         .await
         .expect("sub.list ok");
     assert_eq!(
@@ -325,11 +325,11 @@ async fn echo_is_written_with_zero_subscriptions_in_the_workspace() {
     let id = raise_id(
         &node,
         &p,
-        "acme",
+        "nube",
         raise_input("k", 1, json!({ "building": "chullora-dc" })),
     )
     .await;
-    let row = list_row(&node, &p, "acme", &id, json!({})).await;
+    let row = list_row(&node, &p, "nube", &id, json!({})).await;
     assert_eq!(
         row["tags"],
         json!({ "building": "chullora-dc" }),
@@ -345,21 +345,21 @@ async fn echo_is_written_with_zero_subscriptions_in_the_workspace() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_denied_get_cannot_distinguish_a_real_id_from_a_fictional_one() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let author = principal("user:ada", "acme", &[RAISE]);
+    let author = principal("user:test", "nube", &[RAISE]);
     let id = raise_id(
         &node,
         &author,
-        "acme",
+        "nube",
         raise_input("k", 1, json!({ "building": "chullora-dc" })),
     )
     .await;
 
-    let mallory = principal("user:mallory", "acme", &[LIST]); // every read cap EXCEPT get
-    let real = call(&node, &mallory, "acme", "insight.get", json!({ "id": &id })).await;
+    let mallory = principal("user:mallory", "nube", &[LIST]); // every read cap EXCEPT get
+    let real = call(&node, &mallory, "nube", "insight.get", json!({ "id": &id })).await;
     let fake = call(
         &node,
         &mallory,
-        "acme",
+        "nube",
         "insight.get",
         json!({ "id": "01NOSUCHINSIGHT0000000000" }),
     )
@@ -377,14 +377,14 @@ async fn a_denied_get_cannot_distinguish_a_real_id_from_a_fictional_one() {
 
     // …and the difference IS observable to a holder of the cap — so the assertion above is the
     // gate's doing, not an accident of both ids being unreadable.
-    let ada = principal("user:ada", "acme", &[GET]);
-    let ok_real = call(&node, &ada, "acme", "insight.get", json!({ "id": &id }))
+    let test = principal("user:test", "nube", &[GET]);
+    let ok_real = call(&node, &test, "nube", "insight.get", json!({ "id": &id }))
         .await
         .expect("get ok");
     let ok_fake = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.get",
         json!({ "id": "01NOSUCHINSIGHT0000000000" }),
     )
@@ -397,17 +397,17 @@ async fn a_denied_get_cannot_distinguish_a_real_id_from_a_fictional_one() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_denied_list_leaks_no_facet_data() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let author = principal("user:ada", "acme", &[RAISE]);
+    let author = principal("user:test", "nube", &[RAISE]);
     raise_id(
         &node,
         &author,
-        "acme",
+        "nube",
         raise_input("k", 1, json!({ "building": "chullora-dc" })),
     )
     .await;
 
-    let mallory = principal("user:mallory", "acme", &[GET]); // holds get, NOT list
-    let denied = call(&node, &mallory, "acme", "insight.list", json!({})).await;
+    let mallory = principal("user:mallory", "nube", &[GET]); // holds get, NOT list
+    let denied = call(&node, &mallory, "nube", "insight.list", json!({})).await;
     let dump = format!("{denied:?}");
     assert!(matches!(denied, Err(ToolError::Denied)), "denied: {dump}");
     assert!(!dump.contains("chullora"), "no facets in the error: {dump}");
@@ -418,17 +418,17 @@ async fn a_denied_list_leaks_no_facet_data() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_lister_with_no_tag_caps_at_all_still_receives_the_echo() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let author = principal("user:ada", "acme", &[RAISE]);
+    let author = principal("user:test", "nube", &[RAISE]);
     let id = raise_id(
         &node,
         &author,
-        "acme",
+        "nube",
         raise_input("k", 1, json!({ "building": "chullora-dc" })),
     )
     .await;
 
-    let reader = principal("user:bob", "acme", &[LIST]);
-    let row = list_row(&node, &reader, "acme", &id, json!({})).await;
+    let reader = principal("user:bob", "nube", &[LIST]);
+    let row = list_row(&node, &reader, "nube", &id, json!({})).await;
     assert_eq!(
         row["tags"]["building"], "chullora-dc",
         "the echo rides the insight read cap alone: {row}"
@@ -437,7 +437,7 @@ async fn a_lister_with_no_tag_caps_at_all_still_receives_the_echo() {
     let denied = call(
         &node,
         &reader,
-        "acme",
+        "nube",
         "tags.of",
         json!({ "entity": format!("insight:{id}") }),
     )
@@ -456,7 +456,7 @@ async fn a_lister_with_no_tag_caps_at_all_still_receives_the_echo() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_echo_never_crosses_the_workspace_wall() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let a = principal("user:ada", "ws-a", &[RAISE, GET, LIST, TAGS_OF]);
+    let a = principal("user:test", "ws-a", &[RAISE, GET, LIST, TAGS_OF]);
     let b = principal("user:bob", "ws-b", &[RAISE, GET, LIST, TAGS_OF]);
 
     let a_id = raise_id(
@@ -529,16 +529,16 @@ async fn the_echo_never_crosses_the_workspace_wall() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_oversize_facet_set_skips_the_echo_instead_of_bloating_the_record() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = principal("user:ada", "acme", &[RAISE, GET, LIST]);
+    let p = principal("user:test", "nube", &[RAISE, GET, LIST]);
 
     // ~200 dimensions × ~40 bytes ⇒ well past the 2 KB echo cap.
     let mut tags = serde_json::Map::new();
     for i in 0..200 {
         tags.insert(format!("dimension-number-{i:03}"), json!("a-facet-value"));
     }
-    let id = raise_id(&node, &p, "acme", raise_input("k", 1, Value::Object(tags))).await;
+    let id = raise_id(&node, &p, "nube", raise_input("k", 1, Value::Object(tags))).await;
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": &id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": &id }))
         .await
         .expect("the raise itself still succeeds");
     let echoed = got["tags"].as_object().map(|m| m.len()).unwrap_or(0);

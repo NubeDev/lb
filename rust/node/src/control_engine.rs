@@ -87,7 +87,7 @@ pub async fn mount(node: Arc<Node>) {
         return;
     }
 
-    let ws = std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into());
+    let ws = std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "nube".into());
     let admin = admin_principal(&ws);
     let now = unix_seconds();
 

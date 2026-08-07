@@ -46,9 +46,9 @@ async fn an_aligned_tier_round_trips() {
         ],
         ..Default::default()
     };
-    set_policy(&store, "acme", &written).await.unwrap();
+    set_policy(&store, "nube", &written).await.unwrap();
 
-    let read = list_policies(&store, "acme").await.unwrap();
+    let read = list_policies(&store, "nube").await.unwrap();
     assert_eq!(read.len(), 1);
     assert_eq!(
         read[0].tiers, written.tiers,
@@ -73,7 +73,7 @@ async fn a_policy_written_before_alignment_reads_back_unaligned() {
     let store = Store::memory().await.unwrap();
     store
         .query_ws(
-            "acme",
+            "nube",
             &format!(
                 "UPSERT type::thing('{RETENTION_TABLE}', 'legacy.') CONTENT {{ \
                    prefix: 'legacy.', raw_for_ms: 3600000, max_samples: 0, \
@@ -84,7 +84,7 @@ async fn a_policy_written_before_alignment_reads_back_unaligned() {
         .await
         .unwrap();
 
-    let read = list_policies(&store, "acme").await.unwrap();
+    let read = list_policies(&store, "nube").await.unwrap();
     assert_eq!(
         read[0].tiers[0].align, None,
         "absent must not become a zero anchor"

@@ -88,19 +88,19 @@ mod tests {
 
     #[tokio::test]
     async fn fleet_summary_is_tagged_with_the_injected_workspace() {
-        let reply = handle(&call_req("fleet.summary"), "acme").await;
+        let reply = handle(&call_req("fleet.summary"), "nube").await;
         let v: Value = serde_json::to_value(&reply).unwrap();
         // The supervisor `Reply::ok` carries the result JSON string in `result`; assert ws round-trips.
         let result = v.get("result").and_then(|r| r.as_str()).expect("ok result");
         let parsed: Value = serde_json::from_str(result).expect("result is JSON");
-        assert_eq!(parsed["ws"], "acme");
+        assert_eq!(parsed["ws"], "nube");
         assert_eq!(parsed["tier"], "native");
         assert_eq!(parsed["ok"], true);
     }
 
     #[tokio::test]
     async fn unknown_tool_is_an_explicit_error() {
-        let reply = handle(&call_req("fleet.delete"), "acme").await;
+        let reply = handle(&call_req("fleet.delete"), "nube").await;
         let v: Value = serde_json::to_value(&reply).unwrap();
         // An unknown tool yields an `err` reply (never a silent ok) — assert the error path.
         assert!(
@@ -116,7 +116,7 @@ mod tests {
             method: Method::Call,
             params: "not json".into(),
         };
-        let reply = handle(&req, "acme").await;
+        let reply = handle(&req, "nube").await;
         let v: Value = serde_json::to_value(&reply).unwrap();
         assert!(v.get("error").is_some());
     }

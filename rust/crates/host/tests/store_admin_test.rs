@@ -53,7 +53,7 @@ async fn status_reads_with_cap_and_denies_without() {
     let store = Store::memory().await.unwrap();
 
     // With the cap: a real snapshot (memory store → not persistent, zero log, no advisory).
-    let p = principal("user:ada", ws, &[STATUS]);
+    let p = principal("user:test", ws, &[STATUS]);
     let report = store_status_run(&store, &p, ws).expect("status with cap");
     assert!(!report.persistent);
     assert_eq!(report.log_bytes, 0);
@@ -114,7 +114,7 @@ async fn compact_job_enqueues_drains_and_records_outcome() {
         }
     }
 
-    let p = principal("user:ada", ws, &[COMPACT, STATUS]);
+    let p = principal("user:test", ws, &[COMPACT, STATUS]);
     let pre = store_status_run(&store, &p, ws).expect("status before");
     eprintln!(
         "GROUNDING: status before: log_bytes={} advisory={}",
@@ -154,7 +154,7 @@ async fn compact_job_enqueues_drains_and_records_outcome() {
         "pass completes the job"
     );
     let payload: serde_json::Value = serde_json::from_str(&job.payload).unwrap();
-    assert_eq!(payload["requested_by"], json!("user:ada"));
+    assert_eq!(payload["requested_by"], json!("user:test"));
     let outcome = &payload["outcome"];
     assert_eq!(outcome["ok"], json!(true));
     assert!(
@@ -202,7 +202,7 @@ async fn oq4_bloat_composition_experiment() {
     let path = temp_path("oq4");
     let _ = std::fs::remove_dir_all(&path);
     let store = Store::open(&path).await.unwrap();
-    let p = principal("user:ada", ws, &["mcp:ingest.write:call", STATUS, COMPACT]);
+    let p = principal("user:test", ws, &["mcp:ingest.write:call", STATUS, COMPACT]);
 
     // A 10-series fleet at "1s cadence": 1,200 samples each, capped at 100 retained — so ~92%
     // of what was written is evicted (tombstones) and the rest is plain append churn.

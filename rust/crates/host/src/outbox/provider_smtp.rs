@@ -341,8 +341,8 @@ mod tests {
     #[test]
     fn validate_refuses_a_transport_that_cannot_send() {
         let config = SmtpTransportConfig {
-            host: "smtp.acme.com".into(),
-            from_addr: "reports@acme.com".into(),
+            host: "smtp.nube.com".into(),
+            from_addr: "reports@nube.com".into(),
             secret_path: "mail/smtp-password".into(),
             ..Default::default()
         };
@@ -375,10 +375,10 @@ mod tests {
     fn the_config_carries_no_secret_value_so_it_is_safe_to_debug() {
         let config = SmtpTransportConfig {
             host: "smtp.gmail.com".into(),
-            username: "reports@acme.com".into(),
+            username: "reports@nube.com".into(),
             secret_path: "mail/gmail-refresh-token".into(),
             secret_env: "LB_MAIL_SECRET".into(),
-            from_addr: "reports@acme.com".into(),
+            from_addr: "reports@nube.com".into(),
             ..Default::default()
         };
         // Names only — the struct is Debug-safe BY CONSTRUCTION, which is what makes it loggable in a
@@ -394,7 +394,7 @@ mod tests {
         let provider = SmtpEmailProvider::new(
             SmtpTransportConfig {
                 host: "127.0.0.1".into(),
-                from_addr: "reports@acme.com".into(),
+                from_addr: "reports@nube.com".into(),
                 secret_path: "mail/absent".into(),
                 ..Default::default()
             },
@@ -409,7 +409,7 @@ mod tests {
                     ..Default::default()
                 },
                 &EmailMeta {
-                    workspace: "acme".into(),
+                    workspace: "nube".into(),
                     action: "send_invite".into(),
                 },
             )

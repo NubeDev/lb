@@ -50,7 +50,7 @@ const ADMIN: &[&str] = &[
     "mcp:panel.share:call",
     "mcp:authz.resolve:call",
     "mcp:grants.assign:call",
-    // ada must HOLD federation.query to grant it to bob (no-widening).
+    // test must HOLD federation.query to grant it to bob (no-widening).
     "mcp:federation.query:call",
     "store:doc/*:write",
 ];
@@ -93,11 +93,11 @@ fn federation_cell(i: &str, ds: &str) -> Cell {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn closure_red_then_green_and_deny_matches_live() {
-    let ws = "acme";
+    let ws = "nube";
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:ada", ws, ADMIN);
+    let admin = principal("user:test", ws, ADMIN);
 
-    // A PRIVATE panel owned by ada (never shared to bob) — the unshared-panel dependency.
+    // A PRIVATE panel owned by test (never shared to bob) — the unshared-panel dependency.
     panel_save(&store, &admin, ws, "aidan", "Aidan", Default::default(), 1)
         .await
         .unwrap();
@@ -244,7 +244,7 @@ async fn closure_red_then_green_and_deny_matches_live() {
         .await
         .unwrap();
 
-    // Grant bob the source cap through the REAL grant path (no-widening: ada holds it). Now
+    // Grant bob the source cap through the REAL grant path (no-widening: test holds it). Now
     // `resolve_caps(bob)` yields it, so the preflight — which reads the subject's resolved caps —
     // sees it. This models "his role now carries federation.query", via the store, not a token.
     lb_host::grants_assign(
@@ -301,9 +301,9 @@ async fn closure_red_then_green_and_deny_matches_live() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_isolated_and_grants_nothing() {
     let store = Store::memory().await.unwrap();
-    let admin_a = principal("user:ada", "acme", ADMIN);
+    let admin_a = principal("user:test", "nube", ADMIN);
 
-    // A datasource lives in ws-B (beta), not acme.
+    // A datasource lives in ws-B (beta), not nube.
     put_datasource(
         &store,
         "beta",
@@ -312,33 +312,38 @@ async fn workspace_isolated_and_grants_nothing() {
     .await
     .unwrap();
 
-    // An acme dashboard referencing a datasource named `plant` — which exists only in beta.
+    // An nube dashboard referencing a datasource named `plant` — which exists only in beta.
     let cells = vec![federation_cell("c1", "plant")];
-    dashboard_save(&store, &admin_a, "acme", "d1", "D1", cells, vec![], 2)
+    dashboard_save(&store, &admin_a, "nube", "d1", "D1", cells, vec![], 2)
         .await
         .unwrap();
 
-    let report =
-        dashboard_access_check(&store, &admin_a, "acme", "d1", &Subject::User("ada".into()))
-            .await
-            .unwrap();
-    // The ws-B datasource is reported ABSENT in acme — never leaked as existing.
+    let report = dashboard_access_check(
+        &store,
+        &admin_a,
+        "nube",
+        "d1",
+        &Subject::User("test".into()),
+    )
+    .await
+    .unwrap();
+    // The ws-B datasource is reported ABSENT in nube — never leaked as existing.
     let ds_v = find(&report.dependencies, "datasource:plant").unwrap();
     assert!(
         !ds_v.ok && ds_v.kind == DepKind::Datasource,
         "a ws-B datasource is absent to a ws-A preflight (isolation)"
     );
 
-    // The preflight granted NOTHING: ada's resolved caps in acme are unchanged (no federation grant
+    // The preflight granted NOTHING: test's resolved caps in nube are unchanged (no federation grant
     // was minted by running the preflight). We assert the datasource still doesn't resolve for her.
     assert!(
-        lb_host::resolve_datasource(&store, "acme", "plant")
+        lb_host::resolve_datasource(&store, "nube", "plant")
             .await
             .unwrap()
             .is_none(),
-        "preflight grants nothing — the acme datasource still does not exist"
+        "preflight grants nothing — the nube datasource still does not exist"
     );
-    let _ = resolve_caps(&store, "acme", "ada").await.unwrap();
+    let _ = resolve_caps(&store, "nube", "test").await.unwrap();
 }
 
 /// **The team-subject false-red regression.** Preflighting for a `team:` subject over an asset shared
@@ -360,8 +365,8 @@ async fn workspace_isolated_and_grants_nothing() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_team_subject_resolves_assets_shared_to_that_team() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
-    let admin = principal("user:ada", ws, ADMIN);
+    let ws = "nube";
+    let admin = principal("user:test", ws, ADMIN);
 
     add_member(&store, &admin, ws, "team:ops", "user:bob")
         .await

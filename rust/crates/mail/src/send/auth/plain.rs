@@ -83,12 +83,12 @@ mod tests {
     #[test]
     fn password_needles_cover_the_plain_sasl_blob() {
         let creds = MailCredentials::Password {
-            username: "reports@acme.com".into(),
+            username: "reports@nube.com".into(),
             password: "hunter2hunter2".into(),
         };
         // The exact bytes AUTH PLAIN puts on the wire (see mail-send's `Credentials::encode`).
         let wire = base64::engine::general_purpose::STANDARD
-            .encode("\u{0}reports@acme.com\u{0}hunter2hunter2");
+            .encode("\u{0}reports@nube.com\u{0}hunter2hunter2");
         let redacted = creds.redact_error(&format!("535 rejected: AUTH PLAIN {wire}"));
         assert!(!redacted.contains(&wire), "{redacted}");
         assert!(!redacted.contains("hunter2hunter2"), "{redacted}");
@@ -98,11 +98,11 @@ mod tests {
     #[test]
     fn xoauth2_needles_cover_the_bearer_frame() {
         let creds = MailCredentials::XOauth2 {
-            username: "reports@acme.com".into(),
+            username: "reports@nube.com".into(),
             access_token: "ya29.a0AfB_verylongtoken".into(),
         };
         let redacted =
-            creds.redact_error("334 user=reports@acme.com auth=Bearer ya29.a0AfB_verylongtoken");
+            creds.redact_error("334 user=reports@nube.com auth=Bearer ya29.a0AfB_verylongtoken");
         assert!(!redacted.contains("ya29.a0AfB_verylongtoken"), "{redacted}");
     }
 }

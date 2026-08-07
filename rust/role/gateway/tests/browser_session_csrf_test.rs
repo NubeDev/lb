@@ -117,9 +117,16 @@ async fn login(gw: &Gateway, email: &str, password: &str) -> String {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_cross_origin_post_with_a_valid_cookie_is_rejected() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
-    let sid = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
+    let sid = login(&gw, "test@example.com", "hunter2hunter2").await;
 
     // Same request, same valid cookie — but the browser says it came from another site.
     let evil = Request::builder()
@@ -148,9 +155,16 @@ async fn a_cross_origin_post_with_a_valid_cookie_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_same_call_same_origin_succeeds() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
-    let sid = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
+    let sid = login(&gw, "test@example.com", "hunter2hunter2").await;
 
     let resp = router(gw.clone())
         .oneshot(with_cookie(
@@ -175,9 +189,16 @@ async fn the_same_call_same_origin_succeeds() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_foreign_origin_without_sec_fetch_site_is_rejected() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
-    let sid = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
+    let sid = login(&gw, "test@example.com", "hunter2hunter2").await;
 
     let req = Request::builder()
         .method("POST")
@@ -200,9 +221,16 @@ async fn a_foreign_origin_without_sec_fetch_site_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_post_with_no_origin_evidence_is_rejected() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
-    let sid = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
+    let sid = login(&gw, "test@example.com", "hunter2hunter2").await;
 
     let req = Request::builder()
         .method("POST")
@@ -225,7 +253,7 @@ async fn a_post_with_no_origin_evidence_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn capability_deny_holds_through_the_seam() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
     // A plain member: no admin caps.
     seed_person(
         &gw,
@@ -259,13 +287,13 @@ async fn capability_deny_holds_through_the_seam() {
 async fn workspace_isolation_holds_through_the_seam() {
     let (gw, node, key) = session_gateway().await;
 
-    // Two workspaces on one node. `user:ada` belongs to `acme` only.
-    let acme_admin = bootstrap_admin(&gw, "user:root", "acme").await;
+    // Two workspaces on one node. `user:test` belongs to `nube` only.
+    let nube_admin = bootstrap_admin(&gw, "user:root", "nube").await;
     seed_person(
         &gw,
-        &acme_admin,
-        "user:ada",
-        "ada@example.com",
+        &nube_admin,
+        "user:test",
+        "test@example.com",
         "hunter2hunter2",
     )
     .await;
@@ -286,8 +314,8 @@ async fn workspace_isolation_holds_through_the_seam() {
         created.status()
     );
 
-    // Ada's session (workspace `acme`) asks for channels through the seam.
-    let sid = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    // Test's session (workspace `nube`) asks for channels through the seam.
+    let sid = login(&gw, "test@example.com", "hunter2hunter2").await;
     let resp = router(gw.clone())
         .oneshot(with_cookie(
             Request::builder()
@@ -307,6 +335,6 @@ async fn workspace_isolation_holds_through_the_seam() {
     let text = String::from_utf8_lossy(&body);
     assert!(
         !text.contains("globex-secret"),
-        "ISO LEAK: a session in `acme` saw `globex`'s rows through /api/*: {text}"
+        "ISO LEAK: a session in `nube` saw `globex`'s rows through /api/*: {text}"
     );
 }

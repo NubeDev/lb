@@ -53,7 +53,7 @@ impl MemoryKind {
 pub enum MemoryScope {
     /// Shared memory every member's runs see.
     Workspace,
-    /// Private memory for one member (`user:ada` → `member:user:ada`).
+    /// Private memory for one member (`user:test` → `member:user:test`).
     Member(String),
 }
 

@@ -46,9 +46,9 @@ async fn stats_count_extent_and_every_producer_of_one_series() {
         .collect();
     samples
         .extend((1..=10u64).map(|i| sample("cpu", "edge-b", i, (i + 100) * 1000, json!(i as f64))));
-    seed(&store, "acme", samples).await;
+    seed(&store, "nube", samples).await;
 
-    let stats = series_stats(&store, "acme", "cpu").await.unwrap();
+    let stats = series_stats(&store, "nube", "cpu").await.unwrap();
     assert_eq!(stats.series, "cpu");
     assert_eq!(stats.raw_count, 20, "both producers' rows are counted");
     assert_eq!(
@@ -68,13 +68,13 @@ async fn stats_count_extent_and_every_producer_of_one_series() {
     // A DIFFERENT series in the same workspace is not folded in.
     seed(
         &store,
-        "acme",
+        "nube",
         (1..=3u64)
             .map(|i| sample("mem", "edge-a", i, i * 1000, json!(i as f64)))
             .collect(),
     )
     .await;
-    let stats = series_stats(&store, "acme", "cpu").await.unwrap();
+    let stats = series_stats(&store, "nube", "cpu").await.unwrap();
     assert_eq!(stats.raw_count, 20, "counts are narrowed by series");
 }
 
@@ -83,7 +83,7 @@ async fn a_never_written_series_is_zeroes_not_an_error() {
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         (1..=5u64)
             .map(|i| sample("cpu", "p", i, i * 1000, json!(i as f64)))
             .collect(),
@@ -92,7 +92,7 @@ async fn a_never_written_series_is_zeroes_not_an_error() {
 
     // NOT `unwrap_err`: an unknown series is a valid measurement of nothing. If this ever becomes an
     // error the UI can no longer distinguish "no data yet" from "the read failed".
-    let stats = series_stats(&store, "acme", "never.written")
+    let stats = series_stats(&store, "nube", "never.written")
         .await
         .expect("an unknown series is Ok, never an error");
     assert_eq!(stats.series, "never.written", "the subject is echoed back");
@@ -116,7 +116,7 @@ async fn rollup_rows_break_down_per_tier_after_a_real_gc() {
     // 700 samples at 1s cadence — three `commit_batch(…, 256)` rounds, so the drain loop iterates.
     seed(
         &store,
-        "acme",
+        "nube",
         (0..700u64)
             .map(|i| sample("hist", "p", i + 1, i * 1000, json!(i as f64)))
             .collect(),
@@ -127,7 +127,7 @@ async fn rollup_rows_break_down_per_tier_after_a_real_gc() {
     // stored at two resolutions, so a bare total would double-count it.
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "hist".into(),
             raw_for_ms: 100_000,
@@ -153,10 +153,10 @@ async fn rollup_rows_break_down_per_tier_after_a_real_gc() {
     .await
     .unwrap();
 
-    let pass = run_gc(&store, "acme", 700_000).await.unwrap();
+    let pass = run_gc(&store, "nube", 700_000).await.unwrap();
     assert!(pass.rollup_rows > 0, "the pass rolled up: {pass:?}");
 
-    let stats = series_stats(&store, "acme", "hist").await.unwrap();
+    let stats = series_stats(&store, "nube", "hist").await.unwrap();
     assert!(stats.rollup_rows > 0, "rollup rows are visible in stats");
     assert_eq!(
         stats.tiers.len(),

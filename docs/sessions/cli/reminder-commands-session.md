@@ -110,18 +110,18 @@ running 10 tests ... test result: ok. 10 passed; 0 failed   (no regression)
 ### Live end-to-end run (grounds the skill)
 
 ```
-$ lb local -w acme reminder create --channel team --body "standup time" --cron "0 9 * * 1"
-ws: acme  user: user:ada  role: member  mode: local        # stderr
+$ lb local -w nube reminder create --channel team --body "standup time" --cron "0 9 * * 1"
+ws: nube  user: user:test  role: member  mode: local        # stderr
 standup-time-thhn28                                         # stdout — just the id (D4)
 
-$ lb local -w acme reminder create ... -o json              # raw envelope (scripting)
+$ lb local -w nube reminder create ... -o json              # raw envelope (scripting)
 { "id": "standup-time-thhn2l", "schedule": "0 9 * * 1", "maxRuns": null, "runs": 0,
   "enabled": true, "status": "active", "action": {...}, "nextAttemptTs": 1783328400, "ts": ... }
 
-$ lb local -w acme reminder show nope
+$ lb local -w nube reminder show nope
 (no rows)                                                   # missing/tombstoned → legible, not "null"
 
-$ lb local -w acme reminder ls --status paused; echo $?
+$ lb local -w nube reminder ls --status paused; echo $?
 unknown status filter 'paused' (expected enabled|disabled)
 2                                                           # BadInput, honest — not a deny, not a crash
 ```

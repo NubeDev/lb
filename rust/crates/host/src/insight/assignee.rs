@@ -7,7 +7,7 @@
 //! **The opacity rule is the security-relevant part.** `validate_assignee` returns the SAME error
 //! for a subject that does not exist, a user who is not a member of this workspace, and a real
 //! member of *another* workspace. All three reads are workspace-scoped, so the third case is
-//! structurally indistinguishable from the first — a probe cannot learn that `user:ada` exists in
+//! structurally indistinguishable from the first — a probe cannot learn that `user:test` exists in
 //! ws-B by trying to assign to them in ws-A. Do not "improve" this by naming which case failed.
 
 use lb_assets::list_related;

@@ -1,7 +1,7 @@
 # HANDOVER — GenUI widget previews in the agent dock (channel-widgets)
 
 **Date:** 2026-07-07 · **Branch:** `insights-v1` (Rust/e2e work committed in `8c30f43` + later
-uncommitted doc/code — check `git status`) · **Test workspace:** `acme`, user `user:ada` ·
+uncommitted doc/code — check `git status`) · **Test workspace:** `nube`, user `user:test` ·
 **Persona:** `builtin.widget-builder` · **Prev handover:** superseded by this file.
 
 ## The goal (unchanged)
@@ -18,7 +18,7 @@ sending it on the channel"), but **NO rendered preview appears in the agent-dock
 **What is PROVEN to work** (don't re-litigate):
 - The dock's render path works: `ui/e2e/agent-dock-genui-preview.spec.ts` (1/1 green) posts a
   genui rich_result via the real gateway into a dock-prefixed session channel
-  (`dock-user-ada-e2egenui01`), opens the dock in Chromium, selects the session in the picker, and
+  (`dock-user-test-e2egenui01`), opens the dock in Chromium, selects the session in the picker, and
   the composed surface renders INSIDE the dock (screenshot
   `ui/e2e/__screenshots__/agent-dock-genui-preview.png`). Channels-surface twin:
   `channel-genui-preview.spec.ts` (3/3 green).
@@ -29,7 +29,7 @@ sending it on the channel"), but **NO rendered preview appears in the agent-dock
    `[conversation channel: <cid>]` (`channel/agent_worker.rs`), but the model may post to another
    cid (one it saw via `channel.list`, or the page-context channel — the user was on the
    `datasources` surface). CHECK FIRST: `channel.list` + `channel.history` over `/mcp/call` to
-   find WHERE the ✓'d rich_result actually landed vs the dock session's own `dock-user-ada-…` id
+   find WHERE the ✓'d rich_result actually landed vs the dock session's own `dock-user-test-…` id
    (the dock picker shows the current session id). If mismatched → make the dock cid unmissable
    (e.g. repeat it in the skill/persona text, or have the worker inject/force `cid` for
    `channel.post` when the model omits/mangles it — the worker KNOWS the cid).
@@ -45,7 +45,7 @@ sending it on the channel"), but **NO rendered preview appears in the agent-dock
 **Debug snippet — find where the widget actually landed** (adapt cid):
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
+  -d '{"user":"user:test","workspace":"nube"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
 # list channels (incl. dock-… sessions), then per-channel:
 curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"tool":"channel.history","args":{"cid":"<cid>"}}'

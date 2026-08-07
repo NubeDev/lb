@@ -15,7 +15,7 @@ use lb_host::{tools_catalog, Node};
 fn principal(ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
-        sub: "user:ada".into(),
+        sub: "user:test".into(),
         ws: ws.into(),
         role: Role::Member,
         caps: caps.iter().map(|s| s.to_string()).collect(),
@@ -35,7 +35,7 @@ fn has_tool(cat: &lb_host::ToolsCatalog, name: &str) -> bool {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn catalog_contains_federation_query_with_schema_for_an_authorized_principal() {
     let node = Node::boot().await.expect("node boots");
-    let ws = "acme";
+    let ws = "nube";
     let a = principal(ws, &["mcp:tools.catalog:call", "mcp:federation.query:call"]);
 
     let cat = tools_catalog(&node, &a, ws)
@@ -75,7 +75,7 @@ async fn catalog_contains_federation_query_with_schema_for_an_authorized_princip
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn catalog_shows_alias_gated_federation_verbs_under_the_query_cap() {
     let node = Node::boot().await.expect("node boots");
-    let ws = "acme";
+    let ws = "nube";
     let a = principal(ws, &["mcp:tools.catalog:call", "mcp:federation.query:call"]);
 
     let cat = tools_catalog(&node, &a, ws)
@@ -101,7 +101,7 @@ async fn catalog_shows_alias_gated_federation_verbs_under_the_query_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn catalog_omits_a_tool_the_principal_cannot_call_no_existence_leak() {
     let node = Node::boot().await.expect("node boots");
-    let ws = "acme";
+    let ws = "nube";
     // B holds the verb gate but NOT `mcp:federation.query:call`.
     let b = principal(ws, &["mcp:tools.catalog:call"]);
 
@@ -116,7 +116,7 @@ async fn catalog_omits_a_tool_the_principal_cannot_call_no_existence_leak() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn catalog_without_the_verb_gate_is_opaque_denied() {
     let node = Node::boot().await.expect("node boots");
-    let ws = "acme";
+    let ws = "nube";
     // C lacks `mcp:tools.catalog:call` entirely (it does hold an unrelated cap).
     let c = principal(ws, &["mcp:federation.query:call"]);
 
@@ -136,7 +136,7 @@ async fn catalog_without_the_verb_gate_is_opaque_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn catalog_store_write_and_delete_carry_their_input_schema() {
     let node = Node::boot().await.expect("node boots");
-    let ws = "acme";
+    let ws = "nube";
     let a = principal(
         ws,
         &[
@@ -192,16 +192,16 @@ async fn catalog_is_workspace_scoped() {
     // against the passed ws). Two principals in two workspaces over one node.
     let node = Node::boot().await.expect("node boots");
 
-    let a = principal("acme", &["mcp:tools.catalog:call"]);
+    let a = principal("nube", &["mcp:tools.catalog:call"]);
     let b = principal("other", &["mcp:tools.catalog:call"]);
 
-    let cat_a = tools_catalog(&node, &a, "acme")
+    let cat_a = tools_catalog(&node, &a, "nube")
         .await
         .expect("ws-A catalog");
     let cat_b = tools_catalog(&node, &b, "other")
         .await
         .expect("ws-B catalog");
 
-    assert_eq!(cat_a.ws, "acme");
+    assert_eq!(cat_a.ws, "nube");
     assert_eq!(cat_b.ws, "other");
 }

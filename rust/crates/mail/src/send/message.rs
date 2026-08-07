@@ -197,10 +197,10 @@ mod tests {
     #[test]
     fn html_body_always_carries_a_text_alternative() {
         let msg = MailMessage {
-            from_addr: "reports@acme.com".into(),
+            from_addr: "reports@nube.com".into(),
             to: "sam@example.com".into(),
             subject: "Invited".into(),
-            html: Some("<p>Join <a href=\"https://acme/accept?t=1\">now</a></p>".into()),
+            html: Some("<p>Join <a href=\"https://nube/accept?t=1\">now</a></p>".into()),
             ..Default::default()
         };
         let bytes = String::from_utf8(msg.to_rfc5322().unwrap()).unwrap();
@@ -208,7 +208,7 @@ mod tests {
         assert!(bytes.contains("text/plain"), "{bytes}");
         // The generated text part must keep the accept link — a text-only reader must still be able
         // to accept the invite.
-        assert!(bytes.contains("https://acme/accept?t=1"), "{bytes}");
+        assert!(bytes.contains("https://nube/accept?t=1"), "{bytes}");
     }
 
     #[test]

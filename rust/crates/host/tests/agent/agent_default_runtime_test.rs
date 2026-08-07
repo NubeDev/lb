@@ -137,7 +137,7 @@ async fn absent_runtime_uses_the_stored_workspace_default() {
     // The node offers the stub (a `--features external-agent` node's posture).
     node.install_runtimes(registry_with_stub("in-house", STUB_ID, "external-ran"));
     let ws = "rt-stored";
-    let admin = principal("user:ada", ws, &[SET, INVOKE]);
+    let admin = principal("user:test", ws, &[SET, INVOKE]);
 
     set_default(&node, &admin, ws, STUB_ID).await;
 
@@ -155,7 +155,7 @@ async fn explicit_runtime_overrides_the_stored_default() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     node.install_runtimes(registry_with_stub("in-house", STUB_ID, "external-ran"));
     let ws = "rt-explicit";
-    let admin = principal("user:ada", ws, &[SET, INVOKE]);
+    let admin = principal("user:test", ws, &[SET, INVOKE]);
 
     set_default(&node, &admin, ws, STUB_ID).await; // stored default = the stub…
 
@@ -178,7 +178,7 @@ async fn a_stored_but_unavailable_default_falls_back_to_the_registry_default() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     node.install_runtimes(registry_with_stub("unused", STUB_ID, "should-not-run"));
     let ws = "rt-drift";
-    let admin = principal("user:ada", ws, &[SET, INVOKE]);
+    let admin = principal("user:test", ws, &[SET, INVOKE]);
 
     set_default(&node, &admin, ws, STUB_ID).await; // valid at write time
 
@@ -200,7 +200,7 @@ async fn a_stored_but_unavailable_default_falls_back_to_the_registry_default() {
 async fn workspaces_are_isolated_for_the_stored_default() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     node.install_runtimes(registry_with_stub("in-house", STUB_ID, "external-ran"));
-    let admin_a = principal("user:ada", "ws-a", &[SET, INVOKE]);
+    let admin_a = principal("user:test", "ws-a", &[SET, INVOKE]);
     let admin_b = principal("user:bob", "ws-b", &[SET, INVOKE]);
 
     // ws-A stores the stub as its default; ws-B stores nothing.
@@ -225,7 +225,7 @@ async fn invoke_is_still_denied_without_the_cap_even_with_a_stored_default() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     node.install_runtimes(registry_with_stub("in-house", STUB_ID, "external-ran"));
     let ws = "rt-deny";
-    let admin = principal("user:ada", ws, &[SET, INVOKE]);
+    let admin = principal("user:test", ws, &[SET, INVOKE]);
 
     set_default(&node, &admin, ws, STUB_ID).await;
 

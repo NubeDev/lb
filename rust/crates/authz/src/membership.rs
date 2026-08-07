@@ -4,7 +4,7 @@
 //! is grant-driven (NO `role_hint` field) — on join the system grants the built-in `member` role
 //! (decision #2); an admin grants more.
 //!
-//! `sub` is the global identity handle (`user:ada`) — the same key grants use. Leaving writes a
+//! `sub` is the global identity handle (`user:test`) — the same key grants use. Leaving writes a
 //! tombstone (not a row-delete) so the change replays idempotently under sync (§6.8) and a stale
 //! synced edge cannot resurrect a removed member — the same discipline `grant_revoke` /
 //! `assets::unrelate` follow.
@@ -30,7 +30,7 @@ pub const MEMBERSHIP_TOMBSTONE: &str = "__left__";
 /// role is a grant, not a field (decision #2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Membership {
-    /// The global identity handle (`user:ada`) — the same key grants use.
+    /// The global identity handle (`user:test`) — the same key grants use.
     pub sub: String,
     /// Constant discriminant so `membership_list` selects every row.
     pub kind: String,

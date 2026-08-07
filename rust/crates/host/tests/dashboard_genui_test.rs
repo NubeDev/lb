@@ -72,12 +72,12 @@ fn good_ir() -> Value {
 async fn accepts_a_well_formed_genui_cell() {
     let ws = "ws-genui-ok";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[SAVE, "mcp:dashboard.get:call"]);
+    let test = principal("user:test", ws, &[SAVE, "mcp:dashboard.get:call"]);
     let cell = genui_cell(json!({ "v": 1, "ir": good_ir() }));
-    dashboard_save(&store, &ada, ws, "d", "D", vec![cell], vec![], 10)
+    dashboard_save(&store, &test, ws, "d", "D", vec![cell], vec![], 10)
         .await
         .expect("well-formed genui cell saves");
-    let got = dashboard_get(&store, &ada, ws, "d").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "d").await.unwrap();
     assert_eq!(got.cells.len(), 1);
     assert_eq!(got.cells[0].view, "genui");
 }
@@ -85,9 +85,9 @@ async fn accepts_a_well_formed_genui_cell() {
 async fn assert_rejected(options_genui: Value, needle: &str) {
     let ws = "ws-genui-bad";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[SAVE]);
+    let test = principal("user:test", ws, &[SAVE]);
     let cell = genui_cell(options_genui);
-    let err = dashboard_save(&store, &ada, ws, "d", "D", vec![cell], vec![], 10)
+    let err = dashboard_save(&store, &test, ws, "d", "D", vec![cell], vec![], 10)
         .await
         .expect_err("malformed genui cell is rejected at save");
     match err {
@@ -129,18 +129,18 @@ async fn allows_an_unauthored_draft() {
     // rejected; the view renders an "author me" placeholder. Only a present-but-malformed IR is refused.
     let ws = "ws-genui-draft";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[SAVE, "mcp:dashboard.get:call"]);
+    let test = principal("user:test", ws, &[SAVE, "mcp:dashboard.get:call"]);
 
     // (a) no `genui` block at all.
     let mut c1 = genui_cell(json!({ "v": 1, "ir": good_ir() }));
     c1.options = json!({});
-    dashboard_save(&store, &ada, ws, "d1", "D", vec![c1], vec![], 10)
+    dashboard_save(&store, &test, ws, "d1", "D", vec![c1], vec![], 10)
         .await
         .expect("a genui cell with no options.genui is a savable draft");
 
     // (b) a `genui` block with no `ir` yet.
     let c2 = genui_cell(json!({ "v": 1 }));
-    dashboard_save(&store, &ada, ws, "d2", "D", vec![c2], vec![], 11)
+    dashboard_save(&store, &test, ws, "d2", "D", vec![c2], vec![], 11)
         .await
         .expect("a genui block with no ir is a savable draft");
 
@@ -155,7 +155,7 @@ async fn allows_an_unauthored_draft() {
     // (d) lenient-args: a JSON-STRING ir that parses to a valid IR object saves (normalized to the
     // object the renderer expects) — the live-model stall was retrying exactly this shape.
     let c4 = genui_cell(json!({ "v": 1, "ir": good_ir().to_string() }));
-    let saved = dashboard_save(&store, &ada, ws, "d4", "D", vec![c4], vec![], 12)
+    let saved = dashboard_save(&store, &test, ws, "d4", "D", vec![c4], vec![], 12)
         .await
         .expect("a stringified-but-valid ir is normalized and saves");
     assert!(
@@ -192,10 +192,10 @@ async fn workspace_isolation_of_a_genui_dashboard() {
     let store = Store::memory().await.unwrap();
     let w1 = "ws-genui-1";
     let w2 = "ws-genui-2";
-    let ada = principal("user:ada", w1, &[SAVE]);
+    let test = principal("user:test", w1, &[SAVE]);
     let bob = principal("user:bob", w2, &[SAVE, "mcp:dashboard.get:call"]);
     let cell = genui_cell(json!({ "v": 1, "ir": good_ir() }));
-    dashboard_save(&store, &ada, w1, "d", "D", vec![cell], vec![], 10)
+    dashboard_save(&store, &test, w1, "d", "D", vec![cell], vec![], 10)
         .await
         .unwrap();
     // Bob in W2 cannot see W1's dashboard (a fresh id in his workspace is absent).

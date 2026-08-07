@@ -38,8 +38,8 @@ const ALL: &[&str] = &[D_GET, D_SAVE, D_LIST, "mcp:report.export:call"];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn export_composes_a_report_kind_dashboard_to_pdf() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
 
     // Two panels side by side on page 1, one on page 2 (row 14 is the page break).
     let cells = vec![
@@ -47,13 +47,13 @@ async fn export_composes_a_report_kind_dashboard_to_pdf() {
         report_cell("p2", 6, 0, 6, 5, "Demand"),
         report_cell("p3", 0, 14, 12, 6, "Trend"),
     ];
-    save_report_dashboard(&store, &ada, ws, "energy", "Monthly Energy", cells.clone()).await;
+    save_report_dashboard(&store, &test, ws, "energy", "Monthly Energy", cells.clone()).await;
 
     // p1 + p3 captured; p2 deliberately NOT — it must still occupy its rectangle.
     let png = one_px_png();
     let pdf = report_export(
         &store,
-        &ada,
+        &test,
         ws,
         "energy",
         vec![
@@ -67,8 +67,8 @@ async fn export_composes_a_report_kind_dashboard_to_pdf() {
     assert!(pdf.starts_with(b"%PDF"), "expected PDF magic bytes");
 
     // An ORDINARY dashboard is not a report — refused loudly, never laid onto A4.
-    save_plain_dashboard(&store, &ada, ws, "ops", "Ops", cells).await;
-    let err = report_export(&store, &ada, ws, "ops", vec![], 1)
+    save_plain_dashboard(&store, &test, ws, "ops", "Ops", cells).await;
+    let err = report_export(&store, &test, ws, "ops", vec![], 1)
         .await
         .unwrap_err();
     assert!(
@@ -82,11 +82,11 @@ async fn export_composes_a_report_kind_dashboard_to_pdf() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn export_is_denied_without_the_export_cap_and_without_dashboard_read() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
     save_report_dashboard(
         &store,
-        &ada,
+        &test,
         ws,
         "energy",
         "Monthly Energy",
@@ -95,7 +95,7 @@ async fn export_is_denied_without_the_export_cap_and_without_dashboard_read() {
     .await;
 
     // Holds every dashboard cap but NOT report.export.
-    let no_export = principal("user:ada", ws, &[D_GET, D_SAVE, D_LIST]);
+    let no_export = principal("user:test", ws, &[D_GET, D_SAVE, D_LIST]);
     assert!(
         matches!(
             report_export(&store, &no_export, ws, "energy", vec![], 1).await,
@@ -105,7 +105,7 @@ async fn export_is_denied_without_the_export_cap_and_without_dashboard_read() {
     );
 
     // Holds report.export but cannot READ a dashboard — must still be denied.
-    let no_read = principal("user:ada", ws, &["mcp:report.export:call"]);
+    let no_read = principal("user:test", ws, &["mcp:report.export:call"]);
     assert!(
         matches!(
             report_export(&store, &no_read, ws, "energy", vec![], 1).await,
@@ -115,7 +115,7 @@ async fn export_is_denied_without_the_export_cap_and_without_dashboard_read() {
     );
 
     // Negative control: with BOTH, it works — so the denies above are not tautologies.
-    assert!(report_export(&store, &ada, ws, "energy", vec![], 1)
+    assert!(report_export(&store, &test, ws, "energy", vec![], 1)
         .await
         .is_ok());
 }
@@ -124,11 +124,11 @@ async fn export_is_denied_without_the_export_cap_and_without_dashboard_read() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn export_is_workspace_isolated() {
     let store = Store::memory().await.unwrap();
-    let ada_a = principal("user:ada", "ws-a", ALL);
-    let ada_b = principal("user:ada", "ws-b", ALL);
+    let test_a = principal("user:test", "ws-a", ALL);
+    let test_b = principal("user:test", "ws-b", ALL);
     save_report_dashboard(
         &store,
-        &ada_a,
+        &test_a,
         "ws-a",
         "energy",
         "Monthly Energy",
@@ -136,10 +136,10 @@ async fn export_is_workspace_isolated() {
     )
     .await;
 
-    assert!(report_export(&store, &ada_a, "ws-a", "energy", vec![], 1)
+    assert!(report_export(&store, &test_a, "ws-a", "energy", vec![], 1)
         .await
         .is_ok());
-    let err = report_export(&store, &ada_b, "ws-b", "energy", vec![], 1)
+    let err = report_export(&store, &test_b, "ws-b", "energy", vec![], 1)
         .await
         .unwrap_err();
     assert!(

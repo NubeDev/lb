@@ -97,11 +97,11 @@ fn series_spec() -> PanelSpec {
 #[tokio::test]
 async fn crud_round_trip() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
 
     // Seed a library panel so the panel block's ref resolves at save (validate) + get (hydrate).
-    panel_save(&store, &ada, ws, "cooler", "Cooler", series_spec(), 1)
+    panel_save(&store, &test, ws, "cooler", "Cooler", series_spec(), 1)
         .await
         .unwrap();
 
@@ -112,7 +112,7 @@ async fn crud_round_trip() {
     ];
     let saved = report_save(
         &store,
-        &ada,
+        &test,
         ws,
         "q3",
         "Q3 Report",
@@ -125,7 +125,7 @@ async fn crud_round_trip() {
     .unwrap();
     assert_eq!(saved.blocks.len(), 3);
 
-    let got = report_get(&store, &ada, ws, "q3").await.unwrap();
+    let got = report_get(&store, &test, ws, "q3").await.unwrap();
     assert_eq!(got.title, "Q3 Report");
     assert_eq!(got.blocks.len(), 3);
     // Order preserved + kinds intact.
@@ -140,29 +140,29 @@ async fn crud_round_trip() {
     assert!(!got.blocks[2].cell.panel_missing);
 
     // list shows the summary with a block count.
-    let roster = report_list(&store, &ada, ws).await.unwrap();
+    let roster = report_list(&store, &test, ws).await.unwrap();
     assert_eq!(roster.len(), 1);
     assert_eq!(roster[0].block_count, 3);
 
     // delete tombstones it.
-    report_delete(&store, &ada, ws, "q3", 20).await.unwrap();
+    report_delete(&store, &test, ws, "q3", 20).await.unwrap();
     assert!(matches!(
-        report_get(&store, &ada, ws, "q3").await,
+        report_get(&store, &test, ws, "q3").await,
         Err(ReportError::NotFound)
     ));
-    assert!(report_list(&store, &ada, ws).await.unwrap().is_empty());
+    assert!(report_list(&store, &test, ws).await.unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn capability_deny_per_verb() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
 
     // Seed one report (with full caps) so export/get have a target.
     report_save(
         &store,
-        &ada,
+        &test,
         ws,
         "r1",
         "R1",
@@ -210,12 +210,12 @@ async fn workspace_isolation() {
     let store = Store::memory().await.unwrap();
     let ws_a = "ws-aaa";
     let ws_b = "ws-bbb";
-    let ada = principal("user:ada", ws_a, ALL);
+    let test = principal("user:test", ws_a, ALL);
     let ben = principal("user:ben", ws_b, ALL);
 
     report_save(
         &store,
-        &ada,
+        &test,
         ws_a,
         "secret",
         "A's report",
@@ -228,10 +228,10 @@ async fn workspace_isolation() {
     .unwrap();
     brand_save(
         &store,
-        &ada,
+        &test,
         ws_a,
-        "acme",
-        "Acme",
+        "nube",
+        "Nube",
         "",
         BrandColors::default(),
         BrandFonts::default(),
@@ -249,7 +249,7 @@ async fn workspace_isolation() {
     ));
     assert!(report_list(&store, &ben, ws_b).await.unwrap().is_empty());
     assert!(matches!(
-        brand_get(&store, &ben, ws_b, "acme").await,
+        brand_get(&store, &ben, ws_b, "nube").await,
         Err(BrandError::NotFound)
     ));
     assert!(brand_list(&store, &ben, ws_b).await.unwrap().is_empty());
@@ -258,17 +258,17 @@ async fn workspace_isolation() {
 #[tokio::test]
 async fn panel_ref_hydration_and_dangling_rejected() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
 
-    panel_save(&store, &ada, ws, "real", "Real", series_spec(), 1)
+    panel_save(&store, &test, ws, "real", "Real", series_spec(), 1)
         .await
         .unwrap();
 
     // A real ref saves + hydrates.
     report_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ok",
         "OK",
@@ -279,13 +279,13 @@ async fn panel_ref_hydration_and_dangling_rejected() {
     )
     .await
     .unwrap();
-    let got = report_get(&store, &ada, ws, "ok").await.unwrap();
+    let got = report_get(&store, &test, ws, "ok").await.unwrap();
     assert_eq!(got.blocks[0].cell.view, "timeseries");
 
     // A dangling ref is rejected loudly on save (BadInput).
     let bad = report_save(
         &store,
-        &ada,
+        &test,
         ws,
         "bad",
         "Bad",
@@ -301,13 +301,13 @@ async fn panel_ref_hydration_and_dangling_rejected() {
 #[tokio::test]
 async fn brand_seed_idempotent() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
 
     seed_default_brand(&store, ws, 1).await.unwrap();
     seed_default_brand(&store, ws, 2).await.unwrap();
 
-    let brands = brand_list(&store, &ada, ws).await.unwrap();
+    let brands = brand_list(&store, &test, ws).await.unwrap();
     assert_eq!(
         brands.len(),
         1,
@@ -322,18 +322,18 @@ async fn brand_seed_idempotent() {
 #[tokio::test]
 async fn system_owned_seed_is_adopted_on_write() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
     let ben = principal("user:ben", ws, ALL);
 
     seed_default_brand(&store, ws, 1).await.unwrap();
-    // The seed is system-owned, not Ada's — but she adopts it on save (no Denied).
+    // The seed is system-owned, not Test's — but she adopts it on save (no Denied).
     let saved = brand_save(
         &store,
-        &ada,
+        &test,
         ws,
         "default",
-        "Acme Brand",
+        "Nube Brand",
         "",
         BrandColors::default(),
         BrandFonts::default(),
@@ -343,14 +343,14 @@ async fn system_owned_seed_is_adopted_on_write() {
     )
     .await
     .expect("adopt-on-save must not deny the system-owned seed");
-    assert_eq!(saved.name, "Acme Brand");
+    assert_eq!(saved.name, "Nube Brand");
     assert_eq!(
-        brand_get(&store, &ada, ws, "default").await.unwrap().owner,
-        "user:ada",
+        brand_get(&store, &test, ws, "default").await.unwrap().owner,
+        "user:test",
         "the writer adopts ownership of the seed"
     );
 
-    // Now that Ada owns it, Ben (a different member) hits the ordinary owner-only wall.
+    // Now that Test owns it, Ben (a different member) hits the ordinary owner-only wall.
     let denied = brand_save(
         &store,
         &ben,
@@ -372,15 +372,15 @@ async fn system_owned_seed_is_adopted_on_write() {
 #[tokio::test]
 async fn system_owned_seed_can_be_deleted() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
 
     seed_default_brand(&store, ws, 1).await.unwrap();
-    brand_delete(&store, &ada, ws, "default", 2)
+    brand_delete(&store, &test, ws, "default", 2)
         .await
         .expect("the system-owned seed is deletable by any writer");
     assert!(matches!(
-        brand_get(&store, &ada, ws, "default").await,
+        brand_get(&store, &test, ws, "default").await,
         Err(BrandError::NotFound)
     ));
 }
@@ -388,10 +388,21 @@ async fn system_owned_seed_can_be_deleted() {
 #[tokio::test]
 async fn max_blocks_enforced() {
     let store = Store::memory().await.unwrap();
-    let ws = "ws-acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "ws-nube";
+    let test = principal("user:test", ws, ALL);
 
     let too_many: Vec<ReportBlock> = (0..=MAX_BLOCKS).map(|_| markdown_block("x")).collect();
-    let res = report_save(&store, &ada, ws, "big", "Big", too_many, "", Value::Null, 1).await;
+    let res = report_save(
+        &store,
+        &test,
+        ws,
+        "big",
+        "Big",
+        too_many,
+        "",
+        Value::Null,
+        1,
+    )
+    .await;
     assert!(matches!(res, Err(ReportError::BadInput(_))), "got {res:?}");
 }

@@ -8,7 +8,7 @@
 - Regression test: app/sdk/tests/restore-liveness.gateway.test.ts (+ e2e in the session doc)
 
 ## Symptom
-In the RN-web browser preview, a user logs in (ada/acme), creates a channel, sees it — then
+In the RN-web browser preview, a user logs in (test/nube), creates a channel, sees it — then
 the preview gateway is restarted (any `make -C app dev` restart does this). On the next page
 reload the shell shows the Channels screen with **"No channels yet — create one below."** The
 user reads it as "the channels I just created vanished" and is stuck: the composer's

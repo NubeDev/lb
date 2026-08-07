@@ -73,7 +73,7 @@ mod tests {
 
     fn derived(caps: &[&str], constraint: &[&str]) -> Principal {
         let caller = Principal::routed(
-            "user:ada",
+            "user:test",
             "ws-a",
             constraint.iter().map(|s| s.to_string()).collect(),
         );
@@ -115,7 +115,7 @@ mod tests {
         // A non-derived principal (routed) has no constraint — the token carries None and the
         // verified principal is bounded by caps alone (the ordinary path).
         let key = SigningKey::generate();
-        let p = Principal::routed("user:ada", "ws-a", vec!["mcp:x:call".into()]);
+        let p = Principal::routed("user:test", "ws-a", vec!["mcp:x:call".into()]);
         let rt = mint_run_token(&key, &p, "r", 0, DEFAULT_RUN_TOKEN_TTL_SECS);
         let v = verify(&key, &rt.token, 1).expect("verifies");
         assert_eq!(v.run_id(), Some("r"));

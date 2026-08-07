@@ -36,7 +36,7 @@ The old code called `crate::tags::tags_of(.., principal, ..)`, which authorizes 
 would have made the echo *silently* fall back to `RaiseInput.tags` for any producer lacking a tag
 capability — the union-vs-declaration bug the whole scope exists to prevent, in its least visible
 form. Live evidence that this is the common case, not a corner: the real member token minted by the
-running product (`/auth/login` as `user:ada`) carries `mcp:tags.add:call` and `mcp:tags.find:call`
+running product (`/auth/login` as `user:test`) carries `mcp:tags.add:call` and `mcp:tags.find:call`
 and **not** `mcp:tags.of:call`. Reading raw follows the existing precedent one file over —
 `insight_list` resolves its facet filter through the raw `lb_tags::find` because
 `mcp:insight.list:call` already authorized the workspace read.

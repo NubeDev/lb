@@ -65,7 +65,7 @@ The job record (`job:{id}` in your workspace) completes with the outcome on its 
 {
   "status": "done",
   "payload": {
-    "requested_by": "user:ada",
+    "requested_by": "user:test",
     "outcome": { "ok": true, "before_bytes": 58230, "after_bytes": 11024, "duration_ms": 22 }
   }
 }
@@ -270,7 +270,7 @@ From the real end-to-end run in `crates/host/tests/store_admin_test.rs::compact_
 ```text
 GROUNDING: status before: log_bytes=57308 advisory=none
 GROUNDING: store.compact -> job store-compact-01KXJCC803WX7WGVPV3DJXFTJ5
-GROUNDING: job record payload: {"requested_by":"user:ada","outcome":{"ok":true,
+GROUNDING: job record payload: {"requested_by":"user:test","outcome":{"ok":true,
   "before_bytes":58230,"after_bytes":11024,"duration_ms":22,"error":null}}
 GROUNDING: status after: log_bytes=12464, last_compaction.ok=true
 ```

@@ -29,7 +29,7 @@ use tower::ServiceExt;
 /// nothing core knows about. The sink chooses it, lb only enforces it (rule 10).
 const SINK_CAP: &str = "mcp:package.upload:call";
 const SINK: &str = "package";
-const WS: &str = "acme";
+const WS: &str = "nube";
 
 // ---------------------------------------------------------------------------------------------
 // A real in-test sink
@@ -161,7 +161,7 @@ async fn app(sink: Arc<BufferSink>) -> (axum::Router, String, Arc<BufferSink>) {
         SINK.to_string(),
         sink.clone() as Arc<dyn UploadSink>,
     )]);
-    let tok = token(&key, "user:ada", WS, &[SINK_CAP]);
+    let tok = token(&key, "user:test", WS, &[SINK_CAP]);
     (router(gw), tok, sink)
 }
 
@@ -542,7 +542,7 @@ async fn an_unknown_sink_name_is_404() {
 async fn no_sinks_means_no_routes() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = token(&key, "user:ada", WS, &[SINK_CAP]);
+    let tok = token(&key, "user:test", WS, &[SINK_CAP]);
     let resp = app
         .oneshot(bearer(
             json_post(&format!("/uploads/{SINK}"), json!({"size": 10})),

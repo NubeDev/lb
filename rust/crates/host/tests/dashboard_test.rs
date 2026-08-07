@@ -75,12 +75,12 @@ fn chart_cell(series: &str) -> Cell {
 async fn crud_round_trip() {
     let ws = "ws-dash-crud";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // create
     let d = dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -91,17 +91,17 @@ async fn crud_round_trip() {
     .await
     .unwrap();
     assert_eq!(d.title, "Ops");
-    assert_eq!(d.owner, "user:ada");
+    assert_eq!(d.owner, "user:test");
     assert_eq!(d.visibility, DashboardVisibility::Private);
 
     // get reflects it
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.cells.len(), 1);
 
     // update (same id) — title + cells change, owner preserved
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops v2",
@@ -111,26 +111,30 @@ async fn crud_round_trip() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.title, "Ops v2");
     assert_eq!(got.cells.len(), 2);
     assert_eq!(got.updated_ts, 20);
 
     // list includes it (summary, no cells)
-    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    let roster = dashboard_list(&store, &test, ws).await.unwrap();
     assert!(roster.iter().any(|s| s.id == "ops" && s.title == "Ops v2"));
 
     // delete → list excludes it; get is NotFound
-    dashboard_delete(&store, &ada, ws, "ops", 30).await.unwrap();
-    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    dashboard_delete(&store, &test, ws, "ops", 30)
+        .await
+        .unwrap();
+    let roster = dashboard_list(&store, &test, ws).await.unwrap();
     assert!(!roster.iter().any(|s| s.id == "ops"));
     assert!(matches!(
-        dashboard_get(&store, &ada, ws, "ops").await.unwrap_err(),
+        dashboard_get(&store, &test, ws, "ops").await.unwrap_err(),
         DashboardError::NotFound
     ));
 
     // re-delete is an idempotent no-op
-    dashboard_delete(&store, &ada, ws, "ops", 40).await.unwrap();
+    dashboard_delete(&store, &test, ws, "ops", 40)
+        .await
+        .unwrap();
 }
 
 // dashboard page-settings: `description`/`icon`/`color` set via `dashboard_save_meta` round-trip through
@@ -140,12 +144,12 @@ async fn crud_round_trip() {
 async fn page_settings_round_trip_and_preserve() {
     let ws = "ws-dash-settings";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // Create with page settings.
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -179,7 +183,7 @@ async fn page_settings_round_trip_and_preserve() {
     .await
     .unwrap();
 
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.description, "Fleet health at a glance");
     assert_eq!(got.icon, "activity");
     assert_eq!(got.color, "#3b82f6");
@@ -197,7 +201,7 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.vars_display, "bar");
 
     // The cheap summary carries icon + colour (roster paints them without a full get).
-    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    let roster = dashboard_list(&store, &test, ws).await.unwrap();
     let row = roster.iter().find(|s| s.id == "ops").unwrap();
     assert_eq!(row.icon, "activity");
     assert_eq!(row.color, "#3b82f6");
@@ -205,7 +209,7 @@ async fn page_settings_round_trip_and_preserve() {
     // A plain layout save (the wrapper: no settings args) PRESERVES the page chrome.
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops v2",
@@ -215,7 +219,7 @@ async fn page_settings_round_trip_and_preserve() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.title, "Ops v2");
     assert_eq!(got.cells.len(), 2);
     assert_eq!(got.description, "Fleet health at a glance");
@@ -237,7 +241,7 @@ async fn page_settings_round_trip_and_preserve() {
     // and the freshness TTL).
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops v2",
@@ -251,7 +255,7 @@ async fn page_settings_round_trip_and_preserve() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.icon, "gauge");
     assert_eq!(got.description, "Fleet health at a glance");
     assert_eq!(got.color, "#3b82f6");
@@ -286,13 +290,13 @@ async fn page_settings_round_trip_and_preserve() {
 async fn cache_ttl_tri_state_round_trips() {
     let ws = "ws-dash-freshness";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // 1. A board saved with NO freshness comes back with the field unset — not `0`. This is the state
     //    every backend-created board is in, and the one that must reach the UI as "use your default".
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "unset",
         "Unset",
@@ -302,7 +306,7 @@ async fn cache_ttl_tri_state_round_trips() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "unset").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "unset").await.unwrap();
     assert_eq!(
         got.cache_ttl_s, None,
         "an unset board must not read back as 0"
@@ -320,7 +324,7 @@ async fn cache_ttl_tri_state_round_trips() {
     //    and be present on the wire, or the opt-out is gone.
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "live",
         "Live",
@@ -334,7 +338,7 @@ async fn cache_ttl_tri_state_round_trips() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "live").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "live").await.unwrap();
     assert_eq!(
         got.cache_ttl_s,
         Some(0),
@@ -347,7 +351,7 @@ async fn cache_ttl_tri_state_round_trips() {
     //    hold for the zero case too, which is exactly what `.unwrap_or` got wrong.
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "live",
         "Live v2",
@@ -357,7 +361,7 @@ async fn cache_ttl_tri_state_round_trips() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "live").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "live").await.unwrap();
     assert_eq!(
         got.cache_ttl_s,
         Some(0),
@@ -367,7 +371,7 @@ async fn cache_ttl_tri_state_round_trips() {
     // 4. An unset board stays unset through a layout save too (it must not acquire a stored `0`).
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "unset",
         "Unset v2",
@@ -377,14 +381,14 @@ async fn cache_ttl_tri_state_round_trips() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "unset").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "unset").await.unwrap();
     assert_eq!(got.cache_ttl_s, None);
 
     // 5. An author can move off the default to a real window, and back to live.
     let cells = got.cells.clone();
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "unset",
         "Unset v3",
@@ -399,7 +403,7 @@ async fn cache_ttl_tri_state_round_trips() {
     .await
     .unwrap();
     assert_eq!(
-        dashboard_get(&store, &ada, ws, "unset")
+        dashboard_get(&store, &test, ws, "unset")
             .await
             .unwrap()
             .cache_ttl_s,
@@ -407,7 +411,7 @@ async fn cache_ttl_tri_state_round_trips() {
     );
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "unset",
         "Unset v4",
@@ -422,7 +426,7 @@ async fn cache_ttl_tri_state_round_trips() {
     .await
     .unwrap();
     assert_eq!(
-        dashboard_get(&store, &ada, ws, "unset")
+        dashboard_get(&store, &test, ws, "unset")
             .await
             .unwrap()
             .cache_ttl_s,
@@ -440,13 +444,13 @@ fn absent_and_null_cache_ttl_both_deserialize_as_unset() {
     use lb_host::Dashboard;
 
     let absent: Dashboard = serde_json::from_value(json!({
-        "id": "d1", "title": "D1", "cells": [], "owner": "user:ada", "updated_ts": 1
+        "id": "d1", "title": "D1", "cells": [], "owner": "user:test", "updated_ts": 1
     }))
     .unwrap();
     assert_eq!(absent.cache_ttl_s, None);
 
     let null: Dashboard = serde_json::from_value(json!({
-        "id": "d1", "title": "D1", "cells": [], "owner": "user:ada", "updated_ts": 1, "cacheTtlS": null
+        "id": "d1", "title": "D1", "cells": [], "owner": "user:test", "updated_ts": 1, "cacheTtlS": null
     }))
     .unwrap();
     assert_eq!(
@@ -455,7 +459,7 @@ fn absent_and_null_cache_ttl_both_deserialize_as_unset() {
     );
 
     let zero: Dashboard = serde_json::from_value(json!({
-        "id": "d1", "title": "D1", "cells": [], "owner": "user:ada", "updated_ts": 1, "cacheTtlS": 0
+        "id": "d1", "title": "D1", "cells": [], "owner": "user:test", "updated_ts": 1, "cacheTtlS": 0
     }))
     .unwrap();
     assert_eq!(
@@ -471,22 +475,22 @@ fn absent_and_null_cache_ttl_both_deserialize_as_unset() {
 async fn cell_title_round_trips() {
     let ws = "ws-dash-title";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     let mut cell = chart_cell("cooler.temp");
     cell.title = "Web01 CPU".into();
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![cell], vec![], 10)
+    dashboard_save(&store, &test, ws, "ops", "Ops", vec![cell], vec![], 10)
         .await
         .unwrap();
 
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.cells.len(), 1);
     assert_eq!(got.cells[0].title, "Web01 CPU");
 
     // A cell saved without a title reads back empty (the derived-label fallback is a UI concern).
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -496,7 +500,7 @@ async fn cell_title_round_trips() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.cells[0].title, "");
 }
 
@@ -508,7 +512,7 @@ async fn dashboard_variables_round_trip() {
     use lb_host::DashboardVariable;
     let ws = "ws-dash-vars";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     let host_var = DashboardVariable {
         name: "host".into(),
@@ -527,7 +531,7 @@ async fn dashboard_variables_round_trip() {
     };
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -538,7 +542,7 @@ async fn dashboard_variables_round_trip() {
     .await
     .unwrap();
 
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.variables.len(), 2);
     assert_eq!(got.variables[0].name, "host");
     assert_eq!(got.variables[0].r#type, "query");
@@ -546,10 +550,10 @@ async fn dashboard_variables_round_trip() {
     assert_eq!(got.variables[1].interval, vec!["1m", "5m", "1h"]);
 
     // A save without variables reads back an empty list (additive default; no selection stored).
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 20)
+    dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 20)
         .await
         .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert!(got.variables.is_empty());
 }
 
@@ -557,9 +561,9 @@ async fn dashboard_variables_round_trip() {
 async fn each_verb_is_denied_without_its_cap() {
     let ws = "ws-dash-deny";
     let store = Store::memory().await.unwrap();
-    // Ada owns a dashboard (so get/share have a target); the denied principal holds NO dashboard cap.
-    let ada = principal("user:ada", ws, ALL);
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 1)
+    // Test owns a dashboard (so get/share have a target); the denied principal holds NO dashboard cap.
+    let test = principal("user:test", ws, ALL);
+    dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 1)
         .await
         .unwrap();
 
@@ -610,8 +614,8 @@ async fn each_verb_is_denied_without_its_cap() {
 async fn delete_any_cap_lets_a_non_owner_admin_delete() {
     let ws = "ws-dash-delete-any";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 1)
+    let test = principal("user:test", ws, ALL);
+    dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 1)
         .await
         .unwrap();
 
@@ -624,7 +628,7 @@ async fn delete_any_cap_lets_a_non_owner_admin_delete() {
         DashboardError::Denied
     ));
     // Still there — the denied attempt did not tombstone it.
-    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    let roster = dashboard_list(&store, &test, ws).await.unwrap();
     assert!(roster.iter().any(|s| s.id == "ops"));
 
     // The same principal, now also holding `dashboard.delete_any`, succeeds.
@@ -636,7 +640,7 @@ async fn delete_any_cap_lets_a_non_owner_admin_delete() {
     dashboard_delete(&store, &admin_with_override, ws, "ops", 3)
         .await
         .unwrap();
-    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    let roster = dashboard_list(&store, &test, ws).await.unwrap();
     assert!(!roster.iter().any(|s| s.id == "ops"));
 }
 
@@ -644,17 +648,17 @@ async fn delete_any_cap_lets_a_non_owner_admin_delete() {
 async fn team_shared_member_reads_non_member_denied() {
     let ws = "ws-dash-share";
     let store = Store::memory().await.unwrap();
-    // Ada owns + admins: she needs `store:doc/*:write` to add a team member (the S4 membership edge
+    // Test owns + admins: she needs `store:doc/*:write` to add a team member (the S4 membership edge
     // is gated there, reused wholesale).
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[GET, LIST, SAVE, DELETE, SHARE, "store:doc/*:write"],
     );
     let ben = principal("user:ben", ws, &[GET, LIST]); // team member, read only
     let cleo = principal("user:cleo", ws, &[GET, LIST]); // NOT in the team
 
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 1)
+    dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 1)
         .await
         .unwrap();
 
@@ -665,12 +669,12 @@ async fn team_shared_member_reads_non_member_denied() {
     ));
 
     // Share to a team Ben belongs to.
-    add_member(&store, &ada, ws, "team:ops", "user:ben")
+    add_member(&store, &test, ws, "team:ops", "user:ben")
         .await
         .unwrap();
     dashboard_share(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         DashboardVisibility::Team,
@@ -706,14 +710,14 @@ async fn team_shared_member_reads_non_member_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_isolation() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
     let ben = principal("user:ben", "ws-b", ALL);
 
     // The record carries a default TIME window (relative-time-range scope) so the isolation claim
     // covers the new field too: it lives on the `dashboard:{id}` record behind the same wall.
     lb_host::dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         "ws-a",
         "ops",
         "Ops A",
@@ -755,7 +759,7 @@ async fn workspace_isolation() {
         b.time.is_none(),
         "ws-B's same-id record must not surface ws-A's time window"
     );
-    let a = dashboard_get(&store, &ada, "ws-a", "ops").await.unwrap();
+    let a = dashboard_get(&store, &test, "ws-a", "ops").await.unwrap();
     assert_eq!(a.time.as_ref().unwrap().from, "last-7-days");
     // And a non-owner cannot overwrite the owner's dashboard even within the same workspace.
     let mallory = principal("user:mallory", "ws-a", ALL);
@@ -772,7 +776,7 @@ async fn seed_writes_real_tagged_series() {
     let ws = "ws-dash-seed";
     let store = Store::memory().await.unwrap();
     let reader = principal(
-        "user:ada",
+        "user:test",
         ws,
         &["mcp:series.read:call", "mcp:series.find:call"],
     );
@@ -853,12 +857,12 @@ fn v3_timeseries_cell() -> Cell {
 async fn v3_cell_round_trips() {
     let ws = "ws-dash-v3";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     let cell = v3_timeseries_cell();
     let saved = dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -875,7 +879,7 @@ async fn v3_cell_round_trips() {
     // normalizes an explicit JSON `null` away (the base threshold step's `value:null` ⇒ key absent),
     // which the UI treats as -∞ — so we assert FIELD-LEVEL fidelity, not byte equality, for the parts
     // that carry a null. Everything else is identical.
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     let back = &got.cells[0];
     assert_eq!(back.v, 3);
     assert_eq!(back.view, "timeseries");
@@ -907,7 +911,7 @@ async fn v3_cell_round_trips() {
 async fn v1_and_v2_cells_still_load_after_v3() {
     let ws = "ws-dash-compat";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // A v1 series cell (no view/source) and a v2 chart+store.query cell both save + re-read unchanged —
     // the v3 fields stay absent/defaulted, never injected.
@@ -923,7 +927,7 @@ async fn v1_and_v2_cells_still_load_after_v3() {
 
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -933,7 +937,7 @@ async fn v1_and_v2_cells_still_load_after_v3() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.cells[0], v1, "v1 cell round-trips byte-identical");
     assert_eq!(got.cells[1], v2, "v2 cell round-trips byte-identical");
     // The additive v3 fields are absent/defaulted on both (no spurious data).
@@ -946,7 +950,7 @@ async fn v1_and_v2_cells_still_load_after_v3() {
 async fn over_cap_v3_record_is_rejected() {
     let ws = "ws-dash-bounds";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // Too many transformations → rejected (the host is the boundary, not the editor).
     let mut cell = v3_timeseries_cell();
@@ -954,7 +958,7 @@ async fn over_cap_v3_record_is_rejected() {
         .map(|_| json!({ "id": "reduce" }))
         .collect();
     assert!(matches!(
-        dashboard_save(&store, &ada, ws, "ops", "Ops", vec![cell], vec![], 10)
+        dashboard_save(&store, &test, ws, "ops", "Ops", vec![cell], vec![], 10)
             .await
             .unwrap_err(),
         DashboardError::BadInput(_)
@@ -967,7 +971,7 @@ async fn over_cap_v3_record_is_rejected() {
         .collect();
     cell.field_config = json!({ "defaults": {}, "overrides": overrides });
     assert!(matches!(
-        dashboard_save(&store, &ada, ws, "ops2", "Ops", vec![cell], vec![], 10)
+        dashboard_save(&store, &test, ws, "ops2", "Ops", vec![cell], vec![], 10)
             .await
             .unwrap_err(),
         DashboardError::BadInput(_)
@@ -976,7 +980,7 @@ async fn over_cap_v3_record_is_rejected() {
     // A within-cap v3 cell is accepted (the bound is a ceiling, not a block).
     let cell = v3_timeseries_cell();
     assert!(
-        dashboard_save(&store, &ada, ws, "ops3", "Ops", vec![cell], vec![], 10)
+        dashboard_save(&store, &test, ws, "ops3", "Ops", vec![cell], vec![], 10)
             .await
             .is_ok()
     );

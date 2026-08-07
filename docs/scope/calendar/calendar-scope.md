@@ -159,20 +159,20 @@ Key design points:
 
 ## Example flow — invite a teammate to a recurring event
 
-1. Ada (member) calls `calendar.event.create` on her user calendar: "Standup",
+1. Test (member) calls `calendar.event.create` on her user calendar: "Standup",
    `dtstart` Mon 09:00 `Australia/Sydney`, `RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR`,
    reminder offset 10 min, attendee `user:bob`.
-2. The extension chokepoint checks `authz.check_scoped(ada, mcp:calendar.event.create,
-   cal_calendar:ada)` → allow. Event row written; a durable job expands the RRULE via
+2. The extension chokepoint checks `authz.check_scoped(test, mcp:calendar.event.create,
+   cal_calendar:test)` → allow. Event row written; a durable job expands the RRULE via
    `rrule` into `cal_occurrence` rows for the 18-month window; reminder jobs are
    enqueued with deterministic ids; an **outbox effect** (invite notification → Bob's
    push/channel) is written in the same transaction as the attendee row.
 3. Bob's shell shows the invite; he calls `calendar.event.respond {partstat: accepted,
-   sequence: 0}`. His attendee row flips; Ada's open calendar view updates via
+   sequence: 0}`. His attendee row flips; Test's open calendar view updates via
    `calendar.watch`.
 4. Bob's `calendar.events.range` (merged view) now includes the standup even though he
-   has no grant on Ada's calendar — the attendee edge grants event-level reach.
-5. Ada moves Wednesday's occurrence only: `calendar.event.update {recurrence_id: …,
+   has no grant on Test's calendar — the attendee edge grants event-level reach.
+5. Test moves Wednesday's occurrence only: `calendar.event.update {recurrence_id: …,
    apply_to: one}` — an override patch on the event, the one occurrence row rewritten,
    `sequence` bumped, Bob's `partstat` reset to needs-action, update effect delivered.
 6. Friday 08:50 Sydney time: the reminder job fires (logical clock), writes the outbox

@@ -3,7 +3,7 @@
 Status: scope (the ask). Promotes to `doc-site/content/public/auth-caps/` once shipped.
 Downstream consumer: `rubix-ai` (`docs/scope/frontend/email-login-scope.md` — the UI half).
 
-Today a human logs in by typing a raw principal (`user:ada`) **and** a workspace name, and the
+Today a human logs in by typing a raw principal (`user:test`) **and** a workspace name, and the
 password check — when enabled — is verified against a **per-`(workspace, user)`** hash. That is
 backwards from the model the platform already committed to: `global-identity-scope.md` (shipped)
 says **one person authenticates ONCE as a global identity, then picks a workspace** — the Slack
@@ -32,7 +32,7 @@ token, one `ws` claim, same caps grammar; this scope only changes how a person *
 
 - **Email is the human login handle.** The global identity record gains a globally-unique,
   case-insensitive `email`; login is `email + password`, resolved to the existing `sub`
-  (`user:ada`). The `sub` stays the grant key (global-identity decision #6) — email is a lookup
+  (`user:test`). The `sub` stays the grant key (global-identity decision #6) — email is a lookup
   handle, never a grant subject.
 - **The credential is global, on the identity.** One argon2id password hash per *person*, stored
   in `_lb_identity` beside (not inside) the identity record — the `cred_ref` seam decision #7
@@ -164,27 +164,27 @@ hashing, and the pre-principal gate sequence in `routes/login.rs`. This scope re
 
 ## Example flow
 
-1. **Provision** — admin creates Ada: `identity.create("user:ada", email: "ada@acme.com")`,
-   `identity.set_password("user:ada", …)` (or Ada arrives via an invite that does both). Ada is a
+1. **Provision** — admin creates Test: `identity.create("user:test", email: "test@nube-io.com")`,
+   `identity.set_password("user:test", …)` (or Test arrives via an invite that does both). Test is a
    global identity with a credential, in however many workspaces she's been added to.
-2. **One workspace (the common case, the ask's headline)** — Ada is a member of `acme` only.
-   `POST /auth/login {email:"ada@acme.com", password:"…"}` → credential verified → memberships =
-   `[acme]` → the reply IS the full token (`{token, principal:"user:ada", workspace:"acme", caps,
-   workspaces:[{ws:"acme",…}]}`). She never saw a workspace field. **One round trip, signed in.**
-3. **Many workspaces** — Bob belongs to `acme` and `globex`. Same call → `401`-safe verify →
-   reply is `{select_token, workspaces:[{acme…},{globex…}]}`, no full token. He picks `globex` →
+2. **One workspace (the common case, the ask's headline)** — Test is a member of `nube` only.
+   `POST /auth/login {email:"test@nube-io.com", password:"…"}` → credential verified → memberships =
+   `[nube]` → the reply IS the full token (`{token, principal:"user:test", workspace:"nube", caps,
+   workspaces:[{ws:"nube",…}]}`). She never saw a workspace field. **One round trip, signed in.**
+3. **Many workspaces** — Bob belongs to `nube` and `globex`. Same call → `401`-safe verify →
+   reply is `{select_token, workspaces:[{nube…},{globex…}]}`, no full token. He picks `globex` →
    `POST /auth/select {workspace:"globex"}` (bearer select-token) → membership re-checked → full
    token for `globex`, with globex's independent caps.
-4. **Switch** — Bob, working in `globex`, opens the switcher and picks `acme` →
-   `POST /auth/switch {workspace:"acme"}` (bearer his globex token) → he is an effective member →
-   re-mint `(user:bob, acme, acme's caps)`. No password re-entry. Had an admin removed his `acme`
+4. **Switch** — Bob, working in `globex`, opens the switcher and picks `nube` →
+   `POST /auth/switch {workspace:"nube"}` (bearer his globex token) → he is an effective member →
+   re-mint `(user:bob, nube, nube's caps)`. No password re-entry. Had an admin removed his `nube`
    membership an hour ago, the switch is `403` — the roster in his client was a lens, not authority.
 5. **Wrong password / unknown email** — both return the same `401 "invalid credentials"` after the
    same code path shape; five rapid failures for one email hit the rate-limit window.
 6. **Zero memberships** — Carol authenticates fine but was removed from her last workspace →
    `403 "not a member of any workspace"`, no token of any kind (decision #4).
-7. **Disabled in one, not all** — Dave is disabled in `acme` (per-ws `user_login_check`) but
-   active in `globex` → his login lists only `globex`; an `auth.switch` to `acme` is refused.
+7. **Disabled in one, not all** — Dave is disabled in `nube` (per-ws `user_login_check`) but
+   active in `globex` → his login lists only `globex`; an `auth.switch` to `nube` is refused.
 8. **Machine caller** — an AI agent / CLI / appliance presents its **lb API key**
    (`api-keys-scope.md`), not `/auth/*` — authenticated as a non-human `Subject`, scoped and
    revocable, entirely outside this human front door.

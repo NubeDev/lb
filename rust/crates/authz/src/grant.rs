@@ -30,7 +30,7 @@ pub(crate) const TOMBSTONE: &str = "__revoked__";
 /// field-equality query.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Grant {
-    /// The grant target (`user:ada` / `team:facilities` / `role:operator`).
+    /// The grant target (`user:test` / `team:facilities` / `role:operator`).
     pub subject: Subject,
     /// The capability string granted (e.g. `mcp:hvac.setpoint:call`).
     pub cap: String,
