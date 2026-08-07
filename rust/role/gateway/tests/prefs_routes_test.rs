@@ -113,7 +113,7 @@ async fn format_and_convert_need_no_prefs_cap() {
 async fn workspace_default_theme_reaches_a_fresh_member() {
     let (gw, key) = gateway().await;
     let admin = token(&key, "user:test", "nube", &[SET, SET_DEFAULT, RESOLVE]);
-    let member = token(&key, "user:test", "nube", &[SET, GET, RESOLVE]);
+    let member = token(&key, "user:mia", "nube", &[SET, GET, RESOLVE]);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -145,7 +145,7 @@ async fn workspace_default_theme_reaches_a_fresh_member() {
 async fn clearing_ui_theme_over_http_restores_inheritance() {
     let (gw, key) = gateway().await;
     let admin = token(&key, "user:test", "nube", &[SET, SET_DEFAULT, RESOLVE]);
-    let member = token(&key, "user:test", "nube", &[SET, GET, RESOLVE]);
+    let member = token(&key, "user:mia", "nube", &[SET, GET, RESOLVE]);
 
     router(gw.clone())
         .oneshot(bearer(

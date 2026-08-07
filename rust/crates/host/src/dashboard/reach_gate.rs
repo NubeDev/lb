@@ -59,15 +59,16 @@ mod tests {
                 "reach:dashboards/demo-analytics:view".into(),
             ],
         );
+        // The boards are owned by SOMEONE ELSE — the owner valve must not stand in for reach here.
         assert!(reach_allows(
             &p,
             "nube",
-            &board("demo-analytics", "user:test")
+            &board("demo-analytics", "user:bob")
         ));
         assert!(!reach_allows(
             &p,
             "nube",
-            &board("modbus-tmpl-sim-meter", "user:test")
+            &board("modbus-tmpl-sim-meter", "user:bob")
         ));
     }
 
