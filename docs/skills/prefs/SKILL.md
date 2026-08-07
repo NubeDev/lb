@@ -58,7 +58,7 @@ is opaque — without `prefs.get` you cannot even confirm another user's record 
 
 `prefs.set`/`set_default` take a **partial** `Prefs` patch — only the axes you name change; the rest
 stay unset (inherit). `prefs.resolve` folds the chain (request `override` → user → workspace default →
-built-in fallback `en`/UTC/`iso`/`metric`) into a fully-populated `ResolvedPrefs` with every axis
+built-in fallback `en`/UTC/`eu`/`metric`) into a fully-populated `ResolvedPrefs` with every axis
 decided.
 
 ## 3. The axes (the closed, pinned set)

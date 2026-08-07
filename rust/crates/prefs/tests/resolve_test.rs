@@ -15,7 +15,7 @@ fn builtin_when_chain_empty() {
     let r = resolve(&[]);
     assert_eq!(r.language, "en");
     assert_eq!(r.timezone, "UTC");
-    assert_eq!(r.date_style, DateStyle::Iso);
+    assert_eq!(r.date_style, DateStyle::Eu);
     assert_eq!(r.unit_system, UnitSystem::Metric);
 }
 
