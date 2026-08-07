@@ -105,7 +105,7 @@ describe("loadCatalog", () => {
 describe("useCatalog (lazy per-section loads)", () => {
   it("starts every wired section as `idle` — no loader fires on mount (the lazy contract)", async () => {
     const loaders: SourceLoaders = { listSeries: async () => [`a.b`] };
-    const { result } = renderHook(() => useCatalog(loaders, "acme"));
+    const { result } = renderHook(() => useCatalog(loaders, "nube"));
     // The Series section exists (loader wired) but is `idle` — no API call went out yet.
     expect(result.current.sections.series?.status).toBe("idle");
     // Sections the host didn't wire stay absent (undefined), not idle.
@@ -115,7 +115,7 @@ describe("useCatalog (lazy per-section loads)", () => {
   it("loadSection(kind) fires the section's loader and resolves to ready", async () => {
     const listChannels = vi.fn(async () => [{ id: "general" }]);
     const loaders: SourceLoaders = { listChannels };
-    const { result } = renderHook(() => useCatalog(loaders, "acme"));
+    const { result } = renderHook(() => useCatalog(loaders, "nube"));
     expect(result.current.sections.channels?.status).toBe("idle");
     expect(listChannels).not.toHaveBeenCalled(); // not fired on mount
     // The user expands the Channels section.
@@ -128,7 +128,7 @@ describe("useCatalog (lazy per-section loads)", () => {
 
   it("loadSection is idempotent — re-calling on a loaded section does not refire the loader", async () => {
     const listSeries = vi.fn(async () => [`a.b`]);
-    const { result } = renderHook(() => useCatalog({ listSeries }, "acme"));
+    const { result } = renderHook(() => useCatalog({ listSeries }, "nube"));
     act(() => result.current.loadSection("series"));
     await waitFor(() => expect(result.current.sections.series?.status).toBe("ready"));
     expect(listSeries).toHaveBeenCalledTimes(1);
@@ -141,7 +141,7 @@ describe("useCatalog (lazy per-section loads)", () => {
     const listChannels = vi.fn(async () => {
       throw new Error("denied");
     });
-    const { result } = renderHook(() => useCatalog({ listChannels }, "acme"));
+    const { result } = renderHook(() => useCatalog({ listChannels }, "nube"));
     act(() => result.current.loadSection("channels"));
     await waitFor(() => expect(result.current.sections.channels?.status).toBe("denied"));
     // The picker projection of the same state:

@@ -79,7 +79,7 @@ E2E (G5b) is the one that needs the cap-grant fix.
 ```bash
 make cloud                          # node on :8080
 TOKEN=$(curl -s -X POST localhost:8080/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 # Publish any built wasm ext with a [[tools]] entry (e.g. the devkit-scaffolded energy-dashboard).
 curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8080/extensions \
   -H "authorization: Bearer $TOKEN" -d '{"path":"…/rust/extensions/energy-dashboard"}'   # 204

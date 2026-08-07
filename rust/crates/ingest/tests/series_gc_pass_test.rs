@@ -83,16 +83,16 @@ async fn pass_row_count(store: &Store, ws: &str) -> i64 {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn run_gc_records_the_pass_it_just_ran() {
     let store = Store::memory().await.unwrap();
-    seed_policed(&store, "acme").await;
+    seed_policed(&store, "nube").await;
 
     assert_eq!(
-        last_pass(&store, "acme").await.unwrap(),
+        last_pass(&store, "nube").await.unwrap(),
         None,
         "a node that has never run GC honestly reports no pass — not a fabricated zero row"
     );
 
-    let pass = run_gc(&store, "acme", 300_000).await.unwrap();
-    let rec = last_pass(&store, "acme")
+    let pass = run_gc(&store, "nube", 300_000).await.unwrap();
+    let rec = last_pass(&store, "nube")
         .await
         .unwrap()
         .expect("one pass ran, so a record exists");
@@ -137,7 +137,7 @@ async fn a_pass_row_predating_capped_rollup_still_reads_and_gc_still_runs() {
     // `capped_rollup`. Written as raw SQL because the current struct cannot express its own absence.
     store
         .query_ws(
-            "acme",
+            "nube",
             "UPSERT type::thing('series_gc_pass', 'last') CONTENT {
                last_run_ms: 1000, duration_ms: 5, evicted_raw: 0, capped_raw: 0,
                rollup_rows: 0, evicted_rollup: 0, warnings: [], warnings_total: 0
@@ -147,7 +147,7 @@ async fn a_pass_row_predating_capped_rollup_still_reads_and_gc_still_runs() {
         .await
         .expect("seed a pre-upgrade pass row");
 
-    let rec = last_pass(&store, "acme")
+    let rec = last_pass(&store, "nube")
         .await
         .expect("a pre-upgrade row must not fail to deserialize")
         .expect("the row exists");
@@ -158,7 +158,7 @@ async fn a_pass_row_predating_capped_rollup_still_reads_and_gc_still_runs() {
     );
 
     // The failure that actually bit: run_gc reads last_pass first, so a stale row broke the pass.
-    run_gc(&store, "acme", 2000)
+    run_gc(&store, "nube", 2000)
         .await
         .expect("GC must run on a workspace holding a pre-upgrade pass row");
 }
@@ -166,11 +166,11 @@ async fn a_pass_row_predating_capped_rollup_still_reads_and_gc_still_runs() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_record_is_upserted_last_pass_only_never_appended() {
     let store = Store::memory().await.unwrap();
-    seed_policed(&store, "acme").await;
+    seed_policed(&store, "nube").await;
 
-    run_gc(&store, "acme", 300_000).await.unwrap();
+    run_gc(&store, "nube", 300_000).await.unwrap();
     assert_eq!(
-        last_pass(&store, "acme")
+        last_pass(&store, "nube")
             .await
             .unwrap()
             .unwrap()
@@ -178,8 +178,8 @@ async fn the_record_is_upserted_last_pass_only_never_appended() {
         300_000
     );
 
-    run_gc(&store, "acme", 999_000).await.unwrap();
-    let rec = last_pass(&store, "acme").await.unwrap().unwrap();
+    run_gc(&store, "nube", 999_000).await.unwrap();
+    let rec = last_pass(&store, "nube").await.unwrap().unwrap();
     assert_eq!(
         rec.last_run_ms, 999_000,
         "the SECOND pass is what `last_pass` reports"
@@ -189,7 +189,7 @@ async fn the_record_is_upserted_last_pass_only_never_appended() {
     // grow ~10k rows/ws/year at the reactor's 300s cadence — an unbounded table in the subsystem
     // whose whole job is bounding growth.
     assert_eq!(
-        pass_row_count(&store, "acme").await,
+        pass_row_count(&store, "nube").await,
         1,
         "exactly ONE row in {GC_PASS_TABLE} after two passes"
     );
@@ -233,15 +233,15 @@ async fn a_pass_with_samples_but_no_policies_still_records() {
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         (1..=30u64)
             .map(|i| sample("unpoliced", "p", i, i * 1000, json!(i as f64)))
             .collect(),
     )
     .await;
 
-    run_gc(&store, "acme", 500_000).await.unwrap();
-    let rec = last_pass(&store, "acme").await.unwrap().unwrap();
+    run_gc(&store, "nube", 500_000).await.unwrap();
+    let rec = last_pass(&store, "nube").await.unwrap().unwrap();
     assert_eq!(rec.last_run_ms, 500_000);
     assert_eq!(rec.evicted_raw, 0, "no policy governs anything");
     assert_eq!(
@@ -264,9 +264,9 @@ async fn warnings_are_clipped_but_the_total_stays_honest() {
         ..GcPass::default()
     };
     let rec = GcPassRecord::new(&pass, 7_000, 3);
-    record_pass(&store, "acme", &rec).await.unwrap();
+    record_pass(&store, "nube", &rec).await.unwrap();
 
-    let read_back = last_pass(&store, "acme").await.unwrap().unwrap();
+    let read_back = last_pass(&store, "nube").await.unwrap().unwrap();
     assert_eq!(
         read_back.warnings.len(),
         MAX_STORED_WARNINGS,

@@ -699,8 +699,8 @@ function AuthView() {
           </div>
           <div className="lb-claims">
         {'{ '}
-        <span className="k">"sub"</span>: <span className="c">"user:ada"</span>,{' '}
-        <span className="k">"ws"</span>: <span className="c">"acme"</span>,{' '}
+        <span className="k">"sub"</span>: <span className="c">"user:test"</span>,{' '}
+        <span className="k">"ws"</span>: <span className="c">"nube"</span>,{' '}
         <span className="k">"role"</span>: <span className="c">"member"</span>,{' '}
         <span className="k">"caps"</span>: <span className="c">["mcp:hvac.setpoint:call"]</span>,{' '}
         <span className="k">"exp"</span>: <span className="c">100</span>{' '}

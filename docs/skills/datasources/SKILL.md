@@ -45,7 +45,7 @@ README §6/§7). Every verb is capability-gated server-side; a denial is **opaqu
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
   -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Send it as `Authorization: Bearer $TOKEN` on every call. Capabilities:
@@ -96,8 +96,8 @@ logged.
 # register a Postgres source (DSN mediated into the secret store; record keeps only the ref)
 curl -s -X POST http://127.0.0.1:8080/datasources -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{
-  "name":"warehouse","kind":"postgres","endpoint":"db.acme.internal:5432",
-  "dsn":"postgres://ro:secret@db.acme.internal:5432/analytics"}'
+  "name":"warehouse","kind":"postgres","endpoint":"db.nube.internal:5432",
+  "dsn":"postgres://ro:secret@db.nube.internal:5432/analytics"}'
 
 # a real connectivity probe (green/red) — routes through the supervised sidecar
 curl -s -X POST http://127.0.0.1:8080/datasources/warehouse/test -H "authorization: Bearer $TOKEN"

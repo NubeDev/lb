@@ -33,7 +33,7 @@ pub async fn latest_sample(
     client: &Client,
     series: &str,
 ) -> Result<LatestSampleReply, LbError> {
-    // `series` may contain `/` (e.g. `webhook:acme:wh_x`); encode so the path
+    // `series` may contain `/` (e.g. `webhook:nube:wh_x`); encode so the path
     // segment stays one segment.
     let path = format!(
         "/series/{}/latest",

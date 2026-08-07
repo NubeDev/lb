@@ -82,7 +82,7 @@ pub fn admin(ws: &str, extra: &[&str]) -> Principal {
     let mut caps = vec![VERB_CAP.to_string()];
     caps.extend(extra.iter().map(|s| s.to_string()));
     let refs: Vec<&str> = caps.iter().map(String::as_str).collect();
-    principal("user:ada", ws, &refs)
+    principal("user:test", ws, &refs)
 }
 
 /// Register `ext` as a real registry entry declaring the health convention.

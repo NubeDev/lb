@@ -19,7 +19,7 @@ use super::error::MembershipError;
 pub const MEMBER_ROLE_CAP: &str = "role:member";
 
 /// Add `sub` to workspace `ws` as `principal`, granting the `member` role. Idempotent. `sub` is the
-/// global identity handle (`user:ada`).
+/// global identity handle (`user:test`).
 pub async fn membership_add(
     store: &Store,
     principal: &Principal,

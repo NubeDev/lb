@@ -113,7 +113,7 @@ async fn node_with_ask_policy(ws: &str) -> Arc<Node> {
 async fn two_decides_first_binds_second_is_rejected_and_post_run_decide_is_a_noop() {
     let ws = "agent-first-settle";
     let node = node_with_ask_policy(ws).await;
-    let caller = principal("user:ada", ws, &[INVOKE, ECHO, INBOX_REC]);
+    let caller = principal("user:test", ws, &[INVOKE, ECHO, INBOX_REC]);
 
     // Run suspends on the Ask.
     let gw = echo_then_stop();
@@ -225,7 +225,7 @@ async fn cannot_decide_without_the_decide_cap_nor_set_policy_without_admin_cap()
 async fn a_ws_b_decide_cannot_settle_a_ws_a_suspension() {
     let ws_a = "agent-iso-a";
     let node = node_with_ask_policy(ws_a).await;
-    let caller = principal("user:ada", ws_a, &[INVOKE, ECHO, INBOX_REC]);
+    let caller = principal("user:test", ws_a, &[INVOKE, ECHO, INBOX_REC]);
     let _ = invoke(
         &node,
         &echo_then_stop(),
@@ -296,7 +296,7 @@ async fn a_ws_b_policy_does_not_affect_ws_a() {
     .unwrap();
 
     let ws_a = "agent-pol-a";
-    let caller = principal("user:ada", ws_a, &[INVOKE, ECHO]);
+    let caller = principal("user:test", ws_a, &[INVOKE, ECHO]);
     let answer = invoke(
         &node,
         &echo_then_stop(),
@@ -333,7 +333,7 @@ async fn a_ws_b_policy_does_not_affect_ws_a() {
 async fn suspend_reload_then_decide_resumes_exactly_once() {
     let ws = "agent-offline";
     let node = node_with_ask_policy(ws).await;
-    let caller = principal("user:ada", ws, &[INVOKE, ECHO, INBOX_REC]);
+    let caller = principal("user:test", ws, &[INVOKE, ECHO, INBOX_REC]);
     // One persistent gateway across invoke+resume — models a real node whose model-turn cache + script
     // position survive the suspension (a fresh provider would re-answer turn 0 and re-propose the call).
     let gw = echo_then_stop();
@@ -412,7 +412,7 @@ async fn suspend_reload_then_decide_resumes_exactly_once() {
 async fn ask_suspends_then_deny_resumes_with_a_denied_result() {
     let ws = "agent-ask-deny";
     let node = node_with_ask_policy(ws).await;
-    let caller = principal("user:ada", ws, &[INVOKE, ECHO, INBOX_REC, INBOX_LIST]);
+    let caller = principal("user:test", ws, &[INVOKE, ECHO, INBOX_REC, INBOX_LIST]);
     let gw = echo_then_stop();
 
     let _ = invoke(
@@ -491,7 +491,7 @@ async fn ask_suspends_then_deny_resumes_with_a_denied_result() {
 async fn ask_suspends_then_allow_replays_the_original_call() {
     let ws = "agent-ask-allow";
     let node = node_with_ask_policy(ws).await;
-    let caller = principal("user:ada", ws, &[INVOKE, ECHO, INBOX_REC]);
+    let caller = principal("user:test", ws, &[INVOKE, ECHO, INBOX_REC]);
     let gw = echo_then_stop();
 
     let _ = invoke(

@@ -67,7 +67,7 @@ async fn fires_a_reminder_now_with_the_cap() {
     let ws = "fire-now-ok";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:reminder.create:call",
@@ -75,7 +75,7 @@ async fn fires_a_reminder_now_with_the_cap() {
             "mcp:reminder.fire:call",
         ],
     );
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
 
     create_reminder(&node, &p, ws, "standup", "team").await;
 
@@ -96,7 +96,7 @@ async fn fires_a_reminder_now_with_the_cap() {
     let items = lb_inbox::list(&node.store, ws, "team").await.unwrap();
     assert_eq!(items.len(), 1, "the firing wrote a real inbox item");
     assert_eq!(items[0].body, "run now body");
-    assert_eq!(items[0].author, "user:ada");
+    assert_eq!(items[0].author, "user:test");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -106,11 +106,11 @@ async fn denies_fire_without_cap() {
     let ws = "fire-deny";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &["mcp:reminder.create:call", "mcp:reminder.get:call"],
     );
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     create_reminder(&node, &p, ws, "standup", "team").await;
 
     let err = call_tool(
@@ -141,11 +141,11 @@ async fn fire_is_workspace_isolated() {
     // id reads as absent → NotFound, no effect. Even a leaked id can't cross the wall.
     let node = Arc::new(Node::boot().await.unwrap());
     let a = principal(
-        "user:ada",
+        "user:test",
         "fire-iso-a",
         &["mcp:reminder.create:call", "mcp:reminder.get:call"],
     );
-    grant(&node.store, "fire-iso-a", "user:ada", "bus:chan/team:pub").await;
+    grant(&node.store, "fire-iso-a", "user:test", "bus:chan/team:pub").await;
     create_reminder(&node, &a, "fire-iso-a", "x", "team").await;
 
     let b = principal(
@@ -181,7 +181,7 @@ async fn double_fire_same_instant_is_idempotent() {
     let ws = "fire-idem";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:reminder.create:call",
@@ -189,7 +189,7 @@ async fn double_fire_same_instant_is_idempotent() {
             "mcp:reminder.fire:call",
         ],
     );
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     create_reminder(&node, &p, ws, "standup", "team").await;
 
     let fire = |now: u64| {
@@ -231,7 +231,7 @@ async fn create_accepts_the_flat_descriptor_form_no_nested_action_no_id() {
     let ws = "create-flat";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:reminder.create:call",
@@ -288,7 +288,7 @@ async fn create_still_accepts_the_nested_action_form() {
     let ws = "create-nested";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &["mcp:reminder.create:call", "mcp:reminder.get:call"],
     );
@@ -330,7 +330,7 @@ async fn write_verbs_default_ts_when_absent() {
     let ws = "write-no-ts";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:reminder.create:call",
@@ -340,7 +340,7 @@ async fn write_verbs_default_ts_when_absent() {
             "mcp:reminder.delete:call",
         ],
     );
-    grant(&node.store, ws, "user:ada", "bus:chan/team:pub").await;
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
     create_reminder(&node, &p, ws, "standup", "team").await;
 
     // update WITHOUT ts (the pause switch's shape) → succeeds and flips `enabled`.
@@ -410,7 +410,7 @@ async fn catalog_shows_reminder_create_and_list_only_with_their_cap() {
 
     // WITH create + list + fire → all three commands present, and create carries the cron widget hint.
     let member = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             CATALOG,

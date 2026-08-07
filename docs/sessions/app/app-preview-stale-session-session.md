@@ -78,7 +78,7 @@ would be the escape hatch if durability is ever wanted — not added now (no con
   - unreachable-kept: same, `onUnreachable:"keep"` → session retained (device offline policy).
   - `cd app/sdk && pnpm test:gateway` → **17/17** (13 prior + 4 new).
 - **Playwright e2e** (scratchpad `run-e2e.sh` + `e2e-restart.mjs`, cached puppeteer Chrome):
-  login ada/acme → create `room-before-restart` (visible) → **kill + reboot** the gateway on 8087
+  login test/nube → create `room-before-restart` (visible) → **kill + reboot** the gateway on 8087
   (fresh in-memory store + fresh key = dead token) → reload → asserted the shell shows
   **"Lazybones / Sign in"**, NOT the stale/empty room, and does not ghost the vanished channel.
   Console shows the real 401 the fix now catches. Screenshot: the clean prefilled login screen.
@@ -105,12 +105,12 @@ on Sign in. Driving the real path exposed a **separate, deeper** bug (full card:
 - **"Failed to fetch"** = the preview defaulted `?node=` to **8087** (the app's own `test_gateway`),
   but the user runs root `make dev`, whose node is on **8080**. Nothing on 8087 → `fetch` rejects.
 - Pointing at 8080 turned it into the real error: **403 "not a member of any workspace"** for the
-  prefilled `ada`/`acme`.
+  prefilled `test`/`nube`.
 - Root cause: the identity model keys on the **`user:<name>` principal** (token `sub`, membership
-  row, `created_by`, seed `LB_SEED_USER=user:ada`), but `role/gateway/src/routes/login.rs` used the
-  request `user` string **verbatim**. Bare `ada` was therefore a principal literally named `ada` — a
-  *different* identity from the seeded `user:ada` — so `membership_login_resolve` refused it against
-  the already-populated `acme`. It only ever worked against an empty in-memory `test_gateway`
+  row, `created_by`, seed `LB_SEED_USER=user:test`), but `role/gateway/src/routes/login.rs` used the
+  request `user` string **verbatim**. Bare `test` was therefore a principal literally named `test` — a
+  *different* identity from the seeded `user:test` — so `membership_login_resolve` refused it against
+  the already-populated `nube`. It only ever worked against an empty in-memory `test_gateway`
   (where the stranger bootstraps as first member), which is why the preview looked fine until it met
   the user's persistent store.
 
@@ -120,7 +120,7 @@ let principal = if req.user.starts_with("user:") { req.user.clone() }
                 else { format!("user:{}", req.user) };
 ```
 applied to `user_login_check`, `membership_login_resolve`, `dev_claims` (token `sub`), grant-resolve
-(re-strips the prefix), and `LoginReply.principal`. `ada` and `user:ada` now resolve to the same
+(re-strips the prefix), and `LoginReply.principal`. `test` and `user:test` now resolve to the same
 identity on any node; an empty node still bootstraps. Edge normalization only — no core membership /
 `Subject` change, no extension branch.
 
@@ -137,9 +137,9 @@ identity on any node; an empty node still bootstraps. Edge normalization only �
 **Verification:** `cargo test -p lb-role-gateway` incl. the new
 `identity_routes_test::login_canonicalizes_a_bare_handle_to_the_user_principal`, and
 `cargo test -p lb-host --test identity_membership_test --test authz_test` — green;
-`app/sdk$ pnpm test:gateway` 17/17; Playwright e2e (`…5310/?node=http://127.0.0.1:8080`, bare `ada`)
-logs in and shows the real channels (`#123`, `#abc`, `#general`); and a bare-`ada` login curl against
-the user's **live `make dev` node** returned 200 with `principal: user:ada`.
+`app/sdk$ pnpm test:gateway` 17/17; Playwright e2e (`…5310/?node=http://127.0.0.1:8080`, bare `test`)
+logs in and shows the real channels (`#123`, `#abc`, `#general`); and a bare-`test` login curl against
+the user's **live `make dev` node** returned 200 with `principal: user:test`.
 
 ## Gotcha for the next session
 

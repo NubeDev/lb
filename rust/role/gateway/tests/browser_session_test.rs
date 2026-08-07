@@ -132,13 +132,20 @@ async fn login(gw: &Gateway, email: &str, password: &str) -> (String, Value, Sta
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn login_sets_an_httponly_cookie_and_returns_facts() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
 
     let resp = router(gw.clone())
         .oneshot(browser_post(
             "/api/auth/login",
-            json!({ "email": "ada@example.com", "password": "hunter2hunter2" }),
+            json!({ "email": "test@example.com", "password": "hunter2hunter2" }),
         ))
         .await
         .unwrap();
@@ -158,8 +165,8 @@ async fn login_sets_an_httponly_cookie_and_returns_facts() {
     assert!(cookie.contains("SameSite=Lax"));
 
     let body: Value = json_body(resp).await;
-    assert_eq!(body["principal"], "user:ada");
-    assert_eq!(body["workspace"], "acme");
+    assert_eq!(body["principal"], "user:test");
+    assert_eq!(body["workspace"], "nube");
     assert!(
         body["caps"].is_array(),
         "the shell folds caps into its own role signal"
@@ -172,11 +179,18 @@ async fn login_sets_an_httponly_cookie_and_returns_facts() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn token_never_reaches_the_browser() {
     let (gw, _node, key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
 
     // Every `/api/*` reply a shell can provoke.
-    let (sid, login_body, _) = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let (sid, login_body, _) = login(&gw, "test@example.com", "hunter2hunter2").await;
     assert!(!sid.is_empty(), "login established a session");
 
     let session_resp = router(gw.clone())
@@ -212,7 +226,7 @@ async fn token_never_reaches_the_browser() {
     // The real token for this person, so we can assert its literal absence.
     let real_token = {
         let minted =
-            lb_role_gateway::session::mint_full_session(&gw.node, &key, "user:ada", "acme", NOW)
+            lb_role_gateway::session::mint_full_session(&gw.node, &key, "user:test", "nube", NOW)
                 .await;
         minted.token
     };
@@ -247,9 +261,16 @@ async fn token_never_reaches_the_browser() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn forward_dispatches_with_the_sessions_bearer() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
-    let (sid, _, _) = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
+    let (sid, _, _) = login(&gw, "test@example.com", "hunter2hunter2").await;
 
     let resp = router(gw.clone())
         .oneshot(with_cookie(
@@ -275,11 +296,18 @@ async fn forward_dispatches_with_the_sessions_bearer() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_smuggled_bearer_is_ignored() {
     let (gw, _node, key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
 
     // A powerful token the attacker holds, but NO session cookie.
-    let stolen = common::token(&key, "user:root", "acme", &["mcp:series.find:call"]);
+    let stolen = common::token(&key, "user:root", "nube", &["mcp:series.find:call"]);
     let req = bearer(
         browser_post(
             "/api/mcp/call",
@@ -299,13 +327,20 @@ async fn a_smuggled_bearer_is_ignored() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn bad_password_sets_no_cookie() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
 
     let resp = router(gw.clone())
         .oneshot(browser_post(
             "/api/auth/login",
-            json!({ "email": "ada@example.com", "password": "wrong" }),
+            json!({ "email": "test@example.com", "password": "wrong" }),
         ))
         .await
         .unwrap();
@@ -337,9 +372,16 @@ async fn a_forged_sid_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn logout_kills_the_session() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
-    let (sid, _, _) = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
+    let (sid, _, _) = login(&gw, "test@example.com", "hunter2hunter2").await;
 
     let resp = router(gw.clone())
         .oneshot(with_cookie(
@@ -370,9 +412,16 @@ async fn logout_kills_the_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_session_survives_a_gateway_rebuild() {
     let (gw, node, key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
-    let (sid, _, _) = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
+    let (sid, _, _) = login(&gw, "test@example.com", "hunter2hunter2").await;
 
     // A brand-new Gateway over the SAME node/store — i.e. the process restarted.
     let rebuilt = Gateway::new(node, key, NOW)
@@ -411,9 +460,16 @@ async fn an_expired_session_is_rejected() {
             c.ttl_secs = 0;
             c
         });
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
-    let (sid, _, status) = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
+    let (sid, _, status) = login(&gw, "test@example.com", "hunter2hunter2").await;
     assert_eq!(status, StatusCode::OK, "login itself succeeds");
 
     let resp = router(gw.clone())
@@ -446,7 +502,7 @@ async fn the_seam_is_absent_unless_configured() {
     let resp = router(gw.clone())
         .oneshot(browser_post(
             "/api/auth/login",
-            json!({ "email": "ada@example.com", "password": "hunter2hunter2" }),
+            json!({ "email": "test@example.com", "password": "hunter2hunter2" }),
         ))
         .await
         .unwrap();
@@ -470,10 +526,17 @@ async fn the_seam_is_absent_unless_configured() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn session_carries_the_workspace_roster_like_login_does() {
     let (gw, _node, _key) = session_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:root", "acme").await;
-    seed_person(&gw, &admin, "user:ada", "ada@example.com", "hunter2hunter2").await;
+    let admin = bootstrap_admin(&gw, "user:root", "nube").await;
+    seed_person(
+        &gw,
+        &admin,
+        "user:test",
+        "test@example.com",
+        "hunter2hunter2",
+    )
+    .await;
 
-    let (sid, login_body, _) = login(&gw, "ada@example.com", "hunter2hunter2").await;
+    let (sid, login_body, _) = login(&gw, "test@example.com", "hunter2hunter2").await;
     let login_roster = login_body["workspaces"].as_array().unwrap().clone();
     assert!(
         !login_roster.is_empty(),

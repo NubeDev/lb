@@ -37,7 +37,7 @@ async fn pause_then_resume_over_the_route() {
     let (gw, key) = gateway().await;
     let ws = "gw-ctl";
     seed_run(&gw, ws, "run-1").await;
-    let tok = token(&key, "user:ada", ws, CONTROL);
+    let tok = token(&key, "user:test", ws, CONTROL);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
@@ -65,7 +65,7 @@ async fn stop_over_the_route_cancels() {
     let (gw, key) = gateway().await;
     let ws = "gw-ctl-stop";
     seed_run(&gw, ws, "run-s").await;
-    let tok = token(&key, "user:ada", ws, CONTROL);
+    let tok = token(&key, "user:test", ws, CONTROL);
 
     // `cancel` and `stop` are aliases; use the friendly `cancel` route segment.
     let resp = router(gw.clone())
@@ -105,7 +105,7 @@ async fn an_unknown_op_is_400() {
     let (gw, key) = gateway().await;
     let ws = "gw-ctl-badop";
     seed_run(&gw, ws, "run-b").await;
-    let tok = token(&key, "user:ada", ws, CONTROL);
+    let tok = token(&key, "user:test", ws, CONTROL);
 
     let resp = router(gw)
         .oneshot(bearer(

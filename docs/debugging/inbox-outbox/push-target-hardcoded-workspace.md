@@ -1,4 +1,4 @@
-# The push target resolved every effect's devices in a hardcoded `"acme"` workspace
+# The push target resolved every effect's devices in a hardcoded `"nube"` workspace
 
 - Area: inbox-outbox (push target)
 - Status: fixed
@@ -11,11 +11,11 @@
 
 ## Symptom
 
-`notify/push_target.rs::effect_workspace()` literally returned `"acme".to_string()` — under a
+`notify/push_target.rs::effect_workspace()` literally returned `"nube".to_string()` — under a
 wall of comments describing three different designs and implementing none. Every push effect,
-whatever workspace it was enqueued in, resolved devices / prefs / disable-writes in `acme`:
-a ws-B notification would fan out to ws-`acme` devices (rule 6 violation, the hard wall),
-and in any workspace not named `acme` push silently did nothing.
+whatever workspace it was enqueued in, resolved devices / prefs / disable-writes in `nube`:
+a ws-B notification would fan out to ws-`nube` devices (rule 6 violation, the hard wall),
+and in any workspace not named `nube` push silently did nothing.
 
 It shipped green because `deliver()` had **zero tests** — the only "test" surface was the
 recording fake in isolation.

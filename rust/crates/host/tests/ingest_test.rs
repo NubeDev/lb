@@ -56,7 +56,7 @@ async fn write_drain_read_round_trip_via_mcp() {
     let store = Store::memory().await.unwrap();
     let p = principal(
         "client:pi-7",
-        "acme",
+        "nube",
         &[
             "mcp:ingest.write:call",
             "mcp:series.read:call",
@@ -67,7 +67,7 @@ async fn write_drain_read_round_trip_via_mcp() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [sample("cpu", 1, json!(61.4)), sample("cpu", 2, json!(62.0))] }),
     )
@@ -77,7 +77,7 @@ async fn write_drain_read_round_trip_via_mcp() {
 
     // `ingest.write` already drained staging → series synchronously, so a SECOND explicit drain finds
     // nothing left to commit — exactly-once, never a double-commit.
-    let pass = drain_workspace(&store, "acme").await.unwrap();
+    let pass = drain_workspace(&store, "nube").await.unwrap();
     assert_eq!(
         pass.committed, 0,
         "the write already committed; the drain is a no-op"
@@ -86,7 +86,7 @@ async fn write_drain_read_round_trip_via_mcp() {
     let read = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "cpu" }),
     )
@@ -101,7 +101,7 @@ async fn write_drain_read_round_trip_via_mcp() {
     let latest = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.latest",
         &json!({ "series": "cpu" }),
     )
@@ -123,14 +123,14 @@ async fn a_declared_producer_is_rooted_under_the_principal_and_cannot_forge_anot
     let store = Store::memory().await.unwrap();
     let p = principal(
         "client:pi-7",
-        "acme",
+        "nube",
         &["mcp:ingest.write:call", "mcp:series.read:call"],
     );
 
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [
             // A plain sub-namespace: rides beneath this principal.
@@ -147,7 +147,7 @@ async fn a_declared_producer_is_rooted_under_the_principal_and_cannot_forge_anot
     let read = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "cpu" }),
     )
@@ -189,11 +189,11 @@ async fn a_declared_producer_is_rooted_under_the_principal_and_cannot_forge_anot
 async fn denies_write_without_capability() {
     let store = Store::memory().await.unwrap();
     // Holds series.read but NOT ingest.write.
-    let p = principal("client:pi-7", "acme", &["mcp:series.read:call"]);
+    let p = principal("client:pi-7", "nube", &["mcp:series.read:call"]);
     let err = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [sample("cpu", 1, json!(1))] }),
     )
@@ -202,11 +202,11 @@ async fn denies_write_without_capability() {
     assert!(matches!(err, ToolError::Denied), "no grant → Denied");
 
     // And nothing landed (the deny is before any write).
-    let reader = principal("admin", "acme", &["mcp:series.read:call"]);
+    let reader = principal("admin", "nube", &["mcp:series.read:call"]);
     let read = call_ingest_tool(
         &store,
         &reader,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "cpu" }),
     )
@@ -218,11 +218,11 @@ async fn denies_write_without_capability() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_read_without_capability() {
     let store = Store::memory().await.unwrap();
-    let p = principal("client:pi-7", "acme", &["mcp:ingest.write:call"]);
+    let p = principal("client:pi-7", "nube", &["mcp:ingest.write:call"]);
     let err = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "cpu" }),
     )
@@ -241,7 +241,7 @@ async fn latest_many_batches_the_snapshot_and_parities_single_latest() {
     let store = Store::memory().await.unwrap();
     let p = principal(
         "client:pi-7",
-        "acme",
+        "nube",
         &["mcp:ingest.write:call", "mcp:series.latest:call"],
     );
 
@@ -249,7 +249,7 @@ async fn latest_many_batches_the_snapshot_and_parities_single_latest() {
     call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [
             sample("cpu", 1, json!(60.0)), sample("cpu", 2, json!(62.5)),
@@ -262,7 +262,7 @@ async fn latest_many_batches_the_snapshot_and_parities_single_latest() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.latest_many",
         &json!({ "series": ["cpu", "mem", "absent"] }),
     )
@@ -282,7 +282,7 @@ async fn latest_many_batches_the_snapshot_and_parities_single_latest() {
         let single = call_ingest_tool(
             &store,
             &p,
-            "acme",
+            "nube",
             "series.latest",
             &json!({ "series": name }),
         )
@@ -304,13 +304,13 @@ async fn latest_many_denied_without_the_single_latest_cap() {
     // Has write + read, but NOT series.latest — the batch shares series.latest's cap, so it denies.
     let p = principal(
         "client:pi-7",
-        "acme",
+        "nube",
         &["mcp:ingest.write:call", "mcp:series.read:call"],
     );
     let err = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.latest_many",
         &json!({ "series": ["cpu", "mem"] }),
     )
@@ -330,13 +330,13 @@ async fn latest_many_is_workspace_scoped() {
     let store = Store::memory().await.unwrap();
     let a = principal(
         "client:a",
-        "acme",
+        "nube",
         &["mcp:ingest.write:call", "mcp:series.latest:call"],
     );
     call_ingest_tool(
         &store,
         &a,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [sample("cpu", 1, json!(99.0))] }),
     )

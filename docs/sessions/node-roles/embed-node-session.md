@@ -43,8 +43,8 @@ binary shrinks to `boot_full(BootConfig::from_env()).await` + serve. A third-par
 - `main.rs` (17) — **thin**: `boot_full(BootConfig::from_env()).await?; running.serve().await`.
 
 ### `BootConfig` fields (all `pub`, from today's env)
-`store_path` (LB_STORE_PATH) · `signing_key` (LB_SIGNING_KEY) · `workspace` (LB_WORKSPACE, def `acme`)
-· `seed_user` (LB_SEED_USER, def `user:ada`; `None` skips) · `gateway: GatewayMode`
+`store_path` (LB_STORE_PATH) · `signing_key` (LB_SIGNING_KEY) · `workspace` (LB_WORKSPACE, def `nube`)
+· `seed_user` (LB_SEED_USER, def `user:test`; `None` skips) · `gateway: GatewayMode`
 (LB_GATEWAY_ADDR presence) · `reactors: bool` · `hello_demo: bool` · `default_core_skills`
 (LB_DEFAULT_CORE_SKILLS) · `telemetry: SinkConfig` (LB_TELEMETRY_SINK) · `agent_model: AgentModelConfig`
 (LB_AGENT_MODEL_*) · `agent_caps: Option<Vec<String>>` (LB_AGENT_CAPS).
@@ -61,7 +61,7 @@ later — teardown is deferred (see open questions).
 - **`hello_demo`**: today's `main.rs` loads `hello` + calls `hello.echo` UNCONDITIONALLY. That is
   `hello_demo: true` in `from_env()` (exact parity) but `false` in `Default` — an embedder does not want
   a demo extension. This is **config**, not drift (both behaviours are intentional postures).
-- **`seed_user: None`**: `from_env()` always sets `Some("user:ada")` (parity). `None` (skip the dev
+- **`seed_user: None`**: `from_env()` always sets `Some("user:test")` (parity). `None` (skip the dev
   seed) is a new embedder posture — config.
 - **Store**: `main.rs` relied on `Node::boot()` reading `LB_STORE_PATH` inside `open_store()`. The lib
   MUST NOT read env below the seam, so `boot_full` uses `Node::boot_with_store(open_store(&cfg))` and

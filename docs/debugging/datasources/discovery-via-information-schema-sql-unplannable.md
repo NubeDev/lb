@@ -4,7 +4,7 @@
 
 ## Symptom
 
-Opening a datasource detail page (e.g. `#/t/acme/datasources/timescale`) failed to
+Opening a datasource detail page (e.g. `#/t/nube/datasources/timescale`) failed to
 list tables. The sidecar returned:
 
 ```

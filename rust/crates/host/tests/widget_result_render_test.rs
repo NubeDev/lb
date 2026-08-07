@@ -100,7 +100,7 @@ async fn catalog_serves_the_new_result_envelopes_to_a_granted_caller() {
     // A PLAIN member holding the catalog read + the two tool caps — sees BOTH descriptors WITH their
     // NEW `result` envelopes (proves the envelope reaches the catalog, not just the code constant).
     let member = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[TOOLS_CATALOG, FEDERATION_QUERY, QUERY_RUN],
     );
@@ -171,7 +171,7 @@ async fn catalog_hides_the_result_envelope_when_the_tool_cap_is_absent() {
 async fn pin_federation_query_envelope_persists_and_reloads_intact() {
     let ws = "rr-headline";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET, LIST, FEDERATION_QUERY]);
+    let test = principal("user:test", ws, &[PIN, GET, LIST, FEDERATION_QUERY]);
 
     // Pin `federation.query`'s declared `result` envelope — ZERO federation-specific code in the pin
     // path (the mint function treats the tool id as opaque data; the envelope is a normal
@@ -179,7 +179,7 @@ async fn pin_federation_query_envelope_persists_and_reloads_intact() {
     // `dashboard.get` to prove the persisted cell survives intact (it was persisted host-side).
     let _pinned = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": federation_query_envelope(), "now": 10 }),
@@ -188,7 +188,7 @@ async fn pin_federation_query_envelope_persists_and_reloads_intact() {
     .expect("pin federation.query");
 
     // Reload the dashboard — the minted cell survives intact (it was persisted).
-    let got = dashboard_get(&node.store, &ada, ws, "ops")
+    let got = dashboard_get(&node.store, &test, ws, "ops")
         .await
         .expect("get");
     assert_eq!(got.cells.len(), 1);
@@ -218,7 +218,7 @@ async fn pin_federation_query_envelope_persists_and_reloads_intact() {
 async fn pin_path_is_generic_over_an_arbitrary_tabular_tool_id() {
     let ws = "rr-generic";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET]);
+    let test = principal("user:test", ws, &[PIN, GET]);
 
     let env = json!({
         "v": 2,
@@ -228,7 +228,7 @@ async fn pin_path_is_generic_over_an_arbitrary_tabular_tool_id() {
     });
     let d = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "d", "title": "D", "envelope": env, "now": 10 }),
@@ -248,17 +248,17 @@ async fn pin_in_ws_a_is_invisible_to_ws_b_for_federation_query() {
     let node = Arc::new(Node::boot().await.unwrap());
     let (wa, wb) = ("rr-iso-a", "rr-iso-b");
 
-    // Ada in ws-A pins federation.query to a ws-A dashboard "ops".
-    let ada = principal("user:ada", wa, &[PIN, GET, LIST, FEDERATION_QUERY]);
+    // Test in ws-A pins federation.query to a ws-A dashboard "ops".
+    let test = principal("user:test", wa, &[PIN, GET, LIST, FEDERATION_QUERY]);
     call(
         &node,
-        &ada,
+        &test,
         wa,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": federation_query_envelope(), "now": 10 }),
     )
     .await
-    .expect("ada pins in ws-A");
+    .expect("test pins in ws-A");
 
     // Bob in ws-B cannot read ws-A's dashboard "ops" — the workspace wall (gate 1).
     let bob = principal("user:bob", wb, &[GET]);
@@ -300,10 +300,10 @@ async fn shell_path_and_headless_mcp_call_produce_the_same_federation_query_cell
     let node = Arc::new(Node::boot().await.unwrap());
 
     // The shell path — direct `dashboard_pin` into dashboard "shell".
-    let ada_shell = principal("user:ada", ws, &[PIN, GET, FEDERATION_QUERY]);
+    let test_shell = principal("user:test", ws, &[PIN, GET, FEDERATION_QUERY]);
     dashboard_pin(
         &node.store,
-        &ada_shell,
+        &test_shell,
         ws,
         "shell",
         "Shell",
@@ -316,7 +316,7 @@ async fn shell_path_and_headless_mcp_call_produce_the_same_federation_query_cell
     // The headless path — the same call over `POST /mcp/call` (`call_tool` → `dashboard.pin`).
     call(
         &node,
-        &ada_shell,
+        &test_shell,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "mcp", "title": "Mcp", "envelope": federation_query_envelope(), "now": 10 }),
@@ -324,10 +324,10 @@ async fn shell_path_and_headless_mcp_call_produce_the_same_federation_query_cell
     .await
     .expect("headless path pin");
 
-    let shell = dashboard_get(&node.store, &ada_shell, ws, "shell")
+    let shell = dashboard_get(&node.store, &test_shell, ws, "shell")
         .await
         .expect("shell get");
-    let mcp = dashboard_get(&node.store, &ada_shell, ws, "mcp")
+    let mcp = dashboard_get(&node.store, &test_shell, ws, "mcp")
         .await
         .expect("mcp get");
     // The two paths produce the SAME cell shape (view/source/tools-fold/options/i).
@@ -343,14 +343,14 @@ async fn shell_path_and_headless_mcp_call_produce_the_same_federation_query_cell
 async fn query_run_envelope_mints_a_table_cell_with_the_captured_id() {
     let ws = "rr-query-run";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET, QUERY_RUN]);
+    let test = principal("user:test", ws, &[PIN, GET, QUERY_RUN]);
 
     // Pin `query.run`'s declared `result` envelope. The `source.args = {id:"daily"}` is captured at
     // pin time → the pinned cell re-runs the SAVED query by id (so an edit to "daily" propagates to
     // the dashboard — "the daily query, live"). Same generic mint path as federation.query.
     let _pinned = call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": query_run_envelope(), "now": 10 }),
@@ -358,7 +358,7 @@ async fn query_run_envelope_mints_a_table_cell_with_the_captured_id() {
     .await
     .expect("pin query.run");
 
-    let got = dashboard_get(&node.store, &ada, ws, "ops")
+    let got = dashboard_get(&node.store, &test, ws, "ops")
         .await
         .expect("get");
     let c = &got.cells[0];
@@ -374,11 +374,11 @@ async fn query_run_envelope_mints_a_table_cell_with_the_captured_id() {
 async fn re_pin_federation_query_replaces_in_place_not_duplicates() {
     let ws = "rr-idem";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[PIN, GET, FEDERATION_QUERY]);
+    let test = principal("user:test", ws, &[PIN, GET, FEDERATION_QUERY]);
 
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "dashboard.pin",
         json!({ "dashboard": "ops", "title": "Ops", "envelope": federation_query_envelope(), "now": 10 }),
@@ -390,7 +390,7 @@ async fn re_pin_federation_query_replaces_in_place_not_duplicates() {
     // the cell, not append a duplicate.
     dashboard_pin(
         &node.store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -400,7 +400,7 @@ async fn re_pin_federation_query_replaces_in_place_not_duplicates() {
     .await
     .expect("re-pin (shell path)");
 
-    let got = dashboard_get(&node.store, &ada, ws, "ops")
+    let got = dashboard_get(&node.store, &test, ws, "ops")
         .await
         .expect("get");
     assert_eq!(got.cells.len(), 1, "re-pin replaces, not duplicates");

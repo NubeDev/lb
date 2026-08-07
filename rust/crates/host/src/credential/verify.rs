@@ -5,7 +5,7 @@
 //! and constant-time-compares the presented secret against the stored argon2 hash.
 //!
 //! Workspace isolation is structural: the record is read from `ws`'s own namespace, so a password set
-//! in `acme` is invisible to a `beta` login (the hard wall §7). A missing record → `CredentialAbsent`
+//! in `nube` is invisible to a `beta` login (the hard wall §7). A missing record → `CredentialAbsent`
 //! (the caller decides whether that is a 401 or, under the dev flag, a trust-any pass).
 
 use lb_store::{read, Store};

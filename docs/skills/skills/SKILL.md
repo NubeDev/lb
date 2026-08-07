@@ -58,7 +58,7 @@ no-op; a node upgrade seeds the new versions and keeps the old for rollback). Th
 boot: seeded N core skills @0.1.0 (["core.auth-caps", "core.channels-inbox-outbox", …,
       "core.lb-cli", "core.mcp", "core.prefs", "core.query", "core.e2e-backend", "core.store-read",
       "core.tags"])
-boot: default core-skill grants for ws=acme: ["core.lb-cli", "core.query", "core.store-read"]
+boot: default core-skill grants for ws=nube: ["core.lb-cli", "core.query", "core.store-read"]
 ```
 
 > **The corpus is the whole `docs/skills/` tree + the `docs/testing/**` e2e runbooks — no allow-list.**
@@ -88,7 +88,7 @@ lb call assets.list_skills '{}' -o json
     "description": "Operating a node from the terminal (lb) …" },
   { "id": "core.query",      "latest": "0.1.0", "tier": "core", "granted": true, "description": "…" },
   { "id": "core.store-read", "latest": "0.1.0", "tier": "core", "granted": true, "description": "…" },
-  { "id": "acme-runbook",    "latest": "1.1.0", "tier": "user", "granted": true, "description": "…" }
+  { "id": "nube-runbook",    "latest": "1.1.0", "tier": "user", "granted": true, "description": "…" }
 ] }
 ```
 
@@ -102,16 +102,16 @@ skills the user couldn't. A caller lacking `store:skill/**:read` gets an **empty
 ```bash
 # 1. Publish a version (immutable — re-publishing the same {id}@{version} is rejected).
 lb call assets.put_skill \
-  '{"id":"acme-runbook","version":"1.0.0","description":"Acme deploy runbook","body":"1. …","ts":1}'
-# → { "id": "acme-runbook", "version": "1.0.0" }
+  '{"id":"nube-runbook","version":"1.0.0","description":"Nube deploy runbook","body":"1. …","ts":1}'
+# → { "id": "nube-runbook", "version": "1.0.0" }
 
 # 2. Adopt it for the workspace's agents.
-lb call assets.grant_skill '{"id":"acme-runbook"}'      # → { "ok": true }
+lb call assets.grant_skill '{"id":"nube-runbook"}'      # → { "ok": true }
 
 # 3. The agent (or you) pulls the body on demand.
-lb call assets.load_skill '{"id":"acme-runbook"}' -o json
-# → { "id":"acme-runbook", "version":"1.1.0", "body":"…" }   # latest granted version
-lb call assets.load_skill '{"id":"acme-runbook","version":"1.0.0"}'   # pinned (rollback)
+lb call assets.load_skill '{"id":"nube-runbook"}' -o json
+# → { "id":"nube-runbook", "version":"1.1.0", "body":"…" }   # latest granted version
+lb call assets.load_skill '{"id":"nube-runbook","version":"1.0.0"}'   # pinned (rollback)
 ```
 
 ## Deprecate (soft delete) + un-hide
@@ -121,15 +121,15 @@ Versions are immutable and rollback-bearing, so a skill is never hard-deleted. `
 resolves (audit + rollback preserved). **Re-publishing a new version un-hides** it.
 
 ```bash
-lb call assets.deprecate_skill '{"id":"acme-runbook"}'   # → { "ok": true }; gone from list/latest
-lb call assets.load_skill '{"id":"acme-runbook","version":"1.0.0"}'   # still resolves (pinned)
-lb call assets.put_skill '{"id":"acme-runbook","version":"1.1.0", …}'  # a new version un-hides it
+lb call assets.deprecate_skill '{"id":"nube-runbook"}'   # → { "ok": true }; gone from list/latest
+lb call assets.load_skill '{"id":"nube-runbook","version":"1.0.0"}'   # still resolves (pinned)
+lb call assets.put_skill '{"id":"nube-runbook","version":"1.1.0", …}'  # a new version un-hides it
 ```
 
 Revoke drops the grant entirely (the id vanishes from the catalog until re-granted):
 
 ```bash
-lb call assets.revoke_skill '{"id":"acme-runbook"}'      # → { "ok": true }
+lb call assets.revoke_skill '{"id":"nube-runbook"}'      # → { "ok": true }
 ```
 
 ## Core skills are read-only — rejected regardless of caps

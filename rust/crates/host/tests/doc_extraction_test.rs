@@ -100,17 +100,17 @@ fn req(media: Vec<String>) -> ExtractRequest {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn extracts_pdf_media_to_markdown_doc() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let media_id = seed_media(
         &store,
         &p,
-        "acme",
+        "nube",
         "application/pdf",
         &fixture("report.pdf"),
     )
     .await;
 
-    let result = docs_extract(&store, &p, "acme", &req(vec![media_id.clone()]), 300)
+    let result = docs_extract(&store, &p, "nube", &req(vec![media_id.clone()]), 300)
         .await
         .unwrap();
     assert_eq!(result.items.len(), 1);
@@ -126,12 +126,12 @@ async fn extracts_pdf_media_to_markdown_doc() {
     assert_eq!(doc_ids.len(), 1);
 
     // The derived doc is a real, readable markdown doc carrying the caller's tag.
-    let doc = get_doc(&store, &p, "acme", &doc_ids[0]).await.unwrap();
+    let doc = get_doc(&store, &p, "nube", &doc_ids[0]).await.unwrap();
     assert!(doc.content.contains("Quarterly Report"), "{}", doc.content);
     assert!(doc.tags.contains(&"report".to_string()));
 
     // The provenance ledger records the derivation.
-    let led = get_extraction(&store, "acme", &media_id, "pdf-text")
+    let led = get_extraction(&store, "nube", &media_id, "pdf-text")
         .await
         .unwrap()
         .expect("ledger record");
@@ -144,12 +144,12 @@ async fn extracts_pdf_media_to_markdown_doc() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workbook_per_part_yields_one_doc_per_sheet() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
-    let media_id = seed_media(&store, &p, "acme", XLSX, &fixture("workbook.xlsx")).await;
+    let p = principal("user:alice", "nube", CAPS);
+    let media_id = seed_media(&store, &p, "nube", XLSX, &fixture("workbook.xlsx")).await;
 
     let mut request = req(vec![media_id.clone()]);
     request.split = lb_extract::SplitPolicy::PerPart;
-    let result = docs_extract(&store, &p, "acme", &request, 300)
+    let result = docs_extract(&store, &p, "nube", &request, 300)
         .await
         .unwrap();
 
@@ -157,8 +157,8 @@ async fn workbook_per_part_yields_one_doc_per_sheet() {
         ItemOutcome::Extracted { doc_ids, .. } => {
             assert_eq!(doc_ids.len(), 2, "two sheets → two docs");
             // Both derived docs are readable and distinct.
-            let a = get_doc(&store, &p, "acme", &doc_ids[0]).await.unwrap();
-            let b = get_doc(&store, &p, "acme", &doc_ids[1]).await.unwrap();
+            let a = get_doc(&store, &p, "nube", &doc_ids[0]).await.unwrap();
+            let b = get_doc(&store, &p, "nube", &doc_ids[1]).await.unwrap();
             assert!(a.content.contains("Month") || b.content.contains("Month"));
             assert!(a.content.contains("Region") || b.content.contains("Region"));
         }
@@ -171,17 +171,17 @@ async fn workbook_per_part_yields_one_doc_per_sheet() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn rerun_is_idempotent_via_the_ledger() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let media_id = seed_media(
         &store,
         &p,
-        "acme",
+        "nube",
         "application/pdf",
         &fixture("report.pdf"),
     )
     .await;
 
-    let first = docs_extract(&store, &p, "acme", &req(vec![media_id.clone()]), 300)
+    let first = docs_extract(&store, &p, "nube", &req(vec![media_id.clone()]), 300)
         .await
         .unwrap();
     let first_ids = match &first.items[0] {
@@ -189,7 +189,7 @@ async fn rerun_is_idempotent_via_the_ledger() {
         other => panic!("{other:?}"),
     };
 
-    let second = docs_extract(&store, &p, "acme", &req(vec![media_id.clone()]), 400)
+    let second = docs_extract(&store, &p, "nube", &req(vec![media_id.clone()]), 400)
         .await
         .unwrap();
     match &second.items[0] {
@@ -208,17 +208,17 @@ async fn rerun_is_idempotent_via_the_ledger() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn version_bump_rederives_into_same_doc_ids() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let media_id = seed_media(
         &store,
         &p,
-        "acme",
+        "nube",
         "application/pdf",
         &fixture("report.pdf"),
     )
     .await;
 
-    let first = docs_extract(&store, &p, "acme", &req(vec![media_id.clone()]), 300)
+    let first = docs_extract(&store, &p, "nube", &req(vec![media_id.clone()]), 300)
         .await
         .unwrap();
     let first_ids = match &first.items[0] {
@@ -230,7 +230,7 @@ async fn version_bump_rederives_into_same_doc_ids() {
     // re-derive. The derived doc id is stable, so it lands on the SAME doc (backlinks survive).
     let mut bumped = req(vec![media_id.clone()]);
     bumped.force_version = Some(99);
-    let again = docs_extract(&store, &p, "acme", &bumped, 500)
+    let again = docs_extract(&store, &p, "nube", &bumped, 500)
         .await
         .unwrap();
     match &again.items[0] {
@@ -255,11 +255,11 @@ async fn version_bump_rederives_into_same_doc_ids() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn corrupt_item_fails_while_job_completes() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let good = seed_media(
         &store,
         &p,
-        "acme",
+        "nube",
         "application/pdf",
         &fixture("report.pdf"),
     )
@@ -267,7 +267,7 @@ async fn corrupt_item_fails_while_job_completes() {
     let bad = seed_media(
         &store,
         &p,
-        "acme",
+        "nube",
         "application/pdf",
         &fixture("corrupt.pdf"),
     )
@@ -276,7 +276,7 @@ async fn corrupt_item_fails_while_job_completes() {
     let result = docs_extract(
         &store,
         &p,
-        "acme",
+        "nube",
         &req(vec![good.clone(), bad.clone()]),
         300,
     )
@@ -295,11 +295,11 @@ async fn corrupt_item_fails_while_job_completes() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn unsupported_mime_is_honest_not_empty() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     // A PNG has no text extractor in v1.
-    let media_id = seed_media(&store, &p, "acme", "image/png", &fixture("report.pdf")).await;
+    let media_id = seed_media(&store, &p, "nube", "image/png", &fixture("report.pdf")).await;
 
-    let result = docs_extract(&store, &p, "acme", &req(vec![media_id.clone()]), 300)
+    let result = docs_extract(&store, &p, "nube", &req(vec![media_id.clone()]), 300)
         .await
         .unwrap();
     match &result.items[0] {
@@ -313,19 +313,19 @@ async fn unsupported_mime_is_honest_not_empty() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_extract_without_cap() {
     let store = Store::memory().await.unwrap();
-    let owner = principal("user:alice", "acme", CAPS);
+    let owner = principal("user:alice", "nube", CAPS);
     let media_id = seed_media(
         &store,
         &owner,
-        "acme",
+        "nube",
         "application/pdf",
         &fixture("report.pdf"),
     )
     .await;
 
     // Authenticated but without mcp:docs.extract:call → the whole request is denied.
-    let mallory = principal("user:mallory", "acme", &["mcp:media.get:call"]);
-    let err = docs_extract(&store, &mallory, "acme", &req(vec![media_id]), 300)
+    let mallory = principal("user:mallory", "nube", &["mcp:media.get:call"]);
+    let err = docs_extract(&store, &mallory, "nube", &req(vec![media_id]), 300)
         .await
         .unwrap_err();
     assert!(matches!(err, lb_host::ExtractSvcError::Denied), "got {err}");
@@ -334,29 +334,29 @@ async fn denies_extract_without_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn per_item_denied_when_media_unreadable() {
     let store = Store::memory().await.unwrap();
-    let owner = principal("user:alice", "acme", CAPS);
+    let owner = principal("user:alice", "nube", CAPS);
     let readable = seed_media(
         &store,
         &owner,
-        "acme",
+        "nube",
         "application/pdf",
         &fixture("report.pdf"),
     )
     .await;
     let mut cannot_read =
-        seed_media(&store, &owner, "acme", "text/csv", &fixture("table.csv")).await;
+        seed_media(&store, &owner, "nube", "text/csv", &fixture("table.csv")).await;
 
     // A caller with docs.extract + doc write but WITHOUT media.get read reach: every item that
     // needs a media read is denied per-item, the job still completes.
     let no_read = principal(
         "user:bob",
-        "acme",
+        "nube",
         &["mcp:docs.extract:call", "store:doc/*:write"],
     );
     let result = docs_extract(
         &store,
         &no_read,
-        "acme",
+        "nube",
         &req(vec![readable.clone(), std::mem::take(&mut cannot_read)]),
         300,
     )
@@ -372,11 +372,11 @@ async fn per_item_denied_when_media_unreadable() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn media_in_other_workspace_is_per_item_denied() {
     let store = Store::memory().await.unwrap();
-    let alice = principal("user:alice", "acme", CAPS);
+    let alice = principal("user:alice", "nube", CAPS);
     let media_id = seed_media(
         &store,
         &alice,
-        "acme",
+        "nube",
         "application/pdf",
         &fixture("report.pdf"),
     )
@@ -406,21 +406,21 @@ async fn media_in_other_workspace_is_per_item_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn mcp_bridge_extracts_and_returns_items() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
-    let media_id = seed_media(&store, &p, "acme", "text/html", &fixture("page.html")).await;
+    let p = principal("user:alice", "nube", CAPS);
+    let media_id = seed_media(&store, &p, "nube", "text/html", &fixture("page.html")).await;
 
     let input = serde_json::json!({
         "media": media_id,
         "tags": ["kb"],
         "ts": 300
     });
-    let out = call_docs_tool(&store, &p, "acme", "docs.extract", &input)
+    let out = call_docs_tool(&store, &p, "nube", "docs.extract", &input)
         .await
         .unwrap();
     assert!(out["job_id"].as_str().unwrap().starts_with("docs-extract-"));
     assert_eq!(out["items"][0]["status"], "extracted");
     let doc_id = out["items"][0]["doc_ids"][0].as_str().unwrap();
-    let doc = get_doc(&store, &p, "acme", doc_id).await.unwrap();
+    let doc = get_doc(&store, &p, "nube", doc_id).await.unwrap();
     assert!(
         doc.content.contains("Cooler Maintenance"),
         "{}",

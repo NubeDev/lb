@@ -30,7 +30,7 @@ README §6/§7). Every verb is capability-gated server-side; a denial is **opaqu
 # dev login: who + which workspace.
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
   -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Send `Authorization: Bearer $TOKEN` on every call. Required capabilities (held by the default
@@ -66,7 +66,7 @@ A report is an ordered `blocks[]` array + brand + sharing metadata:
 
 ```jsonc
 {
-  "id": "q3-energy", "title": "Q3 Site Energy", "owner": "user:ada",
+  "id": "q3-energy", "title": "Q3 Site Energy", "owner": "user:test",
   "visibility": "private",            // private | team | workspace  (set via `share`)
   "brandId": "default",                // a brand profile id (empty = neutral default)
   "toolbar": {},                        // report-level range/vars (host-opaque; the client owns the shape)
@@ -112,7 +112,7 @@ curl -s -X POST http://127.0.0.1:8080/reports \
           "widget_type": "chart", "binding": {"series": ""},
           "sources": [{ "refId": "A", "tool": "federation.query",
             "args": {"source":"demo-buildings","sql":"SELECT s.name AS site, AVG(r.value) AS kwh FROM point_reading r JOIN point p ON r.point_id=p.id JOIN meter m ON p.meter_id=m.id JOIN site s ON m.site_id=s.id GROUP BY s.name"},
-            "datasource": {"type":"federation","uid":"datasource:acme:demo-buildings"} }],
+            "datasource": {"type":"federation","uid":"datasource:nube:demo-buildings"} }],
           "options": {}, "fieldConfig": {"defaults":{},"overrides":[]} } }
     ]
   }' | jq .

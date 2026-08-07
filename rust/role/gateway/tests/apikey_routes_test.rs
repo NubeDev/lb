@@ -66,7 +66,7 @@ use axum::http::Request;
 async fn management_verbs_denied_without_apikey_manage() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = token(&key, "user:bob", "acme", NO_MANAGE);
+    let tok = token(&key, "user:bob", "nube", NO_MANAGE);
 
     // list
     let r = app
@@ -108,7 +108,7 @@ async fn escalation_denied_when_effective_caps_widen_beyond_creator() {
     let narrow = token(
         &key,
         "user:narrow",
-        "acme",
+        "nube",
         &["mcp:apikey.manage:call", "mcp:outbox.status:call"],
     );
 
@@ -143,7 +143,7 @@ async fn escalation_denied_when_effective_caps_widen_beyond_creator() {
 async fn list_and_get_carry_no_hash_or_secret() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
     let bearer_str = create_key(
         &app,
         &tok,
@@ -193,7 +193,7 @@ async fn list_and_get_carry_no_hash_or_secret() {
 async fn create_auth_allow_deny_revoke_refused() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
     // read-only role + the outbox.status probe cap (which the admin holds, so no-widening passes).
     let kbearer = create_key(
         &app,
@@ -263,7 +263,7 @@ async fn create_auth_allow_deny_revoke_refused() {
 async fn revoke_is_idempotent() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
     let kbearer = create_key(&app, &tok, json!({"label":"k"})).await;
     let id = key_id(&kbearer);
 
@@ -292,7 +292,7 @@ async fn revoke_is_idempotent() {
 async fn rotate_kills_old_secret_new_works() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
     let old = create_key(
         &app,
         &tok,
@@ -347,7 +347,7 @@ async fn rotate_kills_old_secret_new_works() {
 async fn lazy_expiry_boundary_now_equals_and_exceeds_expires_at() {
     let (gw, key) = gateway().await;
     let app = router(gw);
-    let tok = admin(&key, "acme");
+    let tok = admin(&key, "nube");
 
     // expires_at == NOW → already expired at the fixed clock NOW.
     let exp_now = create_key(

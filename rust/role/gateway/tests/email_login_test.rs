@@ -100,31 +100,31 @@ async fn auth_login(gw: &Gateway, email: &str, password: &str) -> (StatusCode, V
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn one_workspace_login_returns_the_full_token_and_no_select_token() {
     let (gw, _node, _key) = real_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:admin", "acme").await;
+    let admin = bootstrap_admin(&gw, "user:admin", "nube").await;
     assert_eq!(
-        create_identity(&gw, &admin, "user:ada", "ada@acme.com").await,
+        create_identity(&gw, &admin, "user:test", "test@nube-io.com").await,
         StatusCode::OK
     );
     assert_eq!(
-        set_password(&gw, &admin, "user:ada", "hunter2").await,
+        set_password(&gw, &admin, "user:test", "hunter2").await,
         StatusCode::OK
     );
     assert_eq!(
-        add_member(&gw, &admin, "user:ada").await,
+        add_member(&gw, &admin, "user:test").await,
         StatusCode::NO_CONTENT
     );
 
-    let (status, body) = auth_login(&gw, "ada@acme.com", "hunter2").await;
+    let (status, body) = auth_login(&gw, "test@nube-io.com", "hunter2").await;
     assert_eq!(status, StatusCode::OK);
     assert!(body["token"].is_string(), "1-branch mints a full token");
     assert!(
         body["select_token"].is_null(),
         "no select-token in the 1-branch"
     );
-    assert_eq!(body["principal"], "user:ada");
-    assert_eq!(body["workspace"], "acme");
-    assert_eq!(body["workspaces"][0]["ws"], "acme");
-    assert_eq!(body["workspaces"][0]["name"], "acme");
+    assert_eq!(body["principal"], "user:test");
+    assert_eq!(body["workspace"], "nube");
+    assert_eq!(body["workspaces"][0]["ws"], "nube");
+    assert_eq!(body["workspaces"][0]["name"], "nube");
 }
 
 // ── The N-branch: select-token + roster, then /auth/select ──────────────────────────────────────
@@ -133,7 +133,7 @@ async fn one_workspace_login_returns_the_full_token_and_no_select_token() {
 async fn multi_workspace_login_returns_a_select_token_and_select_mints() {
     let (gw, node, key) = real_gateway().await;
     // Two workspaces, each bootstrapped by its own admin.
-    let admin_a = bootstrap_admin(&gw, "user:admin_a", "acme").await;
+    let admin_a = bootstrap_admin(&gw, "user:admin_a", "nube").await;
     let admin_b = bootstrap_admin(&gw, "user:admin_b", "globex").await;
     assert_eq!(
         create_identity(&gw, &admin_a, "user:bob", "bob@x.com").await,
@@ -143,7 +143,7 @@ async fn multi_workspace_login_returns_a_select_token_and_select_mints() {
         set_password(&gw, &admin_a, "user:bob", "s3cret").await,
         StatusCode::OK
     );
-    // Bob is a member of BOTH (admin_a adds in acme, admin_b in globex).
+    // Bob is a member of BOTH (admin_a adds in nube, admin_b in globex).
     assert_eq!(
         add_member(&gw, &admin_a, "user:bob").await,
         StatusCode::NO_CONTENT
@@ -163,7 +163,7 @@ async fn multi_workspace_login_returns_a_select_token_and_select_mints() {
         .iter()
         .map(|w| w["ws"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(roster, vec!["acme", "globex"], "roster lists both, sorted");
+    assert_eq!(roster, vec!["nube", "globex"], "roster lists both, sorted");
 
     // Pick globex with the select-token → full token.
     let gw2 = gateway_on(node, &key);
@@ -186,7 +186,7 @@ async fn multi_workspace_login_returns_a_select_token_and_select_mints() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn zero_workspaces_is_forbidden_with_no_token() {
     let (gw, _node, _key) = real_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:admin", "acme").await;
+    let admin = bootstrap_admin(&gw, "user:admin", "nube").await;
     // Carol has an identity + password but NO membership anywhere.
     assert_eq!(
         create_identity(&gw, &admin, "user:carol", "carol@x.com").await,
@@ -208,16 +208,16 @@ async fn zero_workspaces_is_forbidden_with_no_token() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn unknown_email_and_wrong_password_return_the_same_401() {
     let (gw, _node, _key) = real_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:admin", "acme").await;
-    create_identity(&gw, &admin, "user:ada", "ada@acme.com").await;
-    set_password(&gw, &admin, "user:ada", "right").await;
-    add_member(&gw, &admin, "user:ada").await;
+    let admin = bootstrap_admin(&gw, "user:admin", "nube").await;
+    create_identity(&gw, &admin, "user:test", "test@nube-io.com").await;
+    set_password(&gw, &admin, "user:test", "right").await;
+    add_member(&gw, &admin, "user:test").await;
 
     // Wrong password for a KNOWN email.
     let resp_wrong = router(gw.clone())
         .oneshot(json_post(
             "/auth/login",
-            json!({ "email": "ada@acme.com", "password": "wrong" }),
+            json!({ "email": "test@nube-io.com", "password": "wrong" }),
         ))
         .await
         .unwrap();
@@ -249,24 +249,24 @@ async fn unknown_email_and_wrong_password_return_the_same_401() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_duplicate_email_is_refused_case_insensitively_and_lookup_is_case_insensitive() {
     let (gw, _node, _key) = real_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:admin", "acme").await;
+    let admin = bootstrap_admin(&gw, "user:admin", "nube").await;
     assert_eq!(
-        create_identity(&gw, &admin, "user:ada", "Ada@Acme.com").await,
+        create_identity(&gw, &admin, "user:test", "Test@Nube.com").await,
         StatusCode::OK
     );
     // A DIFFERENT identity claiming the same email (different case) is a 409.
     assert_eq!(
-        create_identity(&gw, &admin, "user:ada2", "ada@acme.COM").await,
+        create_identity(&gw, &admin, "user:test2", "test@nube.COM").await,
         StatusCode::CONFLICT,
         "case-folded duplicate email is refused"
     );
 
-    // Lookup is case-insensitive: login with a differently-cased email finds ada.
-    set_password(&gw, &admin, "user:ada", "pw").await;
-    add_member(&gw, &admin, "user:ada").await;
-    let (status, body) = auth_login(&gw, "ADA@acme.com", "pw").await;
+    // Lookup is case-insensitive: login with a differently-cased email finds test.
+    set_password(&gw, &admin, "user:test", "pw").await;
+    add_member(&gw, &admin, "user:test").await;
+    let (status, body) = auth_login(&gw, "ADA@nube.com", "pw").await;
     assert_eq!(status, StatusCode::OK, "case-insensitive email lookup");
-    assert_eq!(body["principal"], "user:ada");
+    assert_eq!(body["principal"], "user:test");
 }
 
 // ── Self-service password change ────────────────────────────────────────────────────────────────
@@ -274,13 +274,13 @@ async fn a_duplicate_email_is_refused_case_insensitively_and_lookup_is_case_inse
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn self_service_change_requires_the_old_password_and_rotates() {
     let (gw, node, key) = real_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:admin", "acme").await;
-    create_identity(&gw, &admin, "user:ada", "ada@acme.com").await;
-    set_password(&gw, &admin, "user:ada", "old-pw").await;
-    add_member(&gw, &admin, "user:ada").await;
+    let admin = bootstrap_admin(&gw, "user:admin", "nube").await;
+    create_identity(&gw, &admin, "user:test", "test@nube-io.com").await;
+    set_password(&gw, &admin, "user:test", "old-pw").await;
+    add_member(&gw, &admin, "user:test").await;
 
     // Log in to get a full token.
-    let (_s, body) = auth_login(&gw, "ada@acme.com", "old-pw").await;
+    let (_s, body) = auth_login(&gw, "test@nube-io.com", "old-pw").await;
     let token = body["token"].as_str().unwrap().to_string();
 
     // Wrong old password → 401, no change.
@@ -310,12 +310,12 @@ async fn self_service_change_requires_the_old_password_and_rotates() {
 
     // Old password no longer logs in; new one does.
     assert_eq!(
-        auth_login(&gw, "ada@acme.com", "old-pw").await.0,
+        auth_login(&gw, "test@nube-io.com", "old-pw").await.0,
         StatusCode::UNAUTHORIZED,
         "old password no longer works"
     );
     assert_eq!(
-        auth_login(&gw, "ada@acme.com", "new-pw").await.0,
+        auth_login(&gw, "test@nube-io.com", "new-pw").await.0,
         StatusCode::OK,
         "new password works"
     );

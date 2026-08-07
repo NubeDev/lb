@@ -64,13 +64,13 @@ async fn save_time(
 async fn dashboard_time_round_trips_preserves_validates_and_clears() {
     let ws = "ws-dash-time";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // (e) A board created with NO time carries none — absent, not an empty object.
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 10)
+    dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 10)
         .await
         .unwrap();
-    let plain = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let plain = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert!(plain.time.is_none(), "pre-time record stays absent");
     let wire = serde_json::to_value(&plain).unwrap();
     assert!(
@@ -79,19 +79,19 @@ async fn dashboard_time_round_trips_preserves_validates_and_clears() {
     );
 
     // (a) Set a RELATIVE window — stored as the expression, never a resolved instant.
-    save_time(&store, &ada, ws, time("last-7-days", ""), 20)
+    save_time(&store, &test, ws, time("last-7-days", ""), 20)
         .await
         .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.time.as_ref().unwrap().from, "last-7-days");
     assert_eq!(got.time.as_ref().unwrap().to, "");
 
     // (b) A plain layout save sends no time — the window must survive, or the first drag
     // silently resets every board's default range.
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 30)
+    dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 30)
         .await
         .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(
         got.time.as_ref().unwrap().from,
         "last-7-days",
@@ -99,15 +99,15 @@ async fn dashboard_time_round_trips_preserves_validates_and_clears() {
     );
 
     // An endpoint pair round-trips too.
-    save_time(&store, &ada, ws, time("now-1d/d", "now/d"), 40)
+    save_time(&store, &test, ws, time("now-1d/d", "now/d"), 40)
         .await
         .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.time.as_ref().unwrap().to, "now/d");
 
     // (c) An unresolvable expression is refused LOUDLY, naming the token — and the stored value
     // is untouched (the save never reached the write).
-    let err = save_time(&store, &ada, ws, time("nope", ""), 50)
+    let err = save_time(&store, &test, ws, time("nope", ""), 50)
         .await
         .unwrap_err();
     assert!(
@@ -115,11 +115,11 @@ async fn dashboard_time_round_trips_preserves_validates_and_clears() {
         "bad expression must be a loud BadInput naming the token, got {err:?}"
     );
     // A range token with a `to` is the shape refusal.
-    let err = save_time(&store, &ada, ws, time("this-month", "now"), 51)
+    let err = save_time(&store, &test, ws, time("this-month", "now"), 51)
         .await
         .unwrap_err();
     assert!(matches!(err, DashboardError::BadInput(ref m) if m.contains("this-month")));
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(
         got.time.as_ref().unwrap().from,
         "now-1d/d",
@@ -127,8 +127,10 @@ async fn dashboard_time_round_trips_preserves_validates_and_clears() {
     );
 
     // (d) An explicit all-empty pair CLEARS (an author must be able to remove the default).
-    save_time(&store, &ada, ws, time("", ""), 60).await.unwrap();
-    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    save_time(&store, &test, ws, time("", ""), 60)
+        .await
+        .unwrap();
+    let got = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert!(
         got.time.is_none(),
         "an all-empty pair is the explicit clear"

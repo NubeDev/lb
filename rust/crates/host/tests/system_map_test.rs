@@ -78,9 +78,9 @@ async fn dead_letter(node: &Node, ws: &str) {
 async fn fixed_service_set_always_present_and_empty_ws_is_ok_or_idle() {
     let node = Node::boot().await.unwrap();
     let ws = "empty";
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
-    let ov = system_overview(&node, &ada, ws).await.unwrap();
+    let ov = system_overview(&node, &test, ws).await.unwrap();
     let ids: Vec<&str> = ov.services.iter().map(|s| s.id.as_str()).collect();
     for want in FIXED_IDS {
         assert!(ids.contains(want), "fixed card {want} missing");
@@ -99,8 +99,8 @@ async fn fixed_service_set_always_present_and_empty_ws_is_ok_or_idle() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn seeded_counts_match_and_degraded_on_dead_letter_and_stopped_ext() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "nube";
+    let test = principal("user:test", ws, ALL);
 
     // A native extension, enabled by default but with no running sidecar → Degraded.
     record_install(
@@ -123,7 +123,7 @@ async fn seeded_counts_match_and_degraded_on_dead_letter_and_stopped_ext() {
     // A dead-lettered effect → outbox Degraded.
     dead_letter(&node, ws).await;
 
-    let ov = system_overview(&node, &ada, ws).await.unwrap();
+    let ov = system_overview(&node, &test, ws).await.unwrap();
 
     // Counts match the seeds (tables-derived, substring-matched by card).
     let inbox = card(&ov.services, "inbox");
@@ -140,11 +140,11 @@ async fn seeded_counts_match_and_degraded_on_dead_letter_and_stopped_ext() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn topology_never_dangles_and_covers_overview() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "nube";
+    let test = principal("user:test", ws, ALL);
 
-    let ov = system_overview(&node, &ada, ws).await.unwrap();
-    let topo = system_topology(&node, &ada, ws).await.unwrap();
+    let ov = system_overview(&node, &test, ws).await.unwrap();
+    let topo = system_topology(&node, &test, ws).await.unwrap();
 
     let node_ids: std::collections::HashSet<&str> =
         topo.nodes.iter().map(|n| n.id.as_str()).collect();
@@ -175,7 +175,7 @@ async fn topology_never_dangles_and_covers_overview() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn both_verbs_denied_without_their_cap() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let nobody = principal("user:mallory", ws, &[]);
 
     assert!(system_overview(&node, &nobody, ws).await.is_err());
@@ -218,13 +218,13 @@ async fn workspace_isolation_b_never_sees_a() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn subsystem_returns_the_right_card_and_bus_extra_lists_zids() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "nube";
+    let test = principal("user:test", ws, ALL);
 
     // A no-page card with no extra: gateway returns its own card and an empty `extra` object.
-    let gw = system_subsystem(&node, &ada, ws, "gateway").await.unwrap();
+    let gw = system_subsystem(&node, &test, ws, "gateway").await.unwrap();
     assert_eq!(gw.service.id, "gateway");
-    assert_eq!(gw.ws, "acme");
+    assert_eq!(gw.ws, "nube");
     assert_eq!(gw.extra, json!({}));
 
     // The bus card's extra carries the live peer/router zid lists (the detail behind the counts) —
@@ -232,7 +232,7 @@ async fn subsystem_returns_the_right_card_and_bus_extra_lists_zids() {
     // equality with the card's count: the metric and the extra are two independent live-session reads,
     // and the shared in-proc test mesh's peer count drifts between them as sibling test nodes join and
     // leave. The single-node guarantee (the extra exists for `bus`, `{}` elsewhere) is the invariant.
-    let bus = system_subsystem(&node, &ada, ws, "bus").await.unwrap();
+    let bus = system_subsystem(&node, &test, ws, "bus").await.unwrap();
     assert_eq!(bus.service.id, "bus");
     let peer_zids = bus.extra["peer_zids"].as_array().expect("peer_zids array");
     let router_zids = bus.extra["router_zids"]
@@ -249,19 +249,19 @@ async fn subsystem_returns_the_right_card_and_bus_extra_lists_zids() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn subsystem_unknown_id_is_opaque_not_a_panic() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "nube";
+    let test = principal("user:test", ws, ALL);
 
     // An id that is not a subsystem is refused opaquely (the same answer a no-cap caller gets), never
     // a panic / 500.
-    assert!(system_subsystem(&node, &ada, ws, "nope").await.is_err());
-    assert!(system_subsystem(&node, &ada, ws, "").await.is_err());
+    assert!(system_subsystem(&node, &test, ws, "nope").await.is_err());
+    assert!(system_subsystem(&node, &test, ws, "").await.is_err());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn subsystem_denied_without_its_own_cap() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
 
     // No caps at all → denied.
     let nobody = principal("user:mallory", ws, &[]);
@@ -278,8 +278,8 @@ async fn subsystem_workspace_isolation_b_never_sees_a() {
 
     // Seed ws-A with a dead-lettered effect → A's outbox detail is Degraded.
     dead_letter(&node, "ws-a").await;
-    let ada = principal("user:ada", "ws-a", ALL);
-    let a_outbox = system_subsystem(&node, &ada, "ws-a", "outbox")
+    let test = principal("user:test", "ws-a", ALL);
+    let a_outbox = system_subsystem(&node, &test, "ws-a", "outbox")
         .await
         .unwrap();
     assert_eq!(a_outbox.service.health, Health::Degraded);
@@ -308,8 +308,8 @@ async fn subsystem_workspace_isolation_b_never_sees_a() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn tools_catalog_lists_host_native_and_extension_tools() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "nube";
+    let test = principal("user:test", ws, ALL);
 
     // Register a real extension's declared tools into the registry (a routed/remote ext — names only,
     // no fake instance). This is a legitimate real registry state the catalog must surface.
@@ -321,8 +321,8 @@ async fn tools_catalog_lists_host_native_and_extension_tools() {
         vec!["forecast".into(), "alerts".into()],
     );
 
-    let cat = system_tools(&node, &ada, ws).await.unwrap();
-    assert_eq!(cat.ws, "acme");
+    let cat = system_tools(&node, &test, ws).await.unwrap();
+    assert_eq!(cat.ws, "nube");
 
     // The host-native half is present (a few representative verbs across families).
     for want in [
@@ -364,7 +364,7 @@ async fn tools_catalog_lists_host_native_and_extension_tools() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn tools_and_acp_denied_without_their_own_cap() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
 
     // No caps → both denied (opaque).
     let nobody = principal("user:mallory", ws, &[]);
@@ -392,10 +392,10 @@ async fn tools_workspace_isolation_b_never_sees_a_extension() {
     // extension half is whatever the registry holds (the same set, by design of a shared node). The
     // hard wall the catalog leans on is the per-workspace install gate at call/dispatch time; the
     // listing here is existence, not reachability. We assert the host portions are equal.
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
     let ben = principal("user:ben", "ws-b", ALL);
 
-    let a = system_tools(&node, &ada, "ws-a").await.unwrap();
+    let a = system_tools(&node, &test, "ws-a").await.unwrap();
     let b = system_tools(&node, &ben, "ws-b").await.unwrap();
 
     let host_of = |c: &lb_host::SystemTools| -> Vec<String> {
@@ -421,10 +421,10 @@ async fn tools_workspace_isolation_b_never_sees_a_extension() {
 async fn acp_reports_protocol_and_methods() {
     let node = Node::boot().await.unwrap();
     let _ = &node; // acp facts are node-level; the node boot proves the host links them.
-    let ws = "acme";
-    let ada = principal("user:ada", ws, ALL);
+    let ws = "nube";
+    let test = principal("user:test", ws, ALL);
 
-    let info = system_acp(&ada, ws).await.unwrap();
+    let info = system_acp(&test, ws).await.unwrap();
     assert_eq!(info.protocol_version, 1);
     for m in [
         "initialize",

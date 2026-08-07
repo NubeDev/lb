@@ -76,8 +76,8 @@ mod tests {
         use lb_auth::{mint, Claims, Role};
         let key = SigningKey::generate();
         let claims = Claims {
-            sub: "user:ada".into(),
-            ws: "acme".into(),
+            sub: "user:test".into(),
+            ws: "nube".into(),
             role: Role::Member,
             caps: vec!["mcp:dashboard.list:call".into()],
             iat: 1000,

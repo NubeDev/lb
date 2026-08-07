@@ -34,7 +34,7 @@ use lb_caps::{matches, Action, Request, Surface};
 use lb_host::{admin_only_caps, ensure_builtin_authz_roles, resolve_caps_live, ROLE_MEMBER};
 use lb_store::{Store, StoreError};
 
-const WS: &str = "acme";
+const WS: &str = "nube";
 
 /// The member row exactly as a pre-2026-07-16 binary seeded it: the broad author/viewer wildcards.
 /// Verbatim from the bundle at that commit — the point is that this row is what real stores contain.

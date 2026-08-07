@@ -22,8 +22,8 @@ async fn channel_create_then_list_shows_it_and_posting_registers_a_channel() {
     let (gw, key) = gateway().await;
     let tok = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &["bus:chan/*:pub", "bus:chan/*:sub"],
     );
 
@@ -38,7 +38,7 @@ async fn channel_create_then_list_shows_it_and_posting_registers_a_channel() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Post to a DIFFERENT channel → create-on-post registers it too.
-    let item = Item::new("m1", "general", "user:ada", "hi", 1);
+    let item = Item::new("m1", "general", "user:test", "hi", 1);
     assert_eq!(
         router(gw.clone())
             .oneshot(bearer(post_req("general", &item), &tok))
@@ -66,15 +66,15 @@ async fn inbox_list_returns_real_items_and_resolve_persists() {
     let key = SigningKey::generate();
     let tok = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &["mcp:inbox.list:call", "mcp:inbox.resolve:call"],
     );
 
     // Seed a real durable inbox item directly (as the workflow would).
     lb_inbox::record(
         &node.store,
-        "acme",
+        "nube",
         &Item::new("appr-1", "approvals", "ext:github", "needs:approval", 1),
     )
     .await
@@ -103,13 +103,13 @@ async fn inbox_list_returns_real_items_and_resolve_persists() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    let res = lb_inbox::resolution(&node.store, "acme", "appr-1")
+    let res = lb_inbox::resolution(&node.store, "nube", "appr-1")
         .await
         .expect("read resolution")
         .expect("resolution exists");
     assert_eq!(res.decision, lb_inbox::Decision::Approved);
     assert_eq!(
-        res.actor, "user:ada",
+        res.actor, "user:test",
         "actor is the session principal, not caller-supplied"
     );
 }
@@ -118,13 +118,13 @@ async fn inbox_list_returns_real_items_and_resolve_persists() {
 async fn outbox_status_reflects_pending_then_delivered() {
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
-    let tok = token(&key, "user:ada", "acme", &["mcp:outbox.status:call"]);
+    let tok = token(&key, "user:test", "nube", &["mcp:outbox.status:call"]);
 
     // Seed a pending effect, then mark it delivered — the status view must reflect both.
     let effect = lb_outbox::Effect::new("e1", "github", "create_pr", "{}", "idem-1", 1);
     lb_outbox::enqueue(
         &node.store,
-        "acme",
+        "nube",
         "side",
         "x",
         &serde_json::json!({ "ok": true }),
@@ -145,7 +145,7 @@ async fn outbox_status_reflects_pending_then_delivered() {
     );
     assert_eq!(status["delivered"].as_array().unwrap().len(), 0);
 
-    lb_outbox::mark_delivered(&node.store, "acme", "e1")
+    lb_outbox::mark_delivered(&node.store, "nube", "e1")
         .await
         .expect("mark delivered");
 
@@ -179,7 +179,7 @@ async fn the_sse_stream_authenticates_by_query_token_and_pushes_a_live_message()
     let ws = "gw-sse-live";
     let tok = token(
         &key,
-        "user:ada",
+        "user:test",
         ws,
         &["bus:chan/general:pub", "bus:chan/general:sub"],
     );
@@ -257,7 +257,7 @@ async fn mcp_catalog_returns_ws_and_tools_for_a_holder_and_403s_without_the_cap(
     let (gw, key) = gateway().await;
 
     // A token holding the verb gate gets 200 + `{ ws, tools }`.
-    let tok = token(&key, "user:ada", "acme", &["mcp:tools.catalog:call"]);
+    let tok = token(&key, "user:test", "nube", &["mcp:tools.catalog:call"]);
     let resp = router(gw.clone())
         .oneshot(bearer(get_req("/mcp/catalog"), &tok))
         .await
@@ -265,13 +265,13 @@ async fn mcp_catalog_returns_ws_and_tools_for_a_holder_and_403s_without_the_cap(
     assert_eq!(resp.status(), StatusCode::OK);
     let cat: serde_json::Value = json_body(resp).await;
     assert_eq!(
-        cat["ws"], "acme",
+        cat["ws"], "nube",
         "the catalog reports the token's workspace"
     );
     assert!(cat["tools"].is_array(), "the catalog has a tools array");
 
     // A token WITHOUT the gate is 403-opaque.
-    let no_cap = token(&key, "user:eve", "acme", &["mcp:inbox.list:call"]);
+    let no_cap = token(&key, "user:eve", "nube", &["mcp:inbox.list:call"]);
     let resp = router(gw)
         .oneshot(bearer(get_req("/mcp/catalog"), &no_cap))
         .await
@@ -290,8 +290,8 @@ async fn mcp_catalog_is_capability_filtered_over_http() {
     // With the federation grant, `federation.query` appears in the catalog.
     let with = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &["mcp:tools.catalog:call", "mcp:federation.query:call"],
     );
     let resp = router(gw.clone())
@@ -312,7 +312,7 @@ async fn mcp_catalog_is_capability_filtered_over_http() {
     );
 
     // Without it, the same tool is ABSENT (capability-filtered, no existence leak).
-    let without = token(&key, "user:ada", "acme", &["mcp:tools.catalog:call"]);
+    let without = token(&key, "user:test", "nube", &["mcp:tools.catalog:call"]);
     let resp = router(gw)
         .oneshot(bearer(get_req("/mcp/catalog"), &without))
         .await
@@ -343,8 +343,8 @@ async fn posting_a_query_item_without_the_grant_round_trips_an_opaque_query_erro
     let cid = "analytics";
     let tok = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &[
             &format!("bus:chan/{cid}:pub"),
             &format!("bus:chan/{cid}:sub"),
@@ -355,7 +355,7 @@ async fn posting_a_query_item_without_the_grant_round_trips_an_opaque_query_erro
         "kind": "query", "source": "pg", "sql": "SELECT 1"
     })
     .to_string();
-    let item = Item::new("q1", cid, "user:ada", body, 1);
+    let item = Item::new("q1", cid, "user:test", body, 1);
     let resp = router(gateway_on(node.clone(), &key))
         .oneshot(bearer(post_req(cid, &item), &tok))
         .await

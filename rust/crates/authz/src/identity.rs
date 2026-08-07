@@ -5,7 +5,7 @@
 //! (`_lb_workflow_directory` / `_lb_workspaces`): the leading underscore marks it system-internal,
 //! disallowed as a real workspace by operator convention.
 //!
-//! `sub` is the human handle (`user:ada`), **globally unique** (decision #6 — keeping it avoids
+//! `sub` is the human handle (`user:test`), **globally unique** (decision #6 — keeping it avoids
 //! retrofitting every existing `Subject::User(sub)` grant row). `display_name` is a separate,
 //! non-unique, per-identity field. No credential in v1 (decision #7) — the dev-login sits behind the
 //! identity-resolution seam; OIDC attaches additively later.
@@ -36,13 +36,13 @@ pub const IDENTITY_KIND: &str = "identity";
 /// same reserved `_lb_identity` namespace; carries only the owning `sub` (no secret).
 pub const IDENTITY_EMAIL_TABLE: &str = "identity_email";
 
-/// A global identity: the globally-unique `sub` (the grant key, `user:ada`), an optional non-unique
+/// A global identity: the globally-unique `sub` (the grant key, `user:test`), an optional non-unique
 /// display name, an optional globally-unique **email** (the human login handle, email-login scope),
 /// and the created timestamp. Still secret-free — the credential is a SEPARATE record
 /// (`identity_credential`), never a field here (§6.7).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Identity {
-    /// The globally-unique principal id (`user:ada`) — the same across workspaces; grants key on it.
+    /// The globally-unique principal id (`user:test`) — the same across workspaces; grants key on it.
     pub sub: String,
     /// A non-unique, per-identity human display name. Separate from `sub` (decision #6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -71,7 +71,7 @@ impl Identity {
 }
 
 /// Fold an email to its canonical lookup form: trimmed + lower-cased. The one place case/whitespace
-/// normalization happens, so a set and a later lookup agree (`Ada@ACME.com ` ≡ `ada@acme.com`).
+/// normalization happens, so a set and a later lookup agree (`Test@NUBE.com ` ≡ `test@nube-io.com`).
 pub fn fold_email(email: &str) -> String {
     email.trim().to_lowercase()
 }

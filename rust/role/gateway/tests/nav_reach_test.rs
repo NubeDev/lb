@@ -62,7 +62,7 @@ async fn a_curated_nav_gates_reach_but_fallback_reaches_all_and_data_stays_open(
     let (gw, _key) = gateway().await;
 
     // alice bootstraps as workspace-admin (first login into an empty ws); she adds bob as a member.
-    let admin = login(&gw, "user:alice", "acme").await;
+    let admin = login(&gw, "user:alice", "nube").await;
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post("/admin/members", json!({ "sub": "user:bob" })),
@@ -97,7 +97,7 @@ async fn a_curated_nav_gates_reach_but_fallback_reaches_all_and_data_stays_open(
     .await;
 
     // bob PICKS the curated nav as his personal active nav (a member-level write, keyed to his sub).
-    let bob_member = login(&gw, "user:bob", "acme").await;
+    let bob_member = login(&gw, "user:bob", "nube").await;
     ok_post(
         &gw,
         &bob_member,
@@ -108,7 +108,7 @@ async fn a_curated_nav_gates_reach_but_fallback_reaches_all_and_data_stays_open(
     .await;
 
     // bob RE-LOGS IN so his token is minted with the reach set derived from his now-curated nav.
-    let bob = login(&gw, "user:bob", "acme").await;
+    let bob = login(&gw, "user:bob", "nube").await;
 
     // ── (a) Curated ⇒ ONLY the one page reaches. The page he was given 200s; every other page 403s. ──
     assert_eq!(
@@ -165,38 +165,38 @@ async fn a_curated_nav_gates_reach_but_fallback_reaches_all_and_data_stays_open(
 async fn reach_is_workspace_walled() {
     let (gw, _key) = gateway().await;
 
-    // Two independent workspaces; each first-login bootstraps its own admin. A curated nav in `acme`
+    // Two independent workspaces; each first-login bootstraps its own admin. A curated nav in `nube`
     // must never affect a subject in `beta`, and a `beta` token reaches `beta` normally (fallback).
-    let acme_admin = login(&gw, "user:alice", "acme").await;
+    let nube_admin = login(&gw, "user:alice", "nube").await;
     ok_post(
         &gw,
-        &acme_admin,
+        &nube_admin,
         "/navs",
         json!({
             "id": "curated",
-            "title": "acme only",
+            "title": "nube only",
             "items": [ { "kind": "surface", "surface": "dashboards", "label": "Home" } ]
         }),
-        "acme admin saves a curated nav",
+        "nube admin saves a curated nav",
     )
     .await;
     ok_post(
         &gw,
-        &acme_admin,
+        &nube_admin,
         "/nav/default",
         json!({ "id": "curated" }),
-        "acme admin sets it as the acme workspace default",
+        "nube admin sets it as the nube workspace default",
     )
     .await;
 
     // A fresh subject in `beta` (different ws) has NO nav there → fallback → reaches every beta page.
-    // The acme workspace-default curated nav is structurally invisible across the ws wall (§7).
+    // The nube workspace-default curated nav is structurally invisible across the ws wall (§7).
     let beta = login(&gw, "user:carol", "beta").await;
     for surface in ["dashboards", "ingest", "rules", "flows"] {
         assert_eq!(
             surface_status(&gw, &beta, surface).await,
             StatusCode::OK,
-            "a beta subject is unaffected by acme's curated nav — reaches beta page `{surface}`"
+            "a beta subject is unaffected by nube's curated nav — reaches beta page `{surface}`"
         );
     }
 }

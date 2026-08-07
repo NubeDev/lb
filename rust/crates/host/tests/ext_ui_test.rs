@@ -69,7 +69,7 @@ fn hello_wasm() -> Vec<u8> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn install_persists_ui_and_widget_then_ext_list_surfaces_them() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let approved = vec![
         "mcp:series.find:call".to_string(),
         "mcp:series.latest:call".to_string(),
@@ -78,7 +78,7 @@ async fn install_persists_ui_and_widget_then_ext_list_surfaces_them() {
         .await
         .expect("install with [ui]/[widget]");
 
-    let admin = principal("user:ada", ws, &["mcp:ext.list:call"]);
+    let admin = principal("user:test", ws, &["mcp:ext.list:call"]);
     let rows = ext_list(&node, &admin, ws).await.expect("list");
     let row = rows
         .iter()
@@ -108,13 +108,13 @@ async fn ui_scope_is_narrowed_to_the_grant() {
     // The manifest asks for series.find + series.latest, but the admin approves ONLY series.latest.
     // The persisted page scope must drop series.find — a page can never claim an ungranted tool.
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let approved = vec!["mcp:series.latest:call".to_string()];
     install_extension(&node, ws, UI_MANIFEST, &hello_wasm(), &approved, 1)
         .await
         .expect("install");
 
-    let admin = principal("user:ada", ws, &["mcp:ext.list:call"]);
+    let admin = principal("user:test", ws, &["mcp:ext.list:call"]);
     let rows = ext_list(&node, &admin, ws).await.unwrap();
     let ui = rows
         .iter()
@@ -137,7 +137,7 @@ async fn wasm_install_grants_ui_scope_to_the_admin_role() {
     // whose page calls its OWN tool 403s forever (the `hvac.comfort` symptom). Assert the grant lands
     // for BOTH the page scope and a widget scope; a non-granted tool is not granted.
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     let approved = vec![
         "mcp:series.find:call".to_string(),
         "mcp:series.latest:call".to_string(),
@@ -165,7 +165,7 @@ async fn bridge_denies_an_ungranted_tool() {
     // The bridge endpoint (`call_tool`) re-checks the capability: a page whose principal lacks the cap
     // is denied server-side, regardless of what its bundle posts. This is the load-bearing guarantee.
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
     let ungranted = principal("user:page", ws, &[]); // holds NO caps
     let res = call_tool(&node, &ungranted, ws, "series.find", "{\"tags\":[]}").await;
     assert!(res.is_err(), "an ungranted bridged call must be denied");

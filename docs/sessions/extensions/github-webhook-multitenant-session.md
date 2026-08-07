@@ -23,7 +23,7 @@ But the repo identity lives *inside* the signed body — a chicken-and-egg. Two 
 - *Rejected:* parse the repo out of the body to pick the secret — that reads attacker-controlled,
   unverified bytes before authenticating them, inverting the security order.
 
-Chose the path segment. The slug is **opaque** (e.g. `acme-api` → the `acme` workspace) so it need
+Chose the path segment. The slug is **opaque** (e.g. `nube-api` → the `nube` workspace) so it need
 not leak the tenant↔workspace mapping.
 
 ## What changed (all in `lb-role-github-webhook`, a role crate — `axum`/`hmac` stay out of core)

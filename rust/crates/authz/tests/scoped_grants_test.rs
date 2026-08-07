@@ -9,7 +9,7 @@ use lb_authz::{
 };
 use lb_store::Store;
 
-const WS: &str = "acme";
+const WS: &str = "nube";
 
 fn ids(table: &str, ids: &[&str]) -> Scope {
     Scope::Ids {

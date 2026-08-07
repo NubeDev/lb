@@ -82,7 +82,7 @@ host-light should give a light canvas AND light nodes.
 
 ## Issue 2 — CE header clashes with the host header
 
-**Symptom (screenshot):** "Control Engine" + "· acme" from the CE page renders on TOP of the host's own
+**Symptom (screenshot):** "Control Engine" + "· nube" from the CE page renders on TOP of the host's own
 page header ("Lazybones / workspace ops" bar), overlapping text.
 
 **Decision:** the **host header wins**. Remove the CE page's own `<header>` and surface only the

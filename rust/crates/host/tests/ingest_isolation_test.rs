@@ -116,12 +116,12 @@ async fn two_producers_same_seq_both_survive_via_host() {
     // The dedup identity is (series, producer, seq). Two principals write seq=5 to one series; the
     // producer is stamped from each principal, so BOTH rows survive.
     let store = Store::memory().await.unwrap();
-    let pa = principal("prod-a", "acme", ALL);
-    let pb = principal("prod-b", "acme", ALL);
+    let pa = principal("prod-a", "nube", ALL);
+    let pb = principal("prod-b", "nube", ALL);
     call_ingest_tool(
         &store,
         &pa,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [sample("shared", 5, json!("a"))] }),
     )
@@ -130,18 +130,18 @@ async fn two_producers_same_seq_both_survive_via_host() {
     call_ingest_tool(
         &store,
         &pb,
-        "acme",
+        "nube",
         "ingest.write",
         &json!({ "samples": [sample("shared", 5, json!("b"))] }),
     )
     .await
     .unwrap();
-    drain_workspace(&store, "acme").await.unwrap();
+    drain_workspace(&store, "nube").await.unwrap();
 
     let read = call_ingest_tool(
         &store,
         &pa,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "shared" }),
     )

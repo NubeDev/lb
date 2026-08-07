@@ -77,7 +77,7 @@ async fn a_grant_written_after_login_reaches_an_already_minted_token() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
 
     // The login-time snapshot: enough to exist, but NOT the verb under test.
-    let p = token_with("user:ada", ws, &["store:*:read", "store:*:write"]);
+    let p = token_with("user:test", ws, &["store:*:read", "store:*:write"]);
     let call = || json!({ "id": "d1", "title": "Ops", "cells": [], "now": 1 }).to_string();
 
     // Before the grant: denied, as it should be.
@@ -87,7 +87,7 @@ async fn a_grant_written_after_login_reaches_an_already_minted_token() {
     assert!(err.to_string().contains("denied"), "opaque denial: {err}");
 
     // The extension-install shape: a durable grant written to the store, long after the token.
-    grant(&node, ws, "ada", "mcp:dashboard.save:call").await;
+    grant(&node, ws, "test", "mcp:dashboard.save:call").await;
 
     // The SAME stale token now works — this is the whole point.
     call_tool(&node, &p, ws, "dashboard.save", &call())
@@ -103,10 +103,10 @@ async fn a_caller_with_no_durable_grant_is_still_denied_identically() {
     let ws = "stale-nowiden";
     let node = Arc::new(Node::boot().await.expect("node boots"));
 
-    // bob holds nothing; ada is granted the verb. The store therefore HAS a grant row for this
+    // bob holds nothing; test is granted the verb. The store therefore HAS a grant row for this
     // cap — just not for bob — so a repair that keyed on the cap rather than the subject would
     // wrongly let bob through here.
-    grant(&node, ws, "ada", "mcp:dashboard.save:call").await;
+    grant(&node, ws, "test", "mcp:dashboard.save:call").await;
     let bob = token_with("user:bob", ws, &["store:*:read"]);
 
     let err = call_tool(
@@ -133,9 +133,9 @@ async fn a_delegated_principal_is_never_rewidened_from_the_grant_store() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
 
     // The human behind the agent HAS the grant durably...
-    grant(&node, ws, "ada", "mcp:dashboard.save:call").await;
+    grant(&node, ws, "test", "mcp:dashboard.save:call").await;
     // ...but the agent acting for her was delegated WITHOUT it.
-    let agent = delegated("user:ada", ws, &["store:*:read", "store:*:write"]);
+    let agent = delegated("user:test", ws, &["store:*:read", "store:*:write"]);
 
     let err = call_tool(
         &node,
@@ -159,9 +159,9 @@ async fn the_refreshed_principal_reaches_the_verbs_own_inner_gate() {
     let ws = "stale-inner";
     let node = Arc::new(Node::boot().await.expect("node boots"));
 
-    let p = token_with("user:ada", ws, &["store:*:read", "store:*:write"]);
-    grant(&node, ws, "ada", "mcp:dashboard.save:call").await;
-    grant(&node, ws, "ada", "mcp:dashboard.get:call").await;
+    let p = token_with("user:test", ws, &["store:*:read", "store:*:write"]);
+    grant(&node, ws, "test", "mcp:dashboard.save:call").await;
+    grant(&node, ws, "test", "mcp:dashboard.get:call").await;
 
     call_tool(
         &node,

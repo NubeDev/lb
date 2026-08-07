@@ -20,8 +20,8 @@ corrected write-up. **User still needs to confirm in their browser** (§5.1/§5.
   The scene renders fine (AHU-1 duct diagram, live values).
 - After that, **navigation is broken** — clicking another dashboard in the roster, or another sidebar
   item (Rules, Flows, etc.), does nothing / the shell is wedged.
-- Reproduces at: `http://localhost:5173/#/t/acme/dashboards?from=2026-06-03&to=2026-07-03&d=scene-dash`
-  (dev server, workspace `acme`, dashboard id `scene-dash`).
+- Reproduces at: `http://localhost:5173/#/t/nube/dashboards?from=2026-06-03&to=2026-07-03&d=scene-dash`
+  (dev server, workspace `nube`, dashboard id `scene-dash`).
 - User has said "same issue" and "100% NOT fixed" after both attempted fixes below.
 
 Screenshot the user provided shows the scene mounted and rendering correctly before nav breaks.
@@ -107,7 +107,7 @@ the commit → shell render aborts → nav wedges.
 
 ## 4. ⚠️ Why this is NOT confirmed fixed
 
-After attempt 2, **my Playwright repro stopped showing the error** — URL changes to `#/t/acme/rules`,
+After attempt 2, **my Playwright repro stopped showing the error** — URL changes to `#/t/nube/rules`,
 sidebar survives, only a clean `THREE.WebGLRenderer: Context Lost` remains. I tested:
 - Direct-load the scene dashboard → click sidebar "Rules": PASSES (no error).
 - Select scene dashboard from roster → switch to another dashboard row: PASSES (no error).
@@ -157,7 +157,7 @@ and the user's broken browser is the #1 thing to close.
 
 I used a temporary Playwright spec (deleted). Recreate at `ui/e2e/zzz-repro.spec.ts` and run with
 `npx playwright test zzz-repro --reporter=line` (dev server must be up on :5173; login is
-`user:ada` / `acme`). Skeleton:
+`user:test` / `nube`). Skeleton:
 
 ```ts
 import { test, type ConsoleMessage } from "@playwright/test";
@@ -167,11 +167,11 @@ test("repro", async ({ page }) => {
   page.on("console", (m: ConsoleMessage) => logs.push(`[${m.type()}] ${m.text()}`));
   page.on("pageerror", (e) => logs.push(`[PAGEERROR] ${e.message}`));
   await page.goto(SHELL + "/", { waitUntil: "networkidle" });
-  await page.getByLabel("identity").fill("user:ada");
-  await page.getByLabel("workspace").fill("acme");
+  await page.getByLabel("identity").fill("user:test");
+  await page.getByLabel("workspace").fill("nube");
   await page.getByLabel("sign in").click();
   await page.waitForTimeout(1500);
-  await page.goto(SHELL + "/#/t/acme/dashboards?from=2026-06-03&to=2026-07-03&d=scene-dash", { waitUntil: "networkidle" });
+  await page.goto(SHELL + "/#/t/nube/dashboards?from=2026-06-03&to=2026-07-03&d=scene-dash", { waitUntil: "networkidle" });
   await page.locator('[data-ext-widget]').first().waitFor({ state: "attached", timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(4000);
   // …then reproduce the user's exact interaction and dump `logs`.

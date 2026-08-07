@@ -37,11 +37,11 @@ const SET_DEFAULT: &str = "mcp:prefs.set_default:call";
 async fn set_default_denied_for_non_admin() {
     let store = Store::memory().await.unwrap();
     // A member with every NON-admin prefs cap but NOT prefs.set_default.
-    let member = principal("user:bob", "acme", &[GET, SET, RESOLVE]);
+    let member = principal("user:bob", "nube", &[GET, SET, RESOLVE]);
     let err = prefs_set_default(
         &store,
         &member,
-        "acme",
+        "nube",
         &Prefs {
             unit_system: Some(UnitSystem::Imperial),
             ..Prefs::default()
@@ -56,7 +56,7 @@ async fn set_default_denied_for_non_admin() {
     );
 
     // And nothing was written (the deny is total, not partial).
-    let admin = principal("user:adm", "acme", &[SET_DEFAULT]);
+    let admin = principal("user:adm", "nube", &[SET_DEFAULT]);
     let resolved = prefs_resolve_unchecked(&store, &admin).await;
     assert_eq!(
         resolved,
@@ -68,13 +68,13 @@ async fn set_default_denied_for_non_admin() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn get_reads_only_callers_own_record() {
     let store = Store::memory().await.unwrap();
-    // Ada seeds her own prefs (metric). Bob seeds his (imperial).
-    let ada = principal("user:ada", "acme", &[GET, SET]);
-    let bob = principal("user:bob", "acme", &[GET, SET]);
+    // Test seeds her own prefs (metric). Bob seeds his (imperial).
+    let test = principal("user:test", "nube", &[GET, SET]);
+    let bob = principal("user:bob", "nube", &[GET, SET]);
     prefs_set(
         &store,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         &Prefs {
             unit_system: Some(UnitSystem::Metric),
             ..Prefs::default()
@@ -86,7 +86,7 @@ async fn get_reads_only_callers_own_record() {
     prefs_set(
         &store,
         &bob,
-        "acme",
+        "nube",
         &Prefs {
             unit_system: Some(UnitSystem::Imperial),
             ..Prefs::default()
@@ -96,28 +96,28 @@ async fn get_reads_only_callers_own_record() {
     .await
     .unwrap();
 
-    // Bob's get returns BOB's record — there is no way for him to address Ada's.
-    let bob_got = prefs_get(&store, &bob, "acme").await.unwrap().unwrap();
+    // Bob's get returns BOB's record — there is no way for him to address Test's.
+    let bob_got = prefs_get(&store, &bob, "nube").await.unwrap().unwrap();
     assert_eq!(bob_got.unit_system, Some(UnitSystem::Imperial));
 
     // Confirm the records are genuinely distinct in the store (so the own-scoping is meaningful).
-    let ada_raw = get_user_prefs(&store, "acme", "user:ada")
+    let test_raw = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(ada_raw.unit_system, Some(UnitSystem::Metric));
+    assert_eq!(test_raw.unit_system, Some(UnitSystem::Metric));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn set_cannot_write_another_users_record() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "acme", &[SET]);
-    // Ada sets prefs — forced to her own sub. Even if a malicious patch tried to carry a `user`
+    let test = principal("user:test", "nube", &[SET]);
+    // Test sets prefs — forced to her own sub. Even if a malicious patch tried to carry a `user`
     // field, the verb ignores it (the target is `principal.sub()`).
     prefs_set(
         &store,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         &Prefs {
             unit_system: Some(UnitSystem::Imperial),
             ..Prefs::default()
@@ -128,33 +128,33 @@ async fn set_cannot_write_another_users_record() {
     .unwrap();
 
     // Bob's record is untouched (he never set anything; still None).
-    let bob = get_user_prefs(&store, "acme", "user:bob").await.unwrap();
+    let bob = get_user_prefs(&store, "nube", "user:bob").await.unwrap();
     assert!(
         bob.is_none(),
-        "Ada's set must not have created/written Bob's record"
+        "Test's set must not have created/written Bob's record"
     );
-    // Ada's own record landed.
-    let ada_rec = get_user_prefs(&store, "acme", "user:ada")
+    // Test's own record landed.
+    let test_rec = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(ada_rec.unit_system, Some(UnitSystem::Imperial));
+    assert_eq!(test_rec.unit_system, Some(UnitSystem::Imperial));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn deny_without_any_cap_is_opaque() {
     let store = Store::memory().await.unwrap();
-    let nobody = principal("user:eve", "acme", &[]); // no prefs caps at all
+    let nobody = principal("user:eve", "nube", &[]); // no prefs caps at all
     assert!(matches!(
-        prefs_get(&store, &nobody, "acme").await,
+        prefs_get(&store, &nobody, "nube").await,
         Err(PrefsSvcError::Denied)
     ));
     assert!(matches!(
-        prefs_resolve(&store, &nobody, "acme", None).await,
+        prefs_resolve(&store, &nobody, "nube", None).await,
         Err(PrefsSvcError::Denied)
     ));
     assert!(matches!(
-        prefs_set(&store, &nobody, "acme", &Prefs::default(), &[]).await,
+        prefs_set(&store, &nobody, "nube", &Prefs::default(), &[]).await,
         Err(PrefsSvcError::Denied)
     ));
 }
@@ -163,8 +163,8 @@ async fn deny_without_any_cap_is_opaque() {
 async fn cross_workspace_resolve_is_denied() {
     // A principal scoped to ws-A cannot resolve in ws-B — gate 1 (the hard wall) fires first.
     let store = Store::memory().await.unwrap();
-    let ada_a = principal("user:ada", "ws-a", &[RESOLVE]);
-    let err = prefs_resolve(&store, &ada_a, "ws-b", None)
+    let test_a = principal("user:test", "ws-a", &[RESOLVE]);
+    let err = prefs_resolve(&store, &test_a, "ws-b", None)
         .await
         .unwrap_err();
     assert!(matches!(err, PrefsSvcError::Denied));

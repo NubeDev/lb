@@ -98,7 +98,7 @@ fn resolve_subject(principal: &Principal, ws: &str, input: &Value) -> Result<Str
 }
 
 /// Strip the `user:` prefix from a sub (the resolver takes the bare name, matching how grants are
-/// stored — `Subject::User("ada")`, not `Subject::User("user:ada")`). A sub without the prefix is
+/// stored — `Subject::User("test")`, not `Subject::User("user:test")`). A sub without the prefix is
 /// returned as-is (a non-user subject has no scoped grants in v1).
 fn bare_user(sub: &str) -> &str {
     sub.strip_prefix("user:").unwrap_or(sub)

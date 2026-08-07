@@ -119,17 +119,17 @@ hole — and the admin can see and revoke it, because it is an ordinary grant re
 
 1. A node built at `v0.9.0` boots; `seed_core_skills` writes `skill:core.lb-cli@0.9.0`,
    `skill:core.query@0.9.0`, … (no-ops on next boot).
-2. A new workspace `acme` is created; the default grant set writes `grant:skill/core.lb-cli` and
+2. A new workspace `nube` is created; the default grant set writes `grant:skill/core.lb-cli` and
    `grant:skill/core.query`.
-3. Ada authors her own: `put_skill("acme-runbook", "1.0.0", …)` and an admin grants it.
-4. Ada asks the agent (in-house or `open-interpreter-default`) a question. At session start the
-   runtime lists granted skills under `ada ∩ agent` → catalog: `core.lb-cli`, `core.query`,
-   `acme-runbook` (+ descriptions). Mid-run the agent decides it needs CLI syntax and calls
+3. Test authors her own: `put_skill("nube-runbook", "1.0.0", …)` and an admin grants it.
+4. Test asks the agent (in-house or `open-interpreter-default`) a question. At session start the
+   runtime lists granted skills under `test ∩ agent` → catalog: `core.lb-cli`, `core.query`,
+   `nube-runbook` (+ descriptions). Mid-run the agent decides it needs CLI syntax and calls
    `assets.load_skill("core.lb-cli")` → grant ✔ → body loads.
-5. Ada tries `put_skill("core.lb-cli", "9.9.9", …)` → **rejected** (reserved namespace), regardless
+5. Test tries `put_skill("core.lb-cli", "9.9.9", …)` → **rejected** (reserved namespace), regardless
    of her caps.
-6. Ada deprecates `acme-runbook` → it vanishes from `list_skills` and from the next run's catalog;
-   a pinned `load_skill("acme-runbook", "1.0.0")` still resolves for rollback/audit.
+6. Test deprecates `nube-runbook` → it vanishes from `list_skills` and from the next run's catalog;
+   a pinned `load_skill("nube-runbook", "1.0.0")` still resolves for rollback/audit.
 7. A user whose caps don't include `store:skill/*:read` invokes the agent: the derived principal
    lacks the surface → the catalog is **empty** and every `load_skill` denies. The agent is exactly
    as smart as the user is allowed.

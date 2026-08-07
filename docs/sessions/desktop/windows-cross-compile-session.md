@@ -81,7 +81,7 @@ seeders, and mounts the SSE/HTTP gateway in-process on `127.0.0.1:8800`, so it i
   MSVC cleanly; the Windows webview layer (`webview2-com`, `tao`, `wry`,
   `tauri-runtime-wry`) linked without error.
 - Build output ends with the expected banner: *"Binary (full): …/lazybones-shell.exe
-  — login at http://127.0.0.1:8800 as user:ada / acme"*.
+  — login at http://127.0.0.1:8800 as user:test / nube"*.
 
 **Linux full — built AND proven working (the "get it working in Linux first" ask):**
 
@@ -91,7 +91,7 @@ seeders, and mounts the SSE/HTTP gateway in-process on `127.0.0.1:8800`, so it i
   compiles): boots the binary under `xvfb-run`, then `curl`s a real
   `POST /login`. Output:
   - `full: seeded 38 core skills @0.1.0`
-  - `full: loopback gateway on http://127.0.0.1:8800 (login as user:ada / acme)`
+  - `full: loopback gateway on http://127.0.0.1:8800 (login as user:test / nube)`
   - `login OK over loopback gateway (http://127.0.0.1:8800)` ← real token returned.
   So the standalone node boots, seeds, mounts the in-process gateway, and answers a
   real client end to end — on Linux, no external node.

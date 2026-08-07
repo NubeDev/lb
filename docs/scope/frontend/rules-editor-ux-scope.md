@@ -163,7 +163,7 @@ change). The data explorer **is** dynamic (workspace-specific), so it reads the 
    unsaved edits the buffer loads the proven body; **Run** renders a `critical` finding. (With unsaved edits,
    a confirm guards the clobber.)
 4. **Explore data.** Under **Data → Datasources**, `datasource.list` shows `timescale (postgres ·
-   tsdb.acme:5432)`; clicking it inserts `query("timescale", "SELECT … FROM … LIMIT 100")`. A workspace whose
+   tsdb.nube:5432)`; clicking it inserts `query("timescale", "SELECT … FROM … LIMIT 100")`. A workspace whose
    caller lacks `mcp:datasource.list:call` sees an **honest deny** in that section — never a fake roster.
 
 ## Testing plan

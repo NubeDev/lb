@@ -76,14 +76,14 @@ async fn find_by_host(store: &Store, p: &Principal, ws: &str, host: &str) -> Vec
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn delete_removes_samples_and_tag_edges() {
     let store = Store::memory().await.unwrap();
-    let p = principal("prod", "acme", ALL);
-    write(&store, &p, "acme", labeled("temp", 1, json!(21), "pi-7")).await;
+    let p = principal("prod", "nube", ALL);
+    write(&store, &p, "nube", labeled("temp", 1, json!(21), "pi-7")).await;
 
     // Present before: sample readable, series listed, and discoverable by its tag.
     let read = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "temp" }),
     )
@@ -91,7 +91,7 @@ async fn delete_removes_samples_and_tag_edges() {
     .unwrap();
     assert_eq!(read["samples"].as_array().unwrap().len(), 1);
     assert_eq!(
-        find_by_host(&store, &p, "acme", "pi-7").await,
+        find_by_host(&store, &p, "nube", "pi-7").await,
         vec!["series:temp"]
     );
 
@@ -99,7 +99,7 @@ async fn delete_removes_samples_and_tag_edges() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.delete",
         &json!({ "series": "temp" }),
     )
@@ -111,7 +111,7 @@ async fn delete_removes_samples_and_tag_edges() {
     let read = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "temp" }),
     )
@@ -122,7 +122,7 @@ async fn delete_removes_samples_and_tag_edges() {
         "samples gone"
     );
     let list: Vec<String> = serde_json::from_value(
-        call_ingest_tool(&store, &p, "acme", "series.list", &json!({}))
+        call_ingest_tool(&store, &p, "nube", "series.list", &json!({}))
             .await
             .unwrap()["series"]
             .clone(),
@@ -130,7 +130,7 @@ async fn delete_removes_samples_and_tag_edges() {
     .unwrap();
     assert!(!list.contains(&"temp".to_string()), "series delisted");
     assert!(
-        find_by_host(&store, &p, "acme", "pi-7").await.is_empty(),
+        find_by_host(&store, &p, "nube", "pi-7").await.is_empty(),
         "tag edge cleared — series.find no longer returns it"
     );
 }
@@ -138,12 +138,12 @@ async fn delete_removes_samples_and_tag_edges() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn delete_unknown_series_is_ok() {
     let store = Store::memory().await.unwrap();
-    let p = principal("prod", "acme", ALL);
+    let p = principal("prod", "nube", ALL);
     // Idempotent: deleting a series that never existed succeeds (no-op), not an error.
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.delete",
         &json!({ "series": "ghost" }),
     )
@@ -155,18 +155,18 @@ async fn delete_unknown_series_is_ok() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn rename_carries_samples_and_tags() {
     let store = Store::memory().await.unwrap();
-    let p = principal("prod", "acme", ALL);
+    let p = principal("prod", "nube", ALL);
     write(
         &store,
         &p,
-        "acme",
+        "nube",
         labeled("old.name", 1, json!(21), "pi-7"),
     )
     .await;
     write(
         &store,
         &p,
-        "acme",
+        "nube",
         labeled("old.name", 2, json!(22), "pi-7"),
     )
     .await;
@@ -174,7 +174,7 @@ async fn rename_carries_samples_and_tags() {
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.rename",
         &json!({ "from": "old.name", "to": "new.name" }),
     )
@@ -186,7 +186,7 @@ async fn rename_carries_samples_and_tags() {
     let old = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "old.name" }),
     )
@@ -199,7 +199,7 @@ async fn rename_carries_samples_and_tags() {
     let new = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "new.name" }),
     )
@@ -211,7 +211,7 @@ async fn rename_carries_samples_and_tags() {
         "both samples carried"
     );
     assert_eq!(
-        find_by_host(&store, &p, "acme", "pi-7").await,
+        find_by_host(&store, &p, "nube", "pi-7").await,
         vec!["series:new.name"],
         "tag edge re-pointed to the new entity"
     );
@@ -220,15 +220,15 @@ async fn rename_carries_samples_and_tags() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn rename_into_occupied_name_is_refused() {
     let store = Store::memory().await.unwrap();
-    let p = principal("prod", "acme", ALL);
-    write(&store, &p, "acme", labeled("a", 1, json!(1), "h")).await;
-    write(&store, &p, "acme", labeled("b", 1, json!(2), "h")).await;
+    let p = principal("prod", "nube", ALL);
+    write(&store, &p, "nube", labeled("a", 1, json!(1), "h")).await;
+    write(&store, &p, "nube", labeled("b", 1, json!(2), "h")).await;
 
     // `b` already exists → refused (no silent merge). BadInput, not Denied (a client error).
     let err = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.rename",
         &json!({ "from": "a", "to": "b" }),
     )
@@ -241,7 +241,7 @@ async fn rename_into_occupied_name_is_refused() {
 
     // Both series are intact — the refusal touched nothing.
     for s in ["a", "b"] {
-        let read = call_ingest_tool(&store, &p, "acme", "series.read", &json!({ "series": s }))
+        let read = call_ingest_tool(&store, &p, "nube", "series.read", &json!({ "series": s }))
             .await
             .unwrap();
         assert_eq!(read["samples"].as_array().unwrap().len(), 1, "{s} intact");
@@ -254,15 +254,15 @@ async fn delete_and_rename_denied_without_cap() {
     // A writer WITHOUT the destructive caps: can write, cannot delete or rename.
     let writer = principal(
         "prod",
-        "acme",
+        "nube",
         &["mcp:ingest.write:call", "mcp:series.read:call"],
     );
-    write(&store, &writer, "acme", labeled("temp", 1, json!(1), "h")).await;
+    write(&store, &writer, "nube", labeled("temp", 1, json!(1), "h")).await;
 
     let del = call_ingest_tool(
         &store,
         &writer,
-        "acme",
+        "nube",
         "series.delete",
         &json!({ "series": "temp" }),
     )
@@ -273,7 +273,7 @@ async fn delete_and_rename_denied_without_cap() {
     let ren = call_ingest_tool(
         &store,
         &writer,
-        "acme",
+        "nube",
         "series.rename",
         &json!({ "from": "temp", "to": "temp2" }),
     )
@@ -285,7 +285,7 @@ async fn delete_and_rename_denied_without_cap() {
     let read = call_ingest_tool(
         &store,
         &writer,
-        "acme",
+        "nube",
         "series.read",
         &json!({ "series": "temp" }),
     )

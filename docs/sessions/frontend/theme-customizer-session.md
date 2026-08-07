@@ -74,7 +74,7 @@ workspace-default → built-in), with the mandatory capability-deny + workspace-
 - **Settings tabs are URL-routable**: new `/settings/$tab` route (`createAppRouter.tsx`
   `settingsTabRoute`), bare `/settings` redirects to `/settings/preferences`. `SettingsView` is now
   URL-controlled (`tab` + `onTabChange` props); the router drives the active tab and updates the URL on
-  switch — so `#/t/acme/settings/theme` and `#/t/acme/settings/agent` are deep-linkable, back-button
+  switch — so `#/t/nube/settings/theme` and `#/t/nube/settings/agent` are deep-linkable, back-button
   works, and `surfaceForPath("/settings/theme") → settings` keeps the nav-active + cap gate (same
   precedent as `/system/mcp → system`).
 - Test harness `features/settings/SettingsHarness.tsx` (holds tab state) so the four Settings gateway

@@ -24,7 +24,7 @@ use lb_host::{
 use lb_mcp::ToolError;
 use serde_json::{json, Value};
 
-const WS: &str = "acme";
+const WS: &str = "nube";
 const SECRET_PATH: &str = "update/credential";
 /// The value the in-test backend hands lb during enrolment. Every response body is asserted NOT to
 /// contain it — that assertion is the whole point of the custody design.

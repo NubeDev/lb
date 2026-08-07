@@ -142,16 +142,16 @@ const INSTALL_CAPS: &[&str] = &["mcp:native.install:call", "mcp:native.call:call
 async fn capability_deny_holds_under_concurrent_calls() {
     let node = Node::boot().await.unwrap();
     let launcher = ConcurrentLauncher {
-        ws: "acme".into(),
+        ws: "nube".into(),
         calls: Arc::new(AtomicU32::new(0)),
     };
-    let admin = principal("acme", INSTALL_CAPS);
-    install_native(&node, &launcher, &admin, "acme", MANIFEST, "", &[], 1)
+    let admin = principal("nube", INSTALL_CAPS);
+    install_native(&node, &launcher, &admin, "nube", MANIFEST, "", &[], 1)
         .await
         .expect("installs");
 
     // Same workspace, but WITHOUT `mcp:native.call:call`.
-    let ungranted = principal("acme", &["mcp:native.status:call"]);
+    let ungranted = principal("nube", &["mcp:native.status:call"]);
 
     let node = Arc::new(node);
     let launcher = Arc::new(launcher);
@@ -162,7 +162,7 @@ async fn capability_deny_holds_under_concurrent_calls() {
         let launcher = Arc::clone(&launcher);
         let granted = i % 2 == 0; // interleave allow / deny
         let caller = if granted {
-            principal("acme", INSTALL_CAPS)
+            principal("nube", INSTALL_CAPS)
         } else {
             ungranted.clone()
         };
@@ -171,7 +171,7 @@ async fn capability_deny_holds_under_concurrent_calls() {
                 &node,
                 &*launcher,
                 &caller,
-                "acme",
+                "nube",
                 "echo-sidecar",
                 "echo",
                 &i.to_string(),
@@ -277,11 +277,11 @@ async fn workspace_isolation_holds_under_concurrent_calls_with_colliding_ids() {
 async fn the_host_call_path_does_not_serialize() {
     let node = Node::boot().await.unwrap();
     let launcher = ConcurrentLauncher {
-        ws: "acme".into(),
+        ws: "nube".into(),
         calls: Arc::new(AtomicU32::new(0)),
     };
-    let admin = principal("acme", INSTALL_CAPS);
-    install_native(&node, &launcher, &admin, "acme", MANIFEST, "", &[], 1)
+    let admin = principal("nube", INSTALL_CAPS);
+    install_native(&node, &launcher, &admin, "nube", MANIFEST, "", &[], 1)
         .await
         .expect("installs");
 
@@ -293,13 +293,13 @@ async fn the_host_call_path_does_not_serialize() {
     for i in 0..13u32 {
         let node = Arc::clone(&node);
         let launcher = Arc::clone(&launcher);
-        let caller = principal("acme", INSTALL_CAPS);
+        let caller = principal("nube", INSTALL_CAPS);
         tasks.push(tokio::spawn(async move {
             call_sidecar(
                 &node,
                 &*launcher,
                 &caller,
-                "acme",
+                "nube",
                 "echo-sidecar",
                 "echo",
                 &i.to_string(),

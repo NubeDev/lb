@@ -1,7 +1,7 @@
 //! The LOCAL transport, driven fully OFFLINE (no gateway anywhere) against an in-process node
 //! (testing §0 — real store, real host, no mocks). Covers the mandatory categories for local mode:
 //! offline operation with output identical to remote, capability-deny parity (local denies the same
-//! verbs a member token would), and workspace-isolation (a local `-w acme` principal cannot reach ws
+//! verbs a member token would), and workspace-isolation (a local `-w nube` principal cannot reach ws
 //! beta's data on the same store).
 
 mod common;
@@ -24,9 +24,9 @@ async fn seed(node: &lb_host::Node, ws: &str, channel: &str, id: &str, body: &st
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_mode_runs_with_no_gateway_reachable() {
-    // The offline posture: boot an in-process node, mint a dev principal for `acme`, call a verb — no
+    // The offline posture: boot an in-process node, mint a dev principal for `nube`, call a verb — no
     // network at all. The result is the tool's real JSON.
-    let local = Local::boot("user:ada", "acme")
+    let local = Local::boot("user:test", "nube")
         .await
         .expect("local node boots");
     let out = local
@@ -42,8 +42,8 @@ async fn local_mode_runs_with_no_gateway_reachable() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_output_matches_remote_shape() {
     // Local mints the SAME dev_claims a login issues, so the shaped output is identical to remote.
-    let local = Local::boot("user:ada", "acme").await.unwrap();
-    seed(local.node(), "acme", "ops", "job-1", "deploy pending").await;
+    let local = Local::boot("user:test", "nube").await.unwrap();
+    seed(local.node(), "nube", "ops", "job-1", "deploy pending").await;
 
     let out = lb_cli::commands::inbox::list(&local, "ops", Format::Json)
         .await
@@ -51,7 +51,7 @@ async fn local_output_matches_remote_shape() {
     assert!(out.body.contains("job-1"), "{}", out.body);
     // The header marks it LOCAL so an operator is never confused about offline-ness.
     assert!(out.header.contains("mode: local"), "{}", out.header);
-    assert!(out.header.contains("ws: acme"), "{}", out.header);
+    assert!(out.header.contains("ws: nube"), "{}", out.header);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -61,7 +61,7 @@ async fn local_denies_a_verb_outside_the_dev_claims_set() {
     // higher grant than the read the dev session carries) and is deliberately NOT in dev_claims, so
     // the cap gate denies it before dispatch. (Was `prefs.set_default`, but that landed in dev_claims
     // when the workspace-branding/theme admin editors needed it — the dev login doubles as admin.)
-    let local = Local::boot("user:ada", "acme").await.unwrap();
+    let local = Local::boot("user:test", "nube").await.unwrap();
     let result = local.call("telemetry.purge", json!({})).await;
     match result {
         Err(CliError::Denied { tool }) => assert_eq!(tool, "telemetry.purge"),
@@ -71,22 +71,22 @@ async fn local_denies_a_verb_outside_the_dev_claims_set() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_dash_w_cannot_reach_outside_the_minted_principals_workspace() {
-    // The isolation test for local: seed the SAME channel+id in acme and beta on ONE node, then mint
-    // TWO local transports over that one node — one scoped to acme, one to beta. Each sees only its own
+    // The isolation test for local: seed the SAME channel+id in nube and beta on ONE node, then mint
+    // TWO local transports over that one node — one scoped to nube, one to beta. Each sees only its own
     // workspace's data. `-w` scoped the principal's ws (the wall); it cannot cross.
     let node = Arc::new(lb_host::Node::boot().await.expect("node boots"));
-    seed(&node, "acme", "general", "i1", "A-secret").await;
+    seed(&node, "nube", "general", "i1", "A-secret").await;
     seed(&node, "beta", "general", "i1", "B-secret").await;
 
-    let acme = Local::over(Arc::clone(&node), "user:ada", "acme");
-    let out = acme
+    let nube = Local::over(Arc::clone(&node), "user:test", "nube");
+    let out = nube
         .call("inbox.list", json!({ "channel": "general" }))
         .await
         .unwrap();
     let text = out.to_string();
     assert!(
         text.contains("A-secret") && !text.contains("B-secret"),
-        "acme sees only A: {text}"
+        "nube sees only A: {text}"
     );
 
     let beta = Local::over(Arc::clone(&node), "user:bo", "beta");

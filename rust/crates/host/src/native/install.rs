@@ -227,10 +227,10 @@ mod carry_grant_tests {
             vec!["net:tls:127.0.0.1:5433:connect".into()],
             prior(&[
                 "net:tls:127.0.0.1:5433:connect",
-                "net:tls:tsdb.acme.com:5434:connect",
+                "net:tls:tsdb.nube.com:5434:connect",
             ]),
         );
-        assert!(out.contains(&"net:tls:tsdb.acme.com:5434:connect".to_string()));
+        assert!(out.contains(&"net:tls:tsdb.nube.com:5434:connect".to_string()));
     }
 
     /// Revocation of a NON-net cap must still take effect — the recompute stays authoritative.

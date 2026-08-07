@@ -51,7 +51,7 @@ const RULES_RUN: &str = "mcp:rules.run:call";
 /// A caller holding every query cap + store.query + ingest (to seed) + rules.run (for the rule test).
 fn admin(ws: &str) -> Principal {
     principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             SAVE, GET, LIST, DEL, RUN, COMPILE, STORE_Q, INGEST_W, RULES_RUN,
@@ -137,15 +137,15 @@ async fn each_verb_denied_without_its_cap() {
 async fn headline_no_widening_run_requires_target_cap() {
     let ws = "q-nowiden";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = admin(ws);
-    seed_series(&node, &ada, ws, "cpu", 3).await;
+    let test = admin(ws);
+    seed_series(&node, &test, ws, "cpu", 3).await;
 
     // Save a platform query as admin. (`select { payload }` projects a column that is NOT the table
     // name — PRQL would otherwise emit `SELECT *, …` and pull SurrealDB's record `id`, which doesn't
     // deserialize to JSON. Selecting non-table-name columns is the supported relational subset.)
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.save",
         json!({ "id": "top", "name": "top", "lang": "prql", "text": "from series | select { payload } | take 100", "target": "platform", "ts": 1 }),
@@ -185,12 +185,12 @@ async fn headline_no_widening_run_requires_target_cap() {
 async fn headline_no_widening_datasource_run_denied_without_federation_cap() {
     let ws = "q-fed-nowiden";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = admin(ws);
+    let test = admin(ws);
     // A datasource-target query (no datasource registered; the deny must bite at the CAP, before
     // resolution — proving the headline even when the source is absent). We save it as admin.
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.save",
         json!({ "id": "wh", "name": "warehouse", "lang": "prql", "text": "from orders | take 1", "target": "datasource:warehouse", "ts": 1 }),
@@ -217,13 +217,13 @@ async fn headline_no_widening_datasource_run_denied_without_federation_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn workspace_b_cannot_get_run_delete_ws_a_query() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = admin("ws-a");
+    let test = admin("ws-a");
     let ben = principal("user:ben", "ws-b", &[GET, RUN, DEL, STORE_Q, LIST]);
 
-    // Ada saves a query in ws-a.
+    // Test saves a query in ws-a.
     call(
         &node,
-        &ada,
+        &test,
         "ws-a",
         "query.save",
         json!({ "id": "secret", "name": "secret", "lang": "prql", "text": "from series | take 1", "target": "platform", "ts": 1 }),
@@ -259,7 +259,7 @@ async fn workspace_b_cannot_get_run_delete_ws_a_query() {
     )
     .await
     .unwrap();
-    let still = call(&node, &ada, "ws-a", "query.get", json!({ "id": "secret" }))
+    let still = call(&node, &test, "ws-a", "query.get", json!({ "id": "secret" }))
         .await
         .unwrap();
     assert_eq!(
@@ -326,13 +326,13 @@ async fn compile_returns_sql_and_malformed_is_typed_error() {
 async fn raw_platform_write_rejected_by_read_only_gate() {
     let ws = "q-readonly";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = admin(ws);
-    seed_series(&node, &ada, ws, "cpu", 1).await;
+    let test = admin(ws);
+    seed_series(&node, &test, ws, "cpu", 1).await;
 
     // A `lang:"raw"` DELETE against platform — the store.query parse-allowlist rejects it (read-first).
     let err = call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.run",
         json!({ "lang": "raw", "text": "DELETE series", "target": "platform" }),
@@ -353,15 +353,15 @@ async fn raw_platform_write_rejected_by_read_only_gate() {
 async fn params_bind_safely_through_store_query_vars() {
     let ws = "q-params";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = admin(ws);
-    seed_series(&node, &ada, ws, "cpu", 3).await;
-    seed_series(&node, &ada, ws, "mem", 2).await;
+    let test = admin(ws);
+    seed_series(&node, &test, ws, "cpu", 3).await;
+    seed_series(&node, &test, ws, "mem", 2).await;
 
     // A raw SurrealQL query with a `$name` placeholder, declared param "name". The value binds via
     // store.query's vars path — never string interpolation (injection-safe).
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.save",
         json!({
@@ -378,7 +378,7 @@ async fn params_bind_safely_through_store_query_vars() {
 
     let out = call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.run",
         json!({ "id": "byname", "vars": { "name": "cpu" } }),
@@ -390,7 +390,7 @@ async fn params_bind_safely_through_store_query_vars() {
     assert!(rows.iter().all(|r| r["series"] == json!("cpu")));
 
     // Missing param → typed error.
-    let err = call(&node, &ada, ws, "query.run", json!({ "id": "byname" }))
+    let err = call(&node, &test, ws, "query.run", json!({ "id": "byname" }))
         .await
         .unwrap_err();
     assert!(
@@ -401,7 +401,7 @@ async fn params_bind_safely_through_store_query_vars() {
     // Extra (undeclared) param → typed error.
     let err = call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.run",
         json!({ "id": "byname", "vars": { "name": "cpu", "rogue": 1 } }),
@@ -422,13 +422,13 @@ async fn params_bind_safely_through_store_query_vars() {
 async fn round_trip_save_get_edit_save_run_platform() {
     let ws = "q-rt";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = admin(ws);
-    seed_series(&node, &ada, ws, "cpu", 10).await;
+    let test = admin(ws);
+    seed_series(&node, &test, ws, "cpu", 10).await;
 
     // save
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.save",
         json!({ "id": "recent", "name": "Recent", "description": "v1", "lang": "prql", "text": "from series | select { payload } | take 5", "target": "platform", "ts": 1 }),
@@ -437,7 +437,7 @@ async fn round_trip_save_get_edit_save_run_platform() {
     .unwrap();
 
     // get (re-open)
-    let got = call(&node, &ada, ws, "query.get", json!({ "id": "recent" }))
+    let got = call(&node, &test, ws, "query.get", json!({ "id": "recent" }))
         .await
         .unwrap();
     assert_eq!(
@@ -447,7 +447,7 @@ async fn round_trip_save_get_edit_save_run_platform() {
     assert_eq!(got["name"], json!("Recent"));
 
     // run v1 → 5 rows
-    let out = call(&node, &ada, ws, "query.run", json!({ "id": "recent" }))
+    let out = call(&node, &test, ws, "query.run", json!({ "id": "recent" }))
         .await
         .unwrap();
     assert_eq!(out["rows"].as_array().unwrap().len(), 5);
@@ -455,14 +455,14 @@ async fn round_trip_save_get_edit_save_run_platform() {
     // edit (save same id with new text) — overwrite in place, no revision history (v1 decision)
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.save",
         json!({ "id": "recent", "name": "Recent", "lang": "prql", "text": "from series | select { payload } | take 2", "target": "platform", "ts": 2 }),
     )
     .await
     .unwrap();
-    let got2 = call(&node, &ada, ws, "query.get", json!({ "id": "recent" }))
+    let got2 = call(&node, &test, ws, "query.get", json!({ "id": "recent" }))
         .await
         .unwrap();
     assert_eq!(
@@ -472,13 +472,13 @@ async fn round_trip_save_get_edit_save_run_platform() {
     );
 
     // run v2 → 2 rows
-    let out2 = call(&node, &ada, ws, "query.run", json!({ "id": "recent" }))
+    let out2 = call(&node, &test, ws, "query.run", json!({ "id": "recent" }))
         .await
         .unwrap();
     assert_eq!(out2["rows"].as_array().unwrap().len(), 2);
 
     // list shows it (flat roster, no text/result data)
-    let listed = call(&node, &ada, ws, "query.list", json!({}))
+    let listed = call(&node, &test, ws, "query.list", json!({}))
         .await
         .unwrap();
     let arr = listed["queries"].as_array().unwrap();
@@ -492,14 +492,14 @@ async fn round_trip_save_get_edit_save_run_platform() {
     // delete (soft) → get now NotFound
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.delete",
         json!({ "id": "recent", "ts": 3 }),
     )
     .await
     .unwrap();
-    let err = call(&node, &ada, ws, "query.get", json!({ "id": "recent" }))
+    let err = call(&node, &test, ws, "query.get", json!({ "id": "recent" }))
         .await
         .unwrap_err();
     assert!(matches!(err, ToolError::BadInput(_)), "deleted → not found");
@@ -513,13 +513,13 @@ async fn round_trip_save_get_edit_save_run_platform() {
 async fn rule_reads_saved_query_by_name() {
     let ws = "q-rule";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = admin(ws);
-    seed_series(&node, &ada, ws, "cpu", 4).await;
+    let test = admin(ws);
+    seed_series(&node, &test, ws, "cpu", 4).await;
 
     // Save a platform query the rule will reuse by name.
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "query.save",
         json!({ "id": "cpucount", "name": "cpucount", "lang": "prql", "text": "from series | select { payload } | take 100", "target": "platform", "ts": 1 }),
@@ -533,7 +533,7 @@ async fn rule_reads_saved_query_by_name() {
     let body = r#"source("query:cpucount").records().len()"#;
     let out = call(
         &node,
-        &ada,
+        &test,
         ws,
         "rules.run",
         json!({ "body": body, "ts": 1 }),
@@ -567,7 +567,7 @@ mod postgres_rig {
     pub fn principal(ws: &str, caps: &[&str]) -> Principal {
         let key = SigningKey::generate();
         let claims = Claims {
-            sub: "user:ada".into(),
+            sub: "user:test".into(),
             ws: ws.into(),
             role: Role::Member,
             caps: caps.iter().map(|s| s.to_string()).collect(),

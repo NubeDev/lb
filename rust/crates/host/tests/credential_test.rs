@@ -28,11 +28,11 @@ const MANAGE: &[&str] = &["mcp:identity.manage:call"];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn set_then_verify_round_trips_and_rejects_a_wrong_or_absent_secret() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", MANAGE);
+    let admin = principal("user:alice", "nube", MANAGE);
 
     // Absent before any set.
     assert_eq!(
-        credential_verify(&store, "acme", "user:bob", "hunter2")
+        credential_verify(&store, "nube", "user:bob", "hunter2")
             .await
             .unwrap(),
         CredentialCheck::Absent
@@ -44,20 +44,20 @@ async fn set_then_verify_round_trips_and_rejects_a_wrong_or_absent_secret() {
 
     // Right secret → Ok; wrong secret → BadSecret.
     assert_eq!(
-        credential_verify(&store, "acme", "user:bob", "hunter2")
+        credential_verify(&store, "nube", "user:bob", "hunter2")
             .await
             .unwrap(),
         CredentialCheck::Ok
     );
     assert_eq!(
-        credential_verify(&store, "acme", "user:bob", "nope")
+        credential_verify(&store, "nube", "user:bob", "nope")
             .await
             .unwrap(),
         CredentialCheck::BadSecret
     );
     // A bare handle canonicalizes to the same record.
     assert_eq!(
-        credential_verify(&store, "acme", "bob", "hunter2")
+        credential_verify(&store, "nube", "bob", "hunter2")
             .await
             .unwrap(),
         CredentialCheck::Ok
@@ -67,13 +67,13 @@ async fn set_then_verify_round_trips_and_rejects_a_wrong_or_absent_secret() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_credential_is_workspace_isolated() {
     let store = Store::memory().await.unwrap();
-    let admin_acme = principal("user:alice", "acme", MANAGE);
+    let admin_nube = principal("user:alice", "nube", MANAGE);
 
-    identity_set_credential(&store, &admin_acme, "user:bob", "hunter2", 1)
+    identity_set_credential(&store, &admin_nube, "user:bob", "hunter2", 1)
         .await
         .unwrap();
 
-    // The password set in acme does not exist in beta (the hard wall §7).
+    // The password set in nube does not exist in beta (the hard wall §7).
     assert_eq!(
         credential_verify(&store, "beta", "user:bob", "hunter2")
             .await
@@ -87,7 +87,7 @@ async fn set_credential_denies_a_member_and_an_empty_secret() {
     let store = Store::memory().await.unwrap();
 
     // A member (no identity.manage) is denied — the capability-deny test.
-    let member = principal("user:bob", "acme", &["mcp:dashboard.list:call"]);
+    let member = principal("user:bob", "nube", &["mcp:dashboard.list:call"]);
     assert!(
         identity_set_credential(&store, &member, "user:carol", "x", 1)
             .await
@@ -96,7 +96,7 @@ async fn set_credential_denies_a_member_and_an_empty_secret() {
     );
 
     // An admin with an EMPTY secret is a BadInput, not a silent empty-hash write.
-    let admin = principal("user:alice", "acme", MANAGE);
+    let admin = principal("user:alice", "nube", MANAGE);
     assert!(
         identity_set_credential(&store, &admin, "user:carol", "", 1)
             .await
@@ -105,7 +105,7 @@ async fn set_credential_denies_a_member_and_an_empty_secret() {
     );
     // …and no credential was written by the failed empty-secret set.
     assert_eq!(
-        credential_verify(&store, "acme", "user:carol", "")
+        credential_verify(&store, "nube", "user:carol", "")
             .await
             .unwrap(),
         CredentialCheck::Absent

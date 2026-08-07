@@ -177,7 +177,7 @@ FILE-LAYOUT §Tests.
 
 ### Product test (verify-in-product-not-suite)
 
-Run on the **real rubix-ai product node** (gateway `127.0.0.1:8099`, workspace `acme`, its real
+Run on the **real rubix-ai product node** (gateway `127.0.0.1:8099`, workspace `nube`, its real
 persistent store with live `modbus.plant-a.*` history), rebuilt against this branch through the
 git-ignored `[patch]` in `rubix-ai/.cargo/config.toml` (WORKFLOW-LB §3a). Real HTTP throughout.
 

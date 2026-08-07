@@ -61,15 +61,15 @@ fn push_target(store: &Store) -> (Arc<RecordingPushProvider>, PushTarget) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn relay_fans_out_to_each_recipients_devices() {
     let store = Store::memory().await.unwrap();
-    member_with_device(&store, "acme", "user:bob", "bob-phone").await;
-    member_with_device(&store, "acme", "user:bob", "bob-tablet").await;
-    member_with_device(&store, "acme", "user:ana", "ana-phone").await;
+    member_with_device(&store, "nube", "user:bob", "bob-phone").await;
+    member_with_device(&store, "nube", "user:bob", "bob-tablet").await;
+    member_with_device(&store, "nube", "user:ana", "ana-phone").await;
 
-    let sender = principal("user:staff", "acme", CAPS);
+    let sender = principal("user:staff", "nube", CAPS);
     notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:bob".into(), "user:ana".into()],
         "Leo checked in",
         "9:00 AM",
@@ -83,7 +83,7 @@ async fn relay_fans_out_to_each_recipients_devices() {
     .unwrap();
 
     let (provider, target) = push_target(&store);
-    let pass = relay_outbox(&store, "acme", &target, 200).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 200).await.unwrap();
     assert_eq!(pass.delivered, 1, "one effect delivered");
 
     let sends = provider.sends();
@@ -101,10 +101,10 @@ async fn relay_fans_out_to_each_recipients_devices() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn token_gone_auto_disables_device_and_stops_sending() {
     let store = Store::memory().await.unwrap();
-    let gone_id = member_with_device(&store, "acme", "user:bob", "bob-old-tablet").await;
-    member_with_device(&store, "acme", "user:bob", "bob-phone").await;
+    let gone_id = member_with_device(&store, "nube", "user:bob", "bob-old-tablet").await;
+    member_with_device(&store, "nube", "user:bob", "bob-phone").await;
 
-    let sender = principal("user:staff", "acme", CAPS);
+    let sender = principal("user:staff", "nube", CAPS);
     let send = |title: &'static str, now: u64| {
         let store = store.clone();
         let sender = sender.clone();
@@ -112,7 +112,7 @@ async fn token_gone_auto_disables_device_and_stops_sending() {
             notify_send(
                 &store,
                 &sender,
-                "acme",
+                "nube",
                 &["user:bob".into()],
                 title,
                 "b",
@@ -130,19 +130,19 @@ async fn token_gone_auto_disables_device_and_stops_sending() {
 
     let (provider, target) = push_target(&store);
     provider.mark_token_gone(&gone_id);
-    let pass = relay_outbox(&store, "acme", &target, 200).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 200).await.unwrap();
     // TokenGone is terminal for the device, not a delivery failure: the effect is delivered.
     assert_eq!(pass.delivered, 1);
     assert_eq!(provider.sends().len(), 1, "only the live device was sent");
 
     // The device is now disabled in the store…
-    let bob = principal("user:bob", "acme", CAPS);
-    let devices = device_list(&store, &bob, "acme").await.unwrap();
+    let bob = principal("user:bob", "nube", CAPS);
+    let devices = device_list(&store, &bob, "nube").await.unwrap();
     assert!(devices.iter().find(|d| d.id == gone_id).unwrap().disabled);
 
     // …and a later notification never touches it (no retry to a gone token).
     send("second", 300).await;
-    relay_outbox(&store, "acme", &target, 400).await.unwrap();
+    relay_outbox(&store, "nube", &target, 400).await.unwrap();
     let sends = provider.sends();
     assert_eq!(sends.len(), 2);
     assert!(sends.iter().all(|s| s.device_id != gone_id));
@@ -153,11 +153,11 @@ async fn token_gone_auto_disables_device_and_stops_sending() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn quiet_hours_suppresses_muted_member() {
     let store = Store::memory().await.unwrap();
-    member_with_device(&store, "acme", "user:bob", "bob-phone").await;
-    member_with_device(&store, "acme", "user:ana", "ana-phone").await;
+    member_with_device(&store, "nube", "user:bob", "bob-phone").await;
+    member_with_device(&store, "nube", "user:ana", "ana-phone").await;
     set_user_prefs(
         &store,
-        "acme",
+        "nube",
         "user:ana",
         &Prefs {
             push_muted: Some(true),
@@ -168,11 +168,11 @@ async fn quiet_hours_suppresses_muted_member() {
     .await
     .unwrap();
 
-    let sender = principal("user:staff", "acme", CAPS);
+    let sender = principal("user:staff", "nube", CAPS);
     notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:bob".into(), "user:ana".into()],
         "t",
         "b",
@@ -186,7 +186,7 @@ async fn quiet_hours_suppresses_muted_member() {
     .unwrap();
 
     let (provider, target) = push_target(&store);
-    let pass = relay_outbox(&store, "acme", &target, 200).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 200).await.unwrap();
     assert_eq!(pass.delivered, 1, "suppression is not a failure");
     let sends = provider.sends();
     assert_eq!(sends.len(), 1);
@@ -198,20 +198,20 @@ async fn quiet_hours_suppresses_muted_member() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn non_member_audience_sub_is_excluded() {
     let store = Store::memory().await.unwrap();
-    member_with_device(&store, "acme", "user:bob", "bob-phone").await;
-    // Eve has a device row in acme (e.g. registered before leaving) but NO membership,
-    // and a live membership + device in globex — neither may receive an acme effect.
-    let eve = principal("user:eve", "acme", CAPS);
-    device_register(&store, &eve, "acme", "webpush", "eve-stale", None, 100)
+    member_with_device(&store, "nube", "user:bob", "bob-phone").await;
+    // Eve has a device row in nube (e.g. registered before leaving) but NO membership,
+    // and a live membership + device in globex — neither may receive an nube effect.
+    let eve = principal("user:eve", "nube", CAPS);
+    device_register(&store, &eve, "nube", "webpush", "eve-stale", None, 100)
         .await
         .unwrap();
     member_with_device(&store, "globex", "user:eve", "eve-globex-phone").await;
 
-    let sender = principal("user:staff", "acme", CAPS);
+    let sender = principal("user:staff", "nube", CAPS);
     notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:bob".into(), "user:eve".into()],
         "t",
         "b",
@@ -225,10 +225,10 @@ async fn non_member_audience_sub_is_excluded() {
     .unwrap();
 
     let (provider, target) = push_target(&store);
-    let pass = relay_outbox(&store, "acme", &target, 200).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 200).await.unwrap();
     assert_eq!(pass.delivered, 1, "exclusion is silent, not a failure");
     let sends = provider.sends();
-    assert_eq!(sends.len(), 1, "only the acme member's device");
+    assert_eq!(sends.len(), 1, "only the nube member's device");
     assert_eq!(sends[0].sub, "user:bob");
 }
 
@@ -237,14 +237,14 @@ async fn non_member_audience_sub_is_excluded() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn retry_after_partial_failure_does_not_resend_succeeded_devices() {
     let store = Store::memory().await.unwrap();
-    member_with_device(&store, "acme", "user:bob", "bob-phone").await;
-    let flaky_id = member_with_device(&store, "acme", "user:bob", "bob-tablet").await;
+    member_with_device(&store, "nube", "user:bob", "bob-phone").await;
+    let flaky_id = member_with_device(&store, "nube", "user:bob", "bob-tablet").await;
 
-    let sender = principal("user:staff", "acme", CAPS);
+    let sender = principal("user:staff", "nube", CAPS);
     notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:bob".into()],
         "t",
         "b",
@@ -261,13 +261,13 @@ async fn retry_after_partial_failure_does_not_resend_succeeded_devices() {
     provider.fail_next(&flaky_id);
 
     // Pass 1: one device succeeds (marked delivered), the flaky one fails → effect stays failed.
-    let pass = relay_outbox(&store, "acme", &target, 200).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 200).await.unwrap();
     assert_eq!(pass.delivered, 0);
     assert_eq!(pass.failed, 1);
     assert_eq!(provider.sends().len(), 1, "only the healthy device sent");
 
     // Pass 2 (past the backoff gate): ONLY the previously-failed device is re-sent.
-    let pass = relay_outbox(&store, "acme", &target, 300).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 300).await.unwrap();
     assert_eq!(pass.delivered, 1);
     let sends = provider.sends();
     assert_eq!(sends.len(), 2, "no double-send to the succeeded device");
@@ -279,13 +279,13 @@ async fn retry_after_partial_failure_does_not_resend_succeeded_devices() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn same_second_sends_do_not_collide() {
     let store = Store::memory().await.unwrap();
-    member_with_device(&store, "acme", "user:bob", "bob-phone").await;
-    let sender = principal("user:staff", "acme", CAPS);
+    member_with_device(&store, "nube", "user:bob", "bob-phone").await;
+    let sender = principal("user:staff", "nube", CAPS);
 
     let id1 = notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:bob".into()],
         "one",
         "b",
@@ -300,7 +300,7 @@ async fn same_second_sends_do_not_collide() {
     let id2 = notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:bob".into()],
         "two",
         "b",
@@ -315,7 +315,7 @@ async fn same_second_sends_do_not_collide() {
     assert_ne!(id1, id2, "same-second sends must not share an effect id");
 
     let (provider, target) = push_target(&store);
-    relay_outbox(&store, "acme", &target, 200).await.unwrap();
+    relay_outbox(&store, "nube", &target, 200).await.unwrap();
     assert_eq!(
         provider.sends().len(),
         2,
@@ -328,7 +328,7 @@ async fn same_second_sends_do_not_collide() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn effect_missing_workspace_fails_instead_of_guessing() {
     let store = Store::memory().await.unwrap();
-    member_with_device(&store, "acme", "user:bob", "bob-phone").await;
+    member_with_device(&store, "nube", "user:bob", "bob-phone").await;
 
     // Hand-craft a legacy/foreign effect with no `workspace` field in the payload.
     let payload = serde_json::json!({ "to": ["user:bob"], "title": "t", "body": "b" });
@@ -342,7 +342,7 @@ async fn effect_missing_workspace_fails_instead_of_guessing() {
     );
     lb_outbox::enqueue(
         &store,
-        "acme",
+        "nube",
         "notify",
         "notify:bad",
         &serde_json::json!({}),
@@ -352,7 +352,7 @@ async fn effect_missing_workspace_fails_instead_of_guessing() {
     .unwrap();
 
     let (provider, target) = push_target(&store);
-    let pass = relay_outbox(&store, "acme", &target, 200).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 200).await.unwrap();
     assert_eq!(pass.delivered, 0, "no delivery without a workspace");
     // PARKED, not retried (email-transport scope, the honest-outcome contract): a payload with no
     // workspace will never grow one, so five attempts with backoff only delay the dead-letter row an
@@ -365,7 +365,7 @@ async fn effect_missing_workspace_fails_instead_of_guessing() {
     );
 
     // And the reason is on the row — the relay used to drop it on the floor.
-    let parked = lb_outbox::dead_lettered(&store, "acme").await.unwrap();
+    let parked = lb_outbox::dead_lettered(&store, "nube").await.unwrap();
     assert_eq!(parked.len(), 1);
     assert_eq!(
         parked[0].attempts, 1,

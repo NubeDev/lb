@@ -202,7 +202,7 @@ fn shop_schema() -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dbschema_crud_round_trip() {
     let dir = federation_dir();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -260,7 +260,7 @@ async fn dbschema_crud_round_trip() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dbschema_save_capability_deny() {
     let dir = federation_dir();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -299,7 +299,7 @@ async fn dbschema_save_capability_deny() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dbschema_workspace_isolation() {
     let dir = federation_dir();
-    let ws_a = "acme";
+    let ws_a = "nube";
     let ws_b = "other";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin_a = admin(ws_a);
@@ -353,7 +353,7 @@ async fn dbschema_workspace_isolation() {
 async fn federation_write_round_trip_and_upsert() {
     let dir = federation_dir();
     let db = seeded_db();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -433,7 +433,7 @@ async fn federation_write_round_trip_and_upsert() {
 async fn federation_write_capability_deny() {
     let dir = federation_dir();
     let db = seeded_db();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -483,7 +483,7 @@ async fn federation_write_capability_deny() {
 async fn federation_write_workspace_isolation() {
     let dir = federation_dir();
     let db = seeded_db();
-    let ws_a = "acme";
+    let ws_a = "nube";
     let ws_b = "other";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin_a = admin(ws_a);
@@ -518,7 +518,7 @@ async fn federation_write_workspace_isolation() {
 async fn federation_write_row_cap() {
     let dir = federation_dir();
     let db = seeded_db();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -568,7 +568,7 @@ async fn federation_write_row_cap() {
 async fn federation_migrate_dry_run_then_apply_then_idempotent() {
     let dir = federation_dir();
     let db = empty_db();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -666,7 +666,7 @@ async fn federation_migrate_dry_run_then_apply_then_idempotent() {
 async fn federation_migrate_additive_column_and_destructive_refusal() {
     let dir = federation_dir();
     let db = empty_db();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -736,7 +736,7 @@ async fn federation_migrate_additive_column_and_destructive_refusal() {
 async fn federation_migrate_admin_only() {
     let dir = federation_dir();
     let db = empty_db();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -772,7 +772,7 @@ async fn federation_migrate_admin_only() {
 async fn federation_export_round_trip() {
     let dir = federation_dir();
     let db = empty_db();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;

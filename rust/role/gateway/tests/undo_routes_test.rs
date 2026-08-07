@@ -58,8 +58,8 @@ async fn seed_rename(node: &Node, ws: &str, actor: &str) {
 async fn undo_then_redo_round_trips_over_the_routes() {
     let (gw, key) = gateway().await;
     let node = gw.node.clone();
-    seed_rename(&node, "acme", "user:ada").await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    seed_rename(&node, "nube", "user:test").await;
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     // POST /undo → the before-image is restored in the real store.
     let resp = router(gw.clone())
@@ -70,7 +70,7 @@ async fn undo_then_redo_round_trips_over_the_routes() {
     let body: Value = json_body(resp).await;
     assert_eq!(body["ok"], json!(true), "undo applied: {body}");
     assert_eq!(
-        read(&node.store, "acme", "doc", "d1").await.unwrap(),
+        read(&node.store, "nube", "doc", "d1").await.unwrap(),
         Some(json!({"title": "draft"})),
         "undo restores the before-image through the route"
     );
@@ -84,7 +84,7 @@ async fn undo_then_redo_round_trips_over_the_routes() {
     let body: Value = json_body(resp).await;
     assert_eq!(body["ok"], json!(true), "redo applied: {body}");
     assert_eq!(
-        read(&node.store, "acme", "doc", "d1").await.unwrap(),
+        read(&node.store, "nube", "doc", "d1").await.unwrap(),
         Some(json!({"title": "v1"})),
         "redo re-applies through the route"
     );
@@ -93,8 +93,8 @@ async fn undo_then_redo_round_trips_over_the_routes() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn history_lists_the_callers_own_stack() {
     let (gw, key) = gateway().await;
-    seed_rename(&gw.node.clone(), "acme", "user:ada").await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    seed_rename(&gw.node.clone(), "nube", "user:test").await;
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(get_req("/undo/history"), &tok))
@@ -113,7 +113,7 @@ async fn history_lists_the_callers_own_stack() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_empty_stack_is_a_typed_refusal_not_an_error() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(post_empty("/undo"), &tok))
@@ -135,18 +135,18 @@ async fn an_empty_stack_is_a_typed_refusal_not_an_error() {
 async fn a_stale_undo_is_a_typed_refusal_and_clobbers_nothing() {
     let (gw, key) = gateway().await;
     let node = gw.node.clone();
-    seed_rename(&node, "acme", "user:ada").await;
+    seed_rename(&node, "nube", "user:test").await;
     // A collaborator writes after the tracked step.
     write(
         &node.store,
-        "acme",
+        "nube",
         "doc",
         "d1",
         &json!({"title": "theirs"}),
     )
     .await
     .unwrap();
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(post_empty("/undo"), &tok))
@@ -157,7 +157,7 @@ async fn a_stale_undo_is_a_typed_refusal_and_clobbers_nothing() {
     assert_eq!(body["ok"], json!(false));
     assert_eq!(body["reason"], "stale", "typed reason: {body}");
     assert_eq!(
-        read(&node.store, "acme", "doc", "d1").await.unwrap(),
+        read(&node.store, "nube", "doc", "d1").await.unwrap(),
         Some(json!({"title": "theirs"})),
         "a refused undo must never clobber the intervening write"
     );
@@ -170,8 +170,8 @@ async fn compensations_surfaces_the_compensating_tool() {
     let seq = record_irreversible(
         &gw.node.store,
         RecordIrreversible {
-            ws: "acme",
-            actor: "user:ada",
+            ws: "nube",
+            actor: "user:test",
             surface: "",
             tool: "workflow.open_pr",
             trace_id: "t",
@@ -185,7 +185,7 @@ async fn compensations_surfaces_the_compensating_tool() {
     )
     .await
     .unwrap();
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -203,7 +203,7 @@ async fn compensations_surfaces_the_compensating_tool() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn each_verb_is_refused_without_its_grant() {
     let (gw, key) = gateway().await;
-    seed_rename(&gw.node.clone(), "acme", "user:ada").await;
+    seed_rename(&gw.node.clone(), "nube", "user:test").await;
 
     // Holds every undo cap EXCEPT the one under test, so only the missing grant can explain the 403.
     let cases: [(&str, &str, bool); 4] = [
@@ -218,7 +218,7 @@ async fn each_verb_is_refused_without_its_grant() {
     ];
     for (missing, uri, is_post) in cases {
         let caps: Vec<&str> = CAPS.iter().copied().filter(|c| *c != missing).collect();
-        let tok = token(&key, "user:ada", "acme", &caps);
+        let tok = token(&key, "user:test", "nube", &caps);
         let req = if is_post {
             post_empty(uri)
         } else {
@@ -239,7 +239,7 @@ async fn each_verb_is_refused_without_its_grant() {
 async fn undo_is_refused_without_the_original_tools_cap() {
     let (gw, key) = gateway().await;
     let node = gw.node.clone();
-    seed_rename(&node, "acme", "user:ada").await;
+    seed_rename(&node, "nube", "user:test").await;
 
     // Every undo cap, but NOT `mcp:doc.rename:call` — the step's own tool.
     let caps: Vec<&str> = CAPS
@@ -247,7 +247,7 @@ async fn undo_is_refused_without_the_original_tools_cap() {
         .copied()
         .filter(|c| *c != "mcp:doc.rename:call")
         .collect();
-    let tok = token(&key, "user:ada", "acme", &caps);
+    let tok = token(&key, "user:test", "nube", &caps);
 
     let resp = router(gw)
         .oneshot(bearer(post_empty("/undo"), &tok))
@@ -259,7 +259,7 @@ async fn undo_is_refused_without_the_original_tools_cap() {
         "undo must not escalate past the caller's own caps"
     );
     assert_eq!(
-        read(&node.store, "acme", "doc", "d1").await.unwrap(),
+        read(&node.store, "nube", "doc", "d1").await.unwrap(),
         Some(json!({"title": "v1"})),
         "the refused undo changed nothing"
     );
@@ -271,9 +271,9 @@ async fn undo_is_refused_without_the_original_tools_cap() {
 async fn workspace_b_cannot_see_or_undo_workspace_a_journal() {
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("boots"));
     let key = lb_auth::SigningKey::generate();
-    seed_rename(&node, "acme", "user:ada").await;
+    seed_rename(&node, "nube", "user:test").await;
     let gw_b = gateway_on(node.clone(), &key);
-    let tok_b = token(&key, "user:ada", "other-co", CAPS);
+    let tok_b = token(&key, "user:test", "other-co", CAPS);
 
     // ws-B's history is empty — ws-A's step is invisible.
     let resp = router(gw_b.clone())
@@ -296,7 +296,7 @@ async fn workspace_b_cannot_see_or_undo_workspace_a_journal() {
     let body: Value = json_body(resp).await;
     assert_eq!(body["ok"], json!(false), "nothing to undo in ws-B: {body}");
     assert_eq!(
-        read(&node.store, "acme", "doc", "d1").await.unwrap(),
+        read(&node.store, "nube", "doc", "d1").await.unwrap(),
         Some(json!({"title": "v1"})),
         "ws-A's record survives a ws-B undo attempt"
     );

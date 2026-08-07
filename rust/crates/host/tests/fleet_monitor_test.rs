@@ -44,7 +44,7 @@ fn sidecar_dir() -> String {
 fn principal(ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
-        sub: "user:ada".into(),
+        sub: "user:test".into(),
         ws: ws.into(),
         role: Role::Member,
         caps: caps.iter().map(|s| s.to_string()).collect(),
@@ -58,7 +58,7 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn native_install_spawns_child_and_surfaces_page_plus_two_widgets() {
-    let ws = "acme";
+    let ws = "nube";
     let node = Node::boot().await.unwrap();
     let launcher = OsLauncher;
     let admin = principal(
@@ -146,7 +146,7 @@ async fn native_ui_scope_is_narrowed_to_the_grant() {
     // The manifest requests three series verbs, but the admin approves ONLY series.latest. The
     // persisted page + widget scopes must drop the un-approved verbs — a native page/widget is a
     // gated caller, exactly like a wasm one.
-    let ws = "acme";
+    let ws = "nube";
     let node = Node::boot().await.unwrap();
     let launcher = OsLauncher;
     let admin = principal(ws, &["mcp:native.install:call", "mcp:ext.list:call"]);

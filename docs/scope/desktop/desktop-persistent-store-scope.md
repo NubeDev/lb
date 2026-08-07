@@ -63,7 +63,7 @@ set it — before `NodeHandle::boot`.** One new resolver + one line in `run()`.
    dir), returning the path string. `dirs` is already a workspace dep (used in
    `host_tools/fs/home.rs`); add it to the shell crate. Windows → `%APPDATA%\lazybones\store`,
    Linux → `~/.local/share/lazybones/store`, macOS → `~/Library/Application Support/lazybones/store`.
-2. **Set it at the binary boundary (`desktop.rs::run`).** Before `NodeHandle::boot("acme")`: if
+2. **Set it at the binary boundary (`desktop.rs::run`).** Before `NodeHandle::boot("nube")`: if
    `LB_STORE_PATH` is unset/empty, `std::env::set_var("LB_STORE_PATH", resolve_store_path())` and log
    the resolved path. `Node::boot` then opens the durable store with zero further change. Env is the
    seam the store selector already reads — the desktop just fills it in.
@@ -101,7 +101,7 @@ for a shipped-app default. Tests that WANT persistence set `LB_STORE_PATH` to th
 1. User launches `lazybones-shell` (full). `LB_STORE_PATH` unset → `run()` resolves
    `~/.local/share/lazybones/store`, creates the parent, sets the env, logs
    `full: persistent store at <path>`.
-2. `NodeHandle::boot("acme")` → `Node::boot` → `open_store()` sees `LB_STORE_PATH` → `Store::open` →
+2. `NodeHandle::boot("nube")` → `Node::boot` → `open_store()` sees `LB_STORE_PATH` → `Store::open` →
    durable SurrealKV. Seeders + federation mount run (idempotent).
 3. User creates a channel, posts messages, registers a datasource, builds a dashboard.
 4. User quits. Relaunches. Same store dir opens — **the channel, messages, datasource, and dashboard

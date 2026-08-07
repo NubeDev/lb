@@ -33,14 +33,14 @@ effective access is still workspace-first (§6.6, §7).
 
 ### How it maps to the tenancy model
 
-- **Workspace** `acme` = the tenant = the hard wall. One SurrealDB namespace, one
-  `ws/acme/**` bus prefix, its own secrets. Every artifact below lives inside it. The shipped
+- **Workspace** `nube` = the tenant = the hard wall. One SurrealDB namespace, one
+  `ws/nube/**` bus prefix, its own secrets. Every artifact below lives inside it. The shipped
   workspace directory/session behavior is documented in `../public/workspace/workspace.md`.
 - **Teams** `backend`, `reviewers` = membership groups used for assignment, mentions, and
   approval routing. Flat and overlapping (§7).
-- **Users** = global identities who are members of `acme`. Some are on **edge** nodes
+- **Users** = global identities who are members of `nube`. Some are on **edge** nodes
   (laptops, offline-capable); the agent and workflow run on the **cloud hub**.
-- **Channels** `#issue-2451`, `#backend` = bus subjects (`ws/acme/chan/{cid}/**`) with
+- **Channels** `#issue-2451`, `#backend` = bus subjects (`ws/nube/chan/{cid}/**`) with
   messages persisted to SurrealDB. The agent posts progress here; humans discuss here. The shipped
   channel registry/history/stream behavior is documented in `../public/channels/channels.md`.
 
@@ -86,8 +86,8 @@ it writes a **normalized inbox item** (§6.10) in a single SurrealDB transaction
 inbox.item {
   source:  "github",
   type:    "issue.opened",
-  payload: { repo: "acme/api", number: 2451, title: "...", body: "...", url: "..." },
-  tags:    [ source:github, repo:acme/api, kind:issue, needs:triage ],
+  payload: { repo: "nube/api", number: 2451, title: "...", body: "...", url: "..." },
+  tags:    [ source:github, repo:nube/api, kind:issue, needs:triage ],
   read:    false,
   ts:      ...
 }
@@ -110,7 +110,7 @@ LIVE query for instant pickup, with a durable scan as the backstop since LIVE is
 
 ```
 mcp.call coding-agent.triage {
-  inbox_ref: inbox.item:..., repo: "acme/api", issue: 2451
+  inbox_ref: inbox.item:..., repo: "nube/api", issue: 2451
 }
 ```
 
@@ -123,7 +123,7 @@ instance resumes from the inbox/job records.
 ### Step 3 — The AI reads context (capability-gated, workspace-first)
 
 The agent gathers context, but every read passes a host-mediated capability check
-(§ core principle 5), scoped to workspace `acme` and to what *this request* was granted:
+(§ core principle 5), scoped to workspace `nube` and to what *this request* was granted:
 
 - **Docs/skills** (§6.12) — loads `coding-skills/triage-rubric` and the repo conventions
   doc, *only because* the workspace granted those skills to this agent.
@@ -131,7 +131,7 @@ The agent gathers context, but every read passes a host-mediated capability chec
 - **Repository context** — via a granted MCP tool (e.g. a `repo-read` tool exposed by
   `github-bridge` or a code-search extension). The agent never touches the filesystem or
   network directly; it calls tools (§ core principle 7).
-- **Related inbox items** — prior issues tagged `repo:acme/api` for duplicate detection.
+- **Related inbox items** — prior issues tagged `repo:nube/api` for duplicate detection.
 
 The agent sees exactly the docs, channels, secrets, tools, and extensions granted to the
 workspace and the request — nothing cross-workspace, even though it runs centrally (§6.5).
@@ -145,7 +145,7 @@ it with team `backend`:
 doc.create {
   title: "Scope: issue #2451 — fix token refresh race",
   body:  "<problem / proposed change / affected files / risks / test plan>",
-  tags:  [ repo:acme/api, issue:2451, kind:scope-doc ],
+  tags:  [ repo:nube/api, issue:2451, kind:scope-doc ],
   share: { team: backend, channel: #issue-2451 }
 }
 ```
@@ -164,7 +164,7 @@ inbox.item {
   source:  "coding-workflow",
   type:    "approval.request",
   payload: { scope_doc: doc:..., issue: 2451, proposed_action: "start coding session" },
-  tags:    [ needs:approval, repo:acme/api, issue:2451, route:team:reviewers ],
+  tags:    [ needs:approval, repo:nube/api, issue:2451, route:team:reviewers ],
   read:    false
 }
 ```
@@ -185,7 +185,7 @@ creating a **job** (§6.9) — a durable, resumable remote workflow session:
 ```
 job.create {
   kind:    "coding-session",
-  input:   { scope_doc: doc:..., repo: "acme/api", issue: 2451, branch: "fix/2451" },
+  input:   { scope_doc: doc:..., repo: "nube/api", issue: 2451, branch: "fix/2451" },
   channel: #issue-2451,        // where to stream progress
   caps:    [ granted MCP tools + skills for this session ],
   state:   { ... resumable session state ... }
@@ -223,7 +223,7 @@ change (the transactional-outbox pattern, §6.10), then a relay publishes it dur
 outbox.row {
   target:  "github",
   action:  "create_pr",
-  payload: { repo: "acme/api", head: "fix/2451", base: "main", title, body },
+  payload: { repo: "nube/api", head: "fix/2451", base: "main", title, body },
   tags:    [ issue:2451 ],
   status:  "pending"
 }

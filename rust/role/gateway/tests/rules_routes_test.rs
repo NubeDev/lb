@@ -33,7 +33,7 @@ const CAPS: &[&str] = &[
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn rules_crud_round_trip_over_the_gateway() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     // save (create)
     let resp = router(gw.clone())
@@ -97,7 +97,7 @@ async fn rules_crud_round_trip_over_the_gateway() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_a_scalar_rule_returns_a_scalar_output() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -126,7 +126,7 @@ async fn run_a_grid_rule_returns_a_grid_output() {
 
     let mut caps: Vec<&str> = CAPS.to_vec();
     caps.push("mcp:store.query:call");
-    let tok = token(&key, "user:ada", ws, &caps);
+    let tok = token(&key, "user:test", ws, &caps);
 
     // The last expression is a Grid (a materialized history read over the seeded series) → kind "grid".
     let body = r#"history("series", "cooler.temp", "24h")"#;
@@ -156,7 +156,7 @@ async fn run_an_alert_rule_returns_findings_with_log_and_budget() {
         "mcp:outbox.enqueue:call",
         "inbox:rules:write",
     ]);
-    let tok = token(&key, "user:ada", "acme", &caps);
+    let tok = token(&key, "user:test", "nube", &caps);
 
     let body = r#"log("checking"); alert(#{ level: "critical", msg: "hot" });"#;
     let resp = router(gw)
@@ -188,7 +188,7 @@ async fn run_an_alert_rule_returns_findings_with_log_and_budget() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_cage_error_is_400_with_the_verbatim_message() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -207,7 +207,7 @@ async fn a_cage_error_is_400_with_the_verbatim_message() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_ai_rule_with_no_model_is_400_ai_not_configured() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -227,7 +227,7 @@ async fn an_ai_rule_with_no_model_is_400_ai_not_configured() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn running_a_missing_saved_rule_is_404() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -259,7 +259,7 @@ async fn interactive_channel_posts_append_with_distinct_ids_and_ascending_ts() {
         "bus:chan/room:pub",
         "bus:chan/room:sub",
     ]);
-    let tok = token(&key, "user:ada", ws, &caps);
+    let tok = token(&key, "user:test", ws, &caps);
 
     // The route has no `ts` field — the interactive client can't (and doesn't) send one, which is
     // exactly the bug's condition. So each run's `now` comes from its gateway's clock, injected by the
@@ -343,7 +343,7 @@ async fn denied(missing: &str, req: axum::http::Request<axum::body::Body>) {
     let (gw, key) = gateway().await;
     let caps = caps_without(missing);
     let caps_ref: Vec<&str> = caps.iter().map(|s| s.as_str()).collect();
-    let tok = token(&key, "user:ada", "acme", &caps_ref);
+    let tok = token(&key, "user:test", "nube", &caps_ref);
     let resp = router(gw).oneshot(bearer(req, &tok)).await.unwrap();
     assert_eq!(
         resp.status(),
@@ -390,7 +390,7 @@ async fn two_sessions_are_workspace_isolated() {
     // One node, two sessions in different workspaces — ws-B sees none of ws-A's rules.
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
-    let ada = token(&key, "user:ada", "ws-a", CAPS);
+    let test = token(&key, "user:test", "ws-a", CAPS);
     let ben = token(&key, "user:ben", "ws-b", CAPS);
 
     router(gateway_on(node.clone(), &key))
@@ -399,7 +399,7 @@ async fn two_sessions_are_workspace_isolated() {
                 "/rules",
                 json!({ "id": "secret", "name": "A", "body": "1" }),
             ),
-            &ada,
+            &test,
         ))
         .await
         .unwrap();

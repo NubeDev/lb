@@ -15,7 +15,7 @@ import App from '../src/App';
 const params = new URLSearchParams(location.search);
 // Default to the root `make dev` node on 8080 (the common dev loop); override with `?node=` — e.g.
 // `?node=http://127.0.0.1:8087` for the app's own throwaway test_gateway (`make -C app dev`). The
-// bare `ada` prefill works against either now (the gateway canonicalizes `ada` -> `user:ada`).
+// bare `test` prefill works against either now (the gateway canonicalizes `test` -> `user:test`).
 const node = params.get('node') ?? 'http://127.0.0.1:8080';
 setNodeUrl(node);
 
@@ -23,8 +23,8 @@ setNodeUrl(node);
 // global to false, so `dev-defaults`' own `__DEV__` gate leaves the fields empty on web — we set
 // them here instead (preview-only code, never in a device bundle). Override via ?user=/?ws=.
 setDevLogin({
-  user: params.get('user') ?? 'ada',
-  workspace: params.get('ws') ?? 'acme',
+  user: params.get('user') ?? 'test',
+  workspace: params.get('ws') ?? 'nube',
   nodeUrl: node,
 });
 

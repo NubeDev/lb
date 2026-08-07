@@ -73,10 +73,10 @@ async fn restart_redrains_staged_samples_exactly_once() {
     crash_at(&path, "stage-then-kill");
 
     let store = Store::open(&path).await.expect("reopen after kill");
-    let committed = drain_all(&store, "acme").await;
+    let committed = drain_all(&store, "nube").await;
     assert_eq!(committed, STAGED, "all staged samples drain on restart");
 
-    let got = read(&store, "acme", "m", None, None).await.unwrap();
+    let got = read(&store, "nube", "m", None, None).await.unwrap();
     assert_eq!(
         got.len(),
         STAGED,
@@ -85,7 +85,7 @@ async fn restart_redrains_staged_samples_exactly_once() {
 
     // A SECOND drain after restart must commit nothing (staging emptied atomically with commit).
     assert_eq!(
-        drain_all(&store, "acme").await,
+        drain_all(&store, "nube").await,
         0,
         "no double-commit on re-drain"
     );
@@ -104,23 +104,23 @@ async fn committed_batch_survives_kill_without_double_commit() {
     crash_at(&path, "commit-then-kill");
 
     let store = Store::open(&path).await.expect("reopen after kill");
-    let got = read(&store, "acme", "m", None, None).await.unwrap();
+    let got = read(&store, "nube", "m", None, None).await.unwrap();
     assert_eq!(
         got.len(),
         ONE_BATCH,
         "the committed batch survives the kill — and only it"
     );
     assert_eq!(
-        staged_count(&store, "acme").await as usize,
+        staged_count(&store, "nube").await as usize,
         STAGED - ONE_BATCH,
         "the uncommitted remainder is still durably staged"
     );
 
     // The re-drain commits exactly the remainder — no re-commit of the surviving batch.
-    assert_eq!(drain_all(&store, "acme").await, STAGED - ONE_BATCH);
-    let got = read(&store, "acme", "m", None, None).await.unwrap();
+    assert_eq!(drain_all(&store, "nube").await, STAGED - ONE_BATCH);
+    let got = read(&store, "nube", "m", None, None).await.unwrap();
     assert_eq!(got.len(), STAGED, "exactly-once across the kill boundary");
-    assert_eq!(drain_all(&store, "acme").await, 0, "no double-commit");
+    assert_eq!(drain_all(&store, "nube").await, 0, "no double-commit");
     cleanup(&path);
 }
 
@@ -145,25 +145,25 @@ async fn partial_batch_rolls_back_atomically() {
             qos: Qos::MustDeliver,
         })
         .collect();
-    write(&store, "acme", &batch, 0).await.unwrap();
+    write(&store, "nube", &batch, 0).await.unwrap();
 
     // Before commit: 3 staged. After a SUCCESSFUL commit: 0 staged, 3 committed (all-or-nothing).
-    assert_eq!(staged_count(&store, "acme").await, 3);
-    let pass = commit_batch(&store, "acme", 100).await.unwrap();
+    assert_eq!(staged_count(&store, "nube").await, 3);
+    let pass = commit_batch(&store, "nube", 100).await.unwrap();
     assert_eq!(pass.committed, 3);
     assert_eq!(
-        staged_count(&store, "acme").await,
+        staged_count(&store, "nube").await,
         0,
         "staging emptied atomically with commit"
     );
 
     // Re-committing an empty staging is a no-op (idempotent) — never a partial or phantom commit.
     assert_eq!(
-        commit_batch(&store, "acme", 100).await.unwrap().committed,
+        commit_batch(&store, "nube", 100).await.unwrap().committed,
         0
     );
     assert_eq!(
-        read(&store, "acme", "m", None, None).await.unwrap().len(),
+        read(&store, "nube", "m", None, None).await.unwrap().len(),
         3
     );
 }

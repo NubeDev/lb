@@ -191,7 +191,7 @@ features/admin/WebhooksAdmin.tsx
    secret with a **Copy secret** button, and the "you won't see this again" line. They copy
    it, click **Dismiss**. The banner state is gone; the roster refetches and shows the new row.
 4. **List.** The roster table renders the row: `plant-alerts · signature ·
-   https://…/hooks/acme/wh_9f2… · active · [Rotate] [Revoke]`. Status is a `Badge`. A second
+   https://…/hooks/nube/wh_9f2… · active · [Rotate] [Revoke]`. Status is a `Badge`. A second
    webhook in `bearer` mode shows `bearer` and the same columns. The list **never** renders a
    hash, secret, `bearer_key_id`, or `secret_ref` — same wire pin as today, re-asserted by the
    UI test.

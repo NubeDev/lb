@@ -28,9 +28,9 @@ LB_MAIL_HOST=smtp.example.com
 LB_MAIL_PORT=587
 LB_MAIL_TLS=starttls              # implicit | starttls | none
 LB_MAIL_AUTH=plain                # none | plain | login | xoauth2
-LB_MAIL_USER=reports@acme.com
+LB_MAIL_USER=reports@nube.com
 LB_MAIL_SECRET_PATH=mail/smtp-password
-LB_MAIL_FROM='Acme Reports <reports@acme.com>'
+LB_MAIL_FROM='Nube Reports <reports@nube.com>'
 ```
 
 ## Credentials are paths, not values

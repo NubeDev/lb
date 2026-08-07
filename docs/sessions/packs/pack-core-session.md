@@ -100,7 +100,7 @@ row of the matrix, the per-object cap re-check, and the run-rules-once rule.
 
 ## Live verification (the money-shot)
 
-Against a real booted node, workspace `acme`, through the rubix-ai CLI calling these verbs:
+Against a real booted node, workspace `nube`, through the rubix-ai CLI calling these verbs:
 
 ```
 make pack-validate PACK=bas   → 11-object plan, valid, "applying now would: apply"

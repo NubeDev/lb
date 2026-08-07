@@ -69,14 +69,14 @@ async fn list(store: &Store, p: &Principal, ws: &str, prefix: Option<&str>) -> V
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn lists_distinct_names_sorted() {
     let store = Store::memory().await.unwrap();
-    let p = principal("prod", "acme", CAPS);
+    let p = principal("prod", "nube", CAPS);
     // Ingest out of alphabetical order; several samples each.
-    write_seqs(&store, &p, "acme", "gamma", 3).await;
-    write_seqs(&store, &p, "acme", "alpha", 5).await;
-    write_seqs(&store, &p, "acme", "beta", 4).await;
+    write_seqs(&store, &p, "nube", "gamma", 3).await;
+    write_seqs(&store, &p, "nube", "alpha", 5).await;
+    write_seqs(&store, &p, "nube", "beta", 4).await;
 
     assert_eq!(
-        list(&store, &p, "acme", None).await,
+        list(&store, &p, "nube", None).await,
         vec!["alpha", "beta", "gamma"],
         "distinct series names, ascending"
     );
@@ -87,23 +87,23 @@ async fn lists_distinct_names_sorted() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn prefix_filters_by_name() {
     let store = Store::memory().await.unwrap();
-    let p = principal("prod", "acme", CAPS);
-    write_seqs(&store, &p, "acme", "sensor.temp", 2).await;
-    write_seqs(&store, &p, "acme", "sensor.humidity", 2).await;
-    write_seqs(&store, &p, "acme", "power.kw", 2).await;
+    let p = principal("prod", "nube", CAPS);
+    write_seqs(&store, &p, "nube", "sensor.temp", 2).await;
+    write_seqs(&store, &p, "nube", "sensor.humidity", 2).await;
+    write_seqs(&store, &p, "nube", "power.kw", 2).await;
 
     assert_eq!(
-        list(&store, &p, "acme", Some("sensor.")).await,
+        list(&store, &p, "nube", Some("sensor.")).await,
         vec!["sensor.humidity", "sensor.temp"],
         "only the sensor.* names, sorted"
     );
     assert_eq!(
-        list(&store, &p, "acme", Some("power")).await,
+        list(&store, &p, "nube", Some("power")).await,
         vec!["power.kw"],
         "prefix matches the one power series"
     );
     assert!(
-        list(&store, &p, "acme", Some("nope")).await.is_empty(),
+        list(&store, &p, "nube", Some("nope")).await.is_empty(),
         "a prefix that matches nothing lists nothing"
     );
 }
@@ -113,22 +113,22 @@ async fn prefix_filters_by_name() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn many_samples_one_series_lists_one_name() {
     let store = Store::memory().await.unwrap();
-    let p = principal("prod", "acme", CAPS);
+    let p = principal("prod", "nube", CAPS);
     // 250 datapoints, one name. A GROUP-BY-over-samples that lost dedup — or any per-sample count —
     // would return 250 (or duplicates); the registry returns exactly one row.
-    write_seqs(&store, &p, "acme", "busy", 250).await;
+    write_seqs(&store, &p, "nube", "busy", 250).await;
 
     assert_eq!(
-        list(&store, &p, "acme", None).await,
+        list(&store, &p, "nube", None).await,
         vec!["busy"],
         "distinct listing is by series NAME, not by sample volume"
     );
 
     // And writing yet more samples to the SAME series does not grow the listing — it is still one
     // name. (This is the "does not degrade with sample volume" property, asserted behaviourally.)
-    write_seqs(&store, &p, "acme", "busy", 300).await;
+    write_seqs(&store, &p, "nube", "busy", 300).await;
     assert_eq!(
-        list(&store, &p, "acme", None).await,
+        list(&store, &p, "nube", None).await,
         vec!["busy"],
         "more samples in an existing series add no names"
     );

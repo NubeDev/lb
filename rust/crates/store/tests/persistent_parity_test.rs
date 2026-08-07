@@ -21,15 +21,15 @@ async fn write_read_round_trips_on_disk() {
     let path = temp_path("rw");
     cleanup(&path);
     let store = Store::open(&path).await.unwrap();
-    write(&store, "acme", "thing", "1", &serde_json::json!({"a": 1}))
+    write(&store, "nube", "thing", "1", &serde_json::json!({"a": 1}))
         .await
         .unwrap();
     assert_eq!(
-        read(&store, "acme", "thing", "1").await.unwrap(),
+        read(&store, "nube", "thing", "1").await.unwrap(),
         Some(serde_json::json!({"a": 1}))
     );
     assert_eq!(
-        read(&store, "acme", "thing", "missing").await.unwrap(),
+        read(&store, "nube", "thing", "missing").await.unwrap(),
         None
     );
     cleanup(&path);
@@ -76,7 +76,7 @@ async fn list_filters_by_field_on_disk() {
     let store = Store::open(&path).await.unwrap();
     write(
         &store,
-        "acme",
+        "nube",
         "inbox",
         "a",
         &serde_json::json!({"channel": "c1", "ts": 1}),
@@ -85,14 +85,14 @@ async fn list_filters_by_field_on_disk() {
     .unwrap();
     write(
         &store,
-        "acme",
+        "nube",
         "inbox",
         "b",
         &serde_json::json!({"channel": "c2", "ts": 2}),
     )
     .await
     .unwrap();
-    let c1 = list(&store, "acme", "inbox", "channel", "c1")
+    let c1 = list(&store, "nube", "inbox", "channel", "c1")
         .await
         .unwrap();
     assert_eq!(c1.len(), 1);
@@ -109,7 +109,7 @@ async fn write_tx_is_atomic_on_disk() {
     let ev = serde_json::json!({"kind": "effect"});
     write_tx(
         &store,
-        "acme",
+        "nube",
         &Upsert {
             table: "domain",
             id: "d1",
@@ -124,11 +124,11 @@ async fn write_tx_is_atomic_on_disk() {
     .await
     .unwrap();
     assert_eq!(
-        read(&store, "acme", "domain", "d1").await.unwrap(),
+        read(&store, "nube", "domain", "d1").await.unwrap(),
         Some(cv)
     );
     assert_eq!(
-        read(&store, "acme", "outbox", "e1").await.unwrap(),
+        read(&store, "nube", "outbox", "e1").await.unwrap(),
         Some(ev)
     );
     cleanup(&path);

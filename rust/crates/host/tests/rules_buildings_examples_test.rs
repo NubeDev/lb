@@ -226,7 +226,7 @@ async fn buildings_examples_run_end_to_end() {
     let cat = catalog();
     let dir = federation_dir();
     let db = buildings_db();
-    let ws = "acme";
+    let ws = "nube";
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;

@@ -16,19 +16,19 @@ use serde_json::json;
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn login_then_call_round_trips_over_the_real_gateway() {
     let gw = spawn_gateway().await;
-    // The front door: POST /auth/login mints a real signed token the gateway will accept. `ada` is a
+    // The front door: POST /auth/login mints a real signed token the gateway will accept. `test` is a
     // member of exactly one workspace, so this is the 1-branch auto-skip — no picker, no `-w`.
-    common::seed_person(&gw.node, "acme", "user:ada", "ada@acme.com").await;
+    common::seed_person(&gw.node, "nube", "user:test", "test@nube-io.com").await;
     let reply = do_login(
         &reqwest::Client::new(),
         &gw.base_url,
-        "ada@acme.com",
+        "test@nube-io.com",
         "any-password-on-a-dev-node",
         None,
     )
     .await
     .expect("login succeeds");
-    assert_eq!(reply.workspace, "acme");
+    assert_eq!(reply.workspace, "nube");
     assert!(!reply.token.is_empty());
 
     // The spine, one command: a call the token is authorized for returns the tool's JSON. `system.*`
@@ -51,7 +51,7 @@ async fn an_ungranted_call_relays_the_servers_deny_and_never_fakes_success() {
     // the CLI surfaces `DENIED mcp:inbox.list:call` and the result is an Err (exit non-zero), never a
     // fabricated ok.
     let gw = spawn_gateway().await;
-    let tok = token(&gw.key, "user:mallory", "acme", &["bus:chan/*:pub"]); // no inbox.list
+    let tok = token(&gw.key, "user:mallory", "nube", &["bus:chan/*:pub"]); // no inbox.list
     let remote = Remote::new(&gw.base_url, tok);
 
     let result = remote
@@ -85,10 +85,10 @@ async fn a_ws_a_token_returns_only_ws_a_data_even_when_targeting_b() {
     // it returns A's item, never B's. There is no ws in the /mcp/call body to honor; the A-token's ws
     // wins by construction (this is correct, not a bug).
     let gw = spawn_gateway().await;
-    seed_inbox_item(&gw.node, "acme", "general", "i1", "A-secret").await;
+    seed_inbox_item(&gw.node, "nube", "general", "i1", "A-secret").await;
     seed_inbox_item(&gw.node, "beta", "general", "i1", "B-secret").await;
 
-    let a_token = dev_token(&gw.key, "user:ada", "acme");
+    let a_token = dev_token(&gw.key, "user:test", "nube");
     let remote = Remote::new(&gw.base_url, a_token);
     let out = remote
         .call("inbox.list", json!({ "channel": "general" }))
@@ -106,10 +106,10 @@ async fn a_ws_a_token_returns_only_ws_a_data_even_when_targeting_b() {
 async fn typed_inbox_list_shapes_a_seeded_inbox() {
     // The typed command over a real seeded inbox — proves typed → /mcp/call shaping end to end.
     let gw = spawn_gateway().await;
-    seed_inbox_item(&gw.node, "acme", "ops", "job-1", "deploy pending").await;
-    seed_inbox_item(&gw.node, "acme", "ops", "job-2", "rollback ready").await;
+    seed_inbox_item(&gw.node, "nube", "ops", "job-1", "deploy pending").await;
+    seed_inbox_item(&gw.node, "nube", "ops", "job-2", "rollback ready").await;
 
-    let tok = dev_token(&gw.key, "user:ada", "acme");
+    let tok = dev_token(&gw.key, "user:test", "nube");
     let remote = Remote::new(&gw.base_url, tok);
     let out = lb_cli::commands::inbox::list(&remote, "ops", lb_cli::output::Format::Json)
         .await
@@ -121,7 +121,7 @@ async fn typed_inbox_list_shapes_a_seeded_inbox() {
         out.body
     );
     // The header states the wall.
-    assert!(out.header.contains("ws: acme"), "{}", out.header);
+    assert!(out.header.contains("ws: nube"), "{}", out.header);
     assert!(out.header.contains("mode: remote"), "{}", out.header);
 }
 
@@ -145,11 +145,11 @@ async fn remote_mode_fails_clearly_when_the_gateway_is_down() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_header_reflects_the_tokens_workspace_and_never_leaks_the_token() {
     let gw = spawn_gateway().await;
-    common::seed_person(&gw.node, "acme", "user:ada", "ada@acme.com").await;
+    common::seed_person(&gw.node, "nube", "user:test", "test@nube-io.com").await;
     let reply = do_login(
         &reqwest::Client::new(),
         &gw.base_url,
-        "ada@acme.com",
+        "test@nube-io.com",
         "any-password-on-a-dev-node",
         None,
     )
@@ -157,8 +157,8 @@ async fn the_header_reflects_the_tokens_workspace_and_never_leaks_the_token() {
     .unwrap();
     let remote = Remote::new(&gw.base_url, reply.token.clone());
     let header = remote.header();
-    assert_eq!(header.workspace, "acme");
-    assert_eq!(header.user, "user:ada");
+    assert_eq!(header.workspace, "nube");
+    assert_eq!(header.user, "user:test");
     assert!(
         !header.render().contains(&reply.token),
         "the header must never echo the token"

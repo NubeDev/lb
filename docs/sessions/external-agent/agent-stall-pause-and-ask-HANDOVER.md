@@ -78,7 +78,7 @@ make dev EXTAGENT=1 DEVKIT_BUILDER=container
 ```
 
 Dev-login is member-shaped but carries admin-tier caps (fine for this). Open the app, open the agent
-dock (workspace `acme`, persona `builtin.extension-builder`).
+dock (workspace `nube`, persona `builtin.extension-builder`).
 
 **Fastest way to force a stall without waiting 90s or finding a truly-stuck model:** temporarily drop
 `NO_PROGRESS_CEILING` in `rust/role/external-agent/src/lib.rs` to e.g. `Duration::from_secs(8)`,

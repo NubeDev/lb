@@ -165,18 +165,18 @@ dispatches "this manifest says native → supervisor; says wasm → engine."
 The supervision-restart proof (the exit-gate path), end to end:
 
 1. An admin calls `native.install` for `echo-sidecar` (a `tier="native"` reference extension) in
-   workspace `acme`, with the manifest's `capabilities.request` admin-approved. The MCP gate passes
+   workspace `nube`, with the manifest's `capabilities.request` admin-approved. The MCP gate passes
    (`mcp:native.install:call`).
 2. The host computes `granted = requested ∩ admin_approved`, **persists the `Install` record** (the
    same S4 verb, now for a native tier), then asks the supervisor to **spawn** the child via the
-   `Launcher`. The supervisor mints a scoped token, injects `LB_EXT_WS=acme` / `LB_EXT_ID=echo-sidecar`
+   `Launcher`. The supervisor mints a scoped token, injects `LB_EXT_WS=nube` / `LB_EXT_ID=echo-sidecar`
    / `LB_EXT_TOKEN=<scoped>` into the env, and execs the binary.
 3. **Handshake:** the child sends `init` (reporting it is ready); the supervisor records the
-   `Sidecar` handle (PID, child stdio) in the runtime map keyed `(acme, echo-sidecar)` and writes
+   `Sidecar` handle (PID, child stdio) in the runtime map keyed `(nube, echo-sidecar)` and writes
    `native_status = {lifecycle: started, restart_count: 0}`. A `native:spawned` event goes to the
    ops channel (motion).
 4. A caller invokes the sidecar's tool `echo-sidecar.echo` through the normal MCP `call` path; it
-   resolves to the `(acme, echo-sidecar)` child, dispatches one `Content-Length` JSON-RPC request
+   resolves to the `(nube, echo-sidecar)` child, dispatches one `Content-Length` JSON-RPC request
    over the control line, and returns the child's reply. (Proves the child answers.)
 5. **The child is killed** (the test kills the OS process — a crash). The supervisor's health poll
    (or the read-loop EOF) detects the exit, emits `native:crashed`, applies the `RestartPolicy`

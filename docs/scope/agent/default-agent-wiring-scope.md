@@ -146,15 +146,15 @@ BOTH agents platform-capable, which is the honest answer to "why maintain two": 
 1. A node boots with a model endpoint configured (`LB_AGENT_MODEL_*` / node config): boot builds the
    real `AiGateway` over that provider as the node's `ModelAccess`, installs the registry (in-house
    `default` over it + external entries if the feature is on), and calls `serve_agent`.
-2. Ada (edge) asks the agent in a channel with no `runtime`: "what's the latest reading on `boiler-1`,
+2. Test (edge) asks the agent in a channel with no `runtime`: "what's the latest reading on `boiler-1`,
    and remember that it runs hot." The `/agent` worker resolves `runtime` → `default`, builds the tool
-   menu from `tools.catalog` under Ada's grant (so `series.latest`, `agent.memory.set`, … appear),
+   menu from `tools.catalog` under Test's grant (so `series.latest`, `agent.memory.set`, … appear),
    and drives the loop.
 3. The loop asks the model; the model proposes `series.latest {series:"boiler-1"}`. The loop dispatches
    it through `call_tool` → `authorize_tool` (`caller ∩ agent`) → the host-native series verb → result
    fed back. Then the model proposes `agent.memory.set {scope:"workspace", slug:"boiler-1-runs-hot",…}`
    → same wall → persisted.
-4. The model answers; the run completes as a durable job. Ada watches it live over `agent.watch` SSE.
+4. The model answers; the run completes as a durable job. Test watches it live over `agent.watch` SSE.
 5. On a node with **no** model configured, step 1 keeps `UnconfiguredModel`; step 3 never happens — the
    run returns the honest "no in-house model configured; select an external runtime or wire a model".
 6. A run whose derived principal lacks `mcp:agent.memory.set:call` proposes the memory write → `Denied`,

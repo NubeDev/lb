@@ -4,7 +4,7 @@
 //! `identity.set_credential` verb (gated `mcp:identity.manage:call`), and the gateway's `PasswordHash`
 //! check verifies a login secret against the stored argon2 hash before minting a token.
 //!
-//! Everything is workspace-namespaced (the hard wall §7): a password set in `acme` cannot
+//! Everything is workspace-namespaced (the hard wall §7): a password set in `nube` cannot
 //! authenticate a login into `beta`. The plaintext flows only through `set` (hashed) and `verify`
 //! (compared) and is NEVER returned by a read — there is no `list`/get of the hash (secrets §6.7).
 //!
@@ -25,7 +25,7 @@ pub use hash::hash_secret;
 pub(crate) use hash::verify_secret;
 pub use set::identity_set_credential;
 // The `user:<name>` canonicalization, shared with the global credential service so a password set
-// for `ada` and a login as `user:ada` resolve to the same record on both credential paths.
+// for `test` and a login as `user:test` resolve to the same record on both credential paths.
 pub(crate) use set::normalize_sub;
 pub use tool::call_credential_tool;
 pub use verify::{credential_verify, CredentialCheck};

@@ -33,7 +33,7 @@ authorizes first, denials are opaque.
 
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
-  -H 'content-type: application/json' -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -H 'content-type: application/json' -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 ```
 
 Capabilities — one per verb: `mcp:query.save:call`, `query.get`, `query.list`, `query.delete`,

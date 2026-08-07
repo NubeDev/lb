@@ -8,7 +8,7 @@ strictly-required additive prefs-schema fix.
 ## What was fixed
 
 1. **BLOCKER — hardcoded workspace (rule 6).** `push_target.rs::effect_workspace()` returned a
-   literal `"acme"` for every effect. Fix = the email-target pattern: `verbs.rs::notify_send`
+   literal `"nube"` for every effect. Fix = the email-target pattern: `verbs.rs::notify_send`
    embeds `"workspace": ws` in the effect payload (already authorized against that ws);
    `PushPayload` gained `workspace: Option<String>`; `deliver()` fails the effect if it is
    absent/empty — never guesses. The function and its comment wall are deleted. Entry:

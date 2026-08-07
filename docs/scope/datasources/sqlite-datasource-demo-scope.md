@@ -71,8 +71,8 @@ data" needs one command and zero Docker.
 
 ## Example flow
 
-1. `make seed-demo-sqlite WS=acme` — generates `data/demo/buildings.db` (1 month, 15-min, ~70
-   meters) and registers datasource `demo-buildings` (kind `sqlite`) in `acme`.
+1. `make seed-demo-sqlite WS=nube` — generates `data/demo/buildings.db` (1 month, 15-min, ~70
+   meters) and registers datasource `demo-buildings` (kind `sqlite`) in `nube`.
 2. In Datasources, the row probes green; Tables discovery lists `sites/meters/points/readings`.
 3. In Data Studio, the source picker shows `demo-buildings`; a builder tab's SQL prefills; Run
    returns real rows; the 10x demo toggle uses this source when the user's own query is empty.

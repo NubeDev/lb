@@ -25,7 +25,7 @@ pub const IDENTITY_CREDENTIAL_KIND: &str = "password";
 /// never lands here — the host verb hashes before write, `verify` compares against `phc`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentityCredential {
-    /// The global identity handle this credential authenticates (`user:ada`).
+    /// The global identity handle this credential authenticates (`user:test`).
     pub sub: String,
     /// Constant discriminant (`password`). Leaves room for a future `oidc` kind behind the same seam.
     pub kind: String,

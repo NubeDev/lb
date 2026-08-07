@@ -59,7 +59,7 @@ async fn seed_series(store: &Store, p: &Principal, ws: &str, series: &str, n: u6
 async fn select_round_trips_seeded_rows() {
     let ws = "sq-rt";
     let store = Store::memory().await.unwrap();
-    let p = principal("user:ada", ws, &[QUERY, WRITE]);
+    let p = principal("user:test", ws, &[QUERY, WRITE]);
     seed_series(&store, &p, ws, "cpu", 3).await;
 
     let result = store_query_run(
@@ -85,7 +85,7 @@ async fn query_denied_without_cap() {
     let ws = "sq-deny";
     let store = Store::memory().await.unwrap();
     // holds WRITE (to seed) but NOT store.query.
-    let p = principal("user:ada", ws, &[WRITE]);
+    let p = principal("user:test", ws, &[WRITE]);
     seed_series(&store, &p, ws, "cpu", 1).await;
 
     let err = store_query_run(&store, &p, ws, "SELECT * FROM series", vec![])
@@ -101,7 +101,7 @@ async fn query_denied_without_cap() {
 async fn write_statements_rejected_at_parse_per_kind() {
     let ws = "sq-ro";
     let store = Store::memory().await.unwrap();
-    let p = principal("user:ada", ws, &[QUERY, WRITE]);
+    let p = principal("user:test", ws, &[QUERY, WRITE]);
     seed_series(&store, &p, ws, "cpu", 1).await;
 
     // Each is a real write/schema/relate/insert/multi/USE — refused BY KIND at parse, never run. We
@@ -149,9 +149,9 @@ async fn write_statements_rejected_at_parse_per_kind() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn two_session_isolation() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", &[QUERY, WRITE]);
+    let test = principal("user:test", "ws-a", &[QUERY, WRITE]);
     let ben = principal("user:ben", "ws-b", &[QUERY, WRITE]);
-    seed_series(&store, &ada, "ws-a", "secret", 5).await;
+    seed_series(&store, &test, "ws-a", "secret", 5).await;
     seed_series(&store, &ben, "ws-b", "benseries", 2).await;
 
     // ben's SELECT runs in ws-b's namespace (host-side, from the token) — ws-a's `secret` rows are
@@ -180,7 +180,7 @@ async fn two_session_isolation() {
 async fn row_cap_enforced() {
     let ws = "sq-cap";
     let store = Store::memory().await.unwrap();
-    let p = principal("user:ada", ws, &[QUERY, WRITE]);
+    let p = principal("user:test", ws, &[QUERY, WRITE]);
     // Seed more than a small probe cap would allow; assert the ceiling bounds the result. (We cannot
     // cheaply seed 10k rows in a unit test, so we assert the bound is APPLIED via a small explicit
     // LIMIT being further capped — the wrapper's LIMIT MAX_QUERY_ROWS can never widen an author LIMIT.)
@@ -198,13 +198,13 @@ async fn row_cap_enforced() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn schema_reports_tables_and_denies_and_isolates() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", &[SCHEMA, WRITE]);
+    let test = principal("user:test", "ws-a", &[SCHEMA, WRITE]);
     let ben = principal("user:ben", "ws-b", &[WRITE]); // ben lacks store.schema
 
-    seed_series(&store, &ada, "ws-a", "cpu", 2).await;
+    seed_series(&store, &test, "ws-a", "cpu", 2).await;
 
-    // ada sees ws-a's `series` table with its columns.
-    let schema = store_schema_read(&store, &ada, "ws-a")
+    // test sees ws-a's `series` table with its columns.
+    let schema = store_schema_read(&store, &test, "ws-a")
         .await
         .expect("schema");
     let series_table = schema.tables.iter().find(|t| t.name == "series");

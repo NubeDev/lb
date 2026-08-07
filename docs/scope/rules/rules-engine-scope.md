@@ -165,7 +165,7 @@ declarative front-end can be added later as *another caller of the same verbs* w
 A facilities analyst writes a food-safety rule in the Playground.
 
 1. They type a Rhai body and hit **Run**. The UI calls `rules.run {body, params}` over MCP; the host
-   authorizes `mcp:rules.run:call` workspace-first, builds a `RuleRun` bound to `acme`.
+   authorizes `mcp:rules.run:call` workspace-first, builds a `RuleRun` bound to `nube`.
 2. `lb-rules` builds a fresh sandboxed engine (governors set, zero I/O surface) and registers the verb
    library closing over the workspace's granted sources + a fresh `Collectors` + `AiMeter`.
 3. The body runs on a blocking thread:
@@ -188,7 +188,7 @@ A facilities analyst writes a food-safety rule in the Playground.
    → the verb returns an opaque error before any query runs. A `for`-loop of `ai.complete` trips the
    per-run budget and aborts with a budget error. A script `import`/`eval` is rejected by the cage.
 6. They click **Save** → `rules.save {name:"cooler-foodsafety", body, params}` persists
-   `rule:acme:cooler-foodsafety`. ws-B cannot see or run it.
+   `rule:nube:cooler-foodsafety`. ws-B cannot see or run it.
 
 ## Testing plan
 

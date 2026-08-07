@@ -44,13 +44,13 @@ fn ids_scope(table: &str, ids: &[&str]) -> serde_json::Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn scoped_grant_assign_and_check_scoped_over_mcp() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     // Assign a scoped grant to ana via the MCP bridge.
     call_authz_tool(
         &store,
         &admin,
-        "acme",
+        "nube",
         "grants.assign",
         &json!({
             "subject": "user:ana",
@@ -64,13 +64,13 @@ async fn scoped_grant_assign_and_check_scoped_over_mcp() {
     // Ana calls check_scoped for leo → allowed (she has a scoped grant for leo).
     let ana = principal(
         "user:ana",
-        "acme",
+        "nube",
         &["mcp:authz.check_scoped:call", "mcp:hvac.setpoint:call"],
     );
     let ok = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.check_scoped",
         &json!({
             "cap": "mcp:hvac.setpoint:call",
@@ -86,7 +86,7 @@ async fn scoped_grant_assign_and_check_scoped_over_mcp() {
     let denied = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.check_scoped",
         &json!({
             "cap": "mcp:hvac.setpoint:call",
@@ -102,13 +102,13 @@ async fn scoped_grant_assign_and_check_scoped_over_mcp() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn check_scoped_for_scoped_principal() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     // Admin grants ana a scoped cap.
     grants_assign(
         &store,
         &admin,
-        "acme",
+        "nube",
         &Subject::User("ana".into()),
         "mcp:hvac.setpoint:call",
         &Scope::Ids {
@@ -122,13 +122,13 @@ async fn check_scoped_for_scoped_principal() {
     // Ana calls check_scoped for leo → allowed.
     let ana = principal(
         "user:ana",
-        "acme",
+        "nube",
         &["mcp:authz.check_scoped:call", "mcp:hvac.setpoint:call"],
     );
     let ok = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.check_scoped",
         &json!({"cap": "mcp:hvac.setpoint:call", "table": "child", "id": "leo"}),
     )
@@ -140,7 +140,7 @@ async fn check_scoped_for_scoped_principal() {
     let denied = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.check_scoped",
         &json!({"cap": "mcp:hvac.setpoint:call", "table": "child", "id": "mia"}),
     )
@@ -152,12 +152,12 @@ async fn check_scoped_for_scoped_principal() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn scope_filter_over_mcp_returns_ids() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     grants_assign(
         &store,
         &admin,
-        "acme",
+        "nube",
         &Subject::User("ana".into()),
         "mcp:hvac.setpoint:call",
         &Scope::Ids {
@@ -170,13 +170,13 @@ async fn scope_filter_over_mcp_returns_ids() {
 
     let ana = principal(
         "user:ana",
-        "acme",
+        "nube",
         &["mcp:authz.scope_filter:call", "mcp:hvac.setpoint:call"],
     );
     let result = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.scope_filter",
         &json!({"cap": "mcp:hvac.setpoint:call", "table": "child"}),
     )
@@ -194,7 +194,7 @@ async fn malformed_scope_selector_is_bad_input_and_writes_no_grant() {
     // FULL cap when the admin asked for a subset. It must be a hard BadInput, and no grant row
     // may be written.
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     for bad in [
         json!("child:leo"),                                    // not an object
@@ -206,7 +206,7 @@ async fn malformed_scope_selector_is_bad_input_and_writes_no_grant() {
         let err = call_authz_tool(
             &store,
             &admin,
-            "acme",
+            "nube",
             "grants.assign",
             &json!({
                 "subject": "user:ana",
@@ -226,7 +226,7 @@ async fn malformed_scope_selector_is_bad_input_and_writes_no_grant() {
     let caps = call_authz_tool(
         &store,
         &admin,
-        "acme",
+        "nube",
         "grants.list",
         &json!({ "subject": "user:ana" }),
     )
@@ -242,13 +242,13 @@ async fn multi_table_scoped_grants_reach_only_their_rows_not_everything() {
     // The union of child:[leo] + site:[north] used to widen to Scope::All — every row of every
     // table. It must reach EXACTLY the granted rows.
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     for (table, id) in [("child", "leo"), ("site", "north")] {
         grants_assign(
             &store,
             &admin,
-            "acme",
+            "nube",
             &Subject::User("ana".into()),
             "mcp:hvac.setpoint:call",
             &Scope::Ids {
@@ -262,7 +262,7 @@ async fn multi_table_scoped_grants_reach_only_their_rows_not_everything() {
 
     let ana = principal(
         "user:ana",
-        "acme",
+        "nube",
         &[
             "mcp:authz.check_scoped:call",
             "mcp:authz.scope_filter:call",
@@ -277,7 +277,7 @@ async fn multi_table_scoped_grants_reach_only_their_rows_not_everything() {
             let r = call_authz_tool(
                 store,
                 ana,
-                "acme",
+                "nube",
                 "authz.check_scoped",
                 &json!({"cap": "mcp:hvac.setpoint:call", "table": table, "id": id}),
             )
@@ -297,7 +297,7 @@ async fn multi_table_scoped_grants_reach_only_their_rows_not_everything() {
     let filter = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.scope_filter",
         &json!({"cap": "mcp:hvac.setpoint:call", "table": "child"}),
     )
@@ -307,7 +307,7 @@ async fn multi_table_scoped_grants_reach_only_their_rows_not_everything() {
     let filter = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.scope_filter",
         &json!({"cap": "mcp:hvac.setpoint:call", "table": "project"}),
     )
@@ -322,11 +322,11 @@ async fn multi_table_scoped_grants_reach_only_their_rows_not_everything() {
 async fn denies_check_scoped_without_its_cap() {
     let store = Store::memory().await.unwrap();
     // Ana has the hvac cap but NOT the authz.check_scoped cap.
-    let ana = principal("user:ana", "acme", &["mcp:hvac.setpoint:call"]);
+    let ana = principal("user:ana", "nube", &["mcp:hvac.setpoint:call"]);
     let err = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.check_scoped",
         &json!({"cap": "mcp:hvac.setpoint:call", "table": "child", "id": "leo"}),
     )
@@ -338,11 +338,11 @@ async fn denies_check_scoped_without_its_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_scope_filter_without_its_cap() {
     let store = Store::memory().await.unwrap();
-    let ana = principal("user:ana", "acme", &["mcp:hvac.setpoint:call"]);
+    let ana = principal("user:ana", "nube", &["mcp:hvac.setpoint:call"]);
     let err = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "authz.scope_filter",
         &json!({"cap": "mcp:hvac.setpoint:call", "table": "child"}),
     )
@@ -355,11 +355,11 @@ async fn denies_scope_filter_without_its_cap() {
 async fn denies_scoped_grant_assign_without_grants_cap() {
     let store = Store::memory().await.unwrap();
     // Ana has the hvac cap but NOT the grants.assign cap.
-    let ana = principal("user:ana", "acme", &["mcp:hvac.setpoint:call"]);
+    let ana = principal("user:ana", "nube", &["mcp:hvac.setpoint:call"]);
     let err = call_authz_tool(
         &store,
         &ana,
-        "acme",
+        "nube",
         "grants.assign",
         &json!({
             "subject": "user:bob",
@@ -377,12 +377,12 @@ async fn denies_scoped_grant_assign_without_grants_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn scoped_checks_never_cross_workspace_wall() {
     let store = Store::memory().await.unwrap();
-    let admin_a = principal("user:alice", "acme", ADMIN);
+    let admin_a = principal("user:alice", "nube", ADMIN);
 
     grants_assign(
         &store,
         &admin_a,
-        "acme",
+        "nube",
         &Subject::User("ana".into()),
         "mcp:hvac.setpoint:call",
         &Scope::Ids {

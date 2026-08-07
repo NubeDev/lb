@@ -100,7 +100,7 @@ async fn members_are_workspace_isolated() {
     let a = principal("ws-a", ALL);
     let b = principal("ws-b", ALL);
 
-    add_team_member(&node.store, &a, "ws-a", "eng", "user:ada")
+    add_team_member(&node.store, &a, "ws-a", "eng", "user:test")
         .await
         .expect("a adds a member");
 
@@ -112,7 +112,7 @@ async fn members_are_workspace_isolated() {
     let a_members = list_members(&node.store, &a, "ws-a", "eng")
         .await
         .expect("a lists");
-    assert_eq!(a_members, vec!["user:ada".to_string()]);
+    assert_eq!(a_members, vec!["user:test".to_string()]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

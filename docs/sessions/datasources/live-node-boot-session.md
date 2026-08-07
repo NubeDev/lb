@@ -6,7 +6,7 @@ Datasources page showed "No datasources yet" and Test/query had no sidecar to re
 mounts the federation role at boot and fixes two real end-to-end gaps the tests didn't catch.
 
 ## Symptom
-The browser Datasources page (`/t/acme/datasources`) showed "No datasources yet" and Add/Test did
+The browser Datasources page (`/t/nube/datasources`) showed "No datasources yet" and Add/Test did
 nothing useful — even though `make dev` was running and a seeded TimescaleDB was up on `:5433`.
 
 ## Root causes (two real gaps, each invisible to the existing tests)
@@ -41,9 +41,9 @@ Ran the built node with the federation env on `:7799` against the running `lb-ti
 then drove the gateway exactly as the UI does:
 
 ```
-federation: installed sidecar in 'acme' (tools=["federation.query","datasource.test","federation.mirror"],
+federation: installed sidecar in 'nube' (tools=["federation.query","datasource.test","federation.mirror"],
   granted=["secret:federation/*:get","net:tls:127.0.0.1:5433:connect"], approved endpoints=["127.0.0.1:5433"])
-federation: seeded datasource 'timescale' (postgres @ 127.0.0.1:5433) in 'acme'
+federation: seeded datasource 'timescale' (postgres @ 127.0.0.1:5433) in 'nube'
 
 GET  /datasources                       → {"datasources":[{"name":"timescale","kind":"postgres",
                                             "endpoint":"127.0.0.1:5433","secret_ref":"federation/timescale"}]}

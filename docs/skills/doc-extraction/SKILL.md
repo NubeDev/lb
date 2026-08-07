@@ -37,7 +37,7 @@ extraction never invents metadata.
 
 All calls below go to `POST /mcp/call` with `Authorization: Bearer <token>` and a body
 `{ "tool": "<verb>", "args": { … } }`. The transcript below is a real run against a dev node
-(`user:ada` @ `acme`).
+(`user:test` @ `nube`).
 
 ## 1. Extract one file
 
@@ -53,7 +53,7 @@ All calls below go to `POST /mcp/call` with `Authorization: Bearer <token>` and 
 ```jsonc
 // → 200
 {
-  "job_id": "docs-extract-user:ada-300",
+  "job_id": "docs-extract-user:test-300",
   "items": [
     { "status": "extracted", "media_id": "report-q3",
       "doc_ids": ["derived_from-report-q3:pdf-text"], "reused": false }
@@ -83,7 +83,7 @@ when individual items fail**.
 ```jsonc
 // { "tool": "docs.extract", "args": { "media": ["report-q3", "no-such-media"], "ts": 600 } }
 // →
-{ "job_id": "docs-extract-user:ada-600", "items": [
+{ "job_id": "docs-extract-user:test-600", "items": [
     { "status": "extracted", "media_id": "report-q3", "doc_ids": ["derived_from-report-q3:pdf-text"], "reused": true },
     { "status": "denied",    "media_id": "no-such-media" }
 ] }

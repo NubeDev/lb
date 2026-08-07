@@ -186,17 +186,17 @@ is core; a consumer is whoever holds it).
 
 1. A workspace-admin opens **Admin → Webhooks → New**, names it `plant-alerts`, picks `auth_mode:
    signature`, sets the HMAC header to `X-Signature` and pastes/generates the shared secret. (Or picks
-   `bearer` and clicks **Generate key** → the one-time `lbk_acme.…` secret appears with a copy button.)
+   `bearer` and clicks **Generate key** → the one-time `lbk_nube.…` secret appears with a copy button.)
 2. The UI calls `webhook.create`. The host checks effective caps ⊆ admin caps, writes
-   `webhook:acme:wh_9f2…` with `series: webhook:acme:wh_9f2…`, stores the shared secret in `lb-secrets`
-   (`secret_ref`), and returns the stable URL `POST https://…/hooks/acme/wh_9f2…`. The wizard shows the
+   `webhook:nube:wh_9f2…` with `series: webhook:nube:wh_9f2…`, stores the shared secret in `lb-secrets`
+   (`secret_ref`), and returns the stable URL `POST https://…/hooks/nube/wh_9f2…`. The wizard shows the
    URL (always) and the secret (once, in `bearer` mode).
 3. The external service `POST`s a JSON body to that URL with `X-Signature: sha256=…`.
-4. The gateway route resolves ns `acme`, loads `webhook:acme:wh_9f2…` (404 if disabled), reads the
+4. The gateway route resolves ns `nube`, loads `webhook:nube:wh_9f2…` (404 if disabled), reads the
    shared secret via `secret_ref`, **constant-time-verifies `HMAC-SHA256(secret, raw_body)`** against
    the header (or, in `bearer` mode, runs the API-key verify path), builds `Principal::for_key` scoped
    to the hook, and — gated `mcp:ingest.write:call` — calls `ingest.write` with one `Sample`
-   `{ series: webhook:acme:wh_9f2…, producer: "webhook:wh_9f2…", ts, seq, payload: <body>,
+   `{ series: webhook:nube:wh_9f2…, producer: "webhook:wh_9f2…", ts, seq, payload: <body>,
    labels:{source:webhook, method:POST} }`. The buffer commits it to series state and streams it as
    motion.
 5. A flow with a **`webhook` source node** configured to `wh_9f2…` is armed → it's subscribed to that

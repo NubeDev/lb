@@ -92,16 +92,16 @@ async fn watch_without_the_cap_is_denied() {
 async fn a_reserved_or_cross_ws_subject_is_refused_even_with_the_cap() {
     let bus = Bus::peer().await.unwrap();
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-bus-wall", ALL);
+    let test = principal("user:test", "ws-bus-wall", ALL);
     // A reserved prefix is refused with the cap held (the wall, not the cap, bites here).
     assert!(matches!(
-        bus_publish(&bus, &ada, "ws-bus-wall", "series/cpu", b"{}").await,
+        bus_publish(&bus, &test, "ws-bus-wall", "series/cpu", b"{}").await,
         Err(lb_host::BusError::BadSubject(_))
     ));
     // The subject can NEVER name another workspace — it is a suffix walled under the caller's ws; a
     // `ws/...` subject is reserved-refused, so a cross-ws name is structurally impossible.
     assert!(matches!(
-        bus_watch(&store, &bus, &ada, "ws-bus-wall", "ws/ws-other/secret").await,
+        bus_watch(&store, &bus, &test, "ws-bus-wall", "ws/ws-other/secret").await,
         Err(lb_host::BusError::BadSubject(_))
     ));
 }
@@ -110,16 +110,16 @@ async fn a_reserved_or_cross_ws_subject_is_refused_even_with_the_cap() {
 async fn publish_watch_round_trips_within_one_workspace() {
     let bus = Bus::peer().await.unwrap();
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-bus-rt", ALL);
+    let test = principal("user:test", "ws-bus-rt", ALL);
 
     // Subscribe FIRST (Zenoh pub/sub is not durable — the sub must exist before the publish).
-    let sub = bus_watch(&store, &bus, &ada, "ws-bus-rt", "cooler/alerts")
+    let sub = bus_watch(&store, &bus, &test, "ws-bus-rt", "cooler/alerts")
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let payload = serde_json::to_vec(&json!({ "msg": "defrost" })).unwrap();
-    bus_publish(&bus, &ada, "ws-bus-rt", "cooler/alerts", &payload)
+    bus_publish(&bus, &test, "ws-bus-rt", "cooler/alerts", &payload)
         .await
         .unwrap();
 
@@ -135,7 +135,7 @@ async fn publish_watch_round_trips_within_one_workspace() {
 async fn ws_b_does_not_receive_ws_a_publish() {
     let bus = Bus::peer().await.unwrap();
     let store = Store::memory().await.unwrap();
-    let a = principal("user:ada", "ws-bus-a", ALL);
+    let a = principal("user:test", "ws-bus-a", ALL);
     let b = principal("user:ben", "ws-bus-b", ALL);
 
     // ben (ws-b) watches the SAME relative subject; the `ws/{id}/` wall makes it a different bus key.
@@ -148,7 +148,7 @@ async fn ws_b_does_not_receive_ws_a_publish() {
         .await
         .unwrap();
 
-    // ben must NOT receive ada's publish — a short timeout elapses with nothing (the wall holds).
+    // ben must NOT receive test's publish — a short timeout elapses with nothing (the wall holds).
     let crossed = tokio::time::timeout(Duration::from_millis(700), sub_b.recv()).await;
     assert!(crossed.is_err(), "ws-B must not receive ws-A's publish");
 }
@@ -178,37 +178,37 @@ async fn no_scoped_grant_means_backward_compatible_open_watch() {
     // with NO `bus:*:watch` grant anywhere, watches ANY subject exactly as today.
     let bus = Bus::peer().await.unwrap();
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", WS, ALL);
+    let test = principal("user:test", WS, ALL);
     // Any ext subject is allowed — the subject-scoped gate is inert when no watch grant exists.
-    assert!(bus_watch(&store, &bus, &ada, WS, "care.feed.leo")
+    assert!(bus_watch(&store, &bus, &test, WS, "care.feed.leo")
         .await
         .is_ok());
-    assert!(bus_watch(&store, &bus, &ada, WS, "anything/at/all")
+    assert!(bus_watch(&store, &bus, &test, WS, "anything/at/all")
         .await
         .is_ok());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_scoped_grant_confines_the_holder_to_its_subject() {
-    // ada is granted ONLY `bus:care.feed.leo:watch`. That flips her into scoped mode: she may watch
+    // test is granted ONLY `bus:care.feed.leo:watch`. That flips her into scoped mode: she may watch
     // leo's feed but is DENIED mia's — Gap 1 closed. She still holds the coarse cap (in ALL).
     let bus = Bus::peer().await.unwrap();
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", WS, ALL);
-    seed_watch_grant(&store, "ada", "care.feed.leo").await;
+    let test = principal("user:test", WS, ALL);
+    seed_watch_grant(&store, "test", "care.feed.leo").await;
 
     assert!(
-        bus_watch(&store, &bus, &ada, WS, "care.feed.leo")
+        bus_watch(&store, &bus, &test, WS, "care.feed.leo")
             .await
             .is_ok(),
-        "ada must reach her own granted subject"
+        "test must reach her own granted subject"
     );
     assert!(
         matches!(
-            bus_watch(&store, &bus, &ada, WS, "care.feed.mia").await,
+            bus_watch(&store, &bus, &test, WS, "care.feed.mia").await,
             Err(lb_host::BusError::Denied)
         ),
-        "ada must be DENIED another child's subject (Gap 1)"
+        "test must be DENIED another child's subject (Gap 1)"
     );
 }
 
@@ -218,17 +218,17 @@ async fn a_wildcard_scoped_grant_matches_its_prefix_only() {
     // segment (the caps grammar), so scoped mode holds without per-child grants.
     let bus = Bus::peer().await.unwrap();
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", WS, ALL);
-    seed_watch_grant(&store, "ada", "care.feed.*").await;
+    let test = principal("user:test", WS, ALL);
+    seed_watch_grant(&store, "test", "care.feed.*").await;
 
-    assert!(bus_watch(&store, &bus, &ada, WS, "care.feed.leo")
+    assert!(bus_watch(&store, &bus, &test, WS, "care.feed.leo")
         .await
         .is_ok());
-    assert!(bus_watch(&store, &bus, &ada, WS, "care.feed.mia")
+    assert!(bus_watch(&store, &bus, &test, WS, "care.feed.mia")
         .await
         .is_ok());
     assert!(matches!(
-        bus_watch(&store, &bus, &ada, WS, "other.feed.leo").await,
+        bus_watch(&store, &bus, &test, WS, "other.feed.leo").await,
         Err(lb_host::BusError::Denied)
     ));
 }
@@ -240,18 +240,18 @@ async fn a_scoped_grant_in_another_workspace_does_not_authorize_here() {
     // by the coarse gate, and the fresh grant read is workspace-namespaced too.
     let bus = Bus::peer().await.unwrap();
     let store = Store::memory().await.unwrap();
-    seed_watch_grant(&store, "ada", "care.feed.leo").await; // grant lives in WS
+    seed_watch_grant(&store, "test", "care.feed.leo").await; // grant lives in WS
 
     // Same identity, other workspace, holding the coarse cap there. No grant exists in WS-other, so
     // she is in back-compat OPEN mode there — but she can only ever name subjects in HER workspace
     // (the wall), so this proves the WS grant did not leak across the wall into another ws's authz.
-    let other = principal("user:ada", "ws-other", ALL);
-    // In ws-other ada has NO watch grant → open mode → allowed (and walled to ws-other's motion).
+    let other = principal("user:test", "ws-other", ALL);
+    // In ws-other test has NO watch grant → open mode → allowed (and walled to ws-other's motion).
     assert!(bus_watch(&store, &bus, &other, "ws-other", "care.feed.leo")
         .await
         .is_ok());
 
-    // And a principal in WS with NO grant is unaffected by ada's grant (grants are per-subject, not
+    // And a principal in WS with NO grant is unaffected by test's grant (grants are per-subject, not
     // workspace-wide): ben holds the coarse cap, no watch grant → open mode.
     let ben = principal("user:ben", WS, ALL);
     assert!(bus_watch(&store, &bus, &ben, WS, "care.feed.leo")
@@ -266,21 +266,21 @@ async fn a_grant_assigned_after_login_is_honored_on_next_watch() {
     // revoke-terminates-stream (Gap 2) possible.
     let bus = Bus::peer().await.unwrap();
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", WS, ALL); // token minted with no watch grant
+    let test = principal("user:test", WS, ALL); // token minted with no watch grant
 
     // Before any grant: open mode, mia is reachable.
-    assert!(bus_watch(&store, &bus, &ada, WS, "care.feed.mia")
+    assert!(bus_watch(&store, &bus, &test, WS, "care.feed.mia")
         .await
         .is_ok());
 
-    // Assign leo AFTER "login" — now ada is in scoped mode and mia is denied, leo allowed. The token
+    // Assign leo AFTER "login" — now test is in scoped mode and mia is denied, leo allowed. The token
     // never changed; the store read is authoritative.
-    seed_watch_grant(&store, "ada", "care.feed.leo").await;
-    assert!(bus_watch(&store, &bus, &ada, WS, "care.feed.leo")
+    seed_watch_grant(&store, "test", "care.feed.leo").await;
+    assert!(bus_watch(&store, &bus, &test, WS, "care.feed.leo")
         .await
         .is_ok());
     assert!(matches!(
-        bus_watch(&store, &bus, &ada, WS, "care.feed.mia").await,
+        bus_watch(&store, &bus, &test, WS, "care.feed.mia").await,
         Err(lb_host::BusError::Denied)
     ));
 }
@@ -294,11 +294,11 @@ async fn revoking_the_only_grant_denies_the_subject_it_does_not_reopen() {
     // but `still_scoped_authorized` — the predicate the open STREAM re-checks against — is false, so
     // the stream closes and cannot re-open. This asserts that predicate directly.
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", WS, ALL);
-    seed_watch_grant(&store, "ada", "care.feed.leo").await;
+    let test = principal("user:test", WS, ALL);
+    seed_watch_grant(&store, "test", "care.feed.leo").await;
 
     assert!(
-        lb_host::still_scoped_authorized(&store, &ada, WS, "care.feed.leo")
+        lb_host::still_scoped_authorized(&store, &test, WS, "care.feed.leo")
             .await
             .unwrap(),
         "the live grant authorizes the scoped stream"
@@ -307,14 +307,14 @@ async fn revoking_the_only_grant_denies_the_subject_it_does_not_reopen() {
     lb_authz::grant_revoke(
         &store,
         WS,
-        &lb_authz::Subject::User("ada".into()),
+        &lb_authz::Subject::User("test".into()),
         "bus:care.feed.leo:watch",
     )
     .await
     .unwrap();
 
     assert!(
-        !lb_host::still_scoped_authorized(&store, &ada, WS, "care.feed.leo")
+        !lb_host::still_scoped_authorized(&store, &test, WS, "care.feed.leo")
             .await
             .unwrap(),
         "after revoke the scoped predicate is FALSE — the stream closes, never re-opens"

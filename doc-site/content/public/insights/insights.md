@@ -140,7 +140,7 @@ triage plane adds the human half: one owner axis and an append-only note thread.
   "assigned_to": "user:priya",
   "comments": [
     { "cseq": 2, "text": "Facilities confirmed the shutdown.", "author": "user:priya", "ts": … },
-    { "cseq": 1, "text": "Site shut for the long weekend?",     "author": "user:ada",   "ts": … }
+    { "cseq": 1, "text": "Site shut for the long weekend?",     "author": "user:test",   "ts": … }
   ]
 }
 ```

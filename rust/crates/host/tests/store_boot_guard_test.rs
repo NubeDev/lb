@@ -86,7 +86,7 @@ async fn status_serves_the_skip_reason_and_still_denies_without_the_cap() {
     .await
     .expect("a skip never stops the node opening");
 
-    let p = principal("user:ada", ws, &[STATUS]);
+    let p = principal("user:test", ws, &[STATUS]);
     let report = store_status_run(&store, &p, ws).expect("status with cap");
     assert!(report.persistent);
     let rec = report
@@ -128,7 +128,7 @@ async fn grounding_boot_guard_flow() {
         let store = Store::open(&path).await.unwrap();
         seed(&store, ws).await;
     }
-    let p = principal("user:ada", ws, &[STATUS]);
+    let p = principal("user:test", ws, &[STATUS]);
 
     let store = Store::open(&path).await.unwrap();
     let r = store_status_run(&store, &p, ws).unwrap();

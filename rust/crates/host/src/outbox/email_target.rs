@@ -337,7 +337,7 @@ mod tests {
         let target = EmailTarget::new(Box::new(provider.clone()), store);
         let effect = invite_effect(serde_json::json!({
             "email": "sam@example.com",
-            "workspace": "acme",
+            "workspace": "nube",
             "token": "lbi_abc123",
         }));
 
@@ -382,7 +382,7 @@ mod tests {
         let target = EmailTarget::new(Box::new(provider.clone()), store);
         let effect = invite_effect(serde_json::json!({
             "email": "sam@example.com",
-            "workspace": "acme",
+            "workspace": "nube",
             "token": "lbi_abc123",
         }));
 

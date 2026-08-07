@@ -149,7 +149,7 @@ grammar; one file per handle (FILE-LAYOUT).
 
 A facilities analyst writes a rule that escalates a cooler breach and closes the loop.
 
-1. The rule body runs inside `rules.run`, workspace pinned to `acme`, the caller's principal carried into
+1. The rule body runs inside `rules.run`, workspace pinned to `nube`, the caller's principal carried into
    every seam:
    ```
    let hot = source("cooler.temp").last("1h").col("value").max();

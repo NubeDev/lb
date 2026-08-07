@@ -21,7 +21,7 @@ const full: SourceLoaders = {
 
 describe("useSourcePicker", () => {
   it("assembles entries from every loader", async () => {
-    const { result } = renderHook(() => useSourcePicker(full, "acme"));
+    const { result } = renderHook(() => useSourcePicker(full, "nube"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     const groups = new Set(result.current.entries.map((e) => e.group));
     expect(groups).toContain("series");
@@ -40,7 +40,7 @@ describe("useSourcePicker", () => {
         throw new Error("denied");
       },
     };
-    const { result } = renderHook(() => useSourcePicker(loaders, "acme"));
+    const { result } = renderHook(() => useSourcePicker(loaders, "nube"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.entries.some((e) => e.group === "series")).toBe(false);
     // other groups still present
@@ -55,14 +55,14 @@ describe("useSourcePicker", () => {
         throw new Error("denied");
       },
     };
-    const { result } = renderHook(() => useSourcePicker(loaders, "acme"));
+    const { result } = renderHook(() => useSourcePicker(loaders, "nube"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.entries.some((e) => e.group === "rules")).toBe(false);
     expect(result.current.entries.some((e) => e.group === "series")).toBe(true);
   });
 
   it("an omitted loader yields that group absent (no getFlow → no flows)", async () => {
-    const { result } = renderHook(() => useSourcePicker({ listSeries: async () => ["x"] }, "acme"));
+    const { result } = renderHook(() => useSourcePicker({ listSeries: async () => ["x"] }, "nube"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.entries.some((e) => e.group === "flows")).toBe(false);
     expect(result.current.entries.some((e) => e.group === "series")).toBe(true);

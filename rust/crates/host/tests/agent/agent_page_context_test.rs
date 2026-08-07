@@ -80,13 +80,13 @@ fn seen_prompt(p: &CapturingProvider) -> String {
 async fn context_is_fenced_into_the_prompt_as_untrusted() {
     let ws = "ws-ctx-fence";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let provider = CapturingProvider::default();
     let registry = registry_with(&node, provider.clone()).await;
 
     let context = json!({
         "surface": "dashboards",
-        "path": "/t/acme/dashboards",
+        "path": "/t/nube/dashboards",
         "search": { "d": "sales", "from": "now-24h" }
     });
 
@@ -131,7 +131,7 @@ async fn context_is_fenced_into_the_prompt_as_untrusted() {
 async fn oversize_context_is_rejected_before_any_model_call() {
     let ws = "ws-ctx-oversize";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let provider = CapturingProvider::default();
     let registry = registry_with(&node, provider.clone()).await;
 
@@ -171,7 +171,7 @@ async fn oversize_context_is_rejected_before_any_model_call() {
 async fn absent_context_is_byte_identical_to_today() {
     let ws = "ws-ctx-absent";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let provider = CapturingProvider::default();
     let registry = registry_with(&node, provider.clone()).await;
 

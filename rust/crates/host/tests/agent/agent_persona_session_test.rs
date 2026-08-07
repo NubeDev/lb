@@ -102,7 +102,7 @@ async fn set_roster(node: &Arc<Node>, admin: &Principal, ws: &str, roster: Optio
 async fn precedence_explicit_beats_member_default_beats_ws_default_beats_none() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "sess-precedence";
-    let caller = principal("user:ada", ws, &[P_CREATE]);
+    let caller = principal("user:test", ws, &[P_CREATE]);
     for id in ["explicit-p", "member-p", "ws-p"] {
         agent_persona_create(&node, &caller, ws, &persona(id, "agent.memory.list"))
             .await
@@ -140,7 +140,7 @@ async fn precedence_explicit_beats_member_default_beats_ws_default_beats_none() 
     set_user_prefs(
         &node.store,
         ws,
-        "user:ada",
+        "user:test",
         &Prefs {
             agent_persona: Some("member-p".into()),
             ..Default::default()
@@ -172,7 +172,7 @@ async fn precedence_explicit_beats_member_default_beats_ws_default_beats_none() 
     set_user_prefs(
         &node.store,
         ws,
-        "user:ada",
+        "user:test",
         &Prefs {
             agent_persona: Some(String::new()),
             ..Default::default()
@@ -195,7 +195,7 @@ async fn precedence_explicit_beats_member_default_beats_ws_default_beats_none() 
 async fn a_dangling_default_warns_and_runs_un_narrowed_an_explicit_unknown_errors() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "sess-dangling";
-    let caller = principal("user:ada", ws, &[P_CREATE, P_DELETE]);
+    let caller = principal("user:test", ws, &[P_CREATE, P_DELETE]);
 
     // Dangling ws default (persona never existed) → None, not an error.
     set_workspace_prefs(
@@ -221,7 +221,7 @@ async fn a_dangling_default_warns_and_runs_un_narrowed_an_explicit_unknown_error
     set_user_prefs(
         &node.store,
         ws,
-        "user:ada",
+        "user:test",
         &Prefs {
             agent_persona: Some("temp".into()),
             ..Default::default()
@@ -254,7 +254,7 @@ async fn roster_none_means_all_enabled_and_some_filters_the_list() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     seed_personas(&node.store).await.expect("seed");
     let ws = "sess-roster";
-    let admin = principal("user:ada", ws, &[P_LIST, P_CREATE, CFG_SET]);
+    let admin = principal("user:test", ws, &[P_LIST, P_CREATE, CFG_SET]);
     agent_persona_create(&node, &admin, ws, &persona("local", "agent.memory.list"))
         .await
         .unwrap();
@@ -294,7 +294,7 @@ async fn an_explicit_invoke_of_a_disabled_persona_fails_named_and_a_disabled_def
 {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "sess-disabled";
-    let admin = principal("user:ada", ws, &[P_CREATE, CFG_SET]);
+    let admin = principal("user:test", ws, &[P_CREATE, CFG_SET]);
     agent_persona_create(&node, &admin, ws, &persona("on", "agent.memory.list"))
         .await
         .unwrap();
@@ -347,7 +347,7 @@ async fn an_explicit_invoke_of_a_disabled_persona_fails_named_and_a_disabled_def
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_ws_a_default_and_roster_never_affect_a_ws_b_run() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let a = principal("user:ada", "sess-iso-a", &[P_CREATE, CFG_SET]);
+    let a = principal("user:test", "sess-iso-a", &[P_CREATE, CFG_SET]);
     let b = principal("user:bo", "sess-iso-b", &[P_CREATE]);
     agent_persona_create(
         &node,
@@ -370,7 +370,7 @@ async fn a_ws_a_default_and_roster_never_affect_a_ws_b_run() {
     set_user_prefs(
         &node.store,
         "sess-iso-a",
-        "user:ada",
+        "user:test",
         &Prefs {
             agent_persona: Some("a-only".into()),
             ..Default::default()
@@ -492,12 +492,12 @@ async fn member_is_denied_roster_and_ws_default_writes_but_allowed_own_default()
 async fn two_members_and_two_explicit_ids_resolve_independently_with_zero_server_session_state() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "sess-independent";
-    let ada = principal("user:ada", ws, &[P_CREATE]);
+    let test = principal("user:test", ws, &[P_CREATE]);
     let bo = principal("user:bo", ws, &[]);
-    agent_persona_create(&node, &ada, ws, &persona("p-list", "agent.memory.list"))
+    agent_persona_create(&node, &test, ws, &persona("p-list", "agent.memory.list"))
         .await
         .unwrap();
-    agent_persona_create(&node, &ada, ws, &persona("p-get", "agent.memory.get"))
+    agent_persona_create(&node, &test, ws, &persona("p-get", "agent.memory.get"))
         .await
         .unwrap();
 
@@ -505,7 +505,7 @@ async fn two_members_and_two_explicit_ids_resolve_independently_with_zero_server
     set_user_prefs(
         &node.store,
         ws,
-        "user:ada",
+        "user:test",
         &Prefs {
             agent_persona: Some("p-list".into()),
             ..Default::default()
@@ -527,7 +527,7 @@ async fn two_members_and_two_explicit_ids_resolve_independently_with_zero_server
     .await
     .unwrap();
     let (ra, rb) = tokio::join!(
-        resolve_persona(&node, &ada, ws, None),
+        resolve_persona(&node, &test, ws, None),
         resolve_persona(&node, &bo, ws, None)
     );
     assert_eq!(ra.unwrap().unwrap().id, "p-list");
@@ -536,8 +536,8 @@ async fn two_members_and_two_explicit_ids_resolve_independently_with_zero_server
     // One member, two explicit ids back to back (the per-tab pin as pure invoke args) — both
     // narrow correctly, no server write in between.
     let (r1, r2) = tokio::join!(
-        resolve_persona(&node, &ada, ws, Some("p-get")),
-        resolve_persona(&node, &ada, ws, Some("p-list"))
+        resolve_persona(&node, &test, ws, Some("p-get")),
+        resolve_persona(&node, &test, ws, Some("p-list"))
     );
     assert_eq!(r1.unwrap().unwrap().id, "p-get");
     assert_eq!(r2.unwrap().unwrap().id, "p-list");
@@ -635,7 +635,7 @@ async fn a_custom_persona_with_a_novel_surface_is_a_record_edit_only() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     seed_personas(&node.store).await.expect("seed");
     let ws = "sess-surfaces";
-    let admin = principal("user:ada", ws, &[P_CREATE, P_LIST]);
+    let admin = principal("user:test", ws, &[P_CREATE, P_LIST]);
 
     // A NOVEL surface string no built-in claims and no code knows.
     let mut p = persona("studio", "agent.memory.list");

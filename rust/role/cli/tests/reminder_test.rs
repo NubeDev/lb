@@ -22,13 +22,13 @@ use lb_cli::transport::Remote;
 /// wants an authorized session. `dev_token` already grants the `mcp:*.{create,list,get,update,delete}`
 /// wildcards, so it authorizes every reminder verb; we use it for the happy paths.
 fn authed(gw: &common::RunningGateway, ws: &str) -> Remote {
-    Remote::new(&gw.base_url, dev_token(&gw.key, "user:ada", ws))
+    Remote::new(&gw.base_url, dev_token(&gw.key, "user:test", ws))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn create_ls_show_update_rm_round_trips_over_the_real_gateway() {
     let gw = spawn_gateway().await;
-    let ws = "acme";
+    let ws = "nube";
     let t = authed(&gw, ws);
 
     // create → prints the id (D4), not the record. Table format is the human path.
@@ -108,7 +108,7 @@ async fn create_ls_show_update_rm_round_trips_over_the_real_gateway() {
     );
 
     // The header states the wall + mode.
-    assert!(after.header.contains("ws: acme"), "{}", after.header);
+    assert!(after.header.contains("ws: nube"), "{}", after.header);
     assert!(after.header.contains("mode: remote"), "{}", after.header);
 }
 
@@ -119,7 +119,7 @@ async fn rm_without_the_delete_cap_is_a_deny_and_never_a_fake_success() {
     // and returns Err (exit 3), never a fabricated ok. We seed a real reminder first so the deny is on
     // a real target, not a missing one.
     let gw = spawn_gateway().await;
-    let ws = "acme";
+    let ws = "nube";
     seed_reminder(&gw.node, ws, "victim", "team", "standup").await;
 
     let tok = token(
@@ -171,10 +171,10 @@ async fn a_ws_a_token_lists_only_ws_a_even_when_targeting_b() {
     // the server reads the ws from the token, so it returns A's reminder, never B's. There is no ws in
     // the /mcp/call body to honor; the A-token's ws wins by construction.
     let gw = spawn_gateway().await;
-    seed_reminder(&gw.node, "acme", "a-only", "team", "A secret").await;
+    seed_reminder(&gw.node, "nube", "a-only", "team", "A secret").await;
     seed_reminder(&gw.node, "beta", "b-only", "team", "B secret").await;
 
-    let a = Remote::new(&gw.base_url, dev_token(&gw.key, "user:ada", "acme"));
+    let a = Remote::new(&gw.base_url, dev_token(&gw.key, "user:test", "nube"));
     let listed = reminder::ls::run(&a, None, None, Format::Json)
         .await
         .unwrap();
@@ -197,13 +197,13 @@ async fn ws_b_cannot_rm_a_ws_a_reminder() {
     // delete is idempotent (deleting an absent id is a no-op ok), so the assertion is that ws-A's
     // reminder SURVIVES: the wall physically prevented the cross-ws delete.
     let gw = spawn_gateway().await;
-    seed_reminder(&gw.node, "acme", "a-victim", "team", "A secret").await;
+    seed_reminder(&gw.node, "nube", "a-victim", "team", "A secret").await;
 
     let b = Remote::new(&gw.base_url, dev_token(&gw.key, "user:bob", "beta"));
-    // ws-B's rm cannot reach ws-A's namespace; it operates on beta and leaves acme untouched.
+    // ws-B's rm cannot reach ws-A's namespace; it operates on beta and leaves nube untouched.
     let _ = reminder::rm::run(&b, "a-victim", false, Format::Json).await;
 
-    let a = Remote::new(&gw.base_url, dev_token(&gw.key, "user:ada", "acme"));
+    let a = Remote::new(&gw.base_url, dev_token(&gw.key, "user:test", "nube"));
     let still = reminder::ls::run(&a, None, None, Format::Json)
         .await
         .unwrap();

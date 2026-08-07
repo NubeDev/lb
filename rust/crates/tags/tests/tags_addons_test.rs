@@ -16,10 +16,10 @@ fn prov(at: u64) -> Provenance {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn full_text_search_matches_tokenized_value() {
     let store = Store::memory().await.unwrap();
-    define_text_index(&store, "acme").await.unwrap();
+    define_text_index(&store, "nube").await.unwrap();
     add(
         &store,
-        "acme",
+        "nube",
         "series:cpu",
         &Tag::new("unit", "degrees celsius".into()),
         &prov(1),
@@ -29,7 +29,7 @@ async fn full_text_search_matches_tokenized_value() {
     .unwrap();
     add(
         &store,
-        "acme",
+        "nube",
         "series:net",
         &Tag::new("unit", "megabits".into()),
         &prov(1),
@@ -38,7 +38,7 @@ async fn full_text_search_matches_tokenized_value() {
     .await
     .unwrap();
 
-    let hits = find_text(&store, "acme", "celsius").await.unwrap();
+    let hits = find_text(&store, "nube", "celsius").await.unwrap();
     assert_eq!(hits.len(), 1, "BM25 matches the tokenized value");
     assert_eq!(hits[0].0, "unit");
     assert_eq!(hits[0].1, serde_json::json!("degrees celsius"));
@@ -48,30 +48,30 @@ async fn full_text_search_matches_tokenized_value() {
 async fn vector_search_returns_nearest_and_rejects_dim_mismatch() {
     let store = Store::memory().await.unwrap();
     let dim = 3;
-    define_vector_index(&store, "acme", dim).await.unwrap();
+    define_vector_index(&store, "nube", dim).await.unwrap();
 
     // Store three embeddings of the pinned dimension.
-    put_vector(&store, "acme", "doc", "a", &[1.0, 0.0, 0.0], dim)
+    put_vector(&store, "nube", "doc", "a", &[1.0, 0.0, 0.0], dim)
         .await
         .unwrap()
         .unwrap();
-    put_vector(&store, "acme", "doc", "b", &[0.0, 1.0, 0.0], dim)
+    put_vector(&store, "nube", "doc", "b", &[0.0, 1.0, 0.0], dim)
         .await
         .unwrap()
         .unwrap();
-    put_vector(&store, "acme", "doc", "c", &[0.9, 0.1, 0.0], dim)
+    put_vector(&store, "nube", "doc", "c", &[0.9, 0.1, 0.0], dim)
         .await
         .unwrap()
         .unwrap();
 
     // A mismatched-dimension write is REJECTED, never stored (index-corruption guard).
-    let bad = put_vector(&store, "acme", "doc", "d", &[1.0, 0.0], dim)
+    let bad = put_vector(&store, "nube", "doc", "d", &[1.0, 0.0], dim)
         .await
         .unwrap();
     assert!(bad.is_err(), "a wrong-dim embedding must be rejected");
 
     // Nearest to [1,0,0] is "a" then "c" (find_similar returns the caller's logical ids).
-    let near = find_similar(&store, "acme", &[1.0, 0.0, 0.0], 2)
+    let near = find_similar(&store, "nube", &[1.0, 0.0, 0.0], 2)
         .await
         .unwrap();
     assert_eq!(
@@ -88,11 +88,11 @@ async fn vector_search_returns_nearest_and_rejects_dim_mismatch() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn materialized_counts_are_per_dimension() {
     let store = Store::memory().await.unwrap();
-    define_counts_view(&store, "acme").await.unwrap();
+    define_counts_view(&store, "nube").await.unwrap();
     // Two region edges, one kind edge.
     add(
         &store,
-        "acme",
+        "nube",
         "series:a",
         &Tag::new("region", "eu".into()),
         &prov(1),
@@ -102,7 +102,7 @@ async fn materialized_counts_are_per_dimension() {
     .unwrap();
     add(
         &store,
-        "acme",
+        "nube",
         "series:b",
         &Tag::new("region", "us".into()),
         &prov(1),
@@ -112,7 +112,7 @@ async fn materialized_counts_are_per_dimension() {
     .unwrap();
     add(
         &store,
-        "acme",
+        "nube",
         "series:a",
         &Tag::new("kind", "telemetry".into()),
         &prov(1),
@@ -121,7 +121,7 @@ async fn materialized_counts_are_per_dimension() {
     .await
     .unwrap();
 
-    let counts = count_by_key(&store, "acme").await.unwrap();
+    let counts = count_by_key(&store, "nube").await.unwrap();
     let region = counts.iter().find(|c| c.key == "region").unwrap();
     let kind = counts.iter().find(|c| c.key == "kind").unwrap();
     assert_eq!(region.n, 2, "two region edges");
@@ -135,21 +135,21 @@ async fn provenance_is_queryable_by_source() {
     let tag = Tag::new("kind", "telemetry".into());
     add(
         &store,
-        "acme",
+        "nube",
         "series:x",
         &tag,
-        &Provenance::new(1, "user:ada", Source::Human),
+        &Provenance::new(1, "user:test", Source::Human),
         0,
     )
     .await
     .unwrap();
     let mut inferred = Provenance::new(2, "agent:y", Source::Inferred);
     inferred.confidence = 0.92;
-    add(&store, "acme", "series:x", &tag, &inferred, 0)
+    add(&store, "nube", "series:x", &tag, &inferred, 0)
         .await
         .unwrap();
 
-    let applied = of(&store, "acme", "series:x").await.unwrap();
+    let applied = of(&store, "nube", "series:x").await.unwrap();
     let inf = applied
         .iter()
         .find(|a| a.source == Source::Inferred)

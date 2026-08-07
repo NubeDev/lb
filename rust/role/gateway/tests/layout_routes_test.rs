@@ -28,23 +28,23 @@ fn json_put(uri: &str, body: serde_json::Value) -> Request<Body> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn round_trip_and_member_owned_keying() {
     let (gw, key) = gateway().await;
-    let ada = token(&key, "user:ada", "acme", &[GET, SET]);
-    let ben = token(&key, "user:ben", "acme", &[GET, SET]);
+    let test = token(&key, "user:test", "nube", &[GET, SET]);
+    let ben = token(&key, "user:ben", "nube", &[GET, SET]);
 
-    // Ada saves a layout.
+    // Test saves a layout.
     let model = serde_json::json!({ "layout": { "type": "row" }, "tabs": ["explore-1"] });
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_put("/layout/data-studio", serde_json::json!({ "model": model })),
-            &ada,
+            &test,
         ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // Ada reads it back.
+    // Test reads it back.
     let resp = router(gw.clone())
-        .oneshot(bearer(get_req("/layout/data-studio"), &ada))
+        .oneshot(bearer(get_req("/layout/data-studio"), &test))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -52,8 +52,8 @@ async fn round_trip_and_member_owned_keying() {
     assert_eq!(got["model"], model);
     assert_eq!(got["surface"], "data-studio");
 
-    // Ben, SAME workspace + SAME surface, reads HIS OWN (absent) layout — never Ada's. The record is
-    // keyed to the token `sub`; there is no body field through which Ben could name Ada.
+    // Ben, SAME workspace + SAME surface, reads HIS OWN (absent) layout — never Test's. The record is
+    // keyed to the token `sub`; there is no body field through which Ben could name Test.
     let resp = router(gw)
         .oneshot(bearer(get_req("/layout/data-studio"), &ben))
         .await
@@ -62,15 +62,15 @@ async fn round_trip_and_member_owned_keying() {
     let bens: serde_json::Value = json_body(resp).await;
     assert!(
         bens["model"].is_null(),
-        "ben sees his own empty layout, not ada's"
+        "ben sees his own empty layout, not test's"
     );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn capability_deny_per_verb() {
     let (gw, key) = gateway().await;
-    let only_get = token(&key, "user:ada", "acme", &[GET]);
-    let only_set = token(&key, "user:ben", "acme", &[SET]);
+    let only_get = token(&key, "user:test", "nube", &[GET]);
+    let only_set = token(&key, "user:ben", "nube", &[SET]);
 
     // Missing `layout.set` → PUT is 403 (opaque), even with the read grant.
     let resp = router(gw.clone())
@@ -93,8 +93,8 @@ async fn capability_deny_per_verb() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_isolation() {
     let (gw, key) = gateway().await;
-    let in_a = token(&key, "user:ada", "acme", &[GET, SET]);
-    let in_b = token(&key, "user:ada", "beta", &[GET, SET]);
+    let in_a = token(&key, "user:test", "nube", &[GET, SET]);
+    let in_b = token(&key, "user:test", "beta", &[GET, SET]);
 
     router(gw.clone())
         .oneshot(bearer(

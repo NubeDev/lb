@@ -60,7 +60,7 @@ async fn provision(gw: &Gateway, admin: &str, sub: &str, email: &str, pw: &str) 
 
 /// Log in a multi-workspace user and return the select-token.
 async fn select_token_for_two_ws(gw: &Gateway) -> String {
-    let admin_a = bootstrap_admin(gw, "user:admin_a", "acme").await;
+    let admin_a = bootstrap_admin(gw, "user:admin_a", "nube").await;
     let admin_b = bootstrap_admin(gw, "user:admin_b", "globex").await;
     provision(gw, &admin_a, "user:bob", "bob@x.com", "pw").await;
     // add bob to globex too
@@ -131,7 +131,7 @@ async fn a_select_token_is_refused_by_normal_routes_and_verbs() {
     let gw4 = gateway_on(node, &key);
     let resp = router(gw4)
         .oneshot(bearer(
-            json_post("/auth/select", json!({ "workspace": "acme" })),
+            json_post("/auth/select", json!({ "workspace": "nube" })),
             &select,
         ))
         .await
@@ -148,12 +148,12 @@ async fn a_select_token_is_refused_by_normal_routes_and_verbs() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_full_token_is_refused_at_auth_select() {
     let (gw, node, key) = real_gateway().await;
-    let admin = bootstrap_admin(&gw, "user:admin", "acme").await;
-    provision(&gw, &admin, "user:ada", "ada@acme.com", "pw").await;
+    let admin = bootstrap_admin(&gw, "user:admin", "nube").await;
+    provision(&gw, &admin, "user:test", "test@nube-io.com", "pw").await;
     let resp = router(gw.clone())
         .oneshot(json_post(
             "/auth/login",
-            json!({ "email": "ada@acme.com", "password": "pw" }),
+            json!({ "email": "test@nube-io.com", "password": "pw" }),
         ))
         .await
         .unwrap();
@@ -163,7 +163,7 @@ async fn a_full_token_is_refused_at_auth_select() {
     let gw2 = gateway_on(node, &key);
     let resp = router(gw2)
         .oneshot(bearer(
-            json_post("/auth/select", json!({ "workspace": "acme" })),
+            json_post("/auth/select", json!({ "workspace": "nube" })),
             &full,
         ))
         .await
@@ -180,22 +180,22 @@ async fn a_full_token_is_refused_at_auth_select() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn switch_to_a_non_member_workspace_is_forbidden() {
     let (gw, node, key) = real_gateway().await;
-    // Ada is a member of acme only; a separate admin owns globex.
-    let admin_a = bootstrap_admin(&gw, "user:admin_a", "acme").await;
+    // Test is a member of nube only; a separate admin owns globex.
+    let admin_a = bootstrap_admin(&gw, "user:admin_a", "nube").await;
     let _admin_b = bootstrap_admin(&gw, "user:admin_b", "globex").await;
-    provision(&gw, &admin_a, "user:ada", "ada@acme.com", "pw").await;
+    provision(&gw, &admin_a, "user:test", "test@nube-io.com", "pw").await;
 
     let resp = router(gw.clone())
         .oneshot(json_post(
             "/auth/login",
-            json!({ "email": "ada@acme.com", "password": "pw" }),
+            json!({ "email": "test@nube-io.com", "password": "pw" }),
         ))
         .await
         .unwrap();
     let body: Value = json_body(resp).await;
     let token = body["token"].as_str().unwrap().to_string();
 
-    // Ada tries to switch into globex — she is not a member → 403.
+    // Test tries to switch into globex — she is not a member → 403.
     let gw2 = gateway_on(node.clone(), &key);
     let resp = router(gw2)
         .oneshot(bearer(
@@ -214,7 +214,7 @@ async fn switch_to_a_non_member_workspace_is_forbidden() {
     let gw3 = gateway_on(node, &key);
     let resp = router(gw3)
         .oneshot(bearer(
-            json_post("/auth/switch", json!({ "workspace": "acme" })),
+            json_post("/auth/switch", json!({ "workspace": "nube" })),
             &token,
         ))
         .await

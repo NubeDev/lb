@@ -147,7 +147,7 @@ through — it names the consequence, distinguishes reversible (archive/disable)
    via a hard confirm ("removes the install record and cached binary"); the row disappears.
 6. **Workspaces**: Alice **archives** `pilot` (reversible). Later she **hard-deletes** it — typing the
    workspace name to confirm; the second gate (`workspace.purge`) is required; data is destroyed, tombstoned.
-7. **Carol (ws-B admin)** opens her console — sees only ws-B entities; cannot touch `acme` anything. The
+7. **Carol (ws-B admin)** opens her console — sees only ws-B entities; cannot touch `nube` anything. The
    wall holds across the entire admin surface.
 
 ## Testing plan

@@ -55,13 +55,13 @@ async fn node_with_hello() -> Node {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn echo_succeeds_with_the_grant() {
     let node = node_with_hello().await;
-    let p = principal("acme", &["mcp:hello.echo:call"]);
+    let p = principal("nube", &["mcp:hello.echo:call"]);
 
     let out = call(
         &node.registry,
         &node.bus,
         &p,
-        "acme",
+        "nube",
         "hello.echo",
         r#"{"msg":"hi"}"#,
     )
@@ -76,13 +76,13 @@ async fn echo_succeeds_with_the_grant() {
 async fn echo_is_refused_without_the_grant() {
     // MANDATORY capability-deny (testing §2.1): same call, no grant → Denied.
     let node = node_with_hello().await;
-    let p = principal("acme", &[]); // no caps
+    let p = principal("nube", &[]); // no caps
 
     let err = call(
         &node.registry,
         &node.bus,
         &p,
-        "acme",
+        "nube",
         "hello.echo",
         r#"{"msg":"hi"}"#,
     )
@@ -96,12 +96,12 @@ async fn denied_call_does_not_reveal_tool_existence() {
     // A nonexistent tool, called without authorization, returns the SAME opaque Denied as a
     // real-but-ungranted tool — so a caller cannot probe which tools exist (mcp scope).
     let node = node_with_hello().await;
-    let p = principal("acme", &[]);
+    let p = principal("nube", &[]);
 
-    let real = call(&node.registry, &node.bus, &p, "acme", "hello.echo", "{}")
+    let real = call(&node.registry, &node.bus, &p, "nube", "hello.echo", "{}")
         .await
         .unwrap_err();
-    let fake = call(&node.registry, &node.bus, &p, "acme", "hello.nope", "{}")
+    let fake = call(&node.registry, &node.bus, &p, "nube", "hello.nope", "{}")
         .await
         .unwrap_err();
     assert_eq!(real, ToolError::Denied);
@@ -111,7 +111,7 @@ async fn denied_call_does_not_reveal_tool_existence() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn second_workspace_cannot_call_into_the_first() {
     // MANDATORY workspace-isolation (testing §2.2): a principal in workspace "other", even
-    // holding the matching capability, is denied because the call targets workspace "acme"
+    // holding the matching capability, is denied because the call targets workspace "nube"
     // and the isolation gate fires first (auth-caps scope).
     let node = node_with_hello().await;
     let p = principal("other", &["mcp:hello.echo:call"]);
@@ -120,7 +120,7 @@ async fn second_workspace_cannot_call_into_the_first() {
         &node.registry,
         &node.bus,
         &p,
-        "acme",
+        "nube",
         "hello.echo",
         r#"{"msg":"hi"}"#,
     )

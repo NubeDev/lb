@@ -71,7 +71,7 @@ same split the github-bridge tests use). Verifier units live in `src/verify.rs`.
   node-global stateless bridge instance; the wall is principal+ws + the store).
 - **idempotent re-delivery:** the same issue delivered twice (different `ts` → different bytes + sig)
   upserts ONE inbox item.
-- **happy + real-socket:** a signed delivery `200`s and lands the canonical `acme/api#2451` triage item,
+- **happy + real-socket:** a signed delivery `200`s and lands the canonical `nube/api#2451` triage item,
   over both `tower::oneshot` and a real bound port.
 - **malformed payload:** an authentic but un-normalizable body → `422`.
 

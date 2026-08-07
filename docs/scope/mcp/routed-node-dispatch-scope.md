@@ -214,7 +214,7 @@ part worth shipping first.
    today — before any node is looked at.
 4. `resolve` sees an explicit target, finds `gw-01` among `modbus`'s reachable targets, and returns
    it unambiguously.
-5. `dispatch` queries `ws/acme/mcp/modbus/node:gw-01/call`. Only `gw-01` declares that key, so
+5. `dispatch` queries `ws/nube/mcp/modbus/node:gw-01/call`. Only `gw-01` declares that key, so
    there is exactly one responder — by construction, not by assumption. The device is created on
    the correct physical box.
 6. A second call is made **without** a target. Because `modbus` is hosted by two nodes, resolve

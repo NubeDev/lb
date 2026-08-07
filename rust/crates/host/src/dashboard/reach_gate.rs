@@ -52,7 +52,7 @@ mod tests {
     fn armed_subject_is_narrowed_to_the_named_board() {
         let p = Principal::routed(
             "user:test",
-            "acme",
+            "nube",
             vec![
                 "reach:dashboards:view".into(),
                 "reach:dashboards/__curated__:view".into(),
@@ -61,13 +61,13 @@ mod tests {
         );
         assert!(reach_allows(
             &p,
-            "acme",
-            &board("demo-analytics", "user:ada")
+            "nube",
+            &board("demo-analytics", "user:test")
         ));
         assert!(!reach_allows(
             &p,
-            "acme",
-            &board("modbus-tmpl-sim-meter", "user:ada")
+            "nube",
+            &board("modbus-tmpl-sim-meter", "user:test")
         ));
     }
 
@@ -76,8 +76,8 @@ mod tests {
     #[test]
     fn the_owner_is_never_gated_by_reach() {
         let p = Principal::routed(
-            "user:ada",
-            "acme",
+            "user:test",
+            "nube",
             vec![
                 "reach:dashboards:view".into(),
                 "reach:dashboards/__curated__:view".into(),
@@ -87,18 +87,18 @@ mod tests {
         // Not in her reach set, but hers.
         assert!(reach_allows(
             &p,
-            "acme",
-            &board("demo-plant-report", "user:ada")
+            "nube",
+            &board("demo-plant-report", "user:test")
         ));
         assert!(reach_allows(
             &p,
-            "acme",
-            &board("demo-analytics-charts-copy", "user:ada")
+            "nube",
+            &board("demo-analytics-charts-copy", "user:test")
         ));
         // Someone else's, still closed.
         assert!(!reach_allows(
             &p,
-            "acme",
+            "nube",
             &board("modbus-tmpl-sim-meter", "user:bob")
         ));
     }
@@ -106,8 +106,8 @@ mod tests {
     /// An unarmed subject (fallback / legacy / API key) reaches everything, owned or not.
     #[test]
     fn unarmed_subject_reaches_everything() {
-        let p = Principal::routed("user:carol", "acme", vec!["reach:*:view".into()]);
-        assert!(reach_allows(&p, "acme", &board("anything", "user:ada")));
-        assert!(reach_allows(&p, "acme", &board("owned", "user:carol")));
+        let p = Principal::routed("user:carol", "nube", vec!["reach:*:view".into()]);
+        assert!(reach_allows(&p, "nube", &board("anything", "user:test")));
+        assert!(reach_allows(&p, "nube", &board("owned", "user:carol")));
     }
 }

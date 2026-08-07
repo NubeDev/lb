@@ -52,14 +52,14 @@ fn run_with(
         32,
     );
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: body.into(),
         params: vec![],
     };
     let mut allow = HashSet::new();
     allow.insert(source.to_string());
-    let mut rr = RuleRun::new("acme".into(), Arc::new(allow), rhai::Map::new(), 0);
+    let mut rr = RuleRun::new("nube".into(), Arc::new(allow), rhai::Map::new(), 0);
     let out = eng.run(&rule, &mut rr).unwrap();
     (out, rr, data)
 }

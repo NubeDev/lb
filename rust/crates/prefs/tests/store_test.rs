@@ -26,11 +26,11 @@ fn seed_user() -> Prefs {
 async fn set_then_get_round_trips_canonical() {
     let store = Store::memory().await.unwrap();
     let p = seed_user();
-    set_user_prefs(&store, "acme", "user:ada", &p, &[])
+    set_user_prefs(&store, "nube", "user:test", &p, &[])
         .await
         .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -40,7 +40,7 @@ async fn set_then_get_round_trips_canonical() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn patch_merge_leaves_other_axes_untouched() {
     let store = Store::memory().await.unwrap();
-    set_user_prefs(&store, "acme", "user:ada", &seed_user(), &[])
+    set_user_prefs(&store, "nube", "user:test", &seed_user(), &[])
         .await
         .unwrap();
 
@@ -49,11 +49,11 @@ async fn patch_merge_leaves_other_axes_untouched() {
         date_style: Some(DateStyle::Usa),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &patch, &[])
+    set_user_prefs(&store, "nube", "user:test", &patch, &[])
         .await
         .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -67,20 +67,20 @@ async fn no_formatted_string_is_persisted() {
     // Canonical guarantee: the stored row carries only locale-neutral enums/ids, never a rendered
     // string like "43,2 km/h" or "27/06/2026". Read the raw row and assert its values are canonical.
     let store = Store::memory().await.unwrap();
-    set_user_prefs(&store, "acme", "user:ada", &seed_user(), &[])
+    set_user_prefs(&store, "nube", "user:test", &seed_user(), &[])
         .await
         .unwrap();
 
     let mut resp = store
         .query_ws(
-            "acme",
+            "nube",
             &format!(
                 "SELECT language, timezone, date_style, unit_overrides FROM \
                  type::thing('{USER_PREFS_TABLE}', [$ws, $user])"
             ),
             vec![
-                ("ws".into(), "acme".into()),
-                ("user".into(), "user:ada".into()),
+                ("ws".into(), "nube".into()),
+                ("user".into(), "user:test".into()),
             ],
         )
         .await
@@ -110,7 +110,7 @@ async fn resolve_from_store_folds_user_over_workspace_default() {
     // workspace default: metric, Madrid. user: knots override only.
     set_workspace_prefs(
         &store,
-        "acme",
+        "nube",
         &Prefs {
             unit_system: Some(UnitSystem::Metric),
             timezone: Some("Europe/Madrid".into()),
@@ -122,11 +122,11 @@ async fn resolve_from_store_folds_user_over_workspace_default() {
     .unwrap();
     let mut user = Prefs::default();
     user.unit_overrides.insert(Dimension::Speed, Unit::Knot);
-    set_user_prefs(&store, "acme", "user:ada", &user, &[])
+    set_user_prefs(&store, "nube", "user:test", &user, &[])
         .await
         .unwrap();
 
-    let r = resolve_chain(&store, "acme", "user:ada", None)
+    let r = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
     assert_eq!(r.timezone, "Europe/Madrid"); // from ws default
@@ -138,12 +138,12 @@ async fn resolve_from_store_folds_user_over_workspace_default() {
         timezone: Some("Asia/Tokyo".into()),
         ..Prefs::default()
     };
-    let r2 = resolve_chain(&store, "acme", "user:ada", Some(preview))
+    let r2 = resolve_chain(&store, "nube", "user:test", Some(preview))
         .await
         .unwrap();
     assert_eq!(r2.timezone, "Asia/Tokyo");
     // the stored record is unchanged by the preview.
-    let stored = get_user_prefs(&store, "acme", "user:ada")
+    let stored = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -159,16 +159,16 @@ async fn offline_edit_replays_idempotently() {
         language: Some("es".into()),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &edit, &[])
+    set_user_prefs(&store, "nube", "user:test", &edit, &[])
         .await
         .unwrap();
-    set_user_prefs(&store, "acme", "user:ada", &edit, &[])
+    set_user_prefs(&store, "nube", "user:test", &edit, &[])
         .await
         .unwrap(); // replay
 
     let mut resp = store
         .query_ws(
-            "acme",
+            "nube",
             &format!("SELECT count() FROM {USER_PREFS_TABLE} GROUP ALL"),
             vec![],
         )
@@ -186,10 +186,10 @@ async fn offline_edit_replays_idempotently() {
         language: Some("en".into()),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &edit2, &[])
+    set_user_prefs(&store, "nube", "user:test", &edit2, &[])
         .await
         .unwrap();
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();

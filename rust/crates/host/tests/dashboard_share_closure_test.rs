@@ -139,18 +139,18 @@ fn dispo(report: &ShareClosureReport, panel: &str) -> D {
 #[tokio::test]
 async fn writes_the_share_edge_on_the_same_team_id_the_member_and_dashboard_edges_use() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
     // Seeded exactly as `members.add` does it live: the BARE team id.
-    add_member(&store, &ada, ws, "ops", "user:bob")
+    add_member(&store, &test, ws, "ops", "user:bob")
         .await
         .expect("bob joins ops");
 
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -163,7 +163,7 @@ async fn writes_the_share_edge_on_the_same_team_id_the_member_and_dashboard_edge
     // The reference edge: what the SHIPPED, working verb writes for this same team.
     dashboard_share(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         DashboardVisibility::Team,
@@ -178,7 +178,7 @@ async fn writes_the_share_edge_on_the_same_team_id_the_member_and_dashboard_edge
 
     // Drive share_closure with the PREFIXED form — the caller may pass either; the stored edge must
     // still land on the graph's identity.
-    dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 2)
+    dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 2)
         .await
         .expect("runs");
     let panel_edge = share_edges(&store, ws, "cpu").await;
@@ -203,25 +203,25 @@ async fn writes_the_share_edge_on_the_same_team_id_the_member_and_dashboard_edge
     );
 }
 
-/// The live repro, closed end to end: ada's team-shared page embeds her private `cpu` panel; bob (in
+/// The live repro, closed end to end: test's team-shared page embeds her private `cpu` panel; bob (in
 /// `ops`) cannot read the panel — that is the "Panel not accessible" widget. share_closure(dry_run)
 /// previews `would_share`, the confirm shares it, and bob can now read it. A non-member still cannot:
 /// the wall moved for `ops` only.
 #[tokio::test]
 async fn shares_the_owned_closure_and_the_team_can_read_it() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
 
     team_create(&store, ws, "ops", "Ops").await.expect("team");
-    add_member(&store, &ada, ws, "ops", "user:bob")
+    add_member(&store, &test, ws, "ops", "user:bob")
         .await
         .expect("bob joins ops");
 
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -233,7 +233,7 @@ async fn shares_the_owned_closure_and_the_team_can_read_it() {
     .expect("dashboard saves");
     dashboard_share(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         DashboardVisibility::Team,
@@ -252,7 +252,7 @@ async fn shares_the_owned_closure_and_the_team_can_read_it() {
     );
 
     // Preview: mutates nothing.
-    let preview = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", true, 2)
+    let preview = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", true, 2)
         .await
         .expect("dry run previews");
     assert_eq!(dispo(&preview, "cpu"), D::WouldShare);
@@ -268,7 +268,7 @@ async fn shares_the_owned_closure_and_the_team_can_read_it() {
     );
 
     // Confirm: the eligible share happens.
-    let applied = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 3)
+    let applied = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 3)
         .await
         .expect("confirm shares");
     assert_eq!(dispo(&applied, "cpu"), D::Shared);
@@ -289,38 +289,38 @@ async fn shares_the_owned_closure_and_the_team_can_read_it() {
     );
 }
 
-/// **The load-bearing no-widening test.** ada's page embeds aidan's panel — readable by HER (he shared
+/// **The load-bearing no-widening test.** test's page embeds aidan's panel — readable by HER (he shared
 /// it to a team she is in) but not shared to the target team. A `dry_run=false` run must report it
 /// `not_owned` and write NO share edge to the target — asserted against the raw S4 edges, not the
 /// report (the report could lie; the edges cannot). This pins "the verb is not a grant path".
 ///
 /// The fixture is the real shape of this gap, not a contrived one: `dashboard.save`'s
-/// `validate_and_strip_refs` requires every `panel_ref` to resolve **under the saver**, so ada could
+/// `validate_and_strip_refs` requires every `panel_ref` to resolve **under the saver**, so test could
 /// never have embedded a panel she cannot read. The gap arises exactly as the scope's example flow
-/// describes — the panel's audience and the page's audience DIVERGE (aidan shared it to `design`, ada
+/// describes — the panel's audience and the page's audience DIVERGE (aidan shared it to `design`, test
 /// is sharing the page to `ops`).
 #[tokio::test]
 async fn never_shares_a_panel_the_caller_does_not_own() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     let aidan = principal("user:aidan", ws, AUTHOR);
 
     team_create(&store, ws, "ops", "Ops").await.expect("team");
     team_create(&store, ws, "design", "Design")
         .await
         .expect("design team");
-    add_member(&store, &ada, ws, "ops", "user:bob")
+    add_member(&store, &test, ws, "ops", "user:bob")
         .await
         .expect("bob joins ops");
-    add_member(&store, &ada, ws, "design", "user:ada")
+    add_member(&store, &test, ws, "design", "user:test")
         .await
-        .expect("ada is in design");
+        .expect("test is in design");
 
-    save_panel(&store, &ada, ws, "cpu", "CPU").await; // ada's — shareable
-    save_panel(&store, &aidan, ws, "aidan", "Aidan's").await; // NOT ada's — a gap
-                                                              // aidan shares HIS panel to `design` (ada's team) — so ada may embed it, but its audience is
-                                                              // `design`, NOT the `ops` team ada is about to share the page to.
+    save_panel(&store, &test, ws, "cpu", "CPU").await; // test's — shareable
+    save_panel(&store, &aidan, ws, "aidan", "Aidan's").await; // NOT test's — a gap
+                                                              // aidan shares HIS panel to `design` (test's team) — so test may embed it, but its audience is
+                                                              // `design`, NOT the `ops` team test is about to share the page to.
     panel_share(
         &store,
         &aidan,
@@ -335,7 +335,7 @@ async fn never_shares_a_panel_the_caller_does_not_own() {
 
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -346,7 +346,7 @@ async fn never_shares_a_panel_the_caller_does_not_own() {
     .await
     .expect("dashboard saves");
 
-    let report = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 2)
+    let report = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 2)
         .await
         .expect("runs");
 
@@ -354,7 +354,7 @@ async fn never_shares_a_panel_the_caller_does_not_own() {
     assert_eq!(
         dispo(&report, "aidan"),
         D::NotOwned,
-        "aidan's panel is a gap ada cannot close"
+        "aidan's panel is a gap test cannot close"
     );
 
     // The ground truth: the S4 edges.
@@ -364,7 +364,7 @@ async fn never_shares_a_panel_the_caller_does_not_own() {
         "the owned panel IS shared"
     );
     // The not-owned panel keeps EXACTLY its original audience (`design`) — `ops` was never added.
-    // This is the assertion that pins "the verb is not a grant path": ada could read the panel, embed
+    // This is the assertion that pins "the verb is not a grant path": test could read the panel, embed
     // it, and run the verb, and still could not widen it to her team.
     assert_eq!(
         share_edges(&store, ws, "aidan").await,
@@ -398,13 +398,13 @@ async fn never_shares_a_panel_the_caller_does_not_own() {
 #[tokio::test]
 async fn denies_a_caller_without_the_cap() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -417,7 +417,7 @@ async fn denies_a_caller_without_the_cap() {
 
     // Every panel cap, but NOT the verb's cap.
     let capless = principal(
-        "user:ada",
+        "user:test",
         ws,
         &["mcp:panel.share:call", "mcp:panel.get:call"],
     );
@@ -433,15 +433,15 @@ async fn denies_a_caller_without_the_cap() {
 #[tokio::test]
 async fn a_foreign_workspace_caller_cannot_reach_the_closure() {
     let store = test_store().await;
-    let ada = principal("user:ada", "acme", AUTHOR);
-    team_create(&store, "acme", "ops", "Ops")
+    let test = principal("user:test", "nube", AUTHOR);
+    team_create(&store, "nube", "ops", "Ops")
         .await
         .expect("team");
-    save_panel(&store, &ada, "acme", "cpu", "CPU").await;
+    save_panel(&store, &test, "nube", "cpu", "CPU").await;
     dashboard_save(
         &store,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "ops-page",
         "Ops Page",
         vec![ref_cell("a", "cpu")],
@@ -451,10 +451,10 @@ async fn a_foreign_workspace_caller_cannot_reach_the_closure() {
     .await
     .expect("saves");
 
-    // A ws-B principal (token scoped to `other`) reaching into ws `acme`.
+    // A ws-B principal (token scoped to `other`) reaching into ws `nube`.
     let intruder = principal("user:eve", "other", AUTHOR);
     let err =
-        dashboard_share_closure(&store, &intruder, "acme", "ops-page", "team:ops", true, 2).await;
+        dashboard_share_closure(&store, &intruder, "nube", "ops-page", "team:ops", true, 2).await;
     assert!(err.is_err(), "a ws-B caller cannot reach a ws-A closure");
 }
 
@@ -464,19 +464,19 @@ async fn a_foreign_workspace_caller_cannot_reach_the_closure() {
 #[tokio::test]
 async fn a_nonexistent_team_target_refuses_the_whole_call_with_no_partial_writes() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
 
     // The team exists in ws-B, NOT in ws-A — it must never become a ws-A panel's audience.
     team_create(&store, "other", "ops", "Ops (ws-B)")
         .await
         .expect("ws-B team");
 
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
-    save_panel(&store, &ada, ws, "mem", "Mem").await;
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
+    save_panel(&store, &test, ws, "mem", "Mem").await;
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -487,7 +487,7 @@ async fn a_nonexistent_team_target_refuses_the_whole_call_with_no_partial_writes
     .await
     .expect("saves");
 
-    let err = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 2).await;
+    let err = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 2).await;
     assert!(err.is_err(), "a team absent from THIS workspace is refused");
 
     assert!(
@@ -505,23 +505,23 @@ async fn a_nonexistent_team_target_refuses_the_whole_call_with_no_partial_writes
 #[tokio::test]
 async fn sharing_to_a_second_team_keeps_the_first_team_s_access() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
     team_create(&store, ws, "design", "Design")
         .await
         .expect("team");
-    add_member(&store, &ada, ws, "ops", "user:bob")
+    add_member(&store, &test, ws, "ops", "user:bob")
         .await
         .expect("bob joins ops");
-    add_member(&store, &ada, ws, "design", "user:dee")
+    add_member(&store, &test, ws, "design", "user:dee")
         .await
         .expect("dee joins design");
 
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
     panel_share(
         &store,
-        &ada,
+        &test,
         ws,
         "cpu",
         PanelVisibility::Team,
@@ -533,7 +533,7 @@ async fn sharing_to_a_second_team_keeps_the_first_team_s_access() {
 
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -545,7 +545,7 @@ async fn sharing_to_a_second_team_keeps_the_first_team_s_access() {
     .expect("saves");
 
     // Now share the same panel's closure to a DIFFERENT team.
-    let report = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 2)
+    let report = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 2)
         .await
         .expect("runs");
     assert_eq!(dispo(&report, "cpu"), D::Shared);
@@ -576,18 +576,26 @@ async fn sharing_to_a_second_team_keeps_the_first_team_s_access() {
 #[tokio::test]
 async fn a_workspace_visible_panel_is_not_a_gap() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
 
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
-    panel_share(&store, &ada, ws, "cpu", PanelVisibility::Workspace, None, 1)
-        .await
-        .expect("panel goes workspace-visible");
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
+    panel_share(
+        &store,
+        &test,
+        ws,
+        "cpu",
+        PanelVisibility::Workspace,
+        None,
+        1,
+    )
+    .await
+    .expect("panel goes workspace-visible");
 
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -598,7 +606,7 @@ async fn a_workspace_visible_panel_is_not_a_gap() {
     .await
     .expect("saves");
 
-    let report = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 2)
+    let report = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 2)
         .await
         .expect("runs");
     assert_eq!(dispo(&report, "cpu"), D::AlreadyVisibleWorkspace);
@@ -622,17 +630,17 @@ async fn a_workspace_visible_panel_is_not_a_gap() {
 #[tokio::test]
 async fn is_idempotent_and_shares_only_the_newly_added_panel() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
-    add_member(&store, &ada, ws, "ops", "user:bob")
+    add_member(&store, &test, ws, "ops", "user:bob")
         .await
         .expect("bob joins");
 
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -643,23 +651,23 @@ async fn is_idempotent_and_shares_only_the_newly_added_panel() {
     .await
     .expect("saves");
 
-    let first = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 2)
+    let first = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 2)
         .await
         .expect("first run");
     assert_eq!(first.share_count(), 1);
 
     // Re-run: nothing new.
-    let second = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 3)
+    let second = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 3)
         .await
         .expect("second run");
     assert_eq!(dispo(&second, "cpu"), D::AlreadyShared);
     assert_eq!(second.share_count(), 0, "re-running shares nothing");
 
     // Add a panel; only the new one shares.
-    save_panel(&store, &ada, ws, "mem", "Mem").await;
+    save_panel(&store, &test, ws, "mem", "Mem").await;
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -670,7 +678,7 @@ async fn is_idempotent_and_shares_only_the_newly_added_panel() {
     .await
     .expect("re-saves with the new panel");
 
-    let third = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", false, 5)
+    let third = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", false, 5)
         .await
         .expect("third run");
     assert_eq!(dispo(&third, "cpu"), D::AlreadyShared);
@@ -684,24 +692,24 @@ async fn is_idempotent_and_shares_only_the_newly_added_panel() {
 #[tokio::test]
 async fn share_closure_gaps_match_access_check_red_panels() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     let aidan = principal("user:aidan", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
     team_create(&store, ws, "design", "Design")
         .await
         .expect("design team");
-    add_member(&store, &ada, ws, "ops", "user:bob")
+    add_member(&store, &test, ws, "ops", "user:bob")
         .await
         .expect("bob joins");
-    add_member(&store, &ada, ws, "design", "user:ada")
+    add_member(&store, &test, ws, "design", "user:test")
         .await
-        .expect("ada is in design");
+        .expect("test is in design");
 
     // A deliberately mixed closure: owned+private (a closable gap), not-owned (an unclosable gap —
-    // shared to ada's `design` team so she could embed it, but not to the `ops` target),
+    // shared to test's `design` team so she could embed it, but not to the `ops` target),
     // workspace-visible (not a gap), and already-shared-to-ops (not a gap).
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
     save_panel(&store, &aidan, ws, "aidan", "Aidan's").await;
     panel_share(
         &store,
@@ -714,10 +722,10 @@ async fn share_closure_gaps_match_access_check_red_panels() {
     )
     .await
     .expect("aidan shares to design, not ops");
-    save_panel(&store, &ada, ws, "wide", "Wide").await;
+    save_panel(&store, &test, ws, "wide", "Wide").await;
     panel_share(
         &store,
-        &ada,
+        &test,
         ws,
         "wide",
         PanelVisibility::Workspace,
@@ -726,10 +734,10 @@ async fn share_closure_gaps_match_access_check_red_panels() {
     )
     .await
     .expect("wide goes workspace");
-    save_panel(&store, &ada, ws, "done", "Done").await;
+    save_panel(&store, &test, ws, "done", "Done").await;
     panel_share(
         &store,
-        &ada,
+        &test,
         ws,
         "done",
         PanelVisibility::Team,
@@ -741,7 +749,7 @@ async fn share_closure_gaps_match_access_check_red_panels() {
 
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -758,7 +766,7 @@ async fn share_closure_gaps_match_access_check_red_panels() {
     .expect("saves");
 
     // The write's view of the gaps.
-    let report = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", true, 2)
+    let report = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", true, 2)
         .await
         .expect("preview");
     let mut share_closure_gaps: Vec<String> = report.gaps().map(|p| p.panel.clone()).collect();
@@ -766,7 +774,7 @@ async fn share_closure_gaps_match_access_check_red_panels() {
 
     // The read's view of the same closure, for the same team.
     let team = Subject::parse("team:ops").unwrap();
-    let access = dashboard_access_check(&store, &ada, ws, "ops-page", &team)
+    let access = dashboard_access_check(&store, &test, ws, "ops-page", &team)
         .await
         .expect("access_check");
     let mut access_check_red_panels: Vec<String> = access
@@ -794,13 +802,13 @@ async fn share_closure_gaps_match_access_check_red_panels() {
 #[tokio::test]
 async fn an_owner_without_the_share_cap_reports_no_share_cap_and_shares_nothing() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
-    save_panel(&store, &ada, ws, "cpu", "CPU").await;
+    save_panel(&store, &test, ws, "cpu", "CPU").await;
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -812,8 +820,8 @@ async fn an_owner_without_the_share_cap_reports_no_share_cap_and_shares_nothing(
     .expect("saves");
 
     // Same human, same owned panel — but no `panel.share` cap.
-    let ada_no_share = principal(
-        "user:ada",
+    let test_no_share = principal(
+        "user:test",
         ws,
         &[
             "mcp:dashboard.share_closure:call",
@@ -822,7 +830,7 @@ async fn an_owner_without_the_share_cap_reports_no_share_cap_and_shares_nothing(
         ],
     );
     let report =
-        dashboard_share_closure(&store, &ada_no_share, ws, "ops-page", "team:ops", false, 2)
+        dashboard_share_closure(&store, &test_no_share, ws, "ops-page", "team:ops", false, 2)
             .await
             .expect("runs");
     assert_eq!(dispo(&report, "cpu"), D::NoShareCap);
@@ -838,23 +846,23 @@ async fn an_owner_without_the_share_cap_reports_no_share_cap_and_shares_nothing(
 #[tokio::test]
 async fn page_visibility_gates_the_closure_but_panel_ownership_gates_each_share() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     let aidan = principal("user:aidan", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
-    add_member(&store, &ada, ws, "ops", "user:aidan")
+    add_member(&store, &test, ws, "ops", "user:aidan")
         .await
         .expect("aidan joins ops");
 
-    // ada's page (shared to ops, so aidan can SEE it) embeds AIDAN's panel. He shares it to `design`
-    // — ada's team — so she may embed it (`validate_and_strip_refs` requires the ref resolve under
+    // test's page (shared to ops, so aidan can SEE it) embeds AIDAN's panel. He shares it to `design`
+    // — test's team — so she may embed it (`validate_and_strip_refs` requires the ref resolve under
     // the saver); its audience is still not `ops`, so it remains a real gap only HE can close.
     team_create(&store, ws, "design", "Design")
         .await
         .expect("design team");
-    add_member(&store, &ada, ws, "design", "user:ada")
+    add_member(&store, &test, ws, "design", "user:test")
         .await
-        .expect("ada is in design");
+        .expect("test is in design");
     save_panel(&store, &aidan, ws, "aidan", "Aidan's").await;
     panel_share(
         &store,
@@ -866,10 +874,10 @@ async fn page_visibility_gates_the_closure_but_panel_ownership_gates_each_share(
         1,
     )
     .await
-    .expect("aidan shares to design so ada can embed it");
+    .expect("aidan shares to design so test can embed it");
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -881,7 +889,7 @@ async fn page_visibility_gates_the_closure_but_panel_ownership_gates_each_share(
     .expect("saves");
     dashboard_share(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         DashboardVisibility::Team,
@@ -913,17 +921,17 @@ async fn page_visibility_gates_the_closure_but_panel_ownership_gates_each_share(
 #[tokio::test]
 async fn a_dangling_panel_ref_is_reported_not_silently_dropped() {
     let store = test_store().await;
-    let ws = "acme";
-    let ada = principal("user:ada", ws, AUTHOR);
+    let ws = "nube";
+    let test = principal("user:test", ws, AUTHOR);
     team_create(&store, ws, "ops", "Ops").await.expect("team");
 
     // `dashboard.save` validates every ref resolves under the saver, so a page can never be BUILT
     // around a missing panel. The dangling ref arises the real way: the panel is deleted out from
     // under a page that already embedded it ("validate at write, tolerate at read").
-    save_panel(&store, &ada, ws, "ghost", "Ghost").await;
+    save_panel(&store, &test, ws, "ghost", "Ghost").await;
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops-page",
         "Ops Page",
@@ -933,11 +941,11 @@ async fn a_dangling_panel_ref_is_reported_not_silently_dropped() {
     )
     .await
     .expect("saves with a live ref");
-    lb_host::panel_delete(&store, &ada, ws, "ghost", true, 2)
+    lb_host::panel_delete(&store, &test, ws, "ghost", true, 2)
         .await
         .expect("panel is deleted out from under the page");
 
-    let report = dashboard_share_closure(&store, &ada, ws, "ops-page", "team:ops", true, 3)
+    let report = dashboard_share_closure(&store, &test, ws, "ops-page", "team:ops", true, 3)
         .await
         .expect("runs");
     assert_eq!(

@@ -69,7 +69,7 @@ async fn zip_publish_installs_and_loads_a_trusted_artifact_so_it_is_callable() {
     let (gw, key) = gateway().await;
     let (id, sk, trusted) = publisher(7);
     let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW).with_trusted(trusted);
-    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP, ECHO_CAP]);
+    let tok = token(&key, "user:admin", "nube", &[PUBLISH_CAP, ECHO_CAP]);
 
     let zip_bytes = artifact_to_zip(&artifact(&id, &sk)).expect("pack zip");
     let resp = router(gw.clone())
@@ -109,7 +109,7 @@ async fn zip_an_untrusted_publisher_is_422_and_nothing_is_installed() {
     let (_trusted_id, _trusted_sk, trusted) = publisher(7);
     let (foreign_id, foreign_sk, _) = publisher(9);
     let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW).with_trusted(trusted);
-    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP, ECHO_CAP]);
+    let tok = token(&key, "user:admin", "nube", &[PUBLISH_CAP, ECHO_CAP]);
 
     let zip_bytes = artifact_to_zip(&artifact(&foreign_id, &foreign_sk)).expect("pack zip");
     let resp = router(gw)
@@ -130,7 +130,7 @@ async fn zip_publish_without_the_capability_is_denied_server_side() {
     let (gw, key) = gateway().await;
     let (id, sk, trusted) = publisher(7);
     let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW).with_trusted(trusted);
-    let tok = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let tok = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
 
     let zip_bytes = artifact_to_zip(&artifact(&id, &sk)).expect("pack zip");
     let resp = router(gw)
@@ -149,7 +149,7 @@ async fn zip_publish_without_the_capability_is_denied_server_side() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn zip_a_malformed_body_is_422_not_a_crash() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP]);
+    let tok = token(&key, "user:admin", "nube", &[PUBLISH_CAP]);
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -185,7 +185,7 @@ async fn json_413s_at_a_ceiling_the_same_payload_clears_over_zip() {
     let json_gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW)
         .with_trusted(trusted.clone())
         .with_max_extension_upload_bytes(ceiling);
-    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP]);
+    let tok = token(&key, "user:admin", "nube", &[PUBLISH_CAP]);
 
     let json_resp = router(json_gw)
         .oneshot(bearer(
@@ -208,7 +208,7 @@ async fn json_413s_at_a_ceiling_the_same_payload_clears_over_zip() {
     let zip_gw = Gateway::new(Arc::clone(&gw2.node), key2.clone(), common::NOW)
         .with_trusted(trusted)
         .with_max_extension_upload_bytes(ceiling);
-    let tok2 = token(&key2, "user:admin", "acme", &[PUBLISH_CAP]);
+    let tok2 = token(&key2, "user:admin", "nube", &[PUBLISH_CAP]);
     let zip_bytes = artifact_to_zip(&padded_artifact(wasm_bytes, &id, &sk)).expect("pack zip");
     assert!(
         (zip_bytes.len() as u64) < ceiling,

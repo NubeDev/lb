@@ -49,26 +49,26 @@ mod tests {
 
     #[test]
     fn parses_a_well_formed_credential() {
-        let b = parse_bearer("lbk_acme.k7f3a.s3cr3tfield").unwrap();
-        assert_eq!(b.ws, "acme");
+        let b = parse_bearer("lbk_nube.k7f3a.s3cr3tfield").unwrap();
+        assert_eq!(b.ws, "nube");
         assert_eq!(b.key_id, "k7f3a");
         assert_eq!(b.secret, "s3cr3tfield");
     }
 
     #[test]
     fn format_then_parse_round_trips() {
-        let bearer = format_bearer("acme", "k7f3a", "ABCDEF23");
-        assert_eq!(bearer, "lbk_acme.k7f3a.ABCDEF23");
+        let bearer = format_bearer("nube", "k7f3a", "ABCDEF23");
+        assert_eq!(bearer, "lbk_nube.k7f3a.ABCDEF23");
         let b = parse_bearer(&bearer).unwrap();
-        assert_eq!((b.ws, b.key_id, b.secret), ("acme", "k7f3a", "ABCDEF23"));
+        assert_eq!((b.ws, b.key_id, b.secret), ("nube", "k7f3a", "ABCDEF23"));
     }
 
     #[test]
     fn rejects_wrong_prefix() {
-        assert_eq!(parse_bearer("lb_acme.k7f3a.secret"), None);
-        assert_eq!(parse_bearer("acme.k7f3a.secret"), None);
+        assert_eq!(parse_bearer("lb_nube.k7f3a.secret"), None);
+        assert_eq!(parse_bearer("nube.k7f3a.secret"), None);
         assert_eq!(
-            parse_bearer("lbk_acme.k7f3a.secret".strip_prefix("lbk").unwrap()),
+            parse_bearer("lbk_nube.k7f3a.secret".strip_prefix("lbk").unwrap()),
             None
         );
     }
@@ -76,9 +76,9 @@ mod tests {
     #[test]
     fn rejects_wrong_field_count() {
         // Too few fields.
-        assert_eq!(parse_bearer("lbk_acme.k7f3a"), None);
+        assert_eq!(parse_bearer("lbk_nube.k7f3a"), None);
         // A dot inside what should be one field → four parts.
-        assert_eq!(parse_bearer("lbk_acme.k7f3a.sec.ret"), None);
+        assert_eq!(parse_bearer("lbk_nube.k7f3a.sec.ret"), None);
         // A dot inside the ws → four parts.
         assert_eq!(parse_bearer("lbk_ac.me.k7f3a.secret"), None);
         // Too many fields outright.
@@ -88,10 +88,10 @@ mod tests {
     #[test]
     fn rejects_empty_fields_and_non_base32() {
         assert_eq!(parse_bearer("lbk_.k7f3a.secret"), None); // empty ws
-        assert_eq!(parse_bearer("lbk_acme..secret"), None); // empty id
-        assert_eq!(parse_bearer("lbk_acme.k7f3a."), None); // empty secret
+        assert_eq!(parse_bearer("lbk_nube..secret"), None); // empty id
+        assert_eq!(parse_bearer("lbk_nube.k7f3a."), None); // empty secret
                                                            // Non-base32 chars in the id/secret.
-        assert_eq!(parse_bearer("lbk_acme.k7_3a.secret"), None);
-        assert_eq!(parse_bearer("lbk_acme.k7f3a.bad!char"), None);
+        assert_eq!(parse_bearer("lbk_nube.k7_3a.secret"), None);
+        assert_eq!(parse_bearer("lbk_nube.k7f3a.bad!char"), None);
     }
 }

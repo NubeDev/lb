@@ -30,7 +30,7 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 /// An admin principal for `ws` — every series cap this suite touches.
 fn admin(ws: &str) -> Principal {
     principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:series.retention.set:call",
@@ -78,12 +78,12 @@ fn sample_at(series: &str, producer: &str, seq: u64, ts: u64, payload: Value) ->
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_governing_tiers_method_becomes_the_bucket_value_column() {
     let node = Node::boot().await.unwrap();
-    let p = admin("acme");
+    let p = admin("nube");
 
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.retention.set",
         json!({
             "prefix": "plant.",
@@ -97,7 +97,7 @@ async fn the_governing_tiers_method_becomes_the_bucket_value_column() {
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.retention.set",
         json!({
             "prefix": "plant.coil",
@@ -110,7 +110,7 @@ async fn the_governing_tiers_method_becomes_the_bucket_value_column() {
 
     seed(
         &node,
-        "acme",
+        "nube",
         vec![
             sample_at("plant.temp", "p", 1, 1_000, json!(10.0)),
             sample_at("plant.temp", "p", 2, 2_000, json!(20.0)),
@@ -135,7 +135,7 @@ async fn the_governing_tiers_method_becomes_the_bucket_value_column() {
     let temp = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.read",
         read("plant.temp", json!({})),
     )
@@ -151,7 +151,7 @@ async fn the_governing_tiers_method_becomes_the_bucket_value_column() {
     let coil = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.read",
         read("plant.coil", json!({})),
     )
@@ -164,7 +164,7 @@ async fn the_governing_tiers_method_becomes_the_bucket_value_column() {
     let overridden = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.read",
         read("plant.temp", json!({"method": "max"})),
     )
@@ -185,8 +185,8 @@ async fn an_unknown_method_is_bad_input_not_a_denial_and_not_a_guess() {
     let node = Node::boot().await.unwrap();
     let err = call(
         &node,
-        &admin("acme"),
-        "acme",
+        &admin("nube"),
+        "nube",
         "series.read",
         json!({"series": "m.v", "mode": "buckets", "from": 0, "to": 10000, "width_ms": 10000, "method": "p95"}),
     )
@@ -208,11 +208,11 @@ async fn an_unknown_method_is_bad_input_not_a_denial_and_not_a_guess() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_tiers_method_still_governs_a_read_at_a_different_width() {
     let node = Node::boot().await.unwrap();
-    let p = admin("acme");
+    let p = admin("nube");
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.retention.set",
         json!({"prefix": "z.", "raw_for_ms": 0,
                "tiers": [{"width_ms": 900000, "keep_for_ms": 0, "method": "last"}]}),
@@ -221,7 +221,7 @@ async fn the_tiers_method_still_governs_a_read_at_a_different_width() {
     .unwrap();
     seed(
         &node,
-        "acme",
+        "nube",
         vec![
             sample_at("z.coil", "p", 1, 1_000, json!(0)),
             sample_at("z.coil", "p", 2, 2_000, json!(1)),
@@ -233,7 +233,7 @@ async fn the_tiers_method_still_governs_a_read_at_a_different_width() {
         let out = call(
             &node,
             &p,
-            "acme",
+            "nube",
             "series.read",
             json!({"series": "z.coil", "mode": "buckets", "from": 0, "to": 900000, "width_ms": width}),
         )

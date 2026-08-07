@@ -115,9 +115,9 @@ carries workspace + caps, verified per request by `session::authenticate`
 (`role/gateway/src/session/authenticate.rs:38`), so the wall holds at the front door with **no new auth
 code**. Crucially, `POST /mcp/call`'s body is `{tool, args}` only (`role/gateway/src/routes/mcp.rs` —
 `McpCall` carries no workspace), so **the server always reads the workspace from the token**. That makes
-`-w` a **credential selector, not a workspace override**: `lb -w acme …` loads the `acme` credential; if
-none is stored it is a **loud client-side error** ("no session for workspace acme; run `lb login -w
-acme`"), never a silent ignore and never a spoofable override. When `api-keys-scope.md` ships, `lb`
+`-w` a **credential selector, not a workspace override**: `lb -w nube …` loads the `nube` credential; if
+none is stored it is a **loud client-side error** ("no session for workspace nube; run `lb login -w
+nube`"), never a silent ignore and never a spoofable override. When `api-keys-scope.md` ships, `lb`
 becomes its first caller: an `lb_{ws}_{id}_{secret}` credential verifies per request for instant revoke,
 and the CLI's per-workspace credential slot becomes a key slot with no command-tree change.
 
@@ -171,11 +171,11 @@ logged-in user (a real parity risk, called out below).
 
 ## Example flow
 
-1. **Install + login (remote).** `lb login --url http://127.0.0.1:8080 --email ada@acme.local` posts
+1. **Install + login (remote).** `lb login --url http://127.0.0.1:8080 --email test@nube.local` posts
    `/auth/login {email, password}`; one workspace ⇒ auto-entered (with several, `-w <ws>` completes the
-   pick via `/auth/select`). It stores the token **keyed by workspace** (`acme → <token>`) plus
-   `gateway_url` and `default_workspace: acme` in `~/.lazybones/config` (0600). `lb whoami` prints
-   `ws: acme  user: dev  role: member  …`.
+   pick via `/auth/select`). It stores the token **keyed by workspace** (`nube → <token>`) plus
+   `gateway_url` and `default_workspace: nube` in `~/.lazybones/config` (0600). `lb whoami` prints
+   `ws: nube  user: dev  role: member  …`.
 2. **The spine, one command.** `lb call hello.echo '{"msg":"hi"}'` → `POST /mcp/call` `{tool:
    "hello.echo", args: {…}}` → the server authenticates the token, checks `mcp:hello.echo:call`,
    dispatches, returns the tool's JSON. The CLI prints it (pretty by default, raw with `-o json`).
@@ -184,13 +184,13 @@ logged-in user (a real parity risk, called out below).
 4. **Honest deny.** `lb call series.delete '{…}'` with a token lacking `mcp:series.delete:call` → the
    server returns `403`; the CLI prints `DENIED  mcp:series.delete:call` and exits non-zero. It never
    prints a success the server did not grant.
-5. **`-w` selects a credential, never overrides the wall.** After `lb login -w acme` and
+5. **`-w` selects a credential, never overrides the wall.** After `lb login -w nube` and
    `lb login -w beta`, `lb -w beta inbox list` loads the `beta` token and acts there. `lb -w gamma …`
    with no `gamma` credential errors loudly: *"no session for workspace gamma; run `lb login -w
-   gamma`."* Passing `-w beta` while the `acme` token is loaded is **not** a cross-workspace hop — the
+   gamma`."* Passing `-w beta` while the `nube` token is loaded is **not** a cross-workspace hop — the
    `beta` token's own workspace is what reaches the server (there is no ws in the body to override).
-6. **Local mode (offline).** `lb local -w acme call hello.echo '{"msg":"hi"}'` embeds `Node::boot()`
-   (the `node/src/main.rs:43` pattern), mints a `dev_claims`-shaped principal for `acme`, and calls
+6. **Local mode (offline).** `lb local -w nube call hello.echo '{"msg":"hi"}'` embeds `Node::boot()`
+   (the `node/src/main.rs:43` pattern), mints a `dev_claims`-shaped principal for `nube`, and calls
    `call_tool` in-process — **no network, no gateway, no daemon**. Identical output to step 2.
 7. **Retire curl+jq.** `lb devkit sign hello-v2` (over the `lb-devkit` library `lb-pack` already uses)
    → `lb ext publish` (`POST /extensions`) → `204` ⇒ verified, installed, loaded live. This **is**

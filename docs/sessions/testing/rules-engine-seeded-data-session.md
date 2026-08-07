@@ -174,7 +174,7 @@ Node still running (`make dev`, `http://127.0.0.1:8080`), DB up + seeded, all 20
 - **Run one live:** `POST /rules/run {"rule_id":"seed-01-fleet-energy-summary"}` → per-point stats over
   490k rows; or `{"rule_id":"seed-08-threshold-alert-with-param","params":{"kwh_threshold":4.0}}` to
   see the param + alert path.
-- Token: `POST /login {"user":"ada","workspace":"acme"}`.
+- Token: `POST /login {"user":"test","workspace":"nube"}`.
 
 I left the 20 saved rules in place on purpose so you can list/get/run them yourself. Runner artifacts
 (the rule bodies + the pass/fail runner) are in the session scratchpad; the authoritative copies are the

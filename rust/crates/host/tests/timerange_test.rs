@@ -4,7 +4,7 @@
 //!   - HAPPY PATH (the positive control): a fresh subject HOLDING `mcp:time.range.resolve:call`
 //!     resolves a window and gets `{fromMs,toMs,fromIso,toIso}`.
 //!   - CAPABILITY DENY: the same verb without the cap is refused OPAQUELY at the caps wall — a
-//!     fresh subject (not the suite's usual ada@acme), so no residue grant can fake a pass.
+//!     fresh subject (not the suite's usual test@nube), so no residue grant can fake a pass.
 //!   - MALFORMED INPUT: a bad token / a range token with `to` / an empty `from` / a bad tz are
 //!     loud `BadInput`s NAMING the offender — nothing defaults silently.
 //!

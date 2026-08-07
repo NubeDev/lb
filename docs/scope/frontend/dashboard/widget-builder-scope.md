@@ -251,7 +251,7 @@ mount(el, ctx, bridge)                       // unchanged signature (matches the
 ## Example flow
 
 1. **Install.** An admin installs an `mqtt-bridge` extension into `kfc`, approving
-   `mcp:mqtt.status:call`, `mcp:mqtt.publish:call`, `net:tls:broker.acme:8883`. The extension also ships a
+   `mcp:mqtt.status:call`, `mcp:mqtt.publish:call`, `net:tls:broker.nube:8883`. The extension also ships a
    `[[widget]]` tile (`label = "Cooler Switch"`, `scope = ["mqtt.status","mqtt.publish"]`).
 2. **Author a read widget (no code).** Alice opens a dashboard in edit mode. The **source picker** shows
    *Series → cooler.temp*. She picks it, the builder runs `series.read`, introspects columns, she chooses
@@ -260,7 +260,7 @@ mount(el, ctx, bridge)                       // unchanged signature (matches the
    `dashboard.save`.
 3. **Author a scripted widget that writes.** Bob picks **template**, types a JSX snippet that renders the
    latest cooler reading and a "Defrost" button whose `onClick` calls
-   `bridge.call("mqtt.publish", {topic:"acme/cooler/defrost", payload:true})`. It saves as a
+   `bridge.call("mqtt.publish", {topic:"nube/cooler/defrost", payload:true})`. It saves as a
    `render_template:{id}` row + a cell. It renders in a **sandboxed iframe**; the bridge confirms
    `mqtt.publish ∈ cell.tools ∩ grant`, forwards it; the host re-checks `mcp:mqtt.publish:call` + the `kfc`
    workspace (from Alice's token, not the iframe) → the command is published. Token-less, ws-scoped, gated.

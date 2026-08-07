@@ -113,7 +113,7 @@ async fn a_member_caller_under_the_persona_is_denied_devkit_and_publish() {
     );
     // An admin seeds + grants the pins.
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[SKILL_WRITE, SKILL_READ, "mcp:agent.persona.get:call"],
     );
@@ -140,7 +140,11 @@ async fn a_member_caller_under_the_persona_is_denied_devkit_and_publish() {
 async fn the_persona_carries_the_ask_preset_on_node_mutating_verbs() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     seed_personas(&node.store).await.unwrap();
-    let admin = principal("user:ada", "coding-preset", &["mcp:agent.persona.get:call"]);
+    let admin = principal(
+        "user:test",
+        "coding-preset",
+        &["mcp:agent.persona.get:call"],
+    );
     let p = agent_persona_get(&node, &admin, "coding-preset", PERSONA)
         .await
         .expect("resolves");
@@ -254,7 +258,7 @@ async fn activating_the_persona_with_an_external_runtime_fails_with_a_named_erro
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "coding-runtime";
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             INVOKE,
@@ -296,7 +300,7 @@ async fn the_persona_runs_fine_on_the_in_house_default_runtime() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "coding-inhouse";
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             INVOKE,
@@ -358,7 +362,7 @@ async fn a_hostile_scaffold_id_is_rejected_not_a_filesystem_escape() {
     let ws = "coding-fuzz";
     // An ADMIN caller (holds the devkit caps) so we get PAST the wall to the input validation — the
     // point is that even an authorized caller can't traverse the filesystem with a hostile id.
-    let admin = principal("user:ada", ws, &["mcp:devkit.scaffold:call"]);
+    let admin = principal("user:test", ws, &["mcp:devkit.scaffold:call"]);
 
     for hostile in [
         "../escape",
@@ -403,7 +407,7 @@ async fn a_real_scaffold_works_through_the_persona_devkit_surface() {
     // extension tree lands on disk. (Scaffold only — the cargo build is the heavy e2e test's concern.)
     let _node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "coding-e2e-scaffold";
-    let admin = principal("user:ada", ws, &["mcp:devkit.scaffold:call"]);
+    let admin = principal("user:test", ws, &["mcp:devkit.scaffold:call"]);
 
     let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("persona-ext-e2e");
     let _ = std::fs::remove_dir_all(&root);
@@ -441,7 +445,7 @@ async fn a_publish_proposed_under_the_persona_suspends_for_a_human_it_never_publ
     // The caller HOLDS ext.publish (so the gate is the persona's Ask policy, not a wall-deny) + the
     // skill-read/invoke/publish caps. The run is on the in-house default (the persona allows it).
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             INVOKE,

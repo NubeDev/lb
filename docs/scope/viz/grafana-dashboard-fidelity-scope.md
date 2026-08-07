@@ -205,7 +205,7 @@ aligns, and reads like the original.
 
 ## Example flow
 
-An ops user imports the live pdnsw IAQ export into ws `acme` (datasource `pdnsw` registered).
+An ops user imports the live pdnsw IAQ export into ws `nube` (datasource `pdnsw` registered).
 
 1. **Preview.** `dashboard.import {json}` (no `mappings`) → `{report}`: 33 panels mappable, 2 datasources to
    bind (`-- Grafana --`, `Rubix OS Data Source`), `migratedFrom: 27`, and — **new** — degrade lines for the

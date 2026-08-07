@@ -13,7 +13,7 @@ The `counter`/accumulator node (non-goal below) remains the one follow-up. Promo
 > up." … "What if I have 2× triggers?" … "Something seems wrong, this should be SO simple. We need a
 > proper persistent flow runtime — like Node-RED with PLC reliability."
 
-Three failures on the live canvas (`chain4`, ws `acme`):
+Three failures on the live canvas (`chain4`, ws `nube`):
 
 1. **Opening an armed flow shows a frozen, contradictory state.** The banner read "Armed … 54 runs"
    *and* "no runs yet"; the nodes showed a single finished run's `DONE` snapshot, not a living value.

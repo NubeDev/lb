@@ -27,7 +27,7 @@ Session log: `docs/sessions/extensions/proof-panel-session.md`. Public truth:
   and `src/remoteEntry.ts` injects the compiled Tailwind CSS `?inline` and re-exports the frozen
   `mount(el, ctx, bridge)`. Manifest `[ui] entry = "remoteEntry.js"`.
 - **Green:** Playwright e2e (`ui/e2e/proof-panel.spec.ts`) loads the BUILT shell on :4173 against the
-  REAL node on :8080, logs in `user:ada`/`acme`, opens the page, asserts real content rendered into
+  REAL node on :8080, logs in `user:test`/`nube`, opens the page, asserts real content rendered into
   `[data-ext-host="proof-panel"]` with NO "Could not load" / NO "Invalid hook call" / no console
   errors. Screenshot: `ui/e2e/__screenshots__/proof-panel-mounted.png`. Proof-panel UI unit tests
   green (6). (Still to run/confirm: shell `pnpm test:gateway`.)

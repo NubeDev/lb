@@ -78,7 +78,7 @@ was found in a browser in about 90 seconds.
   actually writes — while still passing `team:ops` as the verb's *argument*, which proves both input
   forms normalize correctly.
 
-Verified against the running node and in the browser as `bob@acme.com`: the widget renders its live
+Verified against the running node and in the browser as `bob@nube.com`: the widget renders its live
 table (`site-001 Northside Factory`, …) instead of the placeholder.
 
 ## Lesson

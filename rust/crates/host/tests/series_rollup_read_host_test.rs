@@ -94,13 +94,13 @@ async fn fold(store: &Store, p: &Principal, ws: &str, now_ms: u64) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn reads_the_stored_rows_with_their_full_stat_set() {
     let store = Store::memory().await.unwrap();
-    let p = seed(&store, "acme", 5).await;
-    fold(&store, &p, "acme", 60_000).await;
+    let p = seed(&store, "nube", 5).await;
+    fold(&store, &p, "nube", 60_000).await;
 
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.rollup.read",
         &json!({ "series": "cpu", "from": 0, "to": 60_000 }),
     )
@@ -128,12 +128,12 @@ async fn reads_the_stored_rows_with_their_full_stat_set() {
 async fn a_window_with_no_stored_rows_is_empty_never_decimated_raw() {
     let store = Store::memory().await.unwrap();
     // Seeded but NEVER folded — five raw samples are on disc, `series_rollup` is untouched.
-    let p = seed(&store, "acme", 5).await;
+    let p = seed(&store, "nube", 5).await;
 
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.rollup.read",
         &json!({ "series": "cpu", "from": 0, "to": 60_000 }),
     )
@@ -153,13 +153,13 @@ async fn a_window_with_no_stored_rows_is_empty_never_decimated_raw() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_window_actually_bounds_the_result() {
     let store = Store::memory().await.unwrap();
-    let p = seed(&store, "acme", 5).await;
-    fold(&store, &p, "acme", 60_000).await;
+    let p = seed(&store, "nube", 5).await;
+    fold(&store, &p, "nube", 60_000).await;
 
     let out = call_ingest_tool(
         &store,
         &p,
-        "acme",
+        "nube",
         "series.rollup.read",
         // The stored row starts at t=0; ask strictly after it.
         &json!({ "series": "cpu", "from": 10_000, "to": 60_000 }),
@@ -174,14 +174,14 @@ async fn the_window_actually_bounds_the_result() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn without_the_read_cap_it_denies() {
     let store = Store::memory().await.unwrap();
-    let p = seed(&store, "acme", 5).await;
-    fold(&store, &p, "acme", 60_000).await;
+    let p = seed(&store, "nube", 5).await;
+    fold(&store, &p, "nube", 60_000).await;
 
-    let capless = principal("client:nope", "acme", &[]);
+    let capless = principal("client:nope", "nube", &[]);
     let err = call_ingest_tool(
         &store,
         &capless,
-        "acme",
+        "nube",
         "series.rollup.read",
         &json!({ "series": "cpu", "from": 0, "to": 60_000 }),
     )
@@ -204,12 +204,12 @@ async fn without_the_read_cap_it_denies() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn is_reachable_through_the_real_dispatcher_with_only_the_read_cap() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", "acme", &[READ]);
+    let test = principal("user:test", "nube", &[READ]);
 
     let out = call_tool(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "series.rollup.read",
         &json!({ "series": "cpu", "from": 0, "to": 60_000 }).to_string(),
     )

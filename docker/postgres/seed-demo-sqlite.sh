@@ -20,8 +20,8 @@ GW="${2:-http://127.0.0.1:8080}"
 # The login handle is an EMAIL: `POST /auth/login {email, password}` is the only human door (the
 # legacy `POST /login {user, workspace}` was deleted in the 2026-08-03 pre-production sweep). These
 # match the boot seed's `LB_SEED_EMAIL`/`LB_SEED_PASSWORD` defaults.
-EMAIL="${3:-ada@acme.local}"
-WS="${4:-acme}"
+EMAIL="${3:-test@nube.local}"
+WS="${4:-nube}"
 PASSWORD="${5:-dev-admin-pw}"
 NAME="demo-buildings"
 

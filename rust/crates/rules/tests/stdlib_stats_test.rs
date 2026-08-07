@@ -42,13 +42,13 @@ fn run_allowing(allow: &[&str], body: &str) -> RuleOutput {
         32,
     );
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: body.into(),
         params: vec![],
     };
     let allow: HashSet<String> = allow.iter().map(|s| s.to_string()).collect();
-    let mut rr = RuleRun::new("acme".into(), Arc::new(allow), rhai::Map::new(), 0);
+    let mut rr = RuleRun::new("nube".into(), Arc::new(allow), rhai::Map::new(), 0);
     eng.run(&rule, &mut rr).unwrap()
 }
 
@@ -154,12 +154,12 @@ fn author_errors_surface_clearly() {
         32,
     );
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: r#"mean([])"#.into(),
         params: vec![],
     };
-    let mut rr = RuleRun::new("acme".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
+    let mut rr = RuleRun::new("nube".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
     let err = format!("{:?}", eng.run(&rule, &mut rr).unwrap_err());
     assert!(
         err.contains("mean"),

@@ -45,7 +45,7 @@ make seed-demo-sqlite                # generates buildings.db + datasource.add {
 
 BASE=http://127.0.0.1:8080
 TOKEN=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+  -d '{"user":"user:test","workspace":"nube"}' | jq -r .token)
 A="authorization: Bearer $TOKEN"; C="content-type: application/json"
 ```
 
@@ -86,7 +86,7 @@ curl -s $BASE/dashboards/e2e-dash -H "$A"      -o /dev/null -w "%{http_code}\n" 
 ```
 
 A create you never read back proves nothing — the read-back is what proves it round-tripped the store,
-not local state. **Observed shape:** `{owner:"user:ada", visibility:"private", schemaVersion:3}`.
+not local state. **Observed shape:** `{owner:"user:test", visibility:"private", schemaVersion:3}`.
 
 ### 2.2 Panels — a reusable library panel + a ref cell
 
@@ -144,7 +144,7 @@ jq -n --arg sql "$SQL" '{
   id:"keep-dash", title:"E2E — panel (editor-visible)",
   cells:[{ i:"c1", x:0, y:0, w:8, h:4, v:3, widget_type:"chart", view:"table", title:"Energy by building",
     sources:[{refId:"A", tool:"federation.query",
-      datasource:{type:"federation", uid:"datasource:acme:demo-buildings"},   # ← the picker reads this
+      datasource:{type:"federation", uid:"datasource:nube:demo-buildings"},   # ← the picker reads this
       args:{source:"demo-buildings", sql:$sql}}],
     options:{ sql:{ mode:"code", format:"table", rawSql:$sql } } }],   # ← the SQL box reads this
   variables:[] }' \
@@ -162,7 +162,7 @@ Variables have **three testable layers**; drive each against the live node.
 
 **(a) A `site` query-variable + a cell that re-points by it — round-tripped, then FIRED.**
 Save a dashboard with a **query** variable `site` (its dropdown resolves from the seeded source) and a
-cell whose SQL references `${site}`. This is the exact flow driven live on 2026-07-09 (`acme`) — the
+cell whose SQL references `${site}`. This is the exact flow driven live on 2026-07-09 (`nube`) — the
 outputs below are observed, not illustrative:
 
 ```bash
@@ -176,7 +176,7 @@ curl -s -X POST $BASE/dashboards -H "$A" -H "$C" -d '{
   "cells":[{"i":"c1","x":0,"y":0,"w":12,"h":6,"title":"Energy kWh for ${site}",
     "source":{"tool":"federation.query","args":{"source":"demo-buildings",
       "sql":"SELECT s.name AS site, ROUND(SUM(pr.value),0) AS kwh FROM point_reading pr JOIN point p ON p.id=pr.point_id JOIN meter m ON m.id=p.meter_id JOIN site s ON s.id=m.site_id WHERE s.name = '"'"'${site}'"'"' AND p.name='"'"'Energy kWh'"'"' GROUP BY s.name"}}}]}'
-# → {"id":"e2e-site-vars","owner":"user:ada","visibility":"private","schemaVersion":3}
+# → {"id":"e2e-site-vars","owner":"user:test","visibility":"private","schemaVersion":3}
 
 # read back — the site variable definition + the ${site} cell template round-trip through the store
 curl -s $BASE/dashboards/e2e-site-vars -H "$A" | jq '{var: .variables[0].name, cell_sql: .cells[0].source.args.sql}'
@@ -363,13 +363,13 @@ curl -s $BASE/dashboards -o /dev/null -w "%{http_code}\n"   # NO token → 401
 ### 2.5 Access — the workspace wall (mandatory)
 
 ```bash
-# seed a dashboard + a var query in acme
+# seed a dashboard + a var query in nube
 curl -s -X POST $BASE/dashboards -H "$A" -H "$C" \
   -d '{"id":"iso-dash","title":"secret","cells":[],"variables":[]}' -o /dev/null
 # a globex token must NOT see it — and its variable query reaches only globex data
 TB=$(curl -s -X POST $BASE/login -H "$C" -d '{"user":"user:bob","workspace":"globex"}' | jq -r .token)
 curl -s $BASE/dashboards/iso-dash -H "authorization: Bearer $TB" -o /dev/null -w "%{http_code}\n"  # 404
-curl -s $BASE/dashboards         -H "authorization: Bearer $TB"                                    # [] (no acme rows)
+curl -s $BASE/dashboards         -H "authorization: Bearer $TB"                                    # [] (no nube rows)
 curl -s -X DELETE $BASE/dashboards/iso-dash -H "$A" -o /dev/null   # remove the isolation SCAFFOLD only
 ```
 
@@ -414,7 +414,7 @@ find the root cause, add a **regression test** (`DashboardView.gateway.test.tsx`
   `e2e-site-vars` (the **site** variable-bar dashboard) still in place, the `energy-by-building` panel
   still registered, the `demo-buildings` source still registered, the node still running. Your **final
   response hands the user the exact page** — e.g. "open **`e2e-site-vars`** at
-  http://127.0.0.1:8080/#/t/acme/dashboards — pick a site in the variable bar and watch the chart
+  http://127.0.0.1:8080/#/t/nube/dashboards — pick a site in the variable bar and watch the chart
   re-query the seeded data; the URL updates to `?var-site=…` so you can share the exact view. I left it +
   `keep-dash` in place so you can check."
   Do **not** delete them; only the throwaway/scaffold rows (`e2e-dash`, `iso-dash`) are removed.

@@ -11,7 +11,7 @@ cron/reconcile/source machinery this slice finally wires "Run" onto).
 > "A flow must run like a PLC — 100% reliable, backend-driven, and when you hit Run it runs until you
 > stop it." … "It needs to be like Node-RED — it's a reactive engine."
 
-Three concrete failures were seen on the running canvas (`:8080`, ws `acme`, flow `chain4`):
+Three concrete failures were seen on the running canvas (`:8080`, ws `nube`, flow `chain4`):
 
 1. **Store revision conflict — the run never settles.** The banner showed
    `store backend error: Versioned error: A deserialization error occured: Invalid revision '174'

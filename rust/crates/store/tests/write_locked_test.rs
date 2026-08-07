@@ -29,7 +29,7 @@ async fn rev(store: &Store, ws: &str, table: &str, id: &str) -> Option<i64> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_same_record_writes_never_conflict() {
     let store = Store::memory().await.expect("open store");
-    let ws = "acme";
+    let ws = "nube";
     let n = 16;
 
     let mut handles = Vec::new();

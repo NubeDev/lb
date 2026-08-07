@@ -147,7 +147,7 @@ store table. Rejected: it duplicates the `Item`/`Resolution`/outbox trio for no 
 
 A facilities analyst writes a rule that proposes a refund and gates the email on a manager's approval.
 
-1. The rule runs inside `rules.run`, workspace pinned to `acme`, the caller's principal on every seam:
+1. The rule runs inside `rules.run`, workspace pinned to `nube`, the caller's principal on every seam:
    ```
    let breach = source("series").last("1h").col("value").max();   // a real read
    if breach > 5.0 {
@@ -158,14 +158,14 @@ A facilities analyst writes a rule that proposes a refund and gates the email on
            body: `Refund proposed — cooler breached at ${breach}°C`,
            route: "team:managers",                                 // who must sign off
            on_approve: #{ target: "email", action: "send",         // the HELD effect
-                          payload: #{ to: "ops@acme.io", subject: "Refund approved" } },
+                          payload: #{ to: "ops@nube.io", subject: "Refund approved" } },
        });
    }
    ```
 2. The verb builds two writes through `call_tool` under `caller ∩ grant`: an `inbox.record` of a
    `needs:approval route:team:managers` item, and an `outbox.enqueue` of the `email.send` effect in status
    **`held`** (keyed by the item id `refund-…`). Both charge the per-run write meter.
-3. The Inbox UI shows the item awaiting approval, **including the proposed effect** (email to `ops@acme.io`)
+3. The Inbox UI shows the item awaiting approval, **including the proposed effect** (email to `ops@nube.io`)
    — the reviewer sees exactly what approving does.
 4. A manager clicks **Approve** → `inbox.resolve("refund-…", "approved")` writes the `Resolution`.
 5. The **approval reactor** tick sees the new `Approved` resolution, looks up the held effect by the item

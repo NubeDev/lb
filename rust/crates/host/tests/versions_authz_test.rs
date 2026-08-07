@@ -126,7 +126,7 @@ async fn seed(node: &Arc<Node>, p: &Principal, ws: &str, id: &str) -> (String, S
 async fn restore_is_refused_without_the_kinds_save_cap() {
     let ws = "ver-deny-escalation";
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let owner = author("user:ada", ws);
+    let owner = author("user:test", ws);
     let (_, oldest) = seed(&node, &owner, ws, "ops").await;
 
     // A viewer-shaped principal: the whole versions read surface AND the restore verb's own cap,
@@ -211,7 +211,7 @@ async fn restore_is_refused_without_the_kinds_save_cap() {
 async fn get_is_refused_without_its_own_grant() {
     let ws = "ver-deny-get";
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let owner = author("user:ada", ws);
+    let owner = author("user:test", ws);
     let (newest, _) = seed(&node, &owner, ws, "ops").await;
 
     let lister = principal("user:len", ws, &["mcp:versions.list:call", "store:*:read"]);
@@ -241,7 +241,7 @@ async fn get_is_refused_without_its_own_grant() {
 async fn config_set_is_admin_only_while_config_get_is_not() {
     let ws = "ver-deny-config";
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let member = author("user:ada", ws);
+    let member = author("user:test", ws);
 
     let view = call(&node, &member, ws, "versions.config.get", json!({})).await;
     assert_eq!(view["cap"], json!(20), "a member reads the cap in force");
@@ -269,7 +269,7 @@ async fn config_set_is_admin_only_while_config_get_is_not() {
 async fn a_denial_reveals_nothing_about_what_exists() {
     let ws = "ver-deny-opaque";
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let owner = author("user:ada", ws);
+    let owner = author("user:test", ws);
     let (real, _) = seed(&node, &owner, ws, "ops").await;
 
     let nobody = principal("user:nemo", ws, &["store:*:read"]);
@@ -385,8 +385,8 @@ async fn rings_are_invisible_across_workspaces_and_a_cross_ws_restore_is_refused
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws_a = "ver-iso-a";
     let ws_b = "ver-iso-b";
-    let in_a = author("user:ada", ws_a);
-    let in_b = author("user:ada", ws_b);
+    let in_a = author("user:test", ws_a);
+    let in_b = author("user:test", ws_b);
 
     let (_, a_oldest) = seed(&node, &in_a, ws_a, "shared-id").await;
 
@@ -462,7 +462,7 @@ async fn rings_are_invisible_across_workspaces_and_a_cross_ws_restore_is_refused
 async fn undo_after_a_dashboard_restore_returns_the_pre_restore_record() {
     let ws = "ver-undo";
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let p = author("user:ada", ws);
+    let p = author("user:test", ws);
     let (_, oldest) = seed(&node, &p, ws, "ops").await;
 
     call(
@@ -478,7 +478,7 @@ async fn undo_after_a_dashboard_restore_returns_the_pre_restore_record() {
 
     // The restore is journaled on the dashboard's OWN undo surface (its record id), as an undoable
     // step — not as an opaque non-generic marker.
-    let items = history_list(&node.store, &p, ws, "user:ada", "ops")
+    let items = history_list(&node.store, &p, ws, "user:test", "ops")
         .await
         .expect("history reads")
         .items;
@@ -488,7 +488,7 @@ async fn undo_after_a_dashboard_restore_returns_the_pre_restore_record() {
     );
     assert!(items[0].undoable, "a restore is undoable");
 
-    host_undo(&node.store, &p, ws, "user:ada", "ops")
+    host_undo(&node.store, &p, ws, "user:test", "ops")
         .await
         .expect("undo applies");
     let live = call(&node, &p, ws, "dashboard.get", json!({ "id": "ops" })).await;

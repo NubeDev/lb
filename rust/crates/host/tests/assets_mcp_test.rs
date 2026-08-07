@@ -41,11 +41,11 @@ const DWRITE: &str = "store:doc/*:write";
 async fn put_then_get_over_the_mcp_bridge() {
     let ws = "ws-mcp-roundtrip";
     let node = Node::boot().await.unwrap();
-    let ada = principal("user:ada", ws, &[MCP, DREAD, DWRITE]);
+    let test = principal("user:test", ws, &[MCP, DREAD, DWRITE]);
 
     let put = call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.put_doc",
         &json!({"id": "scope-x", "title": "Scope X", "content": "draft", "ts": 1}),
@@ -56,7 +56,7 @@ async fn put_then_get_over_the_mcp_bridge() {
 
     let got = call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.get_doc",
         &json!({"id": "scope-x"}),
@@ -71,10 +71,10 @@ async fn mcp_gate_denies_without_the_assets_call_cap() {
     let ws = "ws-mcp-deny";
     let node = Node::boot().await.unwrap();
     // Holds the STORE caps but NOT mcp:assets.*:call → refused at the MCP gate, before the verb.
-    let ada = principal("user:ada", ws, &[DREAD, DWRITE]);
+    let test = principal("user:test", ws, &[DREAD, DWRITE]);
     let err = call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.put_doc",
         &json!({"id": "x", "title": "T", "content": "c", "ts": 1}),
@@ -90,10 +90,10 @@ async fn store_gate_denies_through_mcp_without_the_store_cap() {
     let node = Node::boot().await.unwrap();
     // Passes the MCP gate (has mcp:assets.*:call) but lacks the store write cap → the asset gate
     // refuses. An MCP grant never bypasses the store surface.
-    let ada = principal("user:ada", ws, &[MCP]);
+    let test = principal("user:test", ws, &[MCP]);
     let err = call_asset_tool(
         &node.store,
-        &ada,
+        &test,
         ws,
         "assets.put_doc",
         &json!({"id": "x", "title": "T", "content": "c", "ts": 1}),
@@ -106,10 +106,10 @@ async fn store_gate_denies_through_mcp_without_the_store_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn mcp_isolation_ws_b_cannot_reach_ws_a_doc() {
     let node = Node::boot().await.unwrap();
-    let ada_a = principal("user:ada", "ws-mcp-iso-a", &[MCP, DREAD, DWRITE]);
+    let test_a = principal("user:test", "ws-mcp-iso-a", &[MCP, DREAD, DWRITE]);
     call_asset_tool(
         &node.store,
-        &ada_a,
+        &test_a,
         "ws-mcp-iso-a",
         "assets.put_doc",
         &json!({"id": "scope-x", "title": "T", "content": "secret", "ts": 1}),
@@ -118,10 +118,10 @@ async fn mcp_isolation_ws_b_cannot_reach_ws_a_doc() {
     .unwrap();
 
     // A ws-B token tries to reach into ws-A through the bridge → gate 1 (workspace) refuses.
-    let ada_b = principal("user:ada", "ws-mcp-iso-b", &[MCP, DREAD]);
+    let test_b = principal("user:test", "ws-mcp-iso-b", &[MCP, DREAD]);
     let err = call_asset_tool(
         &node.store,
-        &ada_b,
+        &test_b,
         "ws-mcp-iso-a", // target another workspace
         "assets.get_doc",
         &json!({"id": "scope-x"}),

@@ -34,7 +34,7 @@ const client = new Client("http://127.0.0.1:8080", process.env.LB_KEY!);
 
 // or dev/admin script: log in to get a 12h session token
 let client = new Client("http://127.0.0.1:8080", "placeholder");
-const { client: authed, reply } = await client.login("ada", "acme");
+const { client: authed, reply } = await client.login("test", "nube");
 client = authed;
 ```
 
@@ -81,7 +81,7 @@ import { signWebhook, postWebhook } from "@lazybones/client-node";
 const body = Buffer.from(JSON.stringify({ event: "furnace-on" }));
 const sig = signWebhook(sharedSecret, body);
 const accepted = await postWebhook(
-  client, "acme", "wh_x",
+  client, "nube", "wh_x",
   { "X-Signature": sig },
   body,
 );
@@ -110,9 +110,9 @@ try {
 ```bash
 make cloud                              # terminal 1: boot 127.0.0.1:8080
 cd clients/node-ts && pnpm install
-LB_URL=http://127.0.0.1:8080 LB_USER=ada LB_WORKSPACE=acme pnpm example
+LB_URL=http://127.0.0.1:8080 LB_USER=test LB_WORKSPACE=nube pnpm example
 # or with an API key:
-LB_KEY=lbk_acme.k7f3a.ABCDEF23 pnpm example
+LB_KEY=lbk_nube.k7f3a.ABCDEF23 pnpm example
 ```
 
 ## Lay of the land

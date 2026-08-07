@@ -70,7 +70,7 @@ POST /mcp/call
 ```
 
 ```json
-{ "ok": true, "workspace": "acme" }
+{ "ok": true, "workspace": "nube" }
 ```
 
 Use it after an out-of-band change the cache cannot see (an external writer to a sqlite datasource, a

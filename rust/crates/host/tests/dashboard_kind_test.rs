@@ -71,12 +71,12 @@ fn chart_cell(series: &str) -> Cell {
 async fn dashboard_kind_round_trips_preserves_and_validates() {
     let ws = "ws-dash-kind";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // (d) A board created with NO kind is a dashboard — empty, not "dashboard", and not a report.
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -86,14 +86,14 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
     )
     .await
     .unwrap();
-    let plain = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let plain = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(plain.kind, "");
     assert!(!plain.is_report());
 
     // (a) Create a REPORT-kind record.
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "energy",
         "Monthly Energy Report",
@@ -107,12 +107,12 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "energy").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "energy").await.unwrap();
     assert_eq!(got.kind, "report");
     assert!(got.is_report());
 
     // (b) The cheap roster row carries the kind, so a list call partitions both surfaces.
-    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    let roster = dashboard_list(&store, &test, ws).await.unwrap();
     let report_row = roster.iter().find(|s| s.id == "energy").unwrap();
     let dash_row = roster.iter().find(|s| s.id == "ops").unwrap();
     assert_eq!(report_row.kind, "report");
@@ -126,7 +126,7 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
     // (c) A plain layout save sends no kind — the report must still be a report afterwards.
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "energy",
         "Monthly Energy Report",
@@ -136,14 +136,14 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "energy").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "energy").await.unwrap();
     assert_eq!(got.cells.len(), 2);
     assert!(got.is_report(), "a layout save must not demote a report");
 
     // ...and so does a partial meta save that touches a different field.
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "energy",
         "Monthly Energy Report",
@@ -157,14 +157,14 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "energy").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "energy").await.unwrap();
     assert_eq!(got.icon, "file-text");
     assert!(got.is_report(), "preserve-on-omit holds for kind");
 
     // An EXPLICIT demotion is still possible — preserve-on-omit is not a one-way door.
     dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "energy",
         "Monthly Energy Report",
@@ -178,7 +178,7 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "energy").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "energy").await.unwrap();
     assert_eq!(got.kind, "dashboard");
     assert!(!got.is_report());
 
@@ -186,7 +186,7 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
     // a "successful" save whose result cannot be found anywhere.
     let err = dashboard_save_meta(
         &store,
-        &ada,
+        &test,
         ws,
         "typo",
         "Typo",
@@ -205,7 +205,7 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
         "unknown kind must be a loud BadInput, got {err:?}"
     );
     // ...and nothing was written.
-    assert!(dashboard_get(&store, &ada, ws, "typo").await.is_err());
+    assert!(dashboard_get(&store, &test, ws, "typo").await.is_err());
 }
 
 /// The **bound reports** page-setting (`reportIds`) — what the Generate-report control offers.
@@ -218,15 +218,15 @@ async fn dashboard_kind_round_trips_preserves_and_validates() {
 async fn bound_report_ids_round_trip_preserve_on_omit_and_clear_on_empty() {
     let ws = "ws-dash-bound";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     let save = |ids: Option<Vec<String>>, now: u64| {
         let store = &store;
-        let ada = &ada;
+        let test = &test;
         async move {
             dashboard_save_meta(
                 store,
-                ada,
+                test,
                 ws,
                 "meters",
                 "Meter Detail",
@@ -245,7 +245,7 @@ async fn bound_report_ids_round_trip_preserve_on_omit_and_clear_on_empty() {
 
     // Absent on create ⇒ empty (no control), not a missing-field error.
     save(None, 10).await;
-    assert!(dashboard_get(&store, &ada, ws, "meters")
+    assert!(dashboard_get(&store, &test, ws, "meters")
         .await
         .unwrap()
         .report_ids
@@ -253,14 +253,14 @@ async fn bound_report_ids_round_trip_preserve_on_omit_and_clear_on_empty() {
 
     // Bind two.
     save(Some(vec!["energy".to_string(), "demand".to_string()]), 20).await;
-    let got = dashboard_get(&store, &ada, ws, "meters").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "meters").await.unwrap();
     assert_eq!(got.report_ids, vec!["energy", "demand"]);
 
     // A plain LAYOUT save sends no binding — the binding must survive, or the first panel drag
     // silently unbinds every report an admin attached to the page.
     dashboard_save(
         &store,
-        &ada,
+        &test,
         ws,
         "meters",
         "Meter Detail",
@@ -270,13 +270,13 @@ async fn bound_report_ids_round_trip_preserve_on_omit_and_clear_on_empty() {
     )
     .await
     .unwrap();
-    let got = dashboard_get(&store, &ada, ws, "meters").await.unwrap();
+    let got = dashboard_get(&store, &test, ws, "meters").await.unwrap();
     assert_eq!(got.cells.len(), 2);
     assert_eq!(got.report_ids, vec!["energy", "demand"]);
 
     // An EMPTY array clears — the unbind path.
     save(Some(vec![]), 40).await;
-    assert!(dashboard_get(&store, &ada, ws, "meters")
+    assert!(dashboard_get(&store, &test, ws, "meters")
         .await
         .unwrap()
         .report_ids

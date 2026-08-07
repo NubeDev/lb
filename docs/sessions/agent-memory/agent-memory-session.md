@@ -43,7 +43,7 @@ Wiring:
 
 - **Member scope derived from the principal, never an argument** (the member wall) — the load-bearing
   isolation property. `resolve::write_scope` binds `"member"` to the authenticated sub; a caller can
-  never name `member:V`. Asserted directly (bob's get of ada's slug returns `None`).
+  never name `member:V`. Asserted directly (bob's get of test's slug returns `None`).
 - **On-behalf-of injection principal.** The run's derived principal has sub `agent:session`, so
   reading memory under it would resolve `member:agent:session` — missing the caller's own memory. Fix
   (found by the injection test failing): inject under `caller.derive(caller.sub(), agent_caps)` — the
@@ -72,7 +72,7 @@ Wiring:
 - **per-verb capability deny** (no cap → denied; `list`-only doesn't grant `set`);
 - **workspace-scope write gate distinct** (member `set` ok, workspace `set` denied without the gate,
   ok with it);
-- **member wall** (bob's list/get never returns `member:ada` even with the slug known);
+- **member wall** (bob's list/get never returns `member:test` even with the slug known);
 - **workspace isolation** (ws-B sees nothing of ws-A, store + MCP);
 - **idempotent upsert** (second `set` same slug replaces, one index row, LWW);
 - **bounds + secret lint** (desc > 120, body > 8 KB, unknown kind, `password:`/`sk-` refused, prose
@@ -109,7 +109,7 @@ injection test — a design fix, not a shipped-then-broken bug; captured in Deci
 ## Skill docs
 
 - `docs/skills/agent-memory/SKILL.md` written, grounded in a live `lb local call` run (set →
-  `{scope:"member:user:ada"}`, secret-lint rejection, delete → `{ok}`).
+  `{scope:"member:user:test"}`, secret-lint rejection, delete → `{ok}`).
 
 ## Dead ends / surprises
 

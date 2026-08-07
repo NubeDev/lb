@@ -70,7 +70,7 @@ halves were called with a single `ws`. Every other workspace's extensions stayed
 workspace, deduped. Both tiers loop it.
 
 The union is load-bearing in **both** directions, and the revert-check proved it:
-- **directory-only** would bring up *nothing* on a normal node — the boot workspace (`acme`, every
+- **directory-only** would bring up *nothing* on a normal node — the boot workspace (`nube`, every
   test, an embedder provisioning its own identities) is never `workspace.create`d, so it has no row.
   Reverting the union yielded `["tenant-a"]`, with the real boot workspace missing.
 - **no status filter** would spawn an **Archived** workspace's sidecars — resurrecting exactly the

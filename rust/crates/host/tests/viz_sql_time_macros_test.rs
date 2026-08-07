@@ -24,7 +24,7 @@ const FED: &str = "mcp:federation.query:call";
 fn principal(ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
-        sub: "user:ada".into(),
+        sub: "user:test".into(),
         ws: ws.into(),
         role: Role::Member,
         caps: caps.iter().map(|s| s.to_string()).collect(),
@@ -138,7 +138,7 @@ fn fed_panel(sql: &str, from: u64, to: u64, max_points: Option<u64>) -> Value {
     let mut panel = json!({
         "sources": [{
             "refId": "A",
-            "datasource": { "type": "federation", "uid": "datasource:acme:demo" },
+            "datasource": { "type": "federation", "uid": "datasource:nube:demo" },
             "tool": "federation.query",
             "args": { "source": "demo", "sql": sql, "from": from, "to": to }
         }],
@@ -164,7 +164,7 @@ async fn viz_rows(node: &Arc<Node>, p: &Principal, ws: &str, panel: Value) -> Ve
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn function_macros_expand_per_engine_and_recoarsen_with_the_budget() {
-    let ws = "acme";
+    let ws = "nube";
     let dir = federation_dir();
     let db = seed_db(ws);
     let node = Arc::new(Node::boot().await.unwrap());
@@ -214,7 +214,7 @@ async fn function_macros_expand_per_engine_and_recoarsen_with_the_budget() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn named_errors_missing_resolution_and_unsupported_macro() {
-    let ws = "acme-err";
+    let ws = "nube-err";
     let dir = federation_dir();
     let db = seed_db(ws);
     let node = Arc::new(Node::boot().await.unwrap());
@@ -278,7 +278,7 @@ async fn named_errors_missing_resolution_and_unsupported_macro() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn macro_target_deny_and_workspace_isolation_hold() {
-    let ws = "acme-deny";
+    let ws = "nube-deny";
     let dir = federation_dir();
     let db = seed_db(ws);
     let node = Arc::new(Node::boot().await.unwrap());

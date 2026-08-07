@@ -96,7 +96,7 @@ the *which-secret-within-the-workspace* layer, identical in shape to the doc mem
 **Ownership is the host-derived `ext:{id}` principal, not a guest claim.** When an extension calls a
 host tool, the host sets its effective principal to `caller ∩ install-grant` at `build_call_context`
 — the guest cannot forge a subject. So `owner = ext:mqtt` is trustworthy because the host stamped it.
-A user-owned secret is the same shape with `owner = user:ada`. At install, an extension is granted
+A user-owned secret is the same shape with `owner = user:test`. At install, an extension is granted
 `secret:ext/{id}/*:get|write` over **its own** path namespace and nothing else — so the *default*
 posture is already "private to this extension," and the visibility toggle is what opens it up.
 
@@ -157,7 +157,7 @@ controls. A `visibility` field the owner toggles at runtime is the same call the
 
 1. The **MQTT extension** (subject `ext:mqtt`, granted `secret:ext/mqtt/*:write|get` at install)
    stores its broker password: `secret.set("ext/mqtt/broker-pw", "s3cr3t")`. The host writes
-   `secret:acme:ext_mqtt_broker-pw` with `owner=ext:mqtt`, `visibility=Private`.
+   `secret:nube:ext_mqtt_broker-pw` with `owner=ext:mqtt`, `visibility=Private`.
 2. The extension opens its broker connection: `secret.get("ext/mqtt/broker-pw")` → gates 1+2 ✔, gate
    3: caller `ext:mqtt` == owner ✔ → value returned **to the extension's own process** (the consumer).
 3. A workspace **admin** with a broad `secret:*:get` cap calls `secret.get("ext/mqtt/broker-pw")` →

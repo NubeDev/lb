@@ -179,9 +179,9 @@ be a **loud boot warning**, not a silent success.
 1. An operator seals credentials: `secrets.set { path: "mail/smtp-password", … }` (or
    `mail/gmail-refresh-token` for XOAUTH2) — values into secrets, never into config.
 2. The node boots with `email: { kind: "smtp", host: "smtp.gmail.com", port: 587, tls:
-   "starttls", auth: "xoauth2", user: "reports@acme.com", secret_path:
+   "starttls", auth: "xoauth2", user: "reports@nube.com", secret_path:
    "mail/gmail-refresh-token", token_endpoint: "https://oauth2.googleapis.com/token",
-   from: "Acme <reports@acme.com>" }`. `reactors.rs` builds `SmtpEmailProvider` from it and
+   from: "Nube <reports@nube.com>" }`. `reactors.rs` builds `SmtpEmailProvider` from it and
    routes `EMAIL_TARGET` to `EmailTarget::new(provider)` — the existing wiring, now with a
    real impl behind it.
 3. An admin calls `invite.create` (gated). The invite row + the outbox effect are written

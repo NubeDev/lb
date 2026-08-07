@@ -31,11 +31,11 @@ pub async fn run(node: &Arc<Node>) -> anyhow::Result<()> {
         loaded.tools, loaded.granted_caps
     );
 
-    // Mint a member token for workspace "acme" that may call hello.echo.
+    // Mint a member token for workspace "nube" that may call hello.echo.
     let key = SigningKey::generate();
     let claims = Claims {
         sub: "user:demo".into(),
-        ws: "acme".into(),
+        ws: "nube".into(),
         role: Role::Member,
         caps: vec!["mcp:hello.echo:call".into()],
         iat: 0,
@@ -51,7 +51,7 @@ pub async fn run(node: &Arc<Node>) -> anyhow::Result<()> {
         &node.registry,
         &node.bus,
         &principal,
-        "acme",
+        "nube",
         "hello.echo",
         r#"{"msg":"hi"}"#,
     )

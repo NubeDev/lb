@@ -197,14 +197,14 @@ mod tests {
         // The `/auth/login` failure limiter checks on every attempt but counts only failures.
         let l = FixedWindowLimiter::new(2, 60);
         // peek never records — a thousand peeks still leave the email allowed.
-        assert!(l.peek("ada@x.com", 10));
-        assert!(l.peek("ada@x.com", 10));
-        assert!(l.peek("ada@x.com", 10), "peek does not increment");
+        assert!(l.peek("test@x.com", 10));
+        assert!(l.peek("test@x.com", 10));
+        assert!(l.peek("test@x.com", 10), "peek does not increment");
         // Record two failures → the third attempt is now over the ceiling.
-        assert!(l.allow("ada@x.com", 10));
-        assert!(l.allow("ada@x.com", 10));
+        assert!(l.allow("test@x.com", 10));
+        assert!(l.allow("test@x.com", 10));
         assert!(
-            !l.peek("ada@x.com", 10),
+            !l.peek("test@x.com", 10),
             "after max failures, peek reports locked out"
         );
         // A different email is unaffected.

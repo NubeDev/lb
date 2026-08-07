@@ -96,7 +96,7 @@ async fn the_deadband_anchor_is_per_producer_not_per_series() {
     // The prefix above is deliberately keyed correctly below; re-set to be unambiguous.
     policy(
         &store,
-        "acme",
+        "nube",
         "temp.",
         Filter {
             deadband: Some(Deadband {
@@ -120,15 +120,15 @@ async fn the_deadband_anchor_is_per_producer_not_per_series() {
         sample_at("temp.a", "pa", 3, 3_000, json!(9.0)), // A +9 → stored
         sample_at("temp.a", "pb", 9, 3_500, json!(102.0)), // B +2 from 100 → dropped
     ];
-    let pass = seed(&store, "acme", samples).await;
+    let pass = seed(&store, "nube", samples).await;
 
-    let got = stored(&store, "acme", "temp.a").await;
+    let got = stored(&store, "nube", "temp.a").await;
     assert_eq!(got.len(), 3, "one per real move, per producer: {got:?}");
     assert!(got.contains(&json!(0.0)) && got.contains(&json!(100.0)) && got.contains(&json!(9.0)));
     assert_eq!(pass.filtered.deadband, 3);
 
     // And the persisted anchors are keyed by producer, holding each one's own last committed value.
-    let state = read_filter_state(&store, "acme", &["temp.a".to_string()])
+    let state = read_filter_state(&store, "nube", &["temp.a".to_string()])
         .await
         .unwrap();
     let producers = state.get("temp.a").expect("anchors persisted");
@@ -156,7 +156,7 @@ async fn the_anchor_survives_a_node_restart_because_it_lives_on_series_meta() {
     let store = Store::memory().await.unwrap();
     policy(
         &store,
-        "acme",
+        "nube",
         "temp.",
         Filter {
             deadband: Some(Deadband {
@@ -170,11 +170,11 @@ async fn the_anchor_survives_a_node_restart_because_it_lives_on_series_meta() {
 
     seed(
         &store,
-        "acme",
+        "nube",
         vec![sample_at("temp.a", "p1", 1, 1_000, json!(20.0))],
     )
     .await;
-    let persisted = read_filter_state(&store, "acme", &["temp.a".to_string()])
+    let persisted = read_filter_state(&store, "nube", &["temp.a".to_string()])
         .await
         .unwrap();
     assert_eq!(
@@ -189,7 +189,7 @@ async fn the_anchor_survives_a_node_restart_because_it_lives_on_series_meta() {
     // A wholly separate later batch — the deadband must still be closed against 20.0.
     let pass = seed(
         &store,
-        "acme",
+        "nube",
         vec![sample_at("temp.a", "p1", 2, 2_000, json!(20.5))],
     )
     .await;
@@ -198,7 +198,7 @@ async fn the_anchor_survives_a_node_restart_because_it_lives_on_series_meta() {
         pass.filtered.deadband, 1,
         "the reboot did NOT re-open the band"
     );
-    assert_eq!(stored(&store, "acme", "temp.a").await, vec![json!(20.0)]);
+    assert_eq!(stored(&store, "nube", "temp.a").await, vec![json!(20.0)]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -207,7 +207,7 @@ async fn the_longest_matching_prefix_owns_the_filter() {
     // Parent mutes everything; the child prefix overrides with a plain store-everything filter.
     policy(
         &store,
-        "acme",
+        "nube",
         "site.",
         Filter {
             drop: true,
@@ -217,7 +217,7 @@ async fn the_longest_matching_prefix_owns_the_filter() {
     .await;
     policy(
         &store,
-        "acme",
+        "nube",
         "site.keep.",
         Filter {
             min_interval_ms: 1,
@@ -228,7 +228,7 @@ async fn the_longest_matching_prefix_owns_the_filter() {
 
     let pass = seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample_at("site.mute.v", "p", 1, 1_000, json!(1.0)),
             sample_at("site.keep.v", "p", 1, 1_000, json!(2.0)),
@@ -237,9 +237,9 @@ async fn the_longest_matching_prefix_owns_the_filter() {
     )
     .await;
 
-    assert!(stored(&store, "acme", "site.mute.v").await.is_empty());
+    assert!(stored(&store, "nube", "site.mute.v").await.is_empty());
     assert_eq!(
-        stored(&store, "acme", "site.keep.v").await,
+        stored(&store, "nube", "site.keep.v").await,
         vec![json!(2.0), json!(3.0)],
         "the child prefix wins outright — the parent's mute does not leak into it"
     );
@@ -274,12 +274,12 @@ async fn a_filter_in_workspace_b_never_touches_workspace_a() {
         .collect::<Vec<_>>()
     };
 
-    let a = seed(&store, "acme", samples("acme")).await;
+    let a = seed(&store, "nube", samples("nube")).await;
     let b = seed(&store, "beta", samples("beta")).await;
 
     assert_eq!(a.committed, 2, "ws-A has NO policy — it stores everything");
     assert!(a.filtered.is_zero());
-    assert_eq!(stored(&store, "acme", "temp.a").await.len(), 2);
+    assert_eq!(stored(&store, "nube", "temp.a").await.len(), 2);
 
     assert_eq!(b.committed, 0, "ws-B's own mute applies only inside ws-B");
     assert_eq!(b.filtered.muted, 2);
@@ -299,7 +299,7 @@ async fn an_absent_filter_block_is_byte_for_byte_todays_behaviour() {
     let store = Store::memory().await.unwrap();
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "old.".into(),
             raw_for_ms: 900_000,
@@ -320,7 +320,7 @@ async fn an_absent_filter_block_is_byte_for_byte_todays_behaviour() {
     let samples: Vec<Sample> = (1..=20u64)
         .map(|i| sample_at("old.v", "p", i, i * 100, json!(1.0))) // identical values, 100ms apart
         .collect();
-    let pass = seed(&store, "acme", samples).await;
+    let pass = seed(&store, "nube", samples).await;
 
     assert_eq!(
         pass.committed, 20,
@@ -329,7 +329,7 @@ async fn an_absent_filter_block_is_byte_for_byte_todays_behaviour() {
     assert!(pass.filtered.is_zero());
 
     // And the policy round-trips with both new fields absent.
-    let listed = lb_ingest::list_policies(&store, "acme").await.unwrap();
+    let listed = lb_ingest::list_policies(&store, "nube").await.unwrap();
     let p = listed.iter().find(|p| p.prefix == "old.").unwrap();
     assert!(p.filter.is_none());
     assert!(p.tiers[0].method.is_none());

@@ -94,7 +94,7 @@ async fn the_in_house_loop_executes_a_host_native_tool_through_call_tool() {
     let ws = "ws-wiring-headline";
     let node = Arc::new(Node::boot().await.unwrap());
     // Caller (and agent ∩ caller) holds invoke + the memory write cap.
-    let caller = principal("user:ada", ws, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
+    let caller = principal("user:test", ws, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
     let agent_caps: Vec<String> = vec![MEM_SET.into(), MEM_GET.into(), WS_WRITE.into()];
 
     let gw = set_memory_then_stop();
@@ -155,7 +155,7 @@ async fn a_host_native_call_the_intersection_forbids_is_denied_and_fed_back() {
     // the model (not a crash), and NOTHING is persisted. A configured model grants no tool authority.
     let ws = "ws-wiring-deny";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, MEM_GET]); // can invoke + read, NOT write memory
+    let caller = principal("user:test", ws, &[INVOKE, MEM_GET]); // can invoke + read, NOT write memory
     let agent_caps: Vec<String> = vec![MEM_SET.into(), MEM_GET.into()]; // agent has it; caller doesn't
 
     let gw = set_memory_then_stop();
@@ -204,7 +204,7 @@ async fn a_host_native_call_the_intersection_forbids_is_denied_and_fed_back() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_ws_b_run_cannot_reach_ws_a_memory_through_the_loop() {
-    // MANDATORY workspace-isolation (testing §2.2): ada in ws-A writes a memory via a real loop; a
+    // MANDATORY workspace-isolation (testing §2.2): test in ws-A writes a memory via a real loop; a
     // separate run in ws-B (same slug) that tries to READ it gets nothing — `call_tool` is
     // workspace-first, so the loop's dispatch is walled per workspace.
     let node = Arc::new(Node::boot().await.unwrap());
@@ -212,11 +212,11 @@ async fn a_ws_b_run_cannot_reach_ws_a_memory_through_the_loop() {
     let ws_b = "ws-wiring-iso-b";
 
     // ws-A: write the memory through the loop.
-    let ada = principal("user:ada", ws_a, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
+    let test = principal("user:test", ws_a, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
     invoke(
         &node,
         &set_memory_then_stop(),
-        &ada,
+        &test,
         &[MEM_SET.into(), MEM_GET.into(), WS_WRITE.into()],
         ws_a,
         Invocation {
@@ -233,7 +233,7 @@ async fn a_ws_b_run_cannot_reach_ws_a_memory_through_the_loop() {
     assert!(
         memory_get(
             &node.store,
-            &ada,
+            &test,
             ws_a,
             Some("workspace"),
             "boiler-1-runs-hot"
@@ -306,7 +306,7 @@ async fn unconfigured_returns_the_honest_answer_then_configured_runs_the_loop() 
     // memory. Nothing else changes — the difference is config (the installed registry), never a branch.
     let ws = "ws-wiring-swap";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
+    let caller = principal("user:test", ws, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
 
     // Boot posture: the default registry binds `UnconfiguredModel`.
     node.install_runtimes(RuntimeRegistry::with_default(Arc::new(UnconfiguredModel)));
@@ -391,7 +391,7 @@ async fn the_loop_menu_equals_the_callers_reachable_catalog() {
     let node = Arc::new(Node::boot().await.unwrap());
 
     // (a) With the invoke cap: the menu equals the catalog AND lists `agent.invoke`.
-    let with_invoke = principal("user:ada", ws, &[CATALOG, INVOKE]);
+    let with_invoke = principal("user:test", ws, &[CATALOG, INVOKE]);
     let menu = reachable_tools(&node, &with_invoke, ws).await;
     let catalog = tools_catalog(&node, &with_invoke, ws)
         .await
@@ -463,7 +463,7 @@ impl AgentRuntime for ExternalStub {
 async fn an_external_run_reaches_a_host_native_verb_through_the_same_wall() {
     let ws = "ws-wiring-external";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
+    let caller = principal("user:test", ws, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
 
     // Register an external runtime that writes memory via `call_tool`, then drive it.
     let mut registry = RuntimeRegistry::with_default(Arc::new(UnconfiguredModel));
@@ -509,7 +509,7 @@ async fn an_external_run_host_native_call_is_denied_when_the_intersection_forbid
     // external run's host-native write, nothing persists (model access / runtime choice grants nothing).
     let ws = "ws-wiring-external-deny";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, MEM_GET]); // no write cap
+    let caller = principal("user:test", ws, &[INVOKE, MEM_GET]); // no write cap
 
     let mut registry = RuntimeRegistry::with_default(Arc::new(UnconfiguredModel));
     registry.register(Arc::new(ExternalStub {
@@ -559,7 +559,7 @@ async fn a_resumed_run_redrives_a_host_native_call_through_the_new_dispatch() {
 
     let ws = "ws-wiring-resume";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
+    let caller = principal("user:test", ws, &[INVOKE, MEM_SET, MEM_GET, WS_WRITE]);
 
     // Seed a durable partial state: turn 0's assistant text persisted, loop never finished.
     let job = Job::new(

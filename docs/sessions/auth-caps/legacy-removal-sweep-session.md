@@ -11,7 +11,7 @@
 
 ## Why now (the bug that forced it)
 
-`GET /admin/members` in `acme` returned `user:ap`, but `GET /admin/identities/user:ap/workspaces`
+`GET /admin/members` in `nube` returned `user:ap`, but `GET /admin/identities/user:ap/workspaces`
 returned `[]`, so `/auth/login` refused that person with **403 "not a member of any workspace"**.
 
 Root cause was not a typo, it was a **second source of truth read three different ways**:

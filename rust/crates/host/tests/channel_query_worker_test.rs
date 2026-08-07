@@ -16,7 +16,7 @@ use lb_inbox::Item;
 fn principal(ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
-        sub: "user:ada".into(),
+        sub: "user:test".into(),
         ws: ws.into(),
         role: Role::Member,
         caps: caps.iter().map(|s| s.to_string()).collect(),
@@ -44,7 +44,7 @@ fn query_result_body() -> String {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn posting_a_query_result_item_does_not_re_trigger_the_worker() {
     let node = Node::boot().await.expect("node boots");
-    let ws = "acme";
+    let ws = "nube";
     let cid = "analytics";
     // A member who can pub + sub the channel (no federation grant needed — this body is not a query).
     let p = principal(
@@ -55,7 +55,7 @@ async fn posting_a_query_result_item_does_not_re_trigger_the_worker() {
         ],
     );
 
-    let item = Item::new("r1", cid, "user:ada", query_result_body(), 1);
+    let item = Item::new("r1", cid, "user:test", query_result_body(), 1);
     post(&node, &p, ws, cid, item)
         .await
         .expect("post the result item");
@@ -77,7 +77,7 @@ async fn posting_a_query_result_item_does_not_re_trigger_the_worker() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_query_without_the_datasource_grant_yields_opaque_query_not_permitted() {
     let node = Node::boot().await.expect("node boots");
-    let ws = "acme";
+    let ws = "nube";
     let cid = "analytics";
     // The poster can pub/sub the channel (so the post itself is authorized) but lacks
     // `mcp:federation.query:call` — the worker's federation run is denied host-side, BEFORE any
@@ -96,7 +96,7 @@ async fn a_query_without_the_datasource_grant_yields_opaque_query_not_permitted(
         "sql": "SELECT 1",
     })
     .to_string();
-    let item = Item::new("q1", cid, "user:ada", body, 1);
+    let item = Item::new("q1", cid, "user:test", body, 1);
     post(&node, &p, ws, cid, item)
         .await
         .expect("the query item posts");

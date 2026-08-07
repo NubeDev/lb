@@ -95,7 +95,7 @@ fn seed_db(who: &str) -> String {
                                      site_id TEXT REFERENCES site(id));
          CREATE TABLE login (username TEXT, password TEXT);
          INSERT INTO site VALUES ('site-001','Northside Factory'),('site-002','City Tower');
-         INSERT INTO login VALUES ('ada','hunter2');
+         INSERT INTO login VALUES ('test','hunter2');
          INSERT INTO point_reading
            SELECT '2026-01-01T00:00:00+00:00', 'p1', column1, 'site-001'
            FROM (VALUES (1.5),(2.5),(3.5),(4.5),(5.5),(6.5),(7.5),(8.5),(9.5),(10.5),(11.5),(12.5));",
@@ -149,7 +149,7 @@ async fn add_source(
 async fn federation_end_to_end_sqlite() {
     let dir = federation_dir();
     let db = seed_db("end-to-end");
-    let ws = "acme";
+    let ws = "nube";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;
@@ -416,7 +416,7 @@ async fn federation_end_to_end_sqlite() {
 async fn federation_delete_removes_a_row_by_key() {
     let dir = federation_dir();
     let db = seed_db("delete-by-key");
-    let ws = "acme-del";
+    let ws = "nube-del";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir).await;

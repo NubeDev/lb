@@ -123,7 +123,7 @@ mod tests {
             "59999"
         ));
         assert!(!net_grant_permits(
-            "net:tls:tsdb.acme:5432:connect",
+            "net:tls:tsdb.nube:5432:connect",
             "evil.example",
             "5432"
         ));

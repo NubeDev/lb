@@ -41,13 +41,13 @@ fn engine(messaging: Arc<RecordingMessaging>, max_writes: u32) -> RuleEngine {
 
 fn run(eng: &RuleEngine, body: &str, now: u64) -> Result<lb_rules::RuleOutput, RuleError> {
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: body.into(),
         params: vec![],
     };
     let mut rr = RuleRun::new(
-        "acme".into(),
+        "nube".into(),
         Arc::new(HashSet::new()),
         rhai::Map::new(),
         now,

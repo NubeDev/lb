@@ -93,13 +93,13 @@ asserts every `is_host_native` prefix has at least one catalog entry, so the tab
 
 ## Example flow
 
-1. Admin opens `/t/acme/system` → clicks the **MCP Service** card → navigates to `/t/acme/system/mcp`.
+1. Admin opens `/t/nube/system` → clicks the **MCP Service** card → navigates to `/t/nube/system/mcp`.
 2. The page calls `system_overview` (for the runtime counts) + `system_tools`.
 3. `system.tools` gates `mcp:system.tools:call`, walks the registry (ext tools + manifest descriptions)
    and appends the static host catalog, returns `ToolInfo[]`.
 4. The page renders a searchable table grouped by `source`/`group`; the admin filters to `agent.*`,
    reads each description.
-5. The admin clicks the **ACP** card (new) → `/t/acme/system/acp` → `system.acp` returns the adapter's
+5. The admin clicks the **ACP** card (new) → `/t/nube/system/acp` → `system.acp` returns the adapter's
    protocol version, methods, auth model, and error codes; the page renders them as labelled sections.
 
 ## Testing plan

@@ -62,9 +62,9 @@ async fn call(
     Ok(serde_json::from_str(&out).unwrap())
 }
 
-/// Real roster: ada + priya are members; `team:mechanical` exists with priya on it.
+/// Real roster: test + priya are members; `team:mechanical` exists with priya on it.
 async fn seed_roster(node: &Arc<Node>, ws: &str) {
-    for sub in ["user:ada", "user:priya", "user:sam"] {
+    for sub in ["user:test", "user:priya", "user:sam"] {
         membership_add_raw(&node.store, ws, sub, 1).await.unwrap();
     }
     team_create(&node.store, ws, "team:mechanical", "Mechanical crew")
@@ -130,25 +130,25 @@ fn assign_posts(items: Vec<lb_inbox::Item>) -> usize {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_denied_assign_notifies_nobody() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "ops",
         json!({ "assignee": "user:priya" }),
     )
     .await;
 
     // A reader with no assign cap.
-    let reader = principal("user:sam", "acme", &[GET, LIST, INBOX_LIST, CHAN_PUB]);
+    let reader = principal("user:sam", "nube", &[GET, LIST, INBOX_LIST, CHAN_PUB]);
     assert!(matches!(
         call(
             &node,
             &reader,
-            "acme",
+            "nube",
             "insight.assign",
             json!({ "id": id, "assignee": "user:priya" })
         )
@@ -157,7 +157,7 @@ async fn a_denied_assign_notifies_nobody() {
     ));
 
     assert_eq!(
-        inbox(&node, &ada, "acme", "ops").await.len(),
+        inbox(&node, &test, "nube", "ops").await.len(),
         0,
         "a denied assign must produce no notification"
     );
@@ -168,16 +168,16 @@ async fn a_denied_assign_notifies_nobody() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_sub_whose_channel_grant_was_revoked_goes_dormant_instead_of_posting() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
 
     // Sam owns a sub created WITH pub rights…
-    let sam_full = principal("user:sam", "acme", &caps());
+    let sam_full = principal("user:sam", "nube", &caps());
     let sub_id = sub(
         &node,
         &sam_full,
-        "acme",
+        "nube",
         "sam-ops",
         json!({ "assignee": "user:priya" }),
     )
@@ -185,7 +185,7 @@ async fn a_sub_whose_channel_grant_was_revoked_goes_dormant_instead_of_posting()
     // …but the stored principal snapshot is what fires. Rewrite it to a caps list without the
     // channel pub grant — a real revoke, through the real sub record.
     let mut row: lb_insights::Subscription = serde_json::from_value(
-        lb_store::read(&node.store, "acme", lb_insights::SUB_TABLE, &sub_id)
+        lb_store::read(&node.store, "nube", lb_insights::SUB_TABLE, &sub_id)
             .await
             .unwrap()
             .unwrap(),
@@ -194,7 +194,7 @@ async fn a_sub_whose_channel_grant_was_revoked_goes_dormant_instead_of_posting()
     row.principal = json!(["mcp:inbox.list:call"]); // no bus:chan/*:pub
     lb_store::write(
         &node.store,
-        "acme",
+        "nube",
         lb_insights::SUB_TABLE,
         &sub_id,
         &serde_json::to_value(&row).unwrap(),
@@ -204,8 +204,8 @@ async fn a_sub_whose_channel_grant_was_revoked_goes_dormant_instead_of_posting()
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya", "ts": 5000 }),
     )
@@ -213,12 +213,12 @@ async fn a_sub_whose_channel_grant_was_revoked_goes_dormant_instead_of_posting()
     .expect("assign ok");
 
     assert_eq!(
-        inbox(&node, &sam_full, "acme", "sam-ops").await.len(),
+        inbox(&node, &sam_full, "nube", "sam-ops").await.len(),
         0,
         "a revoked grant posts nothing"
     );
     let after: lb_insights::Subscription = serde_json::from_value(
-        lb_store::read(&node.store, "acme", lb_insights::SUB_TABLE, &sub_id)
+        lb_store::read(&node.store, "nube", lb_insights::SUB_TABLE, &sub_id)
             .await
             .unwrap()
             .unwrap(),
@@ -246,7 +246,7 @@ async fn a_ws_b_sub_never_hears_a_ws_a_assignment() {
         .await
         .unwrap();
 
-    let a = principal("user:ada", "ws-a", &caps());
+    let a = principal("user:test", "ws-a", &caps());
     let b_priya = principal("user:priya", "ws-b", &caps());
 
     // Priya subscribes in ws-B to her queue.
@@ -286,17 +286,17 @@ async fn a_ws_b_sub_never_hears_a_ws_a_assignment() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn only_subs_that_filter_on_assignee_hear_an_assignment() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
 
     // The pre-existing shape: "everything in this workspace" — must stay a FINDINGS feed.
-    sub(&node, &ada, "acme", "everything", json!({})).await;
+    sub(&node, &test, "nube", "everything", json!({})).await;
     // A tag sub — also no assignee axis.
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "tagged",
         json!({ "tags": { "kind": "x" } }),
     )
@@ -304,8 +304,8 @@ async fn only_subs_that_filter_on_assignee_hear_an_assignment() {
     // The opt-in.
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "queue",
         json!({ "assignee": "user:priya" }),
     )
@@ -313,8 +313,8 @@ async fn only_subs_that_filter_on_assignee_hear_an_assignment() {
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya", "ts": 5000 }),
     )
@@ -322,13 +322,13 @@ async fn only_subs_that_filter_on_assignee_hear_an_assignment() {
     .expect("assign ok");
 
     assert_eq!(
-        inbox(&node, &ada, "acme", "everything").await.len(),
+        inbox(&node, &test, "nube", "everything").await.len(),
         0,
         "a catch-all FINDINGS sub must not become an assignment feed on upgrade"
     );
-    assert_eq!(inbox(&node, &ada, "acme", "tagged").await.len(), 0);
+    assert_eq!(inbox(&node, &test, "nube", "tagged").await.len(), 0);
     assert_eq!(
-        inbox(&node, &ada, "acme", "queue").await.len(),
+        inbox(&node, &test, "nube", "queue").await.len(),
         1,
         "the sub that opted in got exactly one"
     );
@@ -341,21 +341,21 @@ async fn only_subs_that_filter_on_assignee_hear_an_assignment() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn bulk_assign_coalesces_to_one_delivery_naming_the_matched_count() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
 
     // 5 warnings + 3 infos. The sub floors at `warning`, so only 5 should be counted.
     let mut ids = Vec::new();
     for i in 0..5 {
-        ids.push(seed_insight(&node, &ada, "acme", &format!("w{i}"), "warning").await);
+        ids.push(seed_insight(&node, &test, "nube", &format!("w{i}"), "warning").await);
     }
     for i in 0..3 {
-        ids.push(seed_insight(&node, &ada, "acme", &format!("i{i}"), "info").await);
+        ids.push(seed_insight(&node, &test, "nube", &format!("i{i}"), "info").await);
     }
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "queue",
         json!({ "assignee": "user:priya", "severity_min": "warning" }),
     )
@@ -363,15 +363,15 @@ async fn bulk_assign_coalesces_to_one_delivery_naming_the_matched_count() {
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "ids": ids, "assignee": "user:priya", "ts": 5000 }),
     )
     .await
     .expect("bulk assign ok");
 
-    let items = inbox(&node, &ada, "acme", "queue").await;
+    let items = inbox(&node, &test, "nube", "queue").await;
     assert_eq!(
         items.len(),
         1,
@@ -388,13 +388,13 @@ async fn bulk_assign_coalesces_to_one_delivery_naming_the_matched_count() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_single_assign_names_the_finding() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "chullora-1", "warning").await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "chullora-1", "warning").await;
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "queue",
         json!({ "assignee": "user:priya" }),
     )
@@ -402,15 +402,15 @@ async fn a_single_assign_names_the_finding() {
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya", "ts": 5000 }),
     )
     .await
     .expect("assign ok");
 
-    let items = inbox(&node, &ada, "acme", "queue").await;
+    let items = inbox(&node, &test, "nube", "queue").await;
     assert_eq!(items.len(), 1);
     assert!(
         items[0].body.contains("chullora-1"),
@@ -427,26 +427,26 @@ async fn a_single_assign_names_the_finding() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn me_resolves_to_the_sub_owner_and_their_teams() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let priya = principal("user:priya", "acme", &caps()); // on team:mechanical
-    let sam = principal("user:sam", "acme", &caps()); // NOT on the crew
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let priya = principal("user:priya", "nube", &caps()); // on team:mechanical
+    let sam = principal("user:sam", "nube", &caps()); // NOT on the crew
 
     sub(
         &node,
         &priya,
-        "acme",
+        "nube",
         "priya-q",
         json!({ "assignee": "me" }),
     )
     .await;
-    sub(&node, &sam, "acme", "sam-q", json!({ "assignee": "me" })).await;
+    sub(&node, &sam, "nube", "sam-q", json!({ "assignee": "me" })).await;
 
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "team:mechanical", "ts": 5000 }),
     )
@@ -454,12 +454,12 @@ async fn me_resolves_to_the_sub_owner_and_their_teams() {
     .expect("assign ok");
 
     assert_eq!(
-        inbox(&node, &priya, "acme", "priya-q").await.len(),
+        inbox(&node, &priya, "nube", "priya-q").await.len(),
         1,
         "a TEAM assignment reaches the crew member's 'me' queue — the whole point of team subjects"
     );
     assert_eq!(
-        inbox(&node, &sam, "acme", "sam-q").await.len(),
+        inbox(&node, &sam, "nube", "sam-q").await.len(),
         0,
         "and not a non-member's identical sub"
     );
@@ -471,40 +471,40 @@ async fn me_resolves_to_the_sub_owner_and_their_teams() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn self_assignment_is_silent_but_assigning_to_your_own_team_is_not() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let priya = principal("user:priya", "acme", &caps());
-    sub(&node, &priya, "acme", "q", json!({ "assignee": "me" })).await;
+    seed_roster(&node, "nube").await;
+    let priya = principal("user:priya", "nube", &caps());
+    sub(&node, &priya, "nube", "q", json!({ "assignee": "me" })).await;
 
     // Priya assigns to HERSELF — her own action, no news.
-    let a = seed_insight(&node, &priya, "acme", "k1", "warning").await;
+    let a = seed_insight(&node, &priya, "nube", "k1", "warning").await;
     call(
         &node,
         &priya,
-        "acme",
+        "nube",
         "insight.assign",
         json!({ "id": a, "assignee": "user:priya", "ts": 5000 }),
     )
     .await
     .expect("self assign ok");
     assert_eq!(
-        inbox(&node, &priya, "acme", "q").await.len(),
+        inbox(&node, &priya, "nube", "q").await.len(),
         0,
         "telling someone about their own action is the noise that makes people mute a channel"
     );
 
     // Priya assigns to her CREW — the assignee is the queue, not her; the crew needs to know.
-    let b = seed_insight(&node, &priya, "acme", "k2", "warning").await;
+    let b = seed_insight(&node, &priya, "nube", "k2", "warning").await;
     call(
         &node,
         &priya,
-        "acme",
+        "nube",
         "insight.assign",
         json!({ "id": b, "assignee": "team:mechanical", "ts": 5001 }),
     )
     .await
     .expect("team assign ok");
     assert_eq!(
-        inbox(&node, &priya, "acme", "q").await.len(),
+        inbox(&node, &priya, "nube", "q").await.len(),
         1,
         "assigning to a team you are on still notifies the queue"
     );
@@ -527,24 +527,24 @@ async fn self_assignment_is_silent_but_assigning_to_your_own_team_is_not() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_assignment_delivers_even_when_that_subs_ladder_is_in_cooldown_for_that_key() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
 
     // ONE sub: an assignee queue that will ALSO match on the raise path once the finding is owned.
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "q",
         json!({ "assignee": "user:priya" }),
     )
     .await;
 
-    let id = seed_insight(&node, &ada, "acme", "flapper", "warning").await;
+    let id = seed_insight(&node, &test, "nube", "flapper", "warning").await;
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya", "ts": 1000 }),
     )
@@ -556,22 +556,22 @@ async fn an_assignment_delivers_even_when_that_subs_ladder_is_in_cooldown_for_th
     for ts in 1..9u64 {
         call(
             &node,
-            &ada,
-            "acme",
+            &test,
+            "nube",
             "insight.raise",
             raise_input("flapper", "warning", ts * 1000),
         )
         .await
         .expect("raise");
     }
-    let total_before = inbox(&node, &ada, "acme", "q").await.len();
+    let total_before = inbox(&node, &test, "nube", "q").await.len();
     assert!(
         total_before < 9,
         "precondition: the ladder IS throttling this key for THIS sub ({total_before} posts for \
          8 raises + 1 assign)"
     );
     assert_eq!(
-        assign_posts(inbox(&node, &ada, "acme", "q").await),
+        assign_posts(inbox(&node, &test, "nube", "q").await),
         1,
         "one assignment post so far"
     );
@@ -579,8 +579,8 @@ async fn an_assignment_delivers_even_when_that_subs_ladder_is_in_cooldown_for_th
     // A genuine change of owner while that cooldown is hot.
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": null, "ts": 9000 }),
     )
@@ -588,8 +588,8 @@ async fn an_assignment_delivers_even_when_that_subs_ladder_is_in_cooldown_for_th
     .expect("un-assign");
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya", "ts": 9001 }),
     )
@@ -597,7 +597,7 @@ async fn an_assignment_delivers_even_when_that_subs_ladder_is_in_cooldown_for_th
     .expect("re-assign");
 
     assert_eq!(
-        assign_posts(inbox(&node, &ada, "acme", "q").await),
+        assign_posts(inbox(&node, &test, "nube", "q").await),
         2,
         "the re-assignment delivered THROUGH the flapping key's cooldown on the very same sub — \
          assignment is a one-shot human act, not a firing, and must not share a finding's \
@@ -610,13 +610,13 @@ async fn an_assignment_delivers_even_when_that_subs_ladder_is_in_cooldown_for_th
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn re_assigning_the_same_owner_does_not_re_notify() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "q",
         json!({ "assignee": "user:priya" }),
     )
@@ -625,8 +625,8 @@ async fn re_assigning_the_same_owner_does_not_re_notify() {
     for ts in [5000u64, 5001, 5002] {
         call(
             &node,
-            &ada,
-            "acme",
+            &test,
+            "nube",
             "insight.assign",
             json!({ "id": id, "assignee": "user:priya", "ts": ts }),
         )
@@ -635,7 +635,7 @@ async fn re_assigning_the_same_owner_does_not_re_notify() {
     }
 
     assert_eq!(
-        inbox(&node, &ada, "acme", "q").await.len(),
+        inbox(&node, &test, "nube", "q").await.len(),
         1,
         "three identical assigns = one notification (only a real change of owner is an event)"
     );
@@ -647,13 +647,13 @@ async fn re_assigning_the_same_owner_does_not_re_notify() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_muted_sub_receives_no_assignment_notification() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
     let sub_id = sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "q",
         json!({ "assignee": "user:priya" }),
     )
@@ -661,8 +661,8 @@ async fn a_muted_sub_receives_no_assignment_notification() {
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.sub.mute",
         json!({ "id": sub_id, "muted": true }),
     )
@@ -671,8 +671,8 @@ async fn a_muted_sub_receives_no_assignment_notification() {
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya", "ts": 5000 }),
     )
@@ -680,7 +680,7 @@ async fn a_muted_sub_receives_no_assignment_notification() {
     .expect("assign ok");
 
     assert_eq!(
-        inbox(&node, &ada, "acme", "q").await.len(),
+        inbox(&node, &test, "nube", "q").await.len(),
         0,
         "muted = silent"
     );
@@ -690,26 +690,26 @@ async fn a_muted_sub_receives_no_assignment_notification() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_member_kill_switch_silences_assignment_notifications() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let priya = principal("user:priya", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
-    sub(&node, &priya, "acme", "q", json!({ "assignee": "me" })).await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let priya = principal("user:priya", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
+    sub(&node, &priya, "nube", "q", json!({ "assignee": "me" })).await;
 
     // Priya turns the whole insight-notification system off for herself.
-    let mut prefs = lb_prefs::get_user_prefs(&node.store, "acme", "user:priya")
+    let mut prefs = lb_prefs::get_user_prefs(&node.store, "nube", "user:priya")
         .await
         .unwrap()
         .unwrap_or_default();
     prefs.insight_notifications = Some(false);
-    lb_prefs::set_user_prefs(&node.store, "acme", "user:priya", &prefs, &[])
+    lb_prefs::set_user_prefs(&node.store, "nube", "user:priya", &prefs, &[])
         .await
         .unwrap();
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya", "ts": 5000 }),
     )
@@ -717,7 +717,7 @@ async fn the_member_kill_switch_silences_assignment_notifications() {
     .expect("assign ok");
 
     assert_eq!(
-        inbox(&node, &priya, "acme", "q").await.len(),
+        inbox(&node, &priya, "nube", "q").await.len(),
         0,
         "the kill switch covers assignment notifications, not just firings"
     );
@@ -728,13 +728,13 @@ async fn the_member_kill_switch_silences_assignment_notifications() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn un_assignment_notifies_nobody() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "q",
         json!({ "assignee": "user:priya" }),
     )
@@ -742,27 +742,27 @@ async fn un_assignment_notifies_nobody() {
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya", "ts": 5000 }),
     )
     .await
     .expect("assign ok");
-    assert_eq!(inbox(&node, &ada, "acme", "q").await.len(), 1);
+    assert_eq!(inbox(&node, &test, "nube", "q").await.len(), 1);
 
     // Clearing it is not news worth a channel post.
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": null, "ts": 6000 }),
     )
     .await
     .expect("un-assign ok");
     assert_eq!(
-        inbox(&node, &ada, "acme", "q").await.len(),
+        inbox(&node, &test, "nube", "q").await.len(),
         1,
         "un-assignment added nothing"
     );
@@ -776,46 +776,46 @@ async fn un_assignment_notifies_nobody() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_raise_time_assignee_axis_matches_only_owned_findings() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let priya = principal("user:priya", "acme", &caps());
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let priya = principal("user:priya", "nube", &caps());
 
-    sub(&node, &priya, "acme", "crew", json!({ "assignee": "me" })).await;
+    sub(&node, &priya, "nube", "crew", json!({ "assignee": "me" })).await;
 
     // An UNASSIGNED finding fires — the assignee axis must not match "anything, including
     // what nobody owns".
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.raise",
         raise_input("unowned", "warning", 1000),
     )
     .await
     .expect("raise");
     assert_eq!(
-        inbox(&node, &priya, "acme", "crew").await.len(),
+        inbox(&node, &priya, "nube", "crew").await.len(),
         0,
         "an unassigned finding never matches a filter that names an assignee"
     );
 
     // Assign one to the crew, then let it fire again.
-    let id = seed_insight(&node, &ada, "acme", "owned", "warning").await;
+    let id = seed_insight(&node, &test, "nube", "owned", "warning").await;
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "team:mechanical", "ts": 2000 }),
     )
     .await
     .expect("assign ok");
-    let after_assign = inbox(&node, &priya, "acme", "crew").await.len();
+    let after_assign = inbox(&node, &priya, "nube", "crew").await.len();
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.raise",
         raise_input("owned", "critical", 3000),
     )
@@ -823,7 +823,7 @@ async fn the_raise_time_assignee_axis_matches_only_owned_findings() {
     .expect("re-raise");
 
     assert!(
-        inbox(&node, &priya, "acme", "crew").await.len() > after_assign,
+        inbox(&node, &priya, "nube", "crew").await.len() > after_assign,
         "a re-fire of a crew-owned finding reaches the crew's subscription through the ladder"
     );
 }
@@ -832,47 +832,47 @@ async fn the_raise_time_assignee_axis_matches_only_owned_findings() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_assignee_axis_ands_with_the_other_filter_axes() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
 
     // Owned by priya, but only CRITICAL is wanted.
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "q",
         json!({ "assignee": "user:priya", "severity_min": "critical" }),
     )
     .await;
 
-    let warn = seed_insight(&node, &ada, "acme", "warn", "warning").await;
+    let warn = seed_insight(&node, &test, "nube", "warn", "warning").await;
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": warn, "assignee": "user:priya", "ts": 5000 }),
     )
     .await
     .expect("assign ok");
     assert_eq!(
-        inbox(&node, &ada, "acme", "q").await.len(),
+        inbox(&node, &test, "nube", "q").await.len(),
         0,
         "the severity floor still applies to an assignment notification"
     );
 
-    let crit = seed_insight(&node, &ada, "acme", "crit", "critical").await;
+    let crit = seed_insight(&node, &test, "nube", "crit", "critical").await;
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": crit, "assignee": "user:priya", "ts": 5001 }),
     )
     .await
     .expect("assign ok");
     assert_eq!(
-        inbox(&node, &ada, "acme", "q").await.len(),
+        inbox(&node, &test, "nube", "q").await.len(),
         1,
         "and a critical one gets through"
     );
@@ -882,13 +882,13 @@ async fn the_assignee_axis_ands_with_the_other_filter_axes() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_assignment_to_another_subject_reaches_nobody() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", &caps());
-    let id = seed_insight(&node, &ada, "acme", "k1", "warning").await;
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", &caps());
+    let id = seed_insight(&node, &test, "nube", "k1", "warning").await;
     sub(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "q",
         json!({ "assignee": "user:priya" }),
     )
@@ -896,8 +896,8 @@ async fn an_assignment_to_another_subject_reaches_nobody() {
 
     call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:sam", "ts": 5000 }),
     )
@@ -905,7 +905,7 @@ async fn an_assignment_to_another_subject_reaches_nobody() {
     .expect("assign ok");
 
     assert_eq!(
-        inbox(&node, &ada, "acme", "q").await.len(),
+        inbox(&node, &test, "nube", "q").await.len(),
         0,
         "a queue subscribed to priya hears nothing about sam's work"
     );

@@ -43,17 +43,17 @@ async fn seed_n(store: &Store, ws: &str, series: &str, n: u64) {
 async fn an_unpoliced_series_is_bounded_by_the_default_cap() {
     let store = Store::memory().await.unwrap();
     let n = DEFAULT_MAX_SAMPLES + 5;
-    seed_n(&store, "acme", "unpoliced", n).await;
+    seed_n(&store, "nube", "unpoliced", n).await;
 
     // No policy record exists anywhere in this workspace.
-    let pass = run_gc(&store, "acme", 1_000_000_000).await.unwrap();
+    let pass = run_gc(&store, "nube", 1_000_000_000).await.unwrap();
 
     assert_eq!(
         pass.capped_raw, 5,
         "the default cap evicted exactly the overshoot"
     );
     assert_eq!(
-        sample_count(&store, "acme", "unpoliced").await.unwrap(),
+        sample_count(&store, "nube", "unpoliced").await.unwrap(),
         DEFAULT_MAX_SAMPLES,
         "a series with NO policy stops at the default bound instead of growing forever"
     );
@@ -69,11 +69,11 @@ async fn an_unpoliced_series_is_bounded_by_the_default_cap() {
     );
 
     // FIFO: the OLDEST went. ts is `i * 1000`, so the 5 evicted are ts 1_000..=5_000.
-    let survivors = sample_count(&store, "acme", "unpoliced").await.unwrap();
+    let survivors = sample_count(&store, "nube", "unpoliced").await.unwrap();
     assert_eq!(survivors, DEFAULT_MAX_SAMPLES);
     let mut resp = store
         .query_ws(
-            "acme",
+            "nube",
             "SELECT count() FROM series WHERE series = 'unpoliced' \
              AND ts < time::from::millis(6000) GROUP ALL",
             vec![],
@@ -87,7 +87,7 @@ async fn an_unpoliced_series_is_bounded_by_the_default_cap() {
     );
 
     // Idempotent: a second pass at the bound evicts nothing and says nothing.
-    let pass2 = run_gc(&store, "acme", 1_000_000_000).await.unwrap();
+    let pass2 = run_gc(&store, "nube", 1_000_000_000).await.unwrap();
     assert_eq!(pass2.capped_raw, 0);
     assert!(pass2.warnings.is_empty());
 }
@@ -99,12 +99,12 @@ async fn max_samples_zero_opts_out_while_an_unpoliced_series_is_capped() {
     // RECORD exists — which is precisely what decision 9 says must decide.
     let store = Store::memory().await.unwrap();
     let n = DEFAULT_MAX_SAMPLES + 5;
-    seed_n(&store, "acme", "optout.keep", n).await;
-    seed_n(&store, "acme", "nopolicy.grow", n).await;
+    seed_n(&store, "nube", "optout.keep", n).await;
+    seed_n(&store, "nube", "nopolicy.grow", n).await;
 
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "optout.".into(),
             raw_for_ms: 0,  // no time horizon either
@@ -115,15 +115,15 @@ async fn max_samples_zero_opts_out_while_an_unpoliced_series_is_capped() {
     .await
     .unwrap();
 
-    let pass = run_gc(&store, "acme", 1_000_000_000).await.unwrap();
+    let pass = run_gc(&store, "nube", 1_000_000_000).await.unwrap();
 
     assert_eq!(
-        sample_count(&store, "acme", "optout.keep").await.unwrap(),
+        sample_count(&store, "nube", "optout.keep").await.unwrap(),
         n,
         "a policy record with max_samples:0 is unbounded — untouched past the default cap"
     );
     assert_eq!(
-        sample_count(&store, "acme", "nopolicy.grow").await.unwrap(),
+        sample_count(&store, "nube", "nopolicy.grow").await.unwrap(),
         DEFAULT_MAX_SAMPLES,
         "no policy record at all → the default cap applies"
     );

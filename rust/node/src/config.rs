@@ -148,12 +148,12 @@ pub struct BootConfig {
     /// key (matching `make dev`/test behaviour when `LB_SIGNING_KEY` is unset).
     pub signing_key: SigningKey,
 
-    /// The boot workspace (today's `LB_WORKSPACE`, default `acme`). The dev-identity seed, extension
+    /// The boot workspace (today's `LB_WORKSPACE`, default `nube`). The dev-identity seed, extension
     /// re-load, reactors, and default-skill grants all scope to this workspace.
     pub workspace: String,
 
     /// The dev identity to seed as a `workspace-admin` member of `workspace` (today's `LB_SEED_USER`,
-    /// default `user:ada`). `None` skips the seed entirely (an embedder that provisions its own
+    /// default `user:test`). `None` skips the seed entirely (an embedder that provisions its own
     /// identities). Idempotent when present.
     pub seed_user: Option<String>,
 
@@ -466,7 +466,7 @@ pub struct BootConfig {
 }
 
 impl Default for BootConfig {
-    /// The embed-friendly default: `mem://` store, a fresh signing key, workspace `acme`, dev-identity
+    /// The embed-friendly default: `mem://` store, a fresh signing key, workspace `nube`, dev-identity
     /// seed on, gateway OFF, reactors ON, **hello demo OFF** (an embedder does not want it), default
     /// core skills, no telemetry, an unconfigured agent model. Note `hello_demo` is `false` here but
     /// `from_env()` sets it `true` to reproduce today's binary exactly.
@@ -482,8 +482,8 @@ impl Default for BootConfig {
             // boot byte-identical to before the field existed.
             retention_seed: Vec::new(),
             signing_key: SigningKey::generate(),
-            workspace: "acme".into(),
-            seed_user: Some("user:ada".into()),
+            workspace: "nube".into(),
+            seed_user: Some("user:test".into()),
             gateway: GatewayMode::Off,
             reactors: true,
             hello_demo: false,
@@ -574,8 +574,8 @@ impl BootConfig {
             // The standalone binary seeds no policy: a retention policy is structured data, not a
             // scalar `LB_*` knob, so there is nothing at the binary boundary to read it from.
             retention_seed: Vec::new(),
-            workspace: std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into()),
-            seed_user: Some(std::env::var("LB_SEED_USER").unwrap_or_else(|_| "user:ada".into())),
+            workspace: std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "nube".into()),
+            seed_user: Some(std::env::var("LB_SEED_USER").unwrap_or_else(|_| "user:test".into())),
             gateway,
             reactors: true,
             // The binary loads + calls the hello demo unconditionally today.

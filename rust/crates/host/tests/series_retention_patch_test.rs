@@ -24,7 +24,7 @@ fn principal(sub: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
         sub: sub.into(),
-        ws: "acme".into(),
+        ws: "nube".into(),
         role: Role::Member,
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
@@ -36,7 +36,7 @@ fn principal(sub: &str, caps: &[&str]) -> Principal {
 }
 
 async fn call(store: &Store, p: &Principal, tool: &str, args: Value) -> Result<Value, ToolError> {
-    call_ingest_tool(store, p, "acme", tool, &args).await
+    call_ingest_tool(store, p, "nube", tool, &args).await
 }
 
 /// The policy the reported bug started from: a real tier, with a real method.
@@ -75,11 +75,11 @@ async fn policy(store: &Store, p: &Principal) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_write_records_who_did_it_and_when() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
-    seed(&store, &ada).await;
+    let test = principal("user:test", &[SET, LIST]);
+    seed(&store, &test).await;
 
-    let p = policy(&store, &ada).await;
-    assert_eq!(p["updated_by"], "user:ada");
+    let p = policy(&store, &test).await;
+    assert_eq!(p["updated_by"], "user:test");
     assert_eq!(p["updated_ms"], 1_700_000_000_000u64);
 }
 
@@ -91,11 +91,11 @@ async fn provenance_cannot_be_forged_by_the_caller() {
     // record whoever the caller claimed, and the field would answer nothing. It is overwritten
     // unconditionally, exactly as the producer root on `ingest.write` is.
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
+    let test = principal("user:test", &[SET, LIST]);
 
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.set",
         json!({
             "prefix": PREFIX,
@@ -110,8 +110,11 @@ async fn provenance_cannot_be_forged_by_the_caller() {
     .await
     .expect("set accepts and ignores the forged provenance");
 
-    let p = policy(&store, &ada).await;
-    assert_eq!(p["updated_by"], "user:ada", "the forged author was written");
+    let p = policy(&store, &test).await;
+    assert_eq!(
+        p["updated_by"], "user:test",
+        "the forged author was written"
+    );
     assert_ne!(p["updated_ms"], 1, "the forged timestamp was written");
 }
 
@@ -123,7 +126,7 @@ async fn a_row_written_before_provenance_existed_reports_nothing_rather_than_gue
     let store = Store::memory().await.unwrap();
     lb_ingest::set_policy(
         &store,
-        "acme",
+        "nube",
         &lb_ingest::Policy {
             prefix: PREFIX.into(),
             raw_for_ms: 60_000,
@@ -133,7 +136,7 @@ async fn a_row_written_before_provenance_existed_reports_nothing_rather_than_gue
     .await
     .unwrap();
 
-    let p = policy(&store, &principal("user:ada", &[SET, LIST])).await;
+    let p = policy(&store, &principal("user:test", &[SET, LIST])).await;
     assert_eq!(p.get("updated_by"), None, "absent, not invented");
 }
 
@@ -142,19 +145,19 @@ async fn a_row_written_before_provenance_existed_reports_nothing_rather_than_gue
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn patching_one_field_leaves_every_other_alone() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
-    seed(&store, &ada).await;
+    let test = principal("user:test", &[SET, LIST]);
+    seed(&store, &test).await;
 
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.patch",
         json!({ "prefix": PREFIX, "raw_for_ms": 7_200_000 }),
     )
     .await
     .expect("patch");
 
-    let p = policy(&store, &ada).await;
+    let p = policy(&store, &test).await;
     assert_eq!(p["raw_for_ms"], 7_200_000);
     assert_eq!(p["max_samples"], 5_000, "an untouched field changed");
     assert_eq!(
@@ -170,19 +173,19 @@ async fn re_sending_a_tier_without_its_method_keeps_the_method() {
     // `method`; under `set` that silently erases it. Under `patch` the tier is merged field-wise
     // with the stored tier of the same width.
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
-    seed(&store, &ada).await;
+    let test = principal("user:test", &[SET, LIST]);
+    seed(&store, &test).await;
 
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.patch",
         json!({ "prefix": PREFIX, "tiers": [{ "width_ms": 60_000, "keep_for_ms": 999 }] }),
     )
     .await
     .expect("patch");
 
-    let p = policy(&store, &ada).await;
+    let p = policy(&store, &test).await;
     assert_eq!(p["tiers"][0]["keep_for_ms"], 999);
     assert_eq!(
         p["tiers"][0]["method"], "avg",
@@ -195,12 +198,12 @@ async fn the_same_omission_through_set_still_drops_it() {
     // The contrast that makes `patch` worth having — and proof `set` keeps its replace semantics
     // (removing a tier or a filter has to remain possible).
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
-    seed(&store, &ada).await;
+    let test = principal("user:test", &[SET, LIST]);
+    seed(&store, &test).await;
 
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.set",
         json!({
             "prefix": PREFIX,
@@ -212,38 +215,38 @@ async fn the_same_omission_through_set_still_drops_it() {
     .await
     .expect("set");
 
-    let p = policy(&store, &ada).await;
+    let p = policy(&store, &test).await;
     assert_eq!(p["tiers"][0].get("method"), None, "set must still REPLACE");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_tier_can_still_be_removed_and_a_method_explicitly_cleared() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
-    seed(&store, &ada).await;
+    let test = principal("user:test", &[SET, LIST]);
+    seed(&store, &test).await;
 
     // An explicit null clears; only ABSENCE preserves. Without the distinction one of the two would
     // be impossible, which is why the merge reads raw JSON rather than a typed struct.
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.patch",
         json!({ "prefix": PREFIX, "tiers": [{ "width_ms": 60_000, "method": null }] }),
     )
     .await
     .expect("patch");
-    assert_eq!(policy(&store, &ada).await["tiers"][0].get("method"), None);
+    assert_eq!(policy(&store, &test).await["tiers"][0].get("method"), None);
 
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.patch",
         json!({ "prefix": PREFIX, "tiers": [] }),
     )
     .await
     .expect("patch");
     assert_eq!(
-        policy(&store, &ada).await["tiers"]
+        policy(&store, &test).await["tiers"]
             .as_array()
             .unwrap()
             .len(),
@@ -256,12 +259,12 @@ async fn a_tier_can_still_be_removed_and_a_method_explicitly_cleared() {
 async fn the_write_returns_what_was_actually_stored() {
     // So a caller SEES what a replace cost them, instead of discovering it in a panel days later.
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
-    seed(&store, &ada).await;
+    let test = principal("user:test", &[SET, LIST]);
+    seed(&store, &test).await;
 
     let out = call(
         &store,
-        &ada,
+        &test,
         "series.retention.patch",
         json!({ "prefix": PREFIX, "max_samples": 10_000 }),
     )
@@ -270,7 +273,7 @@ async fn the_write_returns_what_was_actually_stored() {
 
     assert_eq!(out["policy"]["max_samples"], 10_000);
     assert_eq!(out["policy"]["tiers"][0]["method"], "avg");
-    assert_eq!(out["policy"]["updated_by"], "user:ada");
+    assert_eq!(out["policy"]["updated_by"], "user:test");
 }
 
 // ----------------------------------------------------------------------------------- guards ----
@@ -278,10 +281,10 @@ async fn the_write_returns_what_was_actually_stored() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn patching_a_prefix_with_no_policy_is_an_error_not_a_silent_create() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
+    let test = principal("user:test", &[SET, LIST]);
     let err = call(
         &store,
-        &ada,
+        &test,
         "series.retention.patch",
         json!({ "prefix": "nothing.here.", "raw_for_ms": 1 }),
     )
@@ -296,10 +299,10 @@ async fn an_empty_prefix_is_refused() {
     // `resolve_policy` matches on `starts_with`, so an empty prefix silently governs EVERY series.
     // It became reachable when `Policy` gained `Default`.
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
+    let test = principal("user:test", &[SET, LIST]);
     let err = call(
         &store,
-        &ada,
+        &test,
         "series.retention.set",
         json!({ "prefix": "", "raw_for_ms": 1, "max_samples": 0, "tiers": [] }),
     )
@@ -312,8 +315,8 @@ async fn an_empty_prefix_is_refused() {
 async fn patch_is_refused_without_the_set_capability() {
     // It rides `mcp:series.retention.set:call` — the same administrative privilege, no new cap.
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
-    seed(&store, &ada).await;
+    let test = principal("user:test", &[SET, LIST]);
+    seed(&store, &test).await;
 
     let reader = principal("user:bob", &[LIST]);
     let err = call(
@@ -337,19 +340,19 @@ async fn changing_a_tier_width_inherits_the_method_rather_than_losing_it() {
     // width (`Policy::method_for`), which is already how a bucketed READ resolves one. A coil
     // configured `last` must not silently become an average because someone retuned the bucket size.
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
-    seed(&store, &ada).await; // one 60s tier, method avg
+    let test = principal("user:test", &[SET, LIST]);
+    seed(&store, &test).await; // one 60s tier, method avg
 
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.patch",
         json!({ "prefix": PREFIX, "tiers": [{ "width_ms": 300_000, "keep_for_ms": 604_800_000 }] }),
     )
     .await
     .expect("patch");
 
-    let p = policy(&store, &ada).await;
+    let p = policy(&store, &test).await;
     assert_eq!(p["tiers"][0]["width_ms"], 300_000);
     assert_eq!(
         p["tiers"][0]["method"], "avg",
@@ -362,10 +365,10 @@ async fn a_new_tier_on_a_policy_with_no_method_anywhere_stays_method_less() {
     // Inheritance must not INVENT a method: if nothing in the policy declares one, the new tier has
     // none either. Fabricating `avg` would be the fabricated-healthy class of bug all over again.
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", &[SET, LIST]);
+    let test = principal("user:test", &[SET, LIST]);
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.set",
         json!({ "prefix": PREFIX, "raw_for_ms": 60_000, "max_samples": 0,
                 "tiers": [{ "width_ms": 60_000, "keep_for_ms": 1 }] }),
@@ -375,14 +378,14 @@ async fn a_new_tier_on_a_policy_with_no_method_anywhere_stays_method_less() {
 
     call(
         &store,
-        &ada,
+        &test,
         "series.retention.patch",
         json!({ "prefix": PREFIX, "tiers": [{ "width_ms": 900_000, "keep_for_ms": 1 }] }),
     )
     .await
     .expect("patch");
 
-    assert_eq!(policy(&store, &ada).await["tiers"][0].get("method"), None);
+    assert_eq!(policy(&store, &test).await["tiers"][0].get("method"), None);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -395,12 +398,12 @@ async fn delete_is_reachable_through_the_real_dispatcher() {
     // Every existing test called the host fn or `call_ingest_tool` directly and so never crossed the
     // outer gate, which is exactly why nothing caught it. This one goes through `call_tool`.
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", &[SET, LIST]);
+    let test = principal("user:test", &[SET, LIST]);
 
     call_tool(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "series.retention.set",
         &json!({ "prefix": PREFIX, "raw_for_ms": 60_000, "max_samples": 0, "tiers": [] })
             .to_string(),
@@ -410,15 +413,15 @@ async fn delete_is_reachable_through_the_real_dispatcher() {
 
     call_tool(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "series.retention.delete",
         &json!({ "prefix": PREFIX }).to_string(),
     )
     .await
     .expect("delete must be reachable with the SET capability");
 
-    let out = call_tool(&node, &ada, "acme", "series.retention.list", "{}")
+    let out = call_tool(&node, &test, "nube", "series.retention.list", "{}")
         .await
         .expect("list");
     let v: Value = serde_json::from_str(&out).unwrap();

@@ -22,7 +22,7 @@
 //! means raw interpolation is always correct and there is nothing to keep in sync.
 //!
 //! `:` is deliberately ALLOWED — it is not structural in a Zenoh key expression, and it keeps the
-//! platform's readable `node:gw-01` convention (matching `user:ada`, `job:{id}` elsewhere).
+//! platform's readable `node:gw-01` convention (matching `user:test`, `job:{id}` elsewhere).
 
 use std::fmt;
 
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn accepts_the_platform_id_convention() {
         // `:` is not structural in a Zenoh key expression, so the readable `node:gw-01` shape
-        // (matching `user:ada`, `job:{id}`) survives without encoding.
+        // (matching `user:test`, `job:{id}`) survives without encoding.
         let id = NodeId::new("node:gw-01").expect("colon ids are safe");
         assert_eq!(id.as_str(), "node:gw-01");
     }

@@ -18,8 +18,8 @@ use lb_prefs::{
 use lb_store::Store;
 use serde_json::json;
 
-fn acme_brand() -> serde_json::Value {
-    json!({ "site_name": "Acme", "site_abbr": "AC", "tagline": "ops", "login_heading": "Sign in to Acme" })
+fn nube_brand() -> serde_json::Value {
+    json!({ "site_name": "Nube", "site_abbr": "AC", "tagline": "ops", "login_heading": "Sign in to Nube" })
 }
 
 fn default_brand() -> serde_json::Value {
@@ -30,19 +30,19 @@ fn default_brand() -> serde_json::Value {
 async fn branding_blob_round_trips_unchanged() {
     let store = Store::memory().await.unwrap();
     let p = Prefs {
-        ui_branding: Some(acme_brand()),
+        ui_branding: Some(nube_brand()),
         ..Prefs::default()
     };
-    set_workspace_prefs(&store, "acme", &p, &[]).await.unwrap();
+    set_workspace_prefs(&store, "nube", &p, &[]).await.unwrap();
 
     // set_default writes the workspace-default record; resolve returns it for a member who set
     // nothing. (Branding is admin-owned — only the ws-default link ever carries it.)
-    let r = resolve_chain(&store, "acme", "user:ada", None)
+    let r = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
     assert_eq!(
         r.ui_branding,
-        Some(acme_brand()),
+        Some(nube_brand()),
         "the opaque branding blob round-trips byte-for-byte through option<object>"
     );
 }
@@ -53,7 +53,7 @@ async fn branding_patch_leaves_i18n_axes_untouched() {
     let store = Store::memory().await.unwrap();
     set_workspace_prefs(
         &store,
-        "acme",
+        "nube",
         &Prefs {
             language: Some("es".into()),
             ..Prefs::default()
@@ -64,9 +64,9 @@ async fn branding_patch_leaves_i18n_axes_untouched() {
     .unwrap();
     set_workspace_prefs(
         &store,
-        "acme",
+        "nube",
         &Prefs {
-            ui_branding: Some(acme_brand()),
+            ui_branding: Some(nube_brand()),
             ..Prefs::default()
         },
         &[],
@@ -74,11 +74,11 @@ async fn branding_patch_leaves_i18n_axes_untouched() {
     .await
     .unwrap();
 
-    let r = resolve_chain(&store, "acme", "user:ada", None)
+    let r = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
     assert_eq!(r.language, "es", "language untouched across patches");
-    assert_eq!(r.ui_branding, Some(acme_brand()));
+    assert_eq!(r.ui_branding, Some(nube_brand()));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -88,9 +88,9 @@ async fn branding_does_not_merge_with_member_ui_theme_patch() {
     let store = Store::memory().await.unwrap();
     set_workspace_prefs(
         &store,
-        "acme",
+        "nube",
         &Prefs {
-            ui_branding: Some(acme_brand()),
+            ui_branding: Some(nube_brand()),
             ..Prefs::default()
         },
         &[],
@@ -99,8 +99,8 @@ async fn branding_does_not_merge_with_member_ui_theme_patch() {
     .unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             ui_theme: Some(json!({ "mode": "dark" })),
             ..Prefs::default()
@@ -110,10 +110,10 @@ async fn branding_does_not_merge_with_member_ui_theme_patch() {
     .await
     .unwrap();
 
-    let r = resolve_chain(&store, "acme", "user:ada", None)
+    let r = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
-    assert_eq!(r.ui_branding, Some(acme_brand()));
+    assert_eq!(r.ui_branding, Some(nube_brand()));
     assert_eq!(r.ui_theme, Some(json!({ "mode": "dark" })));
 }
 
@@ -121,7 +121,7 @@ async fn branding_does_not_merge_with_member_ui_theme_patch() {
 async fn no_branding_anywhere_resolves_none() {
     // No workspace default set → None (the shell falls back to its compiled Lazybones default).
     let store = Store::memory().await.unwrap();
-    let r = resolve_chain(&store, "acme", "user:ada", None)
+    let r = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
     assert_eq!(r.ui_branding, None);
@@ -132,7 +132,7 @@ async fn branding_is_workspace_isolated() {
     // Mandatory isolation: ws-A's brand never appears in ws-B's resolve, and ws-B's raw read
     // never surfaces ws-A's blob.
     let store = Store::memory().await.unwrap();
-    let brand_a = acme_brand();
+    let brand_a = nube_brand();
     let brand_b = default_brand();
 
     set_workspace_prefs(
@@ -158,7 +158,7 @@ async fn branding_is_workspace_isolated() {
     .await
     .unwrap();
 
-    let rb = resolve_chain(&store, "ws-b", "user:ada", None)
+    let rb = resolve_chain(&store, "ws-b", "user:test", None)
         .await
         .unwrap();
     assert_eq!(
@@ -166,7 +166,7 @@ async fn branding_is_workspace_isolated() {
         Some(brand_b),
         "ws-B resolves ws-B's brand only"
     );
-    let ra = resolve_chain(&store, "ws-a", "user:ada", None)
+    let ra = resolve_chain(&store, "ws-a", "user:test", None)
         .await
         .unwrap();
     assert_eq!(
@@ -187,7 +187,7 @@ async fn branding_is_workspace_isolated() {
     let rows: Vec<serde_json::Value> = resp.take(0).unwrap();
     let blob = format!("{rows:?}");
     assert!(
-        !blob.contains("Acme"),
+        !blob.contains("Nube"),
         "ws-A's brand never appears in ws-B's read"
     );
 }
@@ -201,19 +201,19 @@ async fn user_prefs_ui_branding_is_round_tripped_but_member_never_writes_it() {
     let store = Store::memory().await.unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
-            ui_branding: Some(acme_brand()),
+            ui_branding: Some(nube_brand()),
             ..Prefs::default()
         },
         &[],
     )
     .await
     .unwrap();
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(got.ui_branding, Some(acme_brand()));
+    assert_eq!(got.ui_branding, Some(nube_brand()));
 }

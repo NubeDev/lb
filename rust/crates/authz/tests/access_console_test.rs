@@ -13,7 +13,7 @@ use lb_authz::{
 };
 use lb_store::Store;
 
-const WS: &str = "acme";
+const WS: &str = "nube";
 
 /// Build a workspace where bob has: a DIRECT hvac grant, a `role:auditor` grant (expanding a store
 /// cap), and membership in `facilities` (which holds `role:operator`, expanding another store cap).

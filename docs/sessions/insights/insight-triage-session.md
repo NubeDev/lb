@@ -149,14 +149,14 @@ teams.create team:mechanical; assign {assignee:"team:mechanical"}
                                    → {"assigned_to":"team:mechanical"}   ← team: legal from v1
 list                               → row carries assigned_to, NO comments key
 comment {text:…, author:"user:someone-else"}
-                                   → {"seq":1};  get → author "user:ada" ← host-stamped, un-forgeable
-assign {assignee:"user:ada"} ×2    → idempotent
+                                   → {"seq":1};  get → author "user:test" ← host-stamped, un-forgeable
+assign {assignee:"user:test"} ×2    → idempotent
 list {assigned_to:"me"}            → the row                             ← "me" resolved host-side
 
-resolve → get: status resolved, status_by user:ada, assigned_to user:ada
+resolve → get: status resolved, status_by user:test, assigned_to user:test
 re-raise same dedup_key
   → status open | status_by CLEARED | status_ts CLEARED
-    assigned_to user:ada | comments 1 | count 2
+    assigned_to user:test | comments 1 | count 2
     ^^^ THE load-bearing rule, on the real wire: lifecycle clears, human facts survive
 
 assign {ids:[real, real, "not-real"]}
@@ -166,7 +166,7 @@ comment 5000 bytes → refused; get → thread still 1 comment, no truncated row
 comment "   "      → "comment text is empty — a note must say something"
 comment on "nope"  → "no such insight: nope"
 
-other-ws token → assign on acme's real id  → "no such insight: <id>"
+other-ws token → assign on nube's real id  → "no such insight: <id>"
                → assign on a fictional id  → same shape;  list → 0 items
 ```
 
@@ -177,7 +177,7 @@ state on a real store rather than an in-test one.
 **Honest gaps in the live run.** Two things I could not drive from the wire and did not pretend to:
 
 1. **`membership.add` was denied** to the dev-login token (it lacks `members.manage`), so the live
-   `user:` assign was exercised against `user:ada` — a genuine member via the bootstrap — rather than
+   `user:` assign was exercised against `user:test` — a genuine member via the bootstrap — rather than
    a second member I added. The `user:` non-member refusal and the `team:` acceptance were both
    verified live; a second seeded member adds nothing the suite doesn't already cover with real rows.
 2. **The roster re-render and the drawer are downstream.** lb is a library and the UI shell is

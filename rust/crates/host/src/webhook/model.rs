@@ -209,8 +209,8 @@ mod tests {
     #[test]
     fn series_is_ws_and_id_derived() {
         assert_eq!(
-            WebhookRecord::series_for("acme", "wh_9f2"),
-            "webhook:acme:wh_9f2"
+            WebhookRecord::series_for("nube", "wh_9f2"),
+            "webhook:nube:wh_9f2"
         );
     }
 
@@ -232,7 +232,7 @@ mod tests {
     fn view_from_record_carries_no_credential() {
         let rec = WebhookRecord::new(
             "wh_1",
-            "acme",
+            "nube",
             "plant-alerts",
             AuthMode::Signature,
             None,
@@ -245,7 +245,7 @@ mod tests {
         assert!(!dumped.contains("secret"));
         assert!(!dumped.contains("hash"));
         assert!(!dumped.contains("bearer_key_id"));
-        assert_eq!(view.url_path, "/hooks/acme/wh_1");
-        assert_eq!(view.series, "webhook:acme:wh_1");
+        assert_eq!(view.url_path, "/hooks/nube/wh_1");
+        assert_eq!(view.series, "webhook:nube:wh_1");
     }
 }

@@ -125,7 +125,7 @@ converts an unknown into a known degrade plan. This is the cheapest risk-buy in 
 
 ## Example flow
 
-1. A node boots with `LB_STORE_PATH=/var/lib/lazybones/acme`. `Node::boot` calls `Store::open(path)`;
+1. A node boots with `LB_STORE_PATH=/var/lib/lazybones/nube`. `Node::boot` calls `Store::open(path)`;
    the workspace namespace is created on first `use_ns`.
 2. The node writes a channel message + a job step, then is **killed** (not gracefully stopped).
 3. The node reboots, `Store::open(same path)` — the message and job step are **present**. (On `kv-mem`

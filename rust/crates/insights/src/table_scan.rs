@@ -69,7 +69,7 @@ mod tests {
         for i in 0..n {
             write(
                 &store,
-                "acme",
+                "nube",
                 "scan_probe",
                 &format!("r{i:04}"),
                 &serde_json::json!({ "i": i }),
@@ -78,7 +78,7 @@ mod tests {
             .unwrap();
         }
 
-        let rows = scan_all(&store, "acme", "scan_probe").await.unwrap();
+        let rows = scan_all(&store, "nube", "scan_probe").await.unwrap();
         assert_eq!(rows.len(), n, "every page drained, not just the first");
         let mut seen: Vec<u64> = rows.iter().filter_map(|r| r["i"].as_u64()).collect();
         seen.sort_unstable();

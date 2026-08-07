@@ -98,18 +98,18 @@ async fn test_without_the_cap_is_denied_opaquely() {
     configure(&node, "hello");
 
     // Holds create/get so a definition exists, but NOT the test cap.
-    let admin = principal("user:ada", ws, &[DEF_CREATE, DEF_GET]);
+    let admin = principal("user:test", ws, &[DEF_CREATE, DEF_GET]);
     agent_def_create(
         &node,
         &admin,
         ws,
-        &def_with_secret("acme", "agent/acme-key"),
+        &def_with_secret("nube", "agent/nube-key"),
     )
     .await
     .unwrap();
 
     let no_test = principal("user:bob", ws, &[DEF_GET]);
-    let err = agent_def_test(&node, &no_test, ws, Some("acme"))
+    let err = agent_def_test(&node, &no_test, ws, Some("nube"))
         .await
         .expect_err("test without the cap must be denied");
     assert!(matches!(err, ToolError::Denied), "opaque Denied, no leak");
@@ -133,7 +133,7 @@ async fn test_returns_the_callers_real_context() {
     let caps = &[
         TEST, CATALOG, INVOKE, DEF_CREATE, DEF_GET, DEF_LIST, SKILL_R, SKILL_W,
     ];
-    let admin = principal("user:ada", ws, caps);
+    let admin = principal("user:test", ws, caps);
 
     put_skill(
         &node.store,
@@ -155,16 +155,16 @@ async fn test_returns_the_callers_real_context() {
         &node,
         &admin,
         ws,
-        &def_with_secret("acme", "agent/acme-key"),
+        &def_with_secret("nube", "agent/nube-key"),
     )
     .await
     .unwrap();
 
-    let result = agent_def_test(&node, &admin, ws, Some("acme"))
+    let result = agent_def_test(&node, &admin, ws, Some("nube"))
         .await
         .expect("the test runs");
 
-    assert_eq!(result.id, "acme");
+    assert_eq!(result.id, "nube");
     assert_eq!(result.runtime, "default");
     assert_eq!(result.model, "zaicoding/glm-4.6");
     assert_eq!(result.answer, "I am the workspace agent.");
@@ -205,7 +205,7 @@ async fn a_caller_with_fewer_grants_sees_fewer_skills() {
     configure(&node, "ok");
 
     // Author seeds + grants a skill (needs the write cap).
-    let author = principal("user:ada", ws, &[SKILL_R, SKILL_W, DEF_CREATE, DEF_GET]);
+    let author = principal("user:test", ws, &[SKILL_R, SKILL_W, DEF_CREATE, DEF_GET]);
     put_skill(
         &node.store,
         &author,
@@ -223,7 +223,7 @@ async fn a_caller_with_fewer_grants_sees_fewer_skills() {
         &node,
         &author,
         ws,
-        &def_with_secret("acme", "agent/acme-key"),
+        &def_with_secret("nube", "agent/nube-key"),
     )
     .await
     .unwrap();
@@ -232,11 +232,11 @@ async fn a_caller_with_fewer_grants_sees_fewer_skills() {
     let rich = principal("user:rich", ws, &[TEST, CATALOG, DEF_GET, SKILL_R]);
     let poor = principal("user:poor", ws, &[TEST, CATALOG, DEF_GET]); // no SKILL_R
 
-    let rich_ctx = agent_def_test(&node, &rich, ws, Some("acme"))
+    let rich_ctx = agent_def_test(&node, &rich, ws, Some("nube"))
         .await
         .unwrap()
         .context;
-    let poor_ctx = agent_def_test(&node, &poor, ws, Some("acme"))
+    let poor_ctx = agent_def_test(&node, &poor, ws, Some("nube"))
         .await
         .unwrap()
         .context;
@@ -258,11 +258,11 @@ async fn ws_b_test_never_lists_ws_a_skills() {
     configure(&node, "ok");
 
     let ws_a = "adt-iso-a";
-    let ada = principal("user:ada", ws_a, &[SKILL_R, SKILL_W]);
-    put_skill(&node.store, &ada, ws_a, "a-only", "1", "ws-A", "A BODY", 1)
+    let test = principal("user:test", ws_a, &[SKILL_R, SKILL_W]);
+    put_skill(&node.store, &test, ws_a, "a-only", "1", "ws-A", "A BODY", 1)
         .await
         .unwrap();
-    grant_skill(&node.store, &ada, ws_a, "a-only")
+    grant_skill(&node.store, &test, ws_a, "a-only")
         .await
         .unwrap();
 
@@ -306,13 +306,13 @@ async fn the_record_holds_only_the_path_and_the_answer_is_key_free() {
 
     let secret_value = "sk-super-secret-KEYVALUE-123";
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[TEST, CATALOG, DEF_CREATE, DEF_GET, SECRET_W, SECRET_G],
     );
 
     // Seal the value through the shipped sealed path — the value lands ONLY in lb-secrets.
-    lb_secrets::set(&node.store, &admin, ws, "agent/acme-key", secret_value)
+    lb_secrets::set(&node.store, &admin, ws, "agent/nube-key", secret_value)
         .await
         .unwrap();
 
@@ -321,18 +321,18 @@ async fn the_record_holds_only_the_path_and_the_answer_is_key_free() {
         &node,
         &admin,
         ws,
-        &def_with_secret("acme", "agent/acme-key"),
+        &def_with_secret("nube", "agent/nube-key"),
     )
     .await
     .unwrap();
 
     // (a) The stored record carries the path, never the value.
-    let stored = lb_host::agent_def_get(&node, &admin, ws, "acme")
+    let stored = lb_host::agent_def_get(&node, &admin, ws, "nube")
         .await
         .unwrap();
     assert_eq!(
         stored.model_endpoint.api_key_secret.as_deref(),
-        Some("agent/acme-key"),
+        Some("agent/nube-key"),
         "the record references the path"
     );
     let serialized = serde_json::to_string(&stored).unwrap();
@@ -342,7 +342,7 @@ async fn the_record_holds_only_the_path_and_the_answer_is_key_free() {
     );
 
     // (b) The test's answer is key-free.
-    let result = agent_def_test(&node, &admin, ws, Some("acme"))
+    let result = agent_def_test(&node, &admin, ws, Some("nube"))
         .await
         .unwrap();
     assert!(
@@ -367,10 +367,10 @@ async fn resolve_endpoint_key_precedence_secret_then_env_then_none() {
     //   3. neither                → None (a clear unconfigured path, not a panic).
     let ws = "adt-resolve";
     let node = Arc::new(Node::boot().await.unwrap());
-    let admin = principal("user:ada", ws, &[SECRET_W, SECRET_G]);
+    let admin = principal("user:test", ws, &[SECRET_W, SECRET_G]);
 
     // (1) Sealed secret wins even when an env var is also set.
-    lb_secrets::set(&node.store, &admin, ws, "agent/acme-key", "from-secret")
+    lb_secrets::set(&node.store, &admin, ws, "agent/nube-key", "from-secret")
         .await
         .unwrap();
     // SAFETY: single-threaded test env manipulation; the var name is unique to this test.
@@ -379,7 +379,7 @@ async fn resolve_endpoint_key_precedence_secret_then_env_then_none() {
         &node.store,
         &admin,
         ws,
-        Some("agent/acme-key"),
+        Some("agent/nube-key"),
         Some("ADT_RESOLVE_ENV"),
     )
     .await;
@@ -421,13 +421,13 @@ async fn ws_b_cannot_read_or_resolve_ws_a_sealed_key() {
     let ws_a = "adt-key-a";
     let ws_b = "adt-key-b";
 
-    let ada = principal("user:ada", ws_a, &[SECRET_W, SECRET_G]);
-    lb_secrets::set(&node.store, &ada, ws_a, "agent/zaicoding-key", "ADA-KEY")
+    let test = principal("user:test", ws_a, &[SECRET_W, SECRET_G]);
+    lb_secrets::set(&node.store, &test, ws_a, "agent/zaicoding-key", "ADA-KEY")
         .await
         .unwrap();
     // ws-A resolves its own key.
     assert_eq!(
-        resolve_endpoint_key(&node.store, &ada, ws_a, Some("agent/zaicoding-key"), None)
+        resolve_endpoint_key(&node.store, &test, ws_a, Some("agent/zaicoding-key"), None)
             .await
             .as_deref(),
         Some("ADA-KEY")
@@ -458,7 +458,7 @@ async fn a_builtin_write_referencing_a_secret_path_is_rejected() {
     // (read-only tier) BEFORE the caps gate. A built-in's key stays the node-env name it ships with.
     let ws = "adt-builtin";
     let node = Arc::new(Node::boot().await.unwrap());
-    let admin = principal("user:ada", ws, &[DEF_CREATE, DEF_GET]);
+    let admin = principal("user:test", ws, &[DEF_CREATE, DEF_GET]);
 
     let err = agent_def_create(
         &node,
@@ -483,17 +483,17 @@ async fn the_test_persists_no_durable_run_record() {
     let ws = "adt-bounded";
     let node = Arc::new(Node::boot().await.unwrap());
     configure(&node, "ok");
-    let admin = principal("user:ada", ws, &[TEST, CATALOG, DEF_CREATE, DEF_GET]);
+    let admin = principal("user:test", ws, &[TEST, CATALOG, DEF_CREATE, DEF_GET]);
 
     agent_def_create(
         &node,
         &admin,
         ws,
-        &def_with_secret("acme", "agent/acme-key"),
+        &def_with_secret("nube", "agent/nube-key"),
     )
     .await
     .unwrap();
-    agent_def_test(&node, &admin, ws, Some("acme"))
+    agent_def_test(&node, &admin, ws, Some("nube"))
         .await
         .unwrap();
 
@@ -516,18 +516,18 @@ async fn provider_configured_is_false_on_the_unconfigured_placeholder() {
     let ws = "adt-unconfigured";
     let node = Arc::new(Node::boot().await.unwrap());
     node.install_runtimes(RuntimeRegistry::with_default(Arc::new(UnconfiguredModel)));
-    let admin = principal("user:ada", ws, &[TEST, CATALOG, DEF_CREATE, DEF_GET]);
+    let admin = principal("user:test", ws, &[TEST, CATALOG, DEF_CREATE, DEF_GET]);
 
     agent_def_create(
         &node,
         &admin,
         ws,
-        &def_with_secret("acme", "agent/acme-key"),
+        &def_with_secret("nube", "agent/nube-key"),
     )
     .await
     .unwrap();
 
-    let result = agent_def_test(&node, &admin, ws, Some("acme"))
+    let result = agent_def_test(&node, &admin, ws, Some("nube"))
         .await
         .unwrap();
     assert!(
@@ -570,7 +570,7 @@ async fn the_in_house_test_rides_the_workspace_picked_model_not_the_node_default
     node.install_runtimes(RuntimeRegistry::with_default(Arc::new(UnconfiguredModel)));
     node.install_model_builder(Arc::new(ScriptedBuilder));
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             TEST,
@@ -583,14 +583,14 @@ async fn the_in_house_test_rides_the_workspace_picked_model_not_the_node_default
     );
 
     // A workspace pick of a keyed in-house definition (runtime `default`).
-    let def = def_with_secret("acme", "agent/acme-key");
+    let def = def_with_secret("nube", "agent/nube-key");
     agent_def_create(&node, &admin, ws, &def).await.unwrap();
     agent_config_set(
         &node,
         &admin,
         ws,
         &AgentConfig {
-            active_definition: Some("acme".into()),
+            active_definition: Some("nube".into()),
             default_runtime: Some("default".into()),
             compact_budget: None,
             loop_window: None,
@@ -598,7 +598,7 @@ async fn the_in_house_test_rides_the_workspace_picked_model_not_the_node_default
             model_endpoint: Some(ModelEndpointPatch {
                 provider: Some("zaicoding".into()),
                 model: Some("glm-4.6".into()),
-                api_key_secret: Some("agent/acme-key".into()),
+                api_key_secret: Some("agent/nube-key".into()),
                 ..Default::default()
             }),
             active_persona: None,

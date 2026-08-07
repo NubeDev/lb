@@ -522,7 +522,7 @@ async fn ext_start_is_denied_without_the_grant_and_nothing_spawns() {
 /// brought up only the configured one — so every other workspace's extensions stayed dead after a
 /// restart, silently. The union is load-bearing in both directions, and this pins both:
 ///   - the boot workspace is ALWAYS in the set, even though nothing ever registered it (the default
-///     `acme`, every test, an embedder that provisions its own identities) — keying off the directory
+///     `nube`, every test, an embedder that provisions its own identities) — keying off the directory
 ///     alone would bring up NOTHING on those nodes;
 ///   - an ARCHIVED workspace is excluded — it is soft-deleted, and spawning its sidecars would
 ///     resurrect exactly the activity the archive suppressed.

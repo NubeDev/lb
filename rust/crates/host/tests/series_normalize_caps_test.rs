@@ -30,7 +30,7 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 /// An admin principal for `ws` — every series cap this suite touches.
 fn admin(ws: &str) -> Principal {
     principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:series.retention.set:call",
@@ -83,14 +83,14 @@ async fn setting_a_filter_without_the_admin_cap_is_denied() {
     let node = Node::boot().await.unwrap();
     let reader = principal(
         "user:bob",
-        "acme",
+        "nube",
         &["mcp:series.retention.list:call", "mcp:series.read:call"],
     );
 
     let err = call(
         &node,
         &reader,
-        "acme",
+        "nube",
         "series.retention.set",
         json!({
             "prefix": "modbus.",
@@ -107,7 +107,7 @@ async fn setting_a_filter_without_the_admin_cap_is_denied() {
     );
 
     // And nothing was written — a denial must not half-apply.
-    let listed = call(&node, &reader, "acme", "series.retention.list", json!({}))
+    let listed = call(&node, &reader, "nube", "series.retention.list", json!({}))
         .await
         .unwrap();
     assert_eq!(listed["policies"].as_array().unwrap().len(), 0);
@@ -116,11 +116,11 @@ async fn setting_a_filter_without_the_admin_cap_is_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_bucketed_read_with_a_method_still_needs_the_read_cap() {
     let node = Node::boot().await.unwrap();
-    let no_read = principal("user:bob", "acme", &["mcp:series.retention.list:call"]);
+    let no_read = principal("user:bob", "nube", &["mcp:series.retention.list:call"]);
     let err = call(
         &node,
         &no_read,
-        "acme",
+        "nube",
         "series.read",
         json!({"series": "m.v", "mode": "buckets", "from": 0, "to": 10000, "width_ms": 1000, "method": "avg"}),
     )
@@ -157,14 +157,14 @@ async fn a_ws_b_policy_filters_and_folds_nothing_in_ws_a() {
             sample_at("temp.a", p, 2, 2_000, json!(2.0)),
         ]
     };
-    seed(&node, "acme", rows("pa")).await;
+    seed(&node, "nube", rows("pa")).await;
     seed(&node, "beta", rows("pb")).await;
 
     // ws-A is untouched by ws-B's mute…
     let a = call(
         &node,
-        &admin("acme"),
-        "acme",
+        &admin("nube"),
+        "nube",
         "series.read",
         json!({"series": "temp.a"}),
     )
@@ -195,8 +195,8 @@ async fn a_ws_b_policy_filters_and_folds_nothing_in_ws_a() {
     // ws-A cannot see ws-B's policy at all.
     let a_policies = call(
         &node,
-        &admin("acme"),
-        "acme",
+        &admin("nube"),
+        "nube",
         "series.retention.list",
         json!({}),
     )
@@ -207,8 +207,8 @@ async fn a_ws_b_policy_filters_and_folds_nothing_in_ws_a() {
     // And ws-A's bucketed read resolves NO method — ws-B's `last` tier does not govern it.
     let a_buckets = call(
         &node,
-        &admin("acme"),
-        "acme",
+        &admin("nube"),
+        "nube",
         "series.read",
         json!({"series": "temp.a", "mode": "buckets", "from": 0, "to": 10000, "width_ms": 10000}),
     )

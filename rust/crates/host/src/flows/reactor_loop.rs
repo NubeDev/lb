@@ -185,7 +185,7 @@ mod tests {
         let surface = Surface::parse(parts.next().unwrap()).unwrap();
         let resource = parts.next().unwrap();
         let action = Action::parse(parts.next().unwrap()).unwrap();
-        matches(&caps, &Request::new("acme", surface, resource, action))
+        matches(&caps, &Request::new("nube", surface, resource, action))
     }
 
     /// **The headless-flow node reach** (ext-store-nodes scope). A cron / flip-flop / webhook flow runs

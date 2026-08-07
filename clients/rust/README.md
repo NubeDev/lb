@@ -34,7 +34,7 @@ let client = Client::new("http://127.0.0.1:8080", std::env::var("LB_KEY")?);
 
 // or dev/admin script: log in to get a 12h session token
 let client = Client::new("http://127.0.0.1:8080", "placeholder");
-let (client, reply) = client.login("ada", "acme").await?;
+let (client, reply) = client.login("test", "nube").await?;
 ```
 
 ## The round-trip
@@ -81,7 +81,7 @@ use lb_client::{sign_webhook, post_webhook};
 let body = br#"{"event":"furnace-on"}"#.to_vec();
 let sig  = sign_webhook(shared_secret.as_bytes(), &body); // sha256=<hex>
 let accepted = post_webhook(
-    &client, "acme", "wh_x",
+    &client, "nube", "wh_x",
     &[("X-Signature".into(), sig)],
     body,
 ).await?;
@@ -112,9 +112,9 @@ match write_samples(&client, samples).await {
 ```bash
 make cloud                              # terminal 1: boot 127.0.0.1:8080
 cd clients/rust
-LB_URL=http://127.0.0.1:8080 LB_USER=ada LB_WORKSPACE=acme cargo run --example roundtrip
+LB_URL=http://127.0.0.1:8080 LB_USER=test LB_WORKSPACE=nube cargo run --example roundtrip
 # or with an API key:
-LB_KEY=lbk_acme.k7f3a.ABCDEF23 cargo run --example roundtrip
+LB_KEY=lbk_nube.k7f3a.ABCDEF23 cargo run --example roundtrip
 ```
 
 ## Lay of the land

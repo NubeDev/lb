@@ -270,7 +270,7 @@ async fn federation_end_to_end_postgres() {
         pg.endpoint()
     );
 
-    let ws = "acme";
+    let ws = "nube";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir, &pg.endpoint()).await;
@@ -597,7 +597,7 @@ async fn federation_count_star_columnless_aggregate() {
         eprintln!("SKIP: Docker/Postgres unavailable");
         return;
     };
-    let ws = "acme";
+    let ws = "nube";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let admin = admin(ws);
     install_federation(&node, &admin, ws, &dir, &pg.endpoint()).await;

@@ -6,7 +6,7 @@ Status: scope (the ask). Promotes to `doc-site/content/public/auth-caps/` once s
 the nav SKILL both say *"the nav stays a pure lens — a menu entry never carries a cap and never widens
 reach."* That was right for **widening** (a lens must never *grant*). But a live session forced the
 opposite direction: a `viewer` given a nav of **exactly one page** could still open every other
-read-only page (`/#/t/acme/rules`, `/#/t/acme/flows`, Ingest, Datasources, Data Studio) by URL, and
+read-only page (`/#/t/nube/rules`, `/#/t/nube/flows`, Ingest, Datasources, Data Studio) by URL, and
 they *rendered*. The `viewer` role (see `login-hardening-scope.md`, shipped) made those pages
 read-only — necessary, but coarse: it is a tier, not "one page." The user's ask is unambiguous:
 **the resolved nav must be the allow-list of REACHABLE surfaces, read included. One page in the nav ⇒
@@ -160,7 +160,7 @@ The user's exact scenario, made to work:
 3. Bob's token carries: the viewer floor + `reach:dashboards:view`.
 4. Bob opens the Dashboards page: `GET /dashboards` → `authorize_reach(bob, ws, "dashboards")` →
    holds `reach:dashboards:view` → **200**, page renders (tiles read series via `series.read`, fine).
-5. Bob deep-links `/#/t/acme/rules` → `GET /rules` → `authorize_reach(bob, ws, "rules")` → he holds
+5. Bob deep-links `/#/t/nube/rules` → `GET /rules` → `authorize_reach(bob, ws, "rules")` → he holds
    `reach:dashboards:view` but **not** `reach:rules:view` → **403**. Same for Ingest, Datasources,
    Data Studio — **denied at the server, read included**, even though he still holds `series.read` for
    his dashboard's tiles. The one page he was given is the only surface he reaches.

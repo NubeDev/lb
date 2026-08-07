@@ -76,7 +76,7 @@ the desktop `Makefile` copies `federation(.exe)` beside the shell in `linux-full
 - **Capability-deny (mandatory):** a `postgres` source at `db.example:5432` registers, but its
   `datasource.test` is refused pre-connect — the desktop grant approves only `127.0.0.1:0`. The deny
   wall holds *with the sidecar present*.
-- **Workspace-isolation (mandatory):** a source registered in `acme` only (`acme-only`) is not
+- **Workspace-isolation (mandatory):** a source registered in `nube` only (`nube-only`) is not
   resolvable from a second node booted for ws `other`. (Note: each boot independently seeds its own
   `demo-buildings`, so isolation is proven on a NON-seeded source — an early version of the test got
   a false green by querying `demo-buildings` from `other`, which `other` had seeded itself.)

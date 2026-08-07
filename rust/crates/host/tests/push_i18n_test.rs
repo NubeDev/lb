@@ -52,14 +52,14 @@ async fn member_with_device_and_lang(store: &Store, ws: &str, sub: &str, lang: O
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn one_notify_renders_per_recipient_language() {
     let store = Store::memory().await.unwrap();
-    member_with_device_and_lang(&store, "acme", "user:bob", None).await; // en (fallback)
-    member_with_device_and_lang(&store, "acme", "user:ana", Some("es")).await;
+    member_with_device_and_lang(&store, "nube", "user:bob", None).await; // en (fallback)
+    member_with_device_and_lang(&store, "nube", "user:ana", Some("es")).await;
 
-    let sender = principal("user:staff", "acme", CAPS);
+    let sender = principal("user:staff", "nube", CAPS);
     notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:bob".into(), "user:ana".into()],
         "", // no literal — the key is the message
         "",
@@ -78,7 +78,7 @@ async fn one_notify_renders_per_recipient_language() {
 
     let provider = Arc::new(RecordingPushProvider::default());
     let target = PushTarget::new(Box::new(provider.clone()), store.clone());
-    let pass = relay_outbox(&store, "acme", &target, 101).await.unwrap();
+    let pass = relay_outbox(&store, "nube", &target, 101).await.unwrap();
     assert_eq!(pass.delivered, 1);
 
     let sends = provider.sends();
@@ -94,13 +94,13 @@ async fn one_notify_renders_per_recipient_language() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn literal_notify_stays_untranslated() {
     let store = Store::memory().await.unwrap();
-    member_with_device_and_lang(&store, "acme", "user:ana", Some("es")).await;
+    member_with_device_and_lang(&store, "nube", "user:ana", Some("es")).await;
 
-    let sender = principal("user:staff", "acme", CAPS);
+    let sender = principal("user:staff", "nube", CAPS);
     notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:ana".into()],
         "Literal title",
         "Literal body",
@@ -115,7 +115,7 @@ async fn literal_notify_stays_untranslated() {
 
     let provider = Arc::new(RecordingPushProvider::default());
     let target = PushTarget::new(Box::new(provider.clone()), store.clone());
-    relay_outbox(&store, "acme", &target, 101).await.unwrap();
+    relay_outbox(&store, "nube", &target, 101).await.unwrap();
 
     let sends = provider.sends();
     assert_eq!(sends[0].title, "Literal title");
@@ -126,12 +126,12 @@ async fn literal_notify_stays_untranslated() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn notify_requires_title_or_key() {
     let store = Store::memory().await.unwrap();
-    member_with_device_and_lang(&store, "acme", "user:ana", None).await;
-    let sender = principal("user:staff", "acme", CAPS);
+    member_with_device_and_lang(&store, "nube", "user:ana", None).await;
+    let sender = principal("user:staff", "nube", CAPS);
     let err = notify_send(
         &store,
         &sender,
-        "acme",
+        "nube",
         &["user:ana".into()],
         "",
         "",

@@ -78,7 +78,7 @@ impl Launcher for FakeLauncher {
 fn admin(ws: &str) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
-        sub: "user:ada".into(),
+        sub: "user:test".into(),
         ws: ws.into(),
         role: Role::Member,
         caps: vec!["mcp:native.install:call".into()],
@@ -108,8 +108,8 @@ fn ext_id() -> String {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_runtime_approved_endpoint_survives_reinstall() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
-    let ada = admin(ws);
+    let ws = "nube";
+    let test = admin(ws);
     let id = ext_id();
 
     // Boot 1: the fresh-node state. (The bundled test manifest requests no caps, so the
@@ -119,7 +119,7 @@ async fn a_runtime_approved_endpoint_survives_reinstall() {
     install_native(
         &node,
         &FakeLauncher,
-        &ada,
+        &test,
         ws,
         MANIFEST,
         "target/debug",
@@ -142,7 +142,7 @@ async fn a_runtime_approved_endpoint_survives_reinstall() {
     install_native(
         &node,
         &FakeLauncher,
-        &ada,
+        &test,
         ws,
         MANIFEST,
         "target/debug",
@@ -167,15 +167,15 @@ async fn a_runtime_approved_endpoint_survives_reinstall() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn repeated_reinstalls_do_not_duplicate_grants() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
-    let ada = admin(ws);
+    let ws = "nube";
+    let test = admin(ws);
     let id = ext_id();
     let runtime_grant = "net:tls:timescale.example.com:5434:connect".to_string();
 
     install_native(
         &node,
         &FakeLauncher,
-        &ada,
+        &test,
         ws,
         MANIFEST,
         "target/debug",
@@ -197,7 +197,7 @@ async fn repeated_reinstalls_do_not_duplicate_grants() {
         install_native(
             &node,
             &FakeLauncher,
-            &ada,
+            &test,
             ws,
             MANIFEST,
             "target/debug",
@@ -222,15 +222,15 @@ async fn repeated_reinstalls_do_not_duplicate_grants() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn revoking_a_non_net_cap_still_takes_effect() {
     let node = Node::boot().await.unwrap();
-    let ws = "acme";
-    let ada = admin(ws);
+    let ws = "nube";
+    let test = admin(ws);
     let id = ext_id();
 
     // Boot 1 approves a secret cap; boot 2 does not.
     install_native(
         &node,
         &FakeLauncher,
-        &ada,
+        &test,
         ws,
         MANIFEST,
         "target/debug",
@@ -243,7 +243,7 @@ async fn revoking_a_non_net_cap_still_takes_effect() {
     install_native(
         &node,
         &FakeLauncher,
-        &ada,
+        &test,
         ws,
         MANIFEST,
         "target/debug",

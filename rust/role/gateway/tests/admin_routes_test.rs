@@ -20,13 +20,13 @@ async fn forged_admin_call_by_non_admin_is_denied_server_side() {
     let (gw, key) = gateway().await;
     // A valid session token, but holding NO admin caps — the UI would hide the controls; a forged
     // direct call must still be refused by the gateway (the boundary is the server).
-    let tok = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let tok = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
 
     for req in [
         delete_req("/admin/members/user:bob"),
         delete_req("/admin/teams/facilities"),
         delete_req("/teams/facilities/members/bob"),
-        post_empty("/admin/workspaces/acme/archive"),
+        post_empty("/admin/workspaces/nube/archive"),
     ] {
         let resp = router(gw.clone()).oneshot(bearer(req, &tok)).await.unwrap();
         assert_eq!(
@@ -60,7 +60,7 @@ async fn the_real_member_bundle_cannot_reach_an_admin_route() {
     let (gw, key) = gateway().await;
     let bundle = lb_host::member_role_caps();
     let member: Vec<&str> = bundle.iter().map(String::as_str).collect();
-    let tok = token(&key, "user:bob", "acme", &member);
+    let tok = token(&key, "user:bob", "nube", &member);
 
     // Reads: a member must not enumerate the workspace's people, teams, roles or grants.
     for uri in ["/admin/teams", "/admin/identities", "/admin/members"] {
@@ -82,7 +82,7 @@ async fn the_real_member_bundle_cannot_reach_an_admin_route() {
     for req in [
         delete_req("/admin/members/user:bob"),
         delete_req("/admin/teams/facilities"),
-        post_empty("/admin/workspaces/acme/archive"),
+        post_empty("/admin/workspaces/nube/archive"),
     ] {
         let resp = router(gw.clone()).oneshot(bearer(req, &tok)).await.unwrap();
         assert_eq!(
@@ -102,7 +102,7 @@ async fn admin_can_define_and_list_a_role_and_no_widening_is_enforced() {
     let admin = token(
         &key,
         "user:alice",
-        "acme",
+        "nube",
         &[
             "mcp:roles.define:call",
             "mcp:roles.list:call",
@@ -148,7 +148,7 @@ async fn admin_can_define_and_list_a_role_and_no_widening_is_enforced() {
     );
 
     // A non-admin (no roles caps) is denied on both verbs — the forged-call boundary.
-    let none = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let none = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
     for req in [
         common::get_req("/admin/roles"),
         json_post("/admin/roles", json!({ "name": "x", "caps": [] })),
@@ -175,7 +175,7 @@ async fn ext_routes_are_reachable_for_an_admin_and_deny_a_non_admin() {
     let admin = token(
         &key,
         "user:alice",
-        "acme",
+        "nube",
         &[
             "mcp:ext.list:call",
             "mcp:ext.disable:call",
@@ -199,7 +199,7 @@ async fn ext_routes_are_reachable_for_an_admin_and_deny_a_non_admin() {
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
     // A non-admin (no ext caps) is denied server-side on every ext route — the forged-call boundary.
-    let none = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    let none = token(&key, "user:mallory", "nube", &["bus:chan/*:pub"]);
     for req in [
         common::get_req("/extensions"),
         post_empty("/extensions/hello/disable"),

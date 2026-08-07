@@ -85,7 +85,7 @@ remote AND local:
   `403` (`ext_publish_test.rs`).
 - **Workspace-isolation** — remote: seed the same channel+id in ws A and ws B on one node; an A-token
   returns A's data, never B's, even when it is *also* the selected credential (the A-token's ws wins by
-  construction). Local: an `acme` principal and a `beta` principal over one shared store each see only
+  construction). Local: an `nube` principal and a `beta` principal over one shared store each see only
   their own workspace. `-w <unstored>` errors loudly (`config_persistence_test.rs`, `context.rs` unit).
 - **Offline** — local runs with no gateway reachable and matches remote shape; remote fails with a
   clear `Transport` error (not a hang, not a fake success) when the gateway is down.
@@ -149,9 +149,9 @@ Against a **real** node with the gateway mounted (`LB_GATEWAY_ADDR=127.0.0.1:180
 `LB_TRUSTED_PUBKEYS=<dev key>`):
 
 ```
-$ lb login --url http://127.0.0.1:18080 -w acme
-ws: acme  user: user:ada  role: member  mode: remote
-logged in to http://127.0.0.1:18080 as user:ada (workspace acme); credential stored in "…/.lazybones/config"
+$ lb login --url http://127.0.0.1:18080 -w nube
+ws: nube  user: user:test  role: member  mode: remote
+logged in to http://127.0.0.1:18080 as user:test (workspace nube); credential stored in "…/.lazybones/config"
 
 $ lb call inbox.list '{"channel":"ops"}' -o json
 { "items": [] }
@@ -171,13 +171,13 @@ no session for workspace beta; run `lb login -w beta`
 4
 
 # offline, no gateway:
-$ lb local -w acme whoami
-ws: acme  user: user:ada  role: member  mode: local
+$ lb local -w nube whoami
+ws: nube  user: user:test  role: member  mode: local
 
-$ lb local -w acme call inbox.list '{"channel":"general"}'
+$ lb local -w nube call inbox.list '{"channel":"general"}'
 (no rows)
 
-$ lb local -w acme call prefs.set_default '{}'; echo $?
+$ lb local -w nube call prefs.set_default '{}'; echo $?
 DENIED  mcp:prefs.set_default:call
 3
 ```

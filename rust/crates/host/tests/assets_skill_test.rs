@@ -29,7 +29,7 @@ const WRITE: &str = "store:skill/*:write";
 async fn skill_loads_only_when_granted() {
     let ws = "ws-skill-grant";
     let store = Store::memory().await.unwrap();
-    let author = principal("user:ada", ws, &[WRITE]);
+    let author = principal("user:test", ws, &[WRITE]);
     let agent = principal("key:agent", ws, &[READ]);
 
     put_skill(
@@ -82,7 +82,7 @@ async fn without_the_read_cap_a_granted_skill_is_still_denied() {
     // even when the workspace granted the skill.
     let ws = "ws-skill-nocap";
     let store = Store::memory().await.unwrap();
-    let author = principal("user:ada", ws, &[WRITE]);
+    let author = principal("user:test", ws, &[WRITE]);
     let nobody = principal("key:nobody", ws, &[]); // no read cap
 
     put_skill(&store, &author, ws, "s", "1.0.0", "d", "B", 1)
@@ -102,7 +102,7 @@ async fn without_the_read_cap_a_granted_skill_is_still_denied() {
 async fn latest_granted_version_loads_and_rollback_pins() {
     let ws = "ws-skill-version";
     let store = Store::memory().await.unwrap();
-    let author = principal("user:ada", ws, &[READ, WRITE]);
+    let author = principal("user:test", ws, &[READ, WRITE]);
 
     put_skill(&store, &author, ws, "s", "1.0.0", "d", "v1", 1)
         .await

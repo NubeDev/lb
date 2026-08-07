@@ -81,7 +81,7 @@ mod tests {
         admin_only_caps, holds_cap, member_role_caps, viewer_role_caps, workspace_admin_role_caps,
     };
 
-    const WS: &str = "acme";
+    const WS: &str = "nube";
 
     /// **Every marker must be admin-ONLY** — asserted against `ADMIN_ONLY_CAPS`, not trusted. This is
     /// the property that makes the list self-checking: a marker that is not admin-only misclassifies
@@ -155,7 +155,7 @@ mod tests {
     /// the console it exists for.
     #[test]
     fn workspace_admin_bundle_reads_as_admin() {
-        let ada = Principal::routed("user:ada", WS, workspace_admin_role_caps());
-        assert!(is_workspace_admin(&ada, WS));
+        let test = Principal::routed("user:test", WS, workspace_admin_role_caps());
+        assert!(is_workspace_admin(&test, WS));
     }
 }

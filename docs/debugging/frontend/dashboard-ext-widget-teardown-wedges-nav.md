@@ -16,7 +16,7 @@
 > from a StrictMode-unsafe async effect — see the corrected sections further down.
 
 The first hypothesis — the tile *throwing* while disposing its WebGL context — was **wrong**. A
-Playwright drive of the real dev shell (`:5173`, `#/t/acme/dashboards?…&d=scene-dash` → click "Rules")
+Playwright drive of the real dev shell (`:5173`, `#/t/nube/dashboards?…&d=scene-dash` → click "Rules")
 captured the actual failure:
 
 ```

@@ -116,7 +116,7 @@ fn template_group_facet(label: &str, dashboard: &str, var: &str, facet_key: &str
 async fn variable_required_round_trips_and_defaults_false() {
     let ws = "ws-rp-required";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[DASH_SAVE, DASH_GET]);
+    let test = principal("user:test", ws, &[DASH_SAVE, DASH_GET]);
 
     // One required var, one not.
     let vars = vec![
@@ -126,9 +126,9 @@ async fn variable_required_round_trips_and_defaults_false() {
             ..Default::default()
         },
     ];
-    seed_template(&store, &ada, ws, "site-overview", "Site Overview", vars).await;
+    seed_template(&store, &test, ws, "site-overview", "Site Overview", vars).await;
 
-    let got = dashboard_get(&store, &ada, ws, "site-overview")
+    let got = dashboard_get(&store, &test, ws, "site-overview")
         .await
         .unwrap();
     let site = got.variables.iter().find(|v| v.name == "site").unwrap();
@@ -152,8 +152,8 @@ async fn template_group_expands_one_instance_per_facet_value() {
     let ws = "ws-rp-facet";
     let node = Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[
             SAVE,
@@ -168,7 +168,7 @@ async fn template_group_expands_one_instance_per_facet_value() {
 
     seed_template(
         store,
-        &ada,
+        &test,
         ws,
         "site-overview",
         "Site Overview",
@@ -176,13 +176,13 @@ async fn template_group_expands_one_instance_per_facet_value() {
     )
     .await;
     // Three sites present in the tag graph (any tagged entity carries the facet value).
-    tag_site(store, &ada, ws, "series:hvac.plant-1.temp", "plant-1", 2).await;
-    tag_site(store, &ada, ws, "series:hvac.plant-2.temp", "plant-2", 3).await;
-    tag_site(store, &ada, ws, "series:hvac.plant-3.temp", "plant-3", 4).await;
+    tag_site(store, &test, ws, "series:hvac.plant-1.temp", "plant-1", 2).await;
+    tag_site(store, &test, ws, "series:hvac.plant-2.temp", "plant-2", 3).await;
+    tag_site(store, &test, ws, "series:hvac.plant-3.temp", "plant-3", 4).await;
 
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Operations",
@@ -196,11 +196,11 @@ async fn template_group_expands_one_instance_per_facet_value() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 6)
+    nav_pref_set(store, &test, ws, Some("ops"), None, 6)
         .await
         .unwrap();
 
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 3, "one instance per distinct site value");
     // Each child is the SAME dashboard record, bound to a distinct site via `vars`.
@@ -225,15 +225,15 @@ async fn template_group_expands_one_instance_per_facet_value() {
     assert_eq!(sites, vec!["plant-1", "plant-2", "plant-3"]);
 
     // A NEW site appears with no nav/dashboard edit; untag removes it.
-    tag_site(store, &ada, ws, "series:hvac.plant-4.temp", "plant-4", 7).await;
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    tag_site(store, &test, ws, "series:hvac.plant-4.temp", "plant-4", 7).await;
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 4, "tag site:plant-4 → a new page appears");
 
-    lb_host::tags_remove(store, &ada, ws, "series:hvac.plant-4.temp", "site", None)
+    lb_host::tags_remove(store, &test, ws, "series:hvac.plant-4.temp", "site", None)
         .await
         .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 3, "untag → gone");
 }
@@ -245,25 +245,25 @@ async fn template_group_stripped_without_option_source_cap() {
     let ws = "ws-rp-deny";
     let node = Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    // Ada authors with the tag caps.
-    let ada = principal(
-        "user:ada",
+    // Test authors with the tag caps.
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, DASH_SAVE, DASH_GET, TAGS_ADD, TAGS_FIND],
     );
     seed_template(
         store,
-        &ada,
+        &test,
         ws,
         "site-overview",
         "Site Overview",
         vec![required_var("site")],
     )
     .await;
-    tag_site(store, &ada, ws, "series:x", "plant-1", 2).await;
+    tag_site(store, &test, ws, "series:x", "plant-1", 2).await;
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Operations",
@@ -297,25 +297,25 @@ async fn template_group_stripped_when_template_unreadable() {
     let ws = "ws-rp-lens";
     let node = Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, DASH_SAVE, DASH_GET, TAGS_ADD, TAGS_FIND],
     );
-    // Ada's PRIVATE template (default visibility private).
+    // Test's PRIVATE template (default visibility private).
     seed_template(
         store,
-        &ada,
+        &test,
         ws,
         "secret-overview",
         "Secret",
         vec![required_var("site")],
     )
     .await;
-    tag_site(store, &ada, ws, "series:x", "plant-1", 2).await;
+    tag_site(store, &test, ws, "series:x", "plant-1", 2).await;
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Operations",
@@ -329,7 +329,7 @@ async fn template_group_stripped_when_template_unreadable() {
     )
     .await
     .unwrap();
-    // Ben HOLDS tags.find (can enumerate values) but CANNOT read Ada's private template.
+    // Ben HOLDS tags.find (can enumerate values) but CANNOT read Test's private template.
     let ben = principal("user:ben", ws, &[RESOLVE, DASH_GET, TAGS_FIND]);
     nav_pref_set(store, &ben, ws, Some("ops"), None, 4)
         .await
@@ -350,18 +350,18 @@ async fn template_group_isolation_two_workspaces() {
     let caps = &[SAVE, RESOLVE, DASH_SAVE, DASH_GET, TAGS_ADD, TAGS_FIND];
 
     // ws-A: template + plant-1/plant-2 tags + a nav.
-    let ada = principal("user:ada", "ws-a", caps);
+    let test = principal("user:test", "ws-a", caps);
     seed_template(
         store,
-        &ada,
+        &test,
         "ws-a",
         "site-overview",
         "A Overview",
         vec![required_var("site")],
     )
     .await;
-    tag_site(store, &ada, "ws-a", "series:a1", "plant-1", 2).await;
-    tag_site(store, &ada, "ws-a", "series:a2", "plant-2", 3).await;
+    tag_site(store, &test, "ws-a", "series:a1", "plant-1", 2).await;
+    tag_site(store, &test, "ws-a", "series:a2", "plant-2", 3).await;
 
     // ws-B: its OWN template + a single distinct tag value + a nav with the same shape.
     let ben = principal("user:ben", "ws-b", caps);
@@ -417,14 +417,14 @@ async fn pinned_vars_on_dashboard_entry_round_trip_and_resolve() {
     let ws = "ws-rp-pinned";
     let node = Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, RESOLVE, "mcp:nav.get:call", DASH_SAVE, DASH_GET],
     );
     seed_template(
         store,
-        &ada,
+        &test,
         ws,
         "site-overview",
         "Site Overview",
@@ -441,19 +441,19 @@ async fn pinned_vars_on_dashboard_entry_round_trip_and_resolve() {
         vars,
         ..Default::default()
     };
-    nav_save(store, &ada, ws, "ops", "Operations", vec![entry], 2)
+    nav_save(store, &test, ws, "ops", "Operations", vec![entry], 2)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 3)
+    nav_pref_set(store, &test, ws, Some("ops"), None, 3)
         .await
         .unwrap();
 
     // Round-trip: the pinned binding survives save→get.
-    let got = lb_host::nav_get(store, &ada, ws, "ops").await.unwrap();
+    let got = lb_host::nav_get(store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.items[0].vars.get("site").unwrap(), "plant-2");
 
     // Resolve: the binding rides through to the rendered item.
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let dash = r.items.iter().find(|i| i.kind == "dashboard").unwrap();
     assert_eq!(dash.label, "Plant-2 Overview");
     assert_eq!(dash.vars.get("site").unwrap(), "plant-2");
@@ -466,8 +466,8 @@ async fn template_group_query_option_source_enumerates_and_denies() {
     let ws = "ws-rp-query";
     let node = Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[
             SAVE,
@@ -482,15 +482,15 @@ async fn template_group_query_option_source_enumerates_and_denies() {
     );
     seed_template(
         store,
-        &ada,
+        &test,
         ws,
         "site-overview",
         "Site Overview",
         vec![required_var("site")],
     )
     .await;
-    tag_site(store, &ada, ws, "series:a1", "plant-1", 2).await;
-    tag_site(store, &ada, ws, "series:a2", "plant-2", 3).await;
+    tag_site(store, &test, ws, "series:a1", "plant-1", 2).await;
+    tag_site(store, &test, ws, "series:a2", "plant-2", 3).await;
 
     // A `{tool,args}` option source: distinct site values via store.query over the tag edges.
     let entry = NavItem {
@@ -502,14 +502,22 @@ async fn template_group_query_option_source_enumerates_and_denies() {
         args: json!({ "sql": "SELECT tval AS value FROM tagged WHERE tkey = 'site' GROUP BY value" }),
         ..Default::default()
     };
-    nav_save(store, &ada, ws, "ops", "Operations", vec![entry.clone()], 4)
-        .await
-        .unwrap();
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 5)
+    nav_save(
+        store,
+        &test,
+        ws,
+        "ops",
+        "Operations",
+        vec![entry.clone()],
+        4,
+    )
+    .await
+    .unwrap();
+    nav_pref_set(store, &test, ws, Some("ops"), None, 5)
         .await
         .unwrap();
 
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     let mut values: Vec<String> = grp
         .items
@@ -526,10 +534,10 @@ async fn template_group_query_option_source_enumerates_and_denies() {
     // Deny: a caller lacking the query TOOL's cap (`store.query`) → the entry strips, opaque.
     let ben = principal("user:ben", ws, &[RESOLVE, DASH_GET]);
     // Ben needs to resolve the same nav; share it to the workspace so he picks it.
-    lb_host::nav_share(store, &ada, ws, "ops", NavVisibility::Workspace, None, 6)
+    lb_host::nav_share(store, &test, ws, "ops", NavVisibility::Workspace, None, 6)
         .await
         .unwrap();
-    lb_host::nav_set_default(store, &ada, ws, "ops", 7)
+    lb_host::nav_set_default(store, &test, ws, "ops", 7)
         .await
         .unwrap();
     let r = nav_resolve(&node, &ben, ws).await.unwrap();
@@ -545,7 +553,7 @@ async fn template_group_query_option_source_enumerates_and_denies() {
 async fn nav_save_rejects_malformed_template_group() {
     let ws = "ws-rp-bounds";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[SAVE]);
+    let test = principal("user:test", ws, &[SAVE]);
 
     // No `var`.
     let no_var = NavItem {
@@ -557,7 +565,7 @@ async fn nav_save_rejects_malformed_template_group() {
         }],
         ..Default::default()
     };
-    assert!(nav_save(&store, &ada, ws, "n1", "N", vec![no_var], 1)
+    assert!(nav_save(&store, &test, ws, "n1", "N", vec![no_var], 1)
         .await
         .is_err());
 
@@ -568,7 +576,7 @@ async fn nav_save_rejects_malformed_template_group() {
         var: "site".into(),
         ..Default::default()
     };
-    assert!(nav_save(&store, &ada, ws, "n2", "N", vec![no_src], 1)
+    assert!(nav_save(&store, &test, ws, "n2", "N", vec![no_src], 1)
         .await
         .is_err());
 
@@ -585,7 +593,7 @@ async fn nav_save_rejects_malformed_template_group() {
         }],
         ..Default::default()
     };
-    assert!(nav_save(&store, &ada, ws, "n3", "N", vec![both], 1)
+    assert!(nav_save(&store, &test, ws, "n3", "N", vec![both], 1)
         .await
         .is_err());
 
@@ -599,7 +607,7 @@ async fn nav_save_rejects_malformed_template_group() {
         }],
         ..Default::default()
     };
-    assert!(nav_save(&store, &ada, ws, "n4", "N", vec![no_dash], 1)
+    assert!(nav_save(&store, &test, ws, "n4", "N", vec![no_dash], 1)
         .await
         .is_err());
 }

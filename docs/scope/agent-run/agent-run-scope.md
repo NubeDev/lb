@@ -261,7 +261,7 @@ caller), never *what's allowed* (the grant).
 A developer wires their editor (an ACP host, e.g. Zed) to the workspace.
 
 1. The editor launches the **ACP adapter** (`role/acp`), which authenticates a trusted local session
-   bound to workspace `acme` (reusing `session/trusted.rs`). `session/initialize` handshakes
+   bound to workspace `nube` (reusing `session/trusted.rs`). `session/initialize` handshakes
    capabilities.
 2. The developer types "fix the token-refresh race in #2451." `session/new` starts a durable run (a
    job); `session/prompt` drives a turn (the start/resume-vs-watch split — not a blocking
@@ -271,10 +271,10 @@ A developer wires their editor (an ACP host, e.g. Zed) to the workspace.
    from that transcript; the adapter encodes them as ACP `session/update`s and the editor renders them
    live. The same projection feeds the browser's `agent.watch` SSE if anyone has it open.
 4. The model decides it needs the repo conventions. It sees `repo-conventions` in the injected
-   **skill catalog** (granted to `acme`) and calls `skill.activate {id: "repo-conventions"}`; the
+   **skill catalog** (granted to `nube`) and calls `skill.activate {id: "repo-conventions"}`; the
    loop loads it (S4 grant checked), records the activation **in the transcript** (so it survives
    resume), emits `SkillActivated`, and the body enters context.
-5. The model proposes `shell.run {cmd: "rm -rf node_modules"}`. The **permission policy** for `acme`
+5. The model proposes `shell.run {cmd: "rm -rf node_modules"}`. The **permission policy** for `nube`
    matches `shell.run` → **Ask**. The loop **suspends**: it writes the `agent_decision` record
    (pending, keyed by `{job, tool_call}`), surfaces an inbox `needs:approval` item for routing,
    persists the pending-suspension id + cursor in the transcript, emits `Suspended`, and ends the

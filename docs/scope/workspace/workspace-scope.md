@@ -8,7 +8,7 @@ plus the later admin CRUD work. Durable docs: `../../public/workspace/workspace.
 Make workspaces explicit in the product surface without weakening the tenant wall:
 
 - A signed session token names exactly one workspace.
-- The UI can list and create workspace directory entries instead of hardcoding `acme`.
+- The UI can list and create workspace directory entries instead of hardcoding `nube`.
 - Admins can archive, rename, and purge workspace entries through guarded lifecycle routes.
 - Every workspace-owned data read still uses the token's workspace, not a request body.
 

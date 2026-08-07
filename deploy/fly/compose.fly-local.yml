@@ -36,8 +36,8 @@ services:
     container_name: lazybones-fly-local-app
     restart: unless-stopped
     environment:
-      LB_WORKSPACE: acme
-      LB_SEED_USER: "user:ada"
+      LB_WORKSPACE: nube
+      LB_SEED_USER: "user:test"
       LB_SIGNING_KEY: ${LB_SIGNING_KEY:-}
     volumes:
       - app-data:/data

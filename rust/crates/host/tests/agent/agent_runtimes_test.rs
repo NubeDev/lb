@@ -71,7 +71,7 @@ impl AgentRuntime for StubRuntime {
 async fn default_only_node_lists_exactly_default() {
     let node = Node::boot().await.expect("node boots");
     let ws = "rt-default";
-    let p = principal("user:ada", ws, &[RUNTIMES]);
+    let p = principal("user:test", ws, &[RUNTIMES]);
 
     let out = list_runtimes(&node, &p, ws).await.expect("authorized list");
     assert_eq!(out["default"], "default");
@@ -101,11 +101,11 @@ async fn node_with_an_extra_runtime_lists_both_sorted() {
     // Install a registry carrying the default PLUS a registered external stand-in. `default_runtimes`
     // is private, so rebuild the default-only registry the same way boot does, then register the stub.
     let mut registry = default_registry();
-    registry.register(Arc::new(StubRuntime("acme-external")));
+    registry.register(Arc::new(StubRuntime("nube-external")));
     node.install_runtimes(registry);
 
     let ws = "rt-extra";
-    let p = principal("user:ada", ws, &[RUNTIMES]);
+    let p = principal("user:test", ws, &[RUNTIMES]);
 
     let out = list_runtimes(&node, &p, ws).await.expect("authorized list");
     assert_eq!(out["default"], "default", "default id is unchanged");
@@ -115,8 +115,8 @@ async fn node_with_an_extra_runtime_lists_both_sorted() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
-    // Sorted: `acme-external` before `default`; both present.
-    assert_eq!(ids, vec!["acme-external", "default"]);
+    // Sorted: `nube-external` before `default`; both present.
+    assert_eq!(ids, vec!["nube-external", "default"]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -124,7 +124,7 @@ async fn without_the_read_cap_the_list_is_denied_opaquely() {
     let node = Node::boot().await.expect("node boots");
     let ws = "rt-deny";
     // Holds an unrelated cap but NOT `mcp:agent.runtimes:call`.
-    let p = principal("user:ada", ws, &[INVOKE]);
+    let p = principal("user:test", ws, &[INVOKE]);
 
     let err = list_runtimes(&node, &p, ws)
         .await
@@ -141,7 +141,7 @@ async fn a_ws_b_principal_sees_only_this_nodes_config() {
     // reach in the first place — but prove the ws-scoped call still succeeds and yields ONLY this
     // node's configured runtimes, identical for any workspace.
     let node = Node::boot().await.expect("node boots");
-    let a = principal("user:ada", "ws-a", &[RUNTIMES]);
+    let a = principal("user:test", "ws-a", &[RUNTIMES]);
     let b = principal("user:bob", "ws-b", &[RUNTIMES]);
 
     let out_a = list_runtimes(&node, &a, "ws-a").await.expect("ws-a list");
@@ -159,7 +159,7 @@ async fn catalog_shows_agent_invoke_only_with_the_invoke_cap() {
     let ws = "rt-catalog";
 
     // WITH the invoke cap → the `agent.invoke` command is present (its name IS the gate).
-    let member = principal("user:ada", ws, &[CATALOG, INVOKE]);
+    let member = principal("user:test", ws, &[CATALOG, INVOKE]);
     let cat = tools_catalog(&node, &member, ws).await.expect("catalog");
     let cmd = cat
         .tools
@@ -193,11 +193,11 @@ async fn workspace_default_carries_the_picks_human_label() {
     // that runtime — the label the picker shows must be the DEFINITION's label, not the raw id.
     let node = Node::boot().await.expect("node boots");
     let mut registry = default_registry();
-    registry.register(Arc::new(StubRuntime("acme-external")));
+    registry.register(Arc::new(StubRuntime("nube-external")));
     node.install_runtimes(registry);
 
     let ws = "rt-pick";
-    let admin = principal("user:ada", ws, &[RUNTIMES, SET, CREATE, DEF_LIST]);
+    let admin = principal("user:test", ws, &[RUNTIMES, SET, CREATE, DEF_LIST]);
 
     // Author a custom definition bound to the stub runtime, with a human label.
     agent_def_create(
@@ -205,13 +205,13 @@ async fn workspace_default_carries_the_picks_human_label() {
         &admin,
         ws,
         &AgentDefinition {
-            id: "acme-preset".into(),
-            label: "Acme Cloud".into(),
+            id: "nube-preset".into(),
+            label: "Nube Cloud".into(),
             description: None,
-            runtime: "acme-external".into(),
+            runtime: "nube-external".into(),
             model_endpoint: DefinitionEndpoint {
-                provider: "acme".into(),
-                model: "acme-1".into(),
+                provider: "nube".into(),
+                model: "nube-1".into(),
                 api_key_env: None,
                 api_key_secret: None,
                 base_url: None,
@@ -234,7 +234,7 @@ async fn workspace_default_carries_the_picks_human_label() {
             active_definition: None,
             active_persona: None,
             enabled_personas: None,
-            default_runtime: Some("acme-external".into()),
+            default_runtime: Some("nube-external".into()),
             model_endpoint: None,
         },
     )
@@ -242,9 +242,9 @@ async fn workspace_default_carries_the_picks_human_label() {
     .expect("admin seeds the active pick");
 
     let out = list_runtimes(&node, &admin, ws).await.expect("list");
-    assert_eq!(out["workspace_default"]["runtime"], "acme-external");
+    assert_eq!(out["workspace_default"]["runtime"], "nube-external");
     assert_eq!(
-        out["workspace_default"]["label"], "Acme Cloud",
+        out["workspace_default"]["label"], "Nube Cloud",
         "the picker shows the matching definition's human label"
     );
 }
@@ -254,11 +254,11 @@ async fn workspace_default_falls_back_to_the_id_when_no_definition_matches() {
     // A pick with NO custom definition binding it → the label is the runtime id string (never blank).
     let node = Node::boot().await.expect("node boots");
     let mut registry = default_registry();
-    registry.register(Arc::new(StubRuntime("acme-external")));
+    registry.register(Arc::new(StubRuntime("nube-external")));
     node.install_runtimes(registry);
 
     let ws = "rt-pick-nodef";
-    let admin = principal("user:ada", ws, &[RUNTIMES, SET]);
+    let admin = principal("user:test", ws, &[RUNTIMES, SET]);
     agent_config_set(
         &node,
         &admin,
@@ -270,7 +270,7 @@ async fn workspace_default_falls_back_to_the_id_when_no_definition_matches() {
             active_definition: None,
             active_persona: None,
             enabled_personas: None,
-            default_runtime: Some("acme-external".into()),
+            default_runtime: Some("nube-external".into()),
             model_endpoint: None,
         },
     )
@@ -278,9 +278,9 @@ async fn workspace_default_falls_back_to_the_id_when_no_definition_matches() {
     .expect("admin seeds the active pick");
 
     let out = list_runtimes(&node, &admin, ws).await.expect("list");
-    assert_eq!(out["workspace_default"]["runtime"], "acme-external");
+    assert_eq!(out["workspace_default"]["runtime"], "nube-external");
     assert_eq!(
-        out["workspace_default"]["label"], "acme-external",
+        out["workspace_default"]["label"], "nube-external",
         "no matching definition → the label falls back to the runtime id"
     );
 }
@@ -291,22 +291,22 @@ async fn ws_b_default_never_carries_ws_a_active_label() {
     // be null — the pick and its label are read strictly ws-scoped (the hard wall), never ws-A's.
     let node = Node::boot().await.expect("node boots");
     let mut registry = default_registry();
-    registry.register(Arc::new(StubRuntime("acme-external")));
+    registry.register(Arc::new(StubRuntime("nube-external")));
     node.install_runtimes(registry);
 
-    let admin_a = principal("user:ada", "ws-a", &[RUNTIMES, SET, CREATE, DEF_LIST]);
+    let admin_a = principal("user:test", "ws-a", &[RUNTIMES, SET, CREATE, DEF_LIST]);
     agent_def_create(
         &node,
         &admin_a,
         "ws-a",
         &AgentDefinition {
-            id: "acme-preset".into(),
-            label: "Acme Cloud (ws-a only)".into(),
+            id: "nube-preset".into(),
+            label: "Nube Cloud (ws-a only)".into(),
             description: None,
-            runtime: "acme-external".into(),
+            runtime: "nube-external".into(),
             model_endpoint: DefinitionEndpoint {
-                provider: "acme".into(),
-                model: "acme-1".into(),
+                provider: "nube".into(),
+                model: "nube-1".into(),
                 api_key_env: None,
                 api_key_secret: None,
                 base_url: None,
@@ -327,7 +327,7 @@ async fn ws_b_default_never_carries_ws_a_active_label() {
             active_definition: None,
             active_persona: None,
             enabled_personas: None,
-            default_runtime: Some("acme-external".into()),
+            default_runtime: Some("nube-external".into()),
             model_endpoint: None,
         },
     )
@@ -348,7 +348,7 @@ async fn ws_b_default_never_carries_ws_a_active_label() {
         .expect("ws-a list");
     assert_eq!(
         out_a["workspace_default"]["label"],
-        "Acme Cloud (ws-a only)"
+        "Nube Cloud (ws-a only)"
     );
 }
 

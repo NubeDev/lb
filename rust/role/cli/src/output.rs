@@ -154,7 +154,7 @@ mod tests {
         // The inbox.list shape: `{ items: [...] }`. The table shows the items' columns, not a single
         // "items" cell — the defensive-unwrap the drift risk requires.
         let v = json!({ "items": [
-            { "id": "i1", "body": "hello", "author": "user:ada" },
+            { "id": "i1", "body": "hello", "author": "user:test" },
             { "id": "i2", "body": "world", "author": "user:bo" },
         ]});
         let t = table(&v);

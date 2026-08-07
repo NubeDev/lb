@@ -54,7 +54,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     // batches force the loop round, so a broken termination condition is visible here too.
     seed(
         &store,
-        "acme",
+        "nube",
         (0..700u64)
             .map(|i| sample("hist", "p", i + 1, i * 1000, json!(i as f64)))
             .collect(),
@@ -64,7 +64,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     // Keep raw 100s; roll everything older into 10s buckets kept forever.
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "hist".into(),
             raw_for_ms: 100_000,
@@ -83,7 +83,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     .unwrap();
 
     let now = 700_000u64; // raw cutoff = 600_000, already tier-aligned
-    let pass = run_gc(&store, "acme", now).await.unwrap();
+    let pass = run_gc(&store, "nube", now).await.unwrap();
     assert_eq!(
         pass.evicted_raw, 600,
         "raw older than the horizon is evicted"
@@ -91,7 +91,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     assert_eq!(pass.rollup_rows, 60, "60× 10s rollup buckets stored");
 
     // Raw reads no longer see the evicted history…
-    let page = read_page(&store, "acme", "hist", &PageQuery::default())
+    let page = read_page(&store, "nube", "hist", &PageQuery::default())
         .await
         .unwrap();
     assert_eq!(page.rows.len(), 100);
@@ -105,7 +105,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
         budget: None,
         ..Default::default()
     };
-    let buckets = read_buckets(&store, "acme", "hist", &q, 20_000)
+    let buckets = read_buckets(&store, "nube", "hist", &q, 20_000)
         .await
         .unwrap();
     assert_eq!(
@@ -123,13 +123,13 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     );
 
     // A second pass is idempotent: nothing left to evict or newly roll up beyond the same rows.
-    let pass2 = run_gc(&store, "acme", now).await.unwrap();
+    let pass2 = run_gc(&store, "nube", now).await.unwrap();
     assert_eq!(pass2.evicted_raw, 0);
 
     // Tier eviction: shrink the tier horizon so old rollup rows fall off too.
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "hist".into(),
             raw_for_ms: 100_000,
@@ -146,7 +146,7 @@ async fn retention_gc_rolls_up_then_evicts_and_buckets_merge_rollups() {
     )
     .await
     .unwrap();
-    let pass3 = run_gc(&store, "acme", now).await.unwrap();
+    let pass3 = run_gc(&store, "nube", now).await.unwrap();
     assert_eq!(
         pass3.evicted_rollup, 55,
         "tier horizon evicts stale rollup rows"
@@ -164,7 +164,7 @@ async fn the_longest_matching_prefix_governs_a_series() {
     for s in ["fleet.us.a", "fleet.eu.b"] {
         seed(
             &store,
-            "acme",
+            "nube",
             (1..=30u64)
                 .map(|i| sample(s, "p", i, i * 1000, json!(i)))
                 .collect(),
@@ -175,7 +175,7 @@ async fn the_longest_matching_prefix_governs_a_series() {
     // bound — so "tightest wins" and "longest wins" disagree, and only the latter is correct).
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "fleet.".into(),
             raw_for_ms: 0,
@@ -189,7 +189,7 @@ async fn the_longest_matching_prefix_governs_a_series() {
     .unwrap();
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "fleet.eu.".into(),
             raw_for_ms: 0,
@@ -202,14 +202,14 @@ async fn the_longest_matching_prefix_governs_a_series() {
     .await
     .unwrap();
 
-    run_gc(&store, "acme", 1_000_000).await.unwrap();
+    run_gc(&store, "nube", 1_000_000).await.unwrap();
     assert_eq!(
-        sample_count(&store, "acme", "fleet.us.a").await.unwrap(),
+        sample_count(&store, "nube", "fleet.us.a").await.unwrap(),
         5,
         "only the broad policy matches: its bound applies"
     );
     assert_eq!(
-        sample_count(&store, "acme", "fleet.eu.b").await.unwrap(),
+        sample_count(&store, "nube", "fleet.eu.b").await.unwrap(),
         20,
         "the LONGER prefix governs — its looser bound is the override, not overruled by the broad one"
     );
@@ -225,13 +225,13 @@ async fn an_unpoliced_series_under_the_default_cap_is_untouched() {
     let store = Store::memory().await.unwrap();
     seed(
         &store,
-        "acme",
+        "nube",
         (1..=30u64)
             .map(|i| sample("unpoliced", "p", i, i * 1000, json!(i)))
             .collect(),
     )
     .await;
-    let pass = run_gc(&store, "acme", 1_000_000).await.unwrap();
+    let pass = run_gc(&store, "nube", 1_000_000).await.unwrap();
     assert_eq!(
         pass.capped_raw, 0,
         "30 samples is far under the default cap → nothing evicted"
@@ -242,7 +242,7 @@ async fn an_unpoliced_series_under_the_default_cap_is_untouched() {
     );
     // The premise of this test, stated: 30 rows is far under the enforced default bound.
     assert_eq!(DEFAULT_MAX_SAMPLES, 100_000);
-    assert_eq!(sample_count(&store, "acme", "unpoliced").await.unwrap(), 30);
+    assert_eq!(sample_count(&store, "nube", "unpoliced").await.unwrap(), 30);
 }
 
 // ── The series_latest POINTER: forward-only, restart-safe, replay-idempotent (perf fix) ─────────

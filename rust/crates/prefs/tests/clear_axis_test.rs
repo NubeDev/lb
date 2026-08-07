@@ -21,7 +21,7 @@ async fn clearing_ui_theme_restores_the_workspace_default() {
 
     set_workspace_prefs(
         &store,
-        "acme",
+        "nube",
         &Prefs {
             ui_theme: Some(json!({ "preset": "corporate" })),
             ..Prefs::default()
@@ -34,8 +34,8 @@ async fn clearing_ui_theme_restores_the_workspace_default() {
     // The member picks their own theme — now shadowing the workspace default entirely.
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             ui_theme: Some(json!({ "preset": "neon" })),
             ..Prefs::default()
@@ -44,7 +44,7 @@ async fn clearing_ui_theme_restores_the_workspace_default() {
     )
     .await
     .unwrap();
-    let shadowed = resolve_chain(&store, "acme", "user:ada", None)
+    let shadowed = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
     assert_eq!(
@@ -56,15 +56,15 @@ async fn clearing_ui_theme_restores_the_workspace_default() {
     // Clear it: the member inherits the workspace default again.
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs::default(),
         &[PrefsAxis::UiTheme],
     )
     .await
     .unwrap();
 
-    let resolved = resolve_chain(&store, "acme", "user:ada", None)
+    let resolved = resolve_chain(&store, "nube", "user:test", None)
         .await
         .unwrap();
     assert_eq!(
@@ -72,7 +72,7 @@ async fn clearing_ui_theme_restores_the_workspace_default() {
         Some(json!({ "preset": "corporate" })),
         "clearing the member axis falls back through to the workspace default"
     );
-    let own = get_user_prefs(&store, "acme", "user:ada")
+    let own = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -87,8 +87,8 @@ async fn clear_leaves_the_other_axes_untouched() {
     let store = Store::memory().await.unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             language: Some("es".into()),
             date_style: Some(DateStyle::Eu),
@@ -103,15 +103,15 @@ async fn clear_leaves_the_other_axes_untouched() {
 
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs::default(),
         &[PrefsAxis::UiTheme],
     )
     .await
     .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -132,8 +132,8 @@ async fn patch_and_clear_apply_together() {
     let store = Store::memory().await.unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             language: Some("es".into()),
             ui_theme: Some(json!({ "preset": "neon" })),
@@ -146,8 +146,8 @@ async fn patch_and_clear_apply_together() {
 
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             language: Some("en".into()),
             ..Prefs::default()
@@ -157,7 +157,7 @@ async fn patch_and_clear_apply_together() {
     .await
     .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -172,8 +172,8 @@ async fn clear_wins_over_a_set_of_the_same_axis() {
     let store = Store::memory().await.unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             ui_theme: Some(json!({ "preset": "neon" })),
             ..Prefs::default()
@@ -183,7 +183,7 @@ async fn clear_wins_over_a_set_of_the_same_axis() {
     .await
     .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada").await.unwrap();
+    let got = get_user_prefs(&store, "nube", "user:test").await.unwrap();
     assert_eq!(
         got.and_then(|p| p.ui_theme),
         None,
@@ -197,7 +197,7 @@ async fn clearing_the_workspace_default_falls_through_to_builtin() {
     let store = Store::memory().await.unwrap();
     set_workspace_prefs(
         &store,
-        "acme",
+        "nube",
         &Prefs {
             ui_theme: Some(json!({ "preset": "corporate" })),
             unit_system: Some(UnitSystem::Imperial),
@@ -208,11 +208,11 @@ async fn clearing_the_workspace_default_falls_through_to_builtin() {
     .await
     .unwrap();
 
-    set_workspace_prefs(&store, "acme", &Prefs::default(), &[PrefsAxis::UiTheme])
+    set_workspace_prefs(&store, "nube", &Prefs::default(), &[PrefsAxis::UiTheme])
         .await
         .unwrap();
 
-    let ws = get_workspace_prefs(&store, "acme").await.unwrap().unwrap();
+    let ws = get_workspace_prefs(&store, "nube").await.unwrap().unwrap();
     assert_eq!(ws.ui_theme, None, "the workspace axis is cleared");
     assert_eq!(
         ws.unit_system,
@@ -220,7 +220,7 @@ async fn clearing_the_workspace_default_falls_through_to_builtin() {
         "the workspace's other axes survive"
     );
 
-    let resolved = resolve_chain(&store, "acme", "user:bob", None)
+    let resolved = resolve_chain(&store, "nube", "user:bob", None)
         .await
         .unwrap();
     assert_eq!(
@@ -236,8 +236,8 @@ async fn clearing_an_unset_axis_is_a_no_op() {
     let store = Store::memory().await.unwrap();
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs {
             language: Some("es".into()),
             ..Prefs::default()
@@ -247,7 +247,7 @@ async fn clearing_an_unset_axis_is_a_no_op() {
     .await
     .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -262,7 +262,7 @@ async fn clearing_on_a_fresh_record_is_safe() {
     let store = Store::memory().await.unwrap();
     set_user_prefs(
         &store,
-        "acme",
+        "nube",
         "user:new",
         &Prefs::default(),
         &[PrefsAxis::UiTheme],
@@ -270,7 +270,7 @@ async fn clearing_on_a_fresh_record_is_safe() {
     .await
     .unwrap();
 
-    let resolved = resolve_chain(&store, "acme", "user:new", None)
+    let resolved = resolve_chain(&store, "nube", "user:new", None)
         .await
         .unwrap();
     assert_eq!(resolved.ui_theme, None);
@@ -289,7 +289,7 @@ async fn every_axis_can_be_cleared() {
         date_style: Some(DateStyle::Eu),
         unit_system: Some(UnitSystem::Imperial),
         ui_theme: Some(json!({ "preset": "neon" })),
-        ui_branding: Some(json!({ "siteName": "Acme" })),
+        ui_branding: Some(json!({ "siteName": "Nube" })),
         insight_notifications: Some(false),
         agent_persona: Some("analyst".into()),
         push_muted: Some(true),
@@ -298,7 +298,7 @@ async fn every_axis_can_be_cleared() {
     seeded
         .unit_overrides
         .insert(lb_prefs::Dimension::Speed, lb_prefs::Unit::Knot);
-    set_user_prefs(&store, "acme", "user:ada", &seeded, &[])
+    set_user_prefs(&store, "nube", "user:test", &seeded, &[])
         .await
         .unwrap();
 
@@ -317,11 +317,11 @@ async fn every_axis_can_be_cleared() {
         PrefsAxis::AgentPersona,
         PrefsAxis::PushMuted,
     ];
-    set_user_prefs(&store, "acme", "user:ada", &Prefs::default(), &all)
+    set_user_prefs(&store, "nube", "user:test", &Prefs::default(), &all)
         .await
         .unwrap();
 
-    let got = get_user_prefs(&store, "acme", "user:ada")
+    let got = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
@@ -341,32 +341,32 @@ async fn clear_is_workspace_isolated() {
         ui_theme: Some(json!({ "preset": "neon" })),
         ..Prefs::default()
     };
-    set_user_prefs(&store, "acme", "user:ada", &themed, &[])
+    set_user_prefs(&store, "nube", "user:test", &themed, &[])
         .await
         .unwrap();
-    set_user_prefs(&store, "globex", "user:ada", &themed, &[])
+    set_user_prefs(&store, "globex", "user:test", &themed, &[])
         .await
         .unwrap();
 
     set_user_prefs(
         &store,
-        "acme",
-        "user:ada",
+        "nube",
+        "user:test",
         &Prefs::default(),
         &[PrefsAxis::UiTheme],
     )
     .await
     .unwrap();
 
-    let acme = get_user_prefs(&store, "acme", "user:ada")
+    let nube = get_user_prefs(&store, "nube", "user:test")
         .await
         .unwrap()
         .unwrap();
-    let globex = get_user_prefs(&store, "globex", "user:ada")
+    let globex = get_user_prefs(&store, "globex", "user:test")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(acme.ui_theme, None, "cleared in acme");
+    assert_eq!(nube.ui_theme, None, "cleared in nube");
     assert_eq!(
         globex.ui_theme,
         Some(json!({ "preset": "neon" })),

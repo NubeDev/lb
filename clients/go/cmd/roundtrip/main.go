@@ -4,9 +4,9 @@
 // Run with:
 //   make cloud                       # terminal 1: boot 127.0.0.1:8080
 //   cd clients/go
-//   LB_URL=http://127.0.0.1:8080 LB_USER=ada LB_WORKSPACE=acme go run ./cmd/roundtrip
+//   LB_URL=http://127.0.0.1:8080 LB_USER=test LB_WORKSPACE=nube go run ./cmd/roundtrip
 //   # or with an API key:
-//   LB_KEY=lbk_acme.k7f3a.ABCDEF23 go run ./cmd/roundtrip
+//   LB_KEY=lbk_nube.k7f3a.ABCDEF23 go run ./cmd/roundtrip
 package main
 
 import (
@@ -21,8 +21,8 @@ import (
 
 func main() {
 	urlFlag := flag.String("url", envOr("LB_URL", "http://127.0.0.1:8080"), "gateway base URL")
-	user := flag.String("user", envOr("LB_USER", "ada"), "login user (dev-login)")
-	ws := flag.String("workspace", envOr("LB_WORKSPACE", "acme"), "login workspace")
+	user := flag.String("user", envOr("LB_USER", "test"), "login user (dev-login)")
+	ws := flag.String("workspace", envOr("LB_WORKSPACE", "nube"), "login workspace")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

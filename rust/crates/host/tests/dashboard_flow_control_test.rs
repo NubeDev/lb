@@ -42,11 +42,11 @@ fn principal(sub: &str, ws: &str) -> Principal {
 async fn flow_control_args_template_survives_save_get() {
     let ws = "ws-flowctl";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws);
+    let test = principal("user:test", ws);
 
     let saved = call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({
@@ -76,7 +76,7 @@ async fn flow_control_args_template_survives_save_get() {
         "save's return carries the flow binding"
     );
 
-    let got = call_dashboard_tool(&store, &ada, ws, "dashboard.get", &json!({ "id": "ops" }))
+    let got = call_dashboard_tool(&store, &test, ws, "dashboard.get", &json!({ "id": "ops" }))
         .await
         .expect("get succeeds");
     let action = &got["cells"][0]["action"];
@@ -106,11 +106,11 @@ async fn flow_control_args_template_survives_save_get() {
 async fn non_control_cell_round_trips_without_action() {
     let ws = "ws-flowctl-guard";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws);
+    let test = principal("user:test", ws);
 
     call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({
@@ -125,7 +125,7 @@ async fn non_control_cell_round_trips_without_action() {
     .await
     .expect("save succeeds");
 
-    let got = call_dashboard_tool(&store, &ada, ws, "dashboard.get", &json!({ "id": "read" }))
+    let got = call_dashboard_tool(&store, &test, ws, "dashboard.get", &json!({ "id": "read" }))
         .await
         .expect("get succeeds");
     let c = &got["cells"][0];

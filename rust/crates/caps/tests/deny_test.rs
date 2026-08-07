@@ -23,28 +23,28 @@ fn principal_with(ws: &str, caps: &[&str]) -> lb_auth::Principal {
 
 #[test]
 fn denies_tool_call_without_grant() {
-    let p = principal_with("acme", &[]); // holds NO capabilities
-    let req = Request::new("acme", Surface::Mcp, "hello.echo", Action::Call);
+    let p = principal_with("nube", &[]); // holds NO capabilities
+    let req = Request::new("nube", Surface::Mcp, "hello.echo", Action::Call);
     assert_eq!(check(&p, &req), Decision::Denied(Denied::Capability));
 }
 
 #[test]
 fn denies_when_only_a_different_tool_is_granted() {
-    let p = principal_with("acme", &["mcp:hello.other:call"]);
-    let req = Request::new("acme", Surface::Mcp, "hello.echo", Action::Call);
+    let p = principal_with("nube", &["mcp:hello.other:call"]);
+    let req = Request::new("nube", Surface::Mcp, "hello.echo", Action::Call);
     assert_eq!(check(&p, &req), Decision::Denied(Denied::Capability));
 }
 
 #[test]
 fn allows_tool_call_with_grant() {
-    let p = principal_with("acme", &["mcp:hello.echo:call"]);
-    let req = Request::new("acme", Surface::Mcp, "hello.echo", Action::Call);
+    let p = principal_with("nube", &["mcp:hello.echo:call"]);
+    let req = Request::new("nube", Surface::Mcp, "hello.echo", Action::Call);
     assert_eq!(check(&p, &req), Decision::Allowed);
 }
 
 #[test]
 fn denies_store_write_when_only_read_granted() {
-    let p = principal_with("acme", &["store:note:read"]);
-    let req = Request::new("acme", Surface::Store, "note", Action::Write);
+    let p = principal_with("nube", &["store:note:read"]);
+    let req = Request::new("nube", Surface::Store, "note", Action::Write);
     assert_eq!(check(&p, &req), Decision::Denied(Denied::Capability));
 }

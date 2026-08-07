@@ -59,7 +59,7 @@ async fn subscriber_in_ws_b_never_receives_a_publish_in_ws_a() {
         Item::new("m1", "general", "user:a", "secret for ws_a only", 1),
     )
     .await
-    .expect("A posts in acme");
+    .expect("A posts in nube");
 
     // B must receive NOTHING — wait a beat, then assert no message arrived.
     let leaked = tokio::time::timeout(Duration::from_millis(300), b_sub.recv()).await;

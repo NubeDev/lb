@@ -24,7 +24,7 @@ const HOUR: u64 = 3_600_000;
 const DAY: u64 = 86_400_000;
 /// 2026-07-27T00:00:00Z. A real instant, because "local midnight" is meaningless at epoch 0.
 const DAY0: u64 = 1_785_110_400_000;
-const WS: &str = "acme";
+const WS: &str = "nube";
 
 fn sample(series: &str, seq: u64, ts: u64, v: f64) -> Sample {
     Sample {

@@ -11,7 +11,7 @@
 ## Symptom
 
 The S5 local exit-gate test failed: invoking the agent with a shared **doc** as substrate returned
-`AgentError::Denied`, even though the caller (`user:ada`) owned the doc and held `store:doc/*:read`,
+`AgentError::Denied`, even though the caller (`user:test`) owned the doc and held `store:doc/*:read`,
 and the agent's own caps also held `store:doc/*:read`.
 
 ```
@@ -23,8 +23,8 @@ caller owns failed.
 
 ## Reproduce
 
-1. `put_doc` a doc owned by `user:ada` in ws A.
-2. Invoke the agent as `user:ada` (with `mcp:agent.invoke:call`, `store:doc/*:read`) passing
+1. `put_doc` a doc owned by `user:test` in ws A.
+2. Invoke the agent as `user:test` (with `mcp:agent.invoke:call`, `store:doc/*:read`) passing
    `doc: Some("spec")` as substrate, agent caps also including `store:doc/*:read`.
 3. The agent's substrate read returns `Denied`.
 
@@ -33,13 +33,13 @@ caller owns failed.
 The capability gate (gate 2) clearly passed — both the caller and the agent held `store:doc/*:read`,
 so the intersection did too. That left gate 3, the S4 **membership** gate (`may_read_doc`): owner /
 shared-team-member / linked-channel-grantee. Reading `visibility.rs`, the owner path is
-`principal.sub() == doc.owner`. The doc's owner is `user:ada` (set from the caller at `put_doc`).
+`principal.sub() == doc.owner`. The doc's owner is `user:test` (set from the caller at `put_doc`).
 But the agent was reading under its **derived principal**, whose sub is `agent:session` — so
-`agent:session != user:ada`, no share, no link → `Denied`. The capability intersection was right;
+`agent:session != user:test`, no share, no link → `Denied`. The capability intersection was right;
 the *identity* used for the membership check was wrong.
 
 Ruled out: a caps-intersection bug (the deny tests proved the intersection; and gate 2 isn't the
-failing gate). Ruled out: a store/namespace issue (the doc was readable directly as `user:ada`).
+failing gate). Ruled out: a store/namespace issue (the doc was readable directly as `user:test`).
 
 ## Root cause
 

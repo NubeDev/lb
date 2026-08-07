@@ -35,7 +35,7 @@ paths share the whole fence/pin/capability story; split only if routing still fa
 - `cargo test -p lb-host --test channel_agent_worker_test` — 14 passed
 - `cargo test -p lb-host --test widget_pin_test` — 12 passed
 - `cargo build -p node` — corpus compiles in
-- Dev node restarted: `boot: seeded 37 core skills @0.1.7` incl. `core.render-widgets`, granted in `acme`
+- Dev node restarted: `boot: seeded 37 core skills @0.1.7` incl. `core.render-widgets`, granted in `nube`
 - `ui e2e/agent-dock-render-widget-preview.spec.ts` — 1 passed (dock render path)
 
 ## Still open (needs a live GLM run to confirm)

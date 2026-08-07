@@ -13,7 +13,7 @@ use lb_store::Store;
 fn is_core_flags_the_reserved_prefix() {
     assert!(is_core("core.lb-cli"));
     assert!(is_core("core.query"));
-    assert!(!is_core("acme-runbook"));
+    assert!(!is_core("nube-runbook"));
     assert!(!is_core("mycore")); // prefix must be `core.`, not just `core`
 }
 
@@ -121,7 +121,7 @@ async fn core_records_live_outside_any_workspace_namespace() {
         .unwrap()
         .is_empty());
     // Absent from an arbitrary workspace namespace (it was never written there).
-    assert!(list_skills(&store, "acme", "core.lb-cli")
+    assert!(list_skills(&store, "nube", "core.lb-cli")
         .await
         .unwrap()
         .is_empty());

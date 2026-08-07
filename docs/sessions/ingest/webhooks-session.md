@@ -224,7 +224,7 @@ None — nothing non-trivially broke. The two iterations during the build:
 
 1. The route returned `200 OK` (the `Json` default) instead of `202 Accepted`. Fixed by returning
    `(StatusCode::ACCEPTED, Json(...))` explicitly.
-2. `parse_bearer_key_id("lbk_acme.k7f3a")` succeeded on a 2-field bearer (no secret field) — the
+2. `parse_bearer_key_id("lbk_nube.k7f3a")` succeeded on a 2-field bearer (no secret field) — the
    parser only checked for the keyid. Tightened to require the third field.
 
 Both were caught by the test suite itself; no debug entry needed.

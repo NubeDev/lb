@@ -29,8 +29,8 @@ Scope: [`../../docs/scope/deploy/fly-deploy-scope.md`](../../docs/scope/deploy/f
 | Var | Default (set in `entrypoint.sh`) | Purpose |
 |---|---|---|
 | `LB_SIGNING_KEY` | unset → a fresh key per boot | 64 hex chars (32-byte Ed25519 seed). **Set this in any long-lived deploy** — without it every session dies on restart (`rust/node/src/main.rs` `gateway_signing_key()`). Generate with `openssl rand -hex 32`. |
-| `LB_WORKSPACE` | `acme` | The boot/seed workspace. |
-| `LB_SEED_USER` | `user:ada` | The dev identity seeded as `workspace-admin` at boot. |
+| `LB_WORKSPACE` | `nube` | The boot/seed workspace. |
+| `LB_SEED_USER` | `user:test` | The dev identity seeded as `workspace-admin` at boot. |
 | `LB_STORE_PATH` | `/data/store/node-store` | The embedded SurrealKV directory — on the volume. |
 | `LB_FEDERATION_ENDPOINTS` | `127.0.0.1:0` | The sqlite-only convention endpoint (no bundled Postgres — rule 2). |
 

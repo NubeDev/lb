@@ -119,7 +119,7 @@ pub async fn call_authz_tool(
     }
 }
 
-/// Parse the `{ "subject": "user:ada" }` argument into a [`Subject`].
+/// Parse the `{ "subject": "user:test" }` argument into a [`Subject`].
 fn subject(input: &Value) -> Result<Subject, ToolError> {
     let raw = str_arg(input, "subject")?;
     Subject::parse(raw).ok_or_else(|| ToolError::BadInput(format!("bad subject: {raw}")))

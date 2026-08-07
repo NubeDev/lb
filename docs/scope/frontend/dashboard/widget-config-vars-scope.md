@@ -296,7 +296,7 @@ throw — a shared link always renders.
    `args.step = "$__interval"`, range `$__from`/`$__to`. A `store.query` table cell binds
    `WHERE host = $host AND ts > $__from` with `vars: { host: "${host}", __from: "$__from" }`.
 3. **Pick + share.** Alice selects `host=web01`, range last-6h, refresh 30s. The URL becomes
-   `#/t/acme/dashboards?var-host=web01&from=now-6h&to=now&refresh=30s`. She copies it; Bob opens it and sees
+   `#/t/nube/dashboards?var-host=web01&from=now-6h&to=now&refresh=30s`. She copies it; Bob opens it and sees
    the same view scoped to `web01` — but `${__user.login}` renders **Bob's** login (token-resolved).
 4. **Auto-refresh + live.** Every 30s the query variables + cell sources re-run; a cell also `bus.watch`es
    `cooler/alerts` and folds pushed JSON in live.

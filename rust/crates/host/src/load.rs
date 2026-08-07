@@ -91,7 +91,7 @@ mod tests {
     fn manifest_input_schema_rides_through_to_the_descriptor() {
         let toml = r#"
 [extension]
-id = "acme.widgets"
+id = "nube.widgets"
 version = "0.1.0"
 
 [runtime]

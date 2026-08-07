@@ -70,23 +70,23 @@ async fn a_width_the_policy_no_longer_declares_is_eventually_evicted() {
     // History at 5 min (the old tier) and 1 min (the new one), all older than the 7-day horizon.
     write_rollups(
         &store,
-        "acme",
+        "nube",
         &[row(5 * MIN, 10 * DAY), row(MIN, 10 * DAY)],
     )
     .await
     .unwrap();
-    set_policy(&store, "acme", &policy(MIN, 7 * DAY))
+    set_policy(&store, "nube", &policy(MIN, 7 * DAY))
         .await
         .unwrap();
 
-    assert_eq!(widths_present(&store, "acme").await, vec![MIN, 5 * MIN]);
+    assert_eq!(widths_present(&store, "nube").await, vec![MIN, 5 * MIN]);
 
-    let pass = run_gc(&store, "acme", NOW).await.unwrap();
+    let pass = run_gc(&store, "nube", NOW).await.unwrap();
 
     // Both go: the declared tier by its own rule, the stranded width by the orphan sweep. What
     // matters is that the 5-minute rows are no longer immortal.
     assert!(
-        !widths_present(&store, "acme").await.contains(&(5 * MIN)),
+        !widths_present(&store, "nube").await.contains(&(5 * MIN)),
         "the undeclared 5-minute width survived GC — it is retained forever again"
     );
     assert!(pass.evicted_rollup >= 1, "pass reported no rollup eviction");
@@ -97,17 +97,17 @@ async fn dropping_a_tier_does_not_destroy_its_history_at_the_moment_of_the_edit(
     // THE guard on the fix. An operator narrowing a policy must not lose yesterday's aggregates the
     // next time GC ticks — raw is long gone and cannot regenerate them.
     let store = Store::memory().await.unwrap();
-    write_rollups(&store, "acme", &[row(5 * MIN, 2 * DAY)])
+    write_rollups(&store, "nube", &[row(5 * MIN, 2 * DAY)])
         .await
         .unwrap();
-    set_policy(&store, "acme", &policy(MIN, 7 * DAY))
+    set_policy(&store, "nube", &policy(MIN, 7 * DAY))
         .await
         .unwrap();
 
-    run_gc(&store, "acme", NOW).await.unwrap();
+    run_gc(&store, "nube", NOW).await.unwrap();
 
     assert!(
-        widths_present(&store, "acme").await.contains(&(5 * MIN)),
+        widths_present(&store, "nube").await.contains(&(5 * MIN)),
         "2-day-old stranded rows were destroyed under a 7-day horizon — a policy edit must not \
          silently delete history that raw can no longer rebuild"
     );
@@ -118,15 +118,15 @@ async fn a_policy_that_keeps_a_tier_forever_keeps_its_stranded_rows_too() {
     // `keep_for_ms: 0` states an intent to keep rollups indefinitely. Holding its stranded rows to
     // a horizon it never declared would invent a retention rule the operator did not write.
     let store = Store::memory().await.unwrap();
-    write_rollups(&store, "acme", &[row(5 * MIN, 10 * DAY)])
+    write_rollups(&store, "nube", &[row(5 * MIN, 10 * DAY)])
         .await
         .unwrap();
-    set_policy(&store, "acme", &policy(MIN, 0)).await.unwrap();
+    set_policy(&store, "nube", &policy(MIN, 0)).await.unwrap();
 
-    run_gc(&store, "acme", NOW).await.unwrap();
+    run_gc(&store, "nube", NOW).await.unwrap();
 
     assert!(
-        widths_present(&store, "acme").await.contains(&(5 * MIN)),
+        widths_present(&store, "nube").await.contains(&(5 * MIN)),
         "a keep-forever policy evicted stranded rows on a horizon it never declared"
     );
 }
@@ -136,17 +136,17 @@ async fn a_declared_width_is_untouched_by_the_orphan_sweep() {
     // The sweep must never reach a width the policy DOES declare — that would double-evict on a
     // horizon other than the tier's own.
     let store = Store::memory().await.unwrap();
-    write_rollups(&store, "acme", &[row(MIN, 2 * DAY)])
+    write_rollups(&store, "nube", &[row(MIN, 2 * DAY)])
         .await
         .unwrap();
-    set_policy(&store, "acme", &policy(MIN, 7 * DAY))
+    set_policy(&store, "nube", &policy(MIN, 7 * DAY))
         .await
         .unwrap();
 
-    run_gc(&store, "acme", NOW).await.unwrap();
+    run_gc(&store, "nube", NOW).await.unwrap();
 
     assert!(
-        widths_present(&store, "acme").await.contains(&MIN),
+        widths_present(&store, "nube").await.contains(&MIN),
         "the declared tier's own rows were evicted early by the orphan sweep"
     );
 }
@@ -154,20 +154,20 @@ async fn a_declared_width_is_untouched_by_the_orphan_sweep() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_sweep_never_reaches_another_workspace() {
     let store = Store::memory().await.unwrap();
-    write_rollups(&store, "acme", &[row(5 * MIN, 10 * DAY)])
+    write_rollups(&store, "nube", &[row(5 * MIN, 10 * DAY)])
         .await
         .unwrap();
     write_rollups(&store, "other", &[row(5 * MIN, 10 * DAY)])
         .await
         .unwrap();
-    set_policy(&store, "acme", &policy(MIN, 7 * DAY))
+    set_policy(&store, "nube", &policy(MIN, 7 * DAY))
         .await
         .unwrap();
 
-    run_gc(&store, "acme", NOW).await.unwrap();
+    run_gc(&store, "nube", NOW).await.unwrap();
 
     assert!(
         widths_present(&store, "other").await.contains(&(5 * MIN)),
-        "GC in ws `acme` evicted ws `other`'s stranded rows"
+        "GC in ws `nube` evicted ws `other`'s stranded rows"
     );
 }

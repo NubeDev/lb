@@ -34,7 +34,7 @@ async fn create_get_list_update_delete_round_trip() {
     let ws = "rem-crud";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:reminder.create:call",
@@ -168,7 +168,7 @@ async fn workspace_isolation_list_and_get_never_cross_the_wall() {
     // never see it (the store namespace is selected from the caller's ws).
     let node = Arc::new(Node::boot().await.unwrap());
     let a = principal(
-        "user:ada",
+        "user:test",
         "rem-iso-a",
         &[
             "mcp:reminder.create:call",
@@ -237,7 +237,7 @@ async fn list_status_and_limit_filter_over_the_ws_read() {
     let ws = "rem-filter";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:reminder.create:call",
@@ -342,7 +342,7 @@ async fn bad_cron_at_create_is_bad_input_not_denied() {
     // authorized; the input is just wrong.
     let ws = "rem-badcron";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &["mcp:reminder.create:call"]);
+    let p = principal("user:test", ws, &["mcp:reminder.create:call"]);
     let err = call_tool(
         &node,
         &p,
@@ -367,7 +367,7 @@ async fn unknown_verb_is_opaque_denied_at_the_gate() {
     // arm is defense-in-depth, only reachable by a caller holding a cap for a verb that doesn't exist.
     let ws = "rem-404";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &["mcp:reminder.create:call"]);
+    let p = principal("user:test", ws, &["mcp:reminder.create:call"]);
     let err = call_tool(&node, &p, ws, "reminder.poke", "{}")
         .await
         .expect_err("unknown verb refused");

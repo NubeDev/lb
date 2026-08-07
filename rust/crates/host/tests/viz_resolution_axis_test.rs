@@ -105,7 +105,7 @@ async fn seed_coil(node: &Arc<Node>, p: &Principal, ws: &str, series: &str) {
 async fn every_zoom_level_yields_a_width_the_engine_accepts() {
     let ws = "viz-axis-zoom";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, READ, WRITE]);
+    let p = principal("user:test", ws, &[VIZ, READ, WRITE]);
     seed_coil(&node, &p, ws, "cpu").await;
 
     // Zoom levels from a one-minute live view out to two years — the panel is at `from = 0` in all
@@ -168,7 +168,7 @@ async fn every_zoom_level_yields_a_width_the_engine_accepts() {
 async fn the_configured_method_governs_at_every_ladder_width() {
     let ws = "viz-axis-method";
     let node = Arc::new(Node::boot().await.unwrap());
-    let p = principal("user:ada", ws, &[VIZ, READ, WRITE, SET]);
+    let p = principal("user:test", ws, &[VIZ, READ, WRITE, SET]);
     call(
         &node,
         &p,

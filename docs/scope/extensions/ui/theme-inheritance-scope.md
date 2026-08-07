@@ -115,7 +115,7 @@ theme customizer changes theme
 
 ## Example flow
 
-1. Alice opens **acme**; her resolved theme is dark + a teal preset. The dashboard mounts an `echarts-panel`
+1. Alice opens **nube**; her resolved theme is dark + a teal preset. The dashboard mounts an `echarts-panel`
    widget in a cell; the shell resolves the tokens and passes `ctx.theme` (teal accent, dark surfaces) plus
    `ctx.data`. The chart draws in teal-on-charcoal — matching the core charts beside it.
 2. She opens the **Customizer** and switches the preset to "Violet Bloom" and radius to `0.75`. The theme

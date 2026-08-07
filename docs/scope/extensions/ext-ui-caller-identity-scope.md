@@ -108,9 +108,9 @@ surface for zero additional UI capability.
 
 ## Example flow
 
-1. `ada@acme.com` (minted `role: "member"`, holding `mcp:ems.template.add:call`, `ems.access.grant`, …)
+1. `test@nube-io.com` (minted `role: "member"`, holding `mcp:ems.template.add:call`, `ems.access.grant`, …)
    opens the EMS extension in rubix-ai.
-2. `ExtHost` mounts the EMS page with `ctx = { workspace: "acme", caps: [...ada's caps],
+2. `ExtHost` mounts the EMS page with `ctx = { workspace: "nube", caps: [...test's caps],
    isAdmin: isAdmin(caps) /* = true */, headerStyle, … }`.
 3. EMS's `AppShell` calls the SDK's `useIsAdmin()` → `ctx.isAdmin` → `true`, **synchronously on first
    render**. The Studio + Access rail items and the New-site button render immediately — no probe, no

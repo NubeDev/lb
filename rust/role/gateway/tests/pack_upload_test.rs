@@ -98,7 +98,7 @@ fn multipart_upload(uri: &str, archive: &[u8]) -> Request<Body> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_uploaded_zip_validates_applies_and_re_applies_as_a_noop() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", APPLY_CAPS);
+    let tok = token(&key, "user:test", "nube", APPLY_CAPS);
 
     // 1) The default verb is the DRY RUN — the engine's own report, over an archive it has never
     //    seen, so the decision is `apply` and the plan is non-empty.
@@ -142,7 +142,7 @@ async fn an_uploaded_zip_validates_applies_and_re_applies_as_a_noop() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_caller_without_the_apply_cap_previews_but_cannot_apply() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:mem", "acme", &["mcp:pack.validate:call"]);
+    let tok = token(&key, "user:mem", "nube", &["mcp:pack.validate:call"]);
 
     let resp = router(gw.clone())
         .oneshot(bearer(multipart_upload("/packs/upload", &pack_zip()), &tok))
@@ -179,13 +179,13 @@ async fn an_unauthenticated_upload_is_refused() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_pack_applied_in_one_workspace_is_invisible_in_another() {
     let (gw, key) = gateway().await;
-    let ada = token(&key, "user:ada", "acme", APPLY_CAPS);
+    let test = token(&key, "user:test", "nube", APPLY_CAPS);
     let bob = token(&key, "user:bob", "other", APPLY_CAPS);
 
     let resp = router(gw.clone())
         .oneshot(bearer(
             multipart_upload("/packs/upload?verb=apply&ts=1000", &pack_zip()),
-            &ada,
+            &test,
         ))
         .await
         .unwrap();
@@ -222,7 +222,7 @@ async fn a_pack_applied_in_one_workspace_is_invisible_in_another() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_zip_slip_archive_is_refused_before_any_verb_runs() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", APPLY_CAPS);
+    let tok = token(&key, "user:test", "nube", APPLY_CAPS);
 
     let hostile = zip_of(&[
         ("pack.yaml", b"pack: demo".as_slice()),
@@ -259,7 +259,7 @@ async fn a_zip_slip_archive_is_refused_before_any_verb_runs() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_binary_member_is_refused_by_name() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", APPLY_CAPS);
+    let tok = token(&key, "user:test", "nube", APPLY_CAPS);
 
     let bad = zip_of(&[
         ("pack.yaml", b"pack: demo".as_slice()),
@@ -277,7 +277,7 @@ async fn a_binary_member_is_refused_by_name() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_request_with_no_archive_says_how_to_send_one() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", APPLY_CAPS);
+    let tok = token(&key, "user:test", "nube", APPLY_CAPS);
 
     let empty = Request::builder()
         .method("POST")

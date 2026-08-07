@@ -106,7 +106,7 @@ async fn load_bearing_relate_edges_with_properties() {
         "spike",
         "CREATE series:s1; CREATE tag:['region','eu'];
          RELATE series:s1 -> tagged -> tag:['region','eu']
-            SET at = 1, by = 'user:ada', source = 'human', confidence = 1.0;",
+            SET at = 1, by = 'user:test', source = 'human', confidence = 1.0;",
     )
     .await
     .expect("LOAD-BEARING RELATE w/ props: relate must store edge properties");

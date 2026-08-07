@@ -167,7 +167,7 @@ turn), not as the whole test.
 
 ## Example flow
 
-1. Ada (admin) opens Settings → Agent, picks **"In-house — Z.AI GLM-4.6"** (active).
+1. Test (admin) opens Settings → Agent, picks **"In-house — Z.AI GLM-4.6"** (active).
 2. She clicks **Test** on it. The UI calls `agent.def.test {}` (no id → the active pick). The host
    assembles her workspace's real context — the system prompt, the `reachable_tools` menu (e.g. 23 MCP
    tools incl. the ACP external-agent bridge), and her `render_catalog` granted skills (e.g. `lb-cli`,
@@ -176,13 +176,13 @@ turn), not as the whole test.
 3. The reply shows inline, plus **"context: 23 tools, 3 skills · responding via the configured
    provider"**. Against the mock the answer is deterministic canned text, but the context line proves the
    agent *was given* its Lazybones context; against a real provider the answer names the tools/skills.
-4. Ada edits a custom definition and enters a **Model key** value. The UI calls `secret.set { path:
+4. Test edits a custom definition and enters a **Model key** value. The UI calls `secret.set { path:
    "agent/zaicoding-key", value: "<key>", visibility: "Private" }` (sealed) and saves the definition with
    `api_key_secret: "agent/zaicoding-key"` (a path, no value). The field shows **"key set ✓ · rotate"**;
    the value is never read back.
 5. Next test/run of that definition resolves the key **secret → env**: `lb_secrets::get(ws,
    "agent/zaicoding-key")` supplies it; the value never touches a record or a log.
-6. A ws-B admin `agent.def.test`/`secret.get`s Ada's key → denied / not found: the sealed key + the
+6. A ws-B admin `agent.def.test`/`secret.get`s Test's key → denied / not found: the sealed key + the
    test context are workspace-walled.
 
 ## Testing plan

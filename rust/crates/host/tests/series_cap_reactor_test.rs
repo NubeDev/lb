@@ -65,10 +65,10 @@ async fn commit_samples(store: &Store, ws: &str, series: &str, n: u64) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_retention_reactor_caps_a_series_with_nobody_calling_the_verb() {
     let node = Arc::new(Node::boot().await.unwrap());
-    commit_samples(&node.store, "acme", "fleet.pi", 60).await;
+    commit_samples(&node.store, "nube", "fleet.pi", 60).await;
     set_policy(
         &node.store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "fleet.".into(),
             raw_for_ms: 0, // the TIME axis is off — this proves the COUNT cap ran on its own
@@ -81,21 +81,21 @@ async fn the_retention_reactor_caps_a_series_with_nobody_calling_the_verb() {
     .await
     .unwrap();
     assert_eq!(
-        sample_count(&node.store, "acme", "fleet.pi").await.unwrap(),
+        sample_count(&node.store, "nube", "fleet.pi").await.unwrap(),
         60
     );
 
     // Boot the driver. Fast period for the test only — production is RETENTION_PERIOD (minutes).
     spawn_retention_reactors(
         node.clone(),
-        vec!["acme".to_string()],
+        vec!["nube".to_string()],
         Duration::from_millis(50),
     );
 
     let mut capped = false;
     for _ in 0..100 {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        if sample_count(&node.store, "acme", "fleet.pi").await.unwrap() == 10 {
+        if sample_count(&node.store, "nube", "fleet.pi").await.unwrap() == 10 {
             capped = true;
             break;
         }
@@ -161,7 +161,7 @@ async fn the_retention_reactor_only_gcs_its_configured_workspace() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn setting_a_cap_without_the_admin_cap_is_denied() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     // Holds an unrelated ingest cap — proves the gate is per-verb, not "any ingest cap will do".
     let p = principal("client:pi-7", ws, &["mcp:ingest.write:call"]);
 
@@ -182,7 +182,7 @@ async fn setting_a_cap_without_the_admin_cap_is_denied() {
     // And with the cap, the same call succeeds and the field actually lands — a deny test only
     // proves something if the allow path works.
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:series.retention.set:call",
@@ -214,10 +214,10 @@ async fn setting_a_cap_without_the_admin_cap_is_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_gc_verb_reports_what_the_cap_evicted() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     commit_samples(&store, ws, "fleet.pi", 40).await;
     let admin = principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:series.retention.set:call",

@@ -82,7 +82,7 @@ against `allowedSurfaces(caps)`; a `dashboard` item against that dashboard's gat
 is a **lens**, and the server re-checks every verb on click regardless.
 
 **Why not embed caps in nav items?** (rejected alternative) It would duplicate `lb-authz`, create a
-second source of truth for "can Ada reach the rules page," and violate capability-first (rule 5): a menu
+second source of truth for "can Test reach the rules page," and violate capability-first (rule 5): a menu
 record must never be the thing that makes a page reachable. Keeping the nav a pure lens means a stale or
 over-eager nav can only *show a link that then 403s server-side* — it can never *grant*.
 
@@ -142,17 +142,17 @@ the prefs axis set.
    `rules` and `flows` surfaces.
 3. They set `visibility: team` and call `nav.share{ id: "nav:ops", team: "team:ops" }` → a
    `nav -[share]-> team:ops` edge is written.
-4. **Ada** (member of `team:ops`, holds `rules.*` and `dashboard:cooler-health` read, but **not**
+4. **Test** (member of `team:ops`, holds `rules.*` and `dashboard:cooler-health` read, but **not**
    `flows.*`) logs in. NavRail calls `nav.resolve`:
    - Pick: no personal pick → first team-shared nav for her teams → `nav:ops`.
    - `tag-group "Sites"` expands via `tags.find({facets:[{key:"site"}]})` → the three site dashboards
      she can read.
    - The `flows` item inside "Admin" is **stripped** (she lacks `flows.*`); `rules` stays.
-5. Ada sees: Channels · Cooler Health · Sites ▸ (Plant-1, Plant-2, Plant-3) · Admin ▸ (Rules). She clicks
+5. Test sees: Channels · Cooler Health · Sites ▸ (Plant-1, Plant-2, Plant-3) · Admin ▸ (Rules). She clicks
    Rules → the route loads; the gateway re-checks `rules.*` and allows it.
 6. **Ben** (also `team:ops`, but lacks `dashboard:cooler-health`) resolves the *same* `nav:ops` and the
    Cooler Health entry is stripped for him — same menu record, different lens.
-7. A new dashboard gets tagged `site:plant-4`. Next time Ada visits, the "Sites" group shows Plant-4 —
+7. A new dashboard gets tagged `site:plant-4`. Next time Test visits, the "Sites" group shows Plant-4 —
    **no nav edit** occurred.
 
 ## Testing plan

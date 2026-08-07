@@ -40,7 +40,7 @@ async fn main() {
     let store = Store::open(&path).await.expect("open");
 
     let batch: Vec<Sample> = (1..=STAGED).map(|i| sample("m", "pi-7", i)).collect();
-    write(&store, "acme", &batch, 0).await.expect("stage");
+    write(&store, "nube", &batch, 0).await.expect("stage");
 
     match phase.as_str() {
         "stage-then-kill" => {
@@ -48,7 +48,7 @@ async fn main() {
             std::process::abort();
         }
         "commit-then-kill" => {
-            let pass = commit_batch(&store, "acme", ONE_BATCH)
+            let pass = commit_batch(&store, "nube", ONE_BATCH)
                 .await
                 .expect("commit");
             assert_eq!(pass.committed, ONE_BATCH);

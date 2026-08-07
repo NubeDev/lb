@@ -27,7 +27,7 @@ const CAPS: &[&str] = &[
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn dashboard_crud_round_trip_over_the_gateway() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     // create
     let resp = router(gw.clone())
@@ -50,7 +50,7 @@ async fn dashboard_crud_round_trip_over_the_gateway() {
     assert_eq!(resp.status(), StatusCode::OK);
     let d: Value = json_body(resp).await;
     assert_eq!(d["title"], "Ops");
-    assert_eq!(d["owner"], "user:ada");
+    assert_eq!(d["owner"], "user:test");
 
     // roster includes it
     let resp = router(gw.clone())
@@ -85,8 +85,8 @@ async fn save_without_the_cap_is_denied_server_side() {
     // A token holding every dashboard cap EXCEPT save.
     let tok = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &[
             "mcp:dashboard.get:call",
             "mcp:dashboard.list:call",
@@ -112,7 +112,7 @@ async fn two_sessions_are_workspace_isolated() {
     // One node, two sessions in different workspaces — ws-B sees none of ws-A's dashboards.
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
-    let ada = token(&key, "user:ada", "ws-a", CAPS);
+    let test = token(&key, "user:test", "ws-a", CAPS);
     let ben = token(&key, "user:ben", "ws-b", CAPS);
 
     router(gateway_on(node.clone(), &key))
@@ -121,7 +121,7 @@ async fn two_sessions_are_workspace_isolated() {
                 "/dashboards",
                 json!({ "id": "ops", "title": "Ops A", "cells": [] }),
             ),
-            &ada,
+            &test,
         ))
         .await
         .unwrap();
@@ -143,12 +143,12 @@ async fn two_sessions_are_workspace_isolated() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn shared_workspace_visible_is_read_by_another_member() {
-    // One node, two members of the SAME workspace. Ada shares her dashboard `workspace`-wide; Ben (a
+    // One node, two members of the SAME workspace. Test shares her dashboard `workspace`-wide; Ben (a
     // different principal) can then read it — the gate-3 workspace tier.
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
-    let ada = token(&key, "user:ada", "acme", CAPS);
-    let ben = token(&key, "user:ben", "acme", CAPS);
+    let test = token(&key, "user:test", "nube", CAPS);
+    let ben = token(&key, "user:ben", "nube", CAPS);
 
     router(gateway_on(node.clone(), &key))
         .oneshot(bearer(
@@ -156,7 +156,7 @@ async fn shared_workspace_visible_is_read_by_another_member() {
                 "/dashboards",
                 json!({ "id": "ops", "title": "Ops", "cells": [] }),
             ),
-            &ada,
+            &test,
         ))
         .await
         .unwrap();
@@ -168,14 +168,14 @@ async fn shared_workspace_visible_is_read_by_another_member() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
-    // Ada shares it workspace-wide.
+    // Test shares it workspace-wide.
     let resp = router(gateway_on(node.clone(), &key))
         .oneshot(bearer(
             json_post(
                 "/dashboards/ops/share",
                 json!({ "visibility": "workspace" }),
             ),
-            &ada,
+            &test,
         ))
         .await
         .unwrap();
@@ -206,7 +206,7 @@ async fn the_series_stream_pushes_a_live_sample() {
     let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
     let key = SigningKey::generate();
     let ws = "gw-series-sse";
-    let tok = token(&key, "user:ada", ws, &["mcp:series.read:call"]);
+    let tok = token(&key, "user:test", ws, &["mcp:series.read:call"]);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -232,7 +232,7 @@ async fn the_series_stream_pushes_a_live_sample() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     let sample = Sample {
         series: "cooler.temp".into(),
-        producer: "user:ada".into(),
+        producer: "user:test".into(),
         ts: 1,
         seq: 1,
         payload: json!(3.4),

@@ -124,11 +124,11 @@ resolves a member/admin's caps by reading the **stored `role` record** (`role_ca
 `read(store, ws, "role", name)`), NOT by recomputing from the current `workspace_admin_role_caps()`
 function. The built-in role rows are seeded by `ensure_builtin_authz_roles` →
 `ensure_one`, which **writes a role row only when it is ABSENT**
-(`rust/crates/host/src/authz/builtin_roles.rs:128`). Your `acme` dev store was seeded
+(`rust/crates/host/src/authz/builtin_roles.rs:128`). Your `nube` dev store was seeded
 (`LB_STORE_PATH=.lazybones/data/dev-store`) BEFORE the `report.*` caps existed, so its
 `member` / `workspace-admin` rows are frozen at the old cap set and are never overwritten.
 
-**Proof (captured live):** a fresh login as `user:ada` in `acme` yields a token with
+**Proof (captured live):** a fresh login as `user:test` in `nube` yields a token with
 `report caps: ['mcp:brand.get:call','mcp:brand.list:call','mcp:report.get:call','mcp:report.list:call']`
 — i.e. only the VIEWER caps (those come from the live `viewer_role_caps()` login floor in
 `role/gateway/src/session/credentials.rs`). `report.save/export/brand.save` (the AUTHOR caps, which
@@ -155,11 +155,11 @@ cd /home/user/code/rust/lb
 make kill 2>/dev/null || pkill -f "kill 0" ; pkill -f "target/debug/node" ; pkill -f "vite" ; sleep 3
 pgrep -af "target/debug/node" | grep -v grep && echo "STILL RUNNING — stop make dev in its own terminal" || echo "node stopped"
 
-# 2. Reseed the built-in role rows in acme (add any other workspaces you use as extra args).
+# 2. Reseed the built-in role rows in nube (add any other workspaces you use as extra args).
 cd rust
 LB_STORE_PATH=/home/user/code/rust/lb/.lazybones/data/dev-store \
-  cargo run -p node --example reseed_roles -- acme
-# expect: "reseeded built-in roles in workspace acme"
+  cargo run -p node --example reseed_roles -- nube
+# expect: "reseeded built-in roles in workspace nube"
 
 # 3. Restart the dev stack.
 cd /home/user/code/rust/lb
@@ -171,7 +171,7 @@ make dev
 ```bash
 BASE=http://127.0.0.1:8080
 TOK=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"user:ada","workspace":"acme"}' \
+  -d '{"user":"user:test","workspace":"nube"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 echo "$TOK" | cut -d. -f2 | python3 -c 'import sys,base64,json;s=sys.stdin.read().strip();s+="="*(-len(s)%4);d=json.loads(base64.urlsafe_b64decode(s));print("report/brand caps:",[c for c in d["caps"] if "report" in c or "brand" in c])'
 # EXPECT to now ALSO include: mcp:report.save:call, mcp:report.delete:call, mcp:report.share:call,
@@ -182,8 +182,8 @@ Then in the browser: **log out and log back in** (the old token in localStorage 
 a re-login mints a fresh token from the refreshed role rows), open **Reports → New report**, and
 saving/exporting should now work.
 
-> If ada is a plain member not an admin and you want admin: the same reseed fixes `workspace-admin`.
-> Whatever role `user:ada` holds in `acme`, its row is now refreshed.
+> If test is a plain member not an admin and you want admin: the same reseed fixes `workspace-admin`.
+> Whatever role `user:test` holds in `nube`, its row is now refreshed.
 
 ---
 
@@ -196,7 +196,7 @@ re-seeds everything fresh:
 cd /home/user/code/rust/lb
 # stop make dev first (see step 1 above), then:
 rm -rf .lazybones/data/dev-store
-make dev   # re-seeds roles + LB_SEED_USER=user:ada from current code
+make dev   # re-seeds roles + LB_SEED_USER=user:test from current code
 ```
 
 ---
@@ -245,7 +245,7 @@ test & approve.** So do NOT do those yet. When approved:
 - **Browser token is cached in localStorage** — after reseeding, users must re-login to mint a fresh
   token.
 - Persistent dev store path: `/home/user/code/rust/lb/.lazybones/data/dev-store`; gateway on
-  `127.0.0.1:8080`; workspace `acme`; seed user `user:ada`.
+  `127.0.0.1:8080`; workspace `nube`; seed user `user:test`.
 - Pre-existing unrelated test reds (do NOT chase — from memory): panel_test 'unknown view STALE',
   agent_routed_test, SystemView.gateway, sqlSource.gateway, and broad `pnpm test:gateway` reds
   (WorkflowView 404 on _seed/approval, ProofPanel, RolesAdmin). Validate via touched files.

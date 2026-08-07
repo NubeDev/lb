@@ -28,10 +28,10 @@ async fn without_the_verb_cap_the_whole_read_is_refused_opaquely() {
     // own still gets nothing — the fan-out is not a way in through the side door.
     let node = Arc::new(Node::boot().await.unwrap());
     register_reporter(&node, "demo-probe", r#"{"state":"connected"}"#, false);
-    seed(&node, "acme", "ext:demo-probe/net-1", 1).await;
+    seed(&node, "nube", "ext:demo-probe/net-1", 1).await;
 
-    let p = principal("user:bob", "acme", &["mcp:demo-probe.ingest.health:call"]);
-    let err = health(&node, &p, "acme").await.unwrap_err();
+    let p = principal("user:bob", "nube", &["mcp:demo-probe.ingest.health:call"]);
+    let err = health(&node, &p, "nube").await.unwrap_err();
     assert!(matches!(err, ToolError::Denied), "got {err:?}");
 }
 
@@ -41,11 +41,11 @@ async fn holding_the_verb_cap_grants_no_reach_into_an_extension_it_could_not_cal
     let node = Arc::new(Node::boot().await.unwrap());
     register_reporter(&node, "allowed-ext", r#"{"state":"connected"}"#, false);
     register_reporter(&node, "forbidden-ext", r#"{"state":"connected"}"#, false);
-    seed(&node, "acme", "ext:allowed-ext/net-1", 1).await;
-    seed(&node, "acme", "ext:forbidden-ext/net-1", 2).await;
+    seed(&node, "nube", "ext:allowed-ext/net-1", 1).await;
+    seed(&node, "nube", "ext:forbidden-ext/net-1", 2).await;
 
-    let p = admin("acme", &["mcp:allowed-ext.ingest.health:call"]);
-    let out = health(&node, &p, "acme").await.unwrap();
+    let p = admin("nube", &["mcp:allowed-ext.ingest.health:call"]);
+    let out = health(&node, &p, "nube").await.unwrap();
 
     assert_eq!(row(&out, "ext:allowed-ext/net-1")["state"], "reported");
     assert_eq!(row(&out, "ext:forbidden-ext/net-1")["state"], "denied");
@@ -61,11 +61,11 @@ async fn a_producer_in_another_workspace_is_never_reported() {
     // exactly why this matters: the wall has to come from the SAMPLES, not from discovery.
     let node = Arc::new(Node::boot().await.unwrap());
     register_reporter(&node, "demo-probe", r#"{"state":"connected"}"#, false);
-    seed(&node, "acme", "ext:demo-probe/acme-net", 1).await;
+    seed(&node, "nube", "ext:demo-probe/nube-net", 1).await;
     seed(&node, "other", "ext:demo-probe/other-net", 1).await;
 
-    let p = admin("acme", &["mcp:demo-probe.ingest.health:call"]);
-    let out = health(&node, &p, "acme").await.unwrap();
+    let p = admin("nube", &["mcp:demo-probe.ingest.health:call"]);
+    let out = health(&node, &p, "nube").await.unwrap();
     let producers: Vec<&str> = out["producers"]
         .as_array()
         .unwrap()
@@ -73,10 +73,10 @@ async fn a_producer_in_another_workspace_is_never_reported() {
         .map(|r| r["producer"].as_str().unwrap())
         .collect();
 
-    assert_eq!(producers, vec!["ext:demo-probe/acme-net"]);
+    assert_eq!(producers, vec!["ext:demo-probe/nube-net"]);
     assert!(
         !producers.iter().any(|p| p.contains("other-net")),
-        "ws `other`'s producer leaked into ws `acme`: {producers:?}"
+        "ws `other`'s producer leaked into ws `nube`: {producers:?}"
     );
 }
 
@@ -86,8 +86,8 @@ async fn a_principal_cannot_read_producer_health_across_the_workspace_wall() {
     register_reporter(&node, "demo-probe", r#"{"state":"connected"}"#, false);
     seed(&node, "other", "ext:demo-probe/other-net", 1).await;
 
-    // A ws-`acme` principal asking about ws `other` — the wall is checked before the cap.
-    let p = admin("acme", &["mcp:demo-probe.ingest.health:call"]);
+    // A ws-`nube` principal asking about ws `other` — the wall is checked before the cap.
+    let p = admin("nube", &["mcp:demo-probe.ingest.health:call"]);
     let err = health(&node, &p, "other").await.unwrap_err();
     assert!(matches!(err, ToolError::Denied), "got {err:?}");
 }

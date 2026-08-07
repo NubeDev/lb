@@ -152,11 +152,11 @@ inline on the read path.
 
 ## Example flow
 
-1. Admin registers `warehouse` (sqlite) in ws `acme`; registration enqueues a
+1. Admin registers `warehouse` (sqlite) in ws `nube`; registration enqueues a
    `datasource_profile` job.
 2. The job runs: host resolves + mediates → one sidecar `federation.profile` pass → 6 tables
    profiled (columns, FKs, per-text top-60 values + cardinality, numeric min/max, group range
-   spans vs the detected value column) → `datasource_profile:acme:warehouse` upserted,
+   spans vs the detected value column) → `datasource_profile:nube:warehouse` upserted,
    `profiled_at` stamped.
 3. A user opens rubix-ai's Quick Chart → the UI calls `profile_get {source: "warehouse"}` →
    the record returns in one store read → `detectMetricShape` runs on it locally → step 3

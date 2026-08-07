@@ -53,7 +53,7 @@ fn no_tools() -> Vec<AllowedTool> {
 async fn an_empty_final_turn_does_not_wipe_the_answer() {
     let ws = "agent-empty-final";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let gw = AiGateway::new(MockProvider::new(vec![
         AiResponse::calls("I created the widget for you.", vec![a_call("c1")], 5),
         // Two empty stops: the loop nudges once after the first, then must settle on the fallback.
@@ -85,7 +85,7 @@ async fn an_empty_final_turn_does_not_wipe_the_answer() {
 async fn a_ceiling_exit_answers_with_the_honest_note() {
     let ws = "agent-ceiling";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     // Every turn proposes another call and carries no text — the run works right into the ceiling.
     let script: Vec<AiResponse> = (0..MAX_STEPS)
         .map(|i| AiResponse::calls("", vec![a_call(&format!("c{i}"))], 1))
@@ -121,7 +121,7 @@ async fn a_ceiling_exit_answers_with_the_honest_note() {
 async fn a_bare_stop_after_tool_work_is_nudged_for_the_real_answer() {
     let ws = "agent-bare-stop";
     let node = Arc::new(Node::boot().await.unwrap());
-    let caller = principal("user:ada", ws, &[INVOKE]);
+    let caller = principal("user:test", ws, &[INVOKE]);
     let gw = AiGateway::new(MockProvider::new(vec![
         AiResponse::calls(
             "I'll help you with that. Let me explore first.",

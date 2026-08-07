@@ -29,7 +29,7 @@ async fn enqueue_pr_capped(
         eff_id,
         "github",
         "create_pr",
-        r#"{"repo":"acme/api","head":"fix/2451"}"#,
+        r#"{"repo":"nube/api","head":"fix/2451"}"#,
         key,
         ts,
     );

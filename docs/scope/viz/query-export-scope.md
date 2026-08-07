@@ -127,7 +127,7 @@ the consumer's telemetry says the cap actually bites.
 2. One frame comes back `{ truncated: true, row_limit: 10000 }`. The dialog renders *"Zone temps hit the
    server's 10,000-row cap — narrow the time range"*, and the file's notes carry the same fact. **(Goal 1
    alone, shipped.)**
-3. Ada picks *Export full dataset*. The dialog re-resolves that panel with `max_rows: 250000`.
+3. Test picks *Export full dataset*. The dialog re-resolves that panel with `max_rows: 250000`.
 4. The node clamps `min(250_000, boot.viz_export_max_rows = 250_000)`, resolves the sources with the larger
    budget, runs the transform pipeline, and returns 187 412 rows with `truncated: false, row_limit: 250000`.
 5. The dialog drops the warning and writes the file. Nothing else on the board changed: the *rendered*

@@ -12,7 +12,7 @@ grant_skill(&store, &admin, ws, "core.lb-cli") // admin has store:skill/*:write
   → Err(Denied)
 ```
 
-The identical flow for a **user** skill (`grant_skill(.., "acme-runbook")`) passed. Only ids with a
+The identical flow for a **user** skill (`grant_skill(.., "nube-runbook")`) passed. Only ids with a
 `.` in them (the core namespace: `core.lb-cli`, `core.query`, …) were refused.
 
 ## Root cause — the caps grammar splits a resource on BOTH `/` and `.`
@@ -26,7 +26,7 @@ same wildcard rule). That means:
 - resource `skill/core.lb-cli` → segments `["skill", "core", "lb-cli"]`
 
 A single `*` matches **exactly one** segment (`core`), leaving `lb-cli` unmatched → no match →
-`Denied`. A flat user id like `acme-runbook` is one segment, so `skill/*` covers it and the bug
+`Denied`. A flat user id like `nube-runbook` is one segment, so `skill/*` covers it and the bug
 never surfaced before core skills introduced dotted ids.
 
 The shipped dev-login (`role/gateway/src/session/credentials.rs::member_caps`) granted
@@ -37,7 +37,7 @@ nor load any core skill — the served core-skill path was silently broken.
 
 The grammar already has the right tool: `**` matches zero or more **trailing** segments. Pattern
 `skill/**` → `["skill", "**"]` matches `skill/core.lb-cli`'s tail (`core`, `lb-cli`) AND a flat
-`skill/acme-runbook`. So the fix is to grant the skill surface with `**`:
+`skill/nube-runbook`. So the fix is to grant the skill surface with `**`:
 
 - `role/gateway/src/session/credentials.rs`: `store:skill/*:read|write` → `store:skill/**:read|write`.
 - Tests that exercise core ids hold `store:skill/**:...`.

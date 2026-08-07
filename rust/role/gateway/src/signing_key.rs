@@ -103,8 +103,8 @@ mod tests {
     /// A minimal claims set for a mint/verify round-trip (the fields `verify` reads: sub/ws/exp).
     fn claims() -> Claims {
         Claims {
-            sub: "user:ada".into(),
-            ws: "acme".into(),
+            sub: "user:test".into(),
+            ws: "nube".into(),
             role: Role::Member,
             caps: vec![],
             iat: 0,
@@ -134,7 +134,7 @@ mod tests {
         // The token from boot 1 verifies under boot 2's key — the session survives the restart.
         let principal =
             lb_auth::verify(&key2, &tok, 0).expect("pre-restart token must still verify");
-        assert_eq!(principal.sub(), "user:ada");
+        assert_eq!(principal.sub(), "user:test");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

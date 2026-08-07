@@ -104,8 +104,8 @@ fn grafana_iaq_export() -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn iaq_import_is_wired_macro_free_grid_aligned_and_honest() {
     let (gw, key) = gateway().await;
-    seed_datasource(&gw.node, "acme", "pdnsw").await;
-    let tok = token(&key, "user:ada", "acme", IMPORT_CAPS);
+    seed_datasource(&gw.node, "nube", "pdnsw").await;
+    let tok = token(&key, "user:test", "nube", IMPORT_CAPS);
 
     let body = json!({
         "json": grafana_iaq_export(),
@@ -224,8 +224,8 @@ async fn seed_datasource(node: &Node, ws: &str, name: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn import_preview_commit_export_round_trip() {
     let (gw, key) = gateway().await;
-    seed_datasource(&gw.node, "acme", "our-metrics").await;
-    let tok = token(&key, "user:ada", "acme", IMPORT_CAPS);
+    seed_datasource(&gw.node, "nube", "our-metrics").await;
+    let tok = token(&key, "user:test", "nube", IMPORT_CAPS);
 
     // --- PREVIEW (no mappings) ---
     let resp = router(gw.clone())
@@ -299,11 +299,11 @@ async fn import_preview_commit_export_round_trip() {
 }
 
 /// Workspace isolation (the hard wall): a ws-B import can never bind a ws-A datasource. `our-metrics`
-/// exists only in `acme`; a `beta` caller mapping to it is refused (`403`), the import never writes.
+/// exists only in `nube`; a `beta` caller mapping to it is refused (`403`), the import never writes.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_import_cannot_bind_ws_a_datasource() {
     let (gw, key) = gateway().await;
-    seed_datasource(&gw.node, "acme", "our-metrics").await; // acme-only
+    seed_datasource(&gw.node, "nube", "our-metrics").await; // nube-only
     let tok_beta = token(&key, "user:bob", "beta", IMPORT_CAPS);
 
     let resp = router(gw.clone())
@@ -337,7 +337,7 @@ async fn ws_b_import_cannot_bind_ws_a_datasource() {
 async fn import_and_export_require_their_caps() {
     let (gw, key) = gateway().await;
     // A token holding SAVE but NOT import — import must still be denied.
-    let no_import = token(&key, "user:ada", "acme", &["mcp:dashboard.save:call"]);
+    let no_import = token(&key, "user:test", "nube", &["mcp:dashboard.save:call"]);
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post(
@@ -351,7 +351,7 @@ async fn import_and_export_require_their_caps() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
     // Export without its cap is denied (even holding get).
-    let no_export = token(&key, "user:ada", "acme", &["mcp:dashboard.get:call"]);
+    let no_export = token(&key, "user:test", "nube", &["mcp:dashboard.get:call"]);
     let resp = router(gw.clone())
         .oneshot(bearer(get_req("/dashboards/any/export"), &no_export))
         .await
@@ -363,7 +363,7 @@ async fn import_and_export_require_their_caps() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn v2_app_platform_export_rejected() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", IMPORT_CAPS);
+    let tok = token(&key, "user:test", "nube", IMPORT_CAPS);
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post(

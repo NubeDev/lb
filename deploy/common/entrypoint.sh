@@ -17,12 +17,12 @@ mkdir -p "$STORE_DIR" "$DATA_DIR/demo"
 
 : "${LB_GATEWAY_ADDR:=127.0.0.1:8731}"
 : "${LB_GATEWAY_URL:=http://127.0.0.1:8731}"
-: "${LB_WORKSPACE:=acme}"
-: "${LB_SEED_USER:=user:ada}"
+: "${LB_WORKSPACE:=nube}"
+: "${LB_SEED_USER:=user:test}"
 # The seeded admin's GLOBAL email + password — the handle `POST /auth/login {email, password}` (the
 # only human door) authenticates. Without an email the seeded identity cannot sign in at all, so both
 # are defaulted here. Override `LB_SEED_PASSWORD` for any deployment anyone else can reach.
-: "${LB_SEED_EMAIL:=ada@${LB_WORKSPACE}.local}"
+: "${LB_SEED_EMAIL:=test@${LB_WORKSPACE}.local}"
 : "${LB_SEED_PASSWORD:=dev-admin-pw}"
 : "${LB_STORE_PATH:=$STORE_DIR/node-store}"
 # Datasources (federation sidecar): SQLite-only by default (no bundled/hosted Postgres — rule 2).

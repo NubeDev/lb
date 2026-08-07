@@ -110,9 +110,9 @@ LB_MAIL_HOST=smtp.example.com
 LB_MAIL_PORT=587
 LB_MAIL_TLS=starttls              # implicit | starttls | none
 LB_MAIL_AUTH=plain                # none | plain | login | xoauth2
-LB_MAIL_USER=reports@acme.com
+LB_MAIL_USER=reports@nube.com
 LB_MAIL_SECRET_PATH=mail/smtp-password
-LB_MAIL_FROM='Acme Reports <reports@acme.com>'
+LB_MAIL_FROM='Nube Reports <reports@nube.com>'
 LB_MAIL_TIMEOUT_SECS=30
 ```
 
@@ -123,19 +123,19 @@ LB_MAIL_HOST=smtp.gmail.com
 LB_MAIL_PORT=587
 LB_MAIL_TLS=starttls
 LB_MAIL_AUTH=xoauth2
-LB_MAIL_USER=reports@acme.com
+LB_MAIL_USER=reports@nube.com
 LB_MAIL_SECRET_PATH=mail/gmail-refresh-token
 LB_MAIL_OAUTH_TOKEN_ENDPOINT=https://oauth2.googleapis.com/token
 LB_MAIL_OAUTH_CLIENT_ID=1234-abc.apps.googleusercontent.com
 LB_MAIL_OAUTH_CLIENT_SECRET_PATH=mail/gmail-client-secret
-LB_MAIL_FROM='Acme Reports <reports@acme.com>'
+LB_MAIL_FROM='Nube Reports <reports@nube.com>'
 ```
 
 ```bash
 # Postmark
 LB_MAIL_KIND=postmark
 LB_MAIL_SECRET_PATH=mail/postmark-token
-LB_MAIL_FROM='Acme Reports <reports@acme.com>'
+LB_MAIL_FROM='Nube Reports <reports@nube.com>'
 LB_MAIL_STREAM=outbound
 ```
 
@@ -148,10 +148,10 @@ cfg.email_transport = Some(EmailTransport::Smtp(SmtpTransportConfig {
     port: 587,
     tls: TlsMode::Starttls,
     auth: MailAuthMechanism::Plain,
-    username: "reports@acme.com".into(),
+    username: "reports@nube.com".into(),
     secret_path: "mail/smtp-password".into(),
-    from_name: "Acme Reports".into(),
-    from_addr: "reports@acme.com".into(),
+    from_name: "Nube Reports".into(),
+    from_addr: "reports@nube.com".into(),
     ..Default::default()
 }));
 ```
@@ -178,7 +178,7 @@ Boot the node and read the log line — it states the transport, so a misconfigu
 any user is affected:
 
 ```
-INFO email transport: smtp host=smtp.example.com port=587 tls=starttls auth=plain from=reports@acme.com
+INFO email transport: smtp host=smtp.example.com port=587 tls=starttls auth=plain from=reports@nube.com
 ```
 
 Anything else means email is not going out:
@@ -198,7 +198,7 @@ Then stage a real effect and watch it drain:
 } }
 ```
 
-Within a relay tick (~2s) you should see `INFO email sent to=you+lbtest@example.com ws=acme` and the
+Within a relay tick (~2s) you should see `INFO email sent to=you+lbtest@example.com ws=nube` and the
 mail should arrive. Check the spam folder before concluding it did not — see the deliverability note.
 
 ## 4. Diagnose a failure

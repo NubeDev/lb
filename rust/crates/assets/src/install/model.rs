@@ -274,7 +274,7 @@ mod tests {
         vars.insert("site".to_string(), "site-1".to_string());
         let item = ExtNavItem {
             id: "site-1".into(),
-            label: "Acme HQ".into(),
+            label: "Nube HQ".into(),
             icon: String::new(),
             admin: false,
             dynamic: false,

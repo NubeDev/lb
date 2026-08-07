@@ -115,44 +115,44 @@ fn ref_cell(i: &str, panel_ref: &str) -> Cell {
 async fn crud_round_trip() {
     let ws = "ws-panel-crud";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
-    let p = panel_save(&store, &ada, ws, "cooler", "Cooler", series_spec(), 10)
+    let p = panel_save(&store, &test, ws, "cooler", "Cooler", series_spec(), 10)
         .await
         .unwrap();
     assert_eq!(p.title, "Cooler");
-    assert_eq!(p.owner, "user:ada");
+    assert_eq!(p.owner, "user:test");
     assert_eq!(p.visibility, PanelVisibility::Private);
     assert_eq!(p.spec.view, "timeseries");
 
     // get reflects it (full spec)
-    let got = panel_get(&store, &ada, ws, "cooler").await.unwrap();
+    let got = panel_get(&store, &test, ws, "cooler").await.unwrap();
     assert_eq!(got.spec.sources[0].tool, "series.read");
 
     // update (same id) — LWW, owner preserved
     let mut spec2 = series_spec();
     spec2.title = "Cooler v2".into();
-    panel_save(&store, &ada, ws, "cooler", "Cooler v2", spec2, 20)
+    panel_save(&store, &test, ws, "cooler", "Cooler v2", spec2, 20)
         .await
         .unwrap();
-    let got = panel_get(&store, &ada, ws, "cooler").await.unwrap();
+    let got = panel_get(&store, &test, ws, "cooler").await.unwrap();
     assert_eq!(got.title, "Cooler v2");
     assert_eq!(got.updated_ts, 20);
 
     // list = cheap summary (view carried, no spec)
-    let roster = panel_list(&store, &ada, ws).await.unwrap();
+    let roster = panel_list(&store, &test, ws).await.unwrap();
     let row = roster.iter().find(|s| s.id == "cooler").unwrap();
     assert_eq!(row.view, "timeseries");
 
     // delete → gone; get NotFound; re-delete idempotent
-    panel_delete(&store, &ada, ws, "cooler", false, 30)
+    panel_delete(&store, &test, ws, "cooler", false, 30)
         .await
         .unwrap();
     assert!(matches!(
-        panel_get(&store, &ada, ws, "cooler").await.unwrap_err(),
+        panel_get(&store, &test, ws, "cooler").await.unwrap_err(),
         PanelError::NotFound
     ));
-    panel_delete(&store, &ada, ws, "cooler", false, 40)
+    panel_delete(&store, &test, ws, "cooler", false, 40)
         .await
         .unwrap();
 }
@@ -161,12 +161,12 @@ async fn crud_round_trip() {
 async fn over_cap_spec_rejected() {
     let ws = "ws-panel-bounds";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
     let mut spec = series_spec();
     // Over the transform cap → rejected (the host is the boundary, same as dashboard cells).
     spec.transformations = (0..64).map(|_| json!({ "id": "x" })).collect();
     assert!(matches!(
-        panel_save(&store, &ada, ws, "big", "Big", spec, 1)
+        panel_save(&store, &test, ws, "big", "Big", spec, 1)
             .await
             .unwrap_err(),
         PanelError::BadInput(_)
@@ -179,8 +179,8 @@ async fn over_cap_spec_rejected() {
 async fn each_verb_is_denied_without_its_cap() {
     let ws = "ws-panel-deny";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
-    panel_save(&store, &ada, ws, "p", "P", series_spec(), 1)
+    let test = principal("user:test", ws, ALL);
+    panel_save(&store, &test, ws, "p", "P", series_spec(), 1)
         .await
         .unwrap();
 
@@ -230,10 +230,10 @@ async fn each_verb_is_denied_without_its_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_isolation() {
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
     let ben = principal("user:ben", "ws-b", ALL);
 
-    panel_save(&store, &ada, "ws-a", "p", "P", series_spec(), 1)
+    panel_save(&store, &test, "ws-a", "p", "P", series_spec(), 1)
         .await
         .unwrap();
 
@@ -261,11 +261,11 @@ async fn team_shared_member_reads_non_member_denied() {
     let ws = "ws-panel-share";
     let node = Node::boot().await.unwrap();
     let store = &node.store;
-    let ada = principal("user:ada", ws, &[GET, SAVE, SHARE, "store:doc/*:write"]);
+    let test = principal("user:test", ws, &[GET, SAVE, SHARE, "store:doc/*:write"]);
     let ben = principal("user:ben", ws, &[GET]); // team member
     let cleo = principal("user:cleo", ws, &[GET]); // NOT in the team
 
-    panel_save(store, &ada, ws, "p", "P", series_spec(), 1)
+    panel_save(store, &test, ws, "p", "P", series_spec(), 1)
         .await
         .unwrap();
 
@@ -275,12 +275,12 @@ async fn team_shared_member_reads_non_member_denied() {
         PanelError::Denied
     ));
 
-    add_member(store, &ada, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "team:ops", "user:ben")
         .await
         .unwrap();
     panel_share(
         store,
-        &ada,
+        &test,
         ws,
         "p",
         PanelVisibility::Team,
@@ -305,14 +305,14 @@ async fn sharing_never_widens_data_access() {
     let node = Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
 
-    // Ada publishes a workspace-visible panel whose source needs `series.read`.
-    let ada = principal("user:ada", ws, &[SAVE, SHARE, GET]);
-    panel_save(store, &ada, ws, "cooler", "Cooler", series_spec(), 1)
+    // Test publishes a workspace-visible panel whose source needs `series.read`.
+    let test = principal("user:test", ws, &[SAVE, SHARE, GET]);
+    panel_save(store, &test, ws, "cooler", "Cooler", series_spec(), 1)
         .await
         .unwrap();
     panel_share(
         store,
-        &ada,
+        &test,
         ws,
         "cooler",
         PanelVisibility::Workspace,
@@ -370,15 +370,15 @@ async fn ref_hydrates_coexists_propagates_and_ignores_echoed_spec() {
     let ws = "ws-panel-hydrate";
     let store = Store::memory().await.unwrap();
     let store = &store;
-    let ada = principal("user:ada", ws, &[SAVE, GET, DASH_SAVE, DASH_GET]);
+    let test = principal("user:test", ws, &[SAVE, GET, DASH_SAVE, DASH_GET]);
 
     // A panel + a dashboard with an inline cell AND a ref cell (coexistence).
-    panel_save(store, &ada, ws, "cooler", "Cooler", series_spec(), 1)
+    panel_save(store, &test, ws, "cooler", "Cooler", series_spec(), 1)
         .await
         .unwrap();
     lb_host::dashboard_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -391,7 +391,7 @@ async fn ref_hydrates_coexists_propagates_and_ignores_echoed_spec() {
 
     // dashboard.get hydrates the ref cell from the panel (NOT the stale echoed "STALE" spec), leaving
     // the inline cell untouched. The `panel_ref` marker is kept.
-    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
+    let d = dashboard_get(store, &test, ws, "ops").await.unwrap();
     let inline = d.cells.iter().find(|c| c.i == "c1").unwrap();
     let refc = d.cells.iter().find(|c| c.i == "c2").unwrap();
     assert_eq!(inline.view, "stat", "inline cell unchanged");
@@ -409,17 +409,17 @@ async fn ref_hydrates_coexists_propagates_and_ignores_echoed_spec() {
     // Propagation: edit the panel once → the dashboard reflects it on next get (edit-once-reuse).
     let mut spec2 = series_spec();
     spec2.view = "gauge".into();
-    panel_save(store, &ada, ws, "cooler", "Cooler", spec2, 3)
+    panel_save(store, &test, ws, "cooler", "Cooler", spec2, 3)
         .await
         .unwrap();
-    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
+    let d = dashboard_get(store, &test, ws, "ops").await.unwrap();
     let refc = d.cells.iter().find(|c| c.i == "c2").unwrap();
     assert_eq!(refc.view, "gauge", "panel edit propagated to the ref cell");
 
     // Unlink (client copies spec inline, drops the ref): the inline copy stops tracking the panel.
     lb_host::dashboard_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -431,10 +431,10 @@ async fn ref_hydrates_coexists_propagates_and_ignores_echoed_spec() {
     .unwrap();
     let mut spec3 = series_spec();
     spec3.view = "table".into();
-    panel_save(store, &ada, ws, "cooler", "Cooler", spec3, 5)
+    panel_save(store, &test, ws, "cooler", "Cooler", spec3, 5)
         .await
         .unwrap();
-    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
+    let d = dashboard_get(store, &test, ws, "ops").await.unwrap();
     let unlinked = d.cells.iter().find(|c| c.i == "c2").unwrap();
     assert_eq!(unlinked.view, "gauge", "unlinked copy no longer propagates");
 }
@@ -445,8 +445,8 @@ async fn ref_hydrates_coexists_propagates_and_ignores_echoed_spec() {
 async fn cross_ws_ref_rejected_and_dangling_placeholders() {
     let store = Store::memory().await.unwrap();
     // Panel only exists in ws-A.
-    let ada = principal("user:ada", "ws-a", &[SAVE, GET]);
-    panel_save(&store, &ada, "ws-a", "cooler", "Cooler", series_spec(), 1)
+    let test = principal("user:test", "ws-a", &[SAVE, GET]);
+    panel_save(&store, &test, "ws-a", "cooler", "Cooler", series_spec(), 1)
         .await
         .unwrap();
 
@@ -470,16 +470,16 @@ async fn cross_ws_ref_rejected_and_dangling_placeholders() {
         "cross-ws ref rejected: {err:?}"
     );
 
-    // Dangling in-workspace: Ada references her panel, then force-deletes it → the cell hydrates to
+    // Dangling in-workspace: Test references her panel, then force-deletes it → the cell hydrates to
     // the honest placeholder (panel_missing), never a crash or a leaked spec.
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         "ws-a",
         &[SAVE, GET, DELETE, USAGE, DASH_SAVE, DASH_GET],
     );
     lb_host::dashboard_save(
         &store,
-        &ada,
+        &test,
         "ws-a",
         "ops",
         "Ops",
@@ -489,10 +489,10 @@ async fn cross_ws_ref_rejected_and_dangling_placeholders() {
     )
     .await
     .unwrap();
-    panel_delete(&store, &ada, "ws-a", "cooler", true, 4)
+    panel_delete(&store, &test, "ws-a", "cooler", true, 4)
         .await
         .unwrap();
-    let d = dashboard_get(&store, &ada, "ws-a", "ops").await.unwrap();
+    let d = dashboard_get(&store, &test, "ws-a", "ops").await.unwrap();
     let cell = &d.cells[0];
     assert!(cell.panel_missing, "dangling ref → placeholder");
     assert_eq!(cell.panel_ref, "panel:cooler", "marker kept for relink");
@@ -506,17 +506,17 @@ async fn delete_refused_while_in_use_unless_forced() {
     let ws = "ws-panel-del";
     let store = Store::memory().await.unwrap();
     let store = &store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, GET, DELETE, USAGE, DASH_SAVE, DASH_GET],
     );
-    panel_save(store, &ada, ws, "cooler", "Cooler", series_spec(), 1)
+    panel_save(store, &test, ws, "cooler", "Cooler", series_spec(), 1)
         .await
         .unwrap();
     lb_host::dashboard_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -528,29 +528,29 @@ async fn delete_refused_while_in_use_unless_forced() {
     .unwrap();
 
     // usage reports the referencing dashboard.
-    let usage = panel_usage(store, &ada, ws, "cooler").await.unwrap();
+    let usage = panel_usage(store, &test, ws, "cooler").await.unwrap();
     assert_eq!(usage.len(), 1);
     assert_eq!(usage[0].dashboard, "ops");
     assert_eq!(usage[0].cells, 1);
 
     // delete-in-use refused with the usage list.
-    match panel_delete(store, &ada, ws, "cooler", false, 3).await {
+    match panel_delete(store, &test, ws, "cooler", false, 3).await {
         Err(PanelError::InUse(rows)) => assert_eq!(rows[0].dashboard, "ops"),
         other => panic!("expected InUse, got {other:?}"),
     }
 
     // force → tombstone; the ref cell now hydrates to the placeholder.
-    panel_delete(store, &ada, ws, "cooler", true, 4)
+    panel_delete(store, &test, ws, "cooler", true, 4)
         .await
         .unwrap();
-    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
+    let d = dashboard_get(store, &test, ws, "ops").await.unwrap();
     assert!(d.cells[0].panel_missing);
 
     // re-saving the panel un-hides it (dashboard tombstone semantics) — the ref re-hydrates.
-    panel_save(store, &ada, ws, "cooler", "Cooler", series_spec(), 5)
+    panel_save(store, &test, ws, "cooler", "Cooler", series_spec(), 5)
         .await
         .unwrap();
-    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
+    let d = dashboard_get(store, &test, ws, "ops").await.unwrap();
     assert!(
         !d.cells[0].panel_missing,
         "re-created panel re-hydrates the ref"
@@ -572,9 +572,9 @@ async fn dashboard_save_returns_hydrated_ref_cells() {
     let ws = "ws-save-hydrate";
     let store = Store::memory().await.unwrap();
     let store = &store;
-    let ada = principal("user:ada", ws, &[SAVE, GET, DASH_SAVE, DASH_GET]);
+    let test = principal("user:test", ws, &[SAVE, GET, DASH_SAVE, DASH_GET]);
 
-    panel_save(store, &ada, ws, "cooler", "Cooler", series_spec(), 1)
+    panel_save(store, &test, ws, "cooler", "Cooler", series_spec(), 1)
         .await
         .unwrap();
 
@@ -582,7 +582,7 @@ async fn dashboard_save_returns_hydrated_ref_cells() {
     // returned value is the panel's spec (re-hydrated), not the client's echoed copy.
     let saved = lb_host::dashboard_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -619,14 +619,14 @@ async fn dashboard_save_returns_hydrated_ref_cells() {
 
     // The persisted record stays STRIPPED (layout + ref + overrides only): prove the round-trip via a
     // fresh `dashboard.get` re-hydrates from the panel, not from anything the save echoed back.
-    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
+    let d = dashboard_get(store, &test, ws, "ops").await.unwrap();
     assert_eq!(d.cells[0].view, "timeseries");
     assert_eq!(d.cells[0].panel_ref, "panel:cooler");
 
     // And a second save (the edit-after-edit case — e.g. a duplicate) still returns hydrated cells.
     let saved2 = lb_host::dashboard_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",

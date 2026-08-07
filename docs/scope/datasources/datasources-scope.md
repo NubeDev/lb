@@ -162,24 +162,24 @@ symmetric node binary every device runs (rule 1). Core stays lean; federation is
 
 A KFC admin connects the chain's existing Timescale warehouse and a nightly report reads it.
 
-1. **Register.** Admin → Datasources → Add → `TimescaleDB`, host `tsdb.acme:5432`, paste the DSN. The
-   install asks the admin to approve `net:tls:tsdb.acme:5432` + `secret:federation/tsdb`. Save stores
-   `granted = requested ∩ approved` and `datasource:acme:timescale`. `datasource.test` runs a real probe
+1. **Register.** Admin → Datasources → Add → `TimescaleDB`, host `tsdb.nube:5432`, paste the DSN. The
+   install asks the admin to approve `net:tls:tsdb.nube:5432` + `secret:federation/tsdb`. Save stores
+   `granted = requested ∩ approved` and `datasource:nube:timescale`. `datasource.test` runs a real probe
    → green.
 2. **Supervise.** The supervisor spawns/holds the `federation` sidecar; at connect time it checks
-   `net:tls:tsdb.acme:5432` is in the grant (else refuse, opaque), pulls the DSN via
+   `net:tls:tsdb.nube:5432` is in the grant (else refuse, opaque), pulls the DSN via
    `secret:federation/tsdb`, and opens the pool behind the `TimescaleSource` trait.
 3. **Federate (live).** A rule step runs `source("timescale").query("SELECT store, avg(temp) t FROM
    readings WHERE ts > now() - interval '1 day' GROUP BY store").filter("t > 5.0")`. `lb-rules` collects
    the grid via `federation.query {source:"timescale", sql:…}`; the host authorizes
-   `mcp:federation.query:call` workspace-first, resolves `timescale` in `acme`, validates SELECT-only,
+   `mcp:federation.query:call` workspace-first, resolves `timescale` in `nube`, validates SELECT-only,
    runs it on the pool, returns `{columns, rows}`. The rule alerts on hot stores.
 4. **Mirror (cache).** For the dashboard, a `federation.mirror {source:"timescale", query, target_series:
    "cooler.temp", range:"-30d"}` enqueues an `lb-jobs` batch that pulls the range and `ingest.write`s it
    (via the native callback, `caller ∩ grant`, ws host-set) into the series plane; the dashboard's
    `GET /series/cooler.temp/stream` SSE shows it — fast, offline-capable, no live external dependency.
    A node restart mid-mirror resumes from the checkpoint.
-5. **Deny path:** registering without `net:tls:tsdb.acme:5432` → step 2 refuses the connect (opaque,
+5. **Deny path:** registering without `net:tls:tsdb.nube:5432` → step 2 refuses the connect (opaque,
    sidecar degraded). A ws-B caller naming `source:"timescale"` resolves nothing in ws-B → denied. A
    `federation.query` with a non-SELECT `sql` is rejected by the validator before execution.
 

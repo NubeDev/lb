@@ -42,7 +42,7 @@ same file (denied-datasource deny test, per-`nextWs()` isolation) and stays gree
 
 ## 3. Deep-linkable rule routes `/rules/$rule`
 
-Added a `/t/$ws/rules/$rule` route (e.g. `#/t/acme/rules/aidan`) so a saved rule is
+Added a `/t/$ws/rules/$rule` route (e.g. `#/t/nube/rules/aidan`) so a saved rule is
 directly linkable; bare `/rules` stays a fresh buffer. Mirrors the flows detail route:
 
 - `createAppRouter.tsx` — new `rulesDetailRoute` (`/rules/$rule`), a `RulesSurface` that

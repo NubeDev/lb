@@ -7,14 +7,14 @@
 
 ## Goal
 
-Make UI-driven datasource CRUD (`#/t/acme/datasources`) work reliably for any admin — the user
+Make UI-driven datasource CRUD (`#/t/nube/datasources`) work reliably for any admin — the user
 reported **Test** failing with `Failed: denied`, and needs add/edit/remove of connections to "100%
 work" long-term. Find and fix the root cause, not just unblock the one source.
 
 ## What changed
 
 The DSN secret for a source was **owned by whoever ran `datasource.add`** (the boot seed's
-`ext:federation-bootstrap`, or a dev login's `user:ada`) but read/deleted under the fixed
+`ext:federation-bootstrap`, or a dev login's `user:test`) but read/deleted under the fixed
 `ext:federation` mediator. The secrets **owner wall** (gate 3: overwrite/delete are owner-only) then
 denied every cross-admin update/remove, and `Denied`/`EndpointRefused`/owner-denial all collapsed to
 the same opaque `"denied"`.

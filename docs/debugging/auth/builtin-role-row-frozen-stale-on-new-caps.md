@@ -6,7 +6,7 @@
 
 The reports feature shipped `mcp:report.save:call` / `mcp:report.export:call` / `mcp:brand.save:call`
 correctly in the built-in `AUTHOR_CAPS` bundle, the host + gateway tests were green, but on the live
-dev store an admin (`user:ada` in `acme`) opened **Reports → New report** and the save/export verbs
+dev store an admin (`user:test` in `nube`) opened **Reports → New report** and the save/export verbs
 were **denied** — "create report" silently failed. Decoding the login token showed only the VIEWER-tier
 report caps (`report.get`/`report.list`/`brand.get`/`brand.list`); the AUTHOR-tier caps
 (`report.save`/`report.delete`/`report.share`/`report.export`/`brand.save`/`brand.delete`) were
@@ -18,7 +18,7 @@ current code), so the gap was invisible to the suite.
 **A stale persisted built-in role record + an asymmetry in how `resolve_caps` reads it.**
 
 - `ensure_builtin_authz_roles` → `ensure_one` is **idempotent on absence**: it writes a `role` row
-  only when no row exists for that name. The `acme` dev store was seeded BEFORE the `report.*` caps
+  only when no row exists for that name. The `nube` dev store was seeded BEFORE the `report.*` caps
   were added, so its `member` / `workspace-admin` rows are frozen at the old cap set and are never
   overwritten on a restart (the seed is a no-op once the row exists).
 - `resolve_caps` / `resolve_subject_caps` (the fold that mints a token's caps) expands a `role:<name>`

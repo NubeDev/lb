@@ -46,11 +46,11 @@ fn cfg_with(ws: &str, seed: Vec<Policy>) -> BootConfig {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_fresh_store_comes_up_bounded_with_no_operator_action() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let cfg = cfg_with("acme", vec![bounded("plant.")]);
+    let cfg = cfg_with("nube", vec![bounded("plant.")]);
 
     lb_node::seed_retention::run(&node, &cfg).await;
 
-    let got = list_policies(&node.store, "acme").await.unwrap();
+    let got = list_policies(&node.store, "nube").await.unwrap();
     assert_eq!(
         got.len(),
         1,
@@ -89,18 +89,18 @@ async fn an_operator_policy_is_never_stomped_across_restarts() {
             max_rows: 0,
             ..Default::default()
         }],
-        updated_by: Some("user:ada".into()),
+        updated_by: Some("user:test".into()),
         ..Default::default()
     };
-    set_policy(&node.store, "acme", &operator).await.unwrap();
+    set_policy(&node.store, "nube", &operator).await.unwrap();
 
-    let cfg = cfg_with("acme", vec![bounded("plant.")]);
+    let cfg = cfg_with("nube", vec![bounded("plant.")]);
     // Three boots: the seeder must be idempotent, not just first-run-correct.
     for _ in 0..3 {
         lb_node::seed_retention::run(&node, &cfg).await;
     }
 
-    let got = list_policies(&node.store, "acme").await.unwrap();
+    let got = list_policies(&node.store, "nube").await.unwrap();
     assert_eq!(got.len(), 1, "no per-prefix shadow row — one policy, still");
     assert_eq!(got[0], operator, "the operator's row is byte-identical");
 }
@@ -113,15 +113,15 @@ async fn seeding_is_per_prefix_not_all_or_nothing() {
     let operator = Policy {
         prefix: "plant.".into(),
         raw_for_ms: 999,
-        updated_by: Some("user:ada".into()),
+        updated_by: Some("user:test".into()),
         ..Default::default()
     };
-    set_policy(&node.store, "acme", &operator).await.unwrap();
+    set_policy(&node.store, "nube", &operator).await.unwrap();
 
-    let cfg = cfg_with("acme", vec![bounded("plant."), bounded("depot.")]);
+    let cfg = cfg_with("nube", vec![bounded("plant."), bounded("depot.")]);
     lb_node::seed_retention::run(&node, &cfg).await;
 
-    let got = list_policies(&node.store, "acme").await.unwrap();
+    let got = list_policies(&node.store, "nube").await.unwrap();
     assert_eq!(got.len(), 2);
     let plant = got.iter().find(|p| p.prefix == "plant.").unwrap();
     let depot = got.iter().find(|p| p.prefix == "depot.").unwrap();
@@ -134,18 +134,18 @@ async fn seeding_is_per_prefix_not_all_or_nothing() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_empty_seed_writes_nothing() {
     let node = Arc::new(Node::boot().await.unwrap());
-    lb_node::seed_retention::run(&node, &cfg_with("acme", vec![])).await;
-    assert!(list_policies(&node.store, "acme").await.unwrap().is_empty());
+    lb_node::seed_retention::run(&node, &cfg_with("nube", vec![])).await;
+    assert!(list_policies(&node.store, "nube").await.unwrap().is_empty());
 }
 
-/// The seed is workspace-scoped like every other series-plane record: seeding `acme` must not put a
+/// The seed is workspace-scoped like every other series-plane record: seeding `nube` must not put a
 /// row in another workspace's namespace.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_seed_respects_the_workspace_wall() {
     let node = Arc::new(Node::boot().await.unwrap());
-    lb_node::seed_retention::run(&node, &cfg_with("acme", vec![bounded("plant.")])).await;
+    lb_node::seed_retention::run(&node, &cfg_with("nube", vec![bounded("plant.")])).await;
 
-    assert_eq!(list_policies(&node.store, "acme").await.unwrap().len(), 1);
+    assert_eq!(list_policies(&node.store, "nube").await.unwrap().len(), 1);
     assert!(list_policies(&node.store, "other")
         .await
         .unwrap()

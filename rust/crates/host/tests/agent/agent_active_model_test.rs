@@ -146,34 +146,34 @@ async fn resolved_turn(node: &Arc<Node>, caller: &Principal, ws: &str) -> (Strin
 async fn a_picked_definition_endpoint_resolves_to_its_built_model() {
     let ws = "ws-active-pick";
     let node = node_with_builder().await;
-    let ada = admin("user:ada", ws);
+    let test = admin("user:test", ws);
 
     // Before any pick: no active definition, and the resolve yields the honest placeholder (no node
     // model wired at boot — UnconfiguredModel).
     assert!(
-        resolve_active_definition(&node, &ada, ws, None)
+        resolve_active_definition(&node, &test, ws, None)
             .await
             .is_err(),
         "no pick yet → nothing active"
     );
-    let (answer, configured) = resolved_turn(&node, &ada, ws).await;
+    let (answer, configured) = resolved_turn(&node, &test, ws).await;
     assert_eq!(answer, UNCONFIGURED_ANSWER, "unconfigured before the pick");
     assert!(!configured);
 
     // Pick a definition: create it, then write the config the pick sends.
     let def = definition("glm-coder", "zaicoding", "glm-4.6");
-    agent_def_create(&node, &ada, ws, &def).await.unwrap();
-    agent_config_set(&node, &ada, ws, &pick_patch(&def))
+    agent_def_create(&node, &test, ws, &def).await.unwrap();
+    agent_config_set(&node, &test, ws, &pick_patch(&def))
         .await
         .unwrap();
 
     // Now the ACTIVE definition resolves to THIS def, and the model is the built one (its scripted
     // answer names the endpoint's model → the right endpoint was built).
-    let active = resolve_active_definition(&node, &ada, ws, None)
+    let active = resolve_active_definition(&node, &test, ws, None)
         .await
         .expect("a pick is active");
     assert_eq!(active.id, "glm-coder");
-    let (answer, configured) = resolved_turn(&node, &ada, ws).await;
+    let (answer, configured) = resolved_turn(&node, &test, ws).await;
     assert_eq!(answer, "answer from glm-4.6", "the picked endpoint's model");
     assert!(configured, "a real provider is wired");
 }
@@ -182,18 +182,18 @@ async fn a_picked_definition_endpoint_resolves_to_its_built_model() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ws_b_never_resolves_ws_a_endpoint_or_model() {
-    // MANDATORY workspace-isolation (§2.2): ada picks GLM-4.6 in ws-A; bob picks GLM-5.2 in ws-B on the
+    // MANDATORY workspace-isolation (§2.2): test picks GLM-4.6 in ws-A; bob picks GLM-5.2 in ws-B on the
     // SAME node. Each resolve yields its OWN model — ws-B never sees ws-A's endpoint, even though the
     // cache is one map (the ws is part of the key, the store read is namespace-walled).
     let node = node_with_builder().await;
     let ws_a = "ws-iso-a";
     let ws_b = "ws-iso-b";
-    let ada = admin("user:ada", ws_a);
+    let test = admin("user:test", ws_a);
     let bob = admin("user:bob", ws_b);
 
     let def_a = definition("a-def", "zaicoding", "glm-4.6");
-    agent_def_create(&node, &ada, ws_a, &def_a).await.unwrap();
-    agent_config_set(&node, &ada, ws_a, &pick_patch(&def_a))
+    agent_def_create(&node, &test, ws_a, &def_a).await.unwrap();
+    agent_config_set(&node, &test, ws_a, &pick_patch(&def_a))
         .await
         .unwrap();
 
@@ -203,7 +203,7 @@ async fn ws_b_never_resolves_ws_a_endpoint_or_model() {
         .await
         .unwrap();
 
-    let (answer_a, _) = resolved_turn(&node, &ada, ws_a).await;
+    let (answer_a, _) = resolved_turn(&node, &test, ws_a).await;
     let (answer_b, _) = resolved_turn(&node, &bob, ws_b).await;
     assert_eq!(
         answer_a, "answer from glm-4.6",
@@ -234,23 +234,23 @@ async fn a_re_pick_invalidates_the_memoized_model() {
     // proving `agent.config.set` invalidated the ws entry (not served the cached GLM-4.6).
     let ws = "ws-invalidate";
     let node = node_with_builder().await;
-    let ada = admin("user:ada", ws);
+    let test = admin("user:test", ws);
 
     let def1 = definition("d1", "zaicoding", "glm-4.6");
-    agent_def_create(&node, &ada, ws, &def1).await.unwrap();
-    agent_config_set(&node, &ada, ws, &pick_patch(&def1))
+    agent_def_create(&node, &test, ws, &def1).await.unwrap();
+    agent_config_set(&node, &test, ws, &pick_patch(&def1))
         .await
         .unwrap();
-    let (a1, _) = resolved_turn(&node, &ada, ws).await; // caches (ws, glm-4.6 endpoint)
+    let (a1, _) = resolved_turn(&node, &test, ws).await; // caches (ws, glm-4.6 endpoint)
     assert_eq!(a1, "answer from glm-4.6");
 
     // Re-pick a different model. `agent_config_set` must invalidate the ws entry.
     let def2 = definition("d2", "zaicoding", "glm-5.2");
-    agent_def_create(&node, &ada, ws, &def2).await.unwrap();
-    agent_config_set(&node, &ada, ws, &pick_patch(&def2))
+    agent_def_create(&node, &test, ws, &def2).await.unwrap();
+    agent_config_set(&node, &test, ws, &pick_patch(&def2))
         .await
         .unwrap();
-    let (a2, _) = resolved_turn(&node, &ada, ws).await;
+    let (a2, _) = resolved_turn(&node, &test, ws).await;
     assert_eq!(
         a2, "answer from glm-5.2",
         "the re-pick busted the cache — the new model answers, not the stale one"
@@ -267,22 +267,22 @@ async fn the_in_house_loop_drives_the_picked_workspace_model() {
     // at run start) reached the in-house loop.
     let ws = "ws-loop-picks";
     let node = node_with_builder().await;
-    let ada = admin("user:ada", ws);
+    let test = admin("user:test", ws);
 
     let def = definition("loop-def", "zaicoding", "glm-4.6");
-    agent_def_create(&node, &ada, ws, &def).await.unwrap();
-    agent_config_set(&node, &ada, ws, &pick_patch(&def))
+    agent_def_create(&node, &test, ws, &def).await.unwrap();
+    agent_config_set(&node, &test, ws, &pick_patch(&def))
         .await
         .unwrap();
 
-    let tools = reachable_tools(&node, &ada, ws).await;
+    let tools = reachable_tools(&node, &test, ws).await;
     let answer = invoke_via_runtime(
         &node,
         &node.runtimes(),
         None, // absent → the in-house default, which now rides the per-ws override
         None, // no per-invoke persona
-        &ada,
-        ada.caps(),
+        &test,
+        test.caps(),
         ws,
         "loop-1",
         "do the thing",
@@ -330,13 +330,13 @@ async fn the_key_resolves_sealed_workspace_secret_over_env() {
     let seen = Arc::new(Mutex::new(None));
     let node = Arc::new(Node::boot().await.unwrap());
     node.install_model_builder(Arc::new(KeyRecordingBuilder(seen.clone())));
-    let ada = admin("user:ada", ws);
+    let test = admin("user:test", ws);
 
     // Seal a WORKSPACE-visibility secret (host-mediated `get_workspace` only reads Workspace secrets).
     let sealer = {
         let key = SigningKey::generate();
         let claims = Claims {
-            sub: "user:ada".into(),
+            sub: "user:test".into(),
             ws: ws.into(),
             role: Role::Member,
             caps: vec!["secret:agent/*:write".into()],
@@ -364,8 +364,8 @@ async fn the_key_resolves_sealed_workspace_secret_over_env() {
     let mut def = definition("keyed", "zaicoding", "glm-4.6");
     def.model_endpoint.api_key_secret = Some("agent/model-key".into());
     def.model_endpoint.api_key_env = Some("ACTIVE_MODEL_ENV_KEY".into());
-    agent_def_create(&node, &ada, ws, &def).await.unwrap();
-    agent_config_set(&node, &ada, ws, &pick_patch(&def))
+    agent_def_create(&node, &test, ws, &def).await.unwrap();
+    agent_config_set(&node, &test, ws, &pick_patch(&def))
         .await
         .unwrap();
     // pick_patch copies the endpoint fields; ensure the sealed path rides the copy too.
@@ -380,7 +380,7 @@ async fn the_key_resolves_sealed_workspace_secret_over_env() {
         "the pick copied the sealed path (names-only)"
     );
 
-    let _ = resolve_workspace_model(&node, &ada, ws).await;
+    let _ = resolve_workspace_model(&node, &test, ws).await;
     assert_eq!(
         seen.lock().unwrap().as_deref(),
         Some("SEALED-VALUE"),
@@ -408,13 +408,13 @@ async fn a_builtin_pick_resolves_its_sealed_key_from_agent_config() {
     // Seed the built-in catalog (the `node` binary does this at boot; `Node::boot` does not) so the
     // reserved `builtin.in-house-glm-4.6` definition resolves.
     seed_agent_definitions(&node.store).await.unwrap();
-    let ada = admin("user:ada", ws);
+    let test = admin("user:test", ws);
 
     // Seal the workspace's model key at the path the UI computes for the active pick.
     let sealer = {
         let key = SigningKey::generate();
         let claims = Claims {
-            sub: "user:ada".into(),
+            sub: "user:test".into(),
             ws: ws.into(),
             role: Role::Member,
             caps: vec!["secret:agent/*:write".into()],
@@ -455,11 +455,11 @@ async fn a_builtin_pick_resolves_its_sealed_key_from_agent_config() {
             ..Default::default()
         }),
     };
-    agent_config_set(&node, &ada, ws, &pick).await.unwrap();
+    agent_config_set(&node, &test, ws, &pick).await.unwrap();
 
     // The active definition IS the built-in, and its endpoint record carries no secret of its own —
     // proving the key can only come from the config overlay, not the definition.
-    let active = resolve_active_definition(&node, &ada, ws, None)
+    let active = resolve_active_definition(&node, &test, ws, None)
         .await
         .expect("the built-in pick is active");
     assert_eq!(active.id, "builtin.in-house-glm-4.6");
@@ -468,7 +468,7 @@ async fn a_builtin_pick_resolves_its_sealed_key_from_agent_config() {
         "the read-only built-in record carries no sealed key — it lives on agent.config"
     );
 
-    let _ = resolve_workspace_model(&node, &ada, ws).await;
+    let _ = resolve_workspace_model(&node, &test, ws).await;
     assert_eq!(
         seen.lock().unwrap().as_deref(),
         Some("BUILTIN-SEALED-VALUE"),
@@ -484,14 +484,14 @@ async fn agent_config_double_delivery_keeps_active_definition_idempotent() {
     // same record — `active_definition` is set once and stays, never duplicated or cleared.
     let ws = "ws-lww";
     let node = node_with_builder().await;
-    let ada = admin("user:ada", ws);
+    let test = admin("user:test", ws);
 
     let def = definition("lww-def", "zaicoding", "glm-4.6");
-    agent_def_create(&node, &ada, ws, &def).await.unwrap();
+    agent_def_create(&node, &test, ws, &def).await.unwrap();
     let patch = pick_patch(&def);
 
-    agent_config_set(&node, &ada, ws, &patch).await.unwrap();
-    agent_config_set(&node, &ada, ws, &patch).await.unwrap(); // double-deliver (replay)
+    agent_config_set(&node, &test, ws, &patch).await.unwrap();
+    agent_config_set(&node, &test, ws, &patch).await.unwrap(); // double-deliver (replay)
 
     let cfg = get_agent_config(&node.store, ws)
         .await

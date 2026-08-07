@@ -136,7 +136,7 @@ async fn the_stream_without_a_token_is_401() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn hello_frame_mints_a_sid_and_registers_the_connection() {
     let (base, gw, key) = live_gateway().await;
-    let tok = token(&key, "user:ada", "gw-ev-hello", BUS);
+    let tok = token(&key, "user:test", "gw-ev-hello", BUS);
     let client = reqwest::Client::new();
     let (_resp, sid) = open_stream(&client, &base, &tok).await;
     assert!(!sid.is_empty(), "hello carries a non-empty sid");
@@ -151,7 +151,7 @@ async fn a_denied_subject_is_an_opaque_error_frame_the_connection_survives() {
     // connection still streams (scope: deny is a per-subscription error frame, never a connection kill).
     let (base, _gw, key) = live_gateway().await;
     // Has bus caps (so a permitted subject works) but NOT agent.watch (so `run:` denies).
-    let tok = token(&key, "user:ada", "gw-ev-deny", BUS);
+    let tok = token(&key, "user:test", "gw-ev-deny", BUS);
     let client = reqwest::Client::new();
     let (mut resp, sid) = open_stream(&client, &base, &tok).await;
 
@@ -204,7 +204,7 @@ async fn a_cross_workspace_subject_is_the_same_opaque_deny() {
     });
     let client = reqwest::Client::new();
 
-    let tok_a = token(&key, "user:ada", "ws-A", BUS);
+    let tok_a = token(&key, "user:test", "ws-A", BUS);
     let tok_b = token(&key, "user:bob", "ws-B", BUS);
 
     // ws-B opens the mux and subscribes `bus:cooler/alerts` (resolved inside ws-B).
@@ -236,7 +236,7 @@ async fn two_subjects_interleave_on_one_connection_with_parity() {
     // interleave and each mux frame's `data` is byte-identical to what the dedicated `/bus/stream` route
     // emits for the same publish (the payload rides verbatim inside the envelope).
     let (base, _gw, key) = live_gateway().await;
-    let tok = token(&key, "user:ada", "gw-ev-mux", BUS);
+    let tok = token(&key, "user:test", "gw-ev-mux", BUS);
     let client = reqwest::Client::new();
 
     // The dedicated route's frame for the SAME publish, as the parity oracle.
@@ -278,7 +278,7 @@ async fn unsubscribe_stops_frames_and_releases_the_subject() {
     // After unsubscribe, further server-side events for that subject emit nothing on the stream AND the
     // hub's subject task (its bus subscription) is released (scope "Unsubscribe").
     let (base, gw, key) = live_gateway().await;
-    let tok = token(&key, "user:ada", "gw-ev-unsub", BUS);
+    let tok = token(&key, "user:test", "gw-ev-unsub", BUS);
     let client = reqwest::Client::new();
     let (mut resp, sid) = open_stream(&client, &base, &tok).await;
 

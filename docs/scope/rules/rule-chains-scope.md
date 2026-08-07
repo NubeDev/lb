@@ -160,7 +160,7 @@ A nightly food-safety report across the EMEA fleet, with an alert fan-in.
    night's cooler readings), `roll` (needs `pull`; rollup + threshold), `summarize` (needs `roll`;
    `ai.complete` a report), `notify` (needs `summarize`; `alert`). Trigger: `Cron "0 6 * * *"`. The DAG
    validates (acyclic, deps resolve) — a cycle would be rejected here, before any run.
-2. At 06:00 the **S6 reactor** claims the due chain for `acme` (window-claim → multi-node safe) and calls
+2. At 06:00 the **S6 reactor** claims the due chain for `nube` (window-claim → multi-node safe) and calls
    the coordinator's `start`: insert `chain_run` Pending, seed per-step state, enqueue the in-degree-0
    frontier (`pull`) as an `lb-jobs` `Job::WorkflowStep`.
 3. A worker claims `pull` (CAS `Enqueued→Running`), resolves its bindings, runs the rule via `lb-rules`

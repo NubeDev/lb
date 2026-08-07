@@ -42,7 +42,7 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 // Core skill ids contain a `.` (`core.lb-cli`), and the caps grammar splits a resource on BOTH `/`
 // and `.` — so a single `*` matches only one segment. A grant that must span dotted ids uses the
 // recursive-tail `**` (auth-caps grammar). `store:skill/*` still covers a flat user id like
-// `acme-runbook`; `store:skill/**` additionally covers `skill/core/lb-cli`.
+// `nube-runbook`; `store:skill/**` additionally covers `skill/core/lb-cli`.
 const READ: &str = "store:skill/**:read";
 const WRITE: &str = "store:skill/**:write";
 
@@ -71,7 +71,7 @@ async fn put_skill_on_a_core_id_is_rejected_even_for_an_admin() {
     assert!(matches!(err, AssetError::Reserved), "got {err:?}");
 
     // A user-tier id under the same admin still works (the reservation is only the `core.` prefix).
-    put_skill(&store, &admin, ws, "acme-runbook", "1.0.0", "d", "b", 1)
+    put_skill(&store, &admin, ws, "nube-runbook", "1.0.0", "d", "b", 1)
         .await
         .unwrap();
 }
@@ -93,14 +93,14 @@ async fn deprecate_on_a_core_id_is_rejected_even_for_an_admin() {
 async fn deprecate_without_the_write_cap_is_denied() {
     let ws = "ws-deprecate-nocap";
     let store = Store::memory().await.unwrap();
-    let author = principal("user:ada", ws, &[WRITE]);
+    let author = principal("user:test", ws, &[WRITE]);
     let reader = principal("user:bob", ws, &[READ]); // read only
 
-    put_skill(&store, &author, ws, "acme-runbook", "1.0.0", "d", "b", 1)
+    put_skill(&store, &author, ws, "nube-runbook", "1.0.0", "d", "b", 1)
         .await
         .unwrap();
 
-    let err = deprecate_skill(&store, &reader, ws, "acme-runbook")
+    let err = deprecate_skill(&store, &reader, ws, "nube-runbook")
         .await
         .unwrap_err();
     assert!(matches!(err, AssetError::Denied), "got {err:?}");
@@ -177,7 +177,7 @@ async fn the_catalog_carries_core_and_user_tiers() {
         &store,
         &admin,
         ws,
-        "acme-runbook",
+        "nube-runbook",
         "1.0.0",
         "the runbook",
         "b",
@@ -185,7 +185,7 @@ async fn the_catalog_carries_core_and_user_tiers() {
     )
     .await
     .unwrap();
-    grant_skill(&store, &admin, ws, "acme-runbook")
+    grant_skill(&store, &admin, ws, "nube-runbook")
         .await
         .unwrap();
     grant_skill(&store, &admin, ws, "core.lb-cli")
@@ -197,7 +197,7 @@ async fn the_catalog_carries_core_and_user_tiers() {
     assert_eq!(core.tier, SkillTier::Core);
     assert!(!core.description.is_empty());
     assert_eq!(core.latest, "0.1.0");
-    let user = catalog.iter().find(|e| e.id == "acme-runbook").unwrap();
+    let user = catalog.iter().find(|e| e.id == "nube-runbook").unwrap();
     assert_eq!(user.tier, SkillTier::User);
     assert_eq!(user.description, "the runbook");
 }
@@ -208,12 +208,12 @@ async fn the_catalog_carries_core_and_user_tiers() {
 async fn deprecate_hides_from_catalog_and_latest_but_pinned_still_loads_and_republish_unhides() {
     let ws = "ws-deprecate";
     let store = Store::memory().await.unwrap();
-    let author = principal("user:ada", ws, &[READ, WRITE]);
+    let author = principal("user:test", ws, &[READ, WRITE]);
 
-    put_skill(&store, &author, ws, "acme-runbook", "1.0.0", "d", "v1", 1)
+    put_skill(&store, &author, ws, "nube-runbook", "1.0.0", "d", "v1", 1)
         .await
         .unwrap();
-    grant_skill(&store, &author, ws, "acme-runbook")
+    grant_skill(&store, &author, ws, "nube-runbook")
         .await
         .unwrap();
 
@@ -222,9 +222,9 @@ async fn deprecate_hides_from_catalog_and_latest_but_pinned_still_loads_and_repu
         .await
         .unwrap()
         .iter()
-        .any(|e| e.id == "acme-runbook"));
+        .any(|e| e.id == "nube-runbook"));
     assert_eq!(
-        load_skill(&store, &author, ws, "acme-runbook", None)
+        load_skill(&store, &author, ws, "nube-runbook", None)
             .await
             .unwrap()
             .body,
@@ -232,23 +232,23 @@ async fn deprecate_hides_from_catalog_and_latest_but_pinned_still_loads_and_repu
     );
 
     // Deprecate → gone from the catalog and from LATEST resolution…
-    deprecate_skill(&store, &author, ws, "acme-runbook")
+    deprecate_skill(&store, &author, ws, "nube-runbook")
         .await
         .unwrap();
     assert!(!list_granted_skills(&store, &author, ws)
         .await
         .unwrap()
         .iter()
-        .any(|e| e.id == "acme-runbook"));
+        .any(|e| e.id == "nube-runbook"));
     assert!(matches!(
-        load_skill(&store, &author, ws, "acme-runbook", None)
+        load_skill(&store, &author, ws, "nube-runbook", None)
             .await
             .unwrap_err(),
         AssetError::NotFound
     ));
     // …but a PINNED load still resolves (rollback / audit preserved).
     assert_eq!(
-        load_skill(&store, &author, ws, "acme-runbook", Some("1.0.0"))
+        load_skill(&store, &author, ws, "nube-runbook", Some("1.0.0"))
             .await
             .unwrap()
             .body,
@@ -256,16 +256,16 @@ async fn deprecate_hides_from_catalog_and_latest_but_pinned_still_loads_and_repu
     );
 
     // Re-publishing a NEW version un-hides the id (deprecate is a state, not a tombstone).
-    put_skill(&store, &author, ws, "acme-runbook", "1.1.0", "d", "v2", 2)
+    put_skill(&store, &author, ws, "nube-runbook", "1.1.0", "d", "v2", 2)
         .await
         .unwrap();
     assert!(list_granted_skills(&store, &author, ws)
         .await
         .unwrap()
         .iter()
-        .any(|e| e.id == "acme-runbook"));
+        .any(|e| e.id == "nube-runbook"));
     assert_eq!(
-        load_skill(&store, &author, ws, "acme-runbook", None)
+        load_skill(&store, &author, ws, "nube-runbook", None)
             .await
             .unwrap()
             .body,
@@ -278,17 +278,17 @@ async fn deprecate_hides_from_catalog_and_latest_but_pinned_still_loads_and_repu
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn creating_a_workspace_applies_the_default_core_skill_grants() {
     let node = Node::boot().await.unwrap();
-    // The creator must hold workspace.create in ITS OWN token workspace; it creates "acme".
-    let creator = principal("user:ada", "acme", &["mcp:workspace.create:call"]);
+    // The creator must hold workspace.create in ITS OWN token workspace; it creates "nube".
+    let creator = principal("user:test", "nube", &["mcp:workspace.create:call"]);
     seed_core_skills(&node.store, "0.1.0", 1).await.unwrap();
 
-    workspace_create(&node.store, &creator, "acme", "Acme", 1)
+    workspace_create(&node.store, &creator, "nube", "Nube", 1)
         .await
         .unwrap();
 
     // The creator (bootstrapped as admin, so it can read/load skills) sees the default set granted.
-    let admin = principal("user:ada", "acme", &[READ]);
-    let catalog = list_granted_skills(&node.store, &admin, "acme")
+    let admin = principal("user:test", "nube", &[READ]);
+    let catalog = list_granted_skills(&node.store, &admin, "nube")
         .await
         .unwrap();
     for expected in DEFAULT_CORE_SKILLS {
@@ -297,7 +297,7 @@ async fn creating_a_workspace_applies_the_default_core_skill_grants() {
             "default grant {expected} missing from the fresh workspace catalog"
         );
         // Each default is a loadable core skill (grant + read cap + seeded body).
-        let s = load_skill(&node.store, &admin, "acme", expected, None)
+        let s = load_skill(&node.store, &admin, "nube", expected, None)
             .await
             .unwrap();
         assert_eq!(&s.id, expected);
@@ -414,7 +414,7 @@ async fn a_real_run_injects_exactly_the_granted_catalog_and_tracks_changes() {
     let node = Arc::new(Node::boot().await.unwrap());
     seed_core_skills(&node.store, "0.1.0", 1).await.unwrap();
     // The caller may invoke + read skills + (for setup) write/grant.
-    let caller = principal("user:ada", ws, &["mcp:agent.invoke:call", READ, WRITE]);
+    let caller = principal("user:test", ws, &["mcp:agent.invoke:call", READ, WRITE]);
 
     // No grants yet → the injected context carries NO skill catalog line.
     let ctx0 = run_and_capture_context(&node, &caller, ws, "job-0").await;

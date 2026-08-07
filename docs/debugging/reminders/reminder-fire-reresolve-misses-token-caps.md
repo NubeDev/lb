@@ -9,7 +9,7 @@ fired action's capability (e.g. `bus:chan/team:pub`, which `member_caps()` inclu
 `/reminders` "Run now" row control is therefore inert over the real gateway. A pure-HTTP repro:
 
 ```
-POST /mcp/call  reminder.create (channel-post to "team")   -> ok, principalSub=user:ada  (dev-login)
+POST /mcp/call  reminder.create (channel-post to "team")   -> ok, principalSub=user:test  (dev-login)
 POST /mcp/call  reminder.fire {id}                          -> 403 "denied"               ← BUG
 ```
 

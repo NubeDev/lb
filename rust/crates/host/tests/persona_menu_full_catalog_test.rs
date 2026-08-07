@@ -54,11 +54,11 @@ async fn reachable_tools_serves_full_host_inventory_and_persona_keeps_it() {
         .chain(["mcp:dashboard.pin:call".to_string()])
         .collect();
     let caps_ref: Vec<&str> = caps.iter().map(|s| s.as_str()).collect();
-    let caller = principal("user:ada", "acme", &caps_ref);
+    let caller = principal("user:test", "nube", &caps_ref);
 
     // Layer 1: the catalog-derived menu carries every granted host-native verb, not only the
     // descriptor-registered palette subset.
-    let menu = reachable_tools(&node, &caller, "acme").await;
+    let menu = reachable_tools(&node, &caller, "nube").await;
     let names: Vec<&str> = menu.iter().map(|t| t.name.as_str()).collect();
     for want in WANT {
         assert!(
@@ -70,11 +70,11 @@ async fn reachable_tools_serves_full_host_inventory_and_persona_keeps_it() {
     assert!(!names.contains(&"flows.create"));
 
     // Layer 2: the widget-builder persona (extends builtin.data-analyst) keeps the parent surface.
-    let p = resolve_persona(&node, &caller, "acme", Some("builtin.widget-builder"))
+    let p = resolve_persona(&node, &caller, "nube", Some("builtin.widget-builder"))
         .await
         .expect("resolves")
         .expect("some persona");
-    let ep = resolve_effective(&node, &caller, "acme", &p)
+    let ep = resolve_effective(&node, &caller, "nube", &p)
         .await
         .expect("effective");
     let narrowed = narrow_tools(&menu, &ep.granted_tools);
@@ -92,13 +92,13 @@ async fn reachable_tools_serves_full_host_inventory_and_persona_keeps_it() {
 async fn widget_builder_unions_data_analyst_surface() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     seed_personas(&node.store).await.expect("seed");
-    let caller = principal("user:ada", "acme", &[]);
+    let caller = principal("user:test", "nube", &[]);
 
-    let p = resolve_persona(&node, &caller, "acme", Some("builtin.widget-builder"))
+    let p = resolve_persona(&node, &caller, "nube", Some("builtin.widget-builder"))
         .await
         .expect("resolves")
         .expect("some persona");
-    let ep = resolve_effective(&node, &caller, "acme", &p)
+    let ep = resolve_effective(&node, &caller, "nube", &p)
         .await
         .expect("effective");
     eprintln!("granted_tools = {:?}", ep.granted_tools);

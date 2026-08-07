@@ -156,20 +156,20 @@ The current Agent tab (runtime dropdown + one raw endpoint form) becomes a **cat
    into `_lb_agents` (`builtin.in-house-glm-4.6/5.1/5.2`, `builtin.open-interpreter-glm-4.6/5.1/5.2`).
    Idempotent — a re-boot is a no-op; a node built without `external-agent` still seeds the
    open-interpreter entries (they just won't list).
-2. Ada (admin) opens Settings → **Agent**. `agent.def.list` returns the node-runnable built-ins (the
+2. Test (admin) opens Settings → **Agent**. `agent.def.list` returns the node-runnable built-ins (the
    in-house three; the open-interpreter three only if the feature is on) — no custom entries yet.
-3. Ada picks **"In-house — Z.AI GLM-4.6"**. The UI writes `agent.config.set { default_runtime:
+3. Test picks **"In-house — Z.AI GLM-4.6"**. The UI writes `agent.config.set { default_runtime:
    "default", model_endpoint: {provider:"zaicoding", model:"glm-4.6", api_key_env:"ZAI_API_KEY",
    base_url:"…/coding/paas/v4"} }`. Every `agent.invoke` that omits `runtime` now resolves to `default`
    via the shipped `resolve_effective_runtime`.
-4. Ada adds a custom **"In-house — GLM-5.2 (staging key)"**: `agent.def.create { id:"staging-glm-5.2",
+4. Test adds a custom **"In-house — GLM-5.2 (staging key)"**: `agent.def.create { id:"staging-glm-5.2",
    label, runtime:"default", model_endpoint:{…, api_key_env:"ZAI_STAGING_KEY"} }` → a workspace-scoped
    record. It appears in the catalog; she picks it.
 5. Bob (member, no admin cap) opens the tab: he sees the catalog + the active pick **read-only** — a
    create/update/delete is opaquely `Denied`.
-6. Ada tries to edit **"In-house — Z.AI GLM-4.6"** (a built-in): `agent.def.update { id:
+6. Test tries to edit **"In-house — Z.AI GLM-4.6"** (a built-in): `agent.def.update { id:
    "builtin.in-house-glm-4.6" }` → `Reserved → BadInput` (read-only tier), even though she is admin.
-7. A ws-B admin `agent.def.get`/`delete`s Ada's `staging-glm-5.2` → not found / denied: the custom
+7. A ws-B admin `agent.def.get`/`delete`s Test's `staging-glm-5.2` → not found / denied: the custom
    catalog is workspace-walled.
 
 ## Testing plan

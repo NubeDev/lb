@@ -84,7 +84,7 @@ async fn an_offline_captured_undo_is_refused_at_the_hub_when_its_copy_moved_on()
         &edge.store,
         RecordChange {
             ws,
-            actor: "user:ada",
+            actor: "user:test",
             surface: "",
             tool: "doc.rename",
             trace_id: "t",
@@ -114,7 +114,7 @@ async fn an_offline_captured_undo_is_refused_at_the_hub_when_its_copy_moved_on()
 
     // The undo now applies AT THE HUB — and is refused, because the hub's live `rev` is not the one
     // the step expects. The predicate is enforced where it APPLIES, not where it was captured.
-    let err = apply_undo(&hub.store, ws, "user:ada", "")
+    let err = apply_undo(&hub.store, ws, "user:test", "")
         .await
         .unwrap_err();
     assert!(
@@ -149,7 +149,7 @@ async fn the_same_undo_applies_at_the_hub_when_its_copy_did_not_move() {
         &edge.store,
         RecordChange {
             ws,
-            actor: "user:ada",
+            actor: "user:test",
             surface: "",
             tool: "doc.rename",
             trace_id: "t",
@@ -171,7 +171,7 @@ async fn the_same_undo_applies_at_the_hub_when_its_copy_did_not_move() {
     carry_journal(&edge, &hub, ws).await;
 
     // Nobody else wrote at the hub: the predicate holds, so the restore APPLIES there.
-    apply_undo(&hub.store, ws, "user:ada", "")
+    apply_undo(&hub.store, ws, "user:test", "")
         .await
         .expect("an unraced undo applies at the hub");
     assert_eq!(
@@ -196,7 +196,7 @@ async fn a_replayed_undo_does_not_restore_twice() {
         &edge.store,
         RecordChange {
             ws,
-            actor: "user:ada",
+            actor: "user:test",
             surface: "",
             tool: "doc.rename",
             trace_id: "t",
@@ -210,11 +210,11 @@ async fn a_replayed_undo_does_not_restore_twice() {
     .await
     .unwrap();
 
-    apply_undo(&edge.store, ws, "user:ada", "").await.unwrap();
+    apply_undo(&edge.store, ws, "user:test", "").await.unwrap();
     let after_first = read(&edge.store, ws, DOC, "d1").await.unwrap();
 
     // A second delivery of the same undo: the step is already on the redo side — nothing to undo.
-    let err = apply_undo(&edge.store, ws, "user:ada", "")
+    let err = apply_undo(&edge.store, ws, "user:test", "")
         .await
         .unwrap_err();
     assert!(

@@ -184,7 +184,16 @@ fn emit(
     let dispatch = tracing::Dispatch::new(tracing_subscriber::registry().with(capture));
     tracing::dispatcher::with_default(&dispatch, || {
         record_dispatch(
-            level, ws, "user:ada", tool, source, trace_id, outcome, &params, 1, msg,
+            level,
+            ws,
+            "user:test",
+            tool,
+            source,
+            trace_id,
+            outcome,
+            &params,
+            1,
+            msg,
         );
     });
     let collected = slot.lock().unwrap().take();
@@ -207,7 +216,7 @@ fn emit(
 fn query_denied_without_read_cap() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let node = shared_node();
-    let p = principal("user:ada", "td", &[]); // no telemetry.read
+    let p = principal("user:test", "td", &[]); // no telemetry.read
     let err = on_harness(call_tool(
         &node,
         &p,
@@ -226,7 +235,7 @@ fn query_denied_without_read_cap() {
 fn trace_denied_without_read_cap() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let node = shared_node();
-    let p = principal("user:ada", "td", &[]);
+    let p = principal("user:test", "td", &[]);
     let err = on_harness(call_tool(
         &node,
         &p,
@@ -247,7 +256,7 @@ fn tail_denied_without_read_cap() {
     // is the security-relevant one and it must be `Denied`, not a verb-shape leak.
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let node = shared_node();
-    let p = principal("user:ada", "td", &[]);
+    let p = principal("user:test", "td", &[]);
     let err = on_harness(call_tool(
         &node,
         &p,
@@ -269,7 +278,7 @@ fn tail_via_bridge_is_notfound_when_granted() {
     // is the SSE route (which calls `telemetry_tail` directly), not an in-band tool result. This
     // proves the verb is not a silent fall-through to a data read once past the cap gate.
     let node = shared_node();
-    let p = principal("user:ada", "td", &[READ]);
+    let p = principal("user:test", "td", &[READ]);
     let err = on_harness(call_tool(
         &node,
         &p,
@@ -375,7 +384,7 @@ fn planted_secret_appears_in_zero_stored_rows_or_query_output() {
     );
     until(ws, |n| n >= 1);
 
-    let p = principal("user:ada", ws, &[READ]);
+    let p = principal("user:test", ws, &[READ]);
     let (blob, out) = on_harness(async {
         // 1. The secret is in ZERO stored rows (scan the raw ring, not just the query projection).
         let mut resp = harness()
@@ -451,7 +460,7 @@ fn filters_narrow_and_trace_correlates() {
     );
     until(ws, |n| n >= 3);
 
-    let p = principal("user:ada", ws, &[READ]);
+    let p = principal("user:test", ws, &[READ]);
     use lb_host::QueryFilter;
 
     on_harness(async {

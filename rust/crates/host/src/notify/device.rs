@@ -25,7 +25,7 @@ pub enum Platform {
 pub struct Device {
     /// The record id: `device:{sub}:{token_hash}` — unique per (member, token).
     pub id: String,
-    /// The member's sub (`user:ada`).
+    /// The member's sub (`user:test`).
     pub sub: String,
     /// The push platform.
     pub platform: Platform,

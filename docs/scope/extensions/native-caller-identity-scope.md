@@ -125,7 +125,7 @@ grant) authorizes the delegated read. No cc-app call site changes — the chokep
 
 Ana (guardian, edge to Leo only) opens the family app → `POST /mcp/call care.child.get {id:"leo"}`
 with her session token. Host: `mcp:care.child.get:call` ✓ (workspace-first) → routes to the `care`
-sidecar, stamping `caller = {sub:"user:ana", ws:"acme", role:member, caps:[…]}` into the frame. The
+sidecar, stamping `caller = {sub:"user:ana", ws:"nube", role:member, caps:[…]}` into the frame. The
 sidecar's chokepoint reads the caller, calls `authz.check_scoped {cap:REACH_CAP, table:"child",
 id:"leo", subject:"user:ana"}` over its callback (authorized by the extension's
 `authz.delegate_reach` grant), gets `allowed:true`, returns Leo. Mallory (no edge) does the same for

@@ -82,7 +82,7 @@ async fn a_deadband_stores_only_the_moves_and_counts_the_rest() {
     let store = Store::memory().await.unwrap();
     policy(
         &store,
-        "acme",
+        "nube",
         "temp.",
         Filter {
             deadband: Some(Deadband {
@@ -110,10 +110,10 @@ async fn a_deadband_stores_only_the_moves_and_counts_the_rest() {
             )
         })
         .collect();
-    let pass = seed(&store, "acme", samples).await;
+    let pass = seed(&store, "nube", samples).await;
 
     assert_eq!(
-        stored(&store, "acme", "temp.a").await,
+        stored(&store, "nube", "temp.a").await,
         vec![json!(20.0), json!(21.0)]
     );
     assert_eq!(pass.committed, 2);
@@ -130,7 +130,7 @@ async fn range_drop_discards_and_range_clamp_stores_the_bound() {
     let store = Store::memory().await.unwrap();
     policy(
         &store,
-        "acme",
+        "nube",
         "drop.",
         Filter {
             range: Some(Range {
@@ -144,7 +144,7 @@ async fn range_drop_discards_and_range_clamp_stores_the_bound() {
     .await;
     policy(
         &store,
-        "acme",
+        "nube",
         "clamp.",
         Filter {
             range: Some(Range {
@@ -159,7 +159,7 @@ async fn range_drop_discards_and_range_clamp_stores_the_bound() {
 
     let pass = seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample_at("drop.t", "p", 1, 1_000, json!(21.0)),
             sample_at("drop.t", "p", 2, 2_000, json!(-9999.0)),
@@ -171,12 +171,12 @@ async fn range_drop_discards_and_range_clamp_stores_the_bound() {
     .await;
 
     assert_eq!(
-        stored(&store, "acme", "drop.t").await,
+        stored(&store, "nube", "drop.t").await,
         vec![json!(21.0)],
         "dropped, not stored"
     );
     assert_eq!(
-        stored(&store, "acme", "clamp.t").await,
+        stored(&store, "nube", "clamp.t").await,
         vec![json!(21.0), json!(-40.0), json!(120.0)],
         "clamped to the bound, both ends"
     );
@@ -196,7 +196,7 @@ async fn min_interval_thins_to_the_first_sample_of_each_window() {
     let store = Store::memory().await.unwrap();
     policy(
         &store,
-        "acme",
+        "nube",
         "fast.",
         Filter {
             min_interval_ms: 10_000,
@@ -209,10 +209,10 @@ async fn min_interval_thins_to_the_first_sample_of_each_window() {
     let samples: Vec<Sample> = (0..15u64)
         .map(|i| sample_at("fast.v", "p", i + 1, i * 2_000, json!(i as f64)))
         .collect();
-    let pass = seed(&store, "acme", samples).await;
+    let pass = seed(&store, "nube", samples).await;
 
     assert_eq!(
-        stored(&store, "acme", "fast.v").await,
+        stored(&store, "nube", "fast.v").await,
         vec![json!(0.0), json!(5.0), json!(10.0)],
         "the FIRST of each interval, at 0ms / 10000ms / 20000ms"
     );
@@ -225,7 +225,7 @@ async fn a_muted_prefix_stores_nothing_registers_nothing_and_still_drains() {
     let store = Store::memory().await.unwrap();
     policy(
         &store,
-        "acme",
+        "nube",
         "quiet.",
         Filter {
             drop: true,
@@ -238,17 +238,17 @@ async fn a_muted_prefix_stores_nothing_registers_nothing_and_still_drains() {
     let samples: Vec<Sample> = (1..=600u64)
         .map(|i| sample_at("quiet.v", "p", i, i * 1_000, json!(i as f64)))
         .collect();
-    let pass = seed(&store, "acme", samples).await;
+    let pass = seed(&store, "nube", samples).await;
 
     assert_eq!(pass.committed, 0);
     assert_eq!(
         pass.filtered.muted, 600,
         "the WHOLE backlog drained, not just the first batch"
     );
-    assert!(stored(&store, "acme", "quiet.v").await.is_empty());
+    assert!(stored(&store, "nube", "quiet.v").await.is_empty());
     // Muted data must not consume the workspace's distinct-series budget either.
     assert!(
-        lb_ingest::series_names(&store, "acme", "quiet.")
+        lb_ingest::series_names(&store, "nube", "quiet.")
             .await
             .unwrap()
             .is_empty(),
@@ -263,7 +263,7 @@ async fn a_non_numeric_series_rides_through_the_numeric_predicates_untouched() {
     // shares it.
     policy(
         &store,
-        "acme",
+        "nube",
         "plant.",
         Filter {
             deadband: Some(Deadband {
@@ -282,7 +282,7 @@ async fn a_non_numeric_series_rides_through_the_numeric_predicates_untouched() {
 
     let pass = seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample_at("plant.door", "p", 1, 1_000, json!("open")),
             sample_at("plant.door", "p", 2, 2_000, json!("open")),
@@ -297,7 +297,7 @@ async fn a_non_numeric_series_rides_through_the_numeric_predicates_untouched() {
         pass.filtered.is_zero(),
         "and none of them was counted as filtered"
     );
-    assert_eq!(stored(&store, "acme", "plant.door").await.len(), 4);
+    assert_eq!(stored(&store, "nube", "plant.door").await.len(), 4);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -307,7 +307,7 @@ async fn latest_never_reports_a_sample_the_filter_discarded() {
     let store = Store::memory().await.unwrap();
     policy(
         &store,
-        "acme",
+        "nube",
         "temp.",
         Filter {
             deadband: Some(Deadband {
@@ -321,7 +321,7 @@ async fn latest_never_reports_a_sample_the_filter_discarded() {
 
     seed(
         &store,
-        "acme",
+        "nube",
         vec![
             sample_at("temp.a", "p", 1, 1_000, json!(10.0)),
             sample_at("temp.a", "p", 2, 9_000, json!(10.1)), // newest by ts, but FILTERED
@@ -329,7 +329,7 @@ async fn latest_never_reports_a_sample_the_filter_discarded() {
     )
     .await;
 
-    let newest = latest(&store, "acme", "temp.a").await.unwrap().unwrap();
+    let newest = latest(&store, "nube", "temp.a").await.unwrap().unwrap();
     assert_eq!(
         newest.payload,
         json!(10.0),

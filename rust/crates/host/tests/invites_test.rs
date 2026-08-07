@@ -36,12 +36,12 @@ const ADMIN: &[&str] = &[
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn create_and_list_invite() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -54,7 +54,7 @@ async fn create_and_list_invite() {
     .unwrap();
     assert!(token.starts_with("lbi_"));
 
-    let invites = invite_list(&store, &admin, "acme").await.unwrap();
+    let invites = invite_list(&store, &admin, "nube").await.unwrap();
     assert_eq!(invites.len(), 1);
     assert_eq!(invites[0].email, "sam@example.com");
     assert_eq!(invites[0].role, "member");
@@ -65,12 +65,12 @@ async fn create_and_list_invite() {
 async fn accept_invite_onboards_new_member() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -82,16 +82,16 @@ async fn accept_invite_onboards_new_member() {
     .await
     .unwrap();
 
-    let result = invite_accept(&store, &key, "acme", &token, "password123", None, 200)
+    let result = invite_accept(&store, &key, "nube", &token, "password123", None, 200)
         .await
         .unwrap();
 
     assert_eq!(result.sub, "user:sam@example.com");
-    assert_eq!(result.workspace, "acme");
+    assert_eq!(result.workspace, "nube");
     assert!(!result.caps.is_empty(), "caps must be live on first login");
 
     // The invite is now accepted.
-    let invites = invite_list(&store, &admin, "acme").await.unwrap();
+    let invites = invite_list(&store, &admin, "nube").await.unwrap();
     assert_eq!(invites[0].status, lb_authz::InviteStatus::Accepted);
     assert_eq!(
         invites[0].accepted_by.as_deref(),
@@ -108,12 +108,12 @@ async fn accept_provisions_the_global_email_front_door() {
     // not authenticate. Assert the two seams `auth_login` uses now resolve.
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -125,7 +125,7 @@ async fn accept_provisions_the_global_email_front_door() {
     .await
     .unwrap();
 
-    invite_accept(&store, &key, "acme", &token, "password123", None, 200)
+    invite_accept(&store, &key, "nube", &token, "password123", None, 200)
         .await
         .unwrap();
 
@@ -159,12 +159,12 @@ async fn accept_provisions_the_global_email_front_door() {
 async fn double_redeem_is_rejected() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -176,11 +176,11 @@ async fn double_redeem_is_rejected() {
     .await
     .unwrap();
 
-    invite_accept(&store, &key, "acme", &token, "password123", None, 200)
+    invite_accept(&store, &key, "nube", &token, "password123", None, 200)
         .await
         .unwrap();
 
-    let err = invite_accept(&store, &key, "acme", &token, "password123", None, 200)
+    let err = invite_accept(&store, &key, "nube", &token, "password123", None, 200)
         .await
         .unwrap_err();
     assert!(matches!(err, InviteError::AlreadyAccepted));
@@ -190,12 +190,12 @@ async fn double_redeem_is_rejected() {
 async fn expired_invite_is_rejected() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -207,7 +207,7 @@ async fn expired_invite_is_rejected() {
     .await
     .unwrap();
 
-    let err = invite_accept(&store, &key, "acme", &token, "password123", None, 100)
+    let err = invite_accept(&store, &key, "nube", &token, "password123", None, 100)
         .await
         .unwrap_err();
     assert!(matches!(err, InviteError::Expired));
@@ -217,12 +217,12 @@ async fn expired_invite_is_rejected() {
 async fn revoke_then_accept_is_rejected() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -235,19 +235,19 @@ async fn revoke_then_accept_is_rejected() {
     .unwrap();
 
     // Revoke via the MCP bridge.
-    let invites = invite_list(&store, &admin, "acme").await.unwrap();
+    let invites = invite_list(&store, &admin, "nube").await.unwrap();
     let hash = &invites[0].token_hash;
     call_invite_tool(
         &store,
         &admin,
-        "acme",
+        "nube",
         "invite.revoke",
         &json!({ "token_hash": hash, "now": 150 }),
     )
     .await
     .unwrap();
 
-    let err = invite_accept(&store, &key, "acme", &token, "password123", None, 200)
+    let err = invite_accept(&store, &key, "nube", &token, "password123", None, 200)
         .await
         .unwrap_err();
     assert!(matches!(err, InviteError::Revoked));
@@ -258,12 +258,12 @@ async fn revoke_then_accept_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_create_without_invite_create_cap() {
     let store = Store::memory().await.unwrap();
-    let mallory = principal("user:mallory", "acme", &["mcp:invite.list:call"]);
+    let mallory = principal("user:mallory", "nube", &["mcp:invite.list:call"]);
 
     let err = invite_create(
         &store,
         &mallory,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -280,9 +280,9 @@ async fn denies_create_without_invite_create_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_list_without_invite_list_cap() {
     let store = Store::memory().await.unwrap();
-    let mallory = principal("user:mallory", "acme", &["mcp:invite.create:call"]);
+    let mallory = principal("user:mallory", "nube", &["mcp:invite.create:call"]);
 
-    let err = invite_list(&store, &mallory, "acme").await.unwrap_err();
+    let err = invite_list(&store, &mallory, "nube").await.unwrap_err();
     assert!(matches!(err, InviteError::Denied));
 }
 
@@ -291,12 +291,12 @@ async fn denies_list_without_invite_list_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn invite_not_visible_from_other_workspace() {
     let store = Store::memory().await.unwrap();
-    let admin_a = principal("user:alice", "acme", ADMIN);
+    let admin_a = principal("user:alice", "nube", ADMIN);
 
     invite_create(
         &store,
         &admin_a,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -318,12 +318,12 @@ async fn invite_not_visible_from_other_workspace() {
 async fn accept_with_wrong_workspace_fails() {
     let store = Store::memory().await.unwrap();
     let key = SigningKey::generate();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "member",
         "",
@@ -347,14 +347,14 @@ async fn accept_with_wrong_workspace_fails() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn admin_can_invite_with_any_role() {
     let store = Store::memory().await.unwrap();
-    let admin = principal("user:alice", "acme", ADMIN);
+    let admin = principal("user:alice", "nube", ADMIN);
 
     // An admin with invite.create can invite with any role (same as grants.assign exempts role:
     // caps — the role's caps were bounded at roles.define time).
     let token = invite_create(
         &store,
         &admin,
-        "acme",
+        "nube",
         "sam@example.com",
         "workspace-admin",
         "",
@@ -378,7 +378,7 @@ async fn bad_token_is_rejected() {
     let err = invite_accept(
         &store,
         &key,
-        "acme",
+        "nube",
         "not-a-token",
         "password123",
         None,

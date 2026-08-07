@@ -41,7 +41,7 @@ describe("client session store stays observable across login (singleton regressi
       secondNotified = true;
     });
 
-    const reply = await client.login("ada", "app-singleton-ws");
+    const reply = await client.login("test", "app-singleton-ws");
     expect(reply.token).not.toBe("");
 
     // The subscription attached before login fired, and the store it was attached to now holds the

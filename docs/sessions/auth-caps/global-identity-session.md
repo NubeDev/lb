@@ -60,7 +60,7 @@ Gateway + client + UI:
 - Chose to grant `role:member` / `role:workspace-admin` via the **raw** `grant_assign` (system effect),
   not the gated `grants_assign` host verb — so the built-in role lands regardless of the caller's caps
   and is not blocked by the no-widening rule (a system join is not a user widening).
-- `Subject::User(sub)` grant store is **unchanged** (#6): `sub` stays the human handle `user:ada`,
+- `Subject::User(sub)` grant store is **unchanged** (#6): `sub` stays the human handle `user:test`,
   globally unique; `display_name` is a separate non-unique field.
 
 ## Tests

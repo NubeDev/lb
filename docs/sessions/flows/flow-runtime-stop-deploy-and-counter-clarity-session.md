@@ -33,7 +33,7 @@ Verified live: the screenshot now shows "Armed — running headless · next fire
 
 ### 3 — "Count not going up" (NOT a bug — wrong node type + a naming trap)
 
-E2E against the running gateway (`127.0.0.1:8080`, ws `acme`, `chain4`) showed `chain4` used **`count`**
+E2E against the running gateway (`127.0.0.1:8080`, ws `nube`, `chain4`) showed `chain4` used **`count`**
 nodes. `count` is a *pure transform of this firing's input* (array len / object keys / scalar→1) — it
 does not accumulate, by design. The accumulator is **`counter`** (durable `flow_node_memory` + atomic
 `lb_store::increment`).

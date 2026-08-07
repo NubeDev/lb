@@ -55,7 +55,7 @@ Dynamic child (the CRUX — per-entity binding via `bridge.setNav`):
 
 ```ts
 bridge.setNav([
-  { id: "site-1", label: "Acme HQ",
+  { id: "site-1", label: "Nube HQ",
     dashboard: "dashboard:ems-site-overview", vars: { site: "site-1" },
     children: [
       { id: "m/meter-1",          label: "Meter 1" },                    // ext route (no dashboard)

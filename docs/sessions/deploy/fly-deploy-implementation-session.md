@@ -70,7 +70,7 @@ All done against the actual built image, not a simulation:
   installed, demo dataset generated (`seed.py --sqlite`, real building/meter/point rows)
   and registered as `demo-buildings` via the live `datasource.add` verb.
 - `deploy/fly/smoke.sh` against the running container: `GET /` → 200, `POST /login` →
-  token, `GET /workspaces` includes `acme`, `datasource.list` includes `demo-buildings` —
+  token, `GET /workspaces` includes `nube`, `datasource.list` includes `demo-buildings` —
   all green.
 - **Persistence proof:** ran again with a named volume + `LB_SIGNING_KEY` set, minted a
   token, `docker restart`, reused the SAME pre-restart token against `/workspaces` → still

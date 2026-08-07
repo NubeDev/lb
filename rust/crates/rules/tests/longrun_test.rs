@@ -63,7 +63,7 @@ fn engine() -> RuleEngine {
 
 fn rule(body: &str) -> Rule {
     Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "t".into(),
         body: body.into(),
         params: Vec::new(),
@@ -72,7 +72,7 @@ fn rule(body: &str) -> Rule {
 
 fn run() -> RuleRun {
     RuleRun::new(
-        "acme".into(),
+        "nube".into(),
         Arc::new(Default::default()),
         rhai::Map::new(),
         1_700_000_000_000,

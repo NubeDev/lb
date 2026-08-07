@@ -76,7 +76,7 @@ async fn staged_count(store: &Store, ws: &str) -> usize {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_write_is_not_billed_for_another_producers_backlog() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     // A backlog several batches deep, staged by SOMEONE ELSE.
     const BACKLOG: u64 = 2_000;
     stage_backlog(&store, ws, "other:producer", BACKLOG).await;
@@ -117,7 +117,7 @@ async fn a_write_is_not_billed_for_another_producers_backlog() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_bounded_write_strands_nothing() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     const BACKLOG: u64 = 600;
     stage_backlog(&store, ws, "other:producer", BACKLOG).await;
 
@@ -172,7 +172,7 @@ async fn the_bounded_write_strands_nothing() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_ingest_reactor_drains_the_backlog_with_no_caller_involved() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
     // A backlog several batches deep — more than any single bounded caller-drain could clear.
     stage_backlog(&node.store, ws, "other:producer", 1_000).await;
     assert_eq!(staged_count(&node.store, ws).await, 1_000);
@@ -239,7 +239,7 @@ async fn the_ingest_reactor_only_drains_its_configured_workspace() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_writers_own_sample_reads_back_immediately_despite_a_backlog() {
     let store = Store::memory().await.unwrap();
-    let ws = "acme";
+    let ws = "nube";
     stage_backlog(&store, ws, "other:producer", 900).await;
 
     let p = principal(

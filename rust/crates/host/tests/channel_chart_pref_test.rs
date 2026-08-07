@@ -56,23 +56,23 @@ async fn get(node: &Arc<Node>, p: &Principal, ws: &str, chan: &str, item: &str) 
 async fn set_then_get_round_trips_per_user() {
     let ws = "cp-rt";
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, MEMBER);
+    let test = principal("user:test", ws, MEMBER);
     let bob = principal("user:bob", ws, MEMBER);
 
     // Nothing saved yet → null (the surface uses the host default).
-    assert_eq!(get(&node, &ada, ws, "general", "q:r1").await, Value::Null);
+    assert_eq!(get(&node, &test, ws, "general", "q:r1").await, Value::Null);
 
-    // Ada saves her plot; it round-trips back for Ada.
+    // Test saves her plot; it round-trips back for Test.
     call_tool(
         &node,
-        &ada,
+        &test,
         ws,
         "channel.chart_pref.set",
         &json!({ "channel": "general", "item": "q:r1", "spec": spec() }).to_string(),
     )
     .await
     .expect("set authorized");
-    assert_eq!(get(&node, &ada, ws, "general", "q:r1").await, spec());
+    assert_eq!(get(&node, &test, ws, "general", "q:r1").await, spec());
 
     // Bob viewing the SAME result has no override of his own — per-user isolation.
     assert_eq!(get(&node, &bob, ws, "general", "q:r1").await, Value::Null);
@@ -112,22 +112,22 @@ async fn denied_without_the_grant_is_opaque() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_is_the_hard_wall() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ada_a = principal("user:ada", "ws-a", MEMBER);
-    let ada_b = principal("user:ada", "ws-b", MEMBER);
+    let test_a = principal("user:test", "ws-a", MEMBER);
+    let test_b = principal("user:test", "ws-b", MEMBER);
 
     // Same user, same channel+item, different workspace → the ws-B read never sees the ws-A write.
     call_tool(
         &node,
-        &ada_a,
+        &test_a,
         "ws-a",
         "channel.chart_pref.set",
         &json!({ "channel": "general", "item": "q:r1", "spec": spec() }).to_string(),
     )
     .await
     .expect("set in ws-a");
-    assert_eq!(get(&node, &ada_a, "ws-a", "general", "q:r1").await, spec());
+    assert_eq!(get(&node, &test_a, "ws-a", "general", "q:r1").await, spec());
     assert_eq!(
-        get(&node, &ada_b, "ws-b", "general", "q:r1").await,
+        get(&node, &test_b, "ws-b", "general", "q:r1").await,
         Value::Null
     );
 }

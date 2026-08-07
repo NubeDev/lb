@@ -201,7 +201,7 @@ fn postmark_from_env() -> PostmarkConfig {
     }
 }
 
-/// Split `Acme <reports@acme.com>` into `("Acme", "reports@acme.com")`; a bare address yields no name.
+/// Split `Nube <reports@nube.com>` into `("Nube", "reports@nube.com")`; a bare address yields no name.
 fn parse_from(value: String) -> (String, String) {
     let trimmed = value.trim();
     match (trimmed.find('<'), trimmed.rfind('>')) {
@@ -227,16 +227,16 @@ mod tests {
     #[test]
     fn from_header_parses_a_display_name_or_a_bare_address() {
         assert_eq!(
-            parse_from("Acme Reports <reports@acme.com>".into()),
-            ("Acme Reports".to_string(), "reports@acme.com".to_string())
+            parse_from("Nube Reports <reports@nube.com>".into()),
+            ("Nube Reports".to_string(), "reports@nube.com".to_string())
         );
         assert_eq!(
-            parse_from("reports@acme.com".into()),
-            (String::new(), "reports@acme.com".to_string())
+            parse_from("reports@nube.com".into()),
+            (String::new(), "reports@nube.com".to_string())
         );
         assert_eq!(
-            parse_from("\"Acme, Inc\" <reports@acme.com>".into()),
-            ("Acme, Inc".to_string(), "reports@acme.com".to_string())
+            parse_from("\"Nube, Inc\" <reports@nube.com>".into()),
+            ("Nube, Inc".to_string(), "reports@nube.com".to_string())
         );
     }
 

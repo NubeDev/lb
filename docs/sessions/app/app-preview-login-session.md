@@ -4,13 +4,13 @@
 - Scope: follow-on to [app-shell-session.md](app-shell-session.md) (the browser preview + the
   `client.ts` singleton fix carried as a deferred regression there)
 - Stage: post-S10 app slice 1 of 3 (shell), preview hardening
-- Status: **done** — the prefilled ada/acme login flows straight through to Channels in the
+- Status: **done** — the prefilled test/nube login flows straight through to Channels in the
   browser preview; the deferred singleton regression test is in and green (13/13).
 
 ## What this session set out to do
 
 The prior session left the browser preview (`app/shell/web/` + `vite.config.web.mts`, run via
-`make -C app dev`) working but with two open threads: (1) a prefilled `ada/acme` login was 403ing
+`make -C app dev`) working but with two open threads: (1) a prefilled `test/nube` login was 403ing
 `"not a member of any workspace"` intermittently, and the `rm -rf` store-reset in `app/Makefile`
 didn't reliably fix it; (2) the `client.ts` "stuck on login screen" singleton fix had no
 regression test. Also decide keep-vs-park the preview. **Decision: keep it** — it works and is the
@@ -20,7 +20,7 @@ fast UI loop; the fix + test are in the repo.
 
 ### 1. The 403 was a PORT collision, not a store-persistence bug
 
-The suspicion was that `test_gateway` persisted `acme` across `rm -rf`. It does **not**.
+The suspicion was that `test_gateway` persisted `nube` across `rm -rf`. It does **not**.
 `test_gateway` boots `lb_host::Node` with **no `LB_STORE_PATH`**, so `host::boot::open_store`
 takes the `Store::memory()` branch ([boot.rs:222](../../../rust/crates/host/src/boot.rs)) — an
 **in-memory** store. Every boot is already pristine; `rm -rf` of `LB_DIR` was irrelevant (that dir
@@ -28,9 +28,9 @@ only holds node keys/config, never the store).
 
 The real cause: the app Makefile's `GW_PORT` was **8080**, the SAME port the root `make dev` node
 uses. That node is a **persistent** on-disk node (`LB_STORE_PATH` set) whose store already had
-`acme` claimed by a different user. When both were up, the app's `test_gateway` failed to bind 8080
+`nube` claimed by a different user. When both were up, the app's `test_gateway` failed to bind 8080
 (silently — `axum::serve` errored and the process exited), so the preview kept talking to the
-**root node's** memory → `ada` isn't a member of its `acme` → 403. A never-used port always gave
+**root node's** memory → `test` isn't a member of its `nube` → 403. A never-used port always gave
 200 because nothing else held it. Confirmed by `readlink /proc/<pid>/exe` on the 8080 holder → it
 was `target/debug/node`, not `test_gateway`.
 
@@ -48,7 +48,7 @@ was `target/debug/node`, not `test_gateway`.
 
 ### 2. The prefill never populated in the preview (`__DEV__` hardcoded false)
 
-Even on a clean node the login fields came up **empty**. `dev-defaults.ts` gated the ada/acme
+Even on a clean node the login fields came up **empty**. `dev-defaults.ts` gated the test/nube
 prefill on RN's `__DEV__` global, but `vite-plugin-react-native-web` **hardcodes
 `const development = false`** and defines `__DEV__: "false"` unconditionally (its
 `dist/es/index.js`), regardless of vite mode. A user-config `define: { __DEV__: 'true' }` did not
@@ -56,8 +56,8 @@ win the merge. Verified over CDP: `__DEV__ === false`, both text inputs `value =
 
 **Fix**: stop depending on `__DEV__` for the *web preview*. `dev-defaults.ts` now exposes a mutable
 `devLogin` + `setDevLogin(partial)`; the preview entry
-[web/index.web.tsx](../../../app/shell/web/index.web.tsx) calls `setDevLogin({user:'ada',
-workspace:'acme', nodeUrl})` before `AppRegistry.runApplication` (override via `?user=`/`?ws=`).
+[web/index.web.tsx](../../../app/shell/web/index.web.tsx) calls `setDevLogin({user:'test',
+workspace:'nube', nodeUrl})` before `AppRegistry.runApplication` (override via `?user=`/`?ws=`).
 The **`__DEV__` gate stays for native** — a real release app still ships empty fields (never a
 baked-in identity); the override lives only in preview-only code that never enters a device bundle.
 
@@ -102,8 +102,8 @@ $ cd app/sdk && pnpm test:gateway
 Drove the live preview over CDP (Node 22's built-in `WebSocket` against the cached Chrome at
 `~/.cache/puppeteer` — no puppeteer package is installed, so a zero-dependency CDP driver;
 scratch scripts, not committed). `make -C app gateway` (8087) + `pnpm web` (5310), load
-`http://127.0.0.1:5310/?node=http://127.0.0.1:8087`, click **Sign in** with the ada/acme prefill:
-`document.body.innerText` → `"#acme\nEXT\nWS\nNo channels yet — create one below.\nCreate"` — the
+`http://127.0.0.1:5310/?node=http://127.0.0.1:8087`, click **Sign in** with the test/nube prefill:
+`document.body.innerText` → `"#nube\nEXT\nWS\nNo channels yet — create one below.\nCreate"` — the
 **Channels screen**. Login flows straight through.
 
 - The login POST returns 200 with a real signed token carrying the dev cap set (`bus:chan/*:pub`,

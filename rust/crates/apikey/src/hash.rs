@@ -123,7 +123,7 @@ mod tests {
         // the secret and break the O(1) ws-scoped lookup contract).
         let secret = "s3cr3tfield";
         let h = key_hash(PEPPER, secret);
-        let full = "lbk_acme.k7f3a.s3cr3tfield";
+        let full = "lbk_nube.k7f3a.s3cr3tfield";
         assert_ne!(key_hash(PEPPER, full), h);
     }
 

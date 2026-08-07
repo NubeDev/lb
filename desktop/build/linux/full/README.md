@@ -20,7 +20,7 @@ shell (Tauri window + 5 IPC commands, no gateway) lands in `../executable/` via
 Same binary, one cargo feature: `full = ["desktop", "dep:lb-role-gateway", "dep:lb-authz"]`
 (see `ui/src-tauri/Cargo.toml`). At boot (`ui/src-tauri/src/full.rs`), the full mode:
 
-1. Seeds the dev identity (`user:ada` → `workspace-admin` of `acme`, idempotent) so login
+1. Seeds the dev identity (`user:test` → `workspace-admin` of `nube`, idempotent) so login
    works on a fresh store with zero setup.
 2. Runs the catalog seeders (core skills, agent definitions, personas) + the default grants.
 3. Spawns the four background reactors (flow / channel-agent / approval / insight-digest).
@@ -38,8 +38,8 @@ Same host runtime contract as the thin shell (webkit2gtk-4.1 on the host):
 ./desktop/build/linux/full/lazybones-shell
 ```
 
-On boot, the terminal prints `full: loopback gateway on http://127.0.0.1:8800 (login as user:ada / acme)`.
-The window opens against `acme`; the login screen accepts `user:ada` / `acme` (any user the
+On boot, the terminal prints `full: loopback gateway on http://127.0.0.1:8800 (login as user:test / nube)`.
+The window opens against `nube`; the login screen accepts `user:test` / `nube` (any user the
 seed made an admin of the workspace — the dev-login accepts any handle that is a member).
 
 Proof it works (no window needed): boot it under `xvfb-run` and `curl` the loopback gateway —

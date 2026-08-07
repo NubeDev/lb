@@ -59,12 +59,12 @@ async fn seeded_store(method: Option<Method>) -> Store {
     let samples: Vec<Sample> = (0..SAMPLES)
         .map(|i| sample("ax.v", i + 1, i * 1_000, json!(i as f64)))
         .collect();
-    write(&store, "acme", &samples, 0).await.unwrap();
-    while commit_batch(&store, "acme", 256).await.unwrap().drained() > 0 {}
+    write(&store, "nube", &samples, 0).await.unwrap();
+    while commit_batch(&store, "nube", 256).await.unwrap().drained() > 0 {}
 
     set_policy(
         &store,
-        "acme",
+        "nube",
         &Policy {
             prefix: "ax.".into(),
             raw_for_ms: RAW_FOR_MS,
@@ -81,7 +81,7 @@ async fn seeded_store(method: Option<Method>) -> Store {
     )
     .await
     .unwrap();
-    let pass = run_gc(&store, "acme", WINDOW_MS).await.unwrap();
+    let pass = run_gc(&store, "nube", WINDOW_MS).await.unwrap();
     assert_eq!(pass.evicted_raw, 500, "history is now rollup-backed");
     assert_eq!(pass.rollup_rows, 50);
     store
@@ -106,7 +106,7 @@ fn q(width: u64) -> BucketQuery {
 async fn a_bucketed_read_covers_the_whole_history_at_every_width() {
     let store = seeded_store(None).await;
     for &w in WIDTHS {
-        let buckets = read_buckets(&store, "acme", "ax.v", &q(w), w)
+        let buckets = read_buckets(&store, "nube", "ax.v", &q(w), w)
             .await
             .unwrap();
         let total: u64 = buckets.iter().map(|b| b.count).sum();
@@ -153,7 +153,7 @@ async fn every_method_governs_a_read_at_every_width_not_just_the_tiers_own() {
         Method::Nearest,
     ] {
         let store = seeded_store(Some(method)).await;
-        let policy = lb_ingest::list_policies(&store, "acme").await.unwrap();
+        let policy = lb_ingest::list_policies(&store, "nube").await.unwrap();
         for &w in WIDTHS {
             let resolved = lb_ingest::resolve_policy(&policy, "ax.v")
                 .and_then(|p| p.method_for(w))
@@ -162,7 +162,7 @@ async fn every_method_governs_a_read_at_every_width_not_just_the_tiers_own() {
                 });
             assert_eq!(resolved, method, "width {w} resolved the wrong method");
 
-            let mut buckets = read_buckets(&store, "acme", "ax.v", &q(w), w)
+            let mut buckets = read_buckets(&store, "nube", "ax.v", &q(w), w)
                 .await
                 .unwrap();
             apply_method(&mut buckets, resolved).unwrap_or_else(|e| {
@@ -179,7 +179,7 @@ async fn every_method_governs_a_read_at_every_width_not_just_the_tiers_own() {
         // The first bucket always starts at t=0, so `first`/`nearest` name sample 0 at every width.
         if matches!(method, Method::First | Method::Nearest) {
             for &w in WIDTHS {
-                let mut buckets = read_buckets(&store, "acme", "ax.v", &q(w), w)
+                let mut buckets = read_buckets(&store, "nube", "ax.v", &q(w), w)
                     .await
                     .unwrap();
                 apply_method(&mut buckets, method).unwrap();

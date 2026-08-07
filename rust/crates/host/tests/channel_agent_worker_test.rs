@@ -37,7 +37,7 @@ const INVOKE: &str = "mcp:agent.invoke:call";
 fn principal(ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
-        sub: "user:ada".into(),
+        sub: "user:test".into(),
         ws: ws.into(),
         role: Role::Member,
         caps: caps.iter().map(|s| s.to_string()).collect(),
@@ -83,7 +83,7 @@ async fn worker_item(node: &Node, p: &Principal, ws: &str, cid: &str) -> Option<
 async fn post_enqueues_and_returns_before_the_run_completes() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "the deploy rolled back at 14:02");
-    let ws = "acme";
+    let ws = "nube";
     let cid = "ops";
     let p = principal(
         ws,
@@ -100,7 +100,7 @@ async fn post_enqueues_and_returns_before_the_run_completes() {
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("agent request posts");
@@ -140,7 +140,7 @@ async fn draining_twice_does_not_post_a_second_result() {
     // re-run or double-post — the `a:<job>` idempotency guard short-circuits the re-drive.
     let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "answered once");
-    let ws = "acme";
+    let ws = "nube";
     let cid = "ops";
     let p = principal(
         ws,
@@ -157,7 +157,7 @@ async fn draining_twice_does_not_post_a_second_result() {
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("request posts");
@@ -182,7 +182,7 @@ async fn draining_twice_does_not_post_a_second_result() {
 async fn a_request_without_the_invoke_grant_yields_opaque_agent_not_permitted() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "unreachable");
-    let ws = "acme";
+    let ws = "nube";
     let cid = "ops";
     // Can pub/sub the channel (so the post is authorized) but lacks `mcp:agent.invoke:call`.
     let p = principal(
@@ -199,7 +199,7 @@ async fn a_request_without_the_invoke_grant_yields_opaque_agent_not_permitted() 
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("the request posts");
@@ -220,7 +220,7 @@ async fn a_request_without_the_invoke_grant_yields_opaque_agent_not_permitted() 
 async fn a_named_unknown_runtime_collapses_to_the_same_opaque_deny() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "unreachable"); // only `default` is registered
-    let ws = "acme";
+    let ws = "nube";
     let cid = "ops";
     let p = principal(
         ws,
@@ -239,7 +239,7 @@ async fn a_named_unknown_runtime_collapses_to_the_same_opaque_deny() {
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("the request posts");
@@ -256,7 +256,7 @@ async fn a_named_unknown_runtime_collapses_to_the_same_opaque_deny() {
 async fn posting_an_agent_result_item_does_not_enqueue_a_run() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "unreachable");
-    let ws = "acme";
+    let ws = "nube";
     let cid = "ops";
     let p = principal(
         ws,
@@ -277,7 +277,7 @@ async fn posting_an_agent_result_item_does_not_enqueue_a_run() {
         &p,
         ws,
         cid,
-        Item::new("r1", cid, "user:ada", body, 1),
+        Item::new("r1", cid, "user:test", body, 1),
     )
     .await
     .expect("the result item posts");
@@ -322,7 +322,7 @@ async fn a_run_that_exceeds_the_supervision_ceiling_is_reaped_with_an_agent_erro
     registry.register(Arc::new(HungRuntime)); // overrides `default` with the hung runtime
     node.install_runtimes(registry);
 
-    let ws = "acme";
+    let ws = "nube";
     let cid = "ops";
     let p = principal(
         ws,
@@ -339,7 +339,7 @@ async fn a_run_that_exceeds_the_supervision_ceiling_is_reaped_with_an_agent_erro
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("the request posts");
@@ -418,7 +418,7 @@ async fn a_stalled_run_posts_an_actionable_agent_stalled_prompt_and_stays_resuma
     registry.register(Arc::new(StalledRuntime)); // overrides `default` with the stalling runtime
     node.install_runtimes(registry);
 
-    let ws = "acme";
+    let ws = "nube";
     let cid = "ops";
     let p = principal(
         ws,
@@ -435,7 +435,7 @@ async fn a_stalled_run_posts_an_actionable_agent_stalled_prompt_and_stays_resuma
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("the request posts");
@@ -478,8 +478,8 @@ async fn the_result_is_workspace_scoped_and_not_visible_from_another_workspace()
     let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "ws-A only answer");
     let cid = "ops";
-    let ada = principal(
-        "acme",
+    let test = principal(
+        "nube",
         &[
             &format!("bus:chan/{cid}:pub"),
             &format!("bus:chan/{cid}:sub"),
@@ -490,26 +490,26 @@ async fn the_result_is_workspace_scoped_and_not_visible_from_another_workspace()
     let body = agent_request_body("secret", None, "run-5");
     post(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
-    .expect("request posts in ws acme");
+    .expect("request posts in ws nube");
 
     // A ws-B drain must not pick up the ws-A run (the queue scan is workspace-namespaced).
     drain_channel_agent_runs(&node, "other").await;
     assert!(
-        worker_item(&node, &ada, "acme", cid).await.is_none(),
+        worker_item(&node, &test, "nube", cid).await.is_none(),
         "a ws-B drain must not drive the ws-A run"
     );
 
-    // The ws-A drain drives it; the result lands in ws acme only.
-    drain_channel_agent_runs(&node, "acme").await;
+    // The ws-A drain drives it; the result lands in ws nube only.
+    drain_channel_agent_runs(&node, "nube").await;
     assert!(
-        worker_item(&node, &ada, "acme", cid).await.is_some(),
-        "the result lands in ws acme"
+        worker_item(&node, &test, "nube", cid).await.is_some(),
+        "the result lands in ws nube"
     );
 
     // A ws-B reader of the same channel id sees NOTHING — the store is workspace-namespaced.
@@ -565,7 +565,7 @@ async fn an_omitted_runtime_run_uses_and_labels_the_workspace_default() {
     }));
     node.install_runtimes(registry);
 
-    let ws = "acme";
+    let ws = "nube";
     let cid = "abc";
     let admin = principal(
         ws,
@@ -603,7 +603,7 @@ async fn an_omitted_runtime_run_uses_and_labels_the_workspace_default() {
         &admin,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("agent request posts");
@@ -634,7 +634,7 @@ async fn an_omitted_runtime_run_uses_and_labels_the_workspace_default() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_run_can_post_a_rich_result_widget_into_its_own_channel() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ws = "acme";
+    let ws = "nube";
     let cid = "dock-1";
 
     let envelope = serde_json::json!({
@@ -674,7 +674,7 @@ async fn a_run_can_post_a_rich_result_widget_into_its_own_channel() {
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("agent request posts");
@@ -730,7 +730,7 @@ async fn a_run_can_post_a_rich_result_widget_into_its_own_channel() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn without_channel_post_cap_the_widget_post_is_denied_but_the_run_answers() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ws = "acme";
+    let ws = "nube";
     let cid = "dock-2";
 
     let model = Arc::new(AiGateway::new(MockProvider::new(vec![
@@ -764,7 +764,7 @@ async fn without_channel_post_cap_the_widget_post_is_denied_but_the_run_answers(
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("agent request posts");
@@ -794,7 +794,7 @@ async fn without_channel_post_cap_the_widget_post_is_denied_but_the_run_answers(
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_malformed_genui_rich_result_is_rejected_and_the_corrected_repost_lands() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ws = "acme";
+    let ws = "nube";
     let cid = "dock-3";
 
     // The live defect observed in the dock run (2026-07-06): the not-our-IR dialect.
@@ -863,7 +863,7 @@ async fn a_malformed_genui_rich_result_is_rejected_and_the_corrected_repost_land
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("agent request posts");
@@ -904,8 +904,8 @@ async fn a_malformed_genui_rich_result_is_rejected_and_the_corrected_repost_land
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel_post() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ws = "acme";
-    let cid = "dock-user-ada-widget-block";
+    let ws = "nube";
+    let cid = "dock-user-test-widget-block";
 
     let envelope = serde_json::json!({
         "kind": "rich_result", "v": 2, "view": "genui",
@@ -944,7 +944,7 @@ async fn a_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel_post
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("agent request posts");
@@ -1011,8 +1011,8 @@ async fn a_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel_post
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_invalid_widget_block_in_the_answer_is_left_untouched_no_widget_lands() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ws = "acme";
-    let cid = "dock-user-ada-widget-bad";
+    let ws = "nube";
+    let cid = "dock-user-test-widget-bad";
 
     // The wrong IR dialect (the live 2026-07-06 defect): `type` instead of `component`.
     let bad = serde_json::json!({
@@ -1040,7 +1040,7 @@ async fn an_invalid_widget_block_in_the_answer_is_left_untouched_no_widget_lands
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("agent request posts");
@@ -1077,8 +1077,8 @@ async fn an_invalid_widget_block_in_the_answer_is_left_untouched_no_widget_lands
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_stat_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel_post() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let ws = "acme";
-    let cid = "dock-user-ada-stat-block";
+    let ws = "nube";
+    let cid = "dock-user-test-stat-block";
 
     // A built-in `view:"stat"` envelope — the shipped StatPanel renderer, not genui. Bound to a real
     // store.query the worker re-runs at view time; `fieldConfig.defaults.unit` styles the value (the
@@ -1120,7 +1120,7 @@ async fn a_stat_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("agent request posts");

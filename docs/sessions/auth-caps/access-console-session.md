@@ -72,7 +72,7 @@ Real infra, seeded via the real write path — NO mocks, NO fake backend.
 **Rust — all green:**
 - `lb-authz` `access_console_test` (5): sourced cap set == `resolve_caps` (no-drift cross-check) · provenance tags (direct/role/team) · key subject resolve · token_revoke marker round-trip + per-subject · role_delete cascade idempotent.
 - `lb-host` `authz_test` (+2 new, 7 total): per-verb deny (authz.resolve / authz.revoke-tokens / roles.delete) · ws-iso at the MCP bridge.
-- `lb-role-gateway` `access_console_routes_test` (5): forged non-admin denied (403) · resolve provenance · **revoke_tokens refuses bob's prior token on the next verify** (headline) · roles.delete cascade + built-in 400 + idempotent · ws-iso (resolve-empty / delete-nothing / acme intact).
+- `lb-role-gateway` `access_console_routes_test` (5): forged non-admin denied (403) · resolve provenance · **revoke_tokens refuses bob's prior token on the next verify** (headline) · roles.delete cascade + built-in 400 + idempotent · ws-iso (resolve-empty / delete-nothing / nube intact).
 - Regression confirm: `apikey_routes_test` (8), `admin_routes_test` (5), `gateway_test` (9 auth/verify), `admin_crud_test` (8) — the verify-path change broke nothing.
 - `cargo fmt` clean.
 

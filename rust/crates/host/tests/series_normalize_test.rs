@@ -29,7 +29,7 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 /// An admin principal for `ws` — every series cap this suite touches.
 fn admin(ws: &str) -> Principal {
     principal(
-        "user:ada",
+        "user:test",
         ws,
         &[
             "mcp:series.retention.set:call",
@@ -80,7 +80,7 @@ async fn a_policy_round_trips_its_new_fields_through_set_and_list() {
     // projection reads back as its serde default forever — the row on disc correct, the struct in
     // memory silently not.
     let node = Node::boot().await.unwrap();
-    let p = admin("acme");
+    let p = admin("nube");
     let authored = json!({
         "prefix": "modbus.",
         "raw_for_ms": 900000,
@@ -93,11 +93,11 @@ async fn a_policy_round_trips_its_new_fields_through_set_and_list() {
             "range": {"min": -40.0, "max": 120.0, "mode": "clamp"}
         }
     });
-    call(&node, &p, "acme", "series.retention.set", authored)
+    call(&node, &p, "nube", "series.retention.set", authored)
         .await
         .unwrap();
 
-    let listed = call(&node, &p, "acme", "series.retention.list", json!({}))
+    let listed = call(&node, &p, "nube", "series.retention.list", json!({}))
         .await
         .unwrap();
     let got = &listed["policies"][0];
@@ -118,18 +118,18 @@ async fn an_existing_policy_row_keeps_its_exact_meaning() {
     // A row authored before this slice — no `filter`, no `method` — must deserialize to "store
     // everything, full stat row", not to some new default.
     let node = Node::boot().await.unwrap();
-    let p = admin("acme");
+    let p = admin("nube");
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.retention.set",
         json!({"prefix": "legacy.", "raw_for_ms": 60000, "max_samples": 10, "tiers": [{"width_ms": 1000, "keep_for_ms": 0}]}),
     )
     .await
     .unwrap();
 
-    let listed = call(&node, &p, "acme", "series.retention.list", json!({}))
+    let listed = call(&node, &p, "nube", "series.retention.list", json!({}))
         .await
         .unwrap();
     let got = &listed["policies"][0];
@@ -148,7 +148,7 @@ async fn an_existing_policy_row_keeps_its_exact_meaning() {
     // And it stores everything, identical values included.
     seed(
         &node,
-        "acme",
+        "nube",
         (1..=5u64)
             .map(|i| sample_at("legacy.v", "p", i, i * 100, json!(7.0)))
             .collect(),
@@ -157,7 +157,7 @@ async fn an_existing_policy_row_keeps_its_exact_meaning() {
     let rows = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.read",
         json!({"series": "legacy.v"}),
     )
@@ -175,11 +175,11 @@ async fn an_existing_policy_row_keeps_its_exact_meaning() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_fully_filtered_backlog_drains_completely_instead_of_stalling_after_one_batch() {
     let node = Node::boot().await.unwrap();
-    let p = admin("acme");
+    let p = admin("nube");
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.retention.set",
         json!({"prefix": "quiet.", "raw_for_ms": 0, "filter": {"drop": true}}),
     )
@@ -190,7 +190,7 @@ async fn a_fully_filtered_backlog_drains_completely_instead_of_stalling_after_on
     let n = 700u64;
     lb_ingest::write(
         &node.store,
-        "acme",
+        "nube",
         &(1..=n)
             .map(|i| sample_at("quiet.v", "p", i, i * 1_000, json!(i as f64)))
             .collect::<Vec<_>>(),
@@ -199,7 +199,7 @@ async fn a_fully_filtered_backlog_drains_completely_instead_of_stalling_after_on
     .await
     .unwrap();
 
-    let pass = drain_workspace(&node.store, "acme").await.unwrap();
+    let pass = drain_workspace(&node.store, "nube").await.unwrap();
     assert_eq!(pass.committed, 0, "everything was muted");
     assert_eq!(
         pass.filtered.muted, n as usize,
@@ -207,7 +207,7 @@ async fn a_fully_filtered_backlog_drains_completely_instead_of_stalling_after_on
     );
 
     // And staging really is empty — a second pass has nothing left to do.
-    assert!(drain_workspace(&node.store, "acme")
+    assert!(drain_workspace(&node.store, "nube")
         .await
         .unwrap()
         .filtered
@@ -219,11 +219,11 @@ async fn the_live_write_path_reports_what_it_filtered() {
     // `ingest.write` accepts, then the commit filters. The sample is delivered-then-filtered, never
     // silently lost — and the operator can see it in the drain pass counts.
     let node = Node::boot().await.unwrap();
-    let p = admin("acme");
+    let p = admin("nube");
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "series.retention.set",
         json!({"prefix": "d.", "raw_for_ms": 0, "filter": {"deadband": {"abs": 1.0}}}),
     )
@@ -243,7 +243,7 @@ async fn the_live_write_path_reports_what_it_filtered() {
     let accepted = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "ingest.write",
         json!({"samples": samples}),
     )
@@ -263,10 +263,10 @@ async fn the_live_write_path_reports_what_it_filtered() {
     );
 
     // A later drain finds nothing left — the write already committed its own batch.
-    let pass = drain_workspace(&node.store, "acme").await.unwrap();
+    let pass = drain_workspace(&node.store, "nube").await.unwrap();
     assert!(pass.filtered.is_zero());
 
-    let rows = call(&node, &p, "acme", "series.read", json!({"series": "d.v"}))
+    let rows = call(&node, &p, "nube", "series.read", json!({"series": "d.v"}))
         .await
         .unwrap();
     assert_eq!(rows["samples"].as_array().unwrap().len(), 2);

@@ -88,7 +88,7 @@ fn default_level() -> String {
     "info".into()
 }
 fn default_actor() -> String {
-    "user:ada".into()
+    "user:test".into()
 }
 fn default_source() -> String {
     "host".into()

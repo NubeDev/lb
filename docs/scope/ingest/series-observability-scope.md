@@ -257,7 +257,7 @@ Every question this scope opened is resolved below, with the reasoning, as built
     `ingest.write` roots every producer at `{principal.sub()}/{declared}` with at most one separator
     (`root_producer` collapses a declared `/` to `-`, so the depth cannot be forged), and an
     extension's sub is `ext:{id}`. `producer_ext_id` therefore recovers the id by shape;
-    `user:ada/gw-alpha` yields `None`, which is a first-class answer. The reader lives in
+    `user:test/gw-alpha` yields `None`, which is a first-class answer. The reader lives in
     `ingest/write.rs` beside the writer ON PURPOSE — these two are one grammar, and split across
     modules a writer and a reader eventually disagree. The same file's tests assert the reader
     inverts the writer for every shape the writer can emit.

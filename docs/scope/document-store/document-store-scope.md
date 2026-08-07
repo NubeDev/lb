@@ -150,23 +150,23 @@ second vocabulary for the same three-gate read.
 
 ## Example flow
 
-1. Ada (`user:ada`, ws `acme`, caps `store:doc/*:write`, `store:asset/*:write`) writes a runbook in
+1. Test (`user:test`, ws `nube`, caps `store:doc/*:write`, `store:asset/*:write`) writes a runbook in
    the editor and clicks **Save**: `put_doc("runbook-cooler", title, body="…", content_type="markdown")`.
-   The host writes `doc:acme:runbook-cooler` (`owner=user:ada`, `visibility=Private`, `rev=1`) in one
+   The host writes `doc:nube:runbook-cooler` (`owner=user:test`, `visibility=Private`, `rev=1`) in one
    `write_tx` — the undo journal captures the before-image (empty) / after (rev 1).
-2. Ada drags in a wiring photo: `put_asset("cooler-wiring", bytes, mime="image/png")` →
-   `asset:acme:cooler-wiring`. The editor inserts `![wiring](lb-asset://cooler-wiring)`; the next save
+2. Test drags in a wiring photo: `put_asset("cooler-wiring", bytes, mime="image/png")` →
+   `asset:nube:cooler-wiring`. The editor inserts `![wiring](lb-asset://cooler-wiring)`; the next save
    writes an `embed` edge `doc:runbook-cooler → asset:cooler-wiring`.
-3. Ada references the alarms doc with `[[doc:alarm-matrix]]`; the save writes a `link` edge
+3. Test references the alarms doc with `[[doc:alarm-matrix]]`; the save writes a `link` edge
    `doc:runbook-cooler → doc:alarm-matrix`.
-4. Ada shares to a person, not a team: `share_doc("runbook-cooler", subject="user:ben")` →
+4. Test shares to a person, not a team: `share_doc("runbook-cooler", subject="user:ben")` →
    `share` edge (doc→user). Visibility becomes `User`.
 5. Ben (`user:ben`, cap `store:doc/*:read`) opens the doc: gates 1+2 ✔, gate 3: shared to `user:ben`
    ✔ → `get_doc` returns the markdown; the renderer calls `get_asset("cooler-wiring")` (gate-3 ✔,
    embedded) → the image renders. The `[[doc:alarm-matrix]]` link resolves: Ben **lacks** access to
    `alarm-matrix` → the link renders as an honest "no access", **not** a leak and **not** a fake.
 6. Cleo (cap `store:doc/*:read`, not shared to) opens the doc → gate-3 **DENIED**.
-7. Ada edits and re-saves (`rev=2`); she hits **Undo** → the journal restores `rev=1`'s body
+7. Test edits and re-saves (`rev=2`); she hits **Undo** → the journal restores `rev=1`'s body
    (Reversible — pure state).
 8. A `release-notes` **extension** (installed, granted `mcp:assets.put_doc:call` +
    `store:doc/*:write`) calls `put_doc` through the host-callback context (`caller ∩ grant`) to

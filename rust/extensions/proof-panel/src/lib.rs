@@ -315,10 +315,10 @@ mod tests {
 
     #[test]
     fn ping_returns_a_workspace_tagged_wasm_snapshot() {
-        let out = dispatch("proof.ping", r#"{"ws":"acme"}"#).expect("ping ok");
+        let out = dispatch("proof.ping", r#"{"ws":"nube"}"#).expect("ping ok");
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["ok"], true);
-        assert_eq!(v["ws"], "acme", "the caller's workspace round-trips");
+        assert_eq!(v["ws"], "nube", "the caller's workspace round-trips");
         assert_eq!(v["node"], "proof-panel");
         assert_eq!(v["tier"], "wasm", "served by the Tier-1 component");
     }

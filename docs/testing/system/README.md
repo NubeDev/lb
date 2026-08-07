@@ -41,7 +41,7 @@ Mint a session token (the workspace + principal ride the token, never the body):
 ```bash
 BASE=http://127.0.0.1:8080
 TOKEN=$(curl -s -X POST $BASE/login -H 'content-type: application/json' \
-  -d '{"user":"ada","workspace":"acme"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+  -d '{"user":"test","workspace":"nube"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 A="authorization: Bearer $TOKEN"
 ```
 
@@ -60,7 +60,7 @@ curl -s $BASE/system/acp       -H "$A"   # ACP adapter facts
 ```
 
 Assert: each returns `200` with `"ws"` = the token's workspace and a non-empty
-`services` / `nodes` / `tools` list. **Observed** (2026-07-04, `acme`): `overview` →
+`services` / `nodes` / `tools` list. **Observed** (2026-07-04, `nube`): `overview` →
 `role:"solo"`, subsystems `gateway|bus|mcp|extensions` all `health:"ok"`; `topology` →
 same nodes with wiring; `tools` → the host tool table (`agent.decide`, …).
 
@@ -82,7 +82,7 @@ dev-login carries `mcp:system.*:call`, so a deny case passes fewer caps.
 
 The `"ws"` field on every response equals the token's workspace. Sign in to a second
 workspace (`--globex`) and confirm its `overview`/`topology` reflect *its* subsystems only —
-never `acme`'s. The wall is checked before caps.
+never `nube`'s. The wall is checked before caps.
 
 ## Step 3–5. What you found / findings / done
 

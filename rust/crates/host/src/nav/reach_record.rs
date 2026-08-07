@@ -161,17 +161,17 @@ mod tests {
     /// the wildcard. If this ever inverts, every no-curated-nav member loses every dashboard.
     #[test]
     fn fallback_wildcard_does_not_arm_record_reach() {
-        let fallback = Principal::routed("user:alice", "acme", vec![REACH_ALL.into()]);
+        let fallback = Principal::routed("user:alice", "nube", vec![REACH_ALL.into()]);
         // The arming probe itself must be denied by the wildcard...
         assert!(!holds_cap(
             &fallback,
-            "acme",
+            "nube",
             "reach:dashboards/__curated__:view"
         ));
         // ...and therefore every board is reachable.
         for id in ["demo-analytics", "modbus-tmpl-sim-meter", "anything-at-all"] {
             assert!(
-                dashboard_reach_ok(&fallback, "acme", id),
+                dashboard_reach_ok(&fallback, "nube", id),
                 "fallback member must still reach {id}"
             );
         }
@@ -181,12 +181,12 @@ mod tests {
     /// surface-only curated token (pre-record-reach shape) all degrade OPEN.
     #[test]
     fn unarmed_tokens_degrade_open() {
-        let legacy = Principal::routed("key:svc", "acme", vec!["mcp:series.list:call".into()]);
+        let legacy = Principal::routed("key:svc", "nube", vec!["mcp:series.list:call".into()]);
         let surface_only =
-            Principal::routed("user:bob", "acme", vec!["reach:dashboards:view".into()]);
+            Principal::routed("user:bob", "nube", vec!["reach:dashboards:view".into()]);
         for p in [&legacy, &surface_only] {
             for id in ["demo-analytics", "modbus-tmpl-sim-meter"] {
-                assert!(dashboard_reach_ok(p, "acme", id), "unarmed must reach {id}");
+                assert!(dashboard_reach_ok(p, "nube", id), "unarmed must reach {id}");
             }
         }
     }
@@ -197,16 +197,16 @@ mod tests {
     fn armed_subject_reaches_only_named_records() {
         let mut caps = record_reach_caps(DASHBOARD_SURFACE, &ids(&["demo-analytics"]), false);
         caps.push("reach:dashboards:view".into());
-        let test = Principal::routed("user:test", "acme", caps);
+        let test = Principal::routed("user:test", "nube", caps);
 
-        assert!(dashboard_reach_ok(&test, "acme", "demo-analytics"));
+        assert!(dashboard_reach_ok(&test, "nube", "demo-analytics"));
         for denied in [
             "modbus-tmpl-sim-meter",
             "modbus-tmpl-nubeio-io16-current",
             "demo-plant-report",
         ] {
             assert!(
-                !dashboard_reach_ok(&test, "acme", denied),
+                !dashboard_reach_ok(&test, "nube", denied),
                 "{denied} must NOT be reachable"
             );
         }
@@ -219,15 +219,15 @@ mod tests {
     fn record_cap_does_not_span_segments() {
         let p = Principal::routed(
             "user:bob",
-            "acme",
+            "nube",
             vec!["reach:dashboards/a:view".into(), "reach:rules:view".into()],
         );
-        assert!(holds_cap(&p, "acme", "reach:dashboards/a:view"));
-        assert!(!holds_cap(&p, "acme", "reach:dashboards/b:view"));
-        assert!(!holds_cap(&p, "acme", "reach:dashboards:view"));
+        assert!(holds_cap(&p, "nube", "reach:dashboards/a:view"));
+        assert!(!holds_cap(&p, "nube", "reach:dashboards/b:view"));
+        assert!(!holds_cap(&p, "nube", "reach:dashboards:view"));
         // ...and a surface cap never grants a record.
-        let s = Principal::routed("user:s", "acme", vec!["reach:dashboards:view".into()]);
-        assert!(!holds_cap(&s, "acme", "reach:dashboards/a:view"));
+        let s = Principal::routed("user:s", "nube", vec!["reach:dashboards:view".into()]);
+        assert!(!holds_cap(&s, "nube", "reach:dashboards/a:view"));
     }
 
     /// Degrade-open cases mint nothing: the nav naming the whole surface, an empty set, an
@@ -251,18 +251,18 @@ mod tests {
     #[test]
     fn dotted_record_id_round_trips() {
         let caps = record_reach_caps(DASHBOARD_SURFACE, &ids(&["site.a"]), false);
-        let p = Principal::routed("user:bob", "acme", caps);
-        assert!(dashboard_reach_ok(&p, "acme", "site.a"));
-        assert!(!dashboard_reach_ok(&p, "acme", "site.b"));
-        assert!(!dashboard_reach_ok(&p, "acme", "site"));
+        let p = Principal::routed("user:bob", "nube", caps);
+        assert!(dashboard_reach_ok(&p, "nube", "site.a"));
+        assert!(!dashboard_reach_ok(&p, "nube", "site.b"));
+        assert!(!dashboard_reach_ok(&p, "nube", "site"));
     }
 
     /// Workspace isolation still runs first: an armed subject's record cap does not cross workspaces.
     #[test]
     fn record_reach_is_workspace_scoped() {
         let caps = record_reach_caps(DASHBOARD_SURFACE, &ids(&["demo-analytics"]), false);
-        let p = Principal::routed("user:test", "acme", caps);
-        assert!(dashboard_reach_ok(&p, "acme", "demo-analytics"));
+        let p = Principal::routed("user:test", "nube", caps);
+        assert!(dashboard_reach_ok(&p, "nube", "demo-analytics"));
         // A different ws fails gate 1, so even the ARMING probe is denied → degrade open. Reach is a
         // narrowing lens, not the isolation wall; `check`'s gate 1 remains the wall for other-ws reads.
         assert!(dashboard_reach_ok(&p, "other", "demo-analytics"));

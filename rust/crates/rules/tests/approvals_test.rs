@@ -43,13 +43,13 @@ fn engine(messaging: Arc<RecordingMessaging>, max_writes: u32) -> RuleEngine {
 
 fn run(eng: &RuleEngine, body: &str, now: u64) -> Result<lb_rules::RuleOutput, RuleError> {
     let rule = Rule {
-        workspace: "acme".into(),
+        workspace: "nube".into(),
         name: "adhoc".into(),
         body: body.into(),
         params: vec![],
     };
     let mut rr = RuleRun::new(
-        "acme".into(),
+        "nube".into(),
         Arc::new(HashSet::new()),
         rhai::Map::new(),
         now,
@@ -64,7 +64,7 @@ const REQUEST_APPROVAL: &str = r#"
         body: "Refund proposed",
         route: "team:managers",
         on_approve: #{ target: "email", action: "send",
-                       payload: #{ to: "ops@acme.io", subject: "Refund approved" } },
+                       payload: #{ to: "ops@nube.io", subject: "Refund approved" } },
     });
 "#;
 
@@ -84,7 +84,7 @@ fn request_approval_stages_the_held_effect_first_then_records_the_tagged_item() 
     assert_eq!(calls[0].1["item_id"], "refund-42");
     assert_eq!(calls[0].1["target"], "email");
     assert_eq!(calls[0].1["action"], "send");
-    assert_eq!(calls[0].1["payload"]["to"], "ops@acme.io");
+    assert_eq!(calls[0].1["payload"]["to"], "ops@nube.io");
     assert_eq!(calls[0].1["ts"], 1000);
 
     // Item SECOND — the `needs:approval` tag + route ride the body-tag convention.

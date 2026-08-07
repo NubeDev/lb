@@ -59,12 +59,12 @@ owner:
   header — one responsibility, no component branching.
 
 **The pre-auth login problem is the crux.** The login page runs before any token exists, and today the
-visitor **types** the workspace on the form (`LoginView` defaults to `acme`). So the shell cannot know
+visitor **types** the workspace on the form (`LoginView` defaults to `nube`). So the shell cannot know
 *whose* brand to show until the workspace is identified, and it has no authenticated way to read that
 workspace's prefs/assets. The resolution:
 
 1. **Identify the workspace pre-auth** from the URL when possible (subdomain/path, e.g.
-   `acme.lazybones.app` → `acme`), else from the workspace the visitor enters/selects on the login form
+   `nube.lazybones.app` → `nube`), else from the workspace the visitor enters/selects on the login form
    (fetch-on-blur), else fall back to instance-default branding.
 2. **Serve branding through a narrow public read seam** — a dedicated unauthenticated gateway route
    `GET /public/branding/{workspace}` that returns **only** `{ site_name, login_heading, logo_url,
@@ -141,8 +141,8 @@ route, which by definition can't be an authed MCP verb.
    these controls; a forged call is denied (opaque).
 3. A **member** loads the app. The shell reads branding (member reads `prefs.resolve` + `assets.get_doc`),
    sets `document.title` to "My Company", swaps the favicon, and renders the logo + name in the nav header.
-4. A **new visitor** hits `acme.lazybones.app/login` (or types `acme` into the login form). The login page
-   calls `GET /public/branding/acme`, gets `{ site_name, login_heading, logo_url, favicon_url }`, and
+4. A **new visitor** hits `nube.lazybones.app/login` (or types `nube` into the login form). The login page
+   calls `GET /public/branding/nube`, gets `{ site_name, login_heading, logo_url, favicon_url }`, and
    renders "Sign in to My Company" with the logo and the branded favicon — **before** any authentication.
 5. The visitor authenticates; the authed shell re-reads branding through the normal walled path and the
    brand carries seamlessly from login into the app.
@@ -176,7 +176,7 @@ a new public route).
   Treat it as a security-review item (`/security-review`), test the field whitelist explicitly, and never
   let it grow a "just also return X" field.
 - **Pre-auth workspace identification.** Today the login form has the visitor *type* the workspace
-  (`LoginView` default `acme`); there is no subdomain→workspace resolution yet. Decide the source of
+  (`LoginView` default `nube`); there is no subdomain→workspace resolution yet. Decide the source of
   truth (subdomain/path vs. entered value vs. instance default) — this may need a small workspace-lookup
   step and touches `nav`/routing.
 - **Favicon/title races.** Setting `document.title` and the favicon link must not fight the theme layer

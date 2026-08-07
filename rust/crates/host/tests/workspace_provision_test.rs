@@ -1,7 +1,7 @@
 //! Host-layer tests for the atomic `workspace.provision` + `workspace.reconcile` pair
 //! (workspace-provision scope, NubeDev/lb#121). Mandatory categories: **capability-deny with zero
 //! residue**, **atomicity / no orphans** (the torn intermediate is never listable), **crash
-//! durability across a real on-disk store reopen** (the regression test for the observed `nube`
+//! durability across a real on-disk store reopen** (the regression test for the observed `other-ws`
 //! orphan), plus admin-other-than-caller, idempotency vs a revoked role, and tombstone-no-resurrect.
 //! Real store (`mem://` and SurrealKV on disk), no mocks — rule 9.
 
@@ -53,20 +53,22 @@ fn cleanup(path: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn provision_and_reconcile_denied_without_cap_leave_zero_residue() {
     let node = Node::boot().await.expect("node boots");
-    let member = principal("user:bob", "acme", &["mcp:workspace.list:call"]);
+    let member = principal("user:bob", "nube", &["mcp:workspace.list:call"]);
 
-    let err = workspace_provision(&node.store, &member, "nube", "Nube iO", None, None, 1)
+    let err = workspace_provision(&node.store, &member, "other-ws", "Other Co", None, None, 1)
         .await
         .expect_err("member must be denied");
     assert!(matches!(err, WorkspacesError::Denied));
-    assert!(workspace_reconcile(&node.store, &member, "nube", None, 1)
-        .await
-        .is_err());
+    assert!(
+        workspace_reconcile(&node.store, &member, "other-ws", None, 1)
+            .await
+            .is_err()
+    );
 
     // Zero residue: no directory row, no membership row.
     let listed = workspace_list(&node.store, &member).await.unwrap();
-    assert!(!listed.iter().any(|w| w.ws == "nube"));
-    assert!(!membership_is_member(&node.store, "nube", "user:bob")
+    assert!(!listed.iter().any(|w| w.ws == "other-ws"));
+    assert!(!membership_is_member(&node.store, "other-ws", "user:bob")
         .await
         .unwrap());
 }
@@ -76,31 +78,31 @@ async fn provision_and_reconcile_denied_without_cap_leave_zero_residue() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn torn_provision_is_never_listable_and_retry_completes_it() {
     let node = Node::boot().await.expect("node boots");
-    let ada = principal("user:ada", "acme", ADMIN);
+    let test = principal("user:test", "nube", ADMIN);
 
     // Hand-craft the exact state a crash between the bootstrap batch and the directory write
     // leaves: membership present, directory row absent (the directory row is written LAST).
-    lb_authz::membership_add_raw(&node.store, "nube", "user:ada", 1)
+    lb_authz::membership_add_raw(&node.store, "other-ws", "user:test", 1)
         .await
         .unwrap();
-    let listed = workspace_list(&node.store, &ada).await.unwrap();
+    let listed = workspace_list(&node.store, &test).await.unwrap();
     assert!(
-        !listed.iter().any(|w| w.ws == "nube"),
+        !listed.iter().any(|w| w.ws == "other-ws"),
         "a torn provision must be absent from the directory, not a listable orphan"
     );
-    let roster = login_workspaces(&node.store, "user:ada").await.unwrap();
+    let roster = login_workspaces(&node.store, "user:test").await.unwrap();
     assert!(
-        !roster.iter().any(|w| w.ws == "nube"),
+        !roster.iter().any(|w| w.ws == "other-ws"),
         "a torn provision must not appear in the creator's login roster"
     );
 
     // Retrying the SAME provision (same admin) is legitimate and completes it.
-    let report = workspace_provision(&node.store, &ada, "nube", "Nube iO", None, None, 2)
+    let report = workspace_provision(&node.store, &test, "other-ws", "Other Co", None, None, 2)
         .await
         .expect("retry completes the torn provision");
-    assert_eq!(report.admin_sub, "user:ada");
-    let roster = login_workspaces(&node.store, "user:ada").await.unwrap();
-    assert!(roster.iter().any(|w| w.ws == "nube"), "now enterable");
+    assert_eq!(report.admin_sub, "user:test");
+    let roster = login_workspaces(&node.store, "user:test").await.unwrap();
+    assert!(roster.iter().any(|w| w.ws == "other-ws"), "now enterable");
 
     // But a namespace populated by SOMEONE ELSE is not provisionable — that would grant admin
     // into a populated workspace.
@@ -108,7 +110,7 @@ async fn torn_provision_is_never_listable_and_retry_completes_it() {
         .await
         .unwrap();
     assert!(matches!(
-        workspace_provision(&node.store, &ada, "other", "Other", None, None, 2).await,
+        workspace_provision(&node.store, &test, "other", "Other", None, None, 2).await,
         Err(WorkspacesError::Denied)
     ));
 }
@@ -121,22 +123,22 @@ async fn provision_survives_unclean_restart_listable_and_enterable() {
     cleanup(&path);
     {
         let store = Store::open(&path).await.unwrap();
-        let ada = principal("user:ada", "acme", ADMIN);
-        workspace_provision(&store, &ada, "nube", "Nube iO", None, None, 1)
+        let test = principal("user:test", "nube", ADMIN);
+        workspace_provision(&store, &test, "other-ws", "Other Co", None, None, 1)
             .await
             .expect("provisions");
         // No clean shutdown: the store is simply dropped here (the observed-orphan scenario).
     }
     let store = Store::open(&path).await.unwrap();
-    let ada = principal("user:ada", "acme", ADMIN);
-    let listed = workspace_list(&store, &ada).await.unwrap();
+    let test = principal("user:test", "nube", ADMIN);
+    let listed = workspace_list(&store, &test).await.unwrap();
     assert!(
-        listed.iter().any(|w| w.ws == "nube"),
+        listed.iter().any(|w| w.ws == "other-ws"),
         "the provisioned workspace must still be LISTABLE after an unclean restart"
     );
-    let roster = login_workspaces(&store, "user:ada").await.unwrap();
+    let roster = login_workspaces(&store, "user:test").await.unwrap();
     assert!(
-        roster.iter().any(|w| w.ws == "nube"),
+        roster.iter().any(|w| w.ws == "other-ws"),
         "the provisioned workspace must still be ENTERABLE (in the login roster) after restart"
     );
     cleanup(&path);
@@ -147,25 +149,25 @@ async fn provision_survives_unclean_restart_listable_and_enterable() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn reconcile_repairs_a_memberless_orphan_but_never_a_populated_workspace() {
     let node = Node::boot().await.expect("node boots");
-    let ada = principal("user:ada", "acme", ADMIN);
+    let test = principal("user:test", "nube", ADMIN);
 
     // Hand-craft the old path's orphan: directory row present, membership empty.
-    workspace_register(&node.store, "nube", "Nube iO", 1)
+    workspace_register(&node.store, "other-ws", "Other Co", 1)
         .await
         .unwrap();
     // The symptom: the workspace is listable but in nobody's roster ("not a member of that
     // workspace" on every switch attempt).
-    let roster = login_workspaces(&node.store, "user:ada").await.unwrap();
-    assert!(!roster.iter().any(|w| w.ws == "nube"));
+    let roster = login_workspaces(&node.store, "user:test").await.unwrap();
+    assert!(!roster.iter().any(|w| w.ws == "other-ws"));
 
-    let report = workspace_reconcile(&node.store, &ada, "nube", None, 2)
+    let report = workspace_reconcile(&node.store, &test, "other-ws", None, 2)
         .await
         .expect("reconcile repairs the orphan");
-    assert_eq!(report.admin_sub, "user:ada");
+    assert_eq!(report.admin_sub, "user:test");
     assert!(report.fixed.contains(&"membership".to_string()));
-    let roster = login_workspaces(&node.store, "user:ada").await.unwrap();
+    let roster = login_workspaces(&node.store, "user:test").await.unwrap();
     assert!(
-        roster.iter().any(|w| w.ws == "nube"),
+        roster.iter().any(|w| w.ws == "other-ws"),
         "after reconcile the switch succeeds (workspace is in the roster)"
     );
 
@@ -173,10 +175,10 @@ async fn reconcile_repairs_a_memberless_orphan_but_never_a_populated_workspace()
     // a way to add yourself to a workspace that has members.
     let eve = principal("user:eve", "evil", ADMIN);
     assert!(matches!(
-        workspace_reconcile(&node.store, &eve, "nube", None, 3).await,
+        workspace_reconcile(&node.store, &eve, "other-ws", None, 3).await,
         Err(WorkspacesError::Denied)
     ));
-    assert!(!membership_is_member(&node.store, "nube", "user:eve")
+    assert!(!membership_is_member(&node.store, "other-ws", "user:eve")
         .await
         .unwrap());
 }
@@ -186,13 +188,13 @@ async fn reconcile_repairs_a_memberless_orphan_but_never_a_populated_workspace()
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn provision_for_another_admin_does_not_membership_the_caller() {
     let node = Node::boot().await.expect("node boots");
-    let ada = principal("user:ada", "acme", ADMIN);
+    let test = principal("user:test", "nube", ADMIN);
 
     let report = workspace_provision(
         &node.store,
-        &ada,
-        "nube",
-        "Nube iO",
+        &test,
+        "other-ws",
+        "Other Co",
         Some("user:alice"),
         None,
         1,
@@ -209,18 +211,18 @@ async fn provision_for_another_admin_does_not_membership_the_caller() {
     );
     assert!(!report.skills_granted.is_empty());
 
-    assert!(membership_is_member(&node.store, "nube", "user:alice")
+    assert!(membership_is_member(&node.store, "other-ws", "user:alice")
         .await
         .unwrap());
-    let caps = grant_list(&node.store, "nube", &Subject::User("alice".into()))
+    let caps = grant_list(&node.store, "other-ws", &Subject::User("alice".into()))
         .await
         .unwrap();
     assert!(caps.contains(&"role:workspace-admin".to_string()));
-    // The caller is NOT silently a member, and her principal still names acme.
-    assert!(!membership_is_member(&node.store, "nube", "user:ada")
+    // The caller is NOT silently a member, and her principal still names nube.
+    assert!(!membership_is_member(&node.store, "other-ws", "user:test")
         .await
         .unwrap());
-    assert_eq!(ada.ws(), "acme");
+    assert_eq!(test.ws(), "nube");
 }
 
 // ── Idempotency + tombstone ───────────────────────────────────────────────────────────────────
@@ -228,26 +230,26 @@ async fn provision_for_another_admin_does_not_membership_the_caller() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn reprovision_is_a_noop_that_does_not_regrant_a_revoked_role() {
     let node = Node::boot().await.expect("node boots");
-    let ada = principal("user:ada", "acme", ADMIN);
+    let test = principal("user:test", "nube", ADMIN);
 
-    workspace_provision(&node.store, &ada, "nube", "Nube iO", None, None, 1)
+    workspace_provision(&node.store, &test, "other-ws", "Other Co", None, None, 1)
         .await
         .unwrap();
     grant_revoke(
         &node.store,
-        "nube",
-        &Subject::User("ada".into()),
+        "other-ws",
+        &Subject::User("test".into()),
         "role:workspace-admin",
     )
     .await
     .unwrap();
 
-    let report = workspace_provision(&node.store, &ada, "nube", "Nube iO", None, None, 2)
+    let report = workspace_provision(&node.store, &test, "other-ws", "Other Co", None, None, 2)
         .await
         .expect("re-provision is an idempotent no-op");
     assert!(report.roles_granted.is_empty());
     assert!(report.skills_granted.is_empty());
-    let caps = grant_list(&node.store, "nube", &Subject::User("ada".into()))
+    let caps = grant_list(&node.store, "other-ws", &Subject::User("test".into()))
         .await
         .unwrap();
     assert!(
@@ -259,24 +261,24 @@ async fn reprovision_is_a_noop_that_does_not_regrant_a_revoked_role() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn provision_never_resurrects_a_purged_tombstone() {
     let node = Node::boot().await.expect("node boots");
-    let ada = principal("user:ada", "acme", ADMIN);
+    let test = principal("user:test", "nube", ADMIN);
 
-    workspace_create(&node.store, &ada, "pilot", "Pilot", 1)
+    workspace_create(&node.store, &test, "pilot", "Pilot", 1)
         .await
         .unwrap();
-    workspace_purge(&node.store, &ada, "pilot", "pilot")
+    workspace_purge(&node.store, &test, "pilot", "pilot")
         .await
         .unwrap();
 
     assert!(matches!(
-        workspace_provision(&node.store, &ada, "pilot", "Pilot", None, None, 2).await,
+        workspace_provision(&node.store, &test, "pilot", "Pilot", None, None, 2).await,
         Err(WorkspacesError::Purged)
     ));
     assert!(matches!(
-        workspace_reconcile(&node.store, &ada, "pilot", None, 2).await,
+        workspace_reconcile(&node.store, &test, "pilot", None, 2).await,
         Err(WorkspacesError::Purged)
     ));
-    let listed = workspace_list(&node.store, &ada).await.unwrap();
+    let listed = workspace_list(&node.store, &test).await.unwrap();
     assert!(!listed.iter().any(|w| w.ws == "pilot"));
 }
 
@@ -285,19 +287,19 @@ async fn provision_never_resurrects_a_purged_tombstone() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_create_still_bootstraps_the_caller_as_admin() {
     let node = Node::boot().await.expect("node boots");
-    let ada = principal("user:ada", "acme", ADMIN);
+    let test = principal("user:test", "nube", ADMIN);
 
-    let record = workspace_create(&node.store, &ada, "pilot", "Pilot", 1)
+    let record = workspace_create(&node.store, &test, "pilot", "Pilot", 1)
         .await
         .unwrap();
     assert_eq!(record.ws, "pilot");
-    assert!(membership_is_member(&node.store, "pilot", "user:ada")
+    assert!(membership_is_member(&node.store, "pilot", "user:test")
         .await
         .unwrap());
     assert_eq!(
         membership_list(&node.store, "pilot").await.unwrap().len(),
         1
     );
-    let roster = login_workspaces(&node.store, "user:ada").await.unwrap();
+    let roster = login_workspaces(&node.store, "user:test").await.unwrap();
     assert!(roster.iter().any(|w| w.ws == "pilot"));
 }

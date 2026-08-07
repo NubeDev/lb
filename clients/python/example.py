@@ -4,9 +4,9 @@
 Run with:
     make cloud                            # terminal 1: boot 127.0.0.1:8080
     cd clients/python
-    LB_URL=http://127.0.0.1:8080 LB_USER=ada LB_WORKSPACE=acme python example.py
+    LB_URL=http://127.0.0.1:8080 LB_USER=test LB_WORKSPACE=nube python example.py
     # or with an API key:
-    LB_KEY=lbk_acme.k7f3a.ABCDEF23 python example.py
+    LB_KEY=lbk_nube.k7f3a.ABCDEF23 python example.py
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ from lb_client import (
 def main() -> None:
     url = os.environ.get("LB_URL", "http://127.0.0.1:8080")
     key = os.environ.get("LB_KEY")
-    user = os.environ.get("LB_USER", "ada")
-    ws = os.environ.get("LB_WORKSPACE", "acme")
+    user = os.environ.get("LB_USER", "test")
+    ws = os.environ.get("LB_WORKSPACE", "nube")
 
     client = Client(url, "placeholder")
     if key:

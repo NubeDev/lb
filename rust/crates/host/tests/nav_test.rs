@@ -128,12 +128,12 @@ fn no_cells() -> Vec<Cell> {
 async fn crud_round_trip() {
     let ws = "ws-nav-crud";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // create
     let n = nav_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Operations",
@@ -143,18 +143,18 @@ async fn crud_round_trip() {
     .await
     .unwrap();
     assert_eq!(n.title, "Operations");
-    assert_eq!(n.owner, "user:ada");
+    assert_eq!(n.owner, "user:test");
     assert_eq!(n.visibility, NavVisibility::Private);
 
     // get reflects it (full items)
-    let got = nav_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = nav_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.items.len(), 1);
     assert_eq!(got.items[0].surface, "channels");
 
     // update (same id) — title + items change, owner preserved
     nav_save(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Operations v2",
@@ -166,60 +166,63 @@ async fn crud_round_trip() {
     )
     .await
     .unwrap();
-    let got = nav_get(&store, &ada, ws, "ops").await.unwrap();
+    let got = nav_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(got.title, "Operations v2");
     assert_eq!(got.items.len(), 2);
     assert_eq!(got.updated_ts, 20);
 
     // list includes it (summary, no items)
-    let roster = nav_list(&store, &ada, ws).await.unwrap();
+    let roster = nav_list(&store, &test, ws).await.unwrap();
     assert!(roster
         .iter()
         .any(|s| s.id == "ops" && s.title == "Operations v2"));
 
     // delete → list excludes it; get is NotFound
-    nav_delete(&store, &ada, ws, "ops", 30).await.unwrap();
-    let roster = nav_list(&store, &ada, ws).await.unwrap();
+    nav_delete(&store, &test, ws, "ops", 30).await.unwrap();
+    let roster = nav_list(&store, &test, ws).await.unwrap();
     assert!(!roster.iter().any(|s| s.id == "ops"));
     assert!(matches!(
-        nav_get(&store, &ada, ws, "ops").await.unwrap_err(),
+        nav_get(&store, &test, ws, "ops").await.unwrap_err(),
         NavError::NotFound
     ));
 
     // re-delete is an idempotent no-op
-    nav_delete(&store, &ada, ws, "ops", 40).await.unwrap();
+    nav_delete(&store, &test, ws, "ops", 40).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn idempotent_upsert_by_slug() {
     let ws = "ws-nav-idem";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // Two saves by the same slug are LWW — no duplicate row.
-    nav_save(&store, &ada, ws, "ops", "One", vec![], 1)
+    nav_save(&store, &test, ws, "ops", "One", vec![], 1)
         .await
         .unwrap();
-    nav_save(&store, &ada, ws, "ops", "Two", vec![], 2)
+    nav_save(&store, &test, ws, "ops", "Two", vec![], 2)
         .await
         .unwrap();
-    let roster = nav_list(&store, &ada, ws).await.unwrap();
+    let roster = nav_list(&store, &test, ws).await.unwrap();
     assert_eq!(roster.iter().filter(|s| s.id == "ops").count(), 1);
-    assert_eq!(nav_get(&store, &ada, ws, "ops").await.unwrap().title, "Two");
+    assert_eq!(
+        nav_get(&store, &test, ws, "ops").await.unwrap().title,
+        "Two"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn over_cap_items_rejected() {
     let ws = "ws-nav-bounds";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // Over the item cap → rejected (the host is the boundary, not the builder).
     let too_many: Vec<NavItem> = (0..(NAV_MAX_ITEMS + 1))
         .map(|i| surface_item(&format!("s{i}"), "channels"))
         .collect();
     assert!(matches!(
-        nav_save(&store, &ada, ws, "ops", "Ops", too_many, 1)
+        nav_save(&store, &test, ws, "ops", "Ops", too_many, 1)
             .await
             .unwrap_err(),
         NavError::BadInput(_)
@@ -227,7 +230,7 @@ async fn over_cap_items_rejected() {
 
     // One level of `group`-in-`group` nesting is now ALLOWED (nested-nav scope) — no longer rejected.
     let nested = group_item("Outer", vec![group_item("Inner", vec![])]);
-    nav_save(&store, &ada, ws, "ops2", "Ops", vec![nested], 1)
+    nav_save(&store, &test, ws, "ops2", "Ops", vec![nested], 1)
         .await
         .expect("shallow nesting is valid");
 
@@ -235,7 +238,7 @@ async fn over_cap_items_rejected() {
     let mut bad = surface_item("x", "channels");
     bad.kind = "bogus".into();
     assert!(matches!(
-        nav_save(&store, &ada, ws, "ops3", "Ops", vec![bad], 1)
+        nav_save(&store, &test, ws, "ops3", "Ops", vec![bad], 1)
             .await
             .unwrap_err(),
         NavError::BadInput(_)
@@ -248,8 +251,8 @@ async fn over_cap_items_rejected() {
 async fn each_verb_is_denied_without_its_cap() {
     let ws = "ws-nav-deny";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
-    nav_save(&store, &ada, ws, "ops", "Ops", vec![], 1)
+    let test = principal("user:test", ws, ALL);
+    nav_save(&store, &test, ws, "ops", "Ops", vec![], 1)
         .await
         .unwrap();
 
@@ -316,13 +319,13 @@ async fn each_verb_is_denied_without_its_cap() {
 async fn workspace_isolation() {
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal("user:ada", "ws-a", ALL);
+    let test = principal("user:test", "ws-a", ALL);
     let ben = principal("user:ben", "ws-b", ALL);
 
-    nav_save(store, &ada, "ws-a", "ops", "Ops A", vec![], 1)
+    nav_save(store, &test, "ws-a", "ops", "Ops A", vec![], 1)
         .await
         .unwrap();
-    ada_sets_pick(store, &ada, "ws-a", "ops").await;
+    test_sets_pick(store, &test, "ws-a", "ops").await;
 
     // Ben (ws-B) cannot get/list ws-A's nav, and his resolve/pref never see it — the wall.
     assert!(matches!(
@@ -350,8 +353,8 @@ async fn workspace_isolation() {
     ));
 }
 
-async fn ada_sets_pick(store: &Store, ada: &Principal, ws: &str, id: &str) {
-    nav_pref_set(store, ada, ws, Some(id), None, 5)
+async fn test_sets_pick(store: &Store, test: &Principal, ws: &str, id: &str) {
+    nav_pref_set(store, test, ws, Some(id), None, 5)
         .await
         .unwrap();
 }
@@ -363,9 +366,9 @@ async fn team_shared_member_resolves_non_member_denied() {
     let ws = "ws-nav-share";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    // Ada owns + admins (needs `store:doc/*:write` to add a team member — the S4 edge).
-    let ada = principal(
-        "user:ada",
+    // Test owns + admins (needs `store:doc/*:write` to add a team member — the S4 edge).
+    let test = principal(
+        "user:test",
         ws,
         &[GET, LIST, SAVE, DELETE, SHARE, RESOLVE, "store:doc/*:write"],
     );
@@ -374,7 +377,7 @@ async fn team_shared_member_resolves_non_member_denied() {
 
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -391,12 +394,12 @@ async fn team_shared_member_resolves_non_member_denied() {
     ));
 
     // Share to a team Ben belongs to.
-    add_member(store, &ada, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "team:ops", "user:ben")
         .await
         .unwrap();
     nav_share(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         NavVisibility::Team,
@@ -441,16 +444,16 @@ async fn nav_never_widens_strips_and_direct_read_still_denied() {
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
 
-    // Ada (admin) authors a workspace nav listing the `rules` surface AND a dashboard she owns.
-    let ada = principal(
-        "user:ada",
+    // Test (admin) authors a workspace nav listing the `rules` surface AND a dashboard she owns.
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, SHARE, RESOLVE, GET, LIST, DASH_SAVE, DASH_GET],
     );
-    seed_dashboard(store, &ada, ws, "secret", "Secret Board").await;
+    seed_dashboard(store, &test, ws, "secret", "Secret Board").await;
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -463,7 +466,7 @@ async fn nav_never_widens_strips_and_direct_read_still_denied() {
     )
     .await
     .unwrap();
-    nav_share(store, &ada, ws, "ops", NavVisibility::Workspace, None, 2)
+    nav_share(store, &test, ws, "ops", NavVisibility::Workspace, None, 2)
         .await
         .unwrap();
 
@@ -496,7 +499,7 @@ async fn nav_never_widens_strips_and_direct_read_still_denied() {
 
     // AND a DIRECT read of the stripped dashboard is STILL denied server-side (the nav granted
     // nothing — proving the lens). Ben with a dashboard.get cap but no membership is still denied on a
-    // private board; here the board is Ada's private-by-default... actually it is workspace? No: the
+    // private board; here the board is Test's private-by-default... actually it is workspace? No: the
     // nav is workspace; the dashboard `secret` stayed PRIVATE (only shared the nav). So even a
     // dashboard.get-holding ben is denied the board by gate 3.
     let ben_with_dashget = principal("user:ben2", ws, &[RESOLVE, DASH_GET]);
@@ -518,39 +521,39 @@ async fn resolution_precedence_pick_over_team_over_default_over_fallback() {
     let ws = "ws-nav-prec";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, SHARE, RESOLVE, GET, LIST, DELETE, "store:doc/*:write"],
     );
 
     // Empty state: no nav at all → fallback (never blank).
     assert_eq!(
-        nav_resolve(&node, &ada, ws).await.unwrap().source,
+        nav_resolve(&node, &test, ws).await.unwrap().source,
         NavResolvedSource::Fallback
     );
 
     // A workspace-default nav → resolves to WorkspaceDefault.
-    nav_save(store, &ada, ws, "wsdef", "WS Default", vec![], 1)
+    nav_save(store, &test, ws, "wsdef", "WS Default", vec![], 1)
         .await
         .unwrap();
-    nav_set_default(store, &ada, ws, "wsdef", 2).await.unwrap();
-    assert_eq!(nav_resolve(&node, &ada, ws).await.unwrap().nav_id, "wsdef");
+    nav_set_default(store, &test, ws, "wsdef", 2).await.unwrap();
+    assert_eq!(nav_resolve(&node, &test, ws).await.unwrap().nav_id, "wsdef");
     assert_eq!(
-        nav_resolve(&node, &ada, ws).await.unwrap().source,
+        nav_resolve(&node, &test, ws).await.unwrap().source,
         NavResolvedSource::WorkspaceDefault
     );
 
-    // A team-shared nav Ada belongs to → beats the default.
-    nav_save(store, &ada, ws, "teamnav", "Team", vec![], 3)
+    // A team-shared nav Test belongs to → beats the default.
+    nav_save(store, &test, ws, "teamnav", "Team", vec![], 3)
         .await
         .unwrap();
-    add_member(store, &ada, ws, "team:ops", "user:ada")
+    add_member(store, &test, ws, "team:ops", "user:test")
         .await
         .unwrap();
     nav_share(
         store,
-        &ada,
+        &test,
         ws,
         "teamnav",
         NavVisibility::Team,
@@ -559,24 +562,24 @@ async fn resolution_precedence_pick_over_team_over_default_over_fallback() {
     )
     .await
     .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.source, NavResolvedSource::Team);
     assert_eq!(r.nav_id, "teamnav");
 
     // A personal pick → beats the team share.
-    nav_save(store, &ada, ws, "mine", "Mine", vec![], 5)
+    nav_save(store, &test, ws, "mine", "Mine", vec![], 5)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, Some("mine"), None, 6)
+    nav_pref_set(store, &test, ws, Some("mine"), None, 6)
         .await
         .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.source, NavResolvedSource::Pick);
     assert_eq!(r.nav_id, "mine");
 
     // A stale pick (deleted nav) falls through to the next tier, not an error.
-    nav_delete(store, &ada, ws, "mine", 7).await.unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    nav_delete(store, &test, ws, "mine", 7).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(
         r.source,
         NavResolvedSource::Team,
@@ -591,8 +594,8 @@ async fn tag_group_expands_dynamically_and_respects_reachability() {
     let ws = "ws-nav-taggroup";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[
             SAVE,
@@ -606,12 +609,12 @@ async fn tag_group_expands_dynamically_and_respects_reachability() {
         ],
     );
 
-    // Two dashboards Ada owns; a nav with a tag-group over `site`.
-    seed_dashboard(store, &ada, ws, "plant-1", "Plant 1").await;
-    seed_dashboard(store, &ada, ws, "plant-2", "Plant 2").await;
+    // Two dashboards Test owns; a nav with a tag-group over `site`.
+    seed_dashboard(store, &test, ws, "plant-1", "Plant 1").await;
+    seed_dashboard(store, &test, ws, "plant-2", "Plant 2").await;
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "sites",
         "Sites",
@@ -626,20 +629,20 @@ async fn tag_group_expands_dynamically_and_respects_reachability() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, Some("sites"), None, 2)
+    nav_pref_set(store, &test, ws, Some("sites"), None, 2)
         .await
         .unwrap();
 
     // Before tagging: the tag-group is empty (no dashboard carries a `site` facet).
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert!(grp.items.is_empty(), "no tags yet → empty group");
 
     // Tag plant-1 with `site` → it appears on re-resolve (no nav edit).
-    let prov = Provenance::new(3, "user:ada", TagSource::Human);
+    let prov = Provenance::new(3, "user:test", TagSource::Human);
     tags_add(
         store,
-        &ada,
+        &test,
         ws,
         "dashboard:plant-1",
         &Tag::new("site", json!("plant-1")),
@@ -647,21 +650,21 @@ async fn tag_group_expands_dynamically_and_respects_reachability() {
     )
     .await
     .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 1);
     assert_eq!(grp.items[0].dashboard, "dashboard:plant-1");
 
     // Untag → it disappears.
-    lb_host::tags_remove(store, &ada, ws, "dashboard:plant-1", "site", None)
+    lb_host::tags_remove(store, &test, ws, "dashboard:plant-1", "site", None)
         .await
         .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert!(grp.items.is_empty(), "untagged → gone");
 
     // A tag-group only surfaces dashboards the caller can READ: tag a dashboard owned by someone
-    // else + not shared, and it does not appear for Ada... (build it as Ben's private board).
+    // else + not shared, and it does not appear for Test... (build it as Ben's private board).
     let ben = principal("user:ben", ws, &[DASH_SAVE, "mcp:tags.add:call"]);
     seed_dashboard(store, &ben, ws, "ben-board", "Ben Board").await;
     tags_add(
@@ -674,7 +677,7 @@ async fn tag_group_expands_dynamically_and_respects_reachability() {
     )
     .await
     .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert!(
         !grp.items
@@ -700,14 +703,14 @@ async fn member_owns_own_pref_cannot_touch_anothers() {
         "somepick"
     );
 
-    // Ada's pick is independent — Ben's write never touched it (keyed by principal sub).
-    let ada = principal("user:ada", ws, &[RESOLVE]);
-    assert!(nav_pref_get(&store, &ada, ws)
+    // Test's pick is independent — Ben's write never touched it (keyed by principal sub).
+    let test = principal("user:test", ws, &[RESOLVE]);
+    assert!(nav_pref_get(&store, &test, ws)
         .await
         .unwrap()
         .active
         .is_empty());
-    nav_pref_set(&store, &ada, ws, Some("adapick"), None, 2)
+    nav_pref_set(&store, &test, ws, Some("adapick"), None, 2)
         .await
         .unwrap();
     // Ben's is still his own, unchanged.
@@ -716,7 +719,7 @@ async fn member_owns_own_pref_cannot_touch_anothers() {
         "somepick"
     );
     assert_eq!(
-        nav_pref_get(&store, &ada, ws).await.unwrap().active,
+        nav_pref_get(&store, &test, ws).await.unwrap().active,
         "adapick"
     );
 }
@@ -728,10 +731,10 @@ async fn group_children_are_stripped_independently() {
     let ws = "ws-nav-group";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal("user:ada", ws, &[SAVE, RESOLVE]);
+    let test = principal("user:test", ws, &[SAVE, RESOLVE]);
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "admin",
         "Admin",
@@ -746,12 +749,12 @@ async fn group_children_are_stripped_independently() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, Some("admin"), None, 2)
+    nav_pref_set(store, &test, ws, Some("admin"), None, 2)
         .await
         .unwrap();
 
-    // Ada holds RESOLVE but NOT rules.run → inside the group, `rules` strips, `channels` stays.
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    // Test holds RESOLVE but NOT rules.run → inside the group, `rules` strips, `channels` stays.
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     let surfaces: Vec<&str> = grp.items.iter().map(|i| i.surface.as_str()).collect();
     assert_eq!(
@@ -761,7 +764,7 @@ async fn group_children_are_stripped_independently() {
     );
 
     // With rules.run, `rules` survives too.
-    let ada2 = principal("user:ada", ws, &[SAVE, RESOLVE, RULES_RUN, DASH_LIST]);
+    let ada2 = principal("user:test", ws, &[SAVE, RESOLVE, RULES_RUN, DASH_LIST]);
     let r = nav_resolve(&node, &ada2, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 2, "both survive with the cap");
@@ -774,15 +777,15 @@ async fn share_roster_lists_and_revokes_team_shares() {
     let ws = "ws-nav-shares";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[GET, LIST, SAVE, SHARE, RESOLVE, "store:doc/*:write"],
     );
 
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -793,21 +796,21 @@ async fn share_roster_lists_and_revokes_team_shares() {
     .unwrap();
 
     // Empty roster before any share.
-    assert!(nav_list_shares(store, &ada, ws, "ops")
+    assert!(nav_list_shares(store, &test, ws, "ops")
         .await
         .unwrap()
         .is_empty());
 
     // Share to TWO teams (each call writes one edge; the underlying relate is multi-edge).
-    add_member(store, &ada, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "team:ops", "user:ben")
         .await
         .unwrap();
-    add_member(store, &ada, ws, "team:eng", "user:cleo")
+    add_member(store, &test, ws, "team:eng", "user:cleo")
         .await
         .unwrap();
     nav_share(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         NavVisibility::Team,
@@ -818,7 +821,7 @@ async fn share_roster_lists_and_revokes_team_shares() {
     .unwrap();
     nav_share(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         NavVisibility::Team,
@@ -829,7 +832,7 @@ async fn share_roster_lists_and_revokes_team_shares() {
     .unwrap();
 
     // The roster reflects both — order unspecified, so compare as a set.
-    let shares = nav_list_shares(store, &ada, ws, "ops").await.unwrap();
+    let shares = nav_list_shares(store, &test, ws, "ops").await.unwrap();
     let mut sorted = shares.clone();
     sorted.sort();
     assert_eq!(sorted, vec!["team:eng", "team:ops"]);
@@ -841,10 +844,10 @@ async fn share_roster_lists_and_revokes_team_shares() {
     assert_eq!(nav_resolve(&node, &cleo, ws).await.unwrap().nav_id, "ops");
 
     // Revoke the ops share → roster drops it; ben stops resolving, cleo (still in team:eng) keeps it.
-    nav_unshare(store, &ada, ws, "ops", "team:ops", 4)
+    nav_unshare(store, &test, ws, "ops", "team:ops", 4)
         .await
         .unwrap();
-    let shares = nav_list_shares(store, &ada, ws, "ops").await.unwrap();
+    let shares = nav_list_shares(store, &test, ws, "ops").await.unwrap();
     assert_eq!(shares, vec!["team:eng"]);
 
     assert_eq!(
@@ -865,7 +868,7 @@ async fn share_roster_lists_and_revokes_team_shares() {
     ));
 
     // Re-unshare is idempotent (revoking a never-/already-revoked edge is a no-op tombstone).
-    nav_unshare(store, &ada, ws, "ops", "team:ops", 5)
+    nav_unshare(store, &test, ws, "ops", "team:ops", 5)
         .await
         .unwrap();
 }
@@ -874,15 +877,15 @@ async fn share_roster_lists_and_revokes_team_shares() {
 async fn unshare_and_list_shares_denied_without_cap() {
     let ws = "ws-nav-shares-deny";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
     let nobody = principal("user:nobody", ws, &[]);
 
-    nav_save(&store, &ada, ws, "ops", "Ops", vec![], 1)
+    nav_save(&store, &test, ws, "ops", "Ops", vec![], 1)
         .await
         .unwrap();
     nav_share(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         NavVisibility::Team,
@@ -907,7 +910,7 @@ async fn unshare_and_list_shares_denied_without_cap() {
     ));
     // The share edge survived — the deny left no mutation.
     assert_eq!(
-        nav_list_shares(&store, &ada, ws, "ops").await.unwrap(),
+        nav_list_shares(&store, &test, ws, "ops").await.unwrap(),
         vec!["team:ops"]
     );
 }
@@ -916,18 +919,18 @@ async fn unshare_and_list_shares_denied_without_cap() {
 async fn list_shares_and_unshare_owner_only_and_workspace_walled() {
     let ws = "ws-nav-shares-own";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
     // A same-workspace peer who holds the share cap but is NOT the owner.
     let mallory = principal("user:mallory", ws, ALL);
     // A cross-workspace caller who owns a same-id nav over there.
     let ben = principal("user:ben", "ws-b", ALL);
 
-    nav_save(&store, &ada, ws, "ops", "Ops", vec![], 1)
+    nav_save(&store, &test, ws, "ops", "Ops", vec![], 1)
         .await
         .unwrap();
     nav_share(
         &store,
-        &ada,
+        &test,
         ws,
         "ops",
         NavVisibility::Team,
@@ -968,7 +971,7 @@ async fn list_shares_and_unshare_owner_only_and_workspace_walled() {
     ));
     // ws-A's share is untouched by the cross-ws attempt.
     assert_eq!(
-        nav_list_shares(&store, &ada, ws, "ops").await.unwrap(),
+        nav_list_shares(&store, &test, ws, "ops").await.unwrap(),
         vec!["team:ops"]
     );
 }
@@ -989,7 +992,7 @@ async fn hidden_set_denied_without_admin_cap() {
         NavError::Denied
     ));
     // Nothing persisted — the admin read still sees an empty set.
-    let admin = principal("user:ada", ws, &[SAVE, RESOLVE]);
+    let admin = principal("user:test", ws, &[SAVE, RESOLVE]);
     assert!(nav_hidden_get(&store, &admin, ws)
         .await
         .unwrap()
@@ -1008,10 +1011,10 @@ async fn hidden_set_denied_without_admin_cap() {
 async fn hidden_set_is_workspace_walled() {
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal("user:ada", "ws-a", &[SAVE, RESOLVE]);
+    let test = principal("user:test", "ws-a", &[SAVE, RESOLVE]);
     let ben = principal("user:ben", "ws-b", &[SAVE, RESOLVE]);
 
-    nav_hidden_set(store, &ada, "ws-a", vec!["dashboards".into()], 1)
+    nav_hidden_set(store, &test, "ws-a", vec!["dashboards".into()], 1)
         .await
         .unwrap();
 
@@ -1024,8 +1027,8 @@ async fn hidden_set_is_workspace_walled() {
     // And his resolve echoes no hidden refs.
     let r = nav_resolve(&node, &ben, "ws-b").await.unwrap();
     assert!(r.hidden.is_empty());
-    // Ada's ws-A resolve echoes hers — even on the fallback tier (no nav authored at all).
-    let r = nav_resolve(&node, &ada, "ws-a").await.unwrap();
+    // Test's ws-A resolve echoes hers — even on the fallback tier (no nav authored at all).
+    let r = nav_resolve(&node, &test, "ws-a").await.unwrap();
     assert_eq!(r.source, NavResolvedSource::Fallback);
     assert_eq!(r.hidden, vec!["dashboards".to_string()]);
 }
@@ -1038,15 +1041,15 @@ async fn hide_strips_menu_but_never_blocks_direct_access() {
     let ws = "ws-nav-hide-lens";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, SHARE, RESOLVE, GET, DASH_SAVE, DASH_GET, RULES_RUN],
     );
-    seed_dashboard(store, &ada, ws, "ops-board", "Ops Board").await;
+    seed_dashboard(store, &test, ws, "ops-board", "Ops Board").await;
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -1059,18 +1062,18 @@ async fn hide_strips_menu_but_never_blocks_direct_access() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 2)
+    nav_pref_set(store, &test, ws, Some("ops"), None, 2)
         .await
         .unwrap();
 
-    // Ada holds every cap — before the hide, all three entries resolve.
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    // Test holds every cap — before the hide, all three entries resolve.
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.items.len(), 3);
 
     // The admin hides the `rules` surface and the dashboard.
     nav_hidden_set(
         store,
-        &ada,
+        &test,
         ws,
         vec!["rules".into(), "dashboard:ops-board".into()],
         3,
@@ -1079,7 +1082,7 @@ async fn hide_strips_menu_but_never_blocks_direct_access() {
     .unwrap();
 
     // Both are STRIPPED from the resolved menu (a personal-pick tier), channels survives.
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.source, NavResolvedSource::Pick);
     let surfaces: Vec<&str> = r.items.iter().map(|i| i.surface.as_str()).collect();
     assert!(surfaces.contains(&"channels"));
@@ -1093,7 +1096,7 @@ async fn hide_strips_menu_but_never_blocks_direct_access() {
 
     // AND the direct read of the hidden dashboard still succeeds — hiding blocked NOTHING.
     assert_eq!(
-        lb_host::dashboard_get(store, &ada, ws, "ops-board")
+        lb_host::dashboard_get(store, &test, ws, "ops-board")
             .await
             .unwrap()
             .title,
@@ -1107,14 +1110,14 @@ async fn hide_applies_inside_groups_and_at_every_tier() {
     let ws = "ws-nav-hide-tiers";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, SHARE, RESOLVE, GET, "store:doc/*:write"],
     );
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "grouped",
         "Grouped",
@@ -1129,27 +1132,27 @@ async fn hide_applies_inside_groups_and_at_every_tier() {
     )
     .await
     .unwrap();
-    nav_hidden_set(store, &ada, ws, vec!["inbox".into()], 2)
+    nav_hidden_set(store, &test, ws, vec!["inbox".into()], 2)
         .await
         .unwrap();
 
     // Workspace-default tier.
-    nav_set_default(store, &ada, ws, "grouped", 3)
+    nav_set_default(store, &test, ws, "grouped", 3)
         .await
         .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.source, NavResolvedSource::WorkspaceDefault);
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     let surfaces: Vec<&str> = grp.items.iter().map(|i| i.surface.as_str()).collect();
     assert_eq!(surfaces, vec!["channels"], "hidden child stripped in group");
 
-    // Team tier — same nav shared to a team ada belongs to; the strip result is identical.
-    add_member(store, &ada, ws, "team:ops", "user:ada")
+    // Team tier — same nav shared to a team test belongs to; the strip result is identical.
+    add_member(store, &test, ws, "team:ops", "user:test")
         .await
         .unwrap();
     nav_share(
         store,
-        &ada,
+        &test,
         ws,
         "grouped",
         NavVisibility::Team,
@@ -1158,7 +1161,7 @@ async fn hide_applies_inside_groups_and_at_every_tier() {
     )
     .await
     .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.source, NavResolvedSource::Team);
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 1, "hidden child stripped at team tier too");
@@ -1169,33 +1172,33 @@ async fn hide_applies_inside_groups_and_at_every_tier() {
 async fn hidden_set_bounds_rejected() {
     let ws = "ws-nav-hide-bounds";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[SAVE, RESOLVE]);
+    let test = principal("user:test", ws, &[SAVE, RESOLVE]);
     let too_many: Vec<String> = (0..(NAV_MAX_HIDDEN + 1)).map(|i| format!("s{i}")).collect();
     assert!(matches!(
-        nav_hidden_set(&store, &ada, ws, too_many, 1)
+        nav_hidden_set(&store, &test, ws, too_many, 1)
             .await
             .unwrap_err(),
         NavError::BadInput(_)
     ));
     assert!(matches!(
-        nav_hidden_set(&store, &ada, ws, vec!["  ".into()], 1)
+        nav_hidden_set(&store, &test, ws, vec!["  ".into()], 1)
             .await
             .unwrap_err(),
         NavError::BadInput(_)
     ));
     // LWW replace + clear: set → replace → empty clears.
-    nav_hidden_set(&store, &ada, ws, vec!["rules".into()], 2)
+    nav_hidden_set(&store, &test, ws, vec!["rules".into()], 2)
         .await
         .unwrap();
-    nav_hidden_set(&store, &ada, ws, vec!["inbox".into()], 3)
+    nav_hidden_set(&store, &test, ws, vec!["inbox".into()], 3)
         .await
         .unwrap();
     assert_eq!(
-        nav_hidden_get(&store, &ada, ws).await.unwrap().hidden,
+        nav_hidden_get(&store, &test, ws).await.unwrap().hidden,
         vec!["inbox".to_string()]
     );
-    nav_hidden_set(&store, &ada, ws, vec![], 4).await.unwrap();
-    assert!(nav_hidden_get(&store, &ada, ws)
+    nav_hidden_set(&store, &test, ws, vec![], 4).await.unwrap();
+    assert!(nav_hidden_get(&store, &test, ws)
         .await
         .unwrap()
         .hidden
@@ -1209,10 +1212,10 @@ async fn pins_resolve_ordered_cap_stripped_and_never_mutated() {
     let ws = "ws-nav-pins";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal("user:ada", ws, &[SAVE, RESOLVE, DASH_SAVE, DASH_GET]);
-    seed_dashboard(store, &ada, ws, "fav", "Fav Board").await;
+    let test = principal("user:test", ws, &[SAVE, RESOLVE, DASH_SAVE, DASH_GET]);
+    seed_dashboard(store, &test, ws, "fav", "Fav Board").await;
 
-    // Ben pins a surface + Ada's (private, unreadable-to-him) dashboard. No nav exists → fallback.
+    // Ben pins a surface + Test's (private, unreadable-to-him) dashboard. No nav exists → fallback.
     let ben = principal("user:ben", ws, &[RESOLVE, DASH_GET]);
     nav_pref_set(
         store,
@@ -1236,10 +1239,10 @@ async fn pins_resolve_ordered_cap_stripped_and_never_mutated() {
         vec!["channels".to_string(), "dashboard:fav".to_string()]
     );
 
-    // Ada resolves her own pins — both readable, member order preserved.
+    // Test resolves her own pins — both readable, member order preserved.
     nav_pref_set(
         store,
-        &ada,
+        &test,
         ws,
         None,
         Some(vec!["dashboard:fav".into(), "channels".into()]),
@@ -1247,7 +1250,7 @@ async fn pins_resolve_ordered_cap_stripped_and_never_mutated() {
     )
     .await
     .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let refs: Vec<String> = r
         .pinned
         .iter()
@@ -1262,10 +1265,13 @@ async fn pins_resolve_ordered_cap_stripped_and_never_mutated() {
     assert_eq!(refs, vec!["dashboard:fav", "channels"], "member order kept");
 
     // `pinned: None` (an active-pick-only write) leaves pins untouched.
-    nav_pref_set(store, &ada, ws, Some(""), None, 3)
+    nav_pref_set(store, &test, ws, Some(""), None, 3)
         .await
         .unwrap();
-    assert_eq!(nav_pref_get(store, &ada, ws).await.unwrap().pinned.len(), 2);
+    assert_eq!(
+        nav_pref_get(store, &test, ws).await.unwrap().pinned.len(),
+        2
+    );
 }
 
 /// Hide beats pin: an admin-hidden ref is stripped even from the member's pinned section; un-hiding
@@ -1275,26 +1281,26 @@ async fn hide_beats_pin_and_unhide_restores() {
     let ws = "ws-nav-hidepin";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal("user:ada", ws, &[SAVE, RESOLVE]);
+    let test = principal("user:test", ws, &[SAVE, RESOLVE]);
 
-    nav_pref_set(store, &ada, ws, Some(""), Some(vec!["channels".into()]), 1)
+    nav_pref_set(store, &test, ws, Some(""), Some(vec!["channels".into()]), 1)
         .await
         .unwrap();
-    assert_eq!(nav_resolve(&node, &ada, ws).await.unwrap().pinned.len(), 1);
+    assert_eq!(nav_resolve(&node, &test, ws).await.unwrap().pinned.len(), 1);
 
     // Hide the pinned surface → the pin strips (hide beats pin).
-    nav_hidden_set(store, &ada, ws, vec!["channels".into()], 2)
+    nav_hidden_set(store, &test, ws, vec!["channels".into()], 2)
         .await
         .unwrap();
-    assert!(nav_resolve(&node, &ada, ws)
+    assert!(nav_resolve(&node, &test, ws)
         .await
         .unwrap()
         .pinned
         .is_empty());
 
     // Un-hide → the pin is back, with NO write to nav_pref in between.
-    nav_hidden_set(store, &ada, ws, vec![], 3).await.unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    nav_hidden_set(store, &test, ws, vec![], 3).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.pinned.len(), 1);
     assert_eq!(r.pinned[0].surface, "channels");
 }
@@ -1304,10 +1310,10 @@ async fn hide_beats_pin_and_unhide_restores() {
 async fn pins_member_owned_and_bounded() {
     let ws = "ws-nav-pin-bounds";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[RESOLVE]);
+    let test = principal("user:test", ws, &[RESOLVE]);
     let ben = principal("user:ben", ws, &[RESOLVE]);
 
-    nav_pref_set(&store, &ada, ws, Some(""), Some(vec!["rules".into()]), 1)
+    nav_pref_set(&store, &test, ws, Some(""), Some(vec!["rules".into()]), 1)
         .await
         .unwrap();
     // Ben's pins are independent (keyed by the principal sub — never a body field).
@@ -1320,13 +1326,13 @@ async fn pins_member_owned_and_bounded() {
     // Over the pin cap → rejected, nothing persisted over the old value.
     let too_many: Vec<String> = (0..(NAV_MAX_PINNED + 1)).map(|i| format!("p{i}")).collect();
     assert!(matches!(
-        nav_pref_set(&store, &ada, ws, None, Some(too_many), 2)
+        nav_pref_set(&store, &test, ws, None, Some(too_many), 2)
             .await
             .unwrap_err(),
         NavError::BadInput(_)
     ));
     assert_eq!(
-        nav_pref_get(&store, &ada, ws).await.unwrap().pinned,
+        nav_pref_get(&store, &test, ws).await.unwrap().pinned,
         vec!["rules".to_string()]
     );
 }
@@ -1346,9 +1352,9 @@ async fn admin_never_auto_narrowed_member_still_is() {
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
 
-    // Ada is an ADMIN (holds `members.manage`) AND can author navs. Ben is a plain member.
-    let ada = principal(
-        "user:ada",
+    // Test is an ADMIN (holds `members.manage`) AND can author navs. Ben is a plain member.
+    let test = principal(
+        "user:test",
         ws,
         &[
             MEMBERS_MANAGE,
@@ -1365,7 +1371,7 @@ async fn admin_never_auto_narrowed_member_still_is() {
     // A one-page nav shared to team:ops, AND set as the workspace default — both auto-apply tiers.
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -1374,15 +1380,15 @@ async fn admin_never_auto_narrowed_member_still_is() {
     )
     .await
     .unwrap();
-    add_member(store, &ada, ws, "team:ops", "user:ada")
+    add_member(store, &test, ws, "team:ops", "user:test")
         .await
         .unwrap();
-    add_member(store, &ada, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "team:ops", "user:ben")
         .await
         .unwrap();
     nav_share(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         NavVisibility::Team,
@@ -1391,10 +1397,10 @@ async fn admin_never_auto_narrowed_member_still_is() {
     )
     .await
     .unwrap();
-    nav_set_default(store, &ada, ws, "ops", 3).await.unwrap();
+    nav_set_default(store, &test, ws, "ops", 3).await.unwrap();
 
-    // Ada is an admin → NEITHER the team share NOR the default narrows her. She gets the built-in rail.
-    let rada = nav_resolve(&node, &ada, ws).await.unwrap();
+    // Test is an admin → NEITHER the team share NOR the default narrows her. She gets the built-in rail.
+    let rada = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(
         rada.source,
         NavResolvedSource::Fallback,
@@ -1407,10 +1413,10 @@ async fn admin_never_auto_narrowed_member_still_is() {
     assert_eq!(rben.nav_id, "ops");
 
     // The admin can still OPT IN explicitly: a personal pick (tier 1) is honored even for an admin.
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 4)
+    nav_pref_set(store, &test, ws, Some("ops"), None, 4)
         .await
         .unwrap();
-    let rada2 = nav_resolve(&node, &ada, ws).await.unwrap();
+    let rada2 = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(
         rada2.source,
         NavResolvedSource::Pick,
@@ -1425,8 +1431,8 @@ async fn builtin_pick_sentinel_forces_fallback() {
     let ws = "ws-nav-escape";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[SAVE, SHARE, RESOLVE, GET, LIST, "store:doc/*:write"],
     );
@@ -1435,7 +1441,7 @@ async fn builtin_pick_sentinel_forces_fallback() {
     // A team nav Ben would normally resolve.
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         "Ops",
@@ -1444,12 +1450,12 @@ async fn builtin_pick_sentinel_forces_fallback() {
     )
     .await
     .unwrap();
-    add_member(store, &ada, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "team:ops", "user:ben")
         .await
         .unwrap();
     nav_share(
         store,
-        &ada,
+        &test,
         ws,
         "ops",
         NavVisibility::Team,
@@ -1489,11 +1495,11 @@ async fn builtin_pick_sentinel_forces_fallback() {
 async fn reserved_nav_id_rejected() {
     let ws = "ws-nav-reserved";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[SAVE]);
+    let test = principal("user:test", ws, &[SAVE]);
     assert!(matches!(
         nav_save(
             &store,
-            &ada,
+            &test,
             ws,
             lb_host::NAV_BUILTIN_PICK,
             "nope",
@@ -1506,7 +1512,7 @@ async fn reserved_nav_id_rejected() {
     ));
     // Any `__…__` shape is rejected, not just the one sentinel.
     assert!(matches!(
-        nav_save(&store, &ada, ws, "__anything__", "nope", vec![], 1)
+        nav_save(&store, &test, ws, "__anything__", "nope", vec![], 1)
             .await
             .unwrap_err(),
         NavError::BadInput(_)
@@ -1545,15 +1551,15 @@ fn deepest_group_items(item: &lb_host::NavResolvedItem) -> &[lb_host::NavResolve
 async fn depth_at_cap_accepted_over_cap_rejected() {
     let ws = "ws-nav-depth";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // Exactly at the cap: a group at depth `NAV_MAX_GROUP_DEPTH` holding a leaf. Accepted.
     let at_cap = nest_groups(NAV_MAX_GROUP_DEPTH, surface_item("Channels", "channels"));
-    nav_save(&store, &ada, ws, "deep", "Deep", vec![at_cap.clone()], 1)
+    nav_save(&store, &test, ws, "deep", "Deep", vec![at_cap.clone()], 1)
         .await
         .expect("exactly at the depth cap is valid");
     // Round-trips identically (order + nesting preserved).
-    let got = nav_get(&store, &ada, ws, "deep").await.unwrap();
+    let got = nav_get(&store, &test, ws, "deep").await.unwrap();
     assert_eq!(got.items, vec![at_cap], "deep tree round-trips identically");
 
     // One level deeper: a group at depth `NAV_MAX_GROUP_DEPTH + 1`. Rejected, nothing persists, the
@@ -1562,7 +1568,7 @@ async fn depth_at_cap_accepted_over_cap_rejected() {
         NAV_MAX_GROUP_DEPTH + 1,
         surface_item("Channels", "channels"),
     );
-    let err = nav_save(&store, &ada, ws, "over", "Over", vec![over], 2)
+    let err = nav_save(&store, &test, ws, "over", "Over", vec![over], 2)
         .await
         .unwrap_err();
     match err {
@@ -1574,7 +1580,7 @@ async fn depth_at_cap_accepted_over_cap_rejected() {
     }
     assert!(
         matches!(
-            nav_get(&store, &ada, ws, "over").await.unwrap_err(),
+            nav_get(&store, &test, ws, "over").await.unwrap_err(),
             NavError::NotFound
         ),
         "the over-cap save persisted nothing"
@@ -1587,14 +1593,14 @@ async fn depth_at_cap_accepted_over_cap_rejected() {
 async fn node_cap_and_depth_cap_are_independent() {
     let ws = "ws-nav-wide";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     // One shallow (depth 2) group holding > MAX_ITEMS leaves — over the NODE cap, under the DEPTH cap.
     let leaves: Vec<NavItem> = (0..NAV_MAX_ITEMS)
         .map(|i| surface_item(&format!("s{i}"), "channels"))
         .collect();
     let wide = group_item("Wide", leaves); // group (1) + MAX_ITEMS children = MAX_ITEMS + 1 nodes.
-    let err = nav_save(&store, &ada, ws, "wide", "Wide", vec![wide], 1)
+    let err = nav_save(&store, &test, ws, "wide", "Wide", vec![wide], 1)
         .await
         .unwrap_err();
     match err {
@@ -1614,9 +1620,9 @@ async fn deep_leaf_stripped_but_route_still_reachable() {
     let ws = "ws-nav-deep-strip";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal("user:ada", ws, &[SAVE, RESOLVE]);
+    let test = principal("user:test", ws, &[SAVE, RESOLVE]);
 
-    // A group tree 4 deep whose innermost group holds BOTH `rules` (gated on rules.run, which ada
+    // A group tree 4 deep whose innermost group holds BOTH `rules` (gated on rules.run, which test
     // lacks) and `channels` (always visible). `rules` must strip at depth 4; `channels` survives.
     let inner = group_item(
         "g4",
@@ -1629,25 +1635,25 @@ async fn deep_leaf_stripped_but_route_still_reachable() {
         "g1",
         vec![group_item("g2", vec![group_item("g3", vec![inner])])],
     );
-    nav_save(store, &ada, ws, "deep", "Deep", vec![tree], 1)
+    nav_save(store, &test, ws, "deep", "Deep", vec![tree], 1)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, Some("deep"), None, 2)
+    nav_pref_set(store, &test, ws, Some("deep"), None, 2)
         .await
         .unwrap();
 
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let top = r.items.iter().find(|i| i.kind == "group").unwrap();
     let deepest = deepest_group_items(top);
     let surfaces: Vec<&str> = deepest.iter().map(|i| i.surface.as_str()).collect();
     assert_eq!(
         surfaces,
         vec!["channels"],
-        "the deep `rules` leaf is stripped (ada lacks rules.run); channels survives"
+        "the deep `rules` leaf is stripped (test lacks rules.run); channels survives"
     );
 
     // With rules.run, the deep `rules` leaf survives too — same recursion, more caps.
-    let ada2 = principal("user:ada", ws, &[SAVE, RESOLVE, RULES_RUN]);
+    let ada2 = principal("user:test", ws, &[SAVE, RESOLVE, RULES_RUN]);
     let r = nav_resolve(&node, &ada2, ws).await.unwrap();
     let top = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(
@@ -1664,8 +1670,8 @@ async fn empty_group_pruned_but_deep_survivor_keeps_ancestors() {
     let ws = "ws-nav-prune";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    // Ada holds RESOLVE but NOT rules.run — a `rules`-only subtree strips entirely.
-    let ada = principal("user:ada", ws, &[SAVE, RESOLVE]);
+    // Test holds RESOLVE but NOT rules.run — a `rules`-only subtree strips entirely.
+    let test = principal("user:test", ws, &[SAVE, RESOLVE]);
 
     let nav_items = vec![
         // (a) A whole subtree of only unreachable `rules`, nested 3 deep → must PRUNE entirely.
@@ -1695,14 +1701,14 @@ async fn empty_group_pruned_but_deep_survivor_keeps_ancestors() {
             )],
         ),
     ];
-    nav_save(store, &ada, ws, "prune", "Prune", nav_items, 1)
+    nav_save(store, &test, ws, "prune", "Prune", nav_items, 1)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, Some("prune"), None, 2)
+    nav_pref_set(store, &test, ws, Some("prune"), None, 2)
         .await
         .unwrap();
 
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let labels: Vec<&str> = r.items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         !labels.contains(&"AllStripped"),
@@ -1727,8 +1733,8 @@ async fn hidden_and_tag_group_apply_at_depth() {
     let ws = "ws-nav-depth-hide-tag";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[
             SAVE,
@@ -1742,17 +1748,17 @@ async fn hidden_and_tag_group_apply_at_depth() {
         ],
     );
 
-    // Two dashboards Ada owns, both tagged `site` — the tag-group expansion target.
-    seed_dashboard(store, &ada, ws, "d1", "Board One").await;
-    seed_dashboard(store, &ada, ws, "d2", "Board Two").await;
+    // Two dashboards Test owns, both tagged `site` — the tag-group expansion target.
+    seed_dashboard(store, &test, ws, "d1", "Board One").await;
+    seed_dashboard(store, &test, ws, "d2", "Board Two").await;
     for id in ["d1", "d2"] {
         tags_add(
             store,
-            &ada,
+            &test,
             ws,
             &format!("dashboard:{id}"),
             &Tag::new("site", json!("plant")),
-            &Provenance::new(1, "user:ada", TagSource::Human),
+            &Provenance::new(1, "user:test", TagSource::Human),
         )
         .await
         .unwrap();
@@ -1779,15 +1785,15 @@ async fn hidden_and_tag_group_apply_at_depth() {
             ),
         ],
     )];
-    nav_save(store, &ada, ws, "deep", "Deep", nav_items, 2)
+    nav_save(store, &test, ws, "deep", "Deep", nav_items, 2)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, Some("deep"), None, 3)
+    nav_pref_set(store, &test, ws, Some("deep"), None, 3)
         .await
         .unwrap();
 
     // Before hiding: the nested tag-group expands to a flat group of both boards at its position.
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let outer = r.items.iter().find(|i| i.kind == "group").unwrap();
     let sites = outer
         .items
@@ -1805,10 +1811,10 @@ async fn hidden_and_tag_group_apply_at_depth() {
     );
 
     // Hide the deep `rules` surface: it strips inside the deep `Inner` group at depth, `channels` stays.
-    nav_hidden_set(store, &ada, ws, vec!["rules".into()], 4)
+    nav_hidden_set(store, &test, ws, vec!["rules".into()], 4)
         .await
         .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let outer = r.items.iter().find(|i| i.kind == "group").unwrap();
     let inner = outer.items.iter().find(|i| i.label == "Inner").unwrap();
     let surfaces: Vec<&str> = inner.items.iter().map(|i| i.surface.as_str()).collect();
@@ -1869,10 +1875,10 @@ async fn ext_subref_pin_resolves_and_round_trips() {
     )
     .await;
 
-    let ada = principal("user:ada", ws, &[RESOLVE, EXT_LIST]);
+    let test = principal("user:test", ws, &[RESOLVE, EXT_LIST]);
     nav_pref_set(
         &node.store,
-        &ada,
+        &test,
         ws,
         None,
         Some(vec![
@@ -1884,7 +1890,7 @@ async fn ext_subref_pin_resolves_and_round_trips() {
     .await
     .unwrap();
 
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.pinned.len(), 2, "both declared destinations resolve");
     // Member order preserved, and each carries the ext + destination so `item_ref` rebuilds the ref.
     assert_eq!(r.pinned[0].kind, "ext");
@@ -1900,8 +1906,8 @@ async fn ext_subref_pin_resolves_and_round_trips() {
 async fn ext_subref_pin_on_a_dashboard_destination_opens_the_board() {
     let ws = "ws-nav-subref-dash";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, &[RESOLVE, DASH_SAVE, DASH_GET, EXT_LIST]);
-    seed_dashboard(&node.store, &ada, ws, "site", "Site Board").await;
+    let test = principal("user:test", ws, &[RESOLVE, DASH_SAVE, DASH_GET, EXT_LIST]);
+    seed_dashboard(&node.store, &test, ws, "site", "Site Board").await;
     seed_nav_ext(
         &node,
         ws,
@@ -1920,7 +1926,7 @@ async fn ext_subref_pin_on_a_dashboard_destination_opens_the_board() {
 
     nav_pref_set(
         &node.store,
-        &ada,
+        &test,
         ws,
         None,
         Some(vec!["ext:ems/site-a".into()]),
@@ -1929,7 +1935,7 @@ async fn ext_subref_pin_on_a_dashboard_destination_opens_the_board() {
     .await
     .unwrap();
 
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(r.pinned.len(), 1);
     // It OPENS a board…
     assert_eq!(r.pinned[0].kind, "dashboard");
@@ -1949,18 +1955,18 @@ async fn ext_subref_pins_strip_silently_without_mutating_the_record() {
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     seed_nav_ext(&node, ws, "modbus", vec![nav_item("networks", "Networks")]).await;
 
-    let ada = principal("user:ada", ws, &[RESOLVE, EXT_LIST]);
+    let test = principal("user:test", ws, &[RESOLVE, EXT_LIST]);
     let stored = vec![
         "ext:modbus/networks".to_string(),       // resolves
         "ext:modbus/gone".to_string(),           // manifest no longer declares it
         "ext:nosuch/networks".to_string(),       // ext not installed
         "ext:modbus/networks/net-1".to_string(), // dynamic child — non-goal, strips
     ];
-    nav_pref_set(&node.store, &ada, ws, None, Some(stored.clone()), 1)
+    nav_pref_set(&node.store, &test, ws, None, Some(stored.clone()), 1)
         .await
         .unwrap();
 
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     assert_eq!(
         r.pinned.len(),
         1,
@@ -1969,7 +1975,7 @@ async fn ext_subref_pins_strip_silently_without_mutating_the_record() {
     assert_eq!(r.pinned[0].nav, "networks");
     // The record is untouched by any strip — a reinstall/new manifest restores the pins for free.
     assert_eq!(
-        nav_pref_get(&node.store, &ada, ws).await.unwrap().pinned,
+        nav_pref_get(&node.store, &test, ws).await.unwrap().pinned,
         stored
     );
 }
@@ -2002,10 +2008,10 @@ async fn hiding_one_ext_destination_beats_its_pin_and_spares_the_others() {
     .await
     .unwrap();
 
-    let ada = principal("user:ada", ws, &[RESOLVE, EXT_LIST]);
+    let test = principal("user:test", ws, &[RESOLVE, EXT_LIST]);
     nav_pref_set(
         &node.store,
-        &ada,
+        &test,
         ws,
         None,
         Some(vec![
@@ -2018,7 +2024,7 @@ async fn hiding_one_ext_destination_beats_its_pin_and_spares_the_others() {
     .await
     .unwrap();
 
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     // The hidden destination strips; its SIBLING and the whole-ext pin both survive.
     let refs: Vec<String> = r
         .pinned
@@ -2044,10 +2050,10 @@ async fn ext_subref_pin_without_ext_list_cap_strips_rather_than_faulting() {
     seed_nav_ext(&node, ws, "modbus", vec![nav_item("networks", "Networks")]).await;
 
     // RESOLVE but NOT ext.list.
-    let ada = principal("user:ada", ws, &[RESOLVE]);
+    let test = principal("user:test", ws, &[RESOLVE]);
     nav_pref_set(
         &node.store,
-        &ada,
+        &test,
         ws,
         None,
         Some(vec!["channels".into(), "ext:modbus/networks".into()]),
@@ -2057,7 +2063,7 @@ async fn ext_subref_pin_without_ext_list_cap_strips_rather_than_faulting() {
     .unwrap();
 
     // The menu still resolves (no Denied fault); the unreachable ext pin simply isn't in it.
-    let r = nav_resolve(&node, &ada, ws)
+    let r = nav_resolve(&node, &test, ws)
         .await
         .expect("resolve must not fault");
     assert_eq!(r.pinned.len(), 1);
@@ -2075,8 +2081,8 @@ async fn icon_color_round_trips_and_group_children_inherit() {
     let ws = "ws-nav-icon-color";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
-    let ada = principal(
-        "user:ada",
+    let test = principal(
+        "user:test",
         ws,
         &[
             GET,
@@ -2091,14 +2097,14 @@ async fn icon_color_round_trips_and_group_children_inherit() {
     );
 
     // A real dashboard, tagged, so the tag-group below expands over something reachable.
-    seed_dashboard(store, &ada, ws, "plant", "Plant").await;
+    seed_dashboard(store, &test, ws, "plant", "Plant").await;
     tags_add(
         store,
-        &ada,
+        &test,
         ws,
         "dashboard:plant",
         &Tag::new("site", json!("north")),
-        &Provenance::new(2, "user:ada", TagSource::Human),
+        &Provenance::new(2, "user:test", TagSource::Human),
     )
     .await
     .unwrap();
@@ -2118,7 +2124,7 @@ async fn icon_color_round_trips_and_group_children_inherit() {
 
     nav_save(
         store,
-        &ada,
+        &test,
         ws,
         "colored",
         "Colored",
@@ -2129,16 +2135,16 @@ async fn icon_color_round_trips_and_group_children_inherit() {
     .unwrap();
 
     // Persisted verbatim on the record itself.
-    let got = nav_get(store, &ada, ws, "colored").await.unwrap();
+    let got = nav_get(store, &test, ws, "colored").await.unwrap();
     assert_eq!(got.items[0].icon_color, "#ff8800");
     assert_eq!(got.items[1].icon_color, "#00aaff");
     assert_eq!(got.items[2].icon_color, "#22cc44");
 
     // And echoed through resolve on each resolved kind.
-    nav_pref_set(store, &ada, ws, Some("colored"), None, 4)
+    nav_pref_set(store, &test, ws, Some("colored"), None, 4)
         .await
         .unwrap();
-    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
     let by_kind = |k: &str| -> &NavResolvedItem {
         r.items.iter().find(|i| i.kind == k).expect("kind present")
     };
@@ -2164,12 +2170,12 @@ async fn icon_color_round_trips_and_group_children_inherit() {
 async fn icon_color_over_cap_is_rejected() {
     let ws = "ws-nav-icon-color-cap";
     let node = std::sync::Arc::new(Node::boot().await.unwrap());
-    let ada = principal("user:ada", ws, ALL);
+    let test = principal("user:test", ws, ALL);
 
     let mut item = surface_item("Channels", "channels");
     item.icon_color = "#".repeat(33); // one past MAX_ICON_COLOR_LEN (32)
 
-    let err = nav_save(&node.store, &ada, ws, "toolong", "Too long", vec![item], 1)
+    let err = nav_save(&node.store, &test, ws, "toolong", "Too long", vec![item], 1)
         .await
         .expect_err("over-cap icon color must be rejected");
     assert!(

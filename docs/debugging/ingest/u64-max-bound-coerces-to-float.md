@@ -15,7 +15,7 @@ though committed samples existed. A range of `(0, 100)` worked; `(0, u64::MAX)` 
 ## Reproduce
 
 ```rust
-read(&store, "acme", "m", 0, u64::MAX).await  // → [] even with committed samples
+read(&store, "nube", "m", 0, u64::MAX).await  // → [] even with committed samples
 ```
 The query was `... WHERE seq >= $from AND seq <= $to` with `$to` bound to `u64::MAX`.
 

@@ -85,14 +85,14 @@ separate means an agent's token is stable while the workspace's skill set evolve
 
 ## Example flow
 
-1. Ada authors a skill: `put_skill("coding-scope-writer", version="1.0.0", body="…")`. It exists
-   in ws `acme` but no agent can load it yet — there is no grant.
+1. Test authors a skill: `put_skill("coding-scope-writer", version="1.0.0", body="…")`. It exists
+   in ws `nube` but no agent can load it yet — there is no grant.
 2. A workspace admin calls `grant_skill("coding-scope-writer")` → writes `grant:skill/coding-scope-writer`.
 3. The central AI agent (holding `store:skill/*:read`) calls `load_skill("coding-scope-writer")`.
    Gate 1 ws ✔, gate 2 cap ✔, gate 3 grant exists ✔ → **the body loads.**
 4. Before the grant existed (or after a revoke), the same `load_skill` is **denied** — the skill is
    invisible until/unless the workspace grants it (§6.12).
-5. Ada publishes `coding-scope-writer@1.1.0`. The grant resolves to latest; rollback is loading
+5. Test publishes `coding-scope-writer@1.1.0`. The grant resolves to latest; rollback is loading
    `@1.0.0` explicitly (its record never went away).
 
 ## Testing plan (mandatory categories apply)

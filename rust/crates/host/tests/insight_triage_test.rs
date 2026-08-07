@@ -68,12 +68,12 @@ fn raise_input(dedup_key: &str, ts: u64) -> Value {
     })
 }
 
-/// Seed a real workspace roster: `user:ada` + `user:priya` are members, `team:mechanical` exists
+/// Seed a real workspace roster: `user:test` + `user:priya` are members, `team:mechanical` exists
 /// with priya on it. Real rows through the real writers — no fixtures (CLAUDE §9).
 async fn seed_roster(node: &Arc<Node>, ws: &str) {
-    membership_add_raw(&node.store, ws, "user:ada", 1)
+    membership_add_raw(&node.store, ws, "user:test", 1)
         .await
-        .expect("ada joins");
+        .expect("test joins");
     membership_add_raw(&node.store, ws, "user:priya", 1)
         .await
         .expect("priya joins");
@@ -101,18 +101,18 @@ async fn seed_insight(node: &Arc<Node>, p: &Principal, ws: &str, key: &str, ts: 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_producer_grant_buys_no_triage_write_power() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let full = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &full, "acme", "k1", 1).await;
+    seed_roster(&node, "nube").await;
+    let full = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &full, "nube", "k1", 1).await;
 
     // A pure producer — it may raise, and that is all.
-    let producer = principal("key:nightly-rule", "acme", &[RAISE]);
+    let producer = principal("key:nightly-rule", "nube", &[RAISE]);
     assert!(
         matches!(
             call(
                 &node,
                 &producer,
-                "acme",
+                "nube",
                 "insight.assign",
                 json!({ "id": id, "assignee": "user:priya" })
             )
@@ -126,7 +126,7 @@ async fn a_producer_grant_buys_no_triage_write_power() {
             call(
                 &node,
                 &producer,
-                "acme",
+                "nube",
                 "insight.comment",
                 json!({ "id": id, "text": "mine now", "ts": 2 })
             )
@@ -137,7 +137,7 @@ async fn a_producer_grant_buys_no_triage_write_power() {
     );
 
     // And the record is untouched — the deny happened before any write.
-    let got = call(&node, &full, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &full, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert!(got.get("assigned_to").is_none(), "still unassigned");
@@ -150,17 +150,17 @@ async fn a_producer_grant_buys_no_triage_write_power() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn deny_is_identical_for_a_real_id_and_a_fictional_one() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let full = principal("user:ada", "acme", ALL);
-    let real = seed_insight(&node, &full, "acme", "k1", 1).await;
+    seed_roster(&node, "nube").await;
+    let full = principal("user:test", "nube", ALL);
+    let real = seed_insight(&node, &full, "nube", "k1", 1).await;
 
     // A reader: may look, may not touch.
-    let reader = principal("user:bob", "acme", &[GET, LIST]);
+    let reader = principal("user:bob", "nube", &[GET, LIST]);
     for tool in ["insight.assign", "insight.comment"] {
         let args =
             |id: &str| json!({ "id": id, "assignee": "user:priya", "text": "note", "ts": 2 });
-        let on_real = call(&node, &reader, "acme", tool, args(&real)).await;
-        let on_fake = call(&node, &reader, "acme", tool, args("no-such-id-at-all")).await;
+        let on_real = call(&node, &reader, "nube", tool, args(&real)).await;
+        let on_fake = call(&node, &reader, "nube", tool, args("no-such-id-at-all")).await;
         assert_eq!(
             format!("{on_real:?}"),
             format!("{on_fake:?}"),
@@ -179,8 +179,8 @@ async fn ws_b_cannot_reach_ws_a_triage_state() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     seed_roster(&node, "ws-a").await;
     seed_roster(&node, "ws-b").await;
-    let a = principal("user:ada", "ws-a", ALL);
-    let b = principal("user:ada", "ws-b", ALL);
+    let a = principal("user:test", "ws-a", ALL);
+    let b = principal("user:test", "ws-b", ALL);
 
     let a_id = seed_insight(&node, &a, "ws-a", "k1", 1).await;
     call(
@@ -254,14 +254,14 @@ async fn ws_b_cannot_reach_ws_a_triage_state() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_re_raise_never_touches_the_owner_or_the_thread() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &p, "acme", "rule:no-water-1d:WM-CHU-01", 1).await;
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &p, "nube", "rule:no-water-1d:WM-CHU-01", 1).await;
 
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya" }),
     )
@@ -270,7 +270,7 @@ async fn a_re_raise_never_touches_the_owner_or_the_thread() {
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.comment",
         json!({ "id": id, "text": "Site shut for the long weekend — confirming with facilities.", "ts": 2 }),
     )
@@ -282,7 +282,7 @@ async fn a_re_raise_never_touches_the_owner_or_the_thread() {
         call(
             &node,
             &p,
-            "acme",
+            "nube",
             "insight.raise",
             raise_input("rule:no-water-1d:WM-CHU-01", ts),
         )
@@ -290,7 +290,7 @@ async fn a_re_raise_never_touches_the_owner_or_the_thread() {
         .expect("re-raise ok");
     }
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert_eq!(got["count"], 3, "lifetime count advanced");
@@ -311,15 +311,15 @@ async fn a_re_raise_never_touches_the_owner_or_the_thread() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_re_open_arm_clears_the_lifecycle_but_not_the_human_facts() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
     let key = "rule:no-water-1d:WM-CHU-01";
-    let id = seed_insight(&node, &p, "acme", key, 1).await;
+    let id = seed_insight(&node, &p, "nube", key, 1).await;
 
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya" }),
     )
@@ -328,7 +328,7 @@ async fn the_re_open_arm_clears_the_lifecycle_but_not_the_human_facts() {
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.comment",
         json!({ "id": id, "text": "False alarm last time: site was shut.", "ts": 2 }),
     )
@@ -337,7 +337,7 @@ async fn the_re_open_arm_clears_the_lifecycle_but_not_the_human_facts() {
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.resolve",
         json!({ "id": id, "ts": 3 }),
     )
@@ -345,18 +345,18 @@ async fn the_re_open_arm_clears_the_lifecycle_but_not_the_human_facts() {
     .expect("resolve ok");
 
     // Confirm the resolve actually stamped the lifecycle, or the assertion below proves nothing.
-    let resolved = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let resolved = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert_eq!(resolved["status"], "resolved");
-    assert_eq!(resolved["status_by"], "user:ada");
+    assert_eq!(resolved["status_by"], "user:test");
 
     // Two weeks later the meter genuinely fails — same key, so this is the re-open arm.
-    call(&node, &p, "acme", "insight.raise", raise_input(key, 4))
+    call(&node, &p, "nube", "insight.raise", raise_input(key, 4))
         .await
         .expect("re-raise ok");
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert_eq!(got["status"], "open", "re-opened");
@@ -387,18 +387,18 @@ async fn the_re_open_arm_clears_the_lifecycle_but_not_the_human_facts() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_raise_body_carrying_triage_fields_is_ignored() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
 
     let mut input = raise_input("k1", 1);
     input["assigned_to"] = json!("user:attacker");
     input["comments"] = json!([{ "seq": 1, "text": "injected", "author": "user:victim", "ts": 1 }]);
-    let out = call(&node, &p, "acme", "insight.raise", input)
+    let out = call(&node, &p, "nube", "insight.raise", input)
         .await
         .expect("raise still succeeds — the extra keys are simply not part of the input shape");
     let id = out["id"].as_str().unwrap();
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .expect("get ok");
     assert!(
@@ -419,9 +419,9 @@ async fn a_raise_body_carrying_triage_fields_is_ignored() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn assign_reassign_unassign_round_trips_and_is_idempotent() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &p, "acme", "k1", 1).await;
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &p, "nube", "k1", 1).await;
 
     let assign = |assignee: Value| {
         let id = id.clone();
@@ -431,7 +431,7 @@ async fn assign_reassign_unassign_round_trips_and_is_idempotent() {
             call(
                 &node,
                 &p,
-                "acme",
+                "nube",
                 "insight.assign",
                 json!({ "id": id, "assignee": assignee }),
             )
@@ -441,28 +441,28 @@ async fn assign_reassign_unassign_round_trips_and_is_idempotent() {
     let owner = |got: &Value| got.get("assigned_to").cloned().unwrap_or(Value::Null);
 
     assign(json!("user:priya")).await.expect("assign ok");
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     assert_eq!(owner(&got), json!("user:priya"));
 
     // Idempotent: the same assignee again is a no-op success.
     assign(json!("user:priya")).await.expect("idempotent");
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     assert_eq!(owner(&got), json!("user:priya"));
 
     // Re-assign to a TEAM — legal from v1 (queue-style ownership).
     assign(json!("team:mechanical")).await.expect("team assign");
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     assert_eq!(owner(&got), json!("team:mechanical"));
 
     // Un-assign.
     assign(Value::Null).await.expect("un-assign ok");
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     assert_eq!(owner(&got), Value::Null, "back in the triage queue");
@@ -474,7 +474,7 @@ async fn assign_reassign_unassign_round_trips_and_is_idempotent() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_assignee_who_is_not_a_member_here_is_refused_opaquely() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
+    seed_roster(&node, "nube").await;
     // A real member of a DIFFERENT workspace — the case a probe would use.
     membership_add_raw(&node.store, "other", "user:zoe", 1)
         .await
@@ -483,8 +483,8 @@ async fn an_assignee_who_is_not_a_member_here_is_refused_opaquely() {
         .await
         .unwrap();
 
-    let p = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &p, "acme", "k1", 1).await;
+    let p = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &p, "nube", "k1", 1).await;
 
     let attempt = |assignee: &str| {
         let id = id.clone();
@@ -495,7 +495,7 @@ async fn an_assignee_who_is_not_a_member_here_is_refused_opaquely() {
             call(
                 &node,
                 &p,
-                "acme",
+                "nube",
                 "insight.assign",
                 json!({ "id": id, "assignee": assignee }),
             )
@@ -523,7 +523,7 @@ async fn an_assignee_who_is_not_a_member_here_is_refused_opaquely() {
     assert!(not_a_subject.is_err(), "a bare string is not a subject");
 
     // And nothing was written by any of the refused attempts.
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     assert!(got.get("assigned_to").is_none(), "still unassigned: {got}");
@@ -533,12 +533,12 @@ async fn an_assignee_who_is_not_a_member_here_is_refused_opaquely() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn assigning_a_missing_insight_errors() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
     let out = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.assign",
         json!({ "id": "nope", "assignee": "user:priya" }),
     )
@@ -550,12 +550,12 @@ async fn assigning_a_missing_insight_errors() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn bulk_assign_reports_per_item_results_and_never_truncates_silently() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
 
     let mut ids = Vec::new();
     for i in 0..3 {
-        ids.push(seed_insight(&node, &p, "acme", &format!("k{i}"), 1).await);
+        ids.push(seed_insight(&node, &p, "nube", &format!("k{i}"), 1).await);
     }
     // One id that isn't real — the partial-failure case a green toast would hide.
     ids.push("not-a-real-id".to_string());
@@ -563,7 +563,7 @@ async fn bulk_assign_reports_per_item_results_and_never_truncates_silently() {
     let out = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.assign",
         json!({ "ids": ids, "assignee": "user:priya" }),
     )
@@ -586,7 +586,7 @@ async fn bulk_assign_reports_per_item_results_and_never_truncates_silently() {
 
     // The 3 real ones really were assigned — a partial failure did not roll back the successes.
     for id in ids.iter().take(3) {
-        let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+        let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
             .await
             .unwrap();
         assert_eq!(got["assigned_to"], "user:priya");
@@ -599,7 +599,7 @@ async fn bulk_assign_reports_per_item_results_and_never_truncates_silently() {
     let err = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.assign",
         json!({ "ids": too_many, "assignee": "user:priya" }),
     )
@@ -620,25 +620,25 @@ async fn bulk_assign_reports_per_item_results_and_never_truncates_silently() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_comment_author_is_host_stamped_never_caller_supplied() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &p, "acme", "k1", 1).await;
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &p, "nube", "k1", 1).await;
 
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.comment",
         json!({ "id": id, "text": "note", "author": "user:someone-else", "ts": 2 }),
     )
     .await
     .expect("comment ok");
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     assert_eq!(
-        got["comments"][0]["author"], "user:ada",
+        got["comments"][0]["author"], "user:test",
         "the author is the principal, not what the body claimed"
     );
 }
@@ -651,25 +651,25 @@ async fn the_comment_author_is_host_stamped_never_caller_supplied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_assigned_to_filter_resolves_none_a_subject_and_me_including_teams() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let ada = principal("user:ada", "acme", ALL);
+    seed_roster(&node, "nube").await;
+    let test = principal("user:test", "nube", ALL);
     // priya is on `team:mechanical` (seeded above); her token drives the "me" view.
-    let priya = principal("user:priya", "acme", ALL);
+    let priya = principal("user:priya", "nube", ALL);
 
-    let unassigned = seed_insight(&node, &ada, "acme", "k-unassigned", 1).await;
-    let to_priya = seed_insight(&node, &ada, "acme", "k-priya", 2).await;
-    let to_team = seed_insight(&node, &ada, "acme", "k-team", 3).await;
-    let to_ada = seed_insight(&node, &ada, "acme", "k-ada", 4).await;
+    let unassigned = seed_insight(&node, &test, "nube", "k-unassigned", 1).await;
+    let to_priya = seed_insight(&node, &test, "nube", "k-priya", 2).await;
+    let to_team = seed_insight(&node, &test, "nube", "k-team", 3).await;
+    let to_test = seed_insight(&node, &test, "nube", "k-test", 4).await;
 
     for (id, assignee) in [
         (&to_priya, "user:priya"),
         (&to_team, "team:mechanical"),
-        (&to_ada, "user:ada"),
+        (&to_test, "user:test"),
     ] {
         call(
             &node,
-            &ada,
-            "acme",
+            &test,
+            "nube",
             "insight.assign",
             json!({ "id": id, "assignee": assignee }),
         )
@@ -691,8 +691,8 @@ async fn the_assigned_to_filter_resolves_none_a_subject_and_me_including_teams()
     // "none" — the triage queue.
     let page = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.list",
         json!({ "assigned_to": "none" }),
     )
@@ -707,8 +707,8 @@ async fn the_assigned_to_filter_resolves_none_a_subject_and_me_including_teams()
     // An explicit subject.
     let page = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.list",
         json!({ "assigned_to": "user:priya" }),
     )
@@ -720,7 +720,7 @@ async fn the_assigned_to_filter_resolves_none_a_subject_and_me_including_teams()
     let page = call(
         &node,
         &priya,
-        "acme",
+        "nube",
         "insight.list",
         json!({ "assigned_to": "me" }),
     )
@@ -735,34 +735,34 @@ async fn the_assigned_to_filter_resolves_none_a_subject_and_me_including_teams()
          the team-subject decision exists to support"
     );
 
-    // "me" for ada = only her own (she is not on the crew).
+    // "me" for test = only her own (she is not on the crew).
     let page = call(
         &node,
-        &ada,
-        "acme",
+        &test,
+        "nube",
         "insight.list",
         json!({ "assigned_to": "me" }),
     )
     .await
     .unwrap();
-    assert_eq!(ids(&page), vec![to_ada.clone()]);
+    assert_eq!(ids(&page), vec![to_test.clone()]);
 }
 
 /// The owner filter composes with the other axes and with keyset paging without breaking the cursor.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_owner_filter_composes_with_status_and_keyset_paging() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
 
     // 5 insights assigned to priya, 3 to nobody; resolve one of priya's.
     let mut priya_ids = Vec::new();
     for i in 0..5 {
-        let id = seed_insight(&node, &p, "acme", &format!("p{i}"), 10 + i).await;
+        let id = seed_insight(&node, &p, "nube", &format!("p{i}"), 10 + i).await;
         call(
             &node,
             &p,
-            "acme",
+            "nube",
             "insight.assign",
             json!({ "id": id, "assignee": "user:priya" }),
         )
@@ -771,12 +771,12 @@ async fn the_owner_filter_composes_with_status_and_keyset_paging() {
         priya_ids.push(id);
     }
     for i in 0..3 {
-        seed_insight(&node, &p, "acme", &format!("u{i}"), 20 + i).await;
+        seed_insight(&node, &p, "nube", &format!("u{i}"), 20 + i).await;
     }
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.resolve",
         json!({ "id": priya_ids[0], "ts": 99 }),
     )
@@ -787,7 +787,7 @@ async fn the_owner_filter_composes_with_status_and_keyset_paging() {
     let page = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.list",
         json!({ "assigned_to": "user:priya", "status": "open" }),
     )
@@ -803,7 +803,7 @@ async fn the_owner_filter_composes_with_status_and_keyset_paging() {
         if !cursor.is_null() {
             q["cursor"] = cursor.clone();
         }
-        let page = call(&node, &p, "acme", "insight.list", q).await.unwrap();
+        let page = call(&node, &p, "nube", "insight.list", q).await.unwrap();
         for item in page["items"].as_array().unwrap() {
             assert_eq!(item["assigned_to"], "user:priya", "every paged row is hers");
             seen.push(item["id"].as_str().unwrap().to_string());
@@ -826,14 +826,14 @@ async fn the_owner_filter_composes_with_status_and_keyset_paging() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn list_carries_the_owner_column_but_never_the_thread() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &p, "acme", "k1", 1).await;
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &p, "nube", "k1", 1).await;
 
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.assign",
         json!({ "id": id, "assignee": "user:priya" }),
     )
@@ -846,7 +846,7 @@ async fn list_carries_the_owner_column_but_never_the_thread() {
         call(
             &node,
             &p,
-            "acme",
+            "nube",
             "insight.comment",
             json!({ "id": id, "text": text, "ts": 10 + i as u64 }),
         )
@@ -854,7 +854,7 @@ async fn list_carries_the_owner_column_but_never_the_thread() {
         .unwrap();
     }
 
-    let page = call(&node, &p, "acme", "insight.list", json!({}))
+    let page = call(&node, &p, "nube", "insight.list", json!({}))
         .await
         .unwrap();
     let row = &page["items"][0];
@@ -867,7 +867,7 @@ async fn list_carries_the_owner_column_but_never_the_thread() {
         "the thread NEVER rides the roster: {row}"
     );
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     let thread = got["comments"].as_array().unwrap();
@@ -888,14 +888,14 @@ async fn list_carries_the_owner_column_but_never_the_thread() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_oversize_comment_is_refused_whole_and_writes_nothing() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &p, "acme", "k1", 1).await;
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &p, "nube", "k1", 1).await;
 
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.comment",
         json!({ "id": id, "text": "a real note", "ts": 2 }),
     )
@@ -906,14 +906,14 @@ async fn an_oversize_comment_is_refused_whole_and_writes_nothing() {
     let err = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.comment",
         json!({ "id": id, "text": huge, "ts": 3 }),
     )
     .await;
     assert!(matches!(err, Err(ToolError::BadInput(_))), "refused loudly");
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     let thread = got["comments"].as_array().unwrap();
@@ -927,7 +927,7 @@ async fn an_oversize_comment_is_refused_whole_and_writes_nothing() {
     assert!(call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.comment",
         json!({ "id": id, "text": "   ", "ts": 4 })
     )
@@ -941,16 +941,16 @@ async fn an_oversize_comment_is_refused_whole_and_writes_nothing() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_count_cap_refuses_the_write_it_does_not_evict_the_oldest() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &p, "acme", "k1", 1).await;
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &p, "nube", "k1", 1).await;
 
     // Fill the thread exactly to the cap.
     for i in 0..lb_insights::MAX_COMMENTS_PER_INSIGHT {
         call(
             &node,
             &p,
-            "acme",
+            "nube",
             "insight.comment",
             json!({ "id": id, "text": format!("note {i}"), "ts": 10 + i as u64 }),
         )
@@ -961,7 +961,7 @@ async fn the_count_cap_refuses_the_write_it_does_not_evict_the_oldest() {
     let err = call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.comment",
         json!({ "id": id, "text": "one too many", "ts": 9_999 }),
     )
@@ -974,7 +974,7 @@ async fn the_count_cap_refuses_the_write_it_does_not_evict_the_oldest() {
         other => panic!("the count cap must REFUSE, not evict — got {other:?}"),
     }
 
-    let got = call(&node, &p, "acme", "insight.get", json!({ "id": id }))
+    let got = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
         .await
         .unwrap();
     let thread = got["comments"].as_array().unwrap();
@@ -1003,15 +1003,15 @@ async fn the_count_cap_refuses_the_write_it_does_not_evict_the_oldest() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn deleting_an_insight_takes_its_comments_with_it() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    seed_roster(&node, "acme").await;
-    let p = principal("user:ada", "acme", ALL);
-    let id = seed_insight(&node, &p, "acme", "k1", 1).await;
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    let id = seed_insight(&node, &p, "nube", "k1", 1).await;
 
     for i in 0..3 {
         call(
             &node,
             &p,
-            "acme",
+            "nube",
             "insight.comment",
             json!({ "id": id, "text": format!("note {i}"), "ts": 10 + i }),
         )
@@ -1020,19 +1020,19 @@ async fn deleting_an_insight_takes_its_comments_with_it() {
     }
     // The thread really is there before the delete, or the assertion after it proves nothing.
     assert_eq!(
-        lb_insights::comments(&node.store, "acme", &id)
+        lb_insights::comments(&node.store, "nube", &id)
             .await
             .unwrap()
             .len(),
         3
     );
 
-    call(&node, &p, "acme", "insight.delete", json!({ "id": id }))
+    call(&node, &p, "nube", "insight.delete", json!({ "id": id }))
         .await
         .expect("delete ok");
 
     assert!(
-        lb_insights::comments(&node.store, "acme", &id)
+        lb_insights::comments(&node.store, "nube", &id)
             .await
             .unwrap()
             .is_empty(),
@@ -1042,10 +1042,10 @@ async fn deleting_an_insight_takes_its_comments_with_it() {
 
     // A long-lived insight, by contrast, keeps its oldest comment indefinitely: re-raise the same
     // key many times and note 0 is still the oldest row.
-    let fresh = seed_insight(&node, &p, "acme", "k1", 50).await;
+    let fresh = seed_insight(&node, &p, "nube", "k1", 50).await;
     assert_ne!(fresh, id, "the delete really removed the old record");
     assert!(
-        lb_insights::comments(&node.store, "acme", &fresh)
+        lb_insights::comments(&node.store, "nube", &fresh)
             .await
             .unwrap()
             .is_empty(),
@@ -1054,18 +1054,18 @@ async fn deleting_an_insight_takes_its_comments_with_it() {
     call(
         &node,
         &p,
-        "acme",
+        "nube",
         "insight.comment",
         json!({ "id": fresh, "text": "oldest", "ts": 51 }),
     )
     .await
     .unwrap();
     for ts in 52..60 {
-        call(&node, &p, "acme", "insight.raise", raise_input("k1", ts))
+        call(&node, &p, "nube", "insight.raise", raise_input("k1", ts))
             .await
             .unwrap();
     }
-    let thread = lb_insights::comments(&node.store, "acme", &fresh)
+    let thread = lb_insights::comments(&node.store, "nube", &fresh)
         .await
         .unwrap();
     assert_eq!(thread.len(), 1);

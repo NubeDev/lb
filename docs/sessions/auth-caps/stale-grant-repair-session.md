@@ -106,7 +106,7 @@ resolver would reject.
 | test | property |
 |---|---|
 | `a_grant_written_after_login_reaches_an_already_minted_token` | **the repair** — denied before the grant, allowed after, same stale token |
-| `a_caller_with_no_durable_grant_is_still_denied_identically` | **no widening** — bob is denied even though a grant row for that *cap* exists (for ada), so a repair keyed on cap rather than subject would fail here |
+| `a_caller_with_no_durable_grant_is_still_denied_identically` | **no widening** — bob is denied even though a grant row for that *cap* exists (for test), so a repair keyed on cap rather than subject would fail here |
 | `a_delegated_principal_is_never_rewidened_from_the_grant_store` | **no resurrection** — the human holds the grant durably; the agent delegated without it stays denied |
 | `the_refreshed_principal_reaches_the_verbs_own_inner_gate` | the repaired identity survives to the verb's **own** cap re-check, not just the dispatcher's |
 

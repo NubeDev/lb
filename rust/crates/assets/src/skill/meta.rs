@@ -18,7 +18,7 @@ pub(crate) const META_TABLE: &str = "skill_meta";
 /// table only holds ids a user actually deprecated.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillMeta {
-    /// The skill id this flag is for (`acme-runbook`).
+    /// The skill id this flag is for (`nube-runbook`).
     pub id: String,
     /// Hidden from `list_skills`/latest resolution when true; a pinned `load_skill(id, version)`
     /// still resolves (rollback/audit).

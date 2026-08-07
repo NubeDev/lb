@@ -58,18 +58,18 @@ fn plural_selects_es_categories() {
     let o = NO_OVERRIDE();
     let one = render_message(
         "notify.new_messages",
-        &json!({ "name": "Ada", "count": 1 }),
+        &json!({ "name": "Test", "count": 1 }),
         &o,
         &es(),
     );
-    assert_eq!(one.text, "Ada te envió un mensaje");
+    assert_eq!(one.text, "Test te envió un mensaje");
     let many = render_message(
         "notify.new_messages",
-        &json!({ "name": "Ada", "count": 3 }),
+        &json!({ "name": "Test", "count": 3 }),
         &o,
         &es(),
     );
-    assert_eq!(many.text, "Ada te envió 3 mensajes");
+    assert_eq!(many.text, "Test te envió 3 mensajes");
 }
 
 #[test]
@@ -142,8 +142,8 @@ fn workspace_override_shadows_builtin() {
         "notify.welcome".to_string(),
         "Hola de nuevo, {name} 👋".to_string(),
     );
-    let r = render_message("notify.welcome", &json!({ "name": "Ada" }), &o, &es());
-    assert_eq!(r.text, "Hola de nuevo, Ada 👋");
+    let r = render_message("notify.welcome", &json!({ "name": "Test" }), &o, &es());
+    assert_eq!(r.text, "Hola de nuevo, Test 👋");
 }
 
 #[test]

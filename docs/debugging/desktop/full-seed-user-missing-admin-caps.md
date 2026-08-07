@@ -1,7 +1,7 @@
-# `full` desktop: seeded `user:ada` logs in but is missing access to (almost) everything
+# `full` desktop: seeded `user:test` logs in but is missing access to (almost) everything
 
 **Symptom.** The `full` standalone desktop binary (`make windows-full` / `make linux-full`)
-boots, prints `full: loopback gateway on http://127.0.0.1:8800 (login as user:ada / acme)`,
+boots, prints `full: loopback gateway on http://127.0.0.1:8800 (login as user:test / nube)`,
 and login succeeds — but the seeded user can't reach most of the app. Every admin surface and
 most authoring surfaces 403. The user *looks* provisioned (login works, a viewer-level read like
 `tools.catalog` returns) but has almost no reach.

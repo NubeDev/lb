@@ -190,7 +190,7 @@ async fn menu_under_persona(
 async fn all_seven_builtins_seed_with_tools_and_pins() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     seed_personas(&node.store).await.expect("seed");
-    let admin = admin_principal("user:ada", "cat-seed");
+    let admin = admin_principal("user:test", "cat-seed");
     for id in [
         "builtin.data-analyst",
         "builtin.flow-author",
@@ -248,7 +248,7 @@ const MENU_CASES: &[(&str, &str, &str)] = &[
 async fn each_persona_narrows_to_its_focus_for_an_admin_caller() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "cat-menu";
-    let admin = admin_principal("user:ada", ws); // holds the FULL surface — the persona must narrow it
+    let admin = admin_principal("user:test", ws); // holds the FULL surface — the persona must narrow it
     setup_catalog(&node, ws, &admin).await;
 
     // Baseline: the admin's full reachable palette (every palette tool it may run, no persona).
@@ -285,7 +285,7 @@ async fn destructive_verbs_are_excluded_from_every_persona_even_for_an_admin() {
     // HOLDS the cap. Advertising a catastrophic verb to a model invites a catastrophic proposal.
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "cat-destructive";
-    let admin = admin_principal("user:ada", ws); // holds workspace.purge etc. (dev login is admin)
+    let admin = admin_principal("user:test", ws); // holds workspace.purge etc. (dev login is admin)
     setup_catalog(&node, ws, &admin).await;
 
     let forbidden = [
@@ -319,7 +319,7 @@ async fn workspace_admin_persona_under_a_member_caller_advertises_nothing_it_lac
     // An admin seeds + grants the personas' pinned skills to the ws (so the member run isn't blocked by
     // a fail-closed pin — the grant is workspace-scoped, read under the derived principal). The DENY we
     // prove is about the persona's admin TOOLS, not its skills.
-    let admin = admin_principal("user:ada", ws);
+    let admin = admin_principal("user:test", ws);
     setup_catalog(&node, ws, &admin).await;
     let member = member_principal("user:mo", ws); // only invoke + catalog
 
@@ -363,7 +363,7 @@ async fn effective_tools(
 async fn rules_author_is_the_union_of_its_parents_plus_its_own() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "cat-extends";
-    let admin = admin_principal("user:ada", ws);
+    let admin = admin_principal("user:test", ws);
     setup_catalog(&node, ws, &admin).await;
 
     // The extends-union at the RECORD level (agent.persona.resolve) — the full allow-list.
@@ -390,7 +390,7 @@ async fn rules_author_is_the_union_of_its_parents_plus_its_own() {
 async fn system_manager_composes_all_six_parents() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "cat-sysmgr";
-    let admin = admin_principal("user:ada", ws);
+    let admin = admin_principal("user:test", ws);
     setup_catalog(&node, ws, &admin).await;
 
     // The full unioned allow-list: a tool from each of the six parents + its own system.* surface.
@@ -432,7 +432,7 @@ async fn the_confusion_fix_the_same_task_narrows_from_the_whole_surface_to_the_f
     // the cure (identity + pinned grounding) is proven in #2's grounding test.
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "cat-confusion";
-    let admin = admin_principal("user:ada", ws);
+    let admin = admin_principal("user:test", ws);
     setup_catalog(&node, ws, &admin).await;
 
     // BEFORE: no persona → the full reachable palette.
@@ -517,7 +517,7 @@ async fn a_ws_b_default_persona_never_affects_a_ws_a_run() {
     // record (persona-session #5). ws-B defaulting to a narrow persona must NOT narrow (or widen) a
     // ws-A run — the pick is walled.
     let node = Arc::new(Node::boot().await.expect("node boots"));
-    let admin_a = admin_principal("user:ada", "ws-a");
+    let admin_a = admin_principal("user:test", "ws-a");
     let admin_b = admin_principal("user:bo", "ws-b");
     setup_catalog(&node, "ws-a", &admin_a).await;
     setup_catalog(&node, "ws-b", &admin_b).await;

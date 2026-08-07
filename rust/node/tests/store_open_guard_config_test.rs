@@ -61,7 +61,7 @@ async fn boot_fails_loudly_when_the_store_will_not_fit_and_the_override_boots_it
         for k in 0..16u64 {
             lb_store::write(
                 &store,
-                "acme",
+                "nube",
                 "kv",
                 &format!("k{k}"),
                 &serde_json::json!({ "pad": "x".repeat(512) }),
@@ -103,7 +103,7 @@ async fn boot_fails_loudly_when_the_store_will_not_fit_and_the_override_boots_it
     forced.store_available_ram_bytes = Some(1024);
     forced.store_open_unguarded = true;
     let node = boot_full(forced).await.expect("the override boots");
-    let v: Option<serde_json::Value> = lb_store::read(&node.node.store, "acme", "kv", "k5")
+    let v: Option<serde_json::Value> = lb_store::read(&node.node.store, "nube", "kv", "k5")
         .await
         .unwrap();
     assert!(

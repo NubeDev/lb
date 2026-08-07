@@ -62,7 +62,7 @@ fn tiny_png() -> Vec<u8> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn upload_and_serve_image() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let img = tiny_png();
     let cs = checksum(&img);
 
@@ -70,7 +70,7 @@ async fn upload_and_serve_image() {
     let begin = media_upload_begin(
         &store,
         &p,
-        "acme",
+        "nube",
         "image/png",
         img.len() as u64,
         &cs,
@@ -84,21 +84,21 @@ async fn upload_and_serve_image() {
     assert_eq!(chunks, 1);
 
     // Upload chunk 0
-    chunk_write(&store, "acme", &id, 0, &img).await.unwrap();
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
 
     // Commit
-    let commit = media_upload_commit(&store, &p, "acme", &id, 200)
+    let commit = media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap();
     assert_eq!(commit["ok"], serde_json::json!(true));
 
     // Serve original
-    let served = media_serve(&store, &p, "acme", &id, None).await.unwrap();
+    let served = media_serve(&store, &p, "nube", &id, None).await.unwrap();
     assert_eq!(served.bytes, img);
     assert_eq!(served.mime, "image/png");
 
     // Serve thumb variant
-    let thumb = media_serve(&store, &p, "acme", &id, Some("thumb"))
+    let thumb = media_serve(&store, &p, "nube", &id, Some("thumb"))
         .await
         .unwrap();
     assert_eq!(thumb.mime, "image/jpeg");
@@ -107,14 +107,14 @@ async fn upload_and_serve_image() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn duplicate_chunk_is_idempotent() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let img = tiny_png();
     let cs = checksum(&img);
 
     let begin = media_upload_begin(
         &store,
         &p,
-        "acme",
+        "nube",
         "image/png",
         img.len() as u64,
         &cs,
@@ -126,10 +126,10 @@ async fn duplicate_chunk_is_idempotent() {
     let id = begin["id"].as_str().unwrap().to_string();
 
     // Write chunk 0 twice — idempotent.
-    chunk_write(&store, "acme", &id, 0, &img).await.unwrap();
-    chunk_write(&store, "acme", &id, 0, &img).await.unwrap();
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
 
-    media_upload_commit(&store, &p, "acme", &id, 200)
+    media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap();
 }
@@ -137,13 +137,13 @@ async fn duplicate_chunk_is_idempotent() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn bad_checksum_is_rejected() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let img = tiny_png();
 
     let begin = media_upload_begin(
         &store,
         &p,
-        "acme",
+        "nube",
         "image/png",
         img.len() as u64,
         "wrong-checksum",
@@ -154,9 +154,9 @@ async fn bad_checksum_is_rejected() {
     .unwrap();
     let id = begin["id"].as_str().unwrap().to_string();
 
-    chunk_write(&store, "acme", &id, 0, &img).await.unwrap();
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
 
-    let err = media_upload_commit(&store, &p, "acme", &id, 200)
+    let err = media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::BadChecksum));
@@ -165,12 +165,12 @@ async fn bad_checksum_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn oversize_rejected_at_begin() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
 
     let err = media_upload_begin(
         &store,
         &p,
-        "acme",
+        "nube",
         "image/png",
         999_999_999_999,
         "checksum",
@@ -185,14 +185,14 @@ async fn oversize_rejected_at_begin() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn serve_not_ready_media_is_rejected() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let img = tiny_png();
     let cs = checksum(&img);
 
     let begin = media_upload_begin(
         &store,
         &p,
-        "acme",
+        "nube",
         "image/png",
         img.len() as u64,
         &cs,
@@ -204,7 +204,7 @@ async fn serve_not_ready_media_is_rejected() {
     let id = begin["id"].as_str().unwrap().to_string();
 
     // Don't commit — media is still Uploading.
-    let err = media_serve(&store, &p, "acme", &id, None)
+    let err = media_serve(&store, &p, "nube", &id, None)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::NotReady));
@@ -215,9 +215,9 @@ async fn serve_not_ready_media_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_upload_without_cap() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:mallory", "acme", &["mcp:media.get:call"]);
+    let p = principal("user:mallory", "nube", &["mcp:media.get:call"]);
 
-    let err = media_upload_begin(&store, &p, "acme", "image/png", 100, "cs", None, 100)
+    let err = media_upload_begin(&store, &p, "nube", "image/png", 100, "cs", None, 100)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::Denied));
@@ -229,7 +229,7 @@ async fn denies_serve_without_read_cap() {
     // Has upload cap but NOT store:media/*:read.
     let p = principal(
         "user:alice",
-        "acme",
+        "nube",
         &["mcp:media.upload:call", "mcp:media.get:call"],
     );
     let img = tiny_png();
@@ -238,7 +238,7 @@ async fn denies_serve_without_read_cap() {
     let begin = media_upload_begin(
         &store,
         &p,
-        "acme",
+        "nube",
         "image/png",
         img.len() as u64,
         &cs,
@@ -248,12 +248,12 @@ async fn denies_serve_without_read_cap() {
     .await
     .unwrap();
     let id = begin["id"].as_str().unwrap().to_string();
-    chunk_write(&store, "acme", &id, 0, &img).await.unwrap();
-    media_upload_commit(&store, &p, "acme", &id, 200)
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
+    media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap();
 
-    let err = media_serve(&store, &p, "acme", &id, None)
+    let err = media_serve(&store, &p, "nube", &id, None)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::Denied));
@@ -264,7 +264,7 @@ async fn denies_serve_without_read_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn media_not_visible_from_other_workspace() {
     let store = Store::memory().await.unwrap();
-    let p_a = principal("user:alice", "acme", CAPS);
+    let p_a = principal("user:alice", "nube", CAPS);
     let p_b = principal("user:carol", "globex", CAPS);
     let img = tiny_png();
     let cs = checksum(&img);
@@ -272,7 +272,7 @@ async fn media_not_visible_from_other_workspace() {
     let begin = media_upload_begin(
         &store,
         &p_a,
-        "acme",
+        "nube",
         "image/png",
         img.len() as u64,
         &cs,
@@ -282,8 +282,8 @@ async fn media_not_visible_from_other_workspace() {
     .await
     .unwrap();
     let id = begin["id"].as_str().unwrap().to_string();
-    chunk_write(&store, "acme", &id, 0, &img).await.unwrap();
-    media_upload_commit(&store, &p_a, "acme", &id, 200)
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
+    media_upload_commit(&store, &p_a, "nube", &id, 200)
         .await
         .unwrap();
 
@@ -301,14 +301,14 @@ async fn media_not_visible_from_other_workspace() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn delete_archives_media() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let img = tiny_png();
     let cs = checksum(&img);
 
     let begin = media_upload_begin(
         &store,
         &p,
-        "acme",
+        "nube",
         "image/png",
         img.len() as u64,
         &cs,
@@ -318,18 +318,18 @@ async fn delete_archives_media() {
     .await
     .unwrap();
     let id = begin["id"].as_str().unwrap().to_string();
-    chunk_write(&store, "acme", &id, 0, &img).await.unwrap();
-    media_upload_commit(&store, &p, "acme", &id, 200)
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
+    media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap();
 
-    media_delete(&store, &p, "acme", &id).await.unwrap();
+    media_delete(&store, &p, "nube", &id).await.unwrap();
 
-    let media = media_get(&store, &p, "acme", &id).await.unwrap();
+    let media = media_get(&store, &p, "nube", &id).await.unwrap();
     assert_eq!(media.status, lb_host::MediaStatus::Archived);
 
     // Archived media can't be served.
-    let err = media_serve(&store, &p, "acme", &id, None)
+    let err = media_serve(&store, &p, "nube", &id, None)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::NotReady));
@@ -344,7 +344,7 @@ async fn begin_png(store: &Store, p: &Principal) -> (String, Vec<u8>) {
     let begin = media_upload_begin(
         store,
         p,
-        "acme",
+        "nube",
         "image/png",
         img.len() as u64,
         &cs,
@@ -359,12 +359,12 @@ async fn begin_png(store: &Store, p: &Principal) -> (String, Vec<u8>) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn chunk_put_denied_without_upload_cap() {
     let store = Store::memory().await.unwrap();
-    let owner = principal("user:alice", "acme", CAPS);
+    let owner = principal("user:alice", "nube", CAPS);
     let (id, img) = begin_png(&store, &owner).await;
 
     // Authenticated but uncapped: no mcp:media.upload:call → denied before any byte lands.
-    let mallory = principal("user:mallory", "acme", &["mcp:media.get:call"]);
-    let err = media_chunk_put(&store, &mallory, "acme", &id, 0, &img)
+    let mallory = principal("user:mallory", "nube", &["mcp:media.get:call"]);
+    let err = media_chunk_put(&store, &mallory, "nube", &id, 0, &img)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::Denied));
@@ -373,8 +373,8 @@ async fn chunk_put_denied_without_upload_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn chunk_put_unknown_upload_rejected() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
-    let err = media_chunk_put(&store, &p, "acme", "no-such-upload", 0, b"bytes")
+    let p = principal("user:alice", "nube", CAPS);
+    let err = media_chunk_put(&store, &p, "nube", "no-such-upload", 0, b"bytes")
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::NotFound));
@@ -383,32 +383,32 @@ async fn chunk_put_unknown_upload_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn chunk_put_after_ready_rejected() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let (id, img) = begin_png(&store, &p).await;
-    media_chunk_put(&store, &p, "acme", &id, 0, &img)
+    media_chunk_put(&store, &p, "nube", &id, 0, &img)
         .await
         .unwrap();
-    media_upload_commit(&store, &p, "acme", &id, 200)
+    media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap();
 
     // Re-PUT after Ready would change served bytes while the ETag stayed stale — rejected.
-    let err = media_chunk_put(&store, &p, "acme", &id, 0, b"tampered bytes")
+    let err = media_chunk_put(&store, &p, "nube", &id, 0, b"tampered bytes")
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::BadInput(_)));
 
     // Served bytes are untouched.
-    let served = media_serve(&store, &p, "acme", &id, None).await.unwrap();
+    let served = media_serve(&store, &p, "nube", &id, None).await.unwrap();
     assert_eq!(served.bytes, img);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn chunk_put_out_of_range_n_rejected() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let (id, img) = begin_png(&store, &p).await; // 1-chunk upload
-    let err = media_chunk_put(&store, &p, "acme", &id, 1, &img)
+    let err = media_chunk_put(&store, &p, "nube", &id, 1, &img)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::BadInput(_)));
@@ -417,10 +417,10 @@ async fn chunk_put_out_of_range_n_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn chunk_put_oversize_body_rejected() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let (id, _img) = begin_png(&store, &p).await;
     let oversize = vec![0u8; CHUNK_SIZE as usize + 1];
-    let err = media_chunk_put(&store, &p, "acme", &id, 0, &oversize)
+    let err = media_chunk_put(&store, &p, "nube", &id, 0, &oversize)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::TooLarge));
@@ -429,7 +429,7 @@ async fn chunk_put_oversize_body_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn chunk_put_isolated_across_workspaces() {
     let store = Store::memory().await.unwrap();
-    let p_a = principal("user:alice", "acme", CAPS);
+    let p_a = principal("user:alice", "nube", CAPS);
     let p_b = principal("user:carol", "globex", CAPS);
     let (id, img) = begin_png(&store, &p_a).await;
 
@@ -445,12 +445,12 @@ async fn chunk_put_isolated_across_workspaces() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn corrupt_chunk_row_is_a_serve_error() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let (id, img) = begin_png(&store, &p).await;
-    media_chunk_put(&store, &p, "acme", &id, 0, &img)
+    media_chunk_put(&store, &p, "nube", &id, 0, &img)
         .await
         .unwrap();
-    media_upload_commit(&store, &p, "acme", &id, 200)
+    media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap();
 
@@ -459,12 +459,12 @@ async fn corrupt_chunk_row_is_a_serve_error() {
     let corrupt = serde_json::json!({
         "media_id": id, "n": 0, "bytes": "%%%not-base64%%%", "len": img.len(),
     });
-    lb_store::write(&store, "acme", CHUNK_TABLE, &chunk_id, &corrupt)
+    lb_store::write(&store, "nube", CHUNK_TABLE, &chunk_id, &corrupt)
         .await
         .unwrap();
 
     // Serving must fail loudly (Store/Decode), never return truncated bytes with a 200.
-    let err = media_serve(&store, &p, "acme", &id, None)
+    let err = media_serve(&store, &p, "nube", &id, None)
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::Store(_)), "got: {err}");
@@ -475,7 +475,7 @@ async fn corrupt_chunk_row_is_a_serve_error() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn multi_chunk_out_of_order_resume_and_serve() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
 
     // 2.5 MiB of deterministic non-trivial bytes → 3 chunks at the 1 MiB chunk size.
     let total = 2 * CHUNK_SIZE as usize + CHUNK_SIZE as usize / 2;
@@ -485,7 +485,7 @@ async fn multi_chunk_out_of_order_resume_and_serve() {
     let begin = media_upload_begin(
         &store,
         &p,
-        "acme",
+        "nube",
         "application/octet-stream",
         blob.len() as u64,
         &cs,
@@ -501,27 +501,27 @@ async fn multi_chunk_out_of_order_resume_and_serve() {
         |n: usize| &blob[n * CHUNK_SIZE as usize..(total.min((n + 1) * CHUNK_SIZE as usize))];
 
     // Upload out of order: 2, 0, 1 — then chunk 1 "times out" and is re-PUT (idempotent).
-    media_chunk_put(&store, &p, "acme", &id, 2, chunk(2))
+    media_chunk_put(&store, &p, "nube", &id, 2, chunk(2))
         .await
         .unwrap();
-    media_chunk_put(&store, &p, "acme", &id, 0, chunk(0))
+    media_chunk_put(&store, &p, "nube", &id, 0, chunk(0))
         .await
         .unwrap();
-    media_chunk_put(&store, &p, "acme", &id, 1, chunk(1))
+    media_chunk_put(&store, &p, "nube", &id, 1, chunk(1))
         .await
         .unwrap();
-    media_chunk_put(&store, &p, "acme", &id, 1, chunk(1))
+    media_chunk_put(&store, &p, "nube", &id, 1, chunk(1))
         .await
         .unwrap();
 
     // Commit verifies the checksum over the assembled bytes.
-    let commit = media_upload_commit(&store, &p, "acme", &id, 200)
+    let commit = media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap();
     assert_eq!(commit["ok"], serde_json::json!(true));
 
     // Serve returns the full assembled blob.
-    let served = media_serve(&store, &p, "acme", &id, None).await.unwrap();
+    let served = media_serve(&store, &p, "nube", &id, None).await.unwrap();
     assert_eq!(served.bytes.len(), total);
     assert_eq!(served.bytes, blob);
 }
@@ -592,16 +592,16 @@ fn range_plans_are_correct() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn range_slice_matches_served_bytes() {
     let store = Store::memory().await.unwrap();
-    let p = principal("user:alice", "acme", CAPS);
+    let p = principal("user:alice", "nube", CAPS);
     let (id, img) = begin_png(&store, &p).await;
-    media_chunk_put(&store, &p, "acme", &id, 0, &img)
+    media_chunk_put(&store, &p, "nube", &id, 0, &img)
         .await
         .unwrap();
-    media_upload_commit(&store, &p, "acme", &id, 200)
+    media_upload_commit(&store, &p, "nube", &id, 200)
         .await
         .unwrap();
 
-    let served = media_serve(&store, &p, "acme", &id, None).await.unwrap();
+    let served = media_serve(&store, &p, "nube", &id, None).await.unwrap();
     // A ranged GET for the first 8 bytes yields the PNG magic prefix.
     match plan_serve(
         served.bytes.len() as u64,

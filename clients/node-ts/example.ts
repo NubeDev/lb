@@ -5,17 +5,17 @@
  * Run with:
  *   make cloud                          # terminal 1: boot 127.0.0.1:8080
  *   cd clients/node-ts && pnpm install
- *   LB_URL=http://127.0.0.1:8080 LB_USER=ada LB_WORKSPACE=acme pnpm example
+ *   LB_URL=http://127.0.0.1:8080 LB_USER=test LB_WORKSPACE=nube pnpm example
  *   # or with an API key:
- *   LB_KEY=lbk_acme.k7f3a.ABCDEF23 pnpm example
+ *   LB_KEY=lbk_nube.k7f3a.ABCDEF23 pnpm example
  */
 
 import { Client, writeSamples, latestSample, callMcp } from "./src/index.js";
 
 const url = process.env.LB_URL ?? "http://127.0.0.1:8080";
 const key = process.env.LB_KEY;
-const user = process.env.LB_USER ?? "ada";
-const ws = process.env.LB_WORKSPACE ?? "acme";
+const user = process.env.LB_USER ?? "test";
+const ws = process.env.LB_WORKSPACE ?? "nube";
 
 async function main(): Promise<void> {
   let client = new Client(url, "placeholder");

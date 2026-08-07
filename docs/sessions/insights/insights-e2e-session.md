@@ -21,7 +21,7 @@ the insights system. Both halves are below.
 ## Setup (Step 0 — the datasources runbook's hard prerequisite)
 
 - `docker/postgres` TimescaleDB up and seeded (`lb-timescaledb` healthy, port 5433).
-- `make dev` node live on `http://127.0.0.1:8080`, workspace `acme`, dev principal `user:ada`
+- `make dev` node live on `http://127.0.0.1:8080`, workspace `nube`, dev principal `user:test`
   (workspace-admin), `FED_ENDPOINTS=127.0.0.1:5433` — federation on, `timescale` datasource
   pre-registered.
 - Verified on login: `datasource.list → [{"name":"timescale","kind":"postgres",
@@ -41,12 +41,12 @@ the insights system. Both halves are below.
 | run (saved by id) | `rules.run {rule_id:"e2e-pt001-threshold"}` | `{kind:"scalar", value:{breaches:0}}` — federation query plan ok |
 | run (platform series) | `rules.run {rule_id:"seed-17-platform-series-grid"}` | `{total:5, e2e_temp:5}` + 1 finding — non-federation path ok |
 | delete (throwaway) | `rules.save e2e-throwaway-delete` → `rules.delete` → `rules.list` | present → `{ok:true}` → gone |
-| **isolation** | ws-B (`acme-other`) `rules.list` / `rules.get seed-01` | empty / opaque `denied` — workspace wall holds |
+| **isolation** | ws-B (`nube-other`) `rules.list` / `rules.get seed-01` | empty / opaque `denied` — workspace wall holds |
 
 Note: heavy pushdown rules over the full `point_reading` hypertable (e.g. `seed-20-multi-metric-alert-pipeline`)
 are slow on the dev box without the per-join indexes; this is a query-plan artifact, **not** an
 engine bug — the inline-body and platform-series rules prove the cage, the governors, and `emit`/
-`alert` are healthy. `rules.help` returns `denied` to `user:ada` (the cap isn't in the dev grant
+`alert` are healthy. `rules.help` returns `denied` to `user:test` (the cap isn't in the dev grant
 set) — also expected; the catalog verb is gated.
 
 ### Flows — CRUD + run + node-edit + isolation
@@ -138,7 +138,7 @@ fixed `ts` because `insight.raise` requires one and the tool node does not auto-
   origin: { kind: "rule", ref: "e2e-fault-detect" },   ← the rule is in the provenance
   status: "open", count: 1,
   first_ts: 1719800100000, last_ts: 1719800100000,
-  producer: "user:ada" }
+  producer: "user:test" }
 ```
 
 ### The matcher fired on the flow-raised insight
@@ -150,7 +150,7 @@ matched the insight's facets and posted under the subscriber's principal:
 channel.history "building-1-ops" → [
   { id:"insight-post:01KWRD84CC…:01KWREXXTK…:1719800100000",
     body:"insight hvac:ahu1:peak-demand — 01KWREXXTK0CGER86QW40VAWMX (Critical) [view]",
-    author:"user:ada" } ]
+    author:"user:test" } ]
 ```
 
 Occurrences ring: `[{oseq:1, ts:1719800100000, severity:"critical"}]`.
@@ -180,7 +180,7 @@ flow can drop the `tool` node for the dedicated `insight` sink without any other
 | 4 list filter | `insight.list {status:"open", severity:"critical"}` | exactly the 1 fraud insight |
 | 5 tag facet | `insight.list {tags:{kind:"fraud"}}` | exactly the 1 fraud insight — the tag graph holds |
 | 6 ack | `insight.ack {id}` | `{ok:true}` |
-| 7 get | `insight.get` | `status:"acked"`, `status_by:"user:ada"`, `count:2` preserved, `first_ts`/`last_ts` correct |
+| 7 get | `insight.get` | `status:"acked"`, `status_by:"user:test"`, `count:2` preserved, `first_ts`/`last_ts` correct |
 | 8 resolve | `insight.resolve {id, note:"false positive — merchant verified"}` | `{ok:true}` (note folded into `body.resolution`) |
 | 9 raise again | same `dedup_key` post-resolve | **`{status:"open", count:3, reopened:true, kind:"reopen"}`** — re-open breakthrough fires |
 
@@ -230,11 +230,11 @@ Read the channel back:
 channel.history {cid:"building-1-ops"} →
   [{id:"insight-post:01KWRD84CC…:01KWRD8X6T…:1719800010000",
     body:"insight hvac:ahu-2:setpoint-hunting — 01KWRD8X6T… (Critical) [view]",
-    author:"user:ada", ts:1719800010000}]
+    author:"user:test", ts:1719800010000}]
 ```
 
 The matcher evaluated the workspace's subs against the raise, produced an intent, and the notify
-engine posted under the subscriber's stored principal (`author:"user:ada"`) — exactly the
+engine posted under the subscriber's stored principal (`author:"user:test"`) — exactly the
 contract in `insight-subscriptions-scope.md`. The id is derived from `(sub_id, insight_id, ts)`
 (idempotent per the spec).
 
@@ -254,7 +254,7 @@ is the "watch it grow" half.
 
 ### 2.7 Workspace isolation (mandatory)
 
-| Op | ws-A (`acme`) | ws-B (`acme-other`) |
+| Op | ws-A (`nube`) | ws-B (`nube-other`) |
 |---|---|---|
 | `insight.list` | 7 insights | **0** (wall holds) |
 | `insight.get` ws-A-id | full record | **null** (opaque — looks absent) |
@@ -268,7 +268,7 @@ the store/bus layers before any cap check.
 
 ### 2.8 Capability wall (mandatory)
 
-- `rules.help` → **`denied` HTTP 403** to a logged-in principal (`user:ada` and a freshly added
+- `rules.help` → **`denied` HTTP 403** to a logged-in principal (`user:test` and a freshly added
   `user:e2e-nocap`). The catalog verb is gated and the gate fires server-side. **This is the
   proof the cap system is live** — a logged-in token without the cap cannot reach the verb.
 - The dev-seed `role:member` bundle includes the insight.* verbs (raise/list/get/ack/resolve/

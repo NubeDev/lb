@@ -73,25 +73,25 @@ async fn render_denied_without_its_grant() {
 async fn render_for_another_recipient_denied_without_fanout_grant() {
     let ws = "cat-fanout-deny";
     let node = Arc::new(Node::boot().await.unwrap());
-    // Ada may render for HERSELF (base grant) but NOT for another recipient (no fan-out grant).
-    let ada = principal("user:ada", ws, &[RENDER]);
+    // Test may render for HERSELF (base grant) but NOT for another recipient (no fan-out grant).
+    let test = principal("user:test", ws, &[RENDER]);
     // Self render: allowed.
     call(
         &node,
-        &ada,
+        &test,
         ws,
         "message.render",
-        json!({ "key": "notify.welcome", "args": { "name": "Ada" } }),
+        json!({ "key": "notify.welcome", "args": { "name": "Test" } }),
     )
     .await
     .expect("self render allowed with base grant");
     // Render FOR bob: denied (no message.render_recipient).
     let err = call(
         &node,
-        &ada,
+        &test,
         ws,
         "message.render",
-        json!({ "key": "notify.welcome", "args": { "name": "Ada" }, "recipient": "user:bob" }),
+        json!({ "key": "notify.welcome", "args": { "name": "Test" }, "recipient": "user:bob" }),
     )
     .await
     .unwrap_err();
@@ -134,11 +134,11 @@ async fn catalog_read_denied_without_grant_and_cross_ws() {
         Err(ToolError::Denied)
     ));
     // A ws-A principal cannot read a foreign workspace (the wall fires first).
-    let ada = principal("user:ada", "ws-a", &[CATALOG]);
+    let test = principal("user:test", "ws-a", &[CATALOG]);
     assert!(matches!(
         call(
             &node,
-            &ada,
+            &test,
             "ws-b",
             "prefs.catalog",
             json!({ "locale": "en" })
@@ -271,12 +271,12 @@ async fn multi_recipient_fanout_produces_two_distinct_renders() {
     let node = Arc::new(Node::boot().await.unwrap());
 
     // Seed two members with DIFFERENT resolved prefs through the real write path.
-    let ada = principal("user:ada", ws, &[SET_PREFS]);
+    let test = principal("user:test", ws, &[SET_PREFS]);
     let bob = principal("user:bob", ws, &[SET_PREFS]);
     set_user_prefs(
         &node.store,
         ws,
-        "user:ada",
+        "user:test",
         &Prefs {
             language: Some("es".into()),
             timezone: Some("Europe/Madrid".into()),
@@ -306,7 +306,7 @@ async fn multi_recipient_fanout_produces_two_distinct_renders() {
     )
     .await
     .unwrap();
-    let _ = (ada, bob);
+    let _ = (test, bob);
 
     // The outbox producer holds the fan-out grant and renders once per recipient.
     let producer = principal("svc:outbox", ws, &[RENDER, RENDER_RECIP]);
@@ -318,7 +318,7 @@ async fn multi_recipient_fanout_produces_two_distinct_renders() {
         &producer,
         ws,
         "message.render",
-        json!({ "key": "alert.threshold_crossed", "args": args, "recipient": "user:ada" }),
+        json!({ "key": "alert.threshold_crossed", "args": args, "recipient": "user:test" }),
     )
     .await
     .unwrap();

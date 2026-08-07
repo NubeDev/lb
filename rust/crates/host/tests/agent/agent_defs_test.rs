@@ -77,7 +77,7 @@ async fn seed_lists_node_runnable_builtins_and_filters_the_rest() {
     );
 
     let ws = "defs-seed";
-    let p = admin("user:ada", ws);
+    let p = admin("user:test", ws);
     let list = agent_def_list(&node, &p, ws).await.expect("list");
 
     // The in-house six (runtime `default`, always offered) list — three coding (glm-4.6/5.1/5.2) and
@@ -131,7 +131,7 @@ async fn seed_is_idempotent() {
         .expect("seed 2 (replay)");
 
     let ws = "defs-idem";
-    let p = admin("user:ada", ws);
+    let p = admin("user:test", ws);
     let list = agent_def_list(&node, &p, ws).await.expect("list");
     let builtins = list.iter().filter(|d| d.builtin).count();
     assert_eq!(
@@ -188,7 +188,7 @@ async fn builtin_ids_are_read_only_even_for_an_admin() {
     let node = Node::boot().await.expect("node boots");
     seed_agent_definitions(&node.store).await.expect("seed");
     let ws = "defs-readonly";
-    let p = admin("user:ada", ws);
+    let p = admin("user:test", ws);
 
     // create/update/delete of a `builtin.*` id → BadInput (reserved), checked BEFORE the caps gate.
     let mut builtin = sample_custom("builtin.in-house-glm-4.6");
@@ -228,7 +228,7 @@ async fn custom_crud_round_trips() {
     let node = Node::boot().await.expect("node boots");
     seed_agent_definitions(&node.store).await.expect("seed");
     let ws = "defs-crud";
-    let p = admin("user:ada", ws);
+    let p = admin("user:test", ws);
 
     // Create.
     agent_def_create(&node, &p, ws, &sample_custom("staging-glm-5.2"))
@@ -288,7 +288,7 @@ async fn custom_crud_round_trips() {
 async fn unknown_runtime_on_write_is_rejected() {
     let node = Node::boot().await.expect("node boots");
     let ws = "defs-runtime";
-    let p = admin("user:ada", ws);
+    let p = admin("user:test", ws);
 
     let mut bad = sample_custom("bad-runtime");
     bad.runtime = "no-such-runtime".into();
@@ -323,7 +323,7 @@ async fn unknown_runtime_on_write_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn custom_definitions_are_workspace_isolated() {
     let node = Node::boot().await.expect("node boots");
-    let admin_a = admin("user:ada", "ws-a");
+    let admin_a = admin("user:test", "ws-a");
     let admin_b = admin("user:bob", "ws-b");
 
     agent_def_create(&node, &admin_a, "ws-a", &sample_custom("secret-a"))
@@ -365,7 +365,7 @@ async fn custom_definitions_are_workspace_isolated() {
 async fn double_create_is_idempotent() {
     let node = Node::boot().await.expect("node boots");
     let ws = "defs-offline";
-    let p = admin("user:ada", ws);
+    let p = admin("user:test", ws);
 
     agent_def_create(&node, &p, ws, &sample_custom("dup"))
         .await

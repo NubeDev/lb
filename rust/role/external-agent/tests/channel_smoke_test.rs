@@ -24,7 +24,7 @@ use std::sync::Arc;
 fn principal(ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
-        sub: "user:ada".into(),
+        sub: "user:test".into(),
         ws: ws.into(),
         role: Role::Member,
         caps: caps.iter().map(|s| s.to_string()).collect(),
@@ -81,7 +81,7 @@ async fn asking_in_a_channel_drives_open_interpreter_against_zai() {
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await
     .expect("the agent request posts");
@@ -206,7 +206,7 @@ async fn a_sealed_key_from_the_config_reaches_the_external_run() {
         &p,
         ws,
         cid,
-        Item::new("q1", cid, "user:ada", body, 1),
+        Item::new("q1", cid, "user:test", body, 1),
     )
     .await;
     drain_channel_agent_runs(&node, ws).await;

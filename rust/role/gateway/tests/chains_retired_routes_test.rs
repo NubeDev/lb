@@ -39,8 +39,8 @@ async fn every_retired_chains_route_is_404_while_flows_answers() {
     // ROUTE is gone, never a missing cap.
     let tok = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &[
             "mcp:flows.list:call",
             "mcp:flows.save:call",

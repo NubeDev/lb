@@ -89,7 +89,7 @@ where
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn boot_spawns_the_ingest_drain_so_staged_samples_commit_with_nobody_draining() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
     lb_ingest::write(&node.store, ws, &staged("fleet.pi", 40), 0)
         .await
         .expect("stage");
@@ -118,7 +118,7 @@ async fn boot_spawns_the_ingest_drain_so_staged_samples_commit_with_nobody_drain
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn boot_spawns_the_retention_gc_so_a_capped_series_shrinks_with_nobody_calling_the_verb() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
     lb_ingest::write(&node.store, ws, &staged("fleet.pi", 60), 0)
         .await
         .expect("stage");
@@ -172,7 +172,7 @@ async fn boot_spawns_the_retention_gc_so_a_capped_series_shrinks_with_nobody_cal
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_retention_cadence_is_configurable_so_a_second_tick_is_observable() {
     let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "acme";
+    let ws = "nube";
     lb_ingest::write(&node.store, ws, &staged("fleet.pi", 60), 0)
         .await
         .expect("stage");

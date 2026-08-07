@@ -56,7 +56,7 @@ fn sample_patch() -> AgentConfig {
 async fn set_then_get_round_trips_the_patch() {
     let node = Node::boot().await.expect("node boots");
     let ws = "ac-round";
-    let admin = principal("user:ada", ws, &[GET, SET]);
+    let admin = principal("user:test", ws, &[GET, SET]);
 
     // Unset → None.
     assert!(agent_config_get(&node, &admin, ws)
@@ -98,7 +98,7 @@ async fn set_without_the_admin_cap_is_denied_opaquely() {
     assert!(matches!(err, ToolError::Denied), "opaque deny, got {err:?}");
 
     // And nothing was written (the record stays unset for a reader).
-    let admin = principal("user:ada", ws, &[GET, SET]);
+    let admin = principal("user:test", ws, &[GET, SET]);
     assert!(agent_config_get(&node, &admin, ws)
         .await
         .expect("get")
@@ -120,7 +120,7 @@ async fn get_without_the_read_cap_is_denied_opaquely() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspaces_are_isolated() {
     let node = Node::boot().await.expect("node boots");
-    let admin_a = principal("user:ada", "ws-a", &[GET, SET]);
+    let admin_a = principal("user:test", "ws-a", &[GET, SET]);
     let admin_b = principal("user:bob", "ws-b", &[GET, SET]);
 
     // Both use the always-present `default` id but DIFFERENT endpoints, so a leak is observable.
@@ -159,7 +159,7 @@ async fn workspaces_are_isolated() {
 async fn setting_an_unknown_runtime_is_rejected() {
     let node = Node::boot().await.expect("node boots");
     let ws = "ac-unknown";
-    let admin = principal("user:ada", ws, &[GET, SET]);
+    let admin = principal("user:test", ws, &[GET, SET]);
 
     let patch = AgentConfig {
         compact_budget: None,
@@ -189,7 +189,7 @@ async fn setting_an_unknown_runtime_is_rejected() {
 async fn double_apply_is_idempotent() {
     let node = Node::boot().await.expect("node boots");
     let ws = "ac-idempotent";
-    let admin = principal("user:ada", ws, &[GET, SET]);
+    let admin = principal("user:test", ws, &[GET, SET]);
 
     agent_config_set(&node, &admin, ws, &sample_patch())
         .await

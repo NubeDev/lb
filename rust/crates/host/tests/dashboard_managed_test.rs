@@ -87,8 +87,8 @@ async fn extension_principal_stamps_the_bare_id_a_human_stamps_nothing() {
     assert_eq!(d.managed_by, "modbus", "bare id, not the ext: principal");
     assert_eq!(d.owner, "ext:modbus", "the full principal stays on owner");
 
-    let ada = principal("user:ada", ws, BASE);
-    let d = dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 1)
+    let test = principal("user:test", ws, BASE);
+    let d = dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 1)
         .await
         .unwrap();
     assert_eq!(d.managed_by, "", "a human board is not managed");
@@ -100,11 +100,11 @@ async fn extension_principal_stamps_the_bare_id_a_human_stamps_nothing() {
 async fn a_human_cannot_set_managed_by_through_the_mcp_surface() {
     let ws = "ws-managed-forge";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, BASE);
+    let test = principal("user:test", ws, BASE);
 
     let out = call_dashboard_tool(
         &store,
-        &ada,
+        &test,
         ws,
         "dashboard.save",
         &json!({ "id": "ops", "title": "Ops", "cells": [], "now": 1, "managedBy": "modbus" }),
@@ -113,7 +113,7 @@ async fn a_human_cannot_set_managed_by_through_the_mcp_surface() {
     .expect("the save itself succeeds — the bogus field is simply not read");
     assert_eq!(out["managedBy"], json!(""), "input marker ignored");
 
-    let stored = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let stored = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(stored.managed_by, "", "and it never reached the record");
 }
 
@@ -205,10 +205,10 @@ async fn a_managed_board_is_invisible_and_unsavable_across_workspaces() {
 async fn a_pre_field_record_reads_empty_and_re_saves_clean() {
     let ws = "ws-managed-roundtrip";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, BASE);
+    let test = principal("user:test", ws, BASE);
 
     // Build a real record, then strip the key to produce the pre-field bytes and write them RAW.
-    let made = dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 1)
+    let made = dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 1)
         .await
         .unwrap();
     let mut raw = serde_json::to_value(&made).unwrap();
@@ -219,7 +219,7 @@ async fn a_pre_field_record_reads_empty_and_re_saves_clean() {
         .unwrap();
 
     // Reads clean, with every other field intact.
-    let read = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let read = dashboard_get(&store, &test, ws, "ops").await.unwrap();
     assert_eq!(read.managed_by, "", "absent key defaults to unmanaged");
     assert_eq!(read, made, "every other field round-trips unchanged");
 
@@ -233,14 +233,14 @@ async fn a_pre_field_record_reads_empty_and_re_saves_clean() {
         .await
         .unwrap();
     assert_eq!(
-        dashboard_get(&store, &ada, ws, "ops").await.unwrap(),
+        dashboard_get(&store, &test, ws, "ops").await.unwrap(),
         made,
         "an explicit null deserializes as the same default"
     );
 
     // Re-saving the pre-field record loses nothing and stays unmanaged (a human re-save cannot
     // acquire a marker).
-    let resaved = dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 2)
+    let resaved = dashboard_save(&store, &test, ws, "ops", "Ops", vec![], vec![], 2)
         .await
         .unwrap();
     assert_eq!(resaved.managed_by, "");
@@ -254,13 +254,13 @@ async fn the_roster_summary_carries_the_marker() {
     let ws = "ws-managed-roster";
     let store = Store::memory().await.unwrap();
     let ext = principal("ext:modbus", ws, BASE);
-    let ada = principal("user:ada", ws, BASE);
+    let test = principal("user:test", ws, BASE);
     shared_board(&store, &ext, ws, "managed").await;
-    dashboard_save(&store, &ada, ws, "mine", "Mine", vec![], vec![], 1)
+    dashboard_save(&store, &test, ws, "mine", "Mine", vec![], vec![], 1)
         .await
         .unwrap();
 
-    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    let roster = dashboard_list(&store, &test, ws).await.unwrap();
     let managed = roster.iter().find(|s| s.id == "managed").expect("listed");
     let mine = roster.iter().find(|s| s.id == "mine").expect("listed");
     assert_eq!(managed.managed_by, "modbus");
@@ -283,7 +283,7 @@ async fn the_managed_denial_is_typed_only_for_a_caller_who_can_read_the_board() 
     let ws = "ws-managed-denial";
     let store = Store::memory().await.unwrap();
     let ext = principal("ext:modbus", ws, BASE);
-    let ada = principal("user:ada", ws, BASE);
+    let test = principal("user:test", ws, BASE);
     let ben = principal("user:ben", ws, BASE);
 
     // (1) Readable (workspace-visible) + managed → typed, naming the extension.
@@ -315,12 +315,12 @@ async fn the_managed_denial_is_typed_only_for_a_caller_who_can_read_the_board() 
     );
 
     // (3) Unmanaged + readable → opaque, exactly as before this scope.
-    dashboard_save(&store, &ada, ws, "human", "Human", vec![], vec![], 1)
+    dashboard_save(&store, &test, ws, "human", "Human", vec![], vec![], 1)
         .await
         .unwrap();
     dashboard_share(
         &store,
-        &ada,
+        &test,
         ws,
         "human",
         DashboardVisibility::Workspace,

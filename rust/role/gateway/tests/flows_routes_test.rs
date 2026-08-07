@@ -45,7 +45,7 @@ fn flow_body(id: &str) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn flows_nodes_returns_the_built_in_registry() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let resp = router(gw)
         .oneshot(bearer(get_req("/flows/nodes"), &tok))
@@ -70,7 +70,7 @@ async fn flows_nodes_returns_the_built_in_registry() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn flows_crud_round_trip_over_the_gateway() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     // Save → {id, version}.
     let resp = router(gw.clone())
@@ -122,7 +122,7 @@ async fn flows_crud_round_trip_over_the_gateway() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn save_rejects_a_cyclic_dag_with_a_400_inline_error() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
     let cyclic = json!({
         "id": "cyc", "name": "cyc", "version": 1, "failurePolicy": "halt",
         "nodes": [
@@ -150,7 +150,7 @@ async fn save_rejects_a_cyclic_dag_with_a_400_inline_error() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn run_then_runs_get_returns_the_snapshot() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
 
     let _ = router(gw.clone())
         .oneshot(bearer(json_post("/flows", flow_body("rt")), &tok))
@@ -186,8 +186,8 @@ async fn a_token_without_the_save_cap_is_denied() {
     // Holds list + nodes + get but NOT save.
     let tok = token(
         &key,
-        "user:ada",
-        "acme",
+        "user:test",
+        "nube",
         &[
             "mcp:flows.list:call",
             "mcp:flows.nodes:call",
@@ -204,7 +204,7 @@ async fn a_token_without_the_save_cap_is_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_b_cannot_read_workspace_a_flow() {
     let (gw, key) = gateway().await;
-    let tok_a = token(&key, "user:ada", "acme", CAPS);
+    let tok_a = token(&key, "user:test", "nube", CAPS);
     let tok_b = token(&key, "user:bob", "burger", CAPS);
 
     // ws-A saves a flow.
@@ -239,7 +239,7 @@ async fn workspace_b_cannot_read_workspace_a_flow() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn inject_into_a_retained_node_sets_state_and_starts_no_run() {
     let (gw, key) = gateway().await;
-    let tok = token(&key, "user:ada", "acme", CAPS);
+    let tok = token(&key, "user:test", "nube", CAPS);
     // A flow with a retained `inject` trigger node (Decision 9 — inject sets the held value).
     let flow = json!({
         "id": "ret", "name": "ret", "version": 1, "failurePolicy": "halt",

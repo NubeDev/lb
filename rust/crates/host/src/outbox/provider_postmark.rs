@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn validate_refuses_a_transport_that_cannot_send() {
         let ok = PostmarkConfig {
-            from_addr: "reports@acme.com".into(),
+            from_addr: "reports@nube.com".into(),
             token_path: "mail/postmark-token".into(),
             ..Default::default()
         };
