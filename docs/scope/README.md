@@ -442,7 +442,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `node` package — the sanctioned role-aware layer, §3.1 — with struct config (`from_env()` only at
   binary boundaries), composable subsets (gateway/reactors/federation toggles), real teardown, and
   the three existing embedders refactored onto it as proof; git-dep embedding, deliberately NOT a
-  crates.io publish of `lb-host` and NOT a new repo).
+  crates.io publish of `lb-host` and NOT a new repo). `node-roles/` also holds
+  `embedder-build-info-scope.md` (**the product on top has a version, and nothing can publish it**:
+  `/health` reports this gateway crate's `CARGO_PKG_VERSION` and `/node` copies the same constant,
+  so an embedder has no field in which to say what *it* is and every version a node publishes is
+  lb's — an operator reads `"version":"0.1.0"` off About or curl and reasonably takes it for the
+  product build. Adds one optional `BootConfig.build_info: Option<BuildInfo>` (`{name, version}`,
+  opaque strings lb never derives — rule 10) published as an additive `product` object beside the
+  unchanged `version` on `/node`, `/health`, and the advertisement; renaming `version` to mean the
+  product was rejected — it breaks every existing reader including our own route tests, and makes
+  the always-present core the special case).
 - `desktop/` — the Tauri v2 desktop shell as a **shipped executable**. `desktop-packaging-scope.md`
   builds the existing `lazybones-shell` (`ui/src-tauri` — node in-process + window, the `workstation`
   persona) into **plain binaries** (no AppImage/installer) for Linux x86-64 (`tauri build --no-bundle`
