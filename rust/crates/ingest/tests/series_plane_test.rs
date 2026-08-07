@@ -121,6 +121,7 @@ async fn paging_back_direction_and_bad_cursor() {
 
     // Cursor round-trip is exact.
     let c = Cursor {
+        ts: Some(1_700_000_000_000),
         seq: 42,
         producer: "prod:x".into(),
     };
@@ -579,4 +580,101 @@ async fn latest_pointer_survives_replay_and_delete() {
         latest(&store, "nube", "d").await.unwrap().is_none(),
         "deleted series → no pointer, None"
     );
+}
+
+/// **The producer-restart ordering regression** (rubix-ai dashboards, observed live 2026-08-07).
+///
+/// `seq` is assigned PER PRODUCER GENERATION and restarts at 0 when an extension restarts. A page
+/// ordered by `seq` therefore is NOT ordered by time: the old generation's high `seq` sorts above the
+/// new generation's low `seq` even though it is older. On a real node this filled every
+/// `direction:"back"` page with the STALE generation, so every window wider than the newest
+/// generation returned the same wrong rows and the chart drew a line that jumped backwards in time.
+/// Observed on 40/40 demo series, each with exactly one ascending break at the generation seam.
+///
+/// Gen 1 (`@1000000`) reaches seq 4144 at ts 1000..1008; gen 2 (`@2000001`) restarts at seq 0 but is
+/// NEWER (ts 2000..2003). Ordered by time, every gen-2 row must come first under `Back`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_producer_restart_that_resets_seq_still_pages_in_time_order() {
+    let store = Store::memory().await.unwrap();
+    let mut samples = Vec::new();
+    // OLDER rows, HIGH seq — the previous generation.
+    for i in 0..9u64 {
+        samples.push(sample("pw", "ext:m@1000000", 4136 + i, 1000 + i, json!(i)));
+    }
+    // NEWER rows, LOW seq — the generation after the restart.
+    for i in 0..4u64 {
+        samples.push(sample("pw", "ext:m@2000001", i, 2000 + i, json!(100 + i)));
+    }
+    seed(&store, "nube", samples).await;
+
+    // `Back` = newest first. Every row must be in strictly descending time order.
+    let page = read_page(
+        &store,
+        "nube",
+        "pw",
+        &PageQuery {
+            limit: Some(100),
+            direction: Direction::Back,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(page.rows.len(), 13);
+    let ts: Vec<u64> = page.rows.iter().map(|r| r.ts).collect();
+    let mut sorted = ts.clone();
+    sorted.sort_unstable();
+    sorted.reverse();
+    assert_eq!(
+        ts, sorted,
+        "rows must be in time order, not seq order: {ts:?}"
+    );
+    // The newest row is gen 2's — NOT the stale generation's seq-4144 row.
+    assert_eq!(page.rows[0].ts, 2003);
+    assert_eq!(page.rows[0].producer, "ext:m@2000001");
+
+    // A narrow window must select by TIME, so it returns only gen-2 rows even though gen-1 has the
+    // higher seq — this is the "every range shows the same rows" symptom, pinned.
+    let win = read_page(
+        &store,
+        "nube",
+        "pw",
+        &PageQuery {
+            from_ts: Some(1500),
+            to_ts: Some(3000),
+            limit: Some(100),
+            direction: Direction::Back,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(win.rows.len(), 4, "the window must select by ts, not seq");
+    assert!(win.rows.iter().all(|r| r.producer == "ext:m@2000001"));
+
+    // And the keyset walk across the seam is still exactly-once — the cursor now carries `ts`, so a
+    // page boundary landing mid-seam must neither skip nor repeat a row.
+    let mut seen = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let p = read_page(
+            &store,
+            "nube",
+            "pw",
+            &PageQuery {
+                limit: Some(3),
+                cursor: cursor.clone(),
+                direction: Direction::Back,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        seen.extend(p.rows.iter().map(|r| r.ts));
+        match p.next_cursor {
+            Some(c) => cursor = Some(c),
+            None => break,
+        }
+    }
+    assert_eq!(seen, sorted, "paged walk must equal the single-page order");
 }

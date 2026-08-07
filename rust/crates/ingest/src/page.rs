@@ -1,6 +1,7 @@
 //! `series.read` keyset paging — the unbounded `Vec<Sample>` becomes a bounded page
-//! (series-paging scope, slice B). The page seeks the `(series, seq)` index on the unique composite
-//! sort key `(seq, producer)` (`producer` is the tiebreaker — two producers may share a `seq`), so
+//! (series-paging scope, slice B). The page seeks the `(series, ts)` index on the unique composite
+//! sort key `(ts, seq, producer)` — `ts` leads because `seq` restarts at 0 on every producer
+//! generation (see `cursor.rs`); `seq`/`producer` are the tiebreakers that keep the key unique. So
 //! page-500 costs what page-1 costs: O(page), never an OFFSET scan.
 //!
 //! The query also accepts wall-clock `from_ts`/`to_ts` bounds (epoch ms, half-open `[from, to)`) —
@@ -19,7 +20,7 @@ pub const DEFAULT_PAGE_LIMIT: usize = 10_000;
 /// Hard ceiling a caller-supplied `limit` is clamped to (never honored above it).
 pub const MAX_PAGE_LIMIT: usize = 10_000;
 
-/// Page direction over the `(seq, producer)` sort key.
+/// Page direction over the `(ts, seq, producer)` sort key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Direction {
     /// Ascending commit order (oldest first) — the default.
@@ -61,8 +62,9 @@ pub enum PageError {
     Store(#[from] StoreError),
 }
 
-/// Read one keyset page of `series` in `ws`. Rows are ordered by `(seq, producer)` in `direction`;
-/// the returned `next_cursor` resumes exactly after the last row (exactly-once, no gaps/dupes).
+/// Read one keyset page of `series` in `ws`. Rows are ordered by `(ts, seq, producer)` in
+/// `direction`; the returned `next_cursor` resumes exactly after the last row (exactly-once, no
+/// gaps/dupes). `ts` leads because `seq` restarts at 0 per producer generation — see `cursor.rs`.
 pub async fn read_page(
     store: &Store,
     ws: &str,
@@ -96,11 +98,33 @@ pub async fn read_page(
     if let Some(wire) = &q.cursor {
         let c = Cursor::decode(wire).map_err(PageError::BadCursor)?;
         // Seek strictly past the cursor position on the composite key — the tiebreaker discipline.
-        let cmp = match q.direction {
-            Direction::Fwd => "(seq > $cseq OR (seq = $cseq AND producer > $cprod))",
-            Direction::Back => "(seq < $cseq OR (seq = $cseq AND producer < $cprod))",
-        };
-        clauses.push_str(&format!(" AND {cmp}"));
+        // The comparison must use the SAME key the ORDER BY does, or the seek skips or repeats rows.
+        //
+        // A `v2` cursor carries `ts` and seeks the lexicographic `(ts, seq, producer)` key. A legacy
+        // `v1` cursor has no `ts`, so it can only seek the old `(seq, producer)` key — correct for
+        // resuming a chain issued before this change, and self-limiting because every cursor this
+        // node issues from here on is `v2`.
+        match (c.ts, q.direction) {
+            (Some(_), Direction::Fwd) => clauses.push_str(
+                " AND (ts > time::from::millis($cts) \
+                   OR (ts = time::from::millis($cts) AND seq > $cseq) \
+                   OR (ts = time::from::millis($cts) AND seq = $cseq AND producer > $cprod))",
+            ),
+            (Some(_), Direction::Back) => clauses.push_str(
+                " AND (ts < time::from::millis($cts) \
+                   OR (ts = time::from::millis($cts) AND seq < $cseq) \
+                   OR (ts = time::from::millis($cts) AND seq = $cseq AND producer < $cprod))",
+            ),
+            (None, Direction::Fwd) => {
+                clauses.push_str(" AND (seq > $cseq OR (seq = $cseq AND producer > $cprod))")
+            }
+            (None, Direction::Back) => {
+                clauses.push_str(" AND (seq < $cseq OR (seq = $cseq AND producer < $cprod))")
+            }
+        }
+        if let Some(cts) = c.ts {
+            bindings.push(("cts".into(), Value::Number(cts.into())));
+        }
         bindings.push(("cseq".into(), Value::Number(c.seq.into())));
         bindings.push(("cprod".into(), Value::String(c.producer)));
     }
@@ -111,9 +135,14 @@ pub async fn read_page(
     };
     // `ts` round-trips as epoch ms (`time::millis`); order keys are in the projection (the engine's
     // ORDER-BY-needs-selected-idiom).
+    //
+    // ORDER BY `ts` FIRST — `seq` is per-producer-generation and RESTARTS AT 0 on an extension
+    // restart, so it does not order by time (see `cursor.rs` for the full account and the live
+    // evidence). `(seq, producer)` stay as tiebreakers to keep the sort key unique. `series_ts_idx`
+    // on `(series, ts)` backs this, so the page stays O(page).
     let sql = format!(
         "SELECT series, producer, seq, time::millis(ts) AS ts, payload FROM {SERIES_TABLE} \
-         WHERE {clauses} ORDER BY seq {order}, producer {order} LIMIT {limit}"
+         WHERE {clauses} ORDER BY ts {order}, seq {order}, producer {order} LIMIT {limit}"
     );
     let mut resp = store.query_ws(ws, &sql, bindings).await?;
     let rows: Vec<Sample> = resp
@@ -122,6 +151,7 @@ pub async fn read_page(
 
     let key = |s: &Sample| {
         Cursor {
+            ts: Some(s.ts),
             seq: s.seq,
             producer: s.producer.clone(),
         }

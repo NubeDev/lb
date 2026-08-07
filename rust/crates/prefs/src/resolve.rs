@@ -1,7 +1,7 @@
 //! `resolve` — the pure fold over the preference chain (prefs scope, the core function):
 //!
 //! ```text
-//! request override  →  user pref  →  workspace default  →  built-in fallback (en, UTC, iso, h24, metric)
+//! request override  →  user pref  →  workspace default  →  built-in fallback (en, UTC, eu, h24, metric)
 //! ```
 //!
 //! **Each axis is resolved INDEPENDENTLY** (the decouple-the-axes insight): `language=es` from the
@@ -19,13 +19,13 @@ use crate::axis::language;
 use crate::axis::{DateStyle, NumberFormat, TimeStyle, UnitSystem};
 use crate::prefs::{Prefs, ResolvedPrefs};
 
-/// The built-in fallback — the last link, always fully populated (prefs scope: `en, UTC, iso,
-/// metric`; 24h and Monday are the metric-region seeds).
+/// The built-in fallback — the last link, always fully populated (prefs scope: `en, UTC, eu,
+/// metric`; 24h, Monday and `DD/MM/YYYY` are the metric-region seeds).
 pub fn builtin() -> ResolvedPrefs {
     ResolvedPrefs {
         language: language::FALLBACK.to_string(),
         timezone: "UTC".to_string(),
-        date_style: DateStyle::Iso,
+        date_style: DateStyle::Eu,
         time_style: TimeStyle::H24,
         first_day_of_week: crate::axis::FirstDay::Monday,
         number_format: NumberFormat::DotComma,

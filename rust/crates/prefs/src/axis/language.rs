@@ -10,7 +10,7 @@
 pub const ENABLED: [&str; 2] = ["en", "es"];
 
 /// The built-in fallback language — the last link in the resolution chain (prefs scope fallback
-/// `en, UTC, iso, metric`).
+/// `en, UTC, eu, metric`).
 pub const FALLBACK: &str = "en";
 
 /// Is `lang` enabled on this build? An unknown/disabled language resolves to [`FALLBACK`].

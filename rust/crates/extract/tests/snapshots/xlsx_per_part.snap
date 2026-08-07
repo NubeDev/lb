@@ -12,6 +12,6 @@ docs: 2
 --- doc 1 part=Some("Regions") title="Regions" ---
 | Region | Lead |
 | --- | --- |
-| North | Test |
+| North | Ada |
 | South | Grace |
 
