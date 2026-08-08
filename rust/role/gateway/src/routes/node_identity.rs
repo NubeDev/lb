@@ -8,7 +8,9 @@
 //!
 //! ```text
 //! GET /node  →  200  {"node":"node:gw-01","name":"front office","machine_id":"…",
-//!                     "version":"…","gateway":{"port":8099,"addresses":["192.168.1.40"]}}
+//!                     "version":"…",                      ← lb core, always present
+//!                     "product":{"name":"…","version":"…"},  ← the embedder, omitted when none
+//!                     "gateway":{"port":8099,"addresses":["192.168.1.40"]}}
 //!            →  404  (no identity configured — see below)
 //! ```
 //!
@@ -52,6 +54,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::Serialize;
 
+use crate::routes::ProductBody;
 use crate::state::Gateway;
 
 /// The `gateway` sub-object: where to reach this node's HTTP surface.
@@ -84,8 +87,17 @@ pub struct NodeBody {
     /// The opaque machine-derived id, omitted entirely when the embedder supplied none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub machine_id: Option<String>,
-    /// The gateway build version — the same value `/health` reports.
+    /// The **lb gateway** build version — the same value `/health` reports, and it keeps meaning
+    /// exactly that. The version of the product that *embedded* this node, if any, is
+    /// [`product`](Self::product); see `routes::product` for why this is additive and never a
+    /// rename.
     pub version: &'static str,
+    /// What program embedded this node, when one stated an identity
+    /// (`BootConfig::build_info`). **Omitted entirely** on the stock binary and on an embedder that
+    /// left the field unset — a missing key means "not an embedder" *or* "an lb predating this",
+    /// and a consumer that must tell those apart reads `version`, which is always present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product: Option<ProductBody>,
     /// Where to reach this node's HTTP surface.
     pub gateway: GatewayEndpoint,
 }
@@ -103,6 +115,9 @@ pub async fn node_identity(State(gw): State<Gateway>) -> Result<Json<NodeBody>, 
         name: identity.name.clone(),
         machine_id: identity.machine_id.clone(),
         version: crate::routes::VERSION,
+        // One source with `/health`'s: the boot-time cell, so the two surfaces cannot disagree
+        // about the product any more than they can about `version`.
+        product: ProductBody::from_build_info(gw.build_info.as_ref().as_ref()),
         gateway: GatewayEndpoint {
             port: gw.bound_port.unwrap_or_default(),
             addresses: gw.bound_addresses.to_vec(),

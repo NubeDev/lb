@@ -21,6 +21,11 @@ use lb_bus::NodeId;
 pub(crate) const TXT_NODE: &str = "node";
 pub(crate) const TXT_VERSION: &str = "ver";
 pub(crate) const TXT_FLEET: &str = "fleet";
+/// The **product** build version of the program that embedded this node, when there is one
+/// (`BuildInfo::version`). Deliberately a SECOND key rather than a wider `ver`: `ver` means lb's
+/// core version on every other surface, and repurposing it would both keep the key meaning the
+/// wrong thing and change its format under any parser already reading it. Add, never repurpose.
+pub(crate) const TXT_PRODUCT: &str = "prod";
 
 /// An lb node seen on the local network.
 ///
@@ -56,8 +61,22 @@ pub struct DiscoveredPeer {
     /// caveat `fleet` carries.
     pub machine_id: Option<String>,
 
-    /// The advertiser's version string, for compatibility decisions before dialing.
+    /// The advertiser's **lb core** version string, for compatibility decisions before dialing.
+    ///
+    /// Note the caveat the advertisement carries: an embedder can overwrite this field on the
+    /// `Advertisement` it hands back, so on a node whose host does that it may not be lb's. The
+    /// product's own build belongs in [`product_version`](Self::product_version).
     pub version: Option<String>,
+
+    /// The **product** build version of the program that embedded the advertiser
+    /// (`BuildInfo::version`), when it published one. `None` from a stock lb node (not an
+    /// embedder), from an embedder that left `BootConfig::build_info` unset, and from any responder
+    /// predating this key.
+    ///
+    /// Free-form and never parsed here — see `BuildInfo` for what it is and is not. Like every
+    /// other TXT value it is cleartext on the LAN and trivially forged: it diagnoses accidents, not
+    /// adversaries, and nothing may address or authorize by it.
+    pub product_version: Option<String>,
 
     /// An opaque operator-set grouping tag. Lets one LAN host several unrelated fleets without
     /// them adopting each other. **Not a security boundary** — it is plaintext on the wire and
@@ -93,6 +112,7 @@ mod tests {
             name: None,
             machine_id: None,
             version: None,
+            product_version: None,
             fleet: None,
             hostname: "gw-01.local.".into(),
         }

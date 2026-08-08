@@ -50,11 +50,13 @@ mod message;
 mod native;
 mod nav;
 mod node_identity;
+// embedder-build-info scope: the `product` object `GET /node` and `GET /health` share.
 mod outbox;
 mod packs;
 mod panel;
 mod post;
 mod prefs;
+mod product;
 mod rate_limit;
 mod report;
 mod rules;
@@ -171,6 +173,7 @@ pub use prefs::{
     convert_unit, format_datetime, format_number, format_quantity, get_prefs, resolve_prefs,
     set_default_prefs, set_prefs,
 };
+pub use product::ProductBody;
 pub use rate_limit::{
     invite_accept_rate_limit, MAX_PER_WINDOW as INVITE_ACCEPT_MAX_PER_WINDOW,
     WINDOW_SECS as INVITE_ACCEPT_WINDOW_SECS,

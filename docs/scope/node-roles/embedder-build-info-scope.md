@@ -1,6 +1,6 @@
 # Embedder build-info scope — the product on top has a version, and nothing can publish it
 
-Status: scope (the ask). Promotes to `public/node-roles/node-roles.md` once shipped.
+Status: **SHIPPED** (`feat/embedder-build-info`). Promotes to `public/node-roles/node-roles.md`.
 
 Every version lb publishes today is **lb's own**. `GET /health` reports
 `env!("CARGO_PKG_VERSION")` of `lb-role-gateway`, and `GET /node` copies that same constant
@@ -132,13 +132,28 @@ advertisement takes it in `config.rs` where `ad.version` is already set (today f
 
 | piece | file |
 |---|---|
-| `BuildInfo` type + the "lb never derives this" doctrine | `rust/node/src/build_info.rs` (new) |
+| `BuildInfo` type + the "lb never derives this" doctrine | `rust/crates/discovery/src/build_info.rs` (new) — **not** `rust/node/`, see below |
 | `BootConfig.build_info` (default `None`; `from_env` leaves it `None`) | `rust/node/src/config.rs` |
 | threading it into `Gateway` state at boot | `rust/node/src/builder.rs` |
 | `product` on the advertisement (beside the existing `ad.version`) | `rust/node/src/config.rs` |
 | `product` on `GET /node` | `rust/role/gateway/src/routes/node_identity.rs` |
 | `product` on `GET /health` | `rust/role/gateway/src/routes/health.rs` |
 | the field on `Gateway` | `rust/role/gateway/src/state.rs` |
+| the shared `product` response object both routes render | `rust/role/gateway/src/routes/product.rs` (new) |
+| `product_version` on `Advertisement` + `DiscoveredPeer`, and the `prod` TXT key | `rust/crates/discovery/src/{advertise,browse,peer}.rs` |
+
+**Two placements moved during implementation, both forced by the dependency graph:**
+
+- **`BuildInfo` lives in `lb-discovery`, not `lb-node`.** `lb-role-gateway` must name the type to
+  hold it in `Gateway` state, and the gateway cannot depend on `lb-node` — that is the wrong way
+  round. `lb-discovery` is the crate both already depend on and the home of the sibling identity
+  type `NodeIdentity`, which makes it the natural place for a second opaque identity-of-something
+  struct. It is re-exported as `lb_node::BuildInfo`, so an embedder still needs exactly one import
+  and the seam reads the same from outside.
+- **The `product` response body is its own file**, `routes/product.rs`, rather than declared twice.
+  Two routes rendering one value must not be able to render it two ways; one shape, one conversion,
+  both routes call it. It owns its two `String`s rather than borrowing the state cell — axum clones
+  `Gateway` per request, so a borrow could not outlive the handler.
 
 ## Example flow
 
@@ -179,6 +194,21 @@ Real boot, real routes, no mocks (rule 9) — the existing `health_route_test.rs
 
 Not applicable: capability-deny (no gated verb), workspace-isolation (no tenant data),
 offline/sync, hot-reload.
+
+## What shipped
+
+All of the above, plus the tests below. Two notes for a reader diffing this against the ask:
+
+- **`Gateway::with_build_info` is installed independently of `with_identity`.** The scope did not
+  say so and the obvious wiring — inside the existing `if let Some(identity)` block in
+  `builder.rs` — would have been wrong: the two are unrelated, and a node with no durable identity
+  still serves `/health`, so tying them would have silently dropped `product` on exactly those
+  nodes. Pinned by `health_carries_the_product_even_with_no_node_identity`.
+- **The advertisement is stamped in `builder.rs`, not `config.rs`.** `config.rs`'s
+  `advertisement_from_env` is the binary's env reader and `build_info` is deliberately not in env,
+  so there is nothing for it to read. Boot clones the advertisement and fills `product_version`
+  from the same `cfg.build_info` the gateway got — which is what makes the three surfaces one
+  value rather than three assignments that could drift.
 
 ## Risks & hard problems
 
