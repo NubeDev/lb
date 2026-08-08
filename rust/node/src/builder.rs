@@ -418,10 +418,19 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // `build_info` value and cannot disagree. It goes in `prod` and never in `version`: `version`
     // means lb's core on every other surface, and widening it would keep the key meaning the wrong
     // thing and change its format under any parser already reading it. Add, never repurpose.
+    //
+    // `version` is filled with lb's OWN version when the embedder left it unset — an embedder that
+    // builds its own `Advertisement` (rather than going through `advertisement_from_env`, which is
+    // the binary's path) otherwise advertises no `ver` at all, and the key would mean lb's core on
+    // every surface EXCEPT the one place a peer looks before it can dial. Only when `None`: an
+    // embedder that deliberately set it keeps what it set. This is what makes "drop your override
+    // and let `version` carry lb's" a lossless instruction rather than a trade.
     let discovery = cfg.discovery.clone().map(|mut ad| {
         if let Some(info) = cfg.build_info.as_ref() {
             ad.product_version = Some(info.version.clone());
         }
+        ad.version
+            .get_or_insert_with(|| env!("CARGO_PKG_VERSION").to_string());
         ad
     });
     let advertised = match discovery.as_ref().map(lb_discovery::advertise) {

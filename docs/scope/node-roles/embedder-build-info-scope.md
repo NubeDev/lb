@@ -204,6 +204,15 @@ All of the above, plus the tests below. Two notes for a reader diffing this agai
   `builder.rs` — would have been wrong: the two are unrelated, and a node with no durable identity
   still serves `/health`, so tying them would have silently dropped `product` on exactly those
   nodes. Pinned by `health_carries_the_product_even_with_no_node_identity`.
+- **Boot also fills `ad.version` with lb's own, when the embedder left it unset.** Not in the ask,
+  and found only when the consumer half tried to follow this scope's instruction to *delete* its
+  `ad.version` override: lb sets that field in `advertisement_from_env`, which is the **binary's**
+  path. An embedder that builds its own `Advertisement` — rubix-ai does — advertises no `ver` at
+  all once its override is gone, so the key would have meant lb's core on every surface except the
+  one a peer reads before it can dial. `get_or_insert_with`, so an embedder that deliberately set
+  the field keeps what it set. This is what makes "drop your override" lossless rather than a
+  trade, and it is the narrow half of open question 3's follow-up (lb *owning* `version` outright
+  is still not proposed — that is a behaviour change to an existing field).
 - **The advertisement is stamped in `builder.rs`, not `config.rs`.** `config.rs`'s
   `advertisement_from_env` is the binary's env reader and `build_info` is deliberately not in env,
   so there is nothing for it to read. Boot clones the advertisement and fills `product_version`
