@@ -16,7 +16,7 @@ use mdns_sd::{ServiceDaemon, ServiceInfo};
 
 use crate::error::DiscoveryError;
 use crate::identity::{NodeIdentity, TXT_MACHINE, TXT_NAME};
-use crate::peer::{TXT_FLEET, TXT_NODE, TXT_VERSION};
+use crate::peer::{TXT_FLEET, TXT_NODE, TXT_PRODUCT, TXT_VERSION};
 use crate::service_type::ServiceType;
 
 /// What this node publishes about itself. Reachability and identity only — see `peer.rs` and
@@ -31,7 +31,23 @@ pub struct Advertisement {
     /// The port peers should dial (typically the gateway's).
     pub port: u16,
     /// Version string peers can use for compatibility checks before dialing.
+    ///
+    /// lb sets this from its OWN `CARGO_PKG_VERSION` at the binary boundary, so it means *the core*
+    /// — the same thing `version` means on `GET /node` and `GET /health`. It is a writable field an
+    /// embedder can clobber afterwards, and one has: if a host overwrites it with its own product
+    /// version, this key stops agreeing with every other surface. Embedders should leave it alone
+    /// and publish their build in [`product_version`](Self::product_version) instead.
     pub version: Option<String>,
+
+    /// The **product** build version of the program that embedded this node — `BuildInfo::version`
+    /// from `BootConfig::build_info`, advertised under the `prod` TXT key (embedder-build-info
+    /// scope). `None` (the default, and the stock lb binary) ⇒ the key is omitted entirely and the
+    /// record is byte-identical to before this field existed.
+    ///
+    /// A second key rather than a wider `version`, for the reason above and the one `GET /node`
+    /// gives: **add, never repurpose**, so "`version` is lb's" stays true on the LAN as well as
+    /// over HTTP.
+    pub product_version: Option<String>,
     /// Opaque operator grouping tag; not a security boundary.
     pub fleet: Option<String>,
 }
@@ -50,6 +66,7 @@ impl Advertisement {
             identity,
             port,
             version: None,
+            product_version: None,
             fleet: None,
         }
     }
@@ -107,6 +124,10 @@ pub fn advertise(ad: &Advertisement) -> Result<Advertised, DiscoveryError> {
     }
     if let Some(v) = &ad.version {
         properties.push((TXT_VERSION.to_string(), v.clone()));
+    }
+    // The embedding product's build, when the host stated one. Beside `ver`, never instead of it.
+    if let Some(p) = &ad.product_version {
+        properties.push((TXT_PRODUCT.to_string(), p.clone()));
     }
     if let Some(f) = &ad.fleet {
         properties.push((TXT_FLEET.to_string(), f.clone()));

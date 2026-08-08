@@ -372,6 +372,13 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
                 };
                 gw = gw.with_identity(identity, bound.port(), addresses);
             }
+            // What program embedded this node, for the `product` object on `/node` AND `/health`
+            // (embedder-build-info scope). Installed OUTSIDE the identity block on purpose: the two
+            // are independent, and a node with no durable identity still answers `/health` — tying
+            // the product to `cfg.identity` would silently drop it on exactly those nodes.
+            if let Some(build_info) = cfg.build_info.clone() {
+                gw = gw.with_build_info(build_info);
+            }
             Some((gw, listener))
         }
         GatewayMode::Off => None,
@@ -405,7 +412,28 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // mDNS must not take down an otherwise healthy node, so a failure warns and boot continues —
     // the node simply is not discoverable. Advertising is the LAST boot step on purpose: a peer
     // that finds this node should find one that is already serving, not one still coming up.
-    let advertised = match cfg.discovery.as_ref().map(lb_discovery::advertise) {
+    //
+    // The product build (`BootConfig::build_info`) is stamped onto the advertisement HERE rather
+    // than by whoever built it, so `/node`, `/health` and the LAN record are all fed by the one
+    // `build_info` value and cannot disagree. It goes in `prod` and never in `version`: `version`
+    // means lb's core on every other surface, and widening it would keep the key meaning the wrong
+    // thing and change its format under any parser already reading it. Add, never repurpose.
+    //
+    // `version` is filled with lb's OWN version when the embedder left it unset — an embedder that
+    // builds its own `Advertisement` (rather than going through `advertisement_from_env`, which is
+    // the binary's path) otherwise advertises no `ver` at all, and the key would mean lb's core on
+    // every surface EXCEPT the one place a peer looks before it can dial. Only when `None`: an
+    // embedder that deliberately set it keeps what it set. This is what makes "drop your override
+    // and let `version` carry lb's" a lossless instruction rather than a trade.
+    let discovery = cfg.discovery.clone().map(|mut ad| {
+        if let Some(info) = cfg.build_info.as_ref() {
+            ad.product_version = Some(info.version.clone());
+        }
+        ad.version
+            .get_or_insert_with(|| env!("CARGO_PKG_VERSION").to_string());
+        ad
+    });
+    let advertised = match discovery.as_ref().map(lb_discovery::advertise) {
         None => None,
         Some(Ok(handle)) => Some(handle),
         Some(Err(e)) => {

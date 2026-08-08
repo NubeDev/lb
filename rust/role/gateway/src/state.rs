@@ -126,6 +126,18 @@ pub struct Gateway {
     /// cheaply per request.
     pub identity: Arc<Option<lb_discovery::NodeIdentity>>,
 
+    /// What program embedded this node, for the `product` object on the unauthenticated `GET /node`
+    /// and `GET /health` (embedder-build-info scope). `None` (the default, every test/`new_live`
+    /// seam, and the stock lb binary) ⇒ the key is **omitted entirely** from both bodies, which are
+    /// then byte-identical to before this field existed. Installed by the boot seam from
+    /// `BootConfig::build_info` via [`Gateway::with_build_info`].
+    ///
+    /// Independent of [`identity`](Self::identity): a node may publish a product without a durable
+    /// node identity (`/node` still `404`s; `/health` still carries `product`) and vice versa. lb
+    /// derives neither field — see `lb_discovery::BuildInfo` for the rule-10 argument and the
+    /// unauthenticated trade. Behind `Arc` so axum clones the state cheaply per request.
+    pub build_info: Arc<Option<lb_discovery::BuildInfo>>,
+
     /// The port `GET /node` reports as this node's dialable gateway endpoint. `None` ⇒ the route
     /// reports `0`; the boot seam pins the REAL bound port (which may differ from the requested one
     /// when binding `:0`), so what is published is what a caller can actually dial.
@@ -253,6 +265,9 @@ impl Gateway {
             // No durable identity on the test/`new_live` seams — `GET /node` 404s until the boot
             // path installs one from `BootConfig::identity` (node-identity scope).
             identity: Arc::new(None),
+            // No embedder on the test/`new_live` seams — `product` is omitted from `/node` and
+            // `/health` until the boot path installs one from `BootConfig::build_info`.
+            build_info: Arc::new(None),
             bound_port: None,
             bound_addresses: Arc::from(Vec::new()),
             // No upload sinks by default: the `/uploads/*` routes are not mounted (node-update
@@ -274,6 +289,15 @@ impl Gateway {
         self.identity = Arc::new(Some(identity));
         self.bound_port = Some(port);
         self.bound_addresses = Arc::from(addresses);
+        self
+    }
+
+    /// Install the embedding product's identity for the `product` object on `GET /node` and
+    /// `GET /health` (embedder-build-info scope). Builder-style; the boot seam passes
+    /// `BootConfig::build_info`. Never called ⇒ the key is omitted from both bodies, which is the
+    /// honest answer for the stock binary: lb is not embedded in anything.
+    pub fn with_build_info(mut self, build_info: lb_discovery::BuildInfo) -> Self {
+        self.build_info = Arc::new(Some(build_info));
         self
     }
 

@@ -13,7 +13,7 @@ use lb_bus::NodeId;
 
 use crate::error::DiscoveryError;
 use crate::identity::{TXT_MACHINE, TXT_NAME};
-use crate::peer::{DiscoveredPeer, TXT_FLEET, TXT_NODE, TXT_VERSION};
+use crate::peer::{DiscoveredPeer, TXT_FLEET, TXT_NODE, TXT_PRODUCT, TXT_VERSION};
 use crate::service_type::ServiceType;
 
 /// A peer appearing or disappearing on the LAN.
@@ -124,6 +124,9 @@ fn to_peer(resolved: &mdns_sd::ResolvedService) -> Option<DiscoveredPeer> {
             .map(str::to_string),
         version: resolved
             .get_property_val_str(TXT_VERSION)
+            .map(str::to_string),
+        product_version: resolved
+            .get_property_val_str(TXT_PRODUCT)
             .map(str::to_string),
         fleet: resolved.get_property_val_str(TXT_FLEET).map(str::to_string),
         hostname: resolved.get_hostname().to_string(),
