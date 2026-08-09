@@ -21,45 +21,33 @@
 //! Best-effort by contract: any failure leaves the log valid and only costs a slower boot /
 //! a skipped pass; errors are recorded in the returned [`CompactionRecord`], never panicked.
 
-use serde::{Deserialize, Serialize};
-
 use surrealdb::engine::local::SurrealKv;
 use surrealdb::Surreal;
 
+use crate::compaction_record::{CompactionPhases, CompactionRecord};
 use crate::open::{Store, StoreError};
 use crate::status::log_stats;
 
-/// Outcome of one compaction pass (boot or online). Served by `status`, returned by the
-/// `store.compact` job.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompactionRecord {
-    /// Wall-clock epoch ms when the pass finished.
-    pub at_epoch_ms: u64,
-    pub ok: bool,
-    /// Commit-log bytes before / after the pass (after includes the applied merge).
-    pub before_bytes: u64,
-    pub after_bytes: u64,
-    /// How long the blocking pass took.
-    pub duration_ms: u64,
-    /// The failure, when `ok` is false. A failed pass leaves the log exactly as it was.
-    pub error: Option<String>,
-    /// Set when the pass did not run because a **boot precondition** declined it — the machine
-    /// lacked the memory headroom, or the last pass reclaimed essentially nothing and the log has
-    /// not grown since (boot-memory-guard scope slice 1). Carries the human-readable reason, which
-    /// is the same string logged at warn. `ok` is false for a skip (nothing was compacted) but
-    /// `error` is `None` — a skip is a decision, not a failure, and every reader that judges
-    /// whether compaction still pays must ignore it rather than conclude from it.
-    ///
-    /// Defaulted on deserialize so a record persisted by an older node still loads.
-    #[serde(default)]
-    pub skipped: Option<String>,
-}
+/// The value cache this crate's own (compaction-only) handle runs with — 256 MiB, against a stock
+/// default of 100_000 **bytes** (surrealkv weighs this cache by byte, not by entry: `option.rs:60`,
+/// `util.rs` `ByteWeighter`). At the default it is a ~100 kB cache in front of a multi-hundred-MB
+/// log, i.e. a no-op.
+///
+/// This matters because of HOW `surrealkv::Store::compact()` works: it walks a snapshot of the
+/// in-memory index and calls `resolve()` on every live value, and every value above
+/// `max_value_threshold` (64 B — so effectively every sample payload) is a separate `pread` into the
+/// log. That scattered read pass is one of the two halves of the ~94 s pause measured on RC-6.
+///
+/// Safe to set precisely because it is **runtime-only**: unlike the layout knobs below it is not a
+/// property of the on-disk data, so surrealdb's own handle is unaffected — it simply opens with its
+/// own default next time. We are buying cache for the one handle that provably needs it.
+const COMPACTION_VALUE_CACHE_BYTES: u64 = 256 << 20;
 
-/// Engine options for a direct `surrealkv` handle — MUST mirror surrealdb's own wrapper
-/// (`surrealdb-core/src/kvs/surrealkv/mod.rs`, the unversioned `surrealkv://` scheme lb uses):
-/// versions off, disk persistence on, 512 MiB segments, 64-byte value threshold. SurrealKV
-/// persists options in its manifest and merges on load, so the runtime-only cache knob is left
-/// at its default.
+/// Engine options for a direct `surrealkv` handle — the layout knobs MUST mirror surrealdb's own
+/// wrapper (`surrealdb-core/src/kvs/surrealkv/mod.rs`, the unversioned `surrealkv://` scheme lb
+/// uses): versions off, disk persistence on, 512 MiB segments, 64-byte value threshold. Those four
+/// describe the data and must not diverge. [`COMPACTION_VALUE_CACHE_BYTES`] is the one deliberate
+/// difference, and it is deliberate because it describes only this handle's behaviour.
 fn engine_options(dir: &std::path::Path) -> surrealkv::Options {
     let mut opts = surrealkv::Options::new();
     opts.dir = dir.to_path_buf();
@@ -67,6 +55,7 @@ fn engine_options(dir: &std::path::Path) -> surrealkv::Options {
     opts.enable_versions = false;
     opts.max_segment_size = 1 << 29;
     opts.max_value_threshold = 64;
+    opts.max_value_cache_size = COMPACTION_VALUE_CACHE_BYTES;
     opts
 }
 
@@ -92,6 +81,7 @@ pub(crate) fn compact_log(path: &str) -> CompactionRecord {
         duration_ms: 0,
         error: None,
         skipped: None,
+        phases: CompactionPhases::default(),
     };
     let fail = |mut rec: CompactionRecord, started: std::time::Instant, e: String| {
         eprintln!("store: log compaction failed ({e}) — continuing on the uncompacted log");
@@ -117,10 +107,16 @@ pub(crate) fn compact_log(path: &str) -> CompactionRecord {
         }
     }
 
+    // PHASE `open_ms` — a full sequential replay of the uncompacted log to rebuild the index.
+    let phase = std::time::Instant::now();
     let store = match surrealkv::Store::new(engine_options(dir)) {
         Ok(s) => s,
         Err(e) => return fail(rec, started, format!("open-for-compaction: {e}")),
     };
+    rec.phases.open_ms = phase.elapsed().as_millis() as u64;
+
+    // PHASE `compact_ms` — the index-snapshot walk, the per-value reads, the `.merge/` write.
+    let phase = std::time::Instant::now();
     if let Err(e) = store.compact() {
         let _ = store.close();
         return fail(rec, started, format!("compact: {e}"));
@@ -128,10 +124,13 @@ pub(crate) fn compact_log(path: &str) -> CompactionRecord {
     if let Err(e) = store.close() {
         return fail(rec, started, format!("close-after-compaction: {e}"));
     }
+    rec.phases.compact_ms = phase.elapsed().as_millis() as u64;
 
     // Apply the merge NOW, with a non-writing session. If this fails, drop the compaction —
     // a pending merge left behind would be applied by the (writing!) surrealdb open and eat
     // that session's writes (the P0).
+    // PHASE `merge_ms` — the physical swap plus a replay of the now-compacted log.
+    let phase = std::time::Instant::now();
     if let Err(e) = complete_pending_merge(dir) {
         let _ = std::fs::remove_dir_all(dir.join(".merge"));
         let _ = std::fs::remove_dir_all(dir.join(".tmp.merge"));
@@ -141,6 +140,8 @@ pub(crate) fn compact_log(path: &str) -> CompactionRecord {
             format!("merge-completion (compaction dropped): {e}"),
         );
     }
+
+    rec.phases.merge_ms = phase.elapsed().as_millis() as u64;
 
     let (after_bytes, _) = log_stats(path);
     rec.after_bytes = after_bytes;
@@ -189,12 +190,14 @@ pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
     //    quiescence is DETECTED, never assumed (spike Q2: 74–240 ms observed).
     let old = std::mem::replace(&mut *guard, Surreal::init());
     drop(old);
+    let quiesce_started = std::time::Instant::now();
     let released = wait_for_quiesce(&path, RELEASE_TIMEOUT).await;
+    let quiesce_ms = quiesce_started.elapsed().as_millis() as u64;
 
     // 3. Compact on disk — only once the old engine provably quiesced. Compacting under an
     //    engine that can still write is the exact data-loss the spike disqualified (Q1);
     //    a timeout skips the pass.
-    let rec = if released {
+    let mut rec = if released {
         let p = path.clone();
         tokio::task::spawn_blocking(move || compact_log(&p))
             .await
@@ -206,6 +209,7 @@ pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
                 duration_ms: 0,
                 error: Some(format!("compaction task join error: {e}")),
                 skipped: None,
+                phases: CompactionPhases::default(),
             })
     } else {
         CompactionRecord {
@@ -218,8 +222,12 @@ pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
                 "engine did not quiesce at {path} within {RELEASE_TIMEOUT:?}; pass skipped"
             )),
             skipped: None,
+            phases: CompactionPhases::default(),
         }
     };
+    // Quiesce-wait happens under the write guard, so it is part of the write-unavailability window
+    // whether or not the pass that followed it ran. Attribute it either way.
+    rec.phases.quiesce_ms = quiesce_ms;
 
     // 4. Reopen and swap back in — ALWAYS, even after a failed pass (the log is still valid;
     //    the node must keep serving). One retry for transient open failures.
@@ -287,17 +295,28 @@ async fn wait_for_quiesce(dir: &str, timeout: std::time::Duration) -> bool {
             if !open {
                 return true;
             }
-        } else {
-            // Fallback: (size, mtime) stability across the window.
-            let snap = dir_snapshot(std::path::Path::new(dir));
-            match &last_snapshot {
-                Some((at, prev)) if *prev == snap => {
-                    if at.elapsed() >= QUIESCE_WINDOW {
-                        return true;
-                    }
+        }
+        // Fallback: (size, mtime) stability across the window — sampled from the FIRST iteration,
+        // concurrently with the fast path rather than after it. The two are independent proofs of
+        // the same fact and both are pure reads, so there is no reason to serialize them; doing so
+        // cost every real node ~5 s of dead time under the write guard, because a node that ever
+        // defined an index NEVER reaches fd-zero (see 1. above) and so always ended up waiting out
+        // the whole fast-path window before the stability clock could even start. Overlapped, the
+        // leaked-holder case settles at ~QUIESCE_WINDOW instead of RELEASE_FAST_PATH + QUIESCE_WINDOW
+        // — and that saving is subtracted directly from the write-unavailability window, which is
+        // the number this scope exists to shrink.
+        //
+        // The proof itself is unweakened: it still requires an unchanged snapshot across a full
+        // QUIESCE_WINDOW, and the engine's shutdown writes keep the snapshot moving until they are
+        // done, so an early window simply resets.
+        let snap = dir_snapshot(std::path::Path::new(dir));
+        match &last_snapshot {
+            Some((at, prev)) if *prev == snap => {
+                if at.elapsed() >= QUIESCE_WINDOW {
+                    return true;
                 }
-                _ => last_snapshot = Some((std::time::Instant::now(), snap)),
             }
+            _ => last_snapshot = Some((std::time::Instant::now(), snap)),
         }
         if started.elapsed() > timeout {
             eprintln!(

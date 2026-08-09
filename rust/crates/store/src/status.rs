@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::compact::CompactionRecord;
+use crate::compaction_record::CompactionRecord;
 use crate::open::Store;
 
 /// Snapshot served by the `store.status` verb.

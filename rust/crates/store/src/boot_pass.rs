@@ -13,7 +13,8 @@
 //! rename-class operation; it is not the memory hazard the pass is.
 
 use crate::boot_guard::boot_compaction_skip;
-use crate::compact::{compact_log, complete_pending_merge, epoch_ms, CompactionRecord};
+use crate::compact::{compact_log, complete_pending_merge, epoch_ms};
+use crate::compaction_record::CompactionRecord;
 use crate::last_pass::{load_last_compaction, store_last_compaction};
 use crate::status::log_stats;
 
@@ -34,6 +35,7 @@ pub(crate) fn boot_compact(path: &str, available_ram: Option<u64>) -> Compaction
             duration_ms: 0,
             error: None,
             skipped: None,
+            phases: crate::compaction_record::CompactionPhases::default(),
         };
     }
 
@@ -54,6 +56,7 @@ pub(crate) fn boot_compact(path: &str, available_ram: Option<u64>) -> Compaction
                 duration_ms: 0,
                 error: Some(format!("pending-merge completion: {e}")),
                 skipped: None,
+                phases: crate::compaction_record::CompactionPhases::default(),
             };
         }
     }
@@ -80,6 +83,7 @@ pub(crate) fn boot_compact(path: &str, available_ram: Option<u64>) -> Compaction
             after_bytes: log_bytes,
             duration_ms: 0,
             error: None,
+            phases: crate::compaction_record::CompactionPhases::default(),
             skipped: Some(reason),
         };
     }

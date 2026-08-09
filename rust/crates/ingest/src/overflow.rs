@@ -53,10 +53,12 @@ pub async fn enforce_bound(
 
 /// Count of staged rows in `ws` (the workspace-partitioned bound — never another workspace's rows).
 ///
-/// `pub(crate)` so [`write`](crate::write) can take ONE count up front and skip the per-sample
+/// `pub` for two readers. [`write`](crate::write) takes ONE count up front and skips the per-sample
 /// `enforce_bound` while it holds proven headroom — this query is a full aggregate scan, and running
-/// it per sample is what made a large batch unaffordable on edge hardware.
-pub(crate) async fn staged_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
+/// it per sample is what made a large batch unaffordable on edge hardware. The host's caller path
+/// reads it to decide whether anything is queued AHEAD of an incoming batch, which is what makes the
+/// direct commit ([`commit_direct`](crate::commit_direct)) safe to take.
+pub async fn staged_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
     let mut resp = store
         .query_ws(
             ws,

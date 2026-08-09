@@ -11,6 +11,7 @@ mod boot_guard;
 mod boot_pass;
 mod capped;
 mod compact;
+mod compaction_record;
 mod conflict;
 mod create;
 mod delete;
@@ -42,7 +43,8 @@ pub use boot_guard::{
     OPEN_GUARD_MEM_RATIO, PRODUCTIVE_RECLAIM_RATIO, REGROWTH_RERUN_RATIO,
 };
 pub use capped::{capped_insert, new_ulid, ulid_timestamp_ms};
-pub use compact::{compact, CompactionRecord};
+pub use compact::compact;
+pub use compaction_record::{CompactionPhases, CompactionRecord};
 pub use create::create;
 pub use delete::delete;
 pub use graph::{graph, Edge as GraphEdge, Graph, Node as GraphNode, MAX_FANOUT, MAX_SEED};

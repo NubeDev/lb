@@ -24,6 +24,12 @@
 //!     (`labels::apply_labels`) — so `series.find` actually finds what ingest wrote.
 //!
 //! Payload is stored **typed, not opaque** — SurrealDB's `CONTENT` preserves the JSON value's type.
+//!
+//! **One engine, two entry points.** [`commit_staged`] is the whole transaction builder;
+//! [`commit_batch_capped`] feeds it rows it drained out of staging (and has it delete them in the
+//! same tx), while [`commit_direct`](crate::commit_direct) feeds it the caller's own live batch,
+//! which was never staged. Keeping ONE builder is what makes "exactly-once is keyed on
+//! `[series, producer, seq]`" a single fact rather than two implementations that agree today.
 
 use std::collections::HashSet;
 
@@ -77,6 +83,36 @@ pub async fn commit_batch_capped(
     series_cap: usize,
 ) -> Result<CommitPass, StoreError> {
     let staged = drain(store, ws, batch).await?;
+    commit_staged(store, ws, &staged, series_cap, Dequeue::Yes).await
+}
+
+/// Whether the commit transaction must also DELETE the staged row of every sample it handles.
+///
+/// The two callers differ ONLY here. [`commit_batch_capped`] drained its samples OUT of staging, so
+/// the delete is what makes commit+dequeue atomic. [`commit_direct`](crate::commit_direct) never
+/// staged them at all, so there is no row to delete — emitting the DELETE anyway would append a
+/// tombstone per sample to the append-only log for a row that never existed, which is precisely the
+/// write amplification the direct path exists to remove (compaction-write-availability scope).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dequeue {
+    Yes,
+    No,
+}
+
+/// Commit an already-materialized batch of samples to the series plane in ONE transaction.
+///
+/// The single commit engine, shared by the staged drain and the direct caller path — so the two can
+/// never drift in their exactly-once behaviour (the UPSERT key `[series, producer, seq]` is written
+/// in exactly one place). Everything the drain guarantees holds for both: one batch = one tx, the
+/// cardinality gate, the normalize filters, the forward-only `series_latest` pointer, and the filter
+/// anchors persisted in the same tx as the samples that moved them.
+pub async fn commit_staged(
+    store: &Store,
+    ws: &str,
+    staged: &[Staged],
+    series_cap: usize,
+    dequeue: Dequeue,
+) -> Result<CommitPass, StoreError> {
     if staged.is_empty() {
         return Ok(CommitPass::default());
     }
@@ -86,7 +122,7 @@ pub async fn commit_batch_capped(
     // the operator's own policy discards must not mint a `series_meta` registry row on its way out:
     // a muted prefix would otherwise consume the workspace's distinct-series budget for data it
     // never stores. Filtering is also strictly cheaper than the gate's per-series registry probes.
-    let filtered = filter_batch(store, ws, &staged).await?;
+    let filtered = filter_batch(store, ws, staged).await?;
 
     // Cardinality gate: decide, per distinct series name in this batch, whether it is admitted.
     // Existing series always pass; new names are admitted while the registry stays under the cap.
@@ -174,10 +210,13 @@ pub async fn commit_batch_capped(
             ));
             dead_lettered += 1;
         }
-        // Delete the staged row in the SAME tx so commit + dequeue are atomic.
-        sql.push_str(&format!(
-            "DELETE type::thing('{STAGING_TABLE}', [${se}, ${pr}, ${sq}]);\n"
-        ));
+        // Delete the staged row in the SAME tx so commit + dequeue are atomic. Skipped on the direct
+        // path, where nothing was ever staged (see [`Dequeue`]).
+        if dequeue == Dequeue::Yes {
+            sql.push_str(&format!(
+                "DELETE type::thing('{STAGING_TABLE}', [${se}, ${pr}, ${sq}]);\n"
+            ));
+        }
         bindings.push((se, Value::String(s.sample.series.clone())));
         bindings.push((pr, Value::String(s.sample.producer.clone())));
         bindings.push((sq, Value::Number(s.sample.seq.into())));
@@ -239,7 +278,7 @@ pub async fn commit_batch_capped(
 
     // Label→tag conversion, once per series (post-tx: edges are derived truth, re-derivable).
     let mut labeled: HashSet<&str> = HashSet::new();
-    for s in &staged {
+    for s in staged {
         if admitted_series.contains(&s.sample.series) && labeled.insert(s.sample.series.as_str()) {
             apply_labels(store, ws, &s.sample).await?;
         }

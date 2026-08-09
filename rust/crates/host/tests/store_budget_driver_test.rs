@@ -54,6 +54,7 @@ fn record(before: u64, after: u64) -> lb_store::CompactionRecord {
         // A pass that RAN (a boot skip sets this; the driver must ignore those — see
         // `store_boot_guard_test`).
         skipped: None,
+        phases: lb_store::CompactionPhases::default(),
     }
 }
 

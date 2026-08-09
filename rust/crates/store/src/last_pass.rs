@@ -14,7 +14,7 @@
 //! on. Written atomically (tmp + rename in the same directory) so a crash mid-write can never leave
 //! a half-file that a later boot would have to interpret.
 
-use crate::compact::CompactionRecord;
+use crate::compaction_record::CompactionRecord;
 
 /// The sidecar's filename, resolved against the store directory's **parent**.
 const LAST_COMPACTION_FILE: &str = "last-compaction.json";
@@ -121,6 +121,7 @@ mod tests {
             duration_ms: 7,
             error: None,
             skipped: None,
+            phases: crate::compaction_record::CompactionPhases::default(),
         };
         store_last_compaction(store_dir, &rec);
         let back = load_last_compaction(store_dir).expect("persisted");
