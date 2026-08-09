@@ -36,6 +36,7 @@
 
 mod advertise;
 mod browse;
+mod build_info;
 mod error;
 mod identity;
 mod peer;
@@ -43,6 +44,7 @@ mod service_type;
 
 pub use advertise::{advertise, Advertised, Advertisement};
 pub use browse::{browse, Browse, Discovered};
+pub use build_info::BuildInfo;
 pub use error::DiscoveryError;
 pub use identity::NodeIdentity;
 /// `NodeId` is minted in `lb-bus` and NOT forked here — re-exported so a caller that constructs a

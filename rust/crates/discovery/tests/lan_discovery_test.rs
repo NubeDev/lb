@@ -129,6 +129,61 @@ async fn an_advertised_node_is_discovered_with_a_dialable_endpoint() {
     );
 }
 
+/// The advertisement's product half (embedder-build-info scope), asserted on a live browse
+/// round-trip: `prod` carries the EMBEDDER's build, and `ver` still carries lb's **in the same
+/// record**. The second half is the point — it is what makes "add, never repurpose" true on the LAN
+/// as well as over HTTP, and it fails the moment someone widens `version` to mean the product.
+#[tokio::test]
+async fn the_product_build_rides_prod_and_leaves_version_alone() {
+    require_mdns!();
+
+    let ty = service_type("p");
+    let node = NodeId::new("node:gw-04").unwrap();
+
+    let browser = browse(&ty).expect("mDNS proven available by the probe");
+    let mut ad = Advertisement::new(node.clone(), 8099);
+    ad.service_type = ty;
+    ad.version = Some("0.4.5".into());
+    // A fabricated embedder — no lb test names a real product (rule 10).
+    ad.product_version = Some("2.4.0+gdeadbeef1234".into());
+    let _held = advertise(&ad).expect("mDNS proven available by the probe");
+
+    let peer = await_peer(&browser, &node, RESOLVE_TIMEOUT)
+        .await
+        .expect("an advertised node MUST be discovered on an mDNS-capable host");
+
+    assert_eq!(peer.product_version.as_deref(), Some("2.4.0+gdeadbeef1234"));
+    assert_eq!(
+        peer.version.as_deref(),
+        Some("0.4.5"),
+        "`ver` still means lb's core — the product rides its own key, never this one"
+    );
+}
+
+/// No embedder ⇒ the `prod` key is not advertised at all, so a browsing peer can tell "no product"
+/// from "a product advertised as empty" (an empty string is a legal TXT value).
+#[tokio::test]
+async fn an_absent_product_advertises_no_prod_key() {
+    require_mdns!();
+
+    let ty = service_type("q");
+    let node = NodeId::new("node:gw-05").unwrap();
+
+    let browser = browse(&ty).expect("mDNS proven available by the probe");
+    let mut ad = Advertisement::new(node.clone(), 8099);
+    ad.service_type = ty;
+    ad.version = Some("0.4.5".into());
+    // No `product_version` — the stock lb binary's posture.
+    let _held = advertise(&ad).expect("mDNS proven available by the probe");
+
+    let peer = await_peer(&browser, &node, RESOLVE_TIMEOUT)
+        .await
+        .expect("an advertised node MUST be discovered on an mDNS-capable host");
+
+    assert_eq!(peer.product_version, None);
+    assert_eq!(peer.version.as_deref(), Some("0.4.5"));
+}
+
 /// The workspace wall, asserted on the wire (lib docs / rule 6): the advertisement carries
 /// reachability and an opaque tag, and the type has nowhere to put a workspace, persona, roster or
 /// capability. This fails if someone later adds a "convenient" TXT field that leaks tenancy onto

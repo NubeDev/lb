@@ -43,6 +43,14 @@ pub use config::{
 // `BootConfig::signing_key` (custody at the binary boundary); `Node` is what `RunningNode::node` hands
 // back for in-process host-verb calls.
 pub use lb_auth::SigningKey;
+/// What program embedded this node — the `{name, version}` pair an embedder puts on
+/// [`BootConfig::build_info`], published beside lb's own version on `GET /node`, `GET /health` and
+/// the mDNS `prod` key. Defined in `lb-discovery` beside its sibling [`NodeIdentity`] because both
+/// the node and the gateway crate need it; re-exported here so an embedder needs one import.
+///
+/// lb never derives, parses, or defaults either string (rule 10) — see the type's docs for the
+/// unauthenticated trade.
+pub use lb_discovery::BuildInfo;
 pub use lb_host::Node;
 /// The retention policy shape an embedder fills `BootConfig::retention_seed` with — re-exported for
 /// the same reason `CacheConfig` is: a host with only the `lb-node` dep must be able to NAME the

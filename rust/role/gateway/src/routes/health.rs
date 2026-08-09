@@ -10,6 +10,10 @@
 //! ```text
 //! GET /health  →  200  {"status":"ok",       "version":"…", "detail":{"store":"ok","gateway":"ok"}}
 //!              →  503  {"status":"degraded", "version":"…", "detail":{"store":"…","gateway":"…"}}
+//!
+//! `version` is **this gateway crate's** build and always has been. A node booted by an embedder
+//! additionally reports `"product":{"name":"…","version":"…"}` — the program on top — which is
+//! omitted entirely otherwise; see `routes::product` for why that is additive and never a rename.
 //! ```
 //!
 //! - **200 = serving** — take traffic.
@@ -95,6 +99,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::Serialize;
 
+use crate::routes::ProductBody;
 use crate::state::Gateway;
 
 /// The version this gateway reports in the health body. `env!("CARGO_PKG_VERSION")` resolves at
@@ -244,6 +249,16 @@ pub struct HealthBody {
     /// on a bounded node and on one that never reported — see the module docs.
     #[serde(skip_serializing_if = "Option::is_none")]
     store_bounds: Option<&'static str>,
+    /// What program embedded this node (`BootConfig::build_info`), or **omitted entirely** when
+    /// none did — the stock binary's body is unchanged (embedder-build-info scope).
+    ///
+    /// `version` above keeps meaning *this gateway crate's* build, unchanged and forever; this is
+    /// the version of the product on top. `/health` carries it as well as `/node` because a fleet
+    /// prober usually holds only this route, and asking it to make a second call for a version it
+    /// is already half-reading is a poor trade for two short strings. Same source value as
+    /// `/node`'s, so the two cannot disagree. See `routes::product`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    product: Option<ProductBody>,
 }
 
 /// `GET /health` — unauthenticated, in-memory, one route. `200` when every subsystem is serving,
@@ -278,6 +293,8 @@ pub async fn health(State(gw): State<Gateway>) -> (StatusCode, Json<HealthBody>)
             // unbounded node is serving correctly at this instant — that is the whole problem with
             // it — so 503 would pull a working box out of rotation and still not say why.
             store_bounds: gate.store_bounds(),
+            // The same boot-time cell `GET /node` reads — one value, both surfaces.
+            product: ProductBody::from_build_info(gw.build_info.as_ref().as_ref()),
         }),
     )
 }

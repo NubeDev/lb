@@ -463,6 +463,33 @@ pub struct BootConfig {
     /// `"firmware"` on another needs zero lb change (rule 10). Not read from env, for the same reason
     /// [`update`](Self::update) is not.
     pub upload_sinks: Vec<(String, std::sync::Arc<dyn lb_host::UploadSink>)>,
+
+    /// **What program embedded this node** (embedder-build-info scope) — the product identity of
+    /// the host on top of the core, published beside lb's own version and never instead of it.
+    ///
+    /// `None` (the default, and the stock binary) ⇒ today's behaviour byte for byte: `GET /node`
+    /// and `GET /health` omit the `product` key entirely and the mDNS record omits `prod`. lb is
+    /// not embedded in anything and has no product to declare.
+    ///
+    /// `Some(info)` ⇒ the same pair of strings feeds `/node`, `/health`, **and** the advertisement,
+    /// so the three surfaces cannot disagree — the argument node-identity already made for
+    /// publishing one identity two ways, extended to the build.
+    ///
+    /// Why this exists: every version lb publishes is lb's own, and an embedder had no field in
+    /// which to say what *it* is. An operator reads `"version":"0.1.0"` off `/node` and reasonably
+    /// concludes that is the product on the box; it is the `lb-role-gateway` crate, on an entirely
+    /// independent release train. Nothing errors — the answer is just about a different piece of
+    /// software than the one asked about.
+    ///
+    /// **lb derives nothing here** (rule 10): two opaque strings in, two strings out, never parsed,
+    /// validated, or defaulted, and no core crate learns which embedder is on top. How the version
+    /// string is computed is the embedder's business.
+    ///
+    /// **Deliberately not read from env**, unlike most scalars here. [`Self::from_env`] leaves it
+    /// `None`: the stock binary is not an embedder, and an `LB_PRODUCT_NAME` would let an operator
+    /// relabel a node as something it is not on a surface with no wall in front of it. It is
+    /// compile-time knowledge of the *program*, not deployment configuration.
+    pub build_info: Option<lb_discovery::BuildInfo>,
 }
 
 impl Default for BootConfig {
@@ -547,6 +574,10 @@ impl Default for BootConfig {
             // Empty ⇒ the `/uploads/*` routes are not mounted at all. An embedder registers its
             // sinks; the gateway never learns whose bytes it moves.
             upload_sinks: Vec::new(),
+            // `None` ⇒ `product` is omitted from `/node`/`/health` and `prod` from the mDNS record;
+            // lb is not embedded in anything. An embedder states its own identity — lb never
+            // derives, guesses, or defaults one (rule 10).
+            build_info: None,
         }
     }
 }
@@ -674,6 +705,11 @@ impl BootConfig {
             // no update provider and no upload sinks — an embedder fills the struct directly.
             update: None,
             upload_sinks: Vec::new(),
+            // Deliberately absent from the env path, but for a DIFFERENT reason than the two above:
+            // the strings are parseable, and that is exactly the problem. The stock binary is not an
+            // embedder, and an `LB_PRODUCT_NAME` would let an operator relabel a node as something it
+            // is not on an unauthenticated surface. It describes the PROGRAM, not the deployment.
+            build_info: None,
         }
     }
 }
