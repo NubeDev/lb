@@ -12,7 +12,7 @@
 //! numbers* — no seeding 617 MB in CI, and no mock either: the callers feed these functions real
 //! measured bytes (rule 9).
 
-use crate::compact::CompactionRecord;
+use crate::compaction_record::CompactionRecord;
 
 /// Skip the boot compaction pass when the commit log is larger than this fraction of available RAM.
 ///
@@ -127,6 +127,7 @@ mod tests {
             duration_ms: 1,
             error: None,
             skipped: None,
+            phases: crate::compaction_record::CompactionPhases::default(),
         }
     }
 

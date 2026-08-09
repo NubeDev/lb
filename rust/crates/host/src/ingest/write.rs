@@ -1,4 +1,5 @@
-//! `ingest.write` — authorize, stamp the authenticated producer, then durable-append to staging.
+//! `ingest.write` — authorize, stamp the authenticated producer, then durably accept the batch:
+//! commit it straight to the series plane when staging is empty, else append it to staging.
 //!
 //! **The producer is ROOTED at the authenticated calling principal**, and a caller MAY namespace its
 //! own streams beneath it: the staged producer is `principal.sub()` when the caller declares nothing,
@@ -89,9 +90,15 @@ pub fn producer_ext_id(producer: &str) -> Option<&str> {
     (!ext.is_empty()).then_some(ext)
 }
 
-/// Append `samples` to `ws`'s staging as `principal`. Authorizes `ingest.write` first, then stamps
+/// Durably accept `samples` into `ws` as `principal`. Authorizes `ingest.write` first, then stamps
 /// the authenticated producer root onto every sample (preserving any caller-declared sub-namespace
-/// beneath it). Returns the count accepted (committed later by the drain worker / `commit_batch`).
+/// beneath it). Returns the count accepted.
+///
+/// **Two paths, one decision — see [`take_path`].** With staging empty the batch is committed
+/// directly to the series plane; otherwise it is appended to staging and committed by the drain.
+/// Either way acceptance means the store write returned, and the caller's own bounded drain still
+/// runs afterwards (it finds an empty staging on the direct path — one cheap query — and still
+/// flushes anything a concurrent producer left behind).
 pub async fn ingest_write(
     store: &Store,
     principal: &Principal,
@@ -107,7 +114,55 @@ pub async fn ingest_write(
             s
         })
         .collect();
-    Ok(stage_write(store, ws, &stamped, DEFAULT_STAGING_BOUND).await?)
+    // ONE staging count decides the path — and it is the same count `stage_write` would have taken
+    // for its headroom estimate, so the staged path pays nothing for the choice.
+    let staged_now = lb_ingest::staged_count(store, ws).await?;
+    match take_path(staged_now) {
+        Path::Direct => {
+            lb_ingest::commit_direct(store, ws, &stamped).await?;
+            Ok(stamped.len())
+        }
+        Path::Stage => Ok(stage_write(store, ws, &stamped, DEFAULT_STAGING_BOUND).await?),
+    }
+}
+
+/// Which path a batch takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Path {
+    /// Commit straight to `series` in one transaction — one log append per sample.
+    Direct,
+    /// Append to staging; the drain commits it — three log appends per sample.
+    Stage,
+}
+
+/// The rule: **direct commit iff nothing is queued ahead of this batch.**
+///
+/// This is the caller-path lever of the compaction-write-availability scope. On the append-only
+/// engine a staged sample costs three log appends (staging UPSERT, series UPSERT, staging DELETE
+/// tombstone) where a directly-committed one costs one; the log is also the node's RSS high-water
+/// mark and what drives the stop-the-world compaction pass, so ~3× less log growth stretches the
+/// pass interval, the pass duration and the memory plateau by the same factor. A live producer
+/// pushing into a drained node stages, immediately drains what it just staged, and tombstones it —
+/// that round-trip is pure amplification and this removes it.
+///
+/// Why the emptiness test and not, say, a batch-size threshold: a NON-empty staging means a backlog
+/// the reactor is still working through or a concurrent producer's rows sitting ahead of this batch,
+/// and both must be committed in staging order rather than jumped. Emptiness is the exact and
+/// complete statement of "there is nothing to order against". It also keeps every relief staging
+/// exists for — bursts that outrun the indexed commit, offline re-appends, crash recovery — on the
+/// staged path untouched, because in all of those staging is by definition not empty.
+///
+/// A concurrent writer can stage a row between the count and the commit. That is the same benign
+/// race the headroom estimate already lives with: the two batches commit as two transactions on the
+/// shared `series`/`series_latest` rows, SurrealDB's optimistic MVCC aborts one, and the commit's
+/// bounded retry re-applies it idempotently on the same `[series, producer, seq]` key. The
+/// `series_latest` pointer is forward-only, so neither ordering of the two can regress it.
+fn take_path(staged_now: usize) -> Path {
+    if staged_now == 0 {
+        Path::Direct
+    } else {
+        Path::Stage
+    }
 }
 
 #[cfg(test)]
@@ -198,6 +253,17 @@ mod tests {
         // A bare prefix names no extension.
         assert_eq!(producer_ext_id("ext:"), None);
         assert_eq!(producer_ext_id("ext:/leaf"), None);
+    }
+
+    /// The caller-path lever of the compaction-write-availability scope, stated as a rule: a batch
+    /// only jumps the staging queue when there IS no queue. Anything already staged is a backlog or
+    /// a concurrent producer and must commit first, in order.
+    #[test]
+    fn a_batch_commits_directly_only_when_nothing_is_queued_ahead_of_it() {
+        assert_eq!(take_path(0), Path::Direct);
+        for staged in [1, 2, 255, 256, 100_000] {
+            assert_eq!(take_path(staged), Path::Stage, "staged={staged}");
+        }
     }
 
     /// The regression this fixes: two epochs of ONE extension must be DIFFERENT producers, so a

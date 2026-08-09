@@ -19,7 +19,7 @@ use tokio::sync::RwLock;
 
 use crate::boot_guard::open_would_not_fit;
 use crate::boot_pass::boot_compact;
-use crate::compact::CompactionRecord;
+use crate::compaction_record::CompactionRecord;
 
 /// How [`Store::open_with`] treats this machine's memory. Built from `default()` and mutated
 /// through the builder methods — the struct is `#[non_exhaustive]` so a future knob stays additive

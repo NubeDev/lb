@@ -10,6 +10,8 @@
 //! The shape (one verb per file, FILE-LAYOUT):
 //!   - [`Sample`] — the canonical envelope; dedup identity is `(series, producer, seq)`.
 //!   - [`write`] — durable APPEND into staging (the cheap path; no indexes/edges on that write).
+//!   - [`commit_direct`] — commit a live batch straight to `series`, skipping the staging
+//!     round-trip (one log append per sample instead of three).
 //!   - [`commit_batch`] — drain a batch and commit it in ONE transaction, UPSERT on
 //!     `[series, producer, seq]` (atomic + exactly-once on re-drain).
 //!   - [`read`] / [`latest`] — range query / newest value over the committed series.
@@ -28,6 +30,7 @@ mod commit;
 mod cursor;
 mod dead_letter_gc;
 mod delete;
+mod direct;
 mod filter;
 mod filter_pass;
 mod filter_state;
@@ -62,10 +65,11 @@ pub use clock_sanity::{
     backwards_warning, clock_went_backwards, newest_sample_ms, skew, skew_warning,
     SKEW_TOLERANCE_MS,
 };
-pub use commit::{commit_batch, commit_batch_capped, CommitPass};
+pub use commit::{commit_batch, commit_batch_capped, commit_staged, CommitPass, Dequeue};
 pub use cursor::Cursor;
 pub use dead_letter_gc::{prune_dead_letters, DEAD_LETTER_KEEP_MS};
 pub use delete::delete_series;
+pub use direct::{commit_direct, commit_direct_capped, DIRECT_COMMIT_BATCH};
 pub use filter::{
     decide, Deadband, Decision, Filter, FilterCounts, LastCommitted, Range, RangeMode, Reason,
 };
@@ -74,7 +78,7 @@ pub use gc::{run_gc, GcPass};
 pub use latest::{latest, latest_many};
 pub use meta::{series_names, DEFAULT_SERIES_CAP};
 pub use method::{apply_method, Method};
-pub use overflow::{enforce_bound, OverflowPolicy};
+pub use overflow::{enforce_bound, staged_count, OverflowPolicy};
 pub use page::{
     read_page, Direction, Page, PageError, PageQuery, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };

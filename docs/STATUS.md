@@ -30,6 +30,47 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-08-09 (unreleased — needs the next `node-v*` tag) — INGEST STOPS PAYING 3× FOR
+EVERY SAMPLE, AND A COMPACTION PASS NOW SAYS WHERE ITS TIME WENT
+([`store/compaction-write-availability-scope.md`](scope/store/compaction-write-availability-scope.md),
+issue [#152](https://github.com/NubeDev/lb/issues/152)).** Driven by a live RC-6 incident (armv7,
+959 MB RAM): every hourly `store.compact` pass held the store's write guard for **~94 s**, every
+`ingest.write` blocked past the modbus extension's 5 s push budget, and ~90 s of `must-deliver` meter
+samples were dropped per network per pass. The log regrew ~500 MB/h because **every committed sample
+cost three commit-log appends** — staging UPSERT, series UPSERT, staging DELETE tombstone — and on an
+append-only engine the log is also the node's RSS high-water mark (~1.4× log bytes).
+
+**Lever 1 shipped.** `lb_ingest::commit_direct` commits a caller's live batch straight to the series
+plane, and the host caller path (`ingest/write.rs` `take_path`) takes it **iff staging is empty**:
+three record writes per sample become one. Everything staging exists for is untouched, because a
+burst, an offline re-append and a crash-recovery backlog all leave staging non-empty by definition.
+One commit engine serves both paths (`commit_staged` + a `Dequeue` flag), so exactly-once stays a
+single fact. The direct path **chunks** at `DIRECT_COMMIT_BATCH` (256, matching the drain) — an
+unchunked one would put an unbounded transaction on a request path.
+
+**Lever 2 — snapshot / segment-incremental compaction — was REJECTED, not deferred.** Reading the
+pinned surrealkv 0.9.3: the active segment is appended in place (a hard-linked snapshot keeps
+growing), there is no delta-replay path and segment headers validate their id (so renumbering is a
+fork, not an integration), and the `CompactedUpToSegment` watermark is hardcoded to "everything
+before the rotate". What shipped for the pause instead: **`CompactionPhases`** on every
+`CompactionRecord` (`quiesce_ms`/`open_ms`/`compact_ms`/`merge_ms`, persisted and served) so the next
+decision is measured rather than argued; a **real 256 MiB value cache on the compaction-only handle**
+(the stock `max_value_cache_size` is 100_000 *bytes*, i.e. a no-op in front of compaction's
+pread-per-value pass); and **overlapped quiesce detection** — the fd fast path and the stability
+fallback are independent proofs that were running in series, so every real node (which never reaches
+fd-zero, thanks to the surrealdb index-builder leak) waited out the full 5 s window before the 2 s
+stability clock even started. That is ~5 s off the write-guard hold, every pass.
+
+**Goal 1 is explicitly NOT met and says so**: a pass cannot be bounded below a producer's push budget
+at this engine version. The route is vendoring surrealkv (reorder `Core::new`, expose
+`rotate()`/`compact_up_to`); until then the pause is shortened by keeping the log small, which is the
+downstream [`NubeIO/rubix-ai`](https://github.com/NubeIO/rubix-ai/issues/131) RAM-aware budget's job,
+with [`NubeIO/rubix-ai-extensions`](https://github.com/NubeIO/rubix-ai-extensions/issues/33) making
+the remaining pause lossless. Amplification tests are **structural** (record writes, not log bytes):
+the commit log cannot be metered in-process — surrealkv flushes asynchronously and the index-builder
+leak means the handle is never fully shut down, so the same run measured 667,665 B and 1,647,313 B
+minutes apart.
+
 **Just shipped 2026-08-06 (unreleased — needs the next `node-v*` tag) — A GENERATED BOARD CAN FINALLY
 SAY WHICH THING YOU ARE LOOKING AT
 ([`frontend/dashboard/nav-context-builtins-scope.md`](scope/frontend/dashboard/nav-context-builtins-scope.md),
