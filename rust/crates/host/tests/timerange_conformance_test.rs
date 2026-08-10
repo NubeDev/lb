@@ -125,7 +125,8 @@ fn rows() -> Vec<(&'static str, Option<&'static str>, i64, &'static str)> {
     // the offset split (the moment.js rule Grafana inherits): `d`/`w`/`M`/`y` are
     // calendar-anchored and wall-clock preserving (now-1d spans 23 REAL hours here; now-1w spans
     // 167), while `s`/`m`/`h` are exact fixed-width ms (now-4h is 4×3 600 000 even across the
-    // jump). `today`/`this-week` show honest local-window widths and the LOCAL Monday week.
+    // jump). `today`/`this-week` now end at NOW — they show the honest time since the LOCAL
+    // midnight / the LOCAL Monday week.
     for from in [
         "today",
         "now-1d",
@@ -203,24 +204,27 @@ fn conformance_fixture_spans_the_pinned_edges() {
     let has = |expr: &str, tz: &str| rows.iter().any(|r| r["expr"] == expr && r["tz"] == tz);
     assert!(has("last-month", "UTC") && has("last-1-month", "UTC"));
     assert!(has("today", "Australia/Sydney"));
-    // The spring-forward day is 23 wall-clock hours long — the width is honest, not 24h.
+    // `today` ends at NOW, not at the day's end — so its width is the honest time since midnight,
+    // on a 23h spring day no less a 23h window than on a 25h fall day. The day's own 23h/25h
+    // widths are still pinned by the `now-1d` rows below.
     let spring_today = rows
         .iter()
         .find(|r| r["expr"] == "today" && r["nowMs"] == json!(ms("2026-10-04T10:00:00+11:00")))
         .unwrap();
     assert_eq!(
-        spring_today["toMs"].as_i64().unwrap() - spring_today["fromMs"].as_i64().unwrap(),
-        23 * 3_600_000,
-        "2026-10-04 in Sydney is a 23-hour day"
+        spring_today["toMs"].as_i64().unwrap(),
+        ms("2026-10-04T10:00:00+11:00"),
+        "today ends at now"
     );
+    assert_eq!(spring_today["fromIso"], "2026-10-04");
     let fall_today = rows
         .iter()
         .find(|r| r["expr"] == "today" && r["nowMs"] == json!(ms("2026-04-05T12:00:00+10:00")))
         .unwrap();
     assert_eq!(
-        fall_today["toMs"].as_i64().unwrap() - fall_today["fromMs"].as_i64().unwrap(),
-        25 * 3_600_000,
-        "2026-04-05 in Sydney is a 25-hour day"
+        fall_today["toMs"].as_i64().unwrap(),
+        ms("2026-04-05T12:00:00+10:00"),
+        "today ends at now"
     );
     // The offset split across DST (the moment.js rule): day/week offsets are calendar-anchored
     // (23h / 167h across the spring-forward, 25h / 169h across the fall-back), hour offsets are
@@ -256,11 +260,12 @@ fn conformance_fixture_spans_the_pinned_edges() {
         4 * 3_600_000
     );
 
-    // The Monday-start week: 2026-07-29 (a Wednesday) falls in the week of Monday 2026-07-27.
+    // The Monday-start week: 2026-07-29 (a Wednesday) falls in the week of Monday 2026-07-27, and
+    // `this-week` ends at NOW — the exclusive `toIso` is the day after the 29th.
     let week = rows
         .iter()
         .find(|r| r["expr"] == "this-week" && r["tz"] == "UTC")
         .unwrap();
     assert_eq!(week["fromIso"], "2026-07-27");
-    assert_eq!(week["toIso"], "2026-08-03");
+    assert_eq!(week["toIso"], "2026-07-30");
 }

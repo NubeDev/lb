@@ -107,7 +107,8 @@ pub enum Window {
     Today,
     Yesterday,
     Tomorrow,
-    /// `this-<unit>` — the calendar period containing now (`this-year` = 1 Jan → 1 Jan).
+    /// `this-<unit>` — from the START of the calendar period containing now to now (`this-week` =
+    /// Monday → now, `this-year` = 1 Jan → now).
     This(CalUnit),
     /// `last-<unit>` — the previous WHOLE calendar period (`last-month` = the previous calendar
     /// month; deliberately ≠ `last-1-month`).
