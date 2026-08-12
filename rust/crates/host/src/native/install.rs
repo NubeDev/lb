@@ -21,7 +21,7 @@ use super::error::NativeServiceError;
 use super::spec::{build_spec, native_of, tool_names};
 use super::status::{record_status, NativeStatus};
 use crate::boot::Node;
-use crate::ui_decl::project;
+use crate::ui_decl::{project, project_connect};
 
 /// What a native install produced — the granted caps and the child's declared tool names (for the
 /// caller to surface/audit), mirroring the wasm `Loaded`.
@@ -91,6 +91,7 @@ pub async fn install_native<L: Launcher>(
     )
     .with_tier(lb_assets::Tier::Native)
     .with_ui(ui, widgets)
+    .with_connect(project_connect(&manifest, &granted))
     .with_nodes(manifest.nodes.clone());
     record_install(&node.store, ws, &install).await?;
 

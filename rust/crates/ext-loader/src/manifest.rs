@@ -38,6 +38,12 @@ pub enum ManifestError {
     /// reject, the same posture `pack.validate` takes on a reserved shadow (never a silent drop).
     #[error("invalid [[ui.nav]] block: {0}")]
     InvalidNavBlock(String),
+    /// A `[connect]` block is malformed: an empty `kind`/`label`, or a `create_tool`/`list_tool`/
+    /// `delete_tool`/`probe_tool` that doesn't bind a declared `[[tools]]` entry
+    /// (ros-datasource-unify scope) — the Datasources page calls these by name, so a dangling
+    /// reference is a load-time reject, not a runtime "no such tool".
+    #[error("invalid [connect] block: {0}")]
+    InvalidConnectBlock(String),
 }
 
 /// The `[[ui.nav]]` caps (ext-nav-contribution scope). A declared nav tree is small and reviewed —
@@ -234,6 +240,41 @@ pub struct WidgetOption {
     pub choices: Option<serde_json::Value>,
     #[serde(default)]
     pub default: Option<serde_json::Value>,
+}
+
+/// A `[connect]` block — an extension declares it OFFERS a connection kind rubix-ai's Datasources
+/// page can create/list/probe/delete (ros-datasource-unify scope). Opaque relay data, same posture
+/// as `WidgetOption`: the host shape-validates at parse (non-empty fields, tool refs bind a
+/// declared `[[tools]]` entry) and passes it through `ExtRow.connect` verbatim — it never
+/// interprets `kind` or calls a tool by name itself. `create_tool`'s `Tool.input_schema` is what
+/// the Datasources wizard renders as the connect form (the SAME JSON-Schema-driven-form mechanism
+/// `tools.catalog`/flow nodes already use — nothing new invented for that half).
+///
+/// **The connect protocol** (so the roster/wizard can stay generic — every field here is a NAME,
+/// the shapes below are the fixed contract any extension's tools must follow):
+/// - `list_tool` takes no required args and returns `{items: [{uuid, name, ...}], next_cursor}` (the
+///   existing keyset-page envelope every resource-list verb already uses) — each row MUST carry a
+///   `uuid` and a `name`.
+/// - `create_tool` takes whatever `input_schema` declares, PLUS a `uuid` the caller generates
+///   client-side (never a form field — nobody types a UUID).
+/// - `delete_tool` and `probe_tool` each take exactly `{uuid}`, identifying the row from `list_tool`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ConnectDef {
+    /// The Kind-dropdown value, e.g. `"ros"`. Unique per extension (one connect kind each, v1).
+    pub kind: String,
+    /// The Kind-dropdown label, e.g. `"ROS"`.
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// The tool that registers a new connection — its declared `input_schema` is the connect form.
+    pub create_tool: String,
+    /// The tool that lists this extension's connections (feeds the unified roster).
+    pub list_tool: String,
+    /// The tool that removes a connection (the roster's Remove action).
+    pub delete_tool: String,
+    /// An optional health-check tool (the roster's Probe column). Absent ⇒ no Probe for this kind.
+    #[serde(default)]
+    pub probe_tool: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -438,6 +479,10 @@ pub struct Manifest {
     /// The dashboard widget tiles — one per `[[widget]]` table the manifest declares (dashboard-widgets
     /// scope). Empty if the manifest declares none. An extension may ship several palette tiles.
     pub widgets: Vec<Widget>,
+    /// The connection kind this extension offers rubix-ai's Datasources page — `Some` iff the
+    /// manifest declares `[connect]` (ros-datasource-unify scope). `None` for every extension
+    /// written before this field, and for any extension with nothing to connect to.
+    pub connect: Option<ConnectDef>,
     /// The flow node types this extension contributes — one validated `[[node]]` block each (flows
     /// node-descriptor scope, the only manifest addition). Empty if the manifest declares none. Each
     /// block's `tool` was verified to bind a declared `[[tools]]` entry and its `config` compiled as
@@ -463,6 +508,9 @@ struct Raw {
     /// `[[widget]]` array-of-tables — zero or more widget tiles.
     #[serde(default)]
     widget: Vec<Widget>,
+    /// `[connect]` — present iff the extension offers a Datasources connection kind.
+    #[serde(default)]
+    connect: Option<ConnectDef>,
     /// `[[node]]` array-of-tables — zero or more flow node types (flows node-descriptor scope).
     #[serde(default)]
     node: Vec<lb_flows::NodeBlock>,
@@ -573,6 +621,28 @@ impl Manifest {
             validate_nav(&ui.nav)?;
         }
 
+        // Validate the `[connect]` block (ros-datasource-unify scope): every tool it names must bind
+        // a declared `[[tools]]` entry, same load-bearing check `[[node]]` blocks already get above —
+        // the Datasources page calls these by the string this block gives it, so a typo'd tool name
+        // must fail at load, not surface as a runtime "no such tool" the first time someone connects.
+        if let Some(c) = &raw.connect {
+            if c.kind.is_empty() || c.label.is_empty() {
+                return Err(ManifestError::InvalidConnectBlock(
+                    "connect block has an empty kind/label".into(),
+                ));
+            }
+            for tool in [&c.create_tool, &c.list_tool, &c.delete_tool]
+                .into_iter()
+                .chain(c.probe_tool.iter())
+            {
+                if !tool_names.contains(tool) {
+                    return Err(ManifestError::InvalidConnectBlock(format!(
+                        "connect block references tool '{tool}', which is not a declared [[tools]] entry"
+                    )));
+                }
+            }
+        }
+
         Ok(Manifest {
             id: raw.extension.id,
             version: raw.extension.version,
@@ -590,6 +660,7 @@ impl Manifest {
                 .into_iter()
                 .filter(|w| !w.entry.is_empty())
                 .collect(),
+            connect: raw.connect,
             nodes: raw.node,
         })
     }

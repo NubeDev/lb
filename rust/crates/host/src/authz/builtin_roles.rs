@@ -458,6 +458,28 @@ const AUTHOR_CAPS: &[&str] = &[
     // above — enumerating past versions is a read, not a lifecycle mutation, so it stays out of the
     // admin-only bucket below.
     "mcp:ext.versions:call",
+    // ros extension (rust/extensions/ros) — the read half of its connection + fleet CRUD, same
+    // author-tier reasoning as `ext.list`/`ext.versions` right above: browsing what's already
+    // registered (connections, networks, devices, points) is a read, not a lifecycle mutation or a
+    // credential handling. The WRITE/lifecycle half (`ros.create`/`update`/`delete`, `ros.point.write`,
+    // `ros.start`/`stop`/`restart`) stays admin-only below — those hold or rotate a real appliance
+    // token, or push a setpoint onto real hardware. All `ros.`-prefixed by EXACT name (rule 10, and
+    // load-bearing here for a second reason: dispatch itself resolves a qualified tool's owning
+    // extension by its prefix before the first '.' — a bare `network.list`/`device.list`/`point.list`
+    // is not just a capability-namespace risk, it is literally unreachable, since it would resolve to
+    // a nonexistent extension id `network`/`device`/`point`). This also means no collision with
+    // `notify`'s unrelated `mcp:device.list:call` (bare name, different feature).
+    "mcp:ros.list:call",
+    "mcp:ros.get:call",
+    "mcp:ros.ping:call",
+    "mcp:ros.network.list:call",
+    "mcp:ros.network.get:call",
+    "mcp:ros.device.list:call",
+    "mcp:ros.device.get:call",
+    "mcp:ros.point.list:call",
+    "mcp:ros.point.get:call",
+    "mcp:ros.schedule.list:call",
+    "mcp:ros.schedule.get:call",
     // dashboards — a member BUILDS/SHARES/DELETES their OWN (gate-3 owns which). The `*_any`
     // overrides (save/share/delete) are admin-only, below.
     "mcp:dashboard.save:call",
@@ -647,6 +669,20 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:ext.start:call",
     "mcp:ext.uninstall:call",
     "mcp:ext.publish:call",
+    // ros extension — the write/lifecycle half. `create`/`update`/`delete` hold or rotate a real
+    // appliance token (same tier as any other credential-holding admin verb); `point.write` pushes a
+    // setpoint onto real hardware; `start`/`stop`/`restart` control the poll loop. The read half
+    // (`ros.list`/`get`/`ping`, `network.*`/`device.*`/`point.list`/`get`) is author-tier, above.
+    "mcp:ros.create:call",
+    "mcp:ros.update:call",
+    "mcp:ros.delete:call",
+    "mcp:ros.point.write:call",
+    // pushes a schedule payload onto real hardware — same tier as `ros.point.write` (a schedule write
+    // is exactly as consequential as a setpoint write).
+    "mcp:ros.schedule.write:call",
+    "mcp:ros.start:call",
+    "mcp:ros.stop:call",
+    "mcp:ros.restart:call",
     "mcp:native.reset:call",
     "mcp:native.install:call",
     // skills lifecycle (adopt/drop/soft-hide a skill for the workspace).
@@ -1002,6 +1038,54 @@ mod tests {
             !admin_only_caps().contains(&versions),
             "ext.versions must NOT be admin-only — it is a read, like ext.list"
         );
+    }
+
+    /// The `ros` extension's read/write tier split, pinned the same way `ext.list`/`ext.versions`
+    /// are above: browsing a connection/fleet is a member-reachable read, holding/rotating the
+    /// appliance token or writing a setpoint is admin-only.
+    #[test]
+    fn ros_read_verbs_are_author_caps_and_write_verbs_are_admin_only() {
+        for read in [
+            "mcp:ros.list:call",
+            "mcp:ros.get:call",
+            "mcp:ros.ping:call",
+            "mcp:ros.network.list:call",
+            "mcp:ros.network.get:call",
+            "mcp:ros.device.list:call",
+            "mcp:ros.device.get:call",
+            "mcp:ros.point.list:call",
+            "mcp:ros.point.get:call",
+            "mcp:ros.schedule.list:call",
+            "mcp:ros.schedule.get:call",
+        ] {
+            let cap = read.to_string();
+            assert!(author_caps().contains(&cap), "{read} must be an AUTHOR cap");
+            assert!(member_role_caps().contains(&cap), "the member bundle must hold {read} by name");
+            assert!(!admin_only_caps().contains(&cap), "{read} must NOT be admin-only — it is a read");
+        }
+        // `mcp:device.list:call` (bare, `notify`'s unrelated feature) must stay untouched by any of
+        // ros's own `ros.device.list` caps — confirms the prefix actually avoids the collision rather
+        // than just moving it.
+        let notify_device_list = "mcp:device.list:call".to_string();
+        assert!(
+            !author_caps().contains(&notify_device_list),
+            "ros's rename must not incidentally grant notify's bare device.list from AUTHOR_CAPS"
+        );
+        for write in [
+            "mcp:ros.create:call",
+            "mcp:ros.update:call",
+            "mcp:ros.delete:call",
+            "mcp:ros.point.write:call",
+            "mcp:ros.schedule.write:call",
+            "mcp:ros.start:call",
+            "mcp:ros.stop:call",
+            "mcp:ros.restart:call",
+        ] {
+            let cap = write.to_string();
+            assert!(admin_only_caps().contains(&cap), "{write} must be admin-only — holds a credential or writes real hardware");
+            assert!(!author_caps().contains(&cap), "{write} must NOT leak into AUTHOR_CAPS");
+            assert!(!member_role_caps().contains(&cap), "{write} must NOT be in the member bundle");
+        }
     }
 
     /// The `share_closure` cap REACHES through the real matcher for a member and does NOT for a

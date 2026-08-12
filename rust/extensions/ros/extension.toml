@@ -51,7 +51,16 @@ request = [
   "mcp:ingest.write:call",       # append polled present-values as series samples (slice 3)
   "mcp:series.latest:call",      # UI live value
   "mcp:series.read:call",        # UI trend chart
-  "mcp:point.write:call",        # the setpoint verb (self-checked by the sidecar; slice 4)
+  "mcp:ros.point.write:call",    # the setpoint verb (self-checked by the sidecar; slice 4)
+  "mcp:ros.schedule.write:call", # the schedule-write verb (same must-deliver contract as point.write)
+  # Connection CRUD — every `[[tools]] name = "ros.*"` verb the sidecar SERVES must also be
+  # self-requested here (native.call is self-checked by the sidecar against this grant, same as
+  # `point.write`/`ros.start` above — inbound calls carry no caller identity to check against
+  # instead). `ros.list`/`get`/`ping` already live in the [ui]-scope block above; `create`/`update`/
+  # `delete` were missing here entirely, which is why they 403'd even for an admin caller.
+  "mcp:ros.create:call",
+  "mcp:ros.update:call",
+  "mcp:ros.delete:call",
   "mcp:outbox.enqueue:call",     # stage must-deliver point writes (slice 4)
   # The sidecar-drivable relay surface: the relay loop pulls its own due `ros` effects and marks the
   # outcome, delivering setpoints out-of-process through RosTarget (slice 4). Relay-operator caps.
@@ -64,6 +73,22 @@ request = [
   "mcp:ros.stop:call",
   "mcp:ros.status:call",
   "mcp:ros.restart:call",
+  # The `[ui]`/`[[widget]]` bridge scope — a UI-facing verb must ALSO be requested here or its scope
+  # entry is filtered to nothing at ext.list/mount time (the UI bridge is scoped to `scope ∩
+  # requested`, same pool `point.write` above already draws from). These are ros's own served CRUD
+  # reads — a page/widget calling its own extension's tools still goes through the same host-mediated
+  # bridge as everything else, so it still needs the grant.
+  "mcp:ros.list:call",
+  "mcp:ros.get:call",
+  "mcp:ros.ping:call",
+  "mcp:ros.network.list:call",
+  "mcp:ros.network.get:call",
+  "mcp:ros.device.list:call",
+  "mcp:ros.device.get:call",
+  "mcp:ros.point.list:call",
+  "mcp:ros.point.get:call",
+  "mcp:ros.schedule.list:call",
+  "mcp:ros.schedule.get:call",
 ]
 
 # CRUD over the connection → network → device → point tree (core/resource-verbs grammar).
@@ -77,6 +102,11 @@ description = "Get one ROS connection by uuid (token never returned)."
 [[tools]]
 name = "ros.create"
 description = "Register a ROS appliance {name, base_url, token}; token stashed via lb-secrets."
+# This tool's `input_schema` (the Datasources page's connect form for Kind=ROS,
+# ros-datasource-unify scope) is declared in `src/main.rs`'s `init` reply, NOT here: for a
+# NATIVE-tier extension the manifest's own `Tool.input_schema` is dead data — `join_descriptors`
+# (`host/src/native/descriptors.rs`) builds `tools.catalog`'s descriptors from what the sidecar
+# self-declares at `init`, only enriching manifest-listed names, never reading a schema off TOML.
 [[tools]]
 name = "ros.update"
 description = "Update a ROS connection (rename / re-point / enable:false to silence its whole tree)."
@@ -87,56 +117,71 @@ description = "Remove a ROS connection (soft by default)."
 name = "ros.ping"
 description = "Health-check a ROS appliance (proxies /api/system/ping)."
 
+# `ros.`-prefixed, not bare "network.list" — dispatch resolves a qualified tool name's owning
+# extension by splitting on the first '.' (host/src/tool_call.rs); a bare "network.list" resolves
+# ext_id "network" (no such extension) and is unreachable. Found live, 2026-08-12: these tools were
+# declared+implemented but never actually callable until this rename.
 [[tools]]
-name = "network.list"
+name = "ros.network.list"
 description = "List networks under a ROS connection (proxies /api/networks)."
 [[tools]]
-name = "network.get"
+name = "ros.network.get"
 description = "Get one network by uuid."
 [[tools]]
-name = "network.create"
+name = "ros.network.create"
 description = "Create a network on the box."
 [[tools]]
-name = "network.update"
+name = "ros.network.update"
 description = "Update a network (enable:false silences all its devices' points)."
 [[tools]]
-name = "network.delete"
+name = "ros.network.delete"
 description = "Delete a network."
 
 [[tools]]
-name = "device.list"
+name = "ros.device.list"
 description = "List devices under a network (proxies /api/devices)."
 [[tools]]
-name = "device.get"
+name = "ros.device.get"
 description = "Get one device by uuid."
 [[tools]]
-name = "device.create"
+name = "ros.device.create"
 description = "Create a device on the box."
 [[tools]]
-name = "device.update"
+name = "ros.device.update"
 description = "Update a device (enable:false silences its points)."
 [[tools]]
-name = "device.delete"
+name = "ros.device.delete"
 description = "Delete a device."
 
 [[tools]]
-name = "point.list"
+name = "ros.point.list"
 description = "List points under a device (proxies /api/points)."
 [[tools]]
-name = "point.get"
+name = "ros.point.get"
 description = "Get one point by uuid (present_value, priority array, …)."
 [[tools]]
-name = "point.create"
+name = "ros.point.create"
 description = "Create a point on the box."
 [[tools]]
-name = "point.update"
+name = "ros.point.update"
 description = "Update a point (enable:false drops it from polling)."
 [[tools]]
-name = "point.delete"
+name = "ros.point.delete"
 description = "Delete a point."
 [[tools]]
-name = "point.write"
+name = "ros.point.write"
 description = "Write a setpoint {slot 1-16, value|null} — must-deliver, staged as an outbox effect."
+
+# Flat, no network/device nesting (proxies /api/schedules).
+[[tools]]
+name = "ros.schedule.list"
+description = "List schedules under a ROS connection (proxies /api/schedules)."
+[[tools]]
+name = "ros.schedule.get"
+description = "Get one schedule by uuid (its weekly/exception/event payload)."
+[[tools]]
+name = "ros.schedule.write"
+description = "Write a schedule payload — must-deliver, staged as an outbox effect (same contract as point.write)."
 
 # The runnable trait for the poller (core/resource-verbs Tier 2): arm/disarm/inspect per connection.
 [[tools]]
@@ -152,8 +197,79 @@ description = "Poll health: last-ok / last-fail + sample count."
 name = "ros.restart"
 description = "Restart a connection's poll task (stop + start)."
 
-# [ui] — the federated shadcn page (fleet → connection → network → device → point drill-down, poll
-# toggles, point-write). Added by the implementing session with the ui-federation scope, per fleet-monitor.
+# Offer ROS as a Kind in rubix-ai's Datasources page (ros-datasource-unify scope) — a generic
+# declaration, opaque to the host: it says WHICH tools do create/list/delete/probe, never how they
+# work. `ros.create`'s `input_schema` above is what the page's connect form renders. `admin`-only
+# verbs (create/delete) stay gated exactly as they already are (`[capabilities] request`, above) —
+# this block only tells the UI where to route, it grants nothing new.
+[connect]
+kind = "ros"
+label = "ROS"
+icon = "radio-tower"
+create_tool = "ros.create"
+list_tool = "ros.list"
+delete_tool = "ros.delete"
+probe_tool = "ros.ping"
+
+# The federated shadcn page (fleet → connection → network → device → point drill-down, poll
+# toggles, point-write) — the fleet-monitor pattern (backend + frontend in one folder, ui/). `scope`
+# is exactly the author-tier read caps (authz/builtin_roles.rs) — the page can never reach further
+# than what a member already holds; the write verbs (create/update/delete/point.write/start/stop/
+# restart) are admin-only and gated per-action inside the page, not by the nav-mount scope.
+[ui]
+entry = "remoteEntry.js"
+label = "ROS"
+icon  = "radio-tower"
+scope = [
+  "ros.list", "ros.get", "ros.ping",
+  "ros.network.list", "ros.network.get",
+  "ros.device.list", "ros.device.get",
+  "ros.point.list", "ros.point.get",
+  "ros.schedule.list", "ros.schedule.get",
+]
+
+# Two dashboard palette tiles (dashboard-widgets scope), the fleet-monitor two-widget pattern. Both
+# declare a TOOL-BACKED cascading `options[]` chain (ros-schedule-query scope Phase 2, rubix-ai's
+# generic `select-async` control kind) — Connection → Network → Device → Point, each `select` a live
+# MCP call, each depending on the sibling above it via a `"$<id>"` placeholder in `args`. `choices` is
+# opaque JSON end-to-end (`WidgetOption.choices: Option<Value>`, `ext-loader/src/manifest.rs`) — no host
+# change needed to add this shape, only the rubix-ai-side renderer (rubix-ai repo, not here).
+[[widget]]
+entry = "remoteEntry.js"
+label = "ROS Point Value"
+icon  = "gauge"
+scope = ["ros.list", "ros.network.list", "ros.device.list", "ros.point.list", "ros.point.get"]
+options = [
+  { id = "connectionUuid", label = "Connection", scope = "options", path = "connectionUuid", control = "select", choices = { source = "tool", tool = "ros.list", valueField = "uuid", labelField = "name" } },
+  { id = "networkUuid", label = "Network", scope = "options", path = "networkUuid", control = "select", choices = { source = "tool", tool = "ros.network.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "deviceUuid", label = "Device", scope = "options", path = "deviceUuid", control = "select", choices = { source = "tool", tool = "ros.device.list", args = { ros_uuid = "$connectionUuid", network_uuid = "$networkUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "pointUuid", label = "Point", scope = "options", path = "pointUuid", control = "select", choices = { source = "tool", tool = "ros.point.list", args = { ros_uuid = "$connectionUuid", device_uuid = "$deviceUuid" }, valueField = "uuid", labelField = "name" } },
+]
+
+# Same Connection→Network→Device→Point chain plus a Point/Schedule mode toggle: `subscriptionType`
+# (static point/schedule select — no tool call, a plain `choices` array) picks which of the two flat
+# `scheduleUuid` (`ros.schedule.list`, depends on `connectionUuid` only — flat, no device nesting,
+# matching the appliance's own schedule model) vs the point chain applies, plus `priority` (static
+# 1-16, the ROS priority-array slot).
+[[widget]]
+entry = "remoteEntry.js"
+label = "ROS Point Write"
+icon  = "sliders-horizontal"
+scope = ["ros.list", "ros.network.list", "ros.device.list", "ros.point.list", "ros.point.get", "ros.point.write", "ros.schedule.list", "ros.schedule.get", "ros.schedule.write"]
+options = [
+  { id = "connectionUuid", label = "Connection", scope = "options", path = "connectionUuid", control = "select", choices = { source = "tool", tool = "ros.list", valueField = "uuid", labelField = "name" } },
+  { id = "subscriptionType", label = "Subscription type", scope = "options", path = "subscriptionType", control = "select", choices = [{ value = "point", label = "Point" }, { value = "schedule", label = "Schedule" }], default = "point" },
+  { id = "networkUuid", label = "Network", scope = "options", path = "networkUuid", control = "select", choices = { source = "tool", tool = "ros.network.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "deviceUuid", label = "Device", scope = "options", path = "deviceUuid", control = "select", choices = { source = "tool", tool = "ros.device.list", args = { ros_uuid = "$connectionUuid", network_uuid = "$networkUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "pointUuid", label = "Point", scope = "options", path = "pointUuid", control = "select", choices = { source = "tool", tool = "ros.point.list", args = { ros_uuid = "$connectionUuid", device_uuid = "$deviceUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "scheduleUuid", label = "Schedule", scope = "options", path = "scheduleUuid", control = "select", choices = { source = "tool", tool = "ros.schedule.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "priority", label = "Priority", scope = "options", path = "slot", control = "select", choices = [
+    { value = "1", label = "1" }, { value = "2", label = "2" }, { value = "3", label = "3" }, { value = "4", label = "4" },
+    { value = "5", label = "5" }, { value = "6", label = "6" }, { value = "7", label = "7" }, { value = "8", label = "8" },
+    { value = "9", label = "9" }, { value = "10", label = "10" }, { value = "11", label = "11" }, { value = "12", label = "12" },
+    { value = "13", label = "13" }, { value = "14", label = "14" }, { value = "15", label = "15" }, { value = "16", label = "16" },
+  ], default = "8" }
+]
 
 [visibility]
 class = "private"

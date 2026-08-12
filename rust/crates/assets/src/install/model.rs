@@ -129,6 +129,23 @@ pub struct ExtUiOption {
     pub default: Option<serde_json::Value>,
 }
 
+/// A persisted mirror of a manifest `[connect]` block (ros-datasource-unify scope) — carried on the
+/// install so `ext.list` tells rubix-ai's Datasources page what connection kind this extension
+/// offers, without re-reading the manifest. Opaque relay data: the host stores and forwards it,
+/// never calls a tool by these names itself (rule 10).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ExtConnect {
+    pub kind: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    pub create_tool: String,
+    pub list_tool: String,
+    pub delete_tool: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_tool: Option<String>,
+}
+
 /// The constant `kind` discriminant so `list_installs` can equality-filter every install row in a
 /// workspace (the union both tiers share — lifecycle-management scope's `ext.list`).
 pub(crate) const KIND: &str = "install";
@@ -164,6 +181,11 @@ pub struct Install {
     /// as an empty vec.
     #[serde(default)]
     pub widgets: Vec<ExtUi>,
+    /// The Datasources connection kind this extension offers — `Some` iff it declared `[connect]`
+    /// AND every tool it names is in `granted` (ros-datasource-unify scope). Serde-defaulted:
+    /// installs written before this field deserialize as `None`.
+    #[serde(default)]
+    pub connect: Option<ExtConnect>,
     /// The flow node types this extension contributes — the validated `[[node]]` blocks from its
     /// manifest (flows node-descriptor scope). The `flows.nodes` registry is a **read-time union**
     /// of these across a workspace's installs + the built-ins, holding nothing new durable.
@@ -199,6 +221,7 @@ impl Install {
             kind: KIND.to_string(),
             ui: None,
             widgets: Vec::new(),
+            connect: None,
             nodes: Vec::new(),
             ts,
         }
@@ -216,6 +239,13 @@ impl Install {
     pub fn with_ui(mut self, ui: Option<ExtUi>, widgets: Vec<ExtUi>) -> Self {
         self.ui = ui;
         self.widgets = widgets;
+        self
+    }
+
+    /// Attach the extension's Datasources connect contribution (builder-style) — the projected
+    /// `[connect]` block, scope-gated to the install's own grant (ros-datasource-unify scope).
+    pub fn with_connect(mut self, connect: Option<ExtConnect>) -> Self {
+        self.connect = connect;
         self
     }
 

@@ -16,7 +16,7 @@ pub async fn list(
     factory: &dyn RosApiFactory,
     input: &Value,
 ) -> Result<Value, HostError> {
-    host.require("network.list")?;
+    host.require("ros.network.list")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let (cursor, limit) = page_args(input);
     let api = match resolve_api(host, factory, &ros_uuid).await? {
@@ -46,7 +46,7 @@ pub async fn get(
     factory: &dyn RosApiFactory,
     input: &Value,
 ) -> Result<Value, HostError> {
-    host.require("network.get")?;
+    host.require("ros.network.get")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let network_uuid = req_str(input, "network_uuid")?;
     let api = match resolve_api(host, factory, &ros_uuid).await? {

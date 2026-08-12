@@ -28,7 +28,7 @@ pub async fn list(
     factory: &dyn RosApiFactory,
     input: &Value,
 ) -> Result<Value, HostError> {
-    host.require("point.list")?;
+    host.require("ros.point.list")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let device_uuid = req_str(input, "device_uuid")?;
     let (cursor, limit) = page_args(input);
@@ -60,7 +60,7 @@ pub async fn get(
     factory: &dyn RosApiFactory,
     input: &Value,
 ) -> Result<Value, HostError> {
-    host.require("point.get")?;
+    host.require("ros.point.get")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let point_uuid = req_str(input, "point_uuid")?;
     let api = match resolve_api(host, factory, &ros_uuid).await? {
@@ -96,7 +96,7 @@ pub async fn write(
     input: &Value,
     ts: u64,
 ) -> Result<Value, HostError> {
-    host.require("point.write")?;
+    host.require("ros.point.write")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let point_uuid = req_str(input, "point_uuid")?;
 

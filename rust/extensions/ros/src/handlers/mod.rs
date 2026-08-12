@@ -19,6 +19,7 @@ mod network;
 mod point;
 mod poll;
 mod ros;
+mod schedule;
 
 use std::sync::Arc;
 
@@ -55,15 +56,23 @@ pub async fn dispatch(
         "ros.delete" => ros::delete(host, input).await?,
         "ros.ping" => ros::ping(host, factory, input).await?,
 
-        "network.list" => network::list(host, factory, input).await?,
-        "network.get" => network::get(host, factory, input).await?,
+        // `ros.`-prefixed (not bare "network.list" etc): dispatch resolution splits a qualified tool
+        // name on the first '.' and treats it as the owning extension id (tool_call.rs) — a bare
+        // "network.list" resolves ext_id "network" (no such extension) and never reaches this match
+        // arm at all. Every served tool needs the ext's own prefix, no exceptions.
+        "ros.network.list" => network::list(host, factory, input).await?,
+        "ros.network.get" => network::get(host, factory, input).await?,
 
-        "device.list" => device::list(host, factory, input).await?,
-        "device.get" => device::get(host, factory, input).await?,
+        "ros.device.list" => device::list(host, factory, input).await?,
+        "ros.device.get" => device::get(host, factory, input).await?,
 
-        "point.list" => point::list(host, factory, input).await?,
-        "point.get" => point::get(host, factory, input).await?,
-        "point.write" => point::write(host, factory, input, ts).await?,
+        "ros.point.list" => point::list(host, factory, input).await?,
+        "ros.point.get" => point::get(host, factory, input).await?,
+        "ros.point.write" => point::write(host, factory, input, ts).await?,
+
+        "ros.schedule.list" => schedule::list(host, factory, input).await?,
+        "ros.schedule.get" => schedule::get(host, factory, input).await?,
+        "ros.schedule.write" => schedule::write(host, factory, input, ts).await?,
 
         "ros.start" => poll::start(host, factory, registry, input).await?,
         "ros.stop" => poll::stop(host, registry, input).await?,

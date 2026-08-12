@@ -9,8 +9,34 @@
 //! decider" rule). The bridge re-filters and the host re-checks regardless; this is the durable,
 //! narrowed truth `ext.list` reports.
 
-use lb_assets::{ExtNavItem, ExtUi, ExtUiOption};
+use lb_assets::{ExtConnect, ExtNavItem, ExtUi, ExtUiOption};
 use lb_ext_loader::{Manifest, NavItem, Widget, WidgetOption};
+
+/// Project the manifest's `[connect]` block onto its durable `ExtConnect` mirror
+/// (ros-datasource-unify scope) — `Some` iff the manifest declared one AND every tool it names is
+/// granted. All-or-nothing (not `narrow_scope`'s partial-list filter): a connect kind missing even
+/// one of its own verbs (e.g. `list` granted but not `create`) is a broken feature, not a narrowed
+/// one, so it's withheld entirely rather than surfaced half-working.
+pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option<ExtConnect> {
+    let c = manifest.connect.as_ref()?;
+    let has = |tool: &str| granted.iter().any(|g| g == &format!("mcp:{tool}:call"));
+    let tools_ok = has(&c.create_tool)
+        && has(&c.list_tool)
+        && has(&c.delete_tool)
+        && c.probe_tool.as_deref().is_none_or(has);
+    if !tools_ok {
+        return None;
+    }
+    Some(ExtConnect {
+        kind: c.kind.clone(),
+        label: c.label.clone(),
+        icon: c.icon.clone(),
+        create_tool: c.create_tool.clone(),
+        list_tool: c.list_tool.clone(),
+        delete_tool: c.delete_tool.clone(),
+        probe_tool: c.probe_tool.clone(),
+    })
+}
 
 /// Build the `(page, widgets)` UI projection for an install from its parsed `manifest` and the
 /// computed `granted` cap set. `page` is `Some` iff the manifest declared `[ui]`; `widgets` carries

@@ -15,8 +15,9 @@
 #![allow(dead_code)]
 
 use async_trait::async_trait;
+use serde_json::Value;
 
-use crate::ros_client::{Device, Network, PingResponse, Point};
+use crate::ros_client::{Device, Network, PingResponse, Point, Schedule};
 
 /// The typed error surface the handlers map onto MCP/tool errors. `Denied`/`NotFound`/`Unreachable`
 /// are distinct so a handler can react (a box-unreachable poll backs off; a bad uuid is a 404, not a
@@ -62,6 +63,19 @@ pub trait RosApi: Send + Sync {
         slot: u8,
         value: Option<f64>,
     ) -> Result<Point, RosApiError>;
+
+    /// List schedules on the box (flat, no network/device nesting).
+    async fn list_schedules(&self) -> Result<Vec<Schedule>, RosApiError>;
+
+    /// Read one schedule.
+    async fn get_schedule(&self, schedule_uuid: &str) -> Result<Schedule, RosApiError>;
+
+    /// Write a schedule's weekly/exception/event payload back (must-deliver, same as a point write).
+    async fn write_schedule(
+        &self,
+        schedule_uuid: &str,
+        schedule: Value,
+    ) -> Result<Schedule, RosApiError>;
 }
 
 /// The real, `rust-ros`-backed impl. One `Client` (async `reqwest`) per connection. Nothing here is
@@ -148,6 +162,28 @@ impl RosApi for RealRosApi {
         priority.set_slot(slot, value).map_err(map_client_err)?;
         self.client
             .write_point_priority(point_uuid, &priority)
+            .await
+            .map_err(map_client_err)
+    }
+
+    async fn list_schedules(&self) -> Result<Vec<Schedule>, RosApiError> {
+        self.client.get_schedules().await.map_err(map_client_err)
+    }
+
+    async fn get_schedule(&self, schedule_uuid: &str) -> Result<Schedule, RosApiError> {
+        self.client
+            .get_schedule(schedule_uuid)
+            .await
+            .map_err(map_client_err)
+    }
+
+    async fn write_schedule(
+        &self,
+        schedule_uuid: &str,
+        schedule: Value,
+    ) -> Result<Schedule, RosApiError> {
+        self.client
+            .write_schedule(schedule_uuid, schedule)
             .await
             .map_err(map_client_err)
     }

@@ -17,8 +17,17 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
+use serde_json::Value;
+
 use crate::ros_api::{RosApi, RosApiError};
-use crate::ros_client::{Device, Network, PingResponse, Point, Priority};
+use crate::ros_client::{Device, Network, PingResponse, Point, Priority, Schedule};
+
+/// A recorded schedule write — what a test asserts reached the box.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordedScheduleWrite {
+    pub schedule_uuid: String,
+    pub schedule: Value,
+}
 
 /// A recorded setpoint write — what a test asserts reached the box.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,6 +45,8 @@ pub struct RosFake {
     points: Mutex<HashMap<String, Vec<Point>>>,   // device_uuid  -> points
     values: Mutex<HashMap<String, f64>>,          // point_uuid   -> present_value
     writes: Mutex<Vec<RecordedWrite>>,
+    schedules: Mutex<Vec<Schedule>>,
+    schedule_writes: Mutex<Vec<RecordedScheduleWrite>>,
     unreachable: Mutex<bool>,
 }
 
@@ -48,6 +59,8 @@ impl RosFake {
             points: Mutex::new(HashMap::new()),
             values: Mutex::new(HashMap::new()),
             writes: Mutex::new(Vec::new()),
+            schedules: Mutex::new(Vec::new()),
+            schedule_writes: Mutex::new(Vec::new()),
             unreachable: Mutex::new(false),
         }
     }
@@ -108,6 +121,18 @@ impl RosFake {
     /// The setpoint writes that reached the box, in order — what a `point.write` test asserts on.
     pub fn writes(&self) -> Vec<RecordedWrite> {
         self.writes.lock().unwrap().clone()
+    }
+
+    pub fn add_schedule(&mut self, uuid: &str, name: &str, enable: bool) {
+        self.schedules
+            .lock()
+            .unwrap()
+            .push(mk_schedule(uuid, name, enable));
+    }
+
+    /// The schedule writes that reached the box, in order — what a `schedule.write` test asserts on.
+    pub fn schedule_writes(&self) -> Vec<RecordedScheduleWrite> {
+        self.schedule_writes.lock().unwrap().clone()
     }
 
     fn guard(&self) -> Result<(), RosApiError> {
@@ -171,6 +196,19 @@ impl RosApi for std::sync::Arc<RosFake> {
         value: Option<f64>,
     ) -> Result<Point, RosApiError> {
         (**self).write_point_slot(point_uuid, slot, value).await
+    }
+    async fn list_schedules(&self) -> Result<Vec<Schedule>, RosApiError> {
+        (**self).list_schedules().await
+    }
+    async fn get_schedule(&self, schedule_uuid: &str) -> Result<Schedule, RosApiError> {
+        (**self).get_schedule(schedule_uuid).await
+    }
+    async fn write_schedule(
+        &self,
+        schedule_uuid: &str,
+        schedule: Value,
+    ) -> Result<Schedule, RosApiError> {
+        (**self).write_schedule(schedule_uuid, schedule).await
     }
 }
 
@@ -264,6 +302,43 @@ impl RosApi for RosFake {
             .copied()
             .unwrap_or(0.0);
         Ok(mk_point(point_uuid, point_uuid, "", true, present))
+    }
+
+    async fn list_schedules(&self) -> Result<Vec<Schedule>, RosApiError> {
+        self.guard()?;
+        Ok(self.schedules.lock().unwrap().clone())
+    }
+
+    async fn get_schedule(&self, schedule_uuid: &str) -> Result<Schedule, RosApiError> {
+        self.guard()?;
+        self.schedules
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|s| s.uuid == schedule_uuid)
+            .cloned()
+            .ok_or_else(|| RosApiError::NotFound(schedule_uuid.to_string()))
+    }
+
+    async fn write_schedule(
+        &self,
+        schedule_uuid: &str,
+        schedule: Value,
+    ) -> Result<Schedule, RosApiError> {
+        self.guard()?;
+        let mut schedules = self.schedules.lock().unwrap();
+        let existing = schedules
+            .iter_mut()
+            .find(|s| s.uuid == schedule_uuid)
+            .ok_or_else(|| RosApiError::NotFound(schedule_uuid.to_string()))?;
+        existing.schedule = Some(schedule.clone());
+        let result = existing.clone();
+        drop(schedules);
+        self.schedule_writes.lock().unwrap().push(RecordedScheduleWrite {
+            schedule_uuid: schedule_uuid.to_string(),
+            schedule,
+        });
+        Ok(result)
     }
 }
 
@@ -392,6 +467,32 @@ fn mk_point(uuid: &str, name: &str, device_uuid: &str, enable: bool, value: f64)
         priority: Some(Priority::default()),
         tags: None,
         meta_tags: None,
+    }
+}
+
+fn mk_schedule(uuid: &str, name: &str, enable: bool) -> Schedule {
+    Schedule {
+        uuid: uuid.into(),
+        name: name.into(),
+        enable: Some(enable),
+        thing_class: None,
+        thing_type: None,
+        timezone: None,
+        is_active: Some(enable),
+        active_weekly: None,
+        active_exception: None,
+        active_event: None,
+        enable_payload: None,
+        min_payload: None,
+        max_payload: None,
+        payload: None,
+        period_start_string: None,
+        period_stop_string: None,
+        next_start_string: None,
+        next_stop_string: None,
+        schedule: None,
+        created_on: None,
+        updated_on: None,
     }
 }
 
