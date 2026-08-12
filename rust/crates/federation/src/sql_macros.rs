@@ -499,8 +499,6 @@ mod tests {
         }
     }
 
-    /// Unsupported / unexpanded value macros fail NAMED — call forms, epoch forms (translator cases, re-homed), and
-
     fn expand_ok(sql: &str, kind: &str) -> String {
         expand(sql, kind, Some(&res())).expect("expands")
     }

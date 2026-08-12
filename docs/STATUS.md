@@ -451,6 +451,18 @@ and missing-resolution fail with named errors; un-macro'd SQL byte-identical. Re
 integration + deny/isolation green (`host/tests/viz_sql_time_macros_test.rs`). Downstream:
 rubix-ai's Quick Chart builder emits the macro form and bumps the pin at the next `node-v*` tag.
 
+**Addendum 2026-08-12 — `$__timeTable(...)` table-tier selection, same layer.** An engine-agnostic
+`FROM`-position tier picker in `federation/src/sql_macros.rs`: `$__timeTable('raw','hourly:1h',
+'daily:1d','monthly:1M','yearly:1y')` expands to the literal table name of the coarsest tier whose
+native width ≤ the derived `resolution.width_ms` (falls back to the coarsest given; a bare name =
+width 0 = the finest tier, so the one-arg form is always itself). Read from the **same** derivation
+as `$__interval`, so the pick and the bucket width can never disagree. Width-driven (not
+range-length): a 1-year range at the default budget derives ~12h and picks `hourly` over `yearly` —
+deliberate, documented in the scope + session; authors raising the point budget coarsen it. 5 new
+unit tests (selection across the ladder, one-arg, coarsest fallback engine-agnostic, missing-window
+and malformed-arg named errors); `sql_macros` 12 green, clippy `-D warnings` clean, workspace
+`cargo check --all-targets` green.
+
 **Also shipped 2026-07-29 (backend only) — A PACK AS ONE `.zip`: `POST /packs/upload`
 (upstream ask **U-pack-upload**, downstream [NubeIO/rubix-ai#57](https://github.com/NubeIO/rubix-ai/issues/57),
 [`pack-upload-scope`](scope/packs/pack-upload-scope.md)).** A pack is *distributed* as one file but
