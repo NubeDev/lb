@@ -84,3 +84,23 @@ Per the scope's release discipline: the translator deletion and the query-time e
 slice — tag the next `node-v*` from this state so no build exists with zero macro handling;
 rubix-ai then bumps its pin once (its Quick Chart datasource-track time bucketing is gated on it).
 Until then the rubix-ai checkout runs against this tree via its local `[patch]`.
+
+## Addendum — `$__timeTable` (table-tier selection)
+
+Engine-agnostic table-tier macro (same seam as the rest of the function set, resolved against the
+attached `resolution.width_ms` in `federation/src/sql_macros.rs`):
+
+- Variadic, ordered finest → coarsest; each arg is a table, optionally tagged `:width` (Grafana
+  durations incl. `w`, `M`=30d, `y`=365d; bare name = width 0 = finest). Selection walks coarsest →
+  finest and picks the first tier with native width ≤ derived width (coarsest still fine enough);
+  falls back to the coarsest given if none qualifies.
+- **Known consequence (flagged in scope):** selection is width-driven, not range-length — a 1-year
+  range at the default ~1000-point budget derives ~12h and picks `hourly` over `yearly`. Deliberate
+  so `$__timeTable` and `$__interval` share one derivation; docs call it out rather than guess intent
+  from range length.
+- **Tests:** 5 new unit tests in `sql_macros` — needs-the-window named error, tier selection across
+  the full ladder (raw→hourly→daily→monthly→yearly), one-arg-always-raw, coarsest fallback
+  (asserted engine-agnostic across postgres/timescale/mysql), malformed-arg named errors.
+  `cargo test -p federation --bin federation sql_macros` → 12 passed. `cargo fmt --all --check` clean
+  (the flaky `result_cache_test::an_accepting_caller_never_waits_on_a_stricter_callers_refresh` is a
+  pre-existing timing test — green in isolation, untouched by this slice).

@@ -34,9 +34,13 @@ is exactly the long-term debt this scope exists to avoid.
      `strftime`/integer math; MySQL `FROM_UNIXTIME(FLOOR(...))`).
    - `$__timeGroupAlias(col, '<interval>')` → the same, `AS "time"` appended (Grafana-verbatim).
    - `$__time(col)` → the engine's `col AS "time"` epoch/timestamp aliasing form.
-   - `$__timeFrom()` / `$__timeTo()` (function forms) → window bound literals.
-   The already-shipped value macros (`$__interval`, `$__interval_ms`, bare `$__timeFrom`/
-   `$__timeTo`) stay as they are — the two passes compose (see Intent).
+- `$__timeFrom()` / `$__timeTo()` (function forms) → window bound literals.
+   - `$__timeTable('raw', 'hourly:1h', 'daily:1d', …)` → the literal **table name** of the
+     best-fitting tier, selected from the same derived `width_ms`. Variadic, ordered finest →
+     coarsest; each arg is a table optionally tagged `:width` with its native resolution (a bare
+     name = width 0 = always the finest). Engine-agnostic — expands to a name, no dialect.
+    The already-shipped value macros (`$__interval`, `$__interval_ms`, bare `$__timeFrom`/
+    `$__timeTo`) stay as they are — the two passes compose (see Intent).
 2. **Grafana migration just works.** An imported Grafana SQL panel keeps its macros byte-for-byte
    (`dashboard.import` passes them through), resolves against whatever engine the mapped
    datasource actually is, and re-coarsens on zoom via the shipped resolution derivation — a
@@ -81,6 +85,22 @@ dispatched `federation.query` args as an additive, optional
 it to expand `$__timeFilter` / `$__timeFrom()` / `$__timeTo()` and to resolve a `'$__interval'`
 interval argument. A direct `federation.query` call containing a time macro but no `resolution`
 fails with a clear error naming the missing field — never a guess.
+
+**Decision — `$__timeTable` tier selection.** Walk the args **coarsest → finest** (reverse of the
+documented finest → coarsest order) and return the first tier whose native width is ≤ the derived
+`width_ms` — the coarsest table still resolving at least as fine as the chart needs (least data
+scanned without losing resolution); if none qualifies, fall back to the coarsest given. Because a
+bare `raw` has width 0, it always qualifies and is selected last — so the one-arg form is always
+`raw`, any range. This is the same "governing tier" rule lb's ingest rollup uses internally, now
+reachable from hand-authored federation SQL.
+
+> **Known consequence — flag, not a bug.** Selection is width-driven, not range-length-driven, so it
+> depends on both the range **and** the panel's point budget (default ~1000). A 1-year range at the
+> default budget derives to a ~12h width, which picks a *finer* tier (e.g. `hourly`) — not the
+> intuitive "1 year → yearly". This is deliberate: it keeps `$__timeTable` and `$__interval` on the
+> **same derivation**, so the pick and the bucket width can never disagree. Authors choosing
+> year-tables over fewer points should raise the point budget (coarser derived width), not expect the
+> macro to guess intent from range length.
 
 **Decision — pass order.** Host value pass first (shipped, unchanged): `$__interval` → `'12h'`,
 bare `$__timeFrom`/`$__timeTo` → epoch ms. Then dispatch; the child expands the function macros.
