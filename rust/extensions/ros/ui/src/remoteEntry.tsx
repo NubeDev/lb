@@ -3,16 +3,12 @@
 import styles from "@/styles/tokens.css?inline";
 import { defineRemote } from "@nube/ext-ui-sdk";
 import { App } from "@/App";
-import { PointValueWidget } from "@/widgets/PointValueWidget";
-import { PointWriteWidget } from "@/widgets/PointWriteWidget";
 
+// No bespoke `widgets` map anymore (panel-datasource-query scope supersedes the two former tiles —
+// see `extension.toml`'s doc comment): reads go through the generic Datasource track, writes through
+// rubix-ai's generic CONTROLS widgets, both against the SAME `ros.*` tools these widgets used to wrap.
 export const { mount, mountWidget } = defineRemote({
   id: "ros",
   styles,
   page: (ctx, bridge) => <App ctx={ctx} bridge={bridge} />,
-  // Keyed by the [[widget]] label slug (widgetIdOf): "ROS Point Value" → "ros-point-value".
-  widgets: {
-    "ros-point-value": (ctx, bridge) => <PointValueWidget ctx={ctx} bridge={bridge} />,
-    "ros-point-write": (ctx, bridge) => <PointWriteWidget ctx={ctx} bridge={bridge} />,
-  },
 });

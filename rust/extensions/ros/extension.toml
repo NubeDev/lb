@@ -292,48 +292,15 @@ scope = [
   "ros.schedule.list", "ros.schedule.get",
 ]
 
-# Two dashboard palette tiles (dashboard-widgets scope), the fleet-monitor two-widget pattern. Both
-# declare a TOOL-BACKED cascading `options[]` chain (ros-schedule-query scope Phase 2, rubix-ai's
-# generic `select-async` control kind) — Connection → Network → Device → Point, each `select` a live
-# MCP call, each depending on the sibling above it via a `"$<id>"` placeholder in `args`. `choices` is
-# opaque JSON end-to-end (`WidgetOption.choices: Option<Value>`, `ext-loader/src/manifest.rs`) — no host
-# change needed to add this shape, only the rubix-ai-side renderer (rubix-ai repo, not here).
-[[widget]]
-entry = "remoteEntry.js"
-label = "ROS Point Value"
-icon  = "gauge"
-scope = ["ros.list", "ros.network.list", "ros.device.list", "ros.point.list", "ros.point.get"]
-options = [
-  { id = "connectionUuid", label = "Connection", scope = "options", path = "connectionUuid", control = "select", choices = { source = "tool", tool = "ros.list", valueField = "uuid", labelField = "name" } },
-  { id = "networkUuid", label = "Network", scope = "options", path = "networkUuid", control = "select", choices = { source = "tool", tool = "ros.network.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
-  { id = "deviceUuid", label = "Device", scope = "options", path = "deviceUuid", control = "select", choices = { source = "tool", tool = "ros.device.list", args = { ros_uuid = "$connectionUuid", network_uuid = "$networkUuid" }, valueField = "uuid", labelField = "name" } },
-  { id = "pointUuid", label = "Point", scope = "options", path = "pointUuid", control = "select", choices = { source = "tool", tool = "ros.point.list", args = { ros_uuid = "$connectionUuid", device_uuid = "$deviceUuid" }, valueField = "uuid", labelField = "name" } },
-]
-
-# Same Connection→Network→Device→Point chain plus a Point/Schedule mode toggle: `subscriptionType`
-# (static point/schedule select — no tool call, a plain `choices` array) picks which of the two flat
-# `scheduleUuid` (`ros.schedule.list`, depends on `connectionUuid` only — flat, no device nesting,
-# matching the appliance's own schedule model) vs the point chain applies, plus `priority` (static
-# 1-16, the ROS priority-array slot).
-[[widget]]
-entry = "remoteEntry.js"
-label = "ROS Point Write"
-icon  = "sliders-horizontal"
-scope = ["ros.list", "ros.network.list", "ros.device.list", "ros.point.list", "ros.point.get", "ros.point.write", "ros.schedule.list", "ros.schedule.get", "ros.schedule.write"]
-options = [
-  { id = "connectionUuid", label = "Connection", scope = "options", path = "connectionUuid", control = "select", choices = { source = "tool", tool = "ros.list", valueField = "uuid", labelField = "name" } },
-  { id = "subscriptionType", label = "Subscription type", scope = "options", path = "subscriptionType", control = "select", choices = [{ value = "point", label = "Point" }, { value = "schedule", label = "Schedule" }], default = "point" },
-  { id = "networkUuid", label = "Network", scope = "options", path = "networkUuid", control = "select", choices = { source = "tool", tool = "ros.network.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
-  { id = "deviceUuid", label = "Device", scope = "options", path = "deviceUuid", control = "select", choices = { source = "tool", tool = "ros.device.list", args = { ros_uuid = "$connectionUuid", network_uuid = "$networkUuid" }, valueField = "uuid", labelField = "name" } },
-  { id = "pointUuid", label = "Point", scope = "options", path = "pointUuid", control = "select", choices = { source = "tool", tool = "ros.point.list", args = { ros_uuid = "$connectionUuid", device_uuid = "$deviceUuid" }, valueField = "uuid", labelField = "name" } },
-  { id = "scheduleUuid", label = "Schedule", scope = "options", path = "scheduleUuid", control = "select", choices = { source = "tool", tool = "ros.schedule.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
-  { id = "priority", label = "Priority", scope = "options", path = "slot", control = "select", choices = [
-    { value = "1", label = "1" }, { value = "2", label = "2" }, { value = "3", label = "3" }, { value = "4", label = "4" },
-    { value = "5", label = "5" }, { value = "6", label = "6" }, { value = "7", label = "7" }, { value = "8", label = "8" },
-    { value = "9", label = "9" }, { value = "10", label = "10" }, { value = "11", label = "11" }, { value = "12", label = "12" },
-    { value = "13", label = "13" }, { value = "14", label = "14" }, { value = "15", label = "15" }, { value = "16", label = "16" },
-  ], default = "8" }
-]
+# No bespoke `[[widget]]` tiles (panel-datasource-query scope supersedes them): reads already go
+# through the generic Datasource track (`[[query]]` above — Location→Group→Host→Network→Device→Point,
+# bound to any read-oriented widget via the standard `Target{tool,args}` shape). Writes go through
+# rubix-ai's generic CONTROLS widgets (Slider/Switch for `ros.point.write`, JSON for `ros.schedule.write`
+# — its payload is a whole object, not a scalar) via the existing generic Action mechanism
+# (`Action{tool,argsTemplate}` → `WidgetBridge.call`), unlocked by declaring `input_schema` for both
+# write tools in `main.rs`'s `init_reply` (see its doc — a NATIVE extension's only real schema source).
+# The two former tiles duplicated both paths behind their own bespoke picker UI; removed rather than
+# maintained as a second, parallel way to do the same thing.
 
 [visibility]
 class = "private"

@@ -82,37 +82,86 @@ async fn main() {
     }
 }
 
-/// The `init` handshake reply — self-declares `ros.create`'s input JSON Schema (the only descriptor
-/// worth enriching today: it's what rubix-ai's Datasources page renders as the Kind=ROS connect
-/// form, ros-datasource-unify scope). A NATIVE extension's manifest `Tool.input_schema` is inert
-/// (`host/src/native/descriptors.rs`'s `join_descriptors` only enriches from what's declared HERE,
-/// at init, never from TOML) — this is the one real source of truth. Every other `ros.*` tool is
-/// left undeclared and falls back to a name-only descriptor, unchanged from before.
+/// The `init` handshake reply — self-declares JSON Schemas for the tools worth enriching (a NATIVE
+/// extension's manifest `Tool.input_schema` is inert — `host/src/native/descriptors.rs`'s
+/// `join_descriptors` only enriches from what's declared HERE, at init, never from TOML — this is the
+/// one real source of truth). `ros.create`'s schema is what rubix-ai's Datasources page renders as the
+/// Kind=ROS connect form (ros-datasource-unify scope). `ros.point.write`/`ros.schedule.write`'s schemas
+/// are what a generic dashboard CONTROL widget's `ArgsBuilder` (panel-datasource-query scope — the
+/// write-side analog of the read-side `[[query]]` picker) renders as typed fields once an author points
+/// a Slider/Switch/JSON control's write action at either tool, instead of the free-text fallback an
+/// undeclared schema gets. Every other `ros.*` tool is left undeclared and falls back to a name-only
+/// descriptor, unchanged from before.
 fn init_reply() -> String {
     let init = InitReply {
         protocol_major: 0,
         tools: Vec::new(),
-        descriptors: vec![ToolDescriptor {
-            name: "ros.create".to_string(),
-            title: "Register a ROS connection".to_string(),
-            group: "ros".to_string(),
-            // `uuid` (the real tool's 4th required arg) is deliberately absent: no human should type
-            // a UUID into a connect form. The caller (rubix-ai's ext-connect wizard) generates one and
-            // adds it to the call args itself — this schema is the human-facing subset only.
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "name": { "type": "string", "title": "Name" },
-                    "base_url": { "type": "string", "format": "uri", "title": "Base URL" },
-                    "token": { "type": "string", "format": "password", "title": "Token" },
-                },
-                "required": ["name", "base_url", "token"],
-            })),
-            // Create only persists a shadow record + stashes the token (no outbound HTTP) — unlike
-            // `ping`/`point.write`, nothing leaves the node here.
-            emits_external: false,
-            result: None,
-        }],
+        descriptors: vec![
+            ToolDescriptor {
+                name: "ros.create".to_string(),
+                title: "Register a ROS connection".to_string(),
+                group: "ros".to_string(),
+                // `uuid` (the real tool's 4th required arg) is deliberately absent: no human should
+                // type a UUID into a connect form. The caller (rubix-ai's ext-connect wizard) generates
+                // one and adds it to the call args itself — this schema is the human-facing subset only.
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "title": "Name" },
+                        "base_url": { "type": "string", "format": "uri", "title": "Base URL" },
+                        "token": { "type": "string", "format": "password", "title": "Token" },
+                    },
+                    "required": ["name", "base_url", "token"],
+                })),
+                // Create only persists a shadow record + stashes the token (no outbound HTTP) — unlike
+                // `ping`/`point.write`, nothing leaves the node here.
+                emits_external: false,
+                result: None,
+            },
+            ToolDescriptor {
+                name: "ros.point.write".to_string(),
+                title: "Write a ROS point setpoint".to_string(),
+                group: "ros".to_string(),
+                // `ros_uuid`/`point_uuid` are typed here (no cascading picker at this layer — an
+                // author copies the uuid from the already-working Datasource-track read chain). A
+                // Slider/Switch's own `{{value}}` template slot fills `value` at write time.
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "ros_uuid": { "type": "string", "title": "Connection uuid" },
+                        "point_uuid": { "type": "string", "title": "Point uuid" },
+                        "slot": {
+                            "type": "integer", "minimum": 1, "maximum": 16,
+                            "title": "Priority slot (1-16)",
+                        },
+                        "value": { "type": ["number", "null"], "title": "Value (null releases the slot)" },
+                    },
+                    "required": ["ros_uuid", "point_uuid", "slot"],
+                })),
+                // Staged as a must-deliver outbox effect, not written inline — but it DOES eventually
+                // leave the node via the relay, so it carries the same classifier as an inline write.
+                emits_external: true,
+                result: None,
+            },
+            ToolDescriptor {
+                name: "ros.schedule.write".to_string(),
+                title: "Write a ROS schedule payload".to_string(),
+                group: "ros".to_string(),
+                // `schedule` is the whole weekly/exception/event object — a scalar-value control
+                // (Slider/Switch) can't author this; the generic JSON control is the fit.
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "ros_uuid": { "type": "string", "title": "Connection uuid" },
+                        "schedule_uuid": { "type": "string", "title": "Schedule uuid" },
+                        "schedule": { "type": "object", "title": "Schedule payload" },
+                    },
+                    "required": ["ros_uuid", "schedule_uuid", "schedule"],
+                })),
+                emits_external: true,
+                result: None,
+            },
+        ],
     };
     serde_json::to_string(&init).unwrap_or_default()
 }
