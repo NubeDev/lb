@@ -104,6 +104,7 @@ async fn seed_widget_ext(node: &Arc<Node>, ws: &str, ext_id: &str, tile_label: &
         }],
         // A widget carries no top-level nav (ext-nav-contribution scope).
         nav: vec![],
+        sidebar: true,
     };
     let install = Install::new(ext_id, "0.1.0", vec![], 1).with_ui(None, vec![widget]);
     record_install(&node.store, ws, &install)

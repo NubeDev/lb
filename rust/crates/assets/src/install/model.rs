@@ -61,6 +61,15 @@ pub struct ExtUi {
     /// pre-field install reads as an empty vec ⇒ one flat slot, exactly today's behavior.
     #[serde(default)]
     pub nav: Vec<ExtNavItem>,
+    /// Contribute no sidebar slot (ros-datasource-unify scope) — mirrors the manifest
+    /// `[ui].sidebar`; always `true` for a widget (only a page's `nav` slot is ever suppressed).
+    /// Serde-defaulted `true`: installs written before this field keep today's flat-slot behavior.
+    #[serde(default = "ext_ui_sidebar_default")]
+    pub sidebar: bool,
+}
+
+fn ext_ui_sidebar_default() -> bool {
+    true
 }
 
 /// A persisted mirror of a manifest `[[ui.nav]]` item (ext-nav-contribution scope). Carried on the

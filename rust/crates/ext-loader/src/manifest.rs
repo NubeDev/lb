@@ -351,6 +351,17 @@ pub struct UiPage {
     /// `id`. Validated at parse (`validate_nav`): slug ids, per-block uniqueness, label/icon caps, ≤16.
     #[serde(default)]
     pub nav: Vec<NavItem>,
+    /// Contribute NO sidebar slot (ros-datasource-unify scope) — the page stays reachable at
+    /// `ext:<ext>` (a deep link, e.g. from the Datasources roster's "Open" on an ext-sourced row),
+    /// it simply doesn't ALSO clutter the rail with a redundant flat entry for a surface the workspace
+    /// already reaches another way. Default `true` (every manifest written before this field keeps
+    /// today's behavior — a flat slot). Presentation only: caps/routing are unaffected either way.
+    #[serde(default = "sidebar_default")]
+    pub sidebar: bool,
+}
+
+fn sidebar_default() -> bool {
+    true
 }
 
 /// A `[[ui.nav]]` item — one top-level nav destination an extension declares (ext-nav-contribution

@@ -216,10 +216,16 @@ probe_tool = "ros.ping"
 # is exactly the author-tier read caps (authz/builtin_roles.rs) — the page can never reach further
 # than what a member already holds; the write verbs (create/update/delete/point.write/start/stop/
 # restart) are admin-only and gated per-action inside the page, not by the nav-mount scope.
+#
+# `sidebar = false` (ros-datasource-unify scope): ROS connections now live in the Datasources page
+# (its own `[connect]` block, above) — the roster's "Open" on a ROS row still deep-links here
+# (`ext:ros`), so this page stays fully reachable; it just no longer ALSO shows as a redundant
+# "Extensions > ROS" flat entry in the sidebar.
 [ui]
 entry = "remoteEntry.js"
 label = "ROS"
 icon  = "radio-tower"
+sidebar = false
 scope = [
   "ros.list", "ros.get", "ros.ping",
   "ros.network.list", "ros.network.get",

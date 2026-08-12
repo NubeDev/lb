@@ -54,6 +54,7 @@ pub(crate) fn project(manifest: &Manifest, granted: &[String]) -> (Option<ExtUi>
         // The page's declared `[[ui.nav]]` destinations, relayed verbatim (validated at parse) — the
         // shell renders them nested + routes `ext:<ext>/<id>`, branching on no id (ext-nav-contribution).
         nav: u.nav.iter().map(project_nav).collect(),
+        sidebar: u.sidebar,
     });
     let widgets = manifest
         .widgets
@@ -78,6 +79,9 @@ fn project_widget(w: &Widget, granted: &[String]) -> ExtUi {
         options: w.options.iter().map(project_option).collect(),
         // A widget contributes no top-level nav — nav is a page concern (ext-nav-contribution scope).
         nav: Vec::new(),
+        // `sidebar` is a PAGE concern (the nav-slot suppression); a widget has no nav slot to
+        // suppress in the first place, so this is always `true` for one.
+        sidebar: true,
     }
 }
 

@@ -1843,6 +1843,7 @@ async fn seed_nav_ext(node: &std::sync::Arc<Node>, ws: &str, ext_id: &str, nav: 
         id: None,
         options: vec![],
         nav,
+        sidebar: true,
     };
     let install = Install::new(ext_id, "0.1.0", vec![], 1).with_ui(Some(page), vec![]);
     record_install(&node.store, ws, &install)
