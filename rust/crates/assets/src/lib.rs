@@ -29,8 +29,8 @@ mod skill;
 pub use asset::{delete_asset, get_asset, list_assets, put_asset, Asset};
 pub use doc::{delete_doc, get_doc, list_docs, put_doc, ContentType, Doc, Visibility};
 pub use install::{
-    delete_install, list_installs, read_install, record_install, ExtConnect, ExtNavItem, ExtUi,
-    ExtUiOption, Install, Tier,
+    delete_install, list_installs, read_install, record_install, ExtConnect, ExtNavItem,
+    ExtQueryBlock, ExtQueryField, ExtUi, ExtUiOption, Install, Tier,
 };
 pub use relation::{
     list_related, list_related_inverse, list_skill_grants, relate, related, relation_row, unrelate,

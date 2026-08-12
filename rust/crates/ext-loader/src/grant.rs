@@ -82,6 +82,7 @@ mod tests {
             ui: None,
             widgets: Vec::new(),
             connect: None,
+            queries: Vec::new(),
             nodes: Vec::new(),
         }
     }

@@ -89,6 +89,9 @@ request = [
   "mcp:ros.point.get:call",
   "mcp:ros.schedule.list:call",
   "mcp:ros.schedule.get:call",
+  "mcp:ros.location.list:call",
+  "mcp:ros.group.list:call",
+  "mcp:ros.host.list:call",
 ]
 
 # CRUD over the connection → network → device → point tree (core/resource-verbs grammar).
@@ -117,6 +120,21 @@ description = "Remove a ROS connection (soft by default)."
 name = "ros.ping"
 description = "Health-check a ROS appliance (proxies /api/system/ping)."
 
+# The box's OWN Location → Group → Host hierarchy, proxied live (ros-location-group scope) — real,
+# pre-existing appliance data (the box's own admin UI manages these), read-only here, same posture
+# as network/device/point below. A Host is a supervised remote device the box manages, NOT the box
+# connection itself (`ros_uuid` already names that). No group/host list-all endpoint exists on the
+# box — Groups come embedded on the Location list, Hosts embedded on one Group's own read.
+[[tools]]
+name = "ros.location.list"
+description = "List every Location on the box {ros_uuid}."
+[[tools]]
+name = "ros.group.list"
+description = "List the Groups under one Location {ros_uuid, location_uuid}."
+[[tools]]
+name = "ros.host.list"
+description = "List the supervised Hosts under one Group {ros_uuid, group_uuid}."
+
 # `ros.`-prefixed, not bare "network.list" — dispatch resolves a qualified tool name's owning
 # extension by splitting on the first '.' (host/src/tool_call.rs); a bare "network.list" resolves
 # ext_id "network" (no such extension) and is unreachable. Found live, 2026-08-12: these tools were
@@ -139,7 +157,7 @@ description = "Delete a network."
 
 [[tools]]
 name = "ros.device.list"
-description = "List devices under a network (proxies /api/devices)."
+description = "List devices under a network (proxies /api/devices); optional host_uuid scopes to one supervised Host."
 [[tools]]
 name = "ros.device.get"
 description = "Get one device by uuid."
@@ -155,7 +173,7 @@ description = "Delete a device."
 
 [[tools]]
 name = "ros.point.list"
-description = "List points under a device (proxies /api/points)."
+description = "List points under a device (proxies /api/points); optional host_uuid scopes to one supervised Host."
 [[tools]]
 name = "ros.point.get"
 description = "Get one point by uuid (present_value, priority array, …)."
@@ -210,6 +228,46 @@ create_tool = "ros.create"
 list_tool = "ros.list"
 delete_tool = "ros.delete"
 probe_tool = "ros.ping"
+
+# How to READ data from a ROS connection once it exists (panel-datasource-query scope) — the
+# missing half `[connect]` above doesn't cover. rubix-ai's panel "Datasource" track offers a Type
+# selector between these two blocks, then renders each `fields` chain as a cascading select (the
+# SAME tool-backed `select-async` control `[[widget]] options` below already uses).
+#
+# `connectionUuid` is never a declared field — it's the picked CONNECTION (the box itself) injected
+# by rubix-ai as `ros_uuid` on every call in this block. `locationUuid`/`groupUuid`/`hostUuid` are
+# the box's OWN real Location → Group → Host hierarchy (ros-location-group scope, confirmed against
+# the box's native admin UI and the reference Grafana plugin's REST client) — narrowing which
+# supervised Host to read from, distinct from picking the connection. Only `hostUuid` feeds
+# downstream (`network.list`'s `host_uuid` filter); Location/Group narrow the chain only.
+[[query]]
+id = "point"
+label = "Point"
+tool = "ros.point.get"
+connection_arg = "ros_uuid"
+fields = [
+  { id = "locationUuid", label = "Location", control = "select", choices = { source = "tool", tool = "ros.location.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "groupUuid", label = "Group", control = "select", choices = { source = "tool", tool = "ros.group.list", args = { ros_uuid = "$connectionUuid", location_uuid = "$locationUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "hostUuid", label = "Host", control = "select", choices = { source = "tool", tool = "ros.host.list", args = { ros_uuid = "$connectionUuid", group_uuid = "$groupUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "networkUuid", label = "Network", control = "select", choices = { source = "tool", tool = "ros.network.list", args = { ros_uuid = "$connectionUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "deviceUuid", label = "Device", control = "select", choices = { source = "tool", tool = "ros.device.list", args = { ros_uuid = "$connectionUuid", network_uuid = "$networkUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "pointUuid", label = "Point", arg = "point_uuid", control = "select", choices = { source = "tool", tool = "ros.point.list", args = { ros_uuid = "$connectionUuid", device_uuid = "$deviceUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
+]
+
+[[query]]
+id = "schedule"
+label = "Schedule"
+tool = "ros.schedule.get"
+connection_arg = "ros_uuid"
+fields = [
+  { id = "locationUuid", label = "Location", control = "select", choices = { source = "tool", tool = "ros.location.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "groupUuid", label = "Group", control = "select", choices = { source = "tool", tool = "ros.group.list", args = { ros_uuid = "$connectionUuid", location_uuid = "$locationUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "hostUuid", label = "Host", control = "select", choices = { source = "tool", tool = "ros.host.list", args = { ros_uuid = "$connectionUuid", group_uuid = "$groupUuid" }, valueField = "uuid", labelField = "name" } },
+  { id = "scheduleUuid", label = "Schedule", arg = "schedule_uuid", control = "select", choices = { source = "tool", tool = "ros.schedule.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
+]
+# `ros.schedule.list` has no `host_uuid` filter on the box (unlike networks) — Location/Group/Host
+# above only narrow toward picking a connection to author against; the Schedule list itself stays
+# unscoped, exactly its existing (already-working) behavior.
 
 # The federated shadcn page (fleet → connection → network → device → point drill-down, poll
 # toggles, point-write) — the fleet-monitor pattern (backend + frontend in one folder, ui/). `scope`

@@ -277,6 +277,45 @@ pub struct ConnectDef {
     pub probe_tool: Option<String>,
 }
 
+/// One field of a `[[query]]` block's cascading chain (panel-datasource-query scope) — identical
+/// shape to `WidgetOption` (this is the SAME "declare a tool-backed/static select, host relays,
+/// rubix-ai's `select-async` control renders it" mechanism, reused for panel-source authoring
+/// instead of widget config). `arg: None` means this field only NARROWS a later field's choices
+/// (e.g. `networkUuid` picks which devices show) — it is never added to the final tool call.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct QueryField {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub arg: Option<String>,
+    pub control: String,
+    #[serde(default)]
+    pub choices: Option<serde_json::Value>,
+}
+
+/// A `[[query]]` block — one way to read data FROM a `[connect]` connection (panel-datasource-query
+/// scope). `[connect]` covers the connection's CRUD lifecycle only; this is the missing "how do I
+/// query it" half. An extension may declare several (ROS: `point` and `schedule`) — rubix-ai's panel
+/// "Datasource" track offers a Type selector when there's more than one, then renders `fields` as a
+/// cascading chain (the SAME `AsyncSelect` control `[[widget]] options` already uses) and calls
+/// `tool` with the resolved `arg`-bearing values once the chain is filled. Opaque relay data: the
+/// host shape-validates at parse (tool refs bind a declared `[[tools]]` entry) and passes it through
+/// `ExtRow.queries` verbatim, same posture as `[connect]`/`[[widget]] options`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct QueryBlock {
+    pub id: String,
+    pub label: String,
+    pub tool: String,
+    /// The arg name `tool` expects the PICKED CONNECTION's uuid under (e.g. `"ros_uuid"`) — the
+    /// connection is chosen before a query block ever renders (it IS the panel's "Datasource"
+    /// pick), so it's never a declared `field`, just injected under this name on every call. Every
+    /// extension's own tools name this arg differently (`ros_uuid` here; a future extension's own
+    /// convention elsewhere), so the block must say which.
+    pub connection_arg: String,
+    #[serde(default)]
+    pub fields: Vec<QueryField>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {
@@ -494,6 +533,10 @@ pub struct Manifest {
     /// manifest declares `[connect]` (ros-datasource-unify scope). `None` for every extension
     /// written before this field, and for any extension with nothing to connect to.
     pub connect: Option<ConnectDef>,
+    /// The ways to READ data from a `[connect]` connection (panel-datasource-query scope) — one per
+    /// `[[query]]` table. Empty if the manifest declares none (a `[connect]` with no `[[query]]`
+    /// still works for CRUD; the panel "Datasource" track just offers it no structured query UI).
+    pub queries: Vec<QueryBlock>,
     /// The flow node types this extension contributes — one validated `[[node]]` block each (flows
     /// node-descriptor scope, the only manifest addition). Empty if the manifest declares none. Each
     /// block's `tool` was verified to bind a declared `[[tools]]` entry and its `config` compiled as
@@ -522,6 +565,9 @@ struct Raw {
     /// `[connect]` — present iff the extension offers a Datasources connection kind.
     #[serde(default)]
     connect: Option<ConnectDef>,
+    /// `[[query]]` array-of-tables — zero or more structured query shapes for the `[connect]` kind.
+    #[serde(default)]
+    query: Vec<QueryBlock>,
     /// `[[node]]` array-of-tables — zero or more flow node types (flows node-descriptor scope).
     #[serde(default)]
     node: Vec<lb_flows::NodeBlock>,
@@ -654,6 +700,52 @@ impl Manifest {
             }
         }
 
+        // Validate each `[[query]]` block (panel-datasource-query scope): same tool-binding
+        // discipline as `[connect]` above — the panel "Datasource" track calls `tool` (and each
+        // field's tool-backed `choices.tool`) by the string this block gives it.
+        let mut seen_query_ids: Vec<&str> = Vec::new();
+        for q in &raw.query {
+            if q.id.is_empty() || q.label.is_empty() || q.tool.is_empty() || q.connection_arg.is_empty() {
+                return Err(ManifestError::InvalidConnectBlock(
+                    "query block has an empty id/label/tool/connection_arg".into(),
+                ));
+            }
+            if seen_query_ids.contains(&q.id.as_str()) {
+                return Err(ManifestError::InvalidConnectBlock(format!(
+                    "duplicate query block id '{}'",
+                    q.id
+                )));
+            }
+            seen_query_ids.push(&q.id);
+            if !tool_names.contains(&q.tool) {
+                return Err(ManifestError::InvalidConnectBlock(format!(
+                    "query block '{}' references tool '{}', which is not a declared [[tools]] entry",
+                    q.id, q.tool
+                )));
+            }
+            for f in &q.fields {
+                if f.id.is_empty() || f.label.is_empty() || f.control.is_empty() {
+                    return Err(ManifestError::InvalidConnectBlock(format!(
+                        "query block '{}' has a field with an empty id/label/control",
+                        q.id
+                    )));
+                }
+                let field_tool = f
+                    .choices
+                    .as_ref()
+                    .and_then(|c| c.get("tool"))
+                    .and_then(|t| t.as_str());
+                if let Some(t) = field_tool {
+                    if !tool_names.contains(&t.to_string()) {
+                        return Err(ManifestError::InvalidConnectBlock(format!(
+                            "query block '{}' field '{}' references tool '{t}', which is not a declared [[tools]] entry",
+                            q.id, f.id
+                        )));
+                    }
+                }
+            }
+        }
+
         Ok(Manifest {
             id: raw.extension.id,
             version: raw.extension.version,
@@ -672,6 +764,7 @@ impl Manifest {
                 .filter(|w| !w.entry.is_empty())
                 .collect(),
             connect: raw.connect,
+            queries: raw.query,
             nodes: raw.node,
         })
     }

@@ -480,6 +480,12 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:ros.point.get:call",
     "mcp:ros.schedule.list:call",
     "mcp:ros.schedule.get:call",
+    // The box's own Location/Group/Host hierarchy (ros-location-group scope), proxied live — same
+    // read-tier reasoning as the rest of ros right above: browsing it is a read, no write verb exists
+    // (it's pre-existing box data, not something rubix-ai creates).
+    "mcp:ros.location.list:call",
+    "mcp:ros.group.list:call",
+    "mcp:ros.host.list:call",
     // dashboards — a member BUILDS/SHARES/DELETES their OWN (gate-3 owns which). The `*_any`
     // overrides (save/share/delete) are admin-only, below.
     "mcp:dashboard.save:call",
@@ -1057,6 +1063,9 @@ mod tests {
             "mcp:ros.point.get:call",
             "mcp:ros.schedule.list:call",
             "mcp:ros.schedule.get:call",
+            "mcp:ros.location.list:call",
+            "mcp:ros.group.list:call",
+            "mcp:ros.host.list:call",
         ] {
             let cap = read.to_string();
             assert!(author_caps().contains(&cap), "{read} must be an AUTHOR cap");

@@ -15,6 +15,9 @@
 //! typed `HostError` the loop renders as a `Reply::err`.
 
 mod device;
+mod group;
+mod host;
+mod location;
 mod network;
 mod point;
 mod poll;
@@ -55,6 +58,10 @@ pub async fn dispatch(
         "ros.update" => ros::update(host, input, ts).await?,
         "ros.delete" => ros::delete(host, input).await?,
         "ros.ping" => ros::ping(host, factory, input).await?,
+
+        "ros.location.list" => location::list(host, factory, input).await?,
+        "ros.group.list" => group::list(host, factory, input).await?,
+        "ros.host.list" => host::list(host, factory, input).await?,
 
         // `ros.`-prefixed (not bare "network.list" etc): dispatch resolution splits a qualified tool
         // name on the first '.' and treats it as the owning extension id (tool_call.rs) — a bare

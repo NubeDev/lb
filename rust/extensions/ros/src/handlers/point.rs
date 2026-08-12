@@ -1,6 +1,9 @@
 //! The `point` verbs — `list`/`get` (proxied live from the box under a device) and `write` (the
-//! must-deliver setpoint). `list` takes `{ros_uuid, device_uuid}`; `get` reads one point by uuid; the
-//! box is authority (no point shadow).
+//! must-deliver setpoint). `list` takes `{ros_uuid, device_uuid, host_uuid?}` (optional, same
+//! non-default-Host gap `device.rs` documents — the box's `GetPointsParams.host_uuid` was already
+//! wired for the list call in the vendored client, just never threaded up); `get` reads one point
+//! directly by its own globally-unique uuid (no host scoping needed — confirmed live, unaffected).
+//! The box is authority (no point shadow).
 //!
 //! **`point.write` is must-deliver → outbox, never inline.** A dropped setpoint is a physical-world
 //! safety bug, so `write` does NOT PATCH the box in-handler: it cap-checks, validates the slot, and
@@ -31,13 +34,14 @@ pub async fn list(
     host.require("ros.point.list")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let device_uuid = req_str(input, "device_uuid")?;
+    let host_uuid = input.get("host_uuid").and_then(|v| v.as_str());
     let (cursor, limit) = page_args(input);
     let api = match resolve_api(host, factory, &ros_uuid).await? {
         Some(api) => api,
         None => return Ok(json!({ "error": "not_found", "ros_uuid": ros_uuid })),
     };
     let points = api
-        .list_points(&device_uuid)
+        .list_points(host_uuid, &device_uuid)
         .await
         .map_err(|e| HostError::Callback(e.to_string()))?;
     let items: Vec<Value> = points

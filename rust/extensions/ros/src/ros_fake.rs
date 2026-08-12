@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ros_api::{RosApi, RosApiError};
-use crate::ros_client::{Device, Network, PingResponse, Point, Priority, Schedule};
+use crate::ros_client::{Device, Group, Location, Network, PingResponse, Point, Priority, Schedule};
 
 /// A recorded schedule write — what a test asserts reached the box.
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +48,7 @@ pub struct RosFake {
     schedules: Mutex<Vec<Schedule>>,
     schedule_writes: Mutex<Vec<RecordedScheduleWrite>>,
     unreachable: Mutex<bool>,
+    locations: Vec<Location>,
 }
 
 impl RosFake {
@@ -62,7 +63,19 @@ impl RosFake {
             schedules: Mutex::new(Vec::new()),
             schedule_writes: Mutex::new(Vec::new()),
             unreachable: Mutex::new(false),
+            locations: Vec::new(),
         }
+    }
+
+    /// Seed a Location → Group → Host branch (ros-location-group scope) — a test asserting the
+    /// panel query-picker's Location/Group/Host chain builds one via this.
+    pub fn add_location(&mut self, uuid: &str, name: &str, groups: Vec<Group>) {
+        self.locations.push(Location {
+            uuid: uuid.into(),
+            name: name.into(),
+            description: None,
+            groups: Some(groups),
+        });
     }
 
     /// A minimal one-network / one-device / one-point tree, all enabled, the point at `value`. The
@@ -180,11 +193,32 @@ impl RosApi for std::sync::Arc<RosFake> {
     async fn list_networks(&self, with_tree: bool) -> Result<Vec<Network>, RosApiError> {
         (**self).list_networks(with_tree).await
     }
-    async fn list_devices(&self, network_uuid: &str) -> Result<Vec<Device>, RosApiError> {
-        (**self).list_devices(network_uuid).await
+    async fn list_networks_for_host(
+        &self,
+        host_uuid: &str,
+        with_tree: bool,
+    ) -> Result<Vec<Network>, RosApiError> {
+        (**self).list_networks_for_host(host_uuid, with_tree).await
     }
-    async fn list_points(&self, device_uuid: &str) -> Result<Vec<Point>, RosApiError> {
-        (**self).list_points(device_uuid).await
+    async fn list_locations(&self, with_groups: bool) -> Result<Vec<Location>, RosApiError> {
+        (**self).list_locations(with_groups).await
+    }
+    async fn get_group(&self, group_uuid: &str, with_hosts: bool) -> Result<Group, RosApiError> {
+        (**self).get_group(group_uuid, with_hosts).await
+    }
+    async fn list_devices(
+        &self,
+        host_uuid: Option<&str>,
+        network_uuid: &str,
+    ) -> Result<Vec<Device>, RosApiError> {
+        (**self).list_devices(host_uuid, network_uuid).await
+    }
+    async fn list_points(
+        &self,
+        host_uuid: Option<&str>,
+        device_uuid: &str,
+    ) -> Result<Vec<Point>, RosApiError> {
+        (**self).list_points(host_uuid, device_uuid).await
     }
     async fn get_point(&self, point_uuid: &str) -> Result<Point, RosApiError> {
         (**self).get_point(point_uuid).await
@@ -236,7 +270,42 @@ impl RosApi for RosFake {
         Ok(networks)
     }
 
-    async fn list_devices(&self, network_uuid: &str) -> Result<Vec<Device>, RosApiError> {
+    async fn list_networks_for_host(
+        &self,
+        host_uuid: &str,
+        with_tree: bool,
+    ) -> Result<Vec<Network>, RosApiError> {
+        self.guard()?;
+        let all = self.list_networks(with_tree).await?;
+        Ok(all
+            .into_iter()
+            .filter(|n| n.host_uuid.as_deref() == Some(host_uuid))
+            .collect())
+    }
+
+    async fn list_locations(&self, _with_groups: bool) -> Result<Vec<Location>, RosApiError> {
+        self.guard()?;
+        Ok(self.locations.clone())
+    }
+
+    async fn get_group(&self, group_uuid: &str, _with_hosts: bool) -> Result<Group, RosApiError> {
+        self.guard()?;
+        self.locations
+            .iter()
+            .filter_map(|l| l.groups.as_ref())
+            .flatten()
+            .find(|g| g.uuid == group_uuid)
+            .cloned()
+            .ok_or_else(|| RosApiError::NotFound(group_uuid.to_string()))
+    }
+
+    async fn list_devices(
+        &self,
+        _host_uuid: Option<&str>,
+        network_uuid: &str,
+    ) -> Result<Vec<Device>, RosApiError> {
+        // The fake's tree is keyed by network/device uuid only — no Host concept, so `host_uuid` is
+        // accepted (matching the real trait) but has nothing to scope against here.
         self.guard()?;
         Ok(self
             .devices
@@ -247,7 +316,11 @@ impl RosApi for RosFake {
             .unwrap_or_default())
     }
 
-    async fn list_points(&self, device_uuid: &str) -> Result<Vec<Point>, RosApiError> {
+    async fn list_points(
+        &self,
+        _host_uuid: Option<&str>,
+        device_uuid: &str,
+    ) -> Result<Vec<Point>, RosApiError> {
         self.guard()?;
         Ok(self
             .points

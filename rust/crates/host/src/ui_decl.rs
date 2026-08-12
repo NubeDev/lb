@@ -9,8 +9,8 @@
 //! decider" rule). The bridge re-filters and the host re-checks regardless; this is the durable,
 //! narrowed truth `ext.list` reports.
 
-use lb_assets::{ExtConnect, ExtNavItem, ExtUi, ExtUiOption};
-use lb_ext_loader::{Manifest, NavItem, Widget, WidgetOption};
+use lb_assets::{ExtConnect, ExtNavItem, ExtQueryBlock, ExtQueryField, ExtUi, ExtUiOption};
+use lb_ext_loader::{Manifest, NavItem, QueryBlock, QueryField, Widget, WidgetOption};
 
 /// Project the manifest's `[connect]` block onto its durable `ExtConnect` mirror
 /// (ros-datasource-unify scope) — `Some` iff the manifest declared one AND every tool it names is
@@ -36,6 +36,35 @@ pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option
         delete_tool: c.delete_tool.clone(),
         probe_tool: c.probe_tool.clone(),
     })
+}
+
+/// Project the manifest's `[[query]]` blocks onto their durable `ExtQueryBlock` mirrors
+/// (panel-datasource-query scope) — cloned through UNCONDITIONALLY, unlike `project_connect`'s
+/// all-or-nothing grant check: each block's own `tool` gets the normal per-call `authorize_tool`
+/// gate through `viz.query` when a panel actually runs it, so pre-filtering here would only hide a
+/// query shape a caller could otherwise discover and still be correctly denied on.
+pub(crate) fn project_queries(manifest: &Manifest) -> Vec<ExtQueryBlock> {
+    manifest.queries.iter().map(project_query_block).collect()
+}
+
+fn project_query_block(q: &QueryBlock) -> ExtQueryBlock {
+    ExtQueryBlock {
+        id: q.id.clone(),
+        label: q.label.clone(),
+        tool: q.tool.clone(),
+        connection_arg: q.connection_arg.clone(),
+        fields: q.fields.iter().map(project_query_field).collect(),
+    }
+}
+
+fn project_query_field(f: &QueryField) -> ExtQueryField {
+    ExtQueryField {
+        id: f.id.clone(),
+        label: f.label.clone(),
+        arg: f.arg.clone(),
+        control: f.control.clone(),
+        choices: f.choices.clone(),
+    }
 }
 
 /// Build the `(page, widgets)` UI projection for an install from its parsed `manifest` and the

@@ -3,8 +3,22 @@
 //! reads, so a blocking client on the async runtime would stall the reactor (ros-scope risk "blocking
 //! client in an async task"). The `External {token}` auth header is the ROS appliance's scheme; the
 //! token itself is mediated by `lb-secrets` above this layer and never logged here.
+//!
+//! **One process-wide `reqwest::Client`, not one per connection.** `resolve_api` rebuilds a `Client`
+//! on EVERY tool call (it re-reads the shadow + token fresh each time — correct, cheap, and lets a
+//! rotated token take effect immediately). Baking the token into `reqwest::Client`'s DEFAULT headers
+//! (the old shape) forced a brand-new client — fresh connection pool, fresh TCP+TLS handshake to the
+//! box — on every single call; a Location→Group→Host→Network→Device→Point chain paid that six times
+//! over, the dominant cost in the "why is this slow" report. `reqwest::Client` is `Arc`-backed and
+//! `Clone` is a cheap handle copy sharing the SAME pool, so the fix is to build ONE client for the
+//! process (`shared_http`, no default auth header — a token is per-connection, not per-process) and
+//! send `Authorization` as a PER-REQUEST header instead. Every `Client` now clones the same pooled
+//! handle, so requests to the SAME box (any two calls in one chain, or across different connections'
+//! calls interleaved by the poller) reuse a warm keep-alive connection.
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use std::sync::OnceLock;
+
+use reqwest::header::{HeaderValue, AUTHORIZATION};
 use reqwest::{Client as HttpClient, Response};
 use serde::de::DeserializeOwned;
 
@@ -25,9 +39,8 @@ pub struct Client {
 
 impl Client {
     pub fn new(config: Config) -> Result<Self, RosClientError> {
-        let http = build_http(&config.token)?;
         Ok(Self {
-            http,
+            http: shared_http().clone(),
             base_url: config.base_url.trim_end_matches('/').to_string(),
             token: config.token,
         })
@@ -41,11 +54,18 @@ impl Client {
         &self.token
     }
 
+    pub(crate) fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     pub fn set_token(&mut self, token: impl Into<String>) -> Result<(), RosClientError> {
-        let token = token.into();
-        self.http = build_http(&token)?;
-        self.token = token;
+        self.token = token.into();
         Ok(())
+    }
+
+    fn auth_header(&self) -> Result<HeaderValue, RosClientError> {
+        HeaderValue::from_str(&format!("External {}", self.token))
+            .map_err(|e| RosClientError::InvalidInput(format!("invalid token/header: {e}")))
     }
 
     pub(crate) async fn get_json<T: DeserializeOwned>(
@@ -56,6 +76,7 @@ impl Client {
         let response = self
             .http
             .get(self.endpoint_url(path))
+            .header(AUTHORIZATION, self.auth_header()?)
             .query(query)
             .send()
             .await?;
@@ -70,6 +91,7 @@ impl Client {
         let response = self
             .http
             .patch(self.endpoint_url(path))
+            .header(AUTHORIZATION, self.auth_header()?)
             .json(body)
             .send()
             .await?;
@@ -96,18 +118,17 @@ impl Client {
     }
 }
 
-/// Build a `reqwest::Client` carrying the ROS `External {token}` auth + JSON content-type headers.
-fn build_http(token: &str) -> Result<HttpClient, RosClientError> {
-    let mut headers = HeaderMap::new();
-    let auth_value = format!("External {token}");
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&auth_value)
-            .map_err(|e| RosClientError::InvalidInput(format!("invalid token/header: {e}")))?,
-    );
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    HttpClient::builder()
-        .default_headers(headers)
-        .build()
-        .map_err(RosClientError::from)
+/// The one `reqwest::Client` for the whole sidecar process — built lazily on first use, then cloned
+/// (an `Arc`-backed handle, sharing the same connection pool) by every `Client::new`. No default auth
+/// header: the token is per-connection and goes on each request instead (see module doc). JSON
+/// content-type is fixed per-request via `reqwest`'s `.json(body)` builder already, so the only default
+/// header worth pre-baking here would be `Content-Type` on GETs — not needed, `.json(body)` sets it
+/// per-call and `get_json` sends no body.
+fn shared_http() -> &'static HttpClient {
+    static HTTP: OnceLock<HttpClient> = OnceLock::new();
+    HTTP.get_or_init(|| {
+        HttpClient::builder()
+            .build()
+            .expect("reqwest client builder failed")
+    })
 }

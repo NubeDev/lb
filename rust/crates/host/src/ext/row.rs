@@ -4,7 +4,7 @@
 //! the live runtime truth the host joins in (the `SidecarMap` for native; wasm has no separate
 //! process so it `running == enabled`).
 
-use lb_assets::{ExtConnect, ExtUi, Install, Tier};
+use lb_assets::{ExtConnect, ExtQueryBlock, ExtUi, Install, Tier};
 use serde::{Deserialize, Serialize};
 
 /// A single installed extension as the admin console sees it — durable intent joined with live state.
@@ -35,6 +35,10 @@ pub struct ExtRow {
     /// and every tool it names is granted (ros-datasource-unify scope).
     #[serde(default)]
     pub connect: Option<ExtConnect>,
+    /// The ways to read data from a `[connect]` connection — one per `[[query]]` block the
+    /// manifest declared (panel-datasource-query scope). Empty if none.
+    #[serde(default)]
+    pub queries: Vec<ExtQueryBlock>,
 }
 
 impl ExtRow {
@@ -62,6 +66,7 @@ impl ExtRow {
             ui: install.ui.clone(),
             widgets: install.widgets.clone(),
             connect: install.connect.clone(),
+            queries: install.queries.clone(),
         }
     }
 }
