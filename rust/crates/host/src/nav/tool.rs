@@ -17,7 +17,8 @@ use serde_json::{json, Value};
 use super::model::{NavItem, Visibility};
 use super::{
     nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_pref_get,
-    nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare, NavError,
+    nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share,
+    nav_unshare, NavError,
 };
 use crate::boot::Node;
 
@@ -149,16 +150,38 @@ pub async fn call_nav_tool(
                         .ok_or_else(|| ToolError::BadInput("arg not a string: id".to_string()))?,
                 ),
             };
-            let pref = nav_pref_set(
-                &node.store,
-                principal,
-                ws,
-                id,
-                pinned,
-                u64_arg(input, "now")?,
-            )
-            .await
-            .map_err(to_tool)?;
+            // `forceBuiltin` is optional too (no-lockout scope): absent leaves the member's current
+            // force state untouched; present sets/clears the escape-hatch override — WITHOUT touching
+            // `active`, so the member's real pick survives the "Show all pages" / "Use my menu"
+            // round-trip (the decoupled slot; a legacy `__builtin__` sentinel converges on the way
+            // out, see `nav_pref_set_force_builtin`).
+            let force_builtin = match input.get("forceBuiltin") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(v.as_bool().ok_or_else(|| {
+                    ToolError::BadInput("arg not a bool: forceBuiltin".to_string())
+                })?),
+            };
+            let pref = match force_builtin {
+                Some(force) => nav_pref_set_force_builtin(
+                    &node.store,
+                    principal,
+                    ws,
+                    force,
+                    u64_arg(input, "now")?,
+                )
+                .await
+                .map_err(to_tool)?,
+                None => nav_pref_set(
+                    &node.store,
+                    principal,
+                    ws,
+                    id,
+                    pinned,
+                    u64_arg(input, "now")?,
+                )
+                .await
+                .map_err(to_tool)?,
+            };
             Ok(serde_json::to_value(pref).unwrap_or(Value::Null))
         }
         "nav.hidden.get" => {

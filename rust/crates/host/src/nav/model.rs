@@ -247,6 +247,16 @@ pub struct NavPref {
     /// Additive field — a pre-pins record deserializes with no pins.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pinned: Vec<String>,
+    /// **Force the built-in sidebar** (no-lockout scope) — the escape-hatch override, in its OWN
+    /// slot, deliberately DECOUPLED from `active`. When true, the resolver skips the pick and the
+    /// team/default tiers and returns the built-in `SURFACES` fallback. The shell toggles THIS field
+    /// ("Show all pages" / "Use my menu") and never writes `active`, so the member's real pick
+    /// survives the round-trip losslessly — an admin's curated nav is restored on "Use my menu"
+    /// because it was never deleted (the old single-slot `active == "__builtin__"` sentinel
+    /// destroyed it; see `pick_nav` for the legacy convergence). Additive field — a pre-split record
+    /// deserializes with it `false` (serde default).
+    #[serde(default)]
+    pub force_builtin: bool,
     pub updated_ts: u64,
 }
 

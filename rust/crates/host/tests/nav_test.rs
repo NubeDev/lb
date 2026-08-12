@@ -14,9 +14,10 @@ use lb_assets::{record_install, ExtNavItem, ExtUi, Install};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     add_member, dashboard_save, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list,
-    nav_list_shares, nav_pref_get, nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share,
-    nav_unshare, tags_add, Cell, NavError, NavFacet, NavItem, NavResolvedItem, NavResolvedSource,
-    NavVisibility, Node, NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN, NAV_MAX_ITEMS, NAV_MAX_PINNED,
+    nav_list_shares, nav_pref_get, nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save,
+    nav_set_default, nav_share, nav_unshare, tags_add, Cell, NavError, NavFacet, NavItem,
+    NavResolvedItem, NavResolvedSource, NavVisibility, Node, NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN,
+    NAV_MAX_ITEMS, NAV_MAX_PINNED,
 };
 use lb_store::Store;
 use lb_tags::{Provenance, Source as TagSource, Tag};
@@ -1486,6 +1487,160 @@ async fn builtin_pick_sentinel_forces_fallback() {
     assert_eq!(
         nav_resolve(&node, &ben, ws).await.unwrap().source,
         NavResolvedSource::Team
+    );
+}
+
+/// The ADMIN round-trip (the reported bug): toggling the force-built-in override ("Show all pages" →
+/// "Use my menu") must be LOSSLESS — the admin's real pick is never deleted, so "Use my menu"
+/// restores the exact curated nav instead of falling to built-in. The pick axis never changes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn admin_force_builtin_round_trip_restores_the_pick() {
+    let ws = "ws-nav-admin-roundtrip";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let test = principal(
+        "user:test",
+        ws,
+        &[
+            MEMBERS_MANAGE,
+            SAVE,
+            SHARE,
+            RESOLVE,
+            GET,
+            LIST,
+            "store:doc/*:write",
+        ],
+    );
+
+    nav_save(
+        store,
+        &test,
+        ws,
+        "ops",
+        "Ops",
+        vec![surface_item("Channels", "channels")],
+        1,
+    )
+    .await
+    .unwrap();
+    // The admin's curated pick — tier 1, their explicit opt-in.
+    nav_pref_set(store, &test, ws, Some("ops"), None, 2)
+        .await
+        .unwrap();
+    assert_eq!(
+        nav_resolve(&node, &test, ws).await.unwrap().source,
+        NavResolvedSource::Pick
+    );
+
+    // "Show all pages": set the override — `active` is UNTOUCHED, so the pick survives.
+    let r = nav_pref_set_force_builtin(store, &test, ws, true, 3)
+        .await
+        .unwrap();
+    assert!(r.force_builtin, "the override is set");
+    assert_eq!(
+        r.active, "ops",
+        "the real pick is never deleted by the override"
+    );
+    assert_eq!(
+        nav_resolve(&node, &test, ws).await.unwrap().source,
+        NavResolvedSource::Fallback,
+        "force-built-in skips the pick and the admin tiers → built-in rail"
+    );
+
+    // "Use my menu": clear the override — `active` still unchanged, so the SAME pick is back.
+    let r2 = nav_pref_set_force_builtin(store, &test, ws, false, 4)
+        .await
+        .unwrap();
+    assert!(!r2.force_builtin);
+    assert_eq!(r2.active, "ops", "the pick survived the whole round-trip");
+    let back = nav_resolve(&node, &test, ws).await.unwrap();
+    assert_eq!(back.source, NavResolvedSource::Pick);
+    assert_eq!(
+        back.nav_id, "ops",
+        "the curated nav is restored, not the built-in rail"
+    );
+}
+
+/// A MEMBER round-trip through the force override: a pickless member goes to built-in on "Show all
+/// pages" and back to the workspace-default nav on "Use my menu" — the pre-fix behavior is preserved
+/// (no regression, the auto-apply tiers still resume), and the legacy `__builtin__` sentinel still
+/// resolves as built-in AND converges away once the member toggles the new override.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn member_force_builtin_round_trip_resumes_default_and_converges_legacy() {
+    let ws = "ws-nav-member-roundtrip";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let test = principal(
+        "user:test",
+        ws,
+        &[SAVE, SHARE, RESOLVE, GET, LIST, "store:doc/*:write"],
+    );
+    let ben = principal("user:ben", ws, &[GET, LIST, RESOLVE]);
+
+    // A workspace-visibility nav set as the workspace default — the auto-apply tier a pickless
+    // member would normally resolve (a team share can't be relied on here; the S4 edge is exercised
+    // by the dedicated share tests).
+    nav_save(
+        store,
+        &test,
+        ws,
+        "wsdef",
+        "WS Default",
+        vec![surface_item("Channels", "channels")],
+        1,
+    )
+    .await
+    .unwrap();
+    nav_share(store, &test, ws, "wsdef", NavVisibility::Workspace, None, 2)
+        .await
+        .unwrap();
+    nav_set_default(store, &test, ws, "wsdef", 3).await.unwrap();
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::WorkspaceDefault
+    );
+
+    // A member can still write the legacy `__builtin__` sentinel and it forces fallback (back-compat).
+    nav_pref_set(store, &ben, ws, Some(lb_host::NAV_BUILTIN_PICK), None, 4)
+        .await
+        .unwrap();
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::Fallback,
+        "legacy __builtin__ sentinel still forces the built-in rail"
+    );
+
+    // "Use my menu" → clear the override; the legacy sentinel in `active` CONVERGES away (it is not
+    // a real nav id, so it can't be a pick), and normal default-tier resolution resumes.
+    let r = nav_pref_set_force_builtin(store, &ben, ws, false, 5)
+        .await
+        .unwrap();
+    assert!(!r.force_builtin);
+    assert_eq!(
+        r.active, "",
+        "the legacy sentinel is converged to a clean no-pick"
+    );
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::WorkspaceDefault,
+        "member resumes default-tier resolution on Use-my-menu (no regression)"
+    );
+
+    // And the full modern round-trip for a pickless member: force → built-in, un-force → back to
+    // the workspace default. The active axis is untouched throughout (it was already empty).
+    nav_pref_set_force_builtin(store, &ben, ws, true, 6)
+        .await
+        .unwrap();
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::Fallback
+    );
+    nav_pref_set_force_builtin(store, &ben, ws, false, 7)
+        .await
+        .unwrap();
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::WorkspaceDefault
     );
 }
 

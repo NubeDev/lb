@@ -50,7 +50,7 @@ pub(super) const NAV: &[HostTool] = &[
     HostTool {
         tool: "nav.pref.set",
         group: "nav",
-        description: "set the caller's own active-nav pick and/or pinned favorites",
+        description: "set the caller's own active-nav pick, pinned favorites, and/or the force-built-in override (partial write; the override never touches the pick)",
     },
     // hide-and-pins scope: the workspace hidden-set — the admin's one subtractive sidebar-curation
     // lever (declutter only; hiding never blocks a route).
