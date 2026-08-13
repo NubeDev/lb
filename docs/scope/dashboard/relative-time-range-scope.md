@@ -56,7 +56,11 @@ Endpoint expressions resolve to an instant; range tokens resolve to a whole wind
 Decided semantics (the ambiguities that made the existing two implementations disagree):
 
 - `last-month` is the previous **whole calendar month**; `last-1-month` is a trailing month ending now.
-- `to` is **exclusive** (`today` = `[00:00 today, 00:00 tomorrow)`); a range token with a `to` is refused.
+- **The current period is "so far this period", not the whole period:** `today` and `this-<unit>`
+  run from the START of the period to **now** — `today` = `[00:00 today, now)`, `this-week` =
+  Monday → now, `this-year` = 1 Jan → now. `yesterday`/`tomorrow` and `last-<unit>`/`next-<unit>`
+  stay whole periods.
+- `to` is **exclusive**; a range token with a `to` is refused.
 - Month/year arithmetic is calendar-aware (31 Mar − 1 month = 28 Feb).
 - Weeks start **Monday**; quarters are Jan/Apr/Jul/Oct.
 - Timezone precedence: `Dashboard.timezone` → the caller-supplied `tz` → UTC.

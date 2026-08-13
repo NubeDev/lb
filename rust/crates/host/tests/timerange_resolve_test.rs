@@ -11,14 +11,25 @@ fn utc(from: &str, to: Option<&str>) -> ResolvedRange {
     resolve(from, to, NOW, Tz::UTC).unwrap()
 }
 
+/// The current-period tokens run from the START of the period to NOW — "so far this period".
 #[test]
-fn today_is_exclusive_midnight_to_midnight() {
-    let r = utc("today", None);
-    assert_eq!(
-        (r.from_day.as_str(), r.to_day.as_str()),
-        ("2026-07-29", "2026-07-30")
-    );
-    assert_eq!(r.to_ms - r.from_ms, 86_400_000);
+fn today_and_this_periods_end_at_now() {
+    let today = utc("today", None);
+    assert_eq!(today.to_ms, NOW);
+    assert_eq!(today.from_day, "2026-07-29");
+    for expr in [
+        "this-hour",
+        "this-day",
+        "this-week",
+        "this-month",
+        "this-quarter",
+        "this-year",
+    ] {
+        let r = utc(expr, None);
+        assert_eq!(r.to_ms, NOW, "{expr} must end at now");
+    }
+    // The start of `today` is still midnight, not now.
+    assert_eq!(today.from_ms, 1_785_283_200_000);
 }
 
 /// The scope's headline decision: `last-month` (previous whole calendar month) is NOT
@@ -44,12 +55,11 @@ fn trailing_month_clamps_at_month_end() {
 }
 
 #[test]
-fn this_year_is_jan_1_to_jan_1() {
+fn this_year_runs_from_jan_1_to_now() {
     let r = utc("this-year", None);
-    assert_eq!(
-        (r.from_day.as_str(), r.to_day.as_str()),
-        ("2026-01-01", "2027-01-01")
-    );
+    assert_eq!(r.from_day, "2026-01-01");
+    assert_eq!(r.to_day, "2026-07-30"); // NOW is the 29th; the exclusive day-after projects past it
+    assert_eq!(r.to_ms, NOW);
 }
 
 #[test]
@@ -57,13 +67,12 @@ fn weeks_start_monday_and_quarters_on_jan_apr_jul_oct() {
     let r = utc("this-week", None);
     assert_eq!(
         (r.from_day.as_str(), r.to_day.as_str()),
-        ("2026-07-27", "2026-08-03")
+        ("2026-07-27", "2026-07-30")
     );
+    assert_eq!(r.to_ms, NOW);
     let q = utc("this-quarter", None);
-    assert_eq!(
-        (q.from_day.as_str(), q.to_day.as_str()),
-        ("2026-07-01", "2026-10-01")
-    );
+    assert_eq!(q.from_day, "2026-07-01");
+    assert_eq!(q.to_ms, NOW);
     let lq = utc("last-quarter", None);
     assert_eq!(
         (lq.from_day.as_str(), lq.to_day.as_str()),

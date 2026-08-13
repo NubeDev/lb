@@ -6,6 +6,9 @@
 //! only in `from` with `to` absent; an endpoint `from` with `to` absent ends at `now`;
 //! month/year stepping is calendar-aware and clamped (31 Mar − 1 month = 28 Feb); weeks start
 //! Monday; quarters are Jan/Apr/Jul/Oct; snaps floor to the start of their unit in the range tz.
+//! The current-period tokens (`today`, `this-<unit>`) run from the START of the period to `now` —
+//! "so far this period" — while `yesterday`/`tomorrow` and `last-<unit>`/`next-<unit>` are whole
+//! periods.
 
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike};
 use chrono_tz::Tz;
@@ -234,15 +237,17 @@ fn snap_floor(ms: i64, unit: Unit, tz: Tz) -> i64 {
 
 // ── window resolution ───────────────────────────────────────────────────────────────────────────
 
-/// Resolve a range token to its whole `[from, to)` window in `tz`.
+/// Resolve a range token to its `[from, to)` window in `tz`. The current-period tokens (`today`,
+/// `this-<unit>`) run from the START of the period to NOW — "so far this period" — while the
+/// past/future periods (`yesterday`/`tomorrow`, `last-<unit>`, `next-<unit>`) are whole periods.
 fn window_span(w: Window, now_ms: i64, tz: Tz) -> (i64, i64) {
     let (d0, msod) = split(local_of(now_ms, tz));
     let day = |d: i64| ms_of_local(join(d, 0), tz);
     match w {
-        Window::Today => (day(d0), day(d0 + 1)),
+        Window::Today => (day(d0), now_ms),
         Window::Yesterday => (day(d0 - 1), day(d0)),
         Window::Tomorrow => (day(d0 + 1), day(d0 + 2)),
-        Window::This(u) => cal_span(u, d0, msod, 0, tz),
+        Window::This(u) => (this_start(u, d0, msod, tz), now_ms),
         Window::LastCal(u) => cal_span(u, d0, msod, -1, tz),
         Window::Next(u) => cal_span(u, d0, msod, 1, tz),
         // A trailing window ends NOW; its start is the same clamped calendar step an endpoint
@@ -251,8 +256,33 @@ fn window_span(w: Window, now_ms: i64, tz: Tz) -> (i64, i64) {
     }
 }
 
+/// The start of the calendar period containing `(d0, msod)` — the `from` of `today` / `this-<unit>`
+/// (whose `to` is NOW). Weeks floor to Monday; quarters to Jan/Apr/Jul/Oct; anything finer floors
+/// within the day.
+fn this_start(unit: CalUnit, d0: i64, msod: i64, tz: Tz) -> i64 {
+    let day = |d: i64| ms_of_local(join(d, 0), tz);
+    match unit {
+        CalUnit::Hour => ms_of_local(join(d0, msod - msod % 3_600_000), tz),
+        CalUnit::Day => day(d0),
+        CalUnit::Week => day(d0 - weekday(d0) as i64),
+        CalUnit::Month => {
+            let (y, m, _) = civil_from_days(d0);
+            day(days_from_civil(y, m, 1))
+        }
+        CalUnit::Quarter => {
+            let (y, m, _) = civil_from_days(d0);
+            day(days_from_civil(y, quarter_start_month(m), 1))
+        }
+        CalUnit::Year => {
+            let (y, _, _) = civil_from_days(d0);
+            day(days_from_civil(y, 1, 1))
+        }
+    }
+}
+
 /// The whole calendar period `shift` periods away from the one containing now (`shift` −1 = the
-/// previous whole period, 0 = this one, +1 = the next).
+/// previous whole period, +1 = the next) — what `last-<unit>` / `next-<unit>` span. The current
+/// period does NOT come through here: `this-<unit>` ends at now, not at the period's end.
 fn cal_span(unit: CalUnit, d0: i64, msod: i64, shift: i64, tz: Tz) -> (i64, i64) {
     let day = |d: i64| ms_of_local(join(d, 0), tz);
     match unit {
