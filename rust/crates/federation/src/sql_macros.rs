@@ -3,7 +3,8 @@
 //! VALUE macros (`$__interval`, bare `$__timeFrom`/`$__timeTo`) and attaches the derived window as an
 //! additive `resolution: {from_ms, to_ms, width_ms}`; this module expands the FUNCTION macros —
 //! `$__timeFilter(col)`, `$__timeGroup(col,'<dur>')`, `$__timeGroupAlias`, `$__time(col)`,
-//! `$__timeFrom()`, `$__timeTo()` — into the dialect of the engine that will actually execute.
+//! `$__timeFrom()`, `$__timeTo()`, and `$__timeTable(...)` (a table-tier selector, engine-agnostic) —
+//! into the dialect of the engine that will actually execute.
 //!
 //! The engine table is keyed on this child's OWN `kind` vocabulary (`source::connect`) — the mediated
 //! seam, no engine name in core (rule 10). Expansion-by-kind IS the executing dialect: every
@@ -147,6 +148,17 @@ fn expand_call(
                 expr
             })
         }
+        // `$__timeTable('raw', 'hourly:1h', 'daily:1d', 'monthly:1M', 'yearly:1y')` — the table-tier
+        // selector. Variadic, ordered FINEST → COARSEST; each arg is a table name, optionally tagged
+        // `:width` with its native resolution (a bare name = width 0 = the finest tier, always a
+        // candidate). Expands to the literal table name of the coarsest tier that still resolves at
+        // least as fine as the derived width (walk coarsest → finest, first with native ≤ width), or
+        // the coarsest given if none qualifies. Engine-agnostic — the same name for every dialect.
+        ("timeTable", n) if n >= 1 => {
+            let w = need_window("timeTable")?;
+            Ok(select_time_table(args, w.width_ms)?)
+        }
+        ("timeTable", 0) => Err("wrong argument count for $__timeTable (0 given)".to_string()),
         // Grafana's 3-arg form carries a gap-FILL mode (NULL/previous/0) — that inserts rows the
         // query never returned, which this textual layer cannot honestly do. Named, fixable.
         ("timeGroup" | "timeGroupAlias", 3) => Err(format!(
@@ -160,6 +172,88 @@ fn expand_call(
         }
         _ => Err(format!("unsupported macro $__{name}")),
     }
+}
+
+/// A `$__timeTable` argument: a literal table name + its native bucket width in ms. A bare name (no
+/// `:width` tag) is native width 0 — the finest tier, always a candidate for selection.
+struct TableTier {
+    name: String,
+    native_ms: u64,
+}
+
+/// Select the table tier for the derived width. `args` arrive ordered FINEST → COARSEST (the
+/// documented syntax); selection walks COARSEST → FINEST and returns the first tier whose native
+/// width is ≤ the derived width — the coarsest table that still resolves at least as fine as the
+/// chart needs (least data scanned without losing resolution). If none qualifies, falls back to the
+/// coarsest given (max native width). `raw_data` (width 0) always qualifies, so a fine enough
+/// derived width selects it last. Mirrors lb-internal rollup "governing tier" selection, exposed to
+/// hand-authored federation SQL.
+fn select_time_table(args: &[String], derived_ms: u64) -> Result<String, String> {
+    let mut tiers: Vec<TableTier> = Vec::with_capacity(args.len());
+    for raw in args {
+        tiers.push(parse_time_table_arg(raw)?);
+    }
+    for tier in tiers.iter().rev() {
+        if tier.native_ms <= derived_ms {
+            return Ok(tier.name.clone());
+        }
+    }
+    tiers
+        .iter()
+        .max_by_key(|t| t.native_ms)
+        .map(|t| t.name.clone())
+        .ok_or_else(|| "internal: empty $__timeTable".to_string())
+}
+
+/// Parse one `$__timeTable` arg — handles `'name:width'` or a bare `name` (width 0). Quote
+/// chars (single or double) are stripped from the whole arg, matching the documented quoted form.
+fn parse_time_table_arg(raw: &str) -> Result<TableTier, String> {
+    let s = raw.trim().trim_matches(|c| c == '\'' || c == '"').trim();
+    if s.is_empty() {
+        return Err("bad argument in $__timeTable — expected 'table' or 'table:width'".to_string());
+    }
+    let (name, tag) = match s.rfind(':') {
+        Some(i) => (&s[..i], &s[i + 1..]),
+        None => (s, "0"),
+    };
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(
+            "bad table name in $__timeTable — expected 'table' or 'table:width'".to_string(),
+        );
+    }
+    let native_ms = parse_tier_width(tag)?;
+    Ok(TableTier {
+        name: name.to_string(),
+        native_ms,
+    })
+}
+
+/// Parse a `$__timeTable` `:width` tag → ms. Accepts the Grafana duration forms (incl. `w`, `M`=30d,
+/// `y`=365d) and a bare integer = ms; `0`/absent = native (finest) width, deliberately allowed.
+fn parse_tier_width(tag: &str) -> Result<u64, String> {
+    let t = tag.trim().trim_matches(|c| c == '\'' || c == '"').trim();
+    let split = t.find(|c: char| !c.is_ascii_digit()).unwrap_or(t.len());
+    let (num, unit) = (&t[..split], t[split..].trim());
+    let n: u64 = num.parse().map_err(|_| bad_tier_width(tag))?;
+    let mult_ms = match unit {
+        "" | "ms" => 1,
+        "s" => 1_000,
+        "m" => 60_000,
+        "h" => 3_600_000,
+        "d" => 86_400_000,
+        "w" => 604_800_000,
+        "M" => 2_592_000_000,
+        "y" => 31_536_000_000,
+        _ => return Err(bad_tier_width(tag)),
+    };
+    n.checked_mul(mult_ms).ok_or_else(|| bad_tier_width(tag))
+}
+
+fn bad_tier_width(tag: &str) -> String {
+    format!(
+        "bad :width tag '{tag}' in $__timeTable — expected a Grafana duration like '1h', '1d', '1M', '1y'"
+    )
 }
 
 /// A `$__timeGroup` interval argument → milliseconds. Accepts the literal Grafana duration forms
@@ -317,6 +411,92 @@ mod tests {
 
     fn res() -> Value {
         json!({"from_ms": 1_000, "to_ms": 601_000, "width_ms": 300_000})
+    }
+
+    fn res_w(width_ms: u64) -> Value {
+        json!({"from_ms": 1_000, "to_ms": 601_000, "width_ms": width_ms})
+    }
+
+    /// `$__timeTable` expands to the table name only when a `resolution.width_ms` is attached — a
+    /// direct call with none names the missing field (same contract as the rest of the window set).
+    #[test]
+    fn time_table_needs_the_window() {
+        let sql = "SELECT v FROM $__timeTable('raw','hourly:1h')";
+        let e = expand(sql, "sqlite", None).unwrap_err();
+        assert!(
+            e.contains("resolution") && e.contains("viz.query") && e.contains("$__timeTable"),
+            "{e}"
+        );
+    }
+
+    /// Selection across every tier: the coarsest tier with native width ≤ derived wins; below the
+    /// finest tier, `raw` (width 0) always qualifies. Asserted over the FULL ladder of derived
+    /// widths using the issue's canonical 5-tier example.
+    #[test]
+    fn time_table_selects_tier_by_derived_width() {
+        let sql = "SELECT v FROM $__timeTable('raw_data','hourly_data:1h','daily_data:1d',\
+                   'monthly_data:1M','yearly_data:1y') WHERE $__timeFilter(ts)";
+        for (width, expect) in [
+            (1_000, "raw_data"),             // finer than 1h → finest tier (width 0)
+            (3_600_000, "hourly_data"),      // exactly 1h
+            (43_200_000, "hourly_data"),     // 12h → still fine enough = hourly
+            (86_400_000, "daily_data"),      // 1d
+            (2_592_000_000, "monthly_data"), // 30d
+            (31_536_000_000, "yearly_data"), // 365d
+        ] {
+            let out = expand(sql, "sqlite", Some(&res_w(width))).unwrap();
+            assert!(
+                out.contains(&format!("FROM {expect}")),
+                "width {width} → {expect}, got: {out}"
+            );
+            assert!(
+                out.contains("ts >= "),
+                "the neighbouring $__timeFilter(ts) still expands, got: {out}"
+            );
+        }
+    }
+
+    /// The one-arg case: only `raw_data` (width 0) → always the answer, any derived width.
+    #[test]
+    fn time_table_one_arg_is_always_raw() {
+        for width in [1_000, 3_600_000, 86_400_000, 31_536_000_000] {
+            let sql = "SELECT v FROM $__timeTable('raw_data') WHERE $__timeFilter(ts)";
+            let out = expand(sql, "sqlite", Some(&res_w(width))).unwrap();
+            assert!(out.contains("FROM raw_data"), "width {width}: {out}");
+        }
+    }
+
+    /// No tier qualifies (coarser listed than the chart wants, and not `raw`) → fall back to the
+    /// coarsest given (max native width). Engine-agnostic: identical on every dialect.
+    #[test]
+    fn time_table_falls_back_to_coarsest_when_none_qualify() {
+        let sql = "SELECT v FROM $__timeTable('hourly_data:1h','daily_data:1d')";
+        // derived 1s < both native widths → no tier qualifies → coarsest (daily) wins
+        let out = expand(sql, "sqlite", Some(&res_w(1_000))).unwrap();
+        assert!(out.contains("FROM daily_data"), "{out}");
+        // same selection regardless of engine kind — the result is a literal table name
+        for kind in ["postgres", "timescale", "mysql"] {
+            let out = expand(sql, kind, Some(&res_w(1_000))).unwrap();
+            assert!(out.contains("FROM daily_data"), "{kind}: {out}");
+        }
+    }
+
+    /// Malformed and empty args are NAMED errors, not silent rewrites — the honesty contract.
+    #[test]
+    fn time_table_malformed_args_are_named_errors() {
+        for (sql, want) in [
+            (
+                "SELECT v FROM $__timeTable('raw', 'hourly_data:xyz')",
+                "bad :width tag 'xyz' in $__timeTable",
+            ),
+            (
+                "SELECT v FROM $__timeTable()",
+                "wrong argument count for $__timeTable (0 given)",
+            ),
+        ] {
+            let e = expand(sql, "sqlite", Some(&res_w(86_400_000))).unwrap_err();
+            assert!(e.contains(want), "{sql}: {e}");
+        }
     }
 
     fn expand_ok(sql: &str, kind: &str) -> String {
