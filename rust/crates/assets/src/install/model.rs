@@ -61,6 +61,15 @@ pub struct ExtUi {
     /// pre-field install reads as an empty vec ⇒ one flat slot, exactly today's behavior.
     #[serde(default)]
     pub nav: Vec<ExtNavItem>,
+    /// Contribute no sidebar slot (ros-datasource-unify scope) — mirrors the manifest
+    /// `[ui].sidebar`; always `true` for a widget (only a page's `nav` slot is ever suppressed).
+    /// Serde-defaulted `true`: installs written before this field keep today's flat-slot behavior.
+    #[serde(default = "ext_ui_sidebar_default")]
+    pub sidebar: bool,
+}
+
+fn ext_ui_sidebar_default() -> bool {
+    true
 }
 
 /// A persisted mirror of a manifest `[[ui.nav]]` item (ext-nav-contribution scope). Carried on the
@@ -129,6 +138,52 @@ pub struct ExtUiOption {
     pub default: Option<serde_json::Value>,
 }
 
+/// A persisted mirror of a manifest `[connect]` block (ros-datasource-unify scope) — carried on the
+/// install so `ext.list` tells rubix-ai's Datasources page what connection kind this extension
+/// offers, without re-reading the manifest. Opaque relay data: the host stores and forwards it,
+/// never calls a tool by these names itself (rule 10).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ExtConnect {
+    pub kind: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    pub create_tool: String,
+    pub list_tool: String,
+    pub delete_tool: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_tool: Option<String>,
+}
+
+/// A persisted mirror of a manifest `[[query]]` field (panel-datasource-query scope). See
+/// `lb_ext_loader::QueryField` for the full doc — carried here so `ext.list` tells the panel
+/// "Datasource" track how to render the cascading chain without re-reading the manifest.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ExtQueryField {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arg: Option<String>,
+    pub control: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choices: Option<serde_json::Value>,
+}
+
+/// A persisted mirror of a manifest `[[query]]` block (panel-datasource-query scope) — one way to
+/// read data from a `[connect]` connection. See `lb_ext_loader::QueryBlock` for the full doc.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ExtQueryBlock {
+    pub id: String,
+    pub label: String,
+    pub tool: String,
+    /// The arg name `tool` expects the picked connection's uuid under. Mirrors
+    /// `lb_ext_loader::QueryBlock::connection_arg`.
+    #[serde(default)]
+    pub connection_arg: String,
+    #[serde(default)]
+    pub fields: Vec<ExtQueryField>,
+}
+
 /// The constant `kind` discriminant so `list_installs` can equality-filter every install row in a
 /// workspace (the union both tiers share — lifecycle-management scope's `ext.list`).
 pub(crate) const KIND: &str = "install";
@@ -164,6 +219,18 @@ pub struct Install {
     /// as an empty vec.
     #[serde(default)]
     pub widgets: Vec<ExtUi>,
+    /// The Datasources connection kind this extension offers — `Some` iff it declared `[connect]`
+    /// AND every tool it names is in `granted` (ros-datasource-unify scope). Serde-defaulted:
+    /// installs written before this field deserialize as `None`.
+    #[serde(default)]
+    pub connect: Option<ExtConnect>,
+    /// The ways to read data from a `[connect]` connection (panel-datasource-query scope) — the
+    /// manifest's `[[query]]` blocks, cloned through unconditionally (no `granted` narrowing: each
+    /// block's own `tool` gets the normal per-call authorize gate through `viz.query`, same as any
+    /// other target — nothing here is a wider grant than the extension already has). Serde-defaulted:
+    /// installs written before this field deserialize as empty.
+    #[serde(default)]
+    pub queries: Vec<ExtQueryBlock>,
     /// The flow node types this extension contributes — the validated `[[node]]` blocks from its
     /// manifest (flows node-descriptor scope). The `flows.nodes` registry is a **read-time union**
     /// of these across a workspace's installs + the built-ins, holding nothing new durable.
@@ -199,6 +266,8 @@ impl Install {
             kind: KIND.to_string(),
             ui: None,
             widgets: Vec::new(),
+            connect: None,
+            queries: Vec::new(),
             nodes: Vec::new(),
             ts,
         }
@@ -216,6 +285,21 @@ impl Install {
     pub fn with_ui(mut self, ui: Option<ExtUi>, widgets: Vec<ExtUi>) -> Self {
         self.ui = ui;
         self.widgets = widgets;
+        self
+    }
+
+    /// Attach the extension's Datasources connect contribution (builder-style) — the projected
+    /// `[connect]` block, scope-gated to the install's own grant (ros-datasource-unify scope).
+    pub fn with_connect(mut self, connect: Option<ExtConnect>) -> Self {
+        self.connect = connect;
+        self
+    }
+
+    /// Attach the extension's query-block contributions (builder-style) — the manifest's
+    /// `[[query]]` blocks, so `ext.list` tells the panel "Datasource" track how to author a
+    /// structured query against this connection (panel-datasource-query scope).
+    pub fn with_queries(mut self, queries: Vec<ExtQueryBlock>) -> Self {
+        self.queries = queries;
         self
     }
 

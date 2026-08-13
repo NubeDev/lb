@@ -14,6 +14,6 @@ pub mod template_refs;
 
 pub use grant::grant;
 pub use manifest::{
-    slug, Manifest, ManifestError, Native, NavItem, Tool, UiPage, Visibility, Widget, WidgetOption,
-    NAV_MAX_TITLE_TEMPLATE,
+    slug, ConnectDef, Manifest, ManifestError, Native, NavItem, QueryBlock, QueryField, Tool,
+    UiPage, Visibility, Widget, WidgetOption, NAV_MAX_TITLE_TEMPLATE,
 };

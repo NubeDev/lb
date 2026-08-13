@@ -59,6 +59,10 @@ pub async fn relay_pass(
             .get("id")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
+        let action = effect
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let payload = effect
             .get("payload")
             .and_then(|v| v.as_str())
@@ -66,7 +70,7 @@ pub async fn relay_pass(
         if id.is_empty() {
             continue;
         }
-        match deliver(host, factory, payload).await {
+        match deliver(host, factory, action, payload).await {
             DeliverOutcome::Delivered => {
                 mark_delivered(host, id).await?;
                 pass.delivered += 1;

@@ -46,6 +46,10 @@ pub struct GetDevicesParams {
     pub limit: Option<i64>,
     pub name: Option<String>,
     pub network_uuid: Option<String>,
+    /// Which supervised Host to scope the list to (ros-location-group scope). The box resolves
+    /// `network_uuid` against its implicit default Host when this is absent, so a network belonging
+    /// to a different Host comes back empty without it — confirmed live.
+    pub host_uuid: Option<String>,
 }
 
 impl Client {
@@ -76,6 +80,11 @@ impl Client {
             if let Some(v) = &params.network_uuid {
                 if !v.is_empty() {
                     query.push(("network_uuid", v.clone()));
+                }
+            }
+            if let Some(v) = &params.host_uuid {
+                if !v.is_empty() {
+                    query.push(("host_uuid", v.clone()));
                 }
             }
         }

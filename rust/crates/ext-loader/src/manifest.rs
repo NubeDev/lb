@@ -38,6 +38,12 @@ pub enum ManifestError {
     /// reject, the same posture `pack.validate` takes on a reserved shadow (never a silent drop).
     #[error("invalid [[ui.nav]] block: {0}")]
     InvalidNavBlock(String),
+    /// A `[connect]` block is malformed: an empty `kind`/`label`, or a `create_tool`/`list_tool`/
+    /// `delete_tool`/`probe_tool` that doesn't bind a declared `[[tools]]` entry
+    /// (ros-datasource-unify scope) — the Datasources page calls these by name, so a dangling
+    /// reference is a load-time reject, not a runtime "no such tool".
+    #[error("invalid [connect] block: {0}")]
+    InvalidConnectBlock(String),
 }
 
 /// The `[[ui.nav]]` caps (ext-nav-contribution scope). A declared nav tree is small and reviewed —
@@ -236,6 +242,80 @@ pub struct WidgetOption {
     pub default: Option<serde_json::Value>,
 }
 
+/// A `[connect]` block — an extension declares it OFFERS a connection kind rubix-ai's Datasources
+/// page can create/list/probe/delete (ros-datasource-unify scope). Opaque relay data, same posture
+/// as `WidgetOption`: the host shape-validates at parse (non-empty fields, tool refs bind a
+/// declared `[[tools]]` entry) and passes it through `ExtRow.connect` verbatim — it never
+/// interprets `kind` or calls a tool by name itself. `create_tool`'s `Tool.input_schema` is what
+/// the Datasources wizard renders as the connect form (the SAME JSON-Schema-driven-form mechanism
+/// `tools.catalog`/flow nodes already use — nothing new invented for that half).
+///
+/// **The connect protocol** (so the roster/wizard can stay generic — every field here is a NAME,
+/// the shapes below are the fixed contract any extension's tools must follow):
+/// - `list_tool` takes no required args and returns `{items: [{uuid, name, ...}], next_cursor}` (the
+///   existing keyset-page envelope every resource-list verb already uses) — each row MUST carry a
+///   `uuid` and a `name`.
+/// - `create_tool` takes whatever `input_schema` declares, PLUS a `uuid` the caller generates
+///   client-side (never a form field — nobody types a UUID).
+/// - `delete_tool` and `probe_tool` each take exactly `{uuid}`, identifying the row from `list_tool`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ConnectDef {
+    /// The Kind-dropdown value, e.g. `"ros"`. Unique per extension (one connect kind each, v1).
+    pub kind: String,
+    /// The Kind-dropdown label, e.g. `"ROS"`.
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// The tool that registers a new connection — its declared `input_schema` is the connect form.
+    pub create_tool: String,
+    /// The tool that lists this extension's connections (feeds the unified roster).
+    pub list_tool: String,
+    /// The tool that removes a connection (the roster's Remove action).
+    pub delete_tool: String,
+    /// An optional health-check tool (the roster's Probe column). Absent ⇒ no Probe for this kind.
+    #[serde(default)]
+    pub probe_tool: Option<String>,
+}
+
+/// One field of a `[[query]]` block's cascading chain (panel-datasource-query scope) — identical
+/// shape to `WidgetOption` (this is the SAME "declare a tool-backed/static select, host relays,
+/// rubix-ai's `select-async` control renders it" mechanism, reused for panel-source authoring
+/// instead of widget config). `arg: None` means this field only NARROWS a later field's choices
+/// (e.g. `networkUuid` picks which devices show) — it is never added to the final tool call.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct QueryField {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub arg: Option<String>,
+    pub control: String,
+    #[serde(default)]
+    pub choices: Option<serde_json::Value>,
+}
+
+/// A `[[query]]` block — one way to read data FROM a `[connect]` connection (panel-datasource-query
+/// scope). `[connect]` covers the connection's CRUD lifecycle only; this is the missing "how do I
+/// query it" half. An extension may declare several (ROS: `point` and `schedule`) — rubix-ai's panel
+/// "Datasource" track offers a Type selector when there's more than one, then renders `fields` as a
+/// cascading chain (the SAME `AsyncSelect` control `[[widget]] options` already uses) and calls
+/// `tool` with the resolved `arg`-bearing values once the chain is filled. Opaque relay data: the
+/// host shape-validates at parse (tool refs bind a declared `[[tools]]` entry) and passes it through
+/// `ExtRow.queries` verbatim, same posture as `[connect]`/`[[widget]] options`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct QueryBlock {
+    pub id: String,
+    pub label: String,
+    pub tool: String,
+    /// The arg name `tool` expects the PICKED CONNECTION's uuid under (e.g. `"ros_uuid"`) — the
+    /// connection is chosen before a query block ever renders (it IS the panel's "Datasource"
+    /// pick), so it's never a declared `field`, just injected under this name on every call. Every
+    /// extension's own tools name this arg differently (`ros_uuid` here; a future extension's own
+    /// convention elsewhere), so the block must say which.
+    pub connection_arg: String,
+    #[serde(default)]
+    pub fields: Vec<QueryField>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {
@@ -310,6 +390,17 @@ pub struct UiPage {
     /// `id`. Validated at parse (`validate_nav`): slug ids, per-block uniqueness, label/icon caps, ≤16.
     #[serde(default)]
     pub nav: Vec<NavItem>,
+    /// Contribute NO sidebar slot (ros-datasource-unify scope) — the page stays reachable at
+    /// `ext:<ext>` (a deep link, e.g. from the Datasources roster's "Open" on an ext-sourced row),
+    /// it simply doesn't ALSO clutter the rail with a redundant flat entry for a surface the workspace
+    /// already reaches another way. Default `true` (every manifest written before this field keeps
+    /// today's behavior — a flat slot). Presentation only: caps/routing are unaffected either way.
+    #[serde(default = "sidebar_default")]
+    pub sidebar: bool,
+}
+
+fn sidebar_default() -> bool {
+    true
 }
 
 /// A `[[ui.nav]]` item — one top-level nav destination an extension declares (ext-nav-contribution
@@ -438,6 +529,14 @@ pub struct Manifest {
     /// The dashboard widget tiles — one per `[[widget]]` table the manifest declares (dashboard-widgets
     /// scope). Empty if the manifest declares none. An extension may ship several palette tiles.
     pub widgets: Vec<Widget>,
+    /// The connection kind this extension offers rubix-ai's Datasources page — `Some` iff the
+    /// manifest declares `[connect]` (ros-datasource-unify scope). `None` for every extension
+    /// written before this field, and for any extension with nothing to connect to.
+    pub connect: Option<ConnectDef>,
+    /// The ways to READ data from a `[connect]` connection (panel-datasource-query scope) — one per
+    /// `[[query]]` table. Empty if the manifest declares none (a `[connect]` with no `[[query]]`
+    /// still works for CRUD; the panel "Datasource" track just offers it no structured query UI).
+    pub queries: Vec<QueryBlock>,
     /// The flow node types this extension contributes — one validated `[[node]]` block each (flows
     /// node-descriptor scope, the only manifest addition). Empty if the manifest declares none. Each
     /// block's `tool` was verified to bind a declared `[[tools]]` entry and its `config` compiled as
@@ -463,6 +562,12 @@ struct Raw {
     /// `[[widget]]` array-of-tables — zero or more widget tiles.
     #[serde(default)]
     widget: Vec<Widget>,
+    /// `[connect]` — present iff the extension offers a Datasources connection kind.
+    #[serde(default)]
+    connect: Option<ConnectDef>,
+    /// `[[query]]` array-of-tables — zero or more structured query shapes for the `[connect]` kind.
+    #[serde(default)]
+    query: Vec<QueryBlock>,
     /// `[[node]]` array-of-tables — zero or more flow node types (flows node-descriptor scope).
     #[serde(default)]
     node: Vec<lb_flows::NodeBlock>,
@@ -573,6 +678,74 @@ impl Manifest {
             validate_nav(&ui.nav)?;
         }
 
+        // Validate the `[connect]` block (ros-datasource-unify scope): every tool it names must bind
+        // a declared `[[tools]]` entry, same load-bearing check `[[node]]` blocks already get above —
+        // the Datasources page calls these by the string this block gives it, so a typo'd tool name
+        // must fail at load, not surface as a runtime "no such tool" the first time someone connects.
+        if let Some(c) = &raw.connect {
+            if c.kind.is_empty() || c.label.is_empty() {
+                return Err(ManifestError::InvalidConnectBlock(
+                    "connect block has an empty kind/label".into(),
+                ));
+            }
+            for tool in [&c.create_tool, &c.list_tool, &c.delete_tool]
+                .into_iter()
+                .chain(c.probe_tool.iter())
+            {
+                if !tool_names.contains(tool) {
+                    return Err(ManifestError::InvalidConnectBlock(format!(
+                        "connect block references tool '{tool}', which is not a declared [[tools]] entry"
+                    )));
+                }
+            }
+        }
+
+        // Validate each `[[query]]` block (panel-datasource-query scope): same tool-binding
+        // discipline as `[connect]` above — the panel "Datasource" track calls `tool` (and each
+        // field's tool-backed `choices.tool`) by the string this block gives it.
+        let mut seen_query_ids: Vec<&str> = Vec::new();
+        for q in &raw.query {
+            if q.id.is_empty() || q.label.is_empty() || q.tool.is_empty() || q.connection_arg.is_empty() {
+                return Err(ManifestError::InvalidConnectBlock(
+                    "query block has an empty id/label/tool/connection_arg".into(),
+                ));
+            }
+            if seen_query_ids.contains(&q.id.as_str()) {
+                return Err(ManifestError::InvalidConnectBlock(format!(
+                    "duplicate query block id '{}'",
+                    q.id
+                )));
+            }
+            seen_query_ids.push(&q.id);
+            if !tool_names.contains(&q.tool) {
+                return Err(ManifestError::InvalidConnectBlock(format!(
+                    "query block '{}' references tool '{}', which is not a declared [[tools]] entry",
+                    q.id, q.tool
+                )));
+            }
+            for f in &q.fields {
+                if f.id.is_empty() || f.label.is_empty() || f.control.is_empty() {
+                    return Err(ManifestError::InvalidConnectBlock(format!(
+                        "query block '{}' has a field with an empty id/label/control",
+                        q.id
+                    )));
+                }
+                let field_tool = f
+                    .choices
+                    .as_ref()
+                    .and_then(|c| c.get("tool"))
+                    .and_then(|t| t.as_str());
+                if let Some(t) = field_tool {
+                    if !tool_names.contains(&t.to_string()) {
+                        return Err(ManifestError::InvalidConnectBlock(format!(
+                            "query block '{}' field '{}' references tool '{t}', which is not a declared [[tools]] entry",
+                            q.id, f.id
+                        )));
+                    }
+                }
+            }
+        }
+
         Ok(Manifest {
             id: raw.extension.id,
             version: raw.extension.version,
@@ -590,6 +763,8 @@ impl Manifest {
                 .into_iter()
                 .filter(|w| !w.entry.is_empty())
                 .collect(),
+            connect: raw.connect,
+            queries: raw.query,
             nodes: raw.node,
         })
     }

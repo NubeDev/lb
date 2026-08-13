@@ -15,7 +15,7 @@ use lb_store::StoreError;
 
 use crate::boot::Node;
 use crate::load::{load_extension, LoadError, Loaded};
-use crate::ui_decl::project;
+use crate::ui_decl::{project, project_connect, project_queries};
 
 /// Install `wasm_bytes` (described by `manifest_toml`) into `node` for workspace `ws`: persist
 /// the `requested ∩ admin_approved` grant set as a durable install record, then load. `ts` is a
@@ -43,6 +43,8 @@ pub async fn install_extension(
         ts,
     )
     .with_ui(ui, widgets)
+    .with_connect(project_connect(&manifest, &granted))
+    .with_queries(project_queries(&manifest))
     .with_nodes(manifest.nodes.clone());
     record_install(&node.store, ws, &install)
         .await

@@ -14,8 +14,10 @@ mod client;
 mod devices;
 mod error;
 mod histories;
+mod locations;
 mod networks;
 mod points;
+mod schedules;
 mod system;
 mod users;
 
@@ -23,9 +25,11 @@ pub use client::{Client, Config};
 pub use devices::{Device, GetDevicesParams};
 pub use error::RosClientError;
 pub use histories::{GetHistoriesParams, HistoryRecord};
+pub use locations::{Group, Host, Location};
 pub use networks::{GetNetworksParams, Network};
 pub use points::{
     GetPointsParams, MetaTag, Point, Priority, Tag, UpdatePointPayload, WritePointPriorityPayload,
 };
+pub use schedules::{Schedule, WriteSchedulePayload};
 pub use system::{AppsInstalled, DeviceInfo, InstalledApp, PingResponse, ROSInfo, VPNStatus};
 pub use users::User;

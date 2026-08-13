@@ -21,8 +21,63 @@
 //! would have allowed them. That is the "shipped but unusable" state the aliases exist to prevent,
 //! reappearing one layer up.
 
-use lb_assets::{ExtNavItem, ExtUi, ExtUiOption};
-use lb_ext_loader::{Manifest, NavItem, Widget, WidgetOption};
+use lb_assets::{ExtConnect, ExtNavItem, ExtQueryBlock, ExtQueryField, ExtUi, ExtUiOption};
+use lb_ext_loader::{Manifest, NavItem, QueryBlock, QueryField, Widget, WidgetOption};
+
+/// Project the manifest's `[connect]` block onto its durable `ExtConnect` mirror
+/// (ros-datasource-unify scope) — `Some` iff the manifest declared one AND every tool it names is
+/// granted. All-or-nothing (not `narrow_scope`'s partial-list filter): a connect kind missing even
+/// one of its own verbs (e.g. `list` granted but not `create`) is a broken feature, not a narrowed
+/// one, so it's withheld entirely rather than surfaced half-working.
+pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option<ExtConnect> {
+    let c = manifest.connect.as_ref()?;
+    let has = |tool: &str| granted.iter().any(|g| g == &format!("mcp:{tool}:call"));
+    let tools_ok = has(&c.create_tool)
+        && has(&c.list_tool)
+        && has(&c.delete_tool)
+        && c.probe_tool.as_deref().is_none_or(has);
+    if !tools_ok {
+        return None;
+    }
+    Some(ExtConnect {
+        kind: c.kind.clone(),
+        label: c.label.clone(),
+        icon: c.icon.clone(),
+        create_tool: c.create_tool.clone(),
+        list_tool: c.list_tool.clone(),
+        delete_tool: c.delete_tool.clone(),
+        probe_tool: c.probe_tool.clone(),
+    })
+}
+
+/// Project the manifest's `[[query]]` blocks onto their durable `ExtQueryBlock` mirrors
+/// (panel-datasource-query scope) — cloned through UNCONDITIONALLY, unlike `project_connect`'s
+/// all-or-nothing grant check: each block's own `tool` gets the normal per-call `authorize_tool`
+/// gate through `viz.query` when a panel actually runs it, so pre-filtering here would only hide a
+/// query shape a caller could otherwise discover and still be correctly denied on.
+pub(crate) fn project_queries(manifest: &Manifest) -> Vec<ExtQueryBlock> {
+    manifest.queries.iter().map(project_query_block).collect()
+}
+
+fn project_query_block(q: &QueryBlock) -> ExtQueryBlock {
+    ExtQueryBlock {
+        id: q.id.clone(),
+        label: q.label.clone(),
+        tool: q.tool.clone(),
+        connection_arg: q.connection_arg.clone(),
+        fields: q.fields.iter().map(project_query_field).collect(),
+    }
+}
+
+fn project_query_field(f: &QueryField) -> ExtQueryField {
+    ExtQueryField {
+        id: f.id.clone(),
+        label: f.label.clone(),
+        arg: f.arg.clone(),
+        control: f.control.clone(),
+        choices: f.choices.clone(),
+    }
+}
 
 /// Build the `(page, widgets)` UI projection for an install from its parsed `manifest` and the
 /// computed `granted` cap set. `page` is `Some` iff the manifest declared `[ui]`; `widgets` carries
@@ -40,6 +95,7 @@ pub(crate) fn project(manifest: &Manifest, granted: &[String]) -> (Option<ExtUi>
         // The page's declared `[[ui.nav]]` destinations, relayed verbatim (validated at parse) — the
         // shell renders them nested + routes `ext:<ext>/<id>`, branching on no id (ext-nav-contribution).
         nav: u.nav.iter().map(project_nav).collect(),
+        sidebar: u.sidebar,
     });
     let widgets = manifest
         .widgets
@@ -64,6 +120,9 @@ fn project_widget(w: &Widget, granted: &[String]) -> ExtUi {
         options: w.options.iter().map(project_option).collect(),
         // A widget contributes no top-level nav — nav is a page concern (ext-nav-contribution scope).
         nav: Vec::new(),
+        // `sidebar` is a PAGE concern (the nav-slot suppression); a widget has no nav slot to
+        // suppress in the first place, so this is always `true` for one.
+        sidebar: true,
     }
 }
 

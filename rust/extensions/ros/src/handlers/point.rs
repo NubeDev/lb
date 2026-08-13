@@ -1,6 +1,9 @@
 //! The `point` verbs — `list`/`get` (proxied live from the box under a device) and `write` (the
-//! must-deliver setpoint). `list` takes `{ros_uuid, device_uuid}`; `get` reads one point by uuid; the
-//! box is authority (no point shadow).
+//! must-deliver setpoint). `list` takes `{ros_uuid, device_uuid, host_uuid?}` (optional, same
+//! non-default-Host gap `device.rs` documents — the box's `GetPointsParams.host_uuid` was already
+//! wired for the list call in the vendored client, just never threaded up); `get` reads one point
+//! directly by its own globally-unique uuid (no host scoping needed — confirmed live, unaffected).
+//! The box is authority (no point shadow).
 //!
 //! **`point.write` is must-deliver → outbox, never inline.** A dropped setpoint is a physical-world
 //! safety bug, so `write` does NOT PATCH the box in-handler: it cap-checks, validates the slot, and
@@ -28,16 +31,17 @@ pub async fn list(
     factory: &dyn RosApiFactory,
     input: &Value,
 ) -> Result<Value, HostError> {
-    host.require("point.list")?;
+    host.require("ros.point.list")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let device_uuid = req_str(input, "device_uuid")?;
+    let host_uuid = input.get("host_uuid").and_then(|v| v.as_str());
     let (cursor, limit) = page_args(input);
     let api = match resolve_api(host, factory, &ros_uuid).await? {
         Some(api) => api,
         None => return Ok(json!({ "error": "not_found", "ros_uuid": ros_uuid })),
     };
     let points = api
-        .list_points(&device_uuid)
+        .list_points(host_uuid, &device_uuid)
         .await
         .map_err(|e| HostError::Callback(e.to_string()))?;
     let items: Vec<Value> = points
@@ -60,7 +64,7 @@ pub async fn get(
     factory: &dyn RosApiFactory,
     input: &Value,
 ) -> Result<Value, HostError> {
-    host.require("point.get")?;
+    host.require("ros.point.get")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let point_uuid = req_str(input, "point_uuid")?;
     let api = match resolve_api(host, factory, &ros_uuid).await? {
@@ -96,13 +100,18 @@ pub async fn write(
     input: &Value,
     ts: u64,
 ) -> Result<Value, HostError> {
-    host.require("point.write")?;
+    host.require("ros.point.write")?;
     let ros_uuid = req_str(input, "ros_uuid")?;
     let point_uuid = req_str(input, "point_uuid")?;
 
+    // Accept a JSON number OR a numeric string: the panel's Priority field (ros-location-group scope)
+    // is a static `[[query]]` `select` — every field value it persists is a string (same as every
+    // other picked uuid/choice in that chain), so a write call built by spreading the read-back
+    // target's OWN args (`SliderControl`/`SwitchControl`'s generic write-merge) carries `slot` as
+    // `"8"`, not `8`. Rejecting that would make the picker-driven path unusable.
     let slot = input
         .get("slot")
-        .and_then(|v| v.as_u64())
+        .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok())))
         .ok_or_else(|| HostError::BadResponse("missing integer arg: slot".into()))?;
     if !(1..=16).contains(&slot) {
         return Err(HostError::BadResponse(format!(

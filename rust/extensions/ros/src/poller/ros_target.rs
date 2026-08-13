@@ -26,6 +26,14 @@ struct WritePayload {
     value: Option<f64>,
 }
 
+/// The decoded payload of a `schedule.write` effect (mirrors what `handlers::schedule::write` stages).
+#[derive(Debug, Deserialize)]
+struct ScheduleWritePayload {
+    ros_uuid: String,
+    schedule_uuid: String,
+    schedule: serde_json::Value,
+}
+
 /// What one delivery attempt yielded — the relay maps this onto `mark_delivered` / `mark_failed`.
 #[derive(Debug, PartialEq)]
 pub enum DeliverOutcome {
@@ -39,10 +47,30 @@ pub enum DeliverOutcome {
     Fail,
 }
 
-/// Deliver one `ros` outbox effect: decode its payload, resolve the connection's `RosApi`, and write
-/// the priority slot. `payload` is the effect's opaque payload string (the JSON `handlers::point::write`
-/// staged). Pure w.r.t. the relay — the loop owns the durable scan + the mark calls.
-pub async fn deliver(host: &HostCtx, factory: &dyn RosApiFactory, payload: &str) -> DeliverOutcome {
+/// Deliver one `ros` outbox effect: decode its payload (branching on `action` — `point.write` vs
+/// `schedule.write`, the only two staged shapes), resolve the connection's `RosApi`, and write.
+/// `payload` is the effect's opaque payload string (the JSON `handlers::point::write` /
+/// `handlers::schedule::write` staged). Pure w.r.t. the relay — the loop owns the durable scan + the
+/// mark calls.
+pub async fn deliver(
+    host: &HostCtx,
+    factory: &dyn RosApiFactory,
+    action: &str,
+    payload: &str,
+) -> DeliverOutcome {
+    match action {
+        "schedule.write" => deliver_schedule_write(host, factory, payload).await,
+        // Default to the point-write shape (the original, still-most-common effect) so an unexpected
+        // `action` string doesn't silently no-op — it fails fast on the payload mismatch instead.
+        _ => deliver_point_write(host, factory, payload).await,
+    }
+}
+
+async fn deliver_point_write(
+    host: &HostCtx,
+    factory: &dyn RosApiFactory,
+    payload: &str,
+) -> DeliverOutcome {
     let w: WritePayload = match serde_json::from_str(payload) {
         Ok(w) => w,
         // A malformed payload can never succeed — fail it (→ dead-letter), don't retry forever.
@@ -62,6 +90,29 @@ pub async fn deliver(host: &HostCtx, factory: &dyn RosApiFactory, payload: &str)
         // The box is down — retry next pass (the setpoint must eventually land).
         Err(RosApiError::Unreachable(_)) => DeliverOutcome::Retry,
         // A bad uuid, out-of-range slot, or box refusal can't be fixed by retrying.
+        Err(_) => DeliverOutcome::Fail,
+    }
+}
+
+async fn deliver_schedule_write(
+    host: &HostCtx,
+    factory: &dyn RosApiFactory,
+    payload: &str,
+) -> DeliverOutcome {
+    let w: ScheduleWritePayload = match serde_json::from_str(payload) {
+        Ok(w) => w,
+        Err(_) => return DeliverOutcome::Fail,
+    };
+
+    let api = match resolve_api(host, factory, &w.ros_uuid).await {
+        Ok(Some(api)) => api,
+        Ok(None) => return DeliverOutcome::Fail,
+        Err(_) => return DeliverOutcome::Retry,
+    };
+
+    match api.write_schedule(&w.schedule_uuid, w.schedule).await {
+        Ok(_) => DeliverOutcome::Delivered,
+        Err(RosApiError::Unreachable(_)) => DeliverOutcome::Retry,
         Err(_) => DeliverOutcome::Fail,
     }
 }

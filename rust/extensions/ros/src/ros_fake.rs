@@ -17,8 +17,17 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
+use serde_json::Value;
+
 use crate::ros_api::{RosApi, RosApiError};
-use crate::ros_client::{Device, Network, PingResponse, Point, Priority};
+use crate::ros_client::{Device, Group, Location, Network, PingResponse, Point, Priority, Schedule};
+
+/// A recorded schedule write — what a test asserts reached the box.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordedScheduleWrite {
+    pub schedule_uuid: String,
+    pub schedule: Value,
+}
 
 /// A recorded setpoint write — what a test asserts reached the box.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,7 +45,10 @@ pub struct RosFake {
     points: Mutex<HashMap<String, Vec<Point>>>,   // device_uuid  -> points
     values: Mutex<HashMap<String, f64>>,          // point_uuid   -> present_value
     writes: Mutex<Vec<RecordedWrite>>,
+    schedules: Mutex<Vec<Schedule>>,
+    schedule_writes: Mutex<Vec<RecordedScheduleWrite>>,
     unreachable: Mutex<bool>,
+    locations: Vec<Location>,
 }
 
 impl RosFake {
@@ -48,8 +60,22 @@ impl RosFake {
             points: Mutex::new(HashMap::new()),
             values: Mutex::new(HashMap::new()),
             writes: Mutex::new(Vec::new()),
+            schedules: Mutex::new(Vec::new()),
+            schedule_writes: Mutex::new(Vec::new()),
             unreachable: Mutex::new(false),
+            locations: Vec::new(),
         }
+    }
+
+    /// Seed a Location → Group → Host branch (ros-location-group scope) — a test asserting the
+    /// panel query-picker's Location/Group/Host chain builds one via this.
+    pub fn add_location(&mut self, uuid: &str, name: &str, groups: Vec<Group>) {
+        self.locations.push(Location {
+            uuid: uuid.into(),
+            name: name.into(),
+            description: None,
+            groups: Some(groups),
+        });
     }
 
     /// A minimal one-network / one-device / one-point tree, all enabled, the point at `value`. The
@@ -110,6 +136,18 @@ impl RosFake {
         self.writes.lock().unwrap().clone()
     }
 
+    pub fn add_schedule(&mut self, uuid: &str, name: &str, enable: bool) {
+        self.schedules
+            .lock()
+            .unwrap()
+            .push(mk_schedule(uuid, name, enable));
+    }
+
+    /// The schedule writes that reached the box, in order — what a `schedule.write` test asserts on.
+    pub fn schedule_writes(&self) -> Vec<RecordedScheduleWrite> {
+        self.schedule_writes.lock().unwrap().clone()
+    }
+
     fn guard(&self) -> Result<(), RosApiError> {
         if *self.unreachable.lock().unwrap() {
             Err(RosApiError::Unreachable("fake box is down".into()))
@@ -155,11 +193,32 @@ impl RosApi for std::sync::Arc<RosFake> {
     async fn list_networks(&self, with_tree: bool) -> Result<Vec<Network>, RosApiError> {
         (**self).list_networks(with_tree).await
     }
-    async fn list_devices(&self, network_uuid: &str) -> Result<Vec<Device>, RosApiError> {
-        (**self).list_devices(network_uuid).await
+    async fn list_networks_for_host(
+        &self,
+        host_uuid: &str,
+        with_tree: bool,
+    ) -> Result<Vec<Network>, RosApiError> {
+        (**self).list_networks_for_host(host_uuid, with_tree).await
     }
-    async fn list_points(&self, device_uuid: &str) -> Result<Vec<Point>, RosApiError> {
-        (**self).list_points(device_uuid).await
+    async fn list_locations(&self, with_groups: bool) -> Result<Vec<Location>, RosApiError> {
+        (**self).list_locations(with_groups).await
+    }
+    async fn get_group(&self, group_uuid: &str, with_hosts: bool) -> Result<Group, RosApiError> {
+        (**self).get_group(group_uuid, with_hosts).await
+    }
+    async fn list_devices(
+        &self,
+        host_uuid: Option<&str>,
+        network_uuid: &str,
+    ) -> Result<Vec<Device>, RosApiError> {
+        (**self).list_devices(host_uuid, network_uuid).await
+    }
+    async fn list_points(
+        &self,
+        host_uuid: Option<&str>,
+        device_uuid: &str,
+    ) -> Result<Vec<Point>, RosApiError> {
+        (**self).list_points(host_uuid, device_uuid).await
     }
     async fn get_point(&self, point_uuid: &str) -> Result<Point, RosApiError> {
         (**self).get_point(point_uuid).await
@@ -171,6 +230,19 @@ impl RosApi for std::sync::Arc<RosFake> {
         value: Option<f64>,
     ) -> Result<Point, RosApiError> {
         (**self).write_point_slot(point_uuid, slot, value).await
+    }
+    async fn list_schedules(&self) -> Result<Vec<Schedule>, RosApiError> {
+        (**self).list_schedules().await
+    }
+    async fn get_schedule(&self, schedule_uuid: &str) -> Result<Schedule, RosApiError> {
+        (**self).get_schedule(schedule_uuid).await
+    }
+    async fn write_schedule(
+        &self,
+        schedule_uuid: &str,
+        schedule: Value,
+    ) -> Result<Schedule, RosApiError> {
+        (**self).write_schedule(schedule_uuid, schedule).await
     }
 }
 
@@ -198,7 +270,42 @@ impl RosApi for RosFake {
         Ok(networks)
     }
 
-    async fn list_devices(&self, network_uuid: &str) -> Result<Vec<Device>, RosApiError> {
+    async fn list_networks_for_host(
+        &self,
+        host_uuid: &str,
+        with_tree: bool,
+    ) -> Result<Vec<Network>, RosApiError> {
+        self.guard()?;
+        let all = self.list_networks(with_tree).await?;
+        Ok(all
+            .into_iter()
+            .filter(|n| n.host_uuid.as_deref() == Some(host_uuid))
+            .collect())
+    }
+
+    async fn list_locations(&self, _with_groups: bool) -> Result<Vec<Location>, RosApiError> {
+        self.guard()?;
+        Ok(self.locations.clone())
+    }
+
+    async fn get_group(&self, group_uuid: &str, _with_hosts: bool) -> Result<Group, RosApiError> {
+        self.guard()?;
+        self.locations
+            .iter()
+            .filter_map(|l| l.groups.as_ref())
+            .flatten()
+            .find(|g| g.uuid == group_uuid)
+            .cloned()
+            .ok_or_else(|| RosApiError::NotFound(group_uuid.to_string()))
+    }
+
+    async fn list_devices(
+        &self,
+        _host_uuid: Option<&str>,
+        network_uuid: &str,
+    ) -> Result<Vec<Device>, RosApiError> {
+        // The fake's tree is keyed by network/device uuid only — no Host concept, so `host_uuid` is
+        // accepted (matching the real trait) but has nothing to scope against here.
         self.guard()?;
         Ok(self
             .devices
@@ -209,7 +316,11 @@ impl RosApi for RosFake {
             .unwrap_or_default())
     }
 
-    async fn list_points(&self, device_uuid: &str) -> Result<Vec<Point>, RosApiError> {
+    async fn list_points(
+        &self,
+        _host_uuid: Option<&str>,
+        device_uuid: &str,
+    ) -> Result<Vec<Point>, RosApiError> {
         self.guard()?;
         Ok(self
             .points
@@ -264,6 +375,43 @@ impl RosApi for RosFake {
             .copied()
             .unwrap_or(0.0);
         Ok(mk_point(point_uuid, point_uuid, "", true, present))
+    }
+
+    async fn list_schedules(&self) -> Result<Vec<Schedule>, RosApiError> {
+        self.guard()?;
+        Ok(self.schedules.lock().unwrap().clone())
+    }
+
+    async fn get_schedule(&self, schedule_uuid: &str) -> Result<Schedule, RosApiError> {
+        self.guard()?;
+        self.schedules
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|s| s.uuid == schedule_uuid)
+            .cloned()
+            .ok_or_else(|| RosApiError::NotFound(schedule_uuid.to_string()))
+    }
+
+    async fn write_schedule(
+        &self,
+        schedule_uuid: &str,
+        schedule: Value,
+    ) -> Result<Schedule, RosApiError> {
+        self.guard()?;
+        let mut schedules = self.schedules.lock().unwrap();
+        let existing = schedules
+            .iter_mut()
+            .find(|s| s.uuid == schedule_uuid)
+            .ok_or_else(|| RosApiError::NotFound(schedule_uuid.to_string()))?;
+        existing.schedule = Some(schedule.clone());
+        let result = existing.clone();
+        drop(schedules);
+        self.schedule_writes.lock().unwrap().push(RecordedScheduleWrite {
+            schedule_uuid: schedule_uuid.to_string(),
+            schedule,
+        });
+        Ok(result)
     }
 }
 
@@ -392,6 +540,32 @@ fn mk_point(uuid: &str, name: &str, device_uuid: &str, enable: bool, value: f64)
         priority: Some(Priority::default()),
         tags: None,
         meta_tags: None,
+    }
+}
+
+fn mk_schedule(uuid: &str, name: &str, enable: bool) -> Schedule {
+    Schedule {
+        uuid: uuid.into(),
+        name: name.into(),
+        enable: Some(enable),
+        thing_class: None,
+        thing_type: None,
+        timezone: None,
+        is_active: Some(enable),
+        active_weekly: None,
+        active_exception: None,
+        active_event: None,
+        enable_payload: None,
+        min_payload: None,
+        max_payload: None,
+        payload: None,
+        period_start_string: None,
+        period_stop_string: None,
+        next_start_string: None,
+        next_stop_string: None,
+        schedule: None,
+        created_on: None,
+        updated_on: None,
     }
 }
 
