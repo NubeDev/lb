@@ -115,8 +115,11 @@ async fn node_with_an_extra_runtime_lists_both_sorted() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
-    // Sorted: `nube-external` before `default`; both present.
-    assert_eq!(ids, vec!["nube-external", "default"]);
+    // Sorted, and `agent.runtimes` documents its shape as `"runtimes": [<sorted ids>]` — so this is
+    // plain lexicographic order, in which `default` precedes `nube-external`. The previous
+    // expectation had them the other way round, which is neither the documented contract nor sorted
+    // in any ordering; it agreed with the implementation only until the sort was actually applied.
+    assert_eq!(ids, vec!["default", "nube-external"]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

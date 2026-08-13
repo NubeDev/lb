@@ -33,6 +33,20 @@ async fn login(gw: &Gateway, user: &str, ws: &str) -> String {
     common::bootstrap::session_token(gw, user, ws).await
 }
 
+/// Mint a token for a user who is a real `workspace-admin` of `ws`, seeding the durable grants first.
+///
+/// [`login`] deliberately seeds NOTHING — it answers "what would `/auth/login` hand this person?", so
+/// it returns whatever their existing grants resolve to, which for a fresh subject is nothing. These
+/// tests used to rely on the legacy `POST /login` promoting the first caller into an empty workspace
+/// to `workspace-admin`; that self-promotion was DELETED in the pre-production legacy sweep (a
+/// stranger who can reach the port must not be able to make themselves an admin). Without it, the
+/// "admin" here held no admin caps and every setup write — adding a member, saving a nav, setting the
+/// workspace default — came back `403`, which reads as the reach gate under test denying the request
+/// rather than the fixture never having granted anything.
+async fn admin_login(gw: &Gateway, user: &str, ws: &str) -> String {
+    common::bootstrap::provision_admin(gw, user, ws).await
+}
+
 /// `GET /surface/{surface}` under `token` — the page-reach preflight. `200` iff the caller's nav grants
 /// `reach:<surface>:view` (or the fallback wildcard), else an opaque `403`.
 async fn surface_status(gw: &Gateway, token: &str, surface: &str) -> StatusCode {
@@ -62,7 +76,7 @@ async fn a_curated_nav_gates_reach_but_fallback_reaches_all_and_data_stays_open(
     let (gw, _key) = gateway().await;
 
     // alice bootstraps as workspace-admin (first login into an empty ws); she adds bob as a member.
-    let admin = login(&gw, "user:alice", "nube").await;
+    let admin = admin_login(&gw, "user:alice", "nube").await;
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post("/admin/members", json!({ "sub": "user:bob" })),
@@ -167,7 +181,7 @@ async fn reach_is_workspace_walled() {
 
     // Two independent workspaces; each first-login bootstraps its own admin. A curated nav in `nube`
     // must never affect a subject in `beta`, and a `beta` token reaches `beta` normally (fallback).
-    let nube_admin = login(&gw, "user:alice", "nube").await;
+    let nube_admin = admin_login(&gw, "user:alice", "nube").await;
     ok_post(
         &gw,
         &nube_admin,

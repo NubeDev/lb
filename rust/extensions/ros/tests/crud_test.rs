@@ -37,12 +37,12 @@ fn full_caps() -> Vec<String> {
         "mcp:ros.update:call",
         "mcp:ros.delete:call",
         "mcp:ros.ping:call",
-        "mcp:network.list:call",
-        "mcp:network.get:call",
-        "mcp:device.list:call",
-        "mcp:device.get:call",
-        "mcp:point.list:call",
-        "mcp:point.get:call",
+        "mcp:ros.network.list:call",
+        "mcp:ros.network.get:call",
+        "mcp:ros.device.list:call",
+        "mcp:ros.device.get:call",
+        "mcp:ros.point.list:call",
+        "mcp:ros.point.get:call",
         "mcp:assets.put_doc:call",
         "mcp:assets.get_doc:call",
         "mcp:assets.list_docs:call",
@@ -173,7 +173,7 @@ async fn crud_round_trip_and_token_is_never_returned() {
     let nets = call(
         &host,
         &factory,
-        "network.list",
+        "ros.network.list",
         json!({ "ros_uuid": "ros-1" }),
     )
     .await
@@ -193,7 +193,7 @@ async fn crud_round_trip_and_token_is_never_returned() {
     let pts = call(
         &host,
         &factory,
-        "point.list",
+        "ros.point.list",
         json!({ "ros_uuid": "ros-1", "device_uuid": "dev-1" }),
     )
     .await

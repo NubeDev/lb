@@ -110,6 +110,10 @@ const BUILTINS: &[&str] = &[
     "store-read",
     "store-write",
     "store-delete",
+    // global-schedules scope: the `schedule` trigger (`flows/src/builtins/schedule.rs`, registered in
+    // `builtins/mod.rs`) shipped without this list being updated, so every registry test that pins the
+    // builtin roster went red on a node that was behaving correctly. Keep this in registration order.
+    "schedule",
 ];
 
 fn types(out: &serde_json::Value) -> Vec<String> {

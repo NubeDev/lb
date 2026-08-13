@@ -502,6 +502,25 @@ async fn federation_end_to_end_postgres() {
     )
     .await
     .expect("add the unapproved-endpoint source record");
+    // `datasource.add` is SELF-APPROVING by design — `net::grant_endpoint` appends
+    // `net:tls:127.0.0.1:59999:connect` to the federation install because "the (already admin-gated)
+    // add IS the approval" (UI registration works with no boot env var / restart). So the add alone
+    // can no longer produce an unapproved endpoint, and this assertion was reaching the connect and
+    // failing on a dead port instead of on the wall.
+    //
+    // Strip that auto-grant back out to build the case the assertion is actually about — an endpoint
+    // the install grant does NOT cover. That state is still reachable in the wild: an admin narrowing
+    // the grant, or a source record whose endpoint moved after approval. The wall must refuse BEFORE
+    // any socket, which is what the `Denied` below pins.
+    let mut install = lb_assets::read_install(&node.store, ws, "federation")
+        .await
+        .expect("read the federation install")
+        .expect("federation is installed");
+    install.granted.retain(|g| !g.contains("59999"));
+    lb_assets::record_install(&node.store, ws, &install)
+        .await
+        .expect("narrow the net grant back down");
+
     let net_denied = call(
         &node,
         &admin,

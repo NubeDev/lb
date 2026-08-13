@@ -161,7 +161,11 @@ async fn a_due_reminder_fires_from_the_boot_spawned_tick() {
         lb_host::ReminderAction::Outbox {
             target: "report".into(),
             action: "render".into(),
-            payload: r#"{"reportId":"energy","preset":"last-7-days"}"#.into(),
+            // `preset` was retired in favour of a range EXPRESSION (`range: {from: …}`), which accepts
+            // the same vocabulary (`last-7-days`, `today`, `now-6h`, …) plus relative forms a fixed
+            // preset list could not express. `reminder.create` rejects the old key by name, so this
+            // fixture failed at creation rather than at the tick it exists to exercise.
+            payload: r#"{"reportId":"energy","range":{"from":"last-7-days"}}"#.into(),
         },
         now_secs() - 120,
     )

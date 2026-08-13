@@ -370,7 +370,12 @@ async fn markdown_save_participates_in_undo() {
     );
 
     // The save was auto-captured as an undoable step.
-    let items = history_list(&node.store, &p, ws, "user:test", "")
+    // The undo stack is scoped to the RECORD, not the actor: a reversible plan records under the
+    // touched record's own id (`undo_capture::capture` — "each open dashboard/doc/record has its own
+    // per-(ws,actor) undo/redo stack"), and only a call with no nameable record falls back to the
+    // default `""` stack. `assets.put_doc` names `notes`, so reading `""` here was reading a
+    // different, always-empty stack — the save was journaled correctly the whole time.
+    let items = history_list(&node.store, &p, ws, "user:test", "notes")
         .await
         .expect("history reads")
         .items;
@@ -382,7 +387,7 @@ async fn markdown_save_participates_in_undo() {
     );
 
     // Undo restores rev1's body through the real journal (no app-side guessing).
-    undo(&node.store, &p, ws, "user:test", "")
+    undo(&node.store, &p, ws, "user:test", "notes")
         .await
         .expect("undo");
     assert_eq!(

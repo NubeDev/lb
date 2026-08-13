@@ -72,7 +72,7 @@ async fn a_denied_caller_gets_an_opaque_403_even_when_the_args_are_malformed() {
 /// workspace-admin, adds bob, grants `role:viewer`, revokes `role:member`. Bob re-logs in so his
 /// token carries the viewer floor ∪ his one remaining role. Returns bob's viewer bearer.
 async fn seed_viewer(gw: &Gateway) -> String {
-    let admin = login(gw, "user:alice", "nube").await;
+    let admin = admin_login(gw, "user:alice", "nube").await;
     let post = |path: &'static str, body: serde_json::Value, tok: String| {
         let gw = gw.clone();
         async move {
@@ -123,6 +123,17 @@ async fn login(gw: &Gateway, user: &str, ws: &str) -> String {
     common::bootstrap::session_token(gw, user, ws).await
 }
 
+/// Mint a token for a real `workspace-admin` of `ws`, seeding the durable grants first.
+///
+/// [`login`] seeds NOTHING by design — it answers "what would `/auth/login` hand this person?", which
+/// for a fresh subject is no grants at all. This suite's setup used to lean on the legacy `POST /login`
+/// promoting the first caller into an empty workspace to `workspace-admin`; that self-promotion was
+/// deleted in the pre-production legacy sweep, so alice held no admin caps and her setup writes came
+/// back `403` — indistinguishable from the reach gate this file is actually testing.
+async fn admin_login(gw: &Gateway, user: &str, ws: &str) -> String {
+    common::bootstrap::provision_admin(gw, user, ws).await
+}
+
 /// Call `tool` with `args` over the real `/mcp/call` bridge under `token`; return the HTTP status.
 /// The bridge re-checks `mcp:<tool>:call` before dispatch — an ungranted verb is `403` (opaque),
 /// which is precisely the reach gate a viewer must hit on an authoring verb.
@@ -142,7 +153,7 @@ async fn a_viewer_cannot_reach_authoring_pages_but_a_member_can_and_a_viewer_sti
     let (gw, _key) = gateway().await;
 
     // alice bootstraps as workspace-admin (first login into an empty ws); she adds bob as a member.
-    let admin = login(&gw, "user:alice", "nube").await;
+    let admin = admin_login(&gw, "user:alice", "nube").await;
     let resp = router(gw.clone())
         .oneshot(bearer(
             json_post("/admin/members", json!({ "sub": "user:bob" })),
