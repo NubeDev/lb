@@ -219,23 +219,15 @@ build-wasm:
 build-be: build-wasm
 	cd $(BE_DIR) && cargo build --workspace
 
-# The shared @nube/* workspace libraries that `ui` consumes as `workspace:*`. The UI's
-# `tsc`/vite resolves each via its `dist/` (its package.json `types` points there), so a
-# missing `dist/` makes the whole import resolve to `any` — e.g. NavMenu's `onSelect`
-# param goes implicitly-any and `tsc --noEmit` fails.
+# Nothing to build here any more. This target existed to build @nube/nav-rail's `dist/` for the
+# in-tree React shell, and BOTH are gone: `ui/` was deleted (commit 678503f) and the shared
+# substrate — source-picker, insights, panel, nav-rail — moved to NubeDev/lb-ui-kit
+# (`@nube/dash-kit`). See packages/README.md.
 #
-# Every consumed package ships its `dist/` committed to git EXCEPT @nube/nav-rail, which
-# is the one that has to be built on a fresh checkout — so that's the only one we build
-# here. (@nube/ce-wiresheet is CE-only, opt-in behind CE=1/CE_BASE and built by the
-# separate `control-engine` target; it is deliberately NOT built in the default path.)
-UI_PACKAGES := nav-rail
-
-# Build only the packages that lack a committed dist (each package's own `build` = vite
-# build). --filter scopes pnpm so nothing else — ce-wiresheet, the broken source-picker
-# lib build — is dragged into the default dev/build path.
+# Kept as a no-op rather than removed so `build-ui`'s dependency edge (and any script or muscle
+# memory that invokes it) keeps working instead of failing with a cryptic "No rule to make target".
 build-packages:
-	cd $(UI_DIR)/.. && pnpm install
-	pnpm $(foreach p,$(UI_PACKAGES),--filter @nube/$(p)) run build
+	@echo "build-packages: nothing to build — the shared substrate moved to NubeDev/lb-ui-kit (see packages/README.md)"
 
 build-ui: build-packages
 	cd $(UI_DIR) && pnpm build
