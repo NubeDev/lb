@@ -395,7 +395,7 @@ async fn team_shared_member_resolves_non_member_denied() {
     ));
 
     // Share to a team Ben belongs to.
-    add_member(store, &test, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "ops", "user:ben")
         .await
         .unwrap();
     nav_share(
@@ -549,7 +549,7 @@ async fn resolution_precedence_pick_over_team_over_default_over_fallback() {
     nav_save(store, &test, ws, "teamnav", "Team", vec![], 3)
         .await
         .unwrap();
-    add_member(store, &test, ws, "team:ops", "user:test")
+    add_member(store, &test, ws, "ops", "user:test")
         .await
         .unwrap();
     nav_share(
@@ -803,10 +803,10 @@ async fn share_roster_lists_and_revokes_team_shares() {
         .is_empty());
 
     // Share to TWO teams (each call writes one edge; the underlying relate is multi-edge).
-    add_member(store, &test, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "ops", "user:ben")
         .await
         .unwrap();
-    add_member(store, &test, ws, "team:eng", "user:cleo")
+    add_member(store, &test, ws, "eng", "user:cleo")
         .await
         .unwrap();
     nav_share(
@@ -1148,7 +1148,7 @@ async fn hide_applies_inside_groups_and_at_every_tier() {
     assert_eq!(surfaces, vec!["channels"], "hidden child stripped in group");
 
     // Team tier — same nav shared to a team test belongs to; the strip result is identical.
-    add_member(store, &test, ws, "team:ops", "user:test")
+    add_member(store, &test, ws, "ops", "user:test")
         .await
         .unwrap();
     nav_share(
@@ -1381,10 +1381,10 @@ async fn admin_never_auto_narrowed_member_still_is() {
     )
     .await
     .unwrap();
-    add_member(store, &test, ws, "team:ops", "user:test")
+    add_member(store, &test, ws, "ops", "user:test")
         .await
         .unwrap();
-    add_member(store, &test, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "ops", "user:ben")
         .await
         .unwrap();
     nav_share(
@@ -1451,7 +1451,7 @@ async fn builtin_pick_sentinel_forces_fallback() {
     )
     .await
     .unwrap();
-    add_member(store, &test, ws, "team:ops", "user:ben")
+    add_member(store, &test, ws, "ops", "user:ben")
         .await
         .unwrap();
     nav_share(
