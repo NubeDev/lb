@@ -15,20 +15,35 @@ use std::sync::{Arc, Mutex};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     agent_persona_get, call_agent_tool, grant_skill, invoke_via_runtime, reachable_tools,
-    seed_core_skills, seed_personas, AllowedTool, ErasedModel, Node, Persona, RuntimeRegistry,
-    Substrate,
+    seed_core_skills, seed_personas, workspace_admin_role_caps, AllowedTool, ErasedModel, Node,
+    Persona, RuntimeRegistry, Substrate,
 };
 use lb_prefs::{set_workspace_prefs, Prefs};
-use lb_role_gateway::dev_claims;
 
 // ---- harness -----------------------------------------------------------------------------------
 
-/// A principal carrying the FULL dev-login member+admin cap set (the real `member_caps()` the gateway
-/// mints) — so `reachable_tools` returns the whole live catalog and a persona genuinely narrows it.
-/// This is the "admin caller" the per-persona destructive-exclusion test needs.
+/// A principal carrying the FULL member+admin cap set (`workspace_admin_role_caps` — the same bundle
+/// the login route unions onto a workspace admin's token) — so `reachable_tools` returns the whole
+/// live catalog and a persona genuinely narrows it. This is the "admin caller" the per-persona
+/// destructive-exclusion test needs.
+///
+/// NOT `dev_claims`: that mints the VIEWER FLOOR alone (the login route unions the resolved role caps
+/// on top, and this test never goes through login). A viewer holds no `store:skill/**:write`, so
+/// `setup_catalog`'s `grant_skill` calls were silently denied — and because the grant is best-effort
+/// (`let _ =`), the corpus simply never got granted. The failure surfaced far away, at run assembly,
+/// as the fail-closed `PersonaSkill` error for whichever skill a persona pinned.
 fn admin_principal(sub: &str, ws: &str) -> Principal {
     let key = SigningKey::generate();
-    let claims = dev_claims(sub, ws, 0, u64::MAX);
+    let claims = Claims {
+        sub: sub.into(),
+        ws: ws.into(),
+        role: Role::Member,
+        caps: workspace_admin_role_caps(),
+        iat: 0,
+        exp: u64::MAX,
+        constraint: None,
+        run_id: None,
+    };
     verify(&key, &mint(&key, &claims), 1).expect("token verifies")
 }
 
@@ -464,7 +479,12 @@ async fn the_confusion_fix_the_same_task_narrows_from_the_whole_surface_to_the_f
         after.iter().any(|t| t == "federation.query"),
         "the on-task tool stays"
     );
-    for gone in ["reminder.create", "dashboard.pin"] {
+    // `dashboard.pin` is NO LONGER off-task for this persona: the catalog grants it explicitly
+    // (`personas.toml`, "analysts build widgets too — data and dashboards are one job, no
+    // persona-switching", 2026-07-06). Asserting its removal pins the pre-decision behaviour and
+    // fails against a catalog that is doing exactly what it says. `reminder.create` is still granted
+    // by nothing in this persona, so it remains the honest off-task probe.
+    for gone in ["reminder.create"] {
         assert!(
             before.iter().any(|t| t == gone),
             "{gone} IS a reachable palette tool (so its removal is meaningful)"

@@ -32,6 +32,30 @@ const CAPS: &[&str] = &[
     "secret:federation/*:write",
 ];
 
+/// Seed the federation extension's INSTALL RECORD — no sidecar binary, which this suite deliberately
+/// runs without (see the module header).
+///
+/// `datasource.add` is self-approving: it records the endpoint's `net:tls:<host>:<port>:connect`
+/// approval onto the federation install (`federation::net::grant_endpoint` — "the (already
+/// admin-gated) add IS the approval", so UI registration needs no boot env var or restart). The grant
+/// hangs off the install record, so with no install there is nowhere to write it and the add is
+/// refused with `EndpointRefused` — which this route maps to `403`, indistinguishable from a
+/// capability denial. That is why these tests read as "add datasource denied" while holding every cap.
+///
+/// The record is all that is needed: the sidecar is only required to actually CONNECT, which these
+/// transport-boundary tests never do.
+async fn seed_federation_install(gw: &lb_role_gateway::Gateway, ws: &str) {
+    let install = lb_assets::Install::new(
+        "federation",
+        "0.1.0",
+        vec!["net:tls:*:*:connect".to_string()],
+        NOW,
+    );
+    lb_assets::record_install(&gw.node.store, ws, &install)
+        .await
+        .expect("seed the federation install record");
+}
+
 /// The DSN we submit on Add — the secret material that must NEVER appear in any response body.
 const DSN: &str =
     "host=127.0.0.1 port=5432 user=lb password=SUPERSECRETpw dbname=fed sslmode=disable";
@@ -53,6 +77,7 @@ fn add_body() -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn add_without_a_dsn_is_accepted_over_the_gateway() {
     let (gw, key) = gateway().await;
+    seed_federation_install(&gw, "nube").await;
     let tok = token(&key, "user:test", "nube", CAPS);
 
     let body = json!({
@@ -95,6 +120,7 @@ async fn add_without_a_dsn_is_accepted_over_the_gateway() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn add_then_list_round_trip_over_the_gateway() {
     let (gw, key) = gateway().await;
+    seed_federation_install(&gw, "nube").await;
     let tok = token(&key, "user:test", "nube", CAPS);
 
     // add → ok
@@ -134,6 +160,7 @@ async fn add_then_list_round_trip_over_the_gateway() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn remove_drops_the_source() {
     let (gw, key) = gateway().await;
+    seed_federation_install(&gw, "nube").await;
     let tok = token(&key, "user:test", "nube", CAPS);
 
     router(gw.clone())
@@ -169,6 +196,8 @@ async fn each_verb_is_denied_without_its_cap() {
     ];
     for (missing, verb, _) in cases {
         let (gw, key) = gateway().await;
+        seed_federation_install(&gw, "nube").await;
+        seed_federation_install(&gw, "nube").await;
         let caps: Vec<&str> = CAPS.iter().copied().filter(|c| c != missing).collect();
         let tok = token(&key, "user:test", "nube", &caps);
 
@@ -220,6 +249,7 @@ async fn test_probe_without_a_sidecar_is_an_honest_red() {
     // fabricated green. The green path is proven against a spawned Postgres in federation_test.rs; here
     // we assert the route fails honestly (a non-200 → the page renders RED). It is never 200/ok.
     let (gw, key) = gateway().await;
+    seed_federation_install(&gw, "nube").await;
     let tok = token(&key, "user:test", "nube", CAPS);
 
     router(gw.clone())

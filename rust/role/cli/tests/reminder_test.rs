@@ -18,11 +18,20 @@ use lb_cli::error::CliError;
 use lb_cli::output::Format;
 use lb_cli::transport::Remote;
 
-/// The full reminder caps a normal (dev-login) operator carries, minus none — used where the test
-/// wants an authorized session. `dev_token` already grants the `mcp:*.{create,list,get,update,delete}`
-/// wildcards, so it authorizes every reminder verb; we use it for the happy paths.
+/// An authorized operator session — the full member+admin bundle, used for the happy paths.
+///
+/// This used to mint via `dev_token`, on the premise that it "grants the
+/// `mcp:*.{create,list,get,update,delete}` wildcards, so it authorizes every reminder verb". Both
+/// halves of that stopped holding: those author wildcards were RETIRED in favour of named caps
+/// (`authz::builtin_roles` — the `user:bob` escalation they enabled), and `dev_claims` now mints the
+/// VIEWER FLOOR alone, because the login route unions the caller's resolved role caps on top and this
+/// helper never goes through login. So the "authorized" session held no author caps at all and
+/// `reminder.create` came back `Denied` — the deny being correct, and the fixture being the thing that
+/// had gone stale.
 fn authed(gw: &common::RunningGateway, ws: &str) -> Remote {
-    Remote::new(&gw.base_url, dev_token(&gw.key, "user:test", ws))
+    let caps = lb_host::workspace_admin_role_caps();
+    let refs: Vec<&str> = caps.iter().map(String::as_str).collect();
+    Remote::new(&gw.base_url, token(&gw.key, "user:test", ws, &refs))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
