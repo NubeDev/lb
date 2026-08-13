@@ -5771,6 +5771,7 @@ dependencies = [
 name = "lb-mcp"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "lb-auth",
  "lb-bus",
  "lb-caps",

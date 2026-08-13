@@ -7,6 +7,7 @@
 mod authorize;
 mod dispatch;
 mod error;
+mod reentrancy;
 mod resolve;
 
 pub use error::ToolError;
@@ -52,7 +53,6 @@ pub async fn call(
         qualified_tool,
         input_json,
         None,
-        false,
     )
     .await
 }
@@ -85,7 +85,6 @@ pub async fn call_on_node(
         qualified_tool,
         input_json,
         None,
-        false,
         Some(node),
     )
     .await
@@ -106,7 +105,6 @@ pub async fn call_with_ctx(
     qualified_tool: &str,
     input_json: &str,
     ctx: Option<CallContext>,
-    reentrant: bool,
 ) -> Result<String, ToolError> {
     call_inner(
         registry,
@@ -116,7 +114,6 @@ pub async fn call_with_ctx(
         qualified_tool,
         input_json,
         ctx,
-        reentrant,
         None,
     )
     .await
@@ -135,7 +132,6 @@ async fn call_inner(
     qualified_tool: &str,
     input_json: &str,
     ctx: Option<CallContext>,
-    reentrant: bool,
     target_node: Option<&NodeId>,
 ) -> Result<String, ToolError> {
     // 1. authorize FIRST — the DENY gate. Workspace isolation, then the
@@ -159,5 +155,5 @@ async fn call_inner(
     // 3. dispatch: call the local instance (with the callback context), or route over the bus to
     //    the hosting node. The seam is identical whether the ext is local or remote — that is the
     //    S3 point.
-    dispatch::dispatch(&target, bus, ws, qualified_tool, input_json, ctx, reentrant).await
+    dispatch::dispatch(&target, bus, ws, qualified_tool, input_json, ctx).await
 }

@@ -178,6 +178,14 @@ component + real store + real caps (no mocks, CLAUDE §9):
    re-entering its OWN node-global instance would *deadlock* on the instance lock before the depth guard
    could fire — so a re-entrant call `try_lock`s and fails fast as "extension busy" (a top-level call
    blocks normally). The depth guard bounds cross-instance chains; the try-lock bounds self-re-entry.
+   **Correction (2026-08-13):** the first cut keyed the try-lock off "is this call nested at all"
+   (`depth > 0`), not "does it re-enter the SAME instance an ancestor already holds" — so a nested
+   call to a *different* extension (the cross-instance case this very paragraph says the depth guard
+   alone should bound) was ALSO failing fast on ordinary contention with an unrelated top-level call,
+   instead of just waiting for the lock like one. Fixed by keying the try-lock off a per-task
+   `tokio::task_local!` set of the instance pointers the call chain actually holds
+   (`crates/mcp/src/call/reentrancy.rs`) — see
+   `../../debugging/mcp/gauge-panel-loses-extension-busy-race.md`.
 2. **Effective principal = `caller ∩ grant`, or `grant` alone?** → **the intersection** (both ways),
    via `Principal::derive` (the agent's `agent ∩ caller`). Proven by the deny-per-direction tests.
    Implementation also hardened `derive` so a NESTED delegation (re-entrant chain) preserves the

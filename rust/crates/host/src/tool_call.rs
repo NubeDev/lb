@@ -731,8 +731,11 @@ async fn dispatch_at_depth(
         .await;
     }
 
-    // depth > 0 means this call ORIGINATED from a guest's host-callback (re-entrant): dispatch must
-    // not block on the instance lock (it may be the in-flight guest's own) — fail fast instead.
+    // Re-entrancy (a guest's host-callback dispatching back in) is handled generically inside
+    // `dispatch` itself now — it tracks which instance THIS call chain already holds and only
+    // fails fast on a genuine self-re-entry, never on a nested call to a different extension
+    // (`docs/debugging/mcp/gauge-panel-loses-extension-busy-race.md`). `depth` still bounds the
+    // chain length via `MAX_CALL_DEPTH`, enforced in `callback.rs` — unrelated to this call.
     lb_mcp::call_with_ctx(
         &node.registry,
         &node.bus,
@@ -741,7 +744,6 @@ async fn dispatch_at_depth(
         qualified_tool,
         input_json,
         ctx,
-        depth > 0,
     )
     .await
 }
