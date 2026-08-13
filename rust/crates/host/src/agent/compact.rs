@@ -114,6 +114,12 @@ fn oldest_droppable_group(messages: &[(String, String)]) -> Option<(usize, usize
             }
         }
     }
+    // No candidate group at all (a goal with nothing but system lines after it) — there is nothing
+    // droppable, and the arithmetic below would underflow on `starts.len() - 1` (usize), panicking
+    // the run rather than declining to compact. Answer the question directly instead.
+    if starts.is_empty() {
+        return None;
+    }
     // Protect the tail: the latest group always (the exchange the next turn answers), and — when a
     // later user message exists (a nudge, a follow-up) — everything from that latest user group on
     // (the scope's "always keep … the latest user group").
