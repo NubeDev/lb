@@ -10,6 +10,7 @@ use lb_auth::Principal;
 use lb_store::Store;
 
 use super::authorize::authorize_nav;
+use super::bounds::BUILTIN_PICK;
 use super::error::NavError;
 use super::model::{NavPref, MAX_PINNED};
 use super::store::{read_pref, write_pref};
@@ -64,6 +65,42 @@ pub async fn nav_pref_set(
     let pref = NavPref {
         active: nav_id.map(str::to_string).unwrap_or(existing.active),
         pinned,
+        force_builtin: existing.force_builtin,
+        updated_ts: now,
+    };
+    write_pref(store, ws, principal.sub(), &pref).await?;
+    Ok(pref)
+}
+
+/// Set or clear the caller's OWN **force-built-in** escape-hatch override (no-lockout scope) — the
+/// shell's "Show all pages" / "Use my menu" toggle. A partial write on the `force_builtin` axis of
+/// `nav_pref` that **never touches `active`**, so the member's real pick survives the round-trip
+/// losslessly: an admin's curated nav is restored on "Use my menu" because it was never deleted (the
+/// old single-slot `active == "__builtin__"` sentinel is exactly what destroyed it — see `pick_nav`).
+///
+/// Legacy convergence: a pre-decoupling record may still hold that `__builtin__` sentinel in
+/// `active`; toggling the override CONVERGES it away (it is not a real nav id — `nav.save` reserves
+/// the `__…__` shape), because the force meaning now lives in `force_builtin`. Member-level; keyed by
+/// `principal.sub()`. LWW at logical time `now`.
+pub async fn nav_pref_set_force_builtin(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    force: bool,
+    now: u64,
+) -> Result<NavPref, NavError> {
+    authorize_nav(principal, ws, "nav.resolve")?;
+    let existing = read_pref(store, ws, principal.sub())
+        .await?
+        .unwrap_or_default();
+    let mut active = existing.active;
+    if active == BUILTIN_PICK {
+        active.clear();
+    }
+    let pref = NavPref {
+        active,
+        pinned: existing.pinned,
+        force_builtin: force,
         updated_ts: now,
     };
     write_pref(store, ws, principal.sub(), &pref).await?;

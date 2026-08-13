@@ -220,8 +220,11 @@ pub async fn get_nav_pref(
     Ok(Json(serde_json::to_value(pref).unwrap_or(Value::Null)))
 }
 
-/// `POST /nav/pref` body — set the caller's own active-nav pick (empty `id` clears it) and/or their
-/// pinned favorites (hide-and-pins scope). `pinned` absent = pins untouched; present = full replace.
+/// `POST /nav/pref` body — set the caller's own active-nav pick (empty `id` clears it), their
+/// pinned favorites (hide-and-pins scope), and/or the force-built-in escape-hatch override
+/// (no-lockout scope). `pinned` absent = pins untouched; present = full replace. `forceBuiltin`
+/// absent = override untouched; present = set/clear — and NEVER touches `id`, so the member's real
+/// pick survives the "Show all pages" / "Use my menu" round-trip.
 #[derive(Debug, Deserialize)]
 pub struct SetNavPref {
     /// Absent = leave the active pick untouched (a pin-only write); `""` clears it.
@@ -229,10 +232,15 @@ pub struct SetNavPref {
     pub id: Option<String>,
     #[serde(default)]
     pub pinned: Option<Vec<String>>,
+    /// Absent = leave the force-built-in override untouched; present = set/clear it (the decoupled
+    /// escape-hatch slot; the real pick in `id` is never written by this axis).
+    #[serde(default)]
+    pub force_builtin: Option<bool>,
 }
 
-/// `POST /nav/pref` — set the caller's own active-nav pick and/or pins. Keyed to the token `sub` (a
-/// caller cannot set another user's pick or pins). Gated `nav.resolve`; member-level.
+/// `POST /nav/pref` — set the caller's own active-nav pick, pins, and/or force-built-in override.
+/// Keyed to the token `sub` (a caller cannot set another user's pick or pins). Gated `nav.resolve`;
+/// member-level.
 pub async fn set_nav_pref(
     State(gw): State<Gateway>,
     headers: HeaderMap,
@@ -241,16 +249,23 @@ pub async fn set_nav_pref(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let pref = lb_host::nav_pref_set(
-        &gw.node.store,
-        &p,
-        p.ws(),
-        body.id.as_deref(),
-        body.pinned,
-        gw.now(),
-    )
-    .await
-    .map_err(status)?;
+    let pref = match body.force_builtin {
+        Some(force) => {
+            lb_host::nav_pref_set_force_builtin(&gw.node.store, &p, p.ws(), force, gw.now())
+                .await
+                .map_err(status)?
+        }
+        None => lb_host::nav_pref_set(
+            &gw.node.store,
+            &p,
+            p.ws(),
+            body.id.as_deref(),
+            body.pinned,
+            gw.now(),
+        )
+        .await
+        .map_err(status)?,
+    };
     Ok(Json(serde_json::to_value(pref).unwrap_or(Value::Null)))
 }
 

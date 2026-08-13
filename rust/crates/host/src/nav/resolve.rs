@@ -310,7 +310,11 @@ async fn pick_nav(
     // fallback rail. This is the escape hatch: anyone handed a too-narrow nav can bail to all the pages
     // they can reach, via their own member-owned `nav.pref.set`.
     if let Some(pref) = read_pref(store, ws, principal.sub()).await? {
-        if pref.active == BUILTIN_PICK {
+        // no-lockout escape: force the built-in rail — either the decoupled `force_builtin` flag
+        // (current design: the shell toggles this WITHOUT writing `active`, so the member's real
+        // pick survives "Show all pages" → "Use my menu" losslessly) or the legacy `__builtin__`
+        // sentinel a pre-decoupling record may still hold in `active` (same meaning, same skip).
+        if pref.force_builtin || pref.active == BUILTIN_PICK {
             return Ok(None);
         }
         if !pref.active.is_empty() {
