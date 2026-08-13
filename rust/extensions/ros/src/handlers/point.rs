@@ -104,9 +104,14 @@ pub async fn write(
     let ros_uuid = req_str(input, "ros_uuid")?;
     let point_uuid = req_str(input, "point_uuid")?;
 
+    // Accept a JSON number OR a numeric string: the panel's Priority field (ros-location-group scope)
+    // is a static `[[query]]` `select` — every field value it persists is a string (same as every
+    // other picked uuid/choice in that chain), so a write call built by spreading the read-back
+    // target's OWN args (`SliderControl`/`SwitchControl`'s generic write-merge) carries `slot` as
+    // `"8"`, not `8`. Rejecting that would make the picker-driven path unusable.
     let slot = input
         .get("slot")
-        .and_then(|v| v.as_u64())
+        .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok())))
         .ok_or_else(|| HostError::BadResponse("missing integer arg: slot".into()))?;
     if !(1..=16).contains(&slot) {
         return Err(HostError::BadResponse(format!(

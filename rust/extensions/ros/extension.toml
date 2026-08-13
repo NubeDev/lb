@@ -252,6 +252,15 @@ fields = [
   { id = "networkUuid", label = "Network", control = "select", choices = { source = "tool", tool = "ros.network.list", args = { ros_uuid = "$connectionUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
   { id = "deviceUuid", label = "Device", control = "select", choices = { source = "tool", tool = "ros.device.list", args = { ros_uuid = "$connectionUuid", network_uuid = "$networkUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
   { id = "pointUuid", label = "Point", arg = "point_uuid", control = "select", choices = { source = "tool", tool = "ros.point.list", args = { ros_uuid = "$connectionUuid", device_uuid = "$deviceUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
+  # Carry-only (no `arg`, matches `hostUuid`'s posture): `ros.point.get` never takes a slot — this
+  # rides in the picked target's `args.slot` purely so a write-capable control (Slider/Switch) can
+  # read the SAME priority slot back at write time, generic object-spread, no extension-specific code.
+  { id = "slot", label = "Priority", control = "select", choices = [
+    { value = "1", label = "1" }, { value = "2", label = "2" }, { value = "3", label = "3" }, { value = "4", label = "4" },
+    { value = "5", label = "5" }, { value = "6", label = "6" }, { value = "7", label = "7" }, { value = "8", label = "8" },
+    { value = "9", label = "9" }, { value = "10", label = "10" }, { value = "11", label = "11" }, { value = "12", label = "12" },
+    { value = "13", label = "13" }, { value = "14", label = "14" }, { value = "15", label = "15" }, { value = "16", label = "16" },
+  ] },
 ]
 
 [[query]]
