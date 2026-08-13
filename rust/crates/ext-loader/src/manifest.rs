@@ -705,7 +705,11 @@ impl Manifest {
         // field's tool-backed `choices.tool`) by the string this block gives it.
         let mut seen_query_ids: Vec<&str> = Vec::new();
         for q in &raw.query {
-            if q.id.is_empty() || q.label.is_empty() || q.tool.is_empty() || q.connection_arg.is_empty() {
+            if q.id.is_empty()
+                || q.label.is_empty()
+                || q.tool.is_empty()
+                || q.connection_arg.is_empty()
+            {
                 return Err(ManifestError::InvalidConnectBlock(
                     "query block has an empty id/label/tool/connection_arg".into(),
                 ));
