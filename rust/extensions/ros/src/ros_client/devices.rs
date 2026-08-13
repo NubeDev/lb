@@ -38,58 +38,19 @@ pub struct Device {
     pub meta_tags: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct GetDevicesParams {
-    pub with_points: Option<bool>,
-    pub with_networks: Option<bool>,
-    pub offset: Option<i64>,
-    pub limit: Option<i64>,
-    pub name: Option<String>,
-    pub network_uuid: Option<String>,
-    /// Which supervised Host to scope the list to (ros-location-group scope). The box resolves
-    /// `network_uuid` against its implicit default Host when this is absent, so a network belonging
-    /// to a different Host comes back empty without it — confirmed live.
-    pub host_uuid: Option<String>,
-}
-
 impl Client {
-    pub async fn get_devices(
+    // No standalone devices-list endpoint — matches the reference client (`device_service.ts` has
+    // no list method either): devices come nested off a network fetch (`get_networks` with
+    // `with_devices: true`). This is a single fetch-by-id instead, `GET /api/devices/{uuid}
+    // ?with_points={with_points}`, `host_uuid` as the `X-Host` header.
+    pub async fn get_device_by_uuid(
         &self,
-        params: Option<&GetDevicesParams>,
-    ) -> Result<Vec<Device>, RosClientError> {
-        let mut query = Vec::new();
-
-        if let Some(params) = params {
-            if let Some(v) = params.with_points {
-                query.push(("with_points", v.to_string()));
-            }
-            if let Some(v) = params.with_networks {
-                query.push(("with_networks", v.to_string()));
-            }
-            if let Some(v) = params.offset {
-                query.push(("offset", v.to_string()));
-            }
-            if let Some(v) = params.limit {
-                query.push(("limit", v.to_string()));
-            }
-            if let Some(v) = &params.name {
-                if !v.is_empty() {
-                    query.push(("name", v.clone()));
-                }
-            }
-            if let Some(v) = &params.network_uuid {
-                if !v.is_empty() {
-                    query.push(("network_uuid", v.clone()));
-                }
-            }
-            if let Some(v) = &params.host_uuid {
-                if !v.is_empty() {
-                    query.push(("host_uuid", v.clone()));
-                }
-            }
-        }
-
-        query.push(("show_clones", "false".to_string()));
-        self.get_json("/api/devices", &query).await
+        uuid: &str,
+        host_uuid: Option<&str>,
+        with_points: bool,
+    ) -> Result<Device, RosClientError> {
+        let path = format!("/api/devices/{uuid}");
+        let query = [("with_points", with_points.to_string())];
+        self.get_json(&path, &query, host_uuid).await
     }
 }

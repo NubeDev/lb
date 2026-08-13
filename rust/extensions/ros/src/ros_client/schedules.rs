@@ -40,12 +40,12 @@ pub struct WriteSchedulePayload {
 
 impl Client {
     pub async fn get_schedules(&self) -> Result<Vec<Schedule>, RosClientError> {
-        self.get_json("/api/schedules", &[]).await
+        self.get_json("/api/schedules", &[], None).await
     }
 
     pub async fn get_schedule(&self, uuid: &str) -> Result<Schedule, RosClientError> {
         let path = format!("/api/schedules/{uuid}");
-        self.get_json(&path, &[]).await
+        self.get_json(&path, &[], None).await
     }
 
     pub async fn write_schedule(

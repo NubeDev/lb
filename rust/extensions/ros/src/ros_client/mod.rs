@@ -22,7 +22,7 @@ mod system;
 mod users;
 
 pub use client::{Client, Config};
-pub use devices::{Device, GetDevicesParams};
+pub use devices::Device;
 pub use error::RosClientError;
 pub use histories::{GetHistoriesParams, HistoryRecord};
 pub use locations::{Group, Host, Location};

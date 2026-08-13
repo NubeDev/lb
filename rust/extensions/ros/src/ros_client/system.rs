@@ -66,6 +66,6 @@ pub struct PingResponse {
 
 impl Client {
     pub async fn ping(&self) -> Result<PingResponse, RosClientError> {
-        self.get_json("/api/system/ping", &[]).await
+        self.get_json("/api/system/ping", &[], None).await
     }
 }

@@ -68,18 +68,25 @@ impl Client {
             .map_err(|e| RosClientError::InvalidInput(format!("invalid token/header: {e}")))
     }
 
+    /// `host_uuid`, when given, rides as the `X-Host` header — the box's own scoping mechanism for a
+    /// multi-Host connection (matches the reference client's `HeaderKeys.hostUUID`, never a query
+    /// param — a query-param `host_uuid` is a DIFFERENT, endpoint-specific filter some of the box's
+    /// list routes also accept, not this).
     pub(crate) async fn get_json<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, String)],
+        host_uuid: Option<&str>,
     ) -> Result<T, RosClientError> {
-        let response = self
+        let mut req = self
             .http
             .get(self.endpoint_url(path))
             .header(AUTHORIZATION, self.auth_header()?)
-            .query(query)
-            .send()
-            .await?;
+            .query(query);
+        if let Some(h) = host_uuid {
+            req = req.header("X-Host", h);
+        }
+        let response = req.send().await?;
         Self::decode_json_response(response).await
     }
 
