@@ -8,6 +8,18 @@
 //! page/widget can never claim a tool the admin didn't approve (the "gated caller, never a trusted
 //! decider" rule). The bridge re-filters and the host re-checks regardless; this is the durable,
 //! narrowed truth `ext.list` reports.
+//!
+//! The narrowing asks the SAME question the runtime gate asks — *which capability gates this verb?* —
+//! via [`gate_tool_for`], rather than assuming every verb is gated by its own namesake cap. Several
+//! shipped verbs are deliberately ALIASED onto an existing grant because they are a fan-in of the same
+//! authorized read, not a new privilege (`viz.query_batch` → `mcp:viz.query:call`,
+//! `series.latest_many` → `mcp:series.latest:call`, `series.rollup.read` → `mcp:series.read:call`,
+//! the `federation.*` reads → `mcp:federation.query:call`). No `mcp:viz.query_batch:call` exists in
+//! any role bundle, so a namesake-only intersection dropped every such verb from the served scope for
+//! EVERY install — and because the shell's bridge builds its allow-set from exactly this list, the
+//! page then had its calls refused client-side as `out_of_scope` before they could reach the gate that
+//! would have allowed them. That is the "shipped but unusable" state the aliases exist to prevent,
+//! reappearing one layer up.
 
 use lb_assets::{ExtNavItem, ExtUi, ExtUiOption};
 use lb_ext_loader::{Manifest, NavItem, Widget, WidgetOption};
@@ -87,12 +99,22 @@ fn project_option(o: &WidgetOption) -> ExtUiOption {
     }
 }
 
-/// Intersect a declared `scope` against the granted caps (a declared tool survives only if
-/// `mcp:<tool>:call` is in `granted`) — the "gated caller, never a trusted decider" rule.
+/// Intersect a declared `scope` against the granted caps — the "gated caller, never a trusted decider"
+/// rule. A declared tool survives iff the capability that ACTUALLY GATES it is granted, which is
+/// `mcp:<tool>:call` for almost every verb and an alias for the handful the host deliberately folds
+/// onto an existing grant ([`gate_tool_for`] is the one place that mapping lives).
+///
+/// This does NOT widen anything: the surviving verb rides a capability the admin already approved, and
+/// the host re-checks that same capability on every call. What it fixes is the opposite failure — an
+/// aliased verb being dropped from the served scope even though the caller is fully authorized to
+/// call it, which made the page's own bridge refuse it before the gate ever saw it.
 fn narrow_scope(scope: &[String], granted: &[String]) -> Vec<String> {
     scope
         .iter()
-        .filter(|t| granted.iter().any(|g| g == &format!("mcp:{t}:call")))
+        .filter(|t| {
+            let cap = format!("mcp:{}:call", crate::tool_call::gate_tool_for(t));
+            granted.iter().any(|g| g == &cap)
+        })
         .cloned()
         .collect()
 }
@@ -307,5 +329,76 @@ class = "private"
         assert_eq!(page.unwrap().scope, vec!["series.latest".to_string()]);
         assert_eq!(widgets[0].scope, vec!["series.latest".to_string()]);
         assert!(widgets[1].scope.is_empty());
+    }
+
+    /// The regression this file's alias-awareness exists for, found on a REAL node.
+    ///
+    /// `viz.query_batch` has NO capability of its own — it is aliased onto `mcp:viz.query:call`
+    /// because it is a fan-in of the same authorized read. A namesake-only intersection therefore
+    /// dropped it from EVERY install's served scope, and the shell's bridge — which builds its
+    /// allow-set from exactly this list — then refused every batch call `out_of_scope` before the
+    /// gate that would have allowed it ever ran. Silent: the page rendered empty panels, not an error.
+    #[test]
+    fn keeps_an_aliased_verb_whose_gating_cap_is_granted() {
+        const ALIASED: &str = r#"
+[extension]
+id = "x"
+version = "0.1.0"
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.1.0"
+placement = "either"
+[ui]
+entry = "p.mjs"
+label = "Page"
+scope = ["viz.query", "viz.query_batch", "series.latest", "series.latest_many"]
+[visibility]
+class = "private"
+"#;
+        let m = Manifest::parse(ALIASED).unwrap();
+        // The two capabilities an admin actually approves. Neither `mcp:viz.query_batch:call` nor
+        // `mcp:series.latest_many:call` exists in any role bundle, so neither can ever be granted.
+        let granted = vec![
+            "mcp:viz.query:call".to_string(),
+            "mcp:series.latest:call".to_string(),
+        ];
+        let page = project(&m, &granted).0.expect("has [ui]");
+        assert_eq!(
+            page.scope,
+            vec![
+                "viz.query".to_string(),
+                "viz.query_batch".to_string(),
+                "series.latest".to_string(),
+                "series.latest_many".to_string(),
+            ],
+            "an aliased verb rides its gating cap — dropping it makes the batch shipped-but-unusable"
+        );
+    }
+
+    /// The other half: aliasing must not become a back door. A verb whose GATING cap is absent is
+    /// still dropped, even though its namesake cap is equally absent — the narrowing is "is the real
+    /// gate granted?", never "is anything vaguely related granted?".
+    #[test]
+    fn drops_an_aliased_verb_whose_gating_cap_is_not_granted() {
+        const ALIASED: &str = r#"
+[extension]
+id = "x"
+version = "0.1.0"
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.1.0"
+placement = "either"
+[ui]
+entry = "p.mjs"
+label = "Page"
+scope = ["viz.query_batch", "series.latest_many"]
+[visibility]
+class = "private"
+"#;
+        let m = Manifest::parse(ALIASED).unwrap();
+        // `series.latest` is granted; `viz.query` is NOT. Only the verb whose gate is granted survives.
+        let granted = vec!["mcp:series.latest:call".to_string()];
+        let page = project(&m, &granted).0.expect("has [ui]");
+        assert_eq!(page.scope, vec!["series.latest_many".to_string()]);
     }
 }
