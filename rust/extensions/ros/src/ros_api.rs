@@ -275,15 +275,8 @@ impl RosApi for RealRosApi {
         slot: u8,
         value: Option<f64>,
     ) -> Result<Point, RosApiError> {
-        let mut priority = self
-            .client
-            .get_point_priority(point_uuid)
-            .await
-            .map_err(map_client_err)?
-            .unwrap_or_default();
-        priority.set_slot(slot, value).map_err(map_client_err)?;
         self.client
-            .write_point_priority(point_uuid, &priority)
+            .write_point_priority_slot(point_uuid, slot, value)
             .await
             .map_err(map_client_err)
     }

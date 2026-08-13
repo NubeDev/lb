@@ -40,11 +40,14 @@ pub enum DeliverOutcome {
     /// The box acknowledged the write — mark the effect delivered (terminal).
     Delivered,
     /// A transient failure (box unreachable) — leave the effect schedulable; the relay retries next
-    /// pass (at-least-once).
-    Retry,
+    /// pass (at-least-once). Carries why, so a dead-lettered effect's `last_error` names the real
+    /// cause instead of a generic default (debugging, `mcp/gauge-panel-loses-extension-busy-race.md`
+    /// sibling finding: a swallowed reason makes "why did this never land" undiagnosable from the
+    /// outbox record alone).
+    Retry(String),
     /// A permanent failure (bad payload / bad uuid / box refusal) — count the attempt so a request
-    /// that can never succeed is eventually dead-lettered rather than retried forever.
-    Fail,
+    /// that can never succeed is eventually dead-lettered rather than retried forever. Carries why.
+    Fail(String),
 }
 
 /// Deliver one `ros` outbox effect: decode its payload (branching on `action` — `point.write` vs
@@ -74,23 +77,28 @@ async fn deliver_point_write(
     let w: WritePayload = match serde_json::from_str(payload) {
         Ok(w) => w,
         // A malformed payload can never succeed — fail it (→ dead-letter), don't retry forever.
-        Err(_) => return DeliverOutcome::Fail,
+        Err(e) => return DeliverOutcome::Fail(format!("malformed point.write payload: {e}")),
     };
 
     let api = match resolve_api(host, factory, &w.ros_uuid).await {
         Ok(Some(api)) => api,
         // Connection gone (deleted) or its token/shadow unresolvable — permanent for this effect.
-        Ok(None) => return DeliverOutcome::Fail,
+        Ok(None) => {
+            return DeliverOutcome::Fail(format!(
+                "ros connection {} not found or unresolvable",
+                w.ros_uuid
+            ))
+        }
         // A host callback failure resolving the connection is transient — retry.
-        Err(_) => return DeliverOutcome::Retry,
+        Err(e) => return DeliverOutcome::Retry(format!("resolving ros connection: {e}")),
     };
 
     match api.write_point_slot(&w.point_uuid, w.slot, w.value).await {
         Ok(_) => DeliverOutcome::Delivered,
         // The box is down — retry next pass (the setpoint must eventually land).
-        Err(RosApiError::Unreachable(_)) => DeliverOutcome::Retry,
+        Err(e @ RosApiError::Unreachable(_)) => DeliverOutcome::Retry(e.to_string()),
         // A bad uuid, out-of-range slot, or box refusal can't be fixed by retrying.
-        Err(_) => DeliverOutcome::Fail,
+        Err(e) => DeliverOutcome::Fail(e.to_string()),
     }
 }
 
@@ -101,18 +109,23 @@ async fn deliver_schedule_write(
 ) -> DeliverOutcome {
     let w: ScheduleWritePayload = match serde_json::from_str(payload) {
         Ok(w) => w,
-        Err(_) => return DeliverOutcome::Fail,
+        Err(e) => return DeliverOutcome::Fail(format!("malformed schedule.write payload: {e}")),
     };
 
     let api = match resolve_api(host, factory, &w.ros_uuid).await {
         Ok(Some(api)) => api,
-        Ok(None) => return DeliverOutcome::Fail,
-        Err(_) => return DeliverOutcome::Retry,
+        Ok(None) => {
+            return DeliverOutcome::Fail(format!(
+                "ros connection {} not found or unresolvable",
+                w.ros_uuid
+            ))
+        }
+        Err(e) => return DeliverOutcome::Retry(format!("resolving ros connection: {e}")),
     };
 
     match api.write_schedule(&w.schedule_uuid, w.schedule).await {
         Ok(_) => DeliverOutcome::Delivered,
-        Err(RosApiError::Unreachable(_)) => DeliverOutcome::Retry,
-        Err(_) => DeliverOutcome::Fail,
+        Err(e @ RosApiError::Unreachable(_)) => DeliverOutcome::Retry(e.to_string()),
+        Err(e) => DeliverOutcome::Fail(e.to_string()),
     }
 }

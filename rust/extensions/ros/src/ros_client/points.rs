@@ -198,11 +198,6 @@ pub struct UpdatePointPayload {
     pub history_cov_threshold: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WritePointPriorityPayload {
-    pub priority: Priority,
-}
-
 impl Client {
     pub async fn get_points(
         &self,
@@ -287,30 +282,29 @@ impl Client {
         Ok(point.priority)
     }
 
-    pub async fn write_point_priority(
+    // The box's `/write` endpoint wants a SPARSE, WRAPPED delta — `{"priority": {"_<slot>":
+    // value}}`, only the one changed slot — never the full 16-slot array. Confirmed live against
+    // two wrong shapes first: a flat (unwrapped) full array 500'd the box (empty body, no
+    // diagnosis); a wrapped FULL array (fetched via a prior `get_point_priority` then echoed
+    // back with one slot changed) 400'd — `"no priority & original value has been sent"` — the
+    // box's own validation rejects a full-state PATCH. Matches the reference read-write panel
+    // (`grafana-rubix-os-read-write-panel`'s `constructWriterPayloadValue`,
+    // `writerUiService.ts:15-21`), which sends exactly this sparse shape and nothing else — the
+    // box computes every other slot's state itself.
+    pub async fn write_point_priority_slot(
         &self,
         uuid: &str,
-        priority: &Priority,
+        slot: u8,
+        value: Option<f64>,
     ) -> Result<Point, RosClientError> {
+        if !(1..=16).contains(&slot) {
+            return Err(RosClientError::InvalidInput(format!(
+                "priority slot out of range (1-16): {slot}"
+            )));
+        }
         let path = format!("/api/points/{uuid}/write");
-        let payload = WritePointPriorityPayload {
-            priority: priority.clone(),
-        };
-        self.patch_json(&path, &payload).await
-    }
-
-    pub async fn write_point_priority_by_name(
-        &self,
-        network_name: &str,
-        device_name: &str,
-        point_name: &str,
-        priority: &Priority,
-    ) -> Result<Point, RosClientError> {
-        let path = format!("/api/points/name/{network_name}/{device_name}/{point_name}/write");
-        let payload = WritePointPriorityPayload {
-            priority: priority.clone(),
-        };
-        self.patch_json(&path, &payload).await
+        let body = serde_json::json!({ "priority": { format!("_{slot}"): value } });
+        self.patch_json(&path, &body).await
     }
 }
 

@@ -75,13 +75,13 @@ pub async fn relay_pass(
                 mark_delivered(host, id).await?;
                 pass.delivered += 1;
             }
-            DeliverOutcome::Retry => {
+            DeliverOutcome::Retry(reason) => {
                 // Leave it schedulable but count the attempt + back off (mark_failed does both).
-                mark_failed(host, id, now).await?;
+                mark_failed(host, id, now, &reason).await?;
                 pass.retried += 1;
             }
-            DeliverOutcome::Fail => {
-                mark_failed(host, id, now).await?;
+            DeliverOutcome::Fail(reason) => {
+                mark_failed(host, id, now, &reason).await?;
                 pass.failed += 1;
             }
         }
@@ -96,9 +96,12 @@ async fn mark_delivered(host: &HostCtx, id: &str) -> Result<(), HostError> {
     Ok(())
 }
 
-async fn mark_failed(host: &HostCtx, id: &str, now: u64) -> Result<(), HostError> {
+async fn mark_failed(host: &HostCtx, id: &str, now: u64, reason: &str) -> Result<(), HostError> {
     host.client()
-        .call_tool("outbox.mark_failed", json!({ "id": id, "now": now }))
+        .call_tool(
+            "outbox.mark_failed",
+            json!({ "id": id, "now": now, "reason": reason }),
+        )
         .await?;
     Ok(())
 }
