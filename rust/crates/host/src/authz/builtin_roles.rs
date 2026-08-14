@@ -315,6 +315,13 @@ const VIEWER_CAPS: &[&str] = &[
     // reminders nav gate — the concrete list cap the frontend `hasCap` checks EXACTLY (it does not
     // expand a wildcard), so the Reminders sidebar entry needs it spelled out. fire is author.
     "mcp:reminder.list:call",
+    // …and the single-record read that pairs with it. Missing until now, while `list`, `create`,
+    // `update`, `delete` and `fire` were all granted: a caller could see the roster and mutate any
+    // row on it, but opening one to READ it was denied — for every role, workspace-admin included.
+    // Every comparable verb (`dashboard.get`, `flows.get`, `panel.get`, `nav.get`, `insight.get`, …)
+    // sits on this floor; nothing about a reminder makes its detail read more privileged than its
+    // list, and the retired `mcp:*.get:call` wildcard is what used to supply it.
+    "mcp:reminder.get:call",
     // entity-scoped-grants scope: every member asks "what can I reach?" — the scoped read API.
     // These are informational (the enforcement happens at the verb level); a caller only learns its
     // OWN reach (the verbs use the calling principal, never a `user` arg).
