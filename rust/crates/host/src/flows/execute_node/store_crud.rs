@@ -4,15 +4,10 @@
 //! (`mcp:store.<verb>:call`, the per-table `store:<table>:write`, and the reserved-table wall inside
 //! the mutate surface) all apply per node execution, unchanged.
 //!
-//! `store-read` builds a **parameterized** SELECT host-side: every filter value / the id is a
-//! `$`-bound var, and the only spliced text is identifier-checked names (the table, filter fields,
-//! order-by) plus a host-clamped integer limit — user text is NEVER spliced into the SQL (the
-//! scope's injection posture; `store.query`'s parse gate stays the backstop).
-//!
-//! The TABLE is spliced literally rather than bound as `type::table($tb)`, deliberately:
-//! `store.query`'s secret wall inspects the parsed statement alone (it never sees `vars`) and
-//! refuses any table position it cannot evaluate, so a bound table made every read fail. Naming it
-//! literally is what lets the wall apply `secret_table_of` to it — see `build_read_sql`.
+//! `store-read` builds a **parameterized** SELECT host-side: the table rides as a `type::table($tb)`
+//! binding, every filter value / the id is a `$`-bound var, and the only spliced text is
+//! identifier-checked field names plus a host-clamped integer limit — user text is NEVER spliced
+//! into the SQL (the scope's injection posture; `store.query`'s parse gate stays the backstop).
 //!
 //! Config-vs-payload precedence is uniform (the scope rule): an explicit config field wins; a
 //! missing config field reads the incoming `payload` (`payload.id`, `payload.filter`, the payload
@@ -75,7 +70,7 @@ fn table_of(node_type: &str, config: &Value) -> Result<String, String> {
 
 /// Build the parameterized SELECT for a `store-read`: `(sql, vars)` ready for `store.query`'s
 /// `{sql, vars}` args. Every value is `$`-bound; the spliced text is limited to identifier-checked
-/// names (the table and the filter / order-by fields) and the clamped integer limit.
+/// field names and the clamped integer limit.
 fn build_read_sql(
     table: &str,
     id: Option<&str>,
@@ -88,6 +83,7 @@ fn build_read_sql(
         return Err(format!("invalid table identifier: {table}"));
     }
     let mut vars = Map::new();
+    vars.insert("tb".into(), json!(table));
     let mut conds: Vec<String> = Vec::new();
     if let Some(id) = id {
         conds.push("record::id(id) = $id".into());
@@ -104,20 +100,7 @@ fn build_read_sql(
     }
     // Project explicitly: the raw record `id` is a SurrealDB Thing, which does not serialize to
     // JSON through `store.query`'s row decode — `record::id(id)` yields the plain id string.
-    //
-    // The table is named LITERALLY, not as `type::table($tb)`. That reads like the less safe choice
-    // and is the opposite: `store.query`'s secret wall (`store_query/secret_wall.rs`) refuses any
-    // statement whose table position it cannot evaluate — `type::table($tb)` is a `Function` over a
-    // bound param, so the wall cannot prove it is not the secret table and rejects the query. It
-    // inspects the parsed statement alone and never sees `vars`, so no binding could satisfy it, and
-    // every `store-read` node failed at run time with "name the table literally".
-    //
-    // Splicing is safe here precisely because `table` was `is_ident`-checked above — it can only be
-    // `[A-Za-z_][A-Za-z0-9_]*`, so there is no text through which a statement could be injected. And
-    // naming it literally is what lets the wall do its job: it now sees the table as a string and
-    // applies `secret_table_of` to it, so a `store-read` aimed at the secret plane is still refused.
-    // The parameterisation was hiding the table from the check, not protecting it.
-    let mut sql = format!("SELECT record::id(id) AS id, data, rev FROM {table}");
+    let mut sql = String::from("SELECT record::id(id) AS id, data, rev FROM type::table($tb)");
     if !conds.is_empty() {
         sql.push_str(" WHERE ");
         sql.push_str(&conds.join(" AND "));
@@ -285,14 +268,15 @@ mod tests {
         let (sql, vars) = build_read_sql("site", None, None, None, None, false).unwrap();
         assert_eq!(
             sql,
-            "SELECT record::id(id) AS id, data, rev FROM site LIMIT 100"
+            "SELECT record::id(id) AS id, data, rev FROM type::table($tb) LIMIT 100"
         );
+        assert_eq!(vars["tb"], "site");
 
         // Single-id read.
         let (sql, vars) = build_read_sql("site", Some("row1"), None, None, None, false).unwrap();
         assert_eq!(
             sql,
-            "SELECT record::id(id) AS id, data, rev FROM site WHERE record::id(id) = $id LIMIT 100"
+            "SELECT record::id(id) AS id, data, rev FROM type::table($tb) WHERE record::id(id) = $id LIMIT 100"
         );
         assert_eq!(vars["id"], "row1");
 
@@ -302,7 +286,7 @@ mod tests {
             build_read_sql("site", None, Some(&f), Some(50), Some("ts"), true).unwrap();
         assert_eq!(
             sql,
-            "SELECT record::id(id) AS id, data, rev FROM site WHERE data.region = $f0 AND data.active = $f1 \
+            "SELECT record::id(id) AS id, data, rev FROM type::table($tb) WHERE data.region = $f0 AND data.active = $f1 \
              ORDER BY data.ts DESC LIMIT 50"
         );
         assert_eq!(vars["f0"], "nsw");
@@ -312,13 +296,9 @@ mod tests {
         let f = filter(&[("kind", json!("ems"))]);
         let (sql, _) =
             build_read_sql("device", Some("d1"), Some(&f), Some(7), Some("name"), false).unwrap();
-        // NOTE the table here is `device`, not `site` — now that the table is named literally rather
-        // than bound as `type::table($tb)`, these expectations actually pin WHICH table the SELECT
-        // reads. Under the old parameterised form every case rendered the identical `type::table($tb)`
-        // text, so a wrong table could not have failed this assertion.
         assert_eq!(
             sql,
-            "SELECT record::id(id) AS id, data, rev FROM device WHERE record::id(id) = $id AND data.kind = $f0 \
+            "SELECT record::id(id) AS id, data, rev FROM type::table($tb) WHERE record::id(id) = $id AND data.kind = $f0 \
              ORDER BY data.name LIMIT 7"
         );
 
@@ -340,10 +320,7 @@ mod tests {
             !sql.contains("DELETE") && !sql.contains('\'') && !sql.contains(';'),
             "hostile value leaked into SQL: {sql}"
         );
-        assert_eq!(
-            sql,
-            "SELECT record::id(id) AS id, data, rev FROM site WHERE data.name = $f0 LIMIT 100"
-        );
+        assert_eq!(sql, "SELECT record::id(id) AS id, data, rev FROM type::table($tb) WHERE data.name = $f0 LIMIT 100");
         assert_eq!(vars["f0"], hostile);
 
         // Same for a hostile id.
