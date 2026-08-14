@@ -30,6 +30,27 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-08-14 (unreleased — needs the next `node-v*` tag) — SCHEDULED RULES ACTUALLY FIRE
+NOW ([`rules/scheduled-rules-scope.md`](scope/rules/scheduled-rules-scope.md), issue
+[#167](https://github.com/NubeDev/lb/issues/167), debug entry
+[`rules/scheduled-rule-denied-under-reactor-principal.md`](debugging/rules/scheduled-rule-denied-under-reactor-principal.md)).**
+A `#[schedule(...)]` rule saved, compiled the right cron, built its managed `cron → rule` flow, and
+fired dead on the minute — with the `rule` step `denied` on **every** fire since the feature shipped.
+A manual `rules.run` rides the caller's token; a scheduled fire runs under the fixed system principal
+`node:reactor` minted from `reactor_caps()`, which granted no `rules.*` at all. The deny then *moved*
+as it was fixed: `mcp:rules.eval:call` + the `insight.raise`/`ack`/`resolve` trio (PR #168) left an
+**alerting** rule denied one verb deeper, because `route_alerts` fans `alert()` findings to inbox +
+outbox at the end of a successful eval under the same principal — now granted `mcp:inbox.record:call`
++ `mcp:outbox.enqueue:call`. Named verbs only; blanket `mcp:*.*:call` stays refused, so a scheduled
+rule calling an `<ext>.<tool>` is still the run-as-owner follow-up. Fixed with it: `rules.delete`
+tombstoned only the rule record and left `flow:{ws}:schedule:{id}` firing forever at nothing — it now
+runs the same `sync_schedule(.., None)` teardown a directive-less re-save runs (one reconciler,
+idempotent, self-heals an existing orphan). **The testing lesson is the durable one**: the suite was
+green through six consecutive failing fires because it drove the managed flow with the author's FULL
+principal — exercising the reactor's code path while substituting the one variable the bug lived in.
+Regression tests now mint `Principal::routed("node:reactor", ws, reactor_caps())` from the production
+function itself (`pub` for exactly this reason), and both were revert-checked.
+
 **Just shipped 2026-08-14 (unreleased — needs the next `node-v*` tag) — THE SECRET-PLANE WALL STOPS
 REFUSING THE READS IT WAS NEVER MEANT TO
 ([debug entry](debugging/store/secret-wall-refuses-composed-and-parameterised-reads.md), session

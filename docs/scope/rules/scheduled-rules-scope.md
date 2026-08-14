@@ -253,6 +253,20 @@ door is exercised.
 5. **Timezone.** — **RESOLVED: UTC v1, documented.** Per-directive tz is a follow-up (it touches the
    reactor clock, not just parsing).
 
+**A scheduled fire runs as `node:reactor`, not as the author (lb#167).** The managed flow is fired by
+`react_to_flows_cron` under the fixed system principal minted from `reactor_caps()` — a *different*
+authority from the one that saved the rule. Every verb a rule finishes with must be granted there
+explicitly: `mcp:rules.eval:call` (the `rule` node's dispatch), `insight.raise`/`ack`/`resolve` (a
+raising rule), and `inbox.record`/`outbox.enqueue` (an `alert()` rule — `route_alerts` runs under the
+same principal and its deny fails the whole eval). Named verbs only; blanket `mcp:*.*:call` stays
+refused. Any test that claims a scheduled rule works must mint that principal from `reactor_caps()`
+itself — driving the flow with the author's token exercises the code path while substituting the one
+variable the authority bug lives in, which is how #167 shipped green.
+
+**`rules.delete` tears the managed flow down** with the same `sync_schedule(.., None)` reconciler a
+directive-less re-save uses — one derived-state path, idempotent, self-healing on an existing orphan,
+`pending` on a flow-write deny.
+
 **Shipped (backend + tests):** slices 1–4 (directive compile, the managed-flow syncer, the
 `rules.get`/`rules.list` read surface, end-to-end firing on the real `react_cron` reactor). **Deferred:**
 the frontend rule-page schedule block (the backend contract is complete + tested; the React surface
