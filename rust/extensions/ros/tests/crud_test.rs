@@ -183,7 +183,7 @@ async fn crud_round_trip_and_token_is_never_returned() {
     let devs = call(
         &host,
         &factory,
-        "device.list",
+        "ros.device.list",
         json!({ "ros_uuid": "ros-1", "network_uuid": "net-1" }),
     )
     .await
