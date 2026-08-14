@@ -32,7 +32,7 @@ pub use error::StoreQueryError;
 pub use model::{
     QueryResult, Schema, SchemaColumn, SchemaTable, MAX_QUERY_ROWS, QUERY_TIMEOUT_SECS,
 };
-pub use parse::ensure_read_only;
+pub use parse::{ensure_read_only, ensure_read_only_with_vars};
 pub use run::store_query_run;
 pub use schema::store_schema_read;
 pub use tool::call_store_query_tool;

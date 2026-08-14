@@ -1040,6 +1040,24 @@ async fn route_false_run_raises_no_insight() {
     );
 }
 
+/// Persist the federation install record the way a node with the sidecar mounted has it — the
+/// `net:*` grant `datasource.add` appends its endpoint to. Mirrors `datasource_crud_ownership_test`.
+async fn install_federation_record(node: &Node, ws: &str) {
+    let mut install = lb_assets::Install::new(
+        "federation",
+        "0.1.0",
+        vec![
+            "net:tls:*:*:connect".into(),
+            "secret:federation/*:get".into(),
+        ],
+        1,
+    );
+    install.tier = lb_assets::Tier::Native;
+    lb_assets::record_install(&node.store, ws, &install)
+        .await
+        .unwrap();
+}
+
 // Regression: a registered federation datasource must appear in a rule run's source allowlist. The
 // allowlist builder once read raw `lb_store::scan` rows whose `data` is the Versioned `{rev, data:{…}}`
 // envelope, so `row.data.name` always missed — emptying the allowlist and making every federation
@@ -1053,6 +1071,12 @@ async fn registered_datasource_is_in_the_rule_allowlist() {
         ws,
         &["mcp:datasource.add:call", "secret:federation/*:write"],
     );
+    // `datasource.add` self-approves the source's endpoint by APPENDING `net:tls:{host}:{port}:connect`
+    // to the federation extension's install grant — so the install record must exist, exactly as it
+    // does on a node with the sidecar mounted. Without it the add is refused (`EndpointRefused`)
+    // before the allowlist under test is ever reached. A real record through the real
+    // `record_install`, not a stub (rule 9); no sidecar is spawned — `add` never touches the child.
+    install_federation_record(&node, ws).await;
     lb_host::datasource_add(
         &node,
         &p,
