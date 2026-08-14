@@ -30,7 +30,11 @@ use super::retention_sweep::{should_sweep, sweep_retention};
 ///   each ws each tick — the principal carries the ws, the hard wall). This is a NODE-internal actor
 ///   (the reactor IS the node acting on its own durable flows), not a user; it is the same authority
 ///   the cron/boot reactors always assumed they ran under.
-fn reactor_caps() -> Vec<String> {
+///
+/// `pub` so a test can fire a flow under the REAL production principal rather than a hand-copied
+/// list — a mirrored list silently stops testing this function the moment the two drift, which is
+/// exactly how lb#167 survived a green suite (see `scheduled_rules_test.rs`).
+pub fn reactor_caps() -> Vec<String> {
     vec![
         "mcp:flows.run:call".into(),
         "mcp:flows.enable:call".into(),
@@ -62,6 +66,19 @@ fn reactor_caps() -> Vec<String> {
         "mcp:store.query:call".into(),
         "mcp:store.write:call".into(),
         "mcp:store.delete:call".into(),
+        // A scheduled RULE (`#[schedule(...)]` → managed `cron → rule` flow) dispatches `rules.eval`
+        // from the `rule`/`rhai` node under THIS principal. Without it every scheduled fire is
+        // `partialFailure` with the rule step `denied`, while `rules.run` (the user's own token)
+        // succeeds — the same manual-vs-headless asymmetry the ext-store-nodes block above fixes for
+        // store nodes. Note `mcp:*.call:call` does NOT cover this: the mcp resource splits on `.`, so
+        // that pattern means "second segment is literally `call`" and `rules.eval` is not it.
+        "mcp:rules.eval:call".into(),
+        // A rule that RAISES is the ordinary shape (the estate's FDD rules raise insights rather than
+        // alert). Raising is the durable door and carries a lifecycle, so the reactor needs the ack /
+        // resolve pair too — a rule that opens a finding it can never age is a half-grant.
+        "mcp:insight.raise:call".into(),
+        "mcp:insight.ack:call".into(),
+        "mcp:insight.resolve:call".into(),
     ]
 }
 
@@ -219,5 +236,39 @@ mod tests {
                  to the system principal (run-as-owner is the path for a scheduled ext-call)"
             );
         }
+    }
+
+    /// **The scheduled-RULE reach** (lb#167). A `#[schedule(...)]` directive compiles to a managed
+    /// `cron → rule` flow whose `rule` node dispatches `rules.eval` under this same system principal.
+    /// Verified denied on a live node before the fix: six consecutive fires, every one
+    /// `partialFailure` with the rule step `"error":"denied"`, while `rules.run` under the author's
+    /// own token succeeded — so manual testing could not reproduce it.
+    ///
+    /// The near-miss worth pinning: `mcp:*.call:call` was already held and looks like it should cover
+    /// this, but the mcp resource splits on `.`, so that pattern means "a two-segment verb whose
+    /// SECOND segment is literally `call`". `rules.eval` is not, and neither is `insight.raise`.
+    #[test]
+    fn reactor_drives_a_scheduled_rule_and_its_raises() {
+        for needed in [
+            "mcp:rules.eval:call",    // the `rule` / `rhai` node's dispatch
+            "mcp:insight.raise:call", // the durable door a rule raises through
+            "mcp:insight.ack:call",   // …and the lifecycle pair, so a raise can be aged
+            "mcp:insight.resolve:call",
+        ] {
+            assert!(
+                reactor_authorizes(needed),
+                "the reactor must authorize {needed} or every scheduled rule fire is denied (lb#167)"
+            );
+        }
+        // The pre-fix trap, asserted so nobody "simplifies" the grant back to the wildcard: the
+        // held `mcp:*.call:call` does NOT authorize a `<x>.eval` / `<x>.raise` verb.
+        assert!(
+            !matches(
+                &["mcp:*.call:call".to_string()],
+                &Request::new("nube", Surface::Mcp, "rules.eval", Action::Call)
+            ),
+            "`mcp:*.call:call` must not be mistaken for a grant on `rules.eval` — the `.` split makes \
+             it mean `<one-segment>.call`, which is why the explicit grant is required"
+        );
     }
 }

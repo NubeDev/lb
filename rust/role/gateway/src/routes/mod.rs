@@ -162,7 +162,7 @@ pub use message::{delete_message, edit_message};
 pub use native::native_call;
 pub use nav::{
     delete_nav, get_nav, get_nav_hidden, get_nav_pref, list_navs, list_shares_nav, resolve_nav,
-    save_nav, set_default_nav, set_nav_hidden, set_nav_pref, share_nav, unshare_nav,
+    save_nav, set_default_nav, set_nav_hidden, set_nav_order, set_nav_pref, share_nav, unshare_nav,
 };
 pub use node_identity::node_identity;
 pub use outbox::get_outbox_status;

@@ -223,10 +223,11 @@ pub use flows::schedule_store::{
 pub use flows::{
     arm_source, cron_is_valid, cron_run_id, disarm_source, fire_flipflop_node, fire_schedule_node,
     flipflop_run_id, placement_matches, react_to_flow_approvals, react_to_flow_sources,
-    react_to_flows_cron, react_to_flows_interval, react_to_flows_schedule, reconcile_flows,
-    reconcile_interval_timers, schedule_run_id, source_run_id, source_series, spawn_flow_reactors,
-    watch_flow_debug, watch_flow_run, FlowApprovalPass, FlowDebugWatch, FlowReactorPass,
-    FlowReconcilePass, FlowWatch, IntervalTimers, SourceReactorPass, TimerKey, TimerReconcilePass,
+    react_to_flows_cron, react_to_flows_interval, react_to_flows_schedule, reactor_caps,
+    reconcile_flows, reconcile_interval_timers, schedule_run_id, source_run_id, source_series,
+    spawn_flow_reactors, watch_flow_debug, watch_flow_run, FlowApprovalPass, FlowDebugWatch,
+    FlowReactorPass, FlowReconcilePass, FlowWatch, IntervalTimers, SourceReactorPass, TimerKey,
+    TimerReconcilePass,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
 pub use forms::{
@@ -310,9 +311,9 @@ pub use lb_authz::{Invite, InviteStatus};
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use media::{
-    call_media_tool, chunk_write, media_chunk_put, media_delete, media_get, media_list,
-    media_serve, media_upload_begin, media_upload_commit, plan_serve, MediaError, MediaStatus,
-    ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE,
+    call_media_tool, chunk_write, media_chunk_put, media_chunk_write, media_delete, media_get,
+    media_list, media_read, media_serve, media_upload_begin, media_upload_commit, plan_serve,
+    MediaError, MediaStatus, ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE, MAX_READ_BYTES,
 };
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{
@@ -326,15 +327,15 @@ pub use native::{
 };
 pub use nav::{
     call_nav_tool, dashboard_reach_ok, nav_delete, nav_get, nav_hidden_get, nav_hidden_set,
-    nav_list, nav_list_shares, nav_pref_get, nav_pref_set, nav_pref_set_force_builtin, nav_resolve,
-    nav_save, nav_set_default, nav_share, nav_unshare, reach_caps, reach_check, reach_record_check,
-    Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
-    ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
+    nav_list, nav_list_shares, nav_order_set, nav_pref_get, nav_pref_set,
+    nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
+    reach_caps, reach_check, reach_record_check, Nav, NavError, NavFacet, NavHidden, NavItem,
+    NavPref, NavSummary, ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility,
     BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_GROUP_DEPTH as NAV_MAX_GROUP_DEPTH,
-    MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS, MAX_PINNED as NAV_MAX_PINNED,
-    MAX_RECORD_REACH_CAPS as NAV_MAX_RECORD_REACH_CAPS, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
-    MAX_TITLE_TEMPLATE as NAV_MAX_TITLE_TEMPLATE, REACH_ALL,
+    MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS, MAX_ORDER as NAV_MAX_ORDER,
+    MAX_PINNED as NAV_MAX_PINNED, MAX_RECORD_REACH_CAPS as NAV_MAX_RECORD_REACH_CAPS,
+    MAX_TAG_GROUP as NAV_MAX_TAG_GROUP, MAX_TITLE_TEMPLATE as NAV_MAX_TITLE_TEMPLATE, REACH_ALL,
 };
 pub use notify::{
     call_notify_tool, device_list, device_register, device_remove, notify_send,

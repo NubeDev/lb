@@ -14,10 +14,10 @@ use lb_assets::{record_install, ExtNavItem, ExtUi, Install};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     add_member, dashboard_save, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list,
-    nav_list_shares, nav_pref_get, nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save,
-    nav_set_default, nav_share, nav_unshare, tags_add, Cell, NavError, NavFacet, NavItem,
-    NavResolvedItem, NavResolvedSource, NavVisibility, Node, NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN,
-    NAV_MAX_ITEMS, NAV_MAX_PINNED,
+    nav_list_shares, nav_order_set, nav_pref_get, nav_pref_set, nav_pref_set_force_builtin,
+    nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare, tags_add, Cell, NavError,
+    NavFacet, NavItem, NavResolvedItem, NavResolvedSource, NavVisibility, Node,
+    NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN, NAV_MAX_ITEMS, NAV_MAX_ORDER, NAV_MAX_PINNED,
 };
 use lb_store::Store;
 use lb_tags::{Provenance, Source as TagSource, Tag};
@@ -2338,4 +2338,283 @@ async fn icon_color_over_cap_is_rejected() {
         matches!(err, NavError::BadInput(_)),
         "expected BadInput, got {err:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// sidebar-ordering scope: the ARRANGING lever on the `nav_hidden:[ws]` record.
+// ---------------------------------------------------------------------------
+
+/// Bounds: an over-cap ordering, a blank ref, and a DUPLICATED ref are rejected (`BadInput`), never
+/// truncated or silently de-duplicated — one ref cannot hold two positions.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn order_set_bounds_rejected() {
+    let ws = "ws-nav-order-bounds";
+    let store = Store::memory().await.unwrap();
+    let test = principal("user:test", ws, &[SAVE, RESOLVE]);
+
+    let too_many: Vec<String> = (0..(NAV_MAX_ORDER + 1)).map(|i| format!("s{i}")).collect();
+    assert!(matches!(
+        nav_order_set(&store, &test, ws, too_many, 1)
+            .await
+            .unwrap_err(),
+        NavError::BadInput(_)
+    ));
+    assert!(matches!(
+        nav_order_set(&store, &test, ws, vec!["  ".into()], 1)
+            .await
+            .unwrap_err(),
+        NavError::BadInput(_)
+    ));
+    assert!(
+        matches!(
+            nav_order_set(&store, &test, ws, vec!["rules".into(), "rules".into()], 1)
+                .await
+                .unwrap_err(),
+            NavError::BadInput(_)
+        ),
+        "a duplicated ref must be rejected"
+    );
+
+    // LWW replace + clear: set → replace → empty clears (back to natural order).
+    nav_order_set(&store, &test, ws, vec!["rules".into()], 2)
+        .await
+        .unwrap();
+    nav_order_set(&store, &test, ws, vec!["inbox".into()], 3)
+        .await
+        .unwrap();
+    assert_eq!(
+        nav_hidden_get(&store, &test, ws).await.unwrap().order,
+        vec!["inbox".to_string()]
+    );
+    nav_order_set(&store, &test, ws, vec![], 4).await.unwrap();
+    assert!(nav_hidden_get(&store, &test, ws)
+        .await
+        .unwrap()
+        .order
+        .is_empty());
+}
+
+/// The ordering write is admin-gated like the hidden-set — it rides `mcp:nav.save:call`, so a member
+/// holding only `nav.resolve` cannot rearrange the workspace rail.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn order_set_denied_without_admin_cap() {
+    let ws = "ws-nav-order-deny";
+    let store = Store::memory().await.unwrap();
+    let viewer = principal("user:viewer", ws, &[RESOLVE]);
+    assert!(matches!(
+        nav_order_set(&store, &viewer, ws, vec!["rules".into()], 1)
+            .await
+            .unwrap_err(),
+        NavError::Denied
+    ));
+}
+
+/// Hidden and order are INDEPENDENT levers on one record: saving either carries the sibling through.
+/// Without the carry, the Settings tab's visibility save would silently wipe the workspace ordering.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn hidden_and_order_do_not_clobber_each_other() {
+    let ws = "ws-nav-order-carry";
+    let store = Store::memory().await.unwrap();
+    let test = principal("user:test", ws, &[SAVE, RESOLVE]);
+
+    nav_order_set(&store, &test, ws, vec!["rules".into(), "inbox".into()], 1)
+        .await
+        .unwrap();
+    // A later hidden-set must not discard the ordering...
+    nav_hidden_set(&store, &test, ws, vec!["outbox".into()], 2)
+        .await
+        .unwrap();
+    let rec = nav_hidden_get(&store, &test, ws).await.unwrap();
+    assert_eq!(rec.order, vec!["rules".to_string(), "inbox".to_string()]);
+    assert_eq!(rec.hidden, vec!["outbox".to_string()]);
+
+    // ...and a later order-set must not discard the hidden-set.
+    nav_order_set(&store, &test, ws, vec!["inbox".into()], 3)
+        .await
+        .unwrap();
+    let rec = nav_hidden_get(&store, &test, ws).await.unwrap();
+    assert_eq!(rec.order, vec!["inbox".to_string()]);
+    assert_eq!(rec.hidden, vec!["outbox".to_string()], "hidden carried");
+}
+
+/// HEADLINE: the ordering is a PARTIAL, non-destructive arrangement. Named refs take their given
+/// positions; a ref the ordering never mentions keeps its authored order BEHIND them, and a stale ref
+/// (naming nothing in this menu) is inert. Ordering never adds or removes an entry — only arranges.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn order_is_partial_and_never_adds_or_removes() {
+    let ws = "ws-nav-order-partial";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let test = principal("user:test", ws, &[SAVE, RESOLVE, GET, DASH_LIST, RULES_RUN]);
+
+    nav_save(
+        store,
+        &test,
+        ws,
+        "flat",
+        "Flat",
+        vec![
+            surface_item("Channels", "channels"),
+            surface_item("Dashboards", "dashboards"),
+            surface_item("Inbox", "inbox"),
+            surface_item("Rules", "rules"),
+        ],
+        1,
+    )
+    .await
+    .unwrap();
+    nav_set_default(store, &test, ws, "flat", 2).await.unwrap();
+
+    // Name only two of the four — plus one stale ref that matches nothing in this menu.
+    nav_order_set(
+        store,
+        &test,
+        ws,
+        vec!["rules".into(), "ext:nope".into(), "dashboards".into()],
+        3,
+    )
+    .await
+    .unwrap();
+
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
+    let surfaces: Vec<&str> = r.items.iter().map(|i| i.surface.as_str()).collect();
+    assert_eq!(
+        surfaces,
+        vec!["rules", "dashboards", "channels", "inbox"],
+        "named refs lead in their given order; unnamed keep authored order behind them"
+    );
+    assert_eq!(r.items.len(), 4, "ordering never adds or removes an entry");
+    // The echo carries the ordering to the one tier the server cannot materialize (the fallback).
+    assert_eq!(
+        r.order,
+        vec![
+            "rules".to_string(),
+            "ext:nope".to_string(),
+            "dashboards".to_string()
+        ]
+    );
+}
+
+/// Ordering reaches EVERY depth (like the hidden-strip): a group orders by its `group:<Label>` ref
+/// among its siblings, and its children order within it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn order_applies_to_groups_and_within_them() {
+    let ws = "ws-nav-order-depth";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let test = principal("user:test", ws, &[SAVE, RESOLVE, GET, DASH_LIST]);
+
+    nav_save(
+        store,
+        &test,
+        ws,
+        "grouped",
+        "Grouped",
+        vec![
+            group_item(
+                "Ops",
+                vec![
+                    surface_item("Channels", "channels"),
+                    surface_item("Inbox", "inbox"),
+                ],
+            ),
+            surface_item("Dashboards", "dashboards"),
+        ],
+        1,
+    )
+    .await
+    .unwrap();
+    nav_set_default(store, &test, ws, "grouped", 2)
+        .await
+        .unwrap();
+
+    // Sink the group below the loose surface, and flip its children.
+    nav_order_set(
+        store,
+        &test,
+        ws,
+        vec!["dashboards".into(), "group:Ops".into(), "inbox".into()],
+        3,
+    )
+    .await
+    .unwrap();
+
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
+    let top: Vec<&str> = r
+        .items
+        .iter()
+        .map(|i| {
+            if i.kind == "group" {
+                i.label.as_str()
+            } else {
+                i.surface.as_str()
+            }
+        })
+        .collect();
+    assert_eq!(
+        top,
+        vec!["dashboards", "Ops"],
+        "group ordered by its heading"
+    );
+    let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
+    let kids: Vec<&str> = grp.items.iter().map(|i| i.surface.as_str()).collect();
+    assert_eq!(
+        kids,
+        vec!["inbox", "channels"],
+        "children order within group"
+    );
+}
+
+/// An empty ordering is the identity: the resolved menu keeps its authored order exactly.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn empty_order_is_natural_order() {
+    let ws = "ws-nav-order-empty";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let test = principal("user:test", ws, &[SAVE, RESOLVE, GET, DASH_LIST]);
+
+    nav_save(
+        store,
+        &test,
+        ws,
+        "flat",
+        "Flat",
+        vec![
+            surface_item("Channels", "channels"),
+            surface_item("Dashboards", "dashboards"),
+        ],
+        1,
+    )
+    .await
+    .unwrap();
+    nav_set_default(store, &test, ws, "flat", 2).await.unwrap();
+
+    let r = nav_resolve(&node, &test, ws).await.unwrap();
+    let surfaces: Vec<&str> = r.items.iter().map(|i| i.surface.as_str()).collect();
+    assert_eq!(surfaces, vec!["channels", "dashboards"]);
+    assert!(r.order.is_empty(), "no ordering saved — echo stays empty");
+}
+
+/// The ordering is workspace-walled like the hidden-set: one workspace's arrangement never leaks
+/// into another's resolve.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn order_is_workspace_walled() {
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let test = principal("user:test", "ws-oa", &[SAVE, RESOLVE]);
+    let ben = principal("user:ben", "ws-ob", &[SAVE, RESOLVE]);
+
+    nav_order_set(store, &test, "ws-oa", vec!["rules".into()], 1)
+        .await
+        .unwrap();
+
+    assert!(nav_hidden_get(store, &ben, "ws-ob")
+        .await
+        .unwrap()
+        .order
+        .is_empty());
+    let r = nav_resolve(&node, &ben, "ws-ob").await.unwrap();
+    assert!(r.order.is_empty(), "ben's echo carries no ordering");
+    let r = nav_resolve(&node, &test, "ws-oa").await.unwrap();
+    assert_eq!(r.order, vec!["rules".to_string()]);
 }

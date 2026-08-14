@@ -28,6 +28,16 @@ pub(super) const MEDIA: &[HostTool] = &[
         description: "list media in the workspace",
     },
     HostTool {
+        tool: "media.chunk_write",
+        group: "media",
+        description: "write one upload chunk from base64 (the bridge counterpart of PUT /media/{id}/chunk/{n}, for callers that cannot set an Authorization header). Same `mcp:media.upload:call` gate, same idempotent re-write.",
+    },
+    HostTool {
+        tool: "media.read",
+        group: "media",
+        description: "read media BYTES as base64 in bounded slices (offset/limit, eof-terminated). For callers that cannot set an Authorization header — a module-federated extension UI. Prefer GET /media/{id} anywhere a header is available.",
+    },
+    HostTool {
         tool: "media.delete",
         group: "media",
         description: "archive media by id",

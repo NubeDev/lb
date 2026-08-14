@@ -54,7 +54,7 @@ pub use react_cron::{
 pub use react_interval::{fire_flipflop_node, flipflop_run_id, react_to_flows_interval};
 pub use react_schedule::{fire_schedule_node, react_to_flows_schedule, schedule_run_id};
 pub use react_source::{react_to_flow_sources, source_run_id, SourceReactorPass};
-pub use reactor_loop::spawn_flow_reactors;
+pub use reactor_loop::{reactor_caps, spawn_flow_reactors};
 pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};
 pub use run_debug::{watch_flow_debug, FlowDebugWatch};
 pub use source::{arm_source, disarm_source, source_series};

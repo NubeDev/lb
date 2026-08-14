@@ -17,7 +17,9 @@
 use std::sync::Arc;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_tool, cron_run_id, insight_list, react_to_flows_cron, Node as HostNode};
+use lb_host::{
+    call_tool, cron_run_id, insight_list, react_to_flows_cron, reactor_caps, Node as HostNode,
+};
 use lb_insights::ListQuery;
 use lb_reminders::next_after;
 use serde_json::{json, Value};
@@ -537,6 +539,87 @@ async fn scheduled_rule_fires_through_the_flow_cron_reactor_and_dedups() {
         count_insights(&node, &p, ws).await,
         1,
         "insight dedups on the second firing"
+    );
+}
+
+/// **The reactor's OWN authority fires the rule** (lb#167 regression).
+///
+/// The test above drives `react_to_flows_cron` with `p` — the author's FULL principal, which holds
+/// `mcp:rules.eval:call`. Production does not: `spawn_flow_reactors` mints
+/// `Principal::routed("node:reactor", ws, reactor_caps())` on every tick. That substitution is why a
+/// green suite coexisted with six consecutive `partialFailure` fires on a live node, every one with
+/// the rule step `"error":"denied"`.
+///
+/// So this fires the SAME managed flow under the reactor's real caps. It fails before the
+/// `reactor_caps()` fix (insight count stays 0, run is `partialFailure`) and passes after.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn scheduled_rule_fires_under_the_reactors_own_principal_not_the_authors() {
+    let ws = "sched-reactor-caps";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let author = principal(ws, FULL);
+
+    // Authoring still happens as the user (a save needs rule-write ∩ flow-write).
+    save_rule(
+        &node,
+        &author,
+        ws,
+        "cooler",
+        &scheduled_rule_body("#[schedule(\"every 15 minutes\")]"),
+    )
+    .await;
+    assert_eq!(count_insights(&node, &author, ws).await, 0, "clean start");
+
+    // …but FIRING happens as the node, under the REAL production principal — minted exactly as
+    // `spawn_flow_reactors` does, from `reactor_caps()` itself. Importing the function rather than
+    // copying its list is the whole point: a mirrored list would keep passing after someone removes
+    // a grant, which is the failure mode that let lb#167 ship green.
+    let reactor = Principal::routed("node:reactor", ws, reactor_caps());
+
+    react_to_flows_cron(&node, &reactor, ws, 100).await.unwrap();
+    let next = cursor_next(&node, ws, "schedule:cooler", "trigger").await;
+    assert!(next > 0, "the reactor primed the managed trigger's cursor");
+
+    let pass = react_to_flows_cron(&node, &reactor, ws, next + 1)
+        .await
+        .unwrap();
+    assert_eq!(pass.fired, 1, "the managed cron flow fired exactly one run");
+
+    let run_id = cron_run_id("schedule:cooler", "trigger", next);
+    poll_run_terminal(&node, &author, ws, &run_id).await;
+
+    // The step-level assertion is the point: `partialFailure` with `rule → denied` is precisely the
+    // shape lb#167 produced, and a bare insight-count check would not say WHY it was zero.
+    let run = call_tool(
+        &node,
+        &author,
+        ws,
+        "flows.runs.get",
+        &json!({ "run_id": run_id }).to_string(),
+    )
+    .await
+    .expect("flows.runs.get ok");
+    let run: Value = serde_json::from_str(&run).unwrap();
+    let rule_step = run["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["id"] == "rule")
+        .expect("the managed flow has a rule step")
+        .clone();
+    assert_ne!(
+        rule_step["error"],
+        json!("denied"),
+        "the rule node was DENIED under the reactor's principal — this is lb#167: \
+         `reactor_caps()` is missing `mcp:rules.eval:call`"
+    );
+    assert_eq!(rule_step["outcome"], json!("ok"), "the rule step ran");
+    assert_eq!(run["status"], json!("success"), "no partialFailure");
+
+    // …and the effect landed. The insight is the only durable proof the cage actually executed.
+    assert_eq!(
+        count_insights(&node, &author, ws).await,
+        1,
+        "the scheduled rule raised its insight under the reactor's own authority"
     );
 }
 

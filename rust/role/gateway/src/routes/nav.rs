@@ -308,6 +308,32 @@ pub async fn set_nav_hidden(
     Ok(Json(serde_json::to_value(h).unwrap_or(Value::Null)))
 }
 
+/// `POST /nav/order` body — replace the workspace sidebar ordering (empty clears it).
+#[derive(Debug, Deserialize)]
+pub struct SetNavOrder {
+    #[serde(default)]
+    pub order: Vec<String>,
+}
+
+/// `POST /nav/order` — replace the workspace sidebar ordering (full-list LWW; bounded, no duplicate
+/// refs). Gated `nav.save`, the same authoring authority as the hidden-set. Ordering is a partial
+/// preference: it never adds or removes an entry, so a stale ref is inert and an unnamed one keeps
+/// its natural position. The set lives on the same record as `hidden`; each write carries the other
+/// field through. Read it back via `GET /nav/hidden`, which returns the whole record.
+pub async fn set_nav_order(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Json(body): Json<SetNavOrder>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let h = lb_host::nav_order_set(&gw.node.store, &p, p.ws(), body.order, gw.now())
+        .await
+        .map_err(status)?;
+    Ok(Json(serde_json::to_value(h).unwrap_or(Value::Null)))
+}
+
 fn parse_visibility(s: &str) -> Option<NavVisibility> {
     match s {
         "private" => Some(NavVisibility::Private),

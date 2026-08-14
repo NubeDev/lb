@@ -57,6 +57,11 @@ const APIKEY_READ_CAPS: &[&str] = &[
     "mcp:channel.list:call",
     "mcp:media.list:call",
     "mcp:media.get:call",
+    // Media BYTES over the bridge (base64, bounded slices) — the read half of `media.*` for a
+    // caller that cannot set an `Authorization` header. Grouped with `media.get` because it is the
+    // same read at a different granularity (metadata vs content), and it widens nothing: the verb
+    // re-checks the per-item `store:media/{id}:read` gate.
+    "mcp:media.read:call",
     "mcp:insight.list:call",
     "mcp:insight.get:call",
     // saved queries + their compiled reads (query.run composes the target cap — no widening).

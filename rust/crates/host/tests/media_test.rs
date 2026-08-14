@@ -5,9 +5,9 @@
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    chunk_write, media_chunk_put, media_delete, media_get, media_list, media_serve,
-    media_upload_begin, media_upload_commit, plan_serve, MediaError, ServePlan, CHUNK_SIZE,
-    CHUNK_TABLE,
+    chunk_write, media_chunk_put, media_chunk_write, media_delete, media_get, media_list,
+    media_read, media_serve, media_upload_begin, media_upload_commit, plan_serve, MediaError,
+    ServePlan, CHUNK_SIZE, CHUNK_TABLE,
 };
 use lb_store::Store;
 use sha2::{Digest, Sha256};
@@ -624,4 +624,417 @@ async fn range_slice_matches_served_bytes() {
         ),
         ServePlan::NotModified
     );
+}
+
+// ── `media.read` — bytes over the MCP bridge ────────────────────────────────────────────────────
+//
+// The verb exists for a caller that CANNOT set an `Authorization` header (a module-federated
+// extension UI, mounted deliberately without the session token). These tests pin the two things
+// that make it safe to hand bytes to that caller: it reaches nothing the serve route would not
+// serve, and it stops at the workspace wall.
+
+/// The round-trip: the base64 the verb returns decodes to exactly the bytes the serve route serves.
+/// If these ever diverge, an extension renders a corrupt image with no error to trace.
+#[tokio::test]
+async fn read_returns_the_same_bytes_the_serve_route_would() {
+    use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine as _;
+
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "nube", CAPS);
+    let img = tiny_png();
+    let cs = checksum(&img);
+
+    let begin = media_upload_begin(
+        &store,
+        &p,
+        "nube",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
+    media_upload_commit(&store, &p, "nube", &id, 200)
+        .await
+        .unwrap();
+
+    let out = media_read(&store, &p, "nube", &id, None, 0, None)
+        .await
+        .unwrap();
+
+    let decoded = B64.decode(out["bytes"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        decoded, img,
+        "the bridge must deliver the file byte-for-byte"
+    );
+    assert_eq!(out["mime"], serde_json::json!("image/png"));
+    assert_eq!(out["total"].as_u64().unwrap(), img.len() as u64);
+    assert_eq!(out["offset"].as_u64().unwrap(), 0);
+    assert!(
+        out["eof"].as_bool().unwrap(),
+        "a file this small arrives in one slice"
+    );
+}
+
+/// The derived `thumb` variant is reachable the same way — this is the rendition a hero actually
+/// wants, and the whole reason a UI would rather not pull the original.
+#[tokio::test]
+async fn read_serves_the_thumb_variant() {
+    use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine as _;
+
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "nube", CAPS);
+    let img = tiny_png();
+    let cs = checksum(&img);
+
+    let begin = media_upload_begin(
+        &store,
+        &p,
+        "nube",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
+    // Commit derives the thumbnail synchronously for an image.
+    media_upload_commit(&store, &p, "nube", &id, 200)
+        .await
+        .unwrap();
+
+    let out = media_read(&store, &p, "nube", &id, Some("thumb"), 0, None)
+        .await
+        .unwrap();
+
+    let decoded = B64.decode(out["bytes"].as_str().unwrap()).unwrap();
+    assert!(!decoded.is_empty(), "the thumb variant must carry bytes");
+    // Derived as JPEG regardless of the source mime (see `variant.rs`).
+    assert_eq!(out["mime"], serde_json::json!("image/jpeg"));
+}
+
+/// **The capability wall.** `media.read` must reach nothing the serve route would refuse — it
+/// delegates to `media_serve`, so the per-item `store:media/{id}:read` gate is the same one.
+/// Without it, bytes over the bridge would be a way around the wall rather than a way through it.
+#[tokio::test]
+async fn read_is_denied_without_the_media_read_cap() {
+    let store = Store::memory().await.unwrap();
+    // Upload + metadata caps, but NOT `store:media/*:read`.
+    let p = principal(
+        "user:alice",
+        "nube",
+        &["mcp:media.upload:call", "mcp:media.get:call"],
+    );
+    let img = tiny_png();
+    let cs = checksum(&img);
+
+    let begin = media_upload_begin(
+        &store,
+        &p,
+        "nube",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
+    media_upload_commit(&store, &p, "nube", &id, 200)
+        .await
+        .unwrap();
+
+    let err = media_read(&store, &p, "nube", &id, None, 0, None)
+        .await
+        .expect_err("reading bytes without the read cap must be refused");
+    assert!(matches!(err, MediaError::Denied), "got {err:?}");
+}
+
+/// **Workspace isolation.** A photo uploaded in one workspace is unreachable from another — the
+/// case the site-photo scope calls out explicitly, because testing only the annotation row would
+/// pass while the bytes leaked.
+#[tokio::test]
+async fn read_does_not_cross_the_workspace_wall() {
+    let store = Store::memory().await.unwrap();
+    let alice = principal("user:alice", "nube", CAPS);
+    let img = tiny_png();
+    let cs = checksum(&img);
+
+    let begin = media_upload_begin(
+        &store,
+        &alice,
+        "nube",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+    chunk_write(&store, "nube", &id, 0, &img).await.unwrap();
+    media_upload_commit(&store, &alice, "nube", &id, 200)
+        .await
+        .unwrap();
+
+    // A principal in ANOTHER workspace, holding every media cap there.
+    let mallory = principal("user:mallory", "other", CAPS);
+    let err = media_read(&store, &mallory, "other", &id, None, 0, None)
+        .await
+        .expect_err("another workspace must not reach these bytes");
+    assert!(
+        matches!(err, MediaError::NotFound | MediaError::Denied),
+        "got {err:?}"
+    );
+}
+
+/// A file larger than one slice is walked with `offset`, and reassembles exactly. This is the loop
+/// every caller writes, so the boundary it depends on is pinned against a real store.
+#[tokio::test]
+async fn a_multi_slice_file_reassembles_by_walking_offset() {
+    use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine as _;
+
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "nube", CAPS);
+    // Larger than one CHUNK_SIZE so the media spans multiple stored chunks too.
+    let blob: Vec<u8> = (0..(CHUNK_SIZE as usize + 4096))
+        .map(|i| (i % 251) as u8)
+        .collect();
+    let cs = checksum(&blob);
+
+    let begin = media_upload_begin(
+        &store,
+        &p,
+        "nube",
+        "application/octet-stream",
+        blob.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+    let chunks = begin["chunks"].as_u64().unwrap() as u32;
+    for n in 0..chunks {
+        let start = (n as usize) * CHUNK_SIZE as usize;
+        let end = ((start + CHUNK_SIZE as usize).min(blob.len())) as usize;
+        chunk_write(&store, "nube", &id, n, &blob[start..end])
+            .await
+            .unwrap();
+    }
+    media_upload_commit(&store, &p, "nube", &id, 200)
+        .await
+        .unwrap();
+
+    // Walk it in 64 KiB slices, exactly as a UI would.
+    let mut got: Vec<u8> = Vec::new();
+    let mut offset = 0u64;
+    let mut rounds = 0;
+    loop {
+        let out = media_read(&store, &p, "nube", &id, None, offset, Some(64 * 1024))
+            .await
+            .unwrap();
+        got.extend(B64.decode(out["bytes"].as_str().unwrap()).unwrap());
+        offset += out["len"].as_u64().unwrap();
+        rounds += 1;
+        assert!(rounds < 200, "the walk must terminate");
+        if out["eof"].as_bool().unwrap() {
+            break;
+        }
+    }
+
+    assert_eq!(got, blob, "a walked file must reassemble byte-for-byte");
+}
+
+/// **The whole point, end to end.** An upload driven ENTIRELY over the MCP bridge — begin, chunks,
+/// commit, read back — with no HTTP route touched at any step.
+///
+/// This is the path a module-federated extension UI must take, because it holds no bearer token and
+/// therefore cannot call `PUT /media/{id}/chunk/{n}` or `GET /media/{id}`. If this test fails, the
+/// only remaining way to upload a site photo from an extension is to lift the host's session token
+/// out of `localStorage` — which is what these two verbs exist to make unnecessary.
+#[tokio::test]
+async fn an_upload_completes_entirely_over_the_bridge_without_http() {
+    use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine as _;
+
+    let store = Store::memory().await.unwrap();
+    // Exactly the caps an extension would request: upload + read. No HTTP, no ambient session.
+    let p = principal(
+        "ext:pdnsw",
+        "nube",
+        &[
+            "mcp:media.upload:call",
+            "mcp:media.get:call",
+            "store:media/*:read",
+        ],
+    );
+
+    let img = tiny_png();
+    let cs = checksum(&img);
+
+    // 1. begin (MCP)
+    let begin = media_upload_begin(
+        &store,
+        &p,
+        "nube",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+    let chunks = begin["chunks"].as_u64().unwrap() as u32;
+
+    // 2. chunks (MCP, base64) — NOT the HTTP PUT route.
+    for n in 0..chunks {
+        let start = (n as usize) * CHUNK_SIZE as usize;
+        let end = (start + CHUNK_SIZE as usize).min(img.len());
+        let out = media_chunk_write(&store, &p, "nube", &id, n, &B64.encode(&img[start..end]))
+            .await
+            .unwrap();
+        assert_eq!(out["ok"], serde_json::json!(true));
+    }
+
+    // 3. commit (MCP)
+    let commit = media_upload_commit(&store, &p, "nube", &id, 200)
+        .await
+        .unwrap();
+    assert_eq!(
+        commit["ok"],
+        serde_json::json!(true),
+        "the checksum must verify — bytes that arrived over the bridge are the same bytes"
+    );
+
+    // 4. read back (MCP) and confirm it is byte-identical to what we uploaded.
+    let out = media_read(&store, &p, "nube", &id, None, 0, None)
+        .await
+        .unwrap();
+    assert_eq!(B64.decode(out["bytes"].as_str().unwrap()).unwrap(), img);
+}
+
+/// A re-write of the same chunk is idempotent over the bridge too — the property the HTTP route
+/// already has, and the one a flaky connection depends on.
+#[tokio::test]
+async fn a_re_written_chunk_is_idempotent_over_the_bridge() {
+    use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine as _;
+
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "nube", CAPS);
+    let img = tiny_png();
+    let cs = checksum(&img);
+
+    let begin = media_upload_begin(
+        &store,
+        &p,
+        "nube",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+
+    let b64 = B64.encode(&img);
+    media_chunk_write(&store, &p, "nube", &id, 0, &b64)
+        .await
+        .unwrap();
+    // Same chunk again — a retry after a dropped response.
+    media_chunk_write(&store, &p, "nube", &id, 0, &b64)
+        .await
+        .unwrap();
+
+    // The commit still verifies: the re-write upserted rather than appending.
+    media_upload_commit(&store, &p, "nube", &id, 200)
+        .await
+        .unwrap();
+    let served = media_serve(&store, &p, "nube", &id, None).await.unwrap();
+    assert_eq!(served.bytes, img);
+}
+
+/// Malformed base64 is refused with a reason naming the field, rather than reaching the store as
+/// truncated bytes that only fail later at checksum time.
+#[tokio::test]
+async fn a_chunk_that_is_not_base64_is_refused_with_the_reason() {
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "nube", CAPS);
+    let img = tiny_png();
+    let cs = checksum(&img);
+
+    let begin = media_upload_begin(
+        &store,
+        &p,
+        "nube",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+
+    let err = media_chunk_write(&store, &p, "nube", &id, 0, "not!valid!base64!")
+        .await
+        .expect_err("malformed base64 must be refused");
+    match err {
+        MediaError::BadInput(m) => assert!(m.contains("base64"), "got {m}"),
+        other => panic!("expected BadInput, got {other:?}"),
+    }
+}
+
+/// The upload cap gates the bridge path exactly as it gates the HTTP one — this verb must not be a
+/// way around `mcp:media.upload:call`.
+#[tokio::test]
+async fn chunk_write_is_denied_without_the_upload_cap() {
+    use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine as _;
+
+    let store = Store::memory().await.unwrap();
+    let uploader = principal("user:alice", "nube", CAPS);
+    let img = tiny_png();
+    let cs = checksum(&img);
+
+    let begin = media_upload_begin(
+        &store,
+        &uploader,
+        "nube",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+
+    // A principal with READ caps but no upload cap.
+    let reader = principal("user:bob", "nube", &["mcp:media.get:call"]);
+    let err = media_chunk_write(&store, &reader, "nube", &id, 0, &B64.encode(&img))
+        .await
+        .expect_err("writing chunks without the upload cap must be refused");
+    assert!(matches!(err, MediaError::Denied), "got {err:?}");
 }

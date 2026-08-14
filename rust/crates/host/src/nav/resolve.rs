@@ -55,6 +55,16 @@ pub async fn nav_resolve(
     let hidden_record = read_hidden(&node.store, ws).await?.unwrap_or_default();
     let hidden: BTreeSet<String> = hidden_record.hidden.iter().cloned().collect();
 
+    // The workspace ordering (same record) — the ARRANGING lever, applied after every strip so it
+    // only ever arranges what survived. A partial order: a named ref takes its position, an unnamed
+    // one keeps its natural order behind the named ones. Echoed for the same reason `hidden` is.
+    let rank: BTreeMap<&str, usize> = hidden_record
+        .order
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (r.as_str(), i))
+        .collect();
+
     // The caller's pins, resolved through the SAME item pipeline (cap-strip + ext-strip), then
     // hidden-stripped (hide beats pin). A stale/stripped pin never mutates the stored record.
     let pinned = resolve_pins(node, principal, ws, &hidden).await?;
@@ -70,6 +80,7 @@ pub async fn nav_resolve(
                 title: String::new(),
                 items: Vec::new(),
                 hidden: hidden_record.hidden,
+                order: hidden_record.order,
                 pinned,
             })
         }
@@ -83,6 +94,7 @@ pub async fn nav_resolve(
             }
         }
     }
+    apply_order(&mut items, &rank);
 
     Ok(ResolvedNav {
         source,
@@ -90,8 +102,45 @@ pub async fn nav_resolve(
         title: nav.title.clone(),
         items,
         hidden: hidden_record.hidden,
+        order: hidden_record.order,
         pinned,
     })
+}
+
+/// Apply the workspace ordering to a resolved sibling list, recursing into every `group` so a nested
+/// menu arranges at each depth (the same "every depth" reach `strip_hidden` has).
+///
+/// The sort is a **stable partial order**: an item whose ref appears in `rank` sorts by that index;
+/// an item that does not appear sorts after ALL named items, keeping its authored relative order
+/// (`sort_by_key` is stable). That is what makes an ordering non-destructive — a ref the admin never
+/// arranged, or one that arrived after the ordering was saved (a new dashboard, a freshly installed
+/// extension), simply lands at the end instead of vanishing or scrambling the rest.
+fn apply_order(items: &mut [ResolvedItem], rank: &BTreeMap<&str, usize>) {
+    if rank.is_empty() {
+        return;
+    }
+    for item in items.iter_mut() {
+        if item.kind == "group" {
+            apply_order(&mut item.items, rank);
+        }
+    }
+    // `usize::MAX` is the "unnamed" bucket — every unnamed item ties there and stability preserves
+    // their authored order relative to one another.
+    items.sort_by_key(|i| {
+        rank.get(group_or_item_ref(i).as_str())
+            .copied()
+            .unwrap_or(usize::MAX)
+    });
+}
+
+/// The ref an ORDERING matches an item by. Identical to [`item_ref`] for every leaf; a `group` has no
+/// surface/ext/dashboard identity of its own, so it orders by its heading — the `group:<Label>` ref
+/// the shell already uses to hide a section label. One grammar, both levers.
+fn group_or_item_ref(item: &ResolvedItem) -> String {
+    if item.kind == "group" {
+        return format!("group:{}", item.label);
+    }
+    item_ref(item)
 }
 
 /// The hidden-set filter (hide-and-pins scope) — drop a resolved item whose ref the admin hid, and
