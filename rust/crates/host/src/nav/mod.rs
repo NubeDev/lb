@@ -51,13 +51,13 @@ pub use default::nav_set_default;
 pub use delete::nav_delete;
 pub use error::NavError;
 pub use get::nav_get;
-pub use hidden::{nav_hidden_get, nav_hidden_set};
+pub use hidden::{nav_hidden_get, nav_hidden_set, nav_order_set};
 pub use list::nav_list;
 pub use list_shares::nav_list_shares;
 pub use model::{
     Nav, NavFacet, NavHidden, NavItem, NavPref, NavSummary, ResolvedItem, ResolvedNav,
-    ResolvedSource, Visibility, MAX_GROUP_DEPTH, MAX_HIDDEN, MAX_ITEMS, MAX_PINNED, MAX_TAG_GROUP,
-    MAX_TITLE_TEMPLATE,
+    ResolvedSource, Visibility, MAX_GROUP_DEPTH, MAX_HIDDEN, MAX_ITEMS, MAX_ORDER, MAX_PINNED,
+    MAX_TAG_GROUP, MAX_TITLE_TEMPLATE,
 };
 pub use pref::{nav_pref_get, nav_pref_set, nav_pref_set_force_builtin};
 pub use reach::{reach_caps, reach_check, REACH_ALL};

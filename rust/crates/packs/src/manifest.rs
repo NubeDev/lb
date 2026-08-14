@@ -378,17 +378,22 @@ pub struct Agent {
     pub context: String,
 }
 
-/// The sidebar seed — the set of item refs a pack hides from the workspace rail. Each ref is
-/// opaque data in the shared nav grammar (a bare surface key like `channels`, `ext:<id>`, or
-/// `dashboard:<id>`); the applier does not interpret them, it hands the set to `nav.hidden.set`
-/// verbatim. Rule 10: the arm branches on the KIND, never on a named pack, and never on which
-/// surface a ref names.
+/// The sidebar seed — the item refs a pack hides from, and the order it arranges, the workspace
+/// rail. Each ref is opaque data in the shared nav grammar (a bare surface key like `channels`,
+/// `ext:<id>`, `dashboard:<id>`, or a `group:<Label>` heading); the applier does not interpret them,
+/// it hands each set to `nav.hidden.set` / `nav.order.set` verbatim. Rule 10: the arm branches on the
+/// KIND, never on a named pack, and never on which surface a ref names.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Sidebar {
     /// The refs to hide (full set — LWW replaces, empty clears).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden: Vec<String>,
+    /// The rail ordering (full list — LWW replaces, empty clears). A PARTIAL order: a ref named here
+    /// takes that position, anything unnamed keeps its natural order behind it, so a pack may arrange
+    /// only the few entries it cares about without freezing the rest of the rail.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub order: Vec<String>,
 }
 
 impl Manifest {

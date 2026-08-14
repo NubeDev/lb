@@ -129,14 +129,26 @@ Refs share one grammar everywhere: a bare surface key (`"rules"`), `ext:<id>`, o
 curl -s -X POST http://127.0.0.1:8080/nav/hidden -H "Authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{ "hidden": ["dashboards", "ext:mqtt"] }'
 
+# Admin: ARRANGE the rail. A PARTIAL order — refs named here lead, in this order; everything
+# unnamed keeps its natural order behind them. A section heading orders as `group:<Label>`.
+curl -s -X POST http://127.0.0.1:8080/nav/order -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{ "order": ["group:Automation", "rules", "flows"] }'
+
 # Member: pin favorites (ordered). A PARTIAL write — omitting `id` leaves the active pick alone.
 curl -s -X POST http://127.0.0.1:8080/nav/pref -H "Authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{ "pinned": ["rules", "dashboard:cooler-health"] }'
 ```
 
-Caps: `nav.hidden.get` rides `mcp:nav.resolve:call` (member); `nav.hidden.set` rides
-`mcp:nav.save:call` (admin — the same authority as `nav.set_default`). Pins ride `nav.pref.*`
-(member-owned, keyed to the token `sub`). Bounds: 200 hidden refs, 50 pins (`BadInput` over).
+Caps: `nav.hidden.get` rides `mcp:nav.resolve:call` (member); `nav.hidden.set` and `nav.order.set`
+ride `mcp:nav.save:call` (admin — the same authority as `nav.set_default`). Pins ride `nav.pref.*`
+(member-owned, keyed to the token `sub`). Bounds: 200 hidden refs, 200 order refs (no duplicates),
+50 pins (`BadInput` over).
+
+Hiding and ordering share the one `nav_hidden:[ws]` record but are independent: each write carries
+the other field through, so a visibility save never discards an arrangement. Read both back with
+`GET /nav/hidden` — there is no separate order-read. An ordering never adds or removes an entry, so
+a stale ref (uninstalled ext, deleted board) is inert rather than destructive. See
+`docs/scope/nav/nav-order-scope.md`.
 
 ## 5. Publish a template dashboard as a per-site menu (reusable pages)
 

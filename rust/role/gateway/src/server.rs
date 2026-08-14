@@ -45,11 +45,12 @@ use crate::routes::{
     run_flow, run_query, run_rule, run_stream, save_brand, save_dashboard, save_flow, save_nav,
     save_panel, save_report, save_rule, scan_table, series_stream, serve_ext_ui,
     set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
-    set_nav_hidden, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
-    share_report, start_extension, surface_reach, system_acp, system_overview, system_subsystem,
-    system_tools, system_topology, telemetry_stream, test_active_def, test_datasource, test_def,
-    uninstall_extension, unshare_dashboard, unshare_nav, update_def, update_flow_node,
-    update_series_samples_route, upload_body_limit, upload_pack, upload_status, write_samples,
+    set_nav_hidden, set_nav_order, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav,
+    share_panel, share_report, start_extension, surface_reach, system_acp, system_overview,
+    system_subsystem, system_tools, system_topology, telemetry_stream, test_active_def,
+    test_datasource, test_def, uninstall_extension, unshare_dashboard, unshare_nav, update_def,
+    update_flow_node, update_series_samples_route, upload_body_limit, upload_pack, upload_status,
+    write_samples,
 };
 use crate::state::Gateway;
 
@@ -467,6 +468,9 @@ pub fn router(gw: Gateway) -> Router {
         // hide-and-pins scope: the workspace sidebar hidden-set (read member-level; write admin —
         // rides `nav.save`). Declutter only — every page verb is still re-checked on click.
         .route("/nav/hidden", get(get_nav_hidden).post(set_nav_hidden))
+        // The ARRANGING counterpart on the same record (admin — rides `nav.save`). Read-back is
+        // `GET /nav/hidden`, which returns the whole record including `order`.
+        .route("/nav/order", post(set_nav_order))
         // ui-layout (data-studio scope v2) — the member-owned per-surface workbench layout.
         .route("/layout/{surface}", get(get_layout).put(set_layout))
         // rules (rules-workbench scope, Phase 1) — the browser's `rules.*` Playground CRUD + run.

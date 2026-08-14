@@ -16,9 +16,9 @@ use serde_json::{json, Value};
 
 use super::model::{NavItem, Visibility};
 use super::{
-    nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_pref_get,
-    nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share,
-    nav_unshare, NavError,
+    nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_order_set,
+    nav_pref_get, nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default,
+    nav_share, nav_unshare, NavError,
 };
 use crate::boot::Node;
 
@@ -196,6 +196,15 @@ pub async fn call_nav_tool(
             let hidden: Vec<String> = serde_json::from_value(arg(input, "hidden")?.clone())
                 .map_err(|e| ToolError::BadInput(format!("hidden: {e}")))?;
             let h = nav_hidden_set(&node.store, principal, ws, hidden, u64_arg(input, "now")?)
+                .await
+                .map_err(to_tool)?;
+            Ok(serde_json::to_value(h).unwrap_or(Value::Null))
+        }
+        "nav.order.set" => {
+            // Admin write (rides `mcp:nav.save:call`, like `nav.hidden.set`) — full-list LWW.
+            let order: Vec<String> = serde_json::from_value(arg(input, "order")?.clone())
+                .map_err(|e| ToolError::BadInput(format!("order: {e}")))?;
+            let h = nav_order_set(&node.store, principal, ws, order, u64_arg(input, "now")?)
                 .await
                 .map_err(to_tool)?;
             Ok(serde_json::to_value(h).unwrap_or(Value::Null))

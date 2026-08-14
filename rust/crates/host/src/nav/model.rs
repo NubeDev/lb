@@ -74,6 +74,11 @@ pub const MAX_HIDDEN: usize = 200;
 /// over-cap (`BadInput`), never silently truncated.
 pub const MAX_PINNED: usize = 50;
 
+/// The largest ordering `nav.hidden.set` accepts (`NavHidden::order`). Sized like [`MAX_HIDDEN`] —
+/// an ordering names the same ref population a hidden-set does, so one bound covers both. Rejected
+/// over-cap (`BadInput`), never silently truncated.
+pub const MAX_ORDER: usize = 200;
+
 /// A nav's visibility tier — the S4 asset-sharing tiers (nav scope, "How it fits"; identical to the
 /// dashboard tiers, so the same gate-3 read check applies unchanged).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -269,6 +274,14 @@ pub struct NavPref {
 pub struct NavHidden {
     #[serde(default)]
     pub hidden: Vec<String>,
+    /// The workspace's ORDERING over the same opaque ref grammar — a partial, positional preference,
+    /// not a membership list. A ref named here sorts to its position; every ref NOT named keeps its
+    /// natural (caller-side) order after the named ones, so an ordering never hides an item and a
+    /// stale ref (an uninstalled ext, a deleted dashboard) is inert rather than destructive. Group
+    /// headings order by their `group:<Label>` ref alongside the items they contain. Additive field —
+    /// a pre-ordering record deserializes with it empty (serde default), meaning "natural order".
+    #[serde(default)]
+    pub order: Vec<String>,
     pub updated_ts: u64,
 }
 
@@ -307,6 +320,13 @@ pub struct ResolvedNav {
     /// including `Fallback`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden: Vec<String>,
+    /// The workspace ORDERING echo (`NavHidden::order`) — returned for the same reason as `hidden`:
+    /// the built-in `SURFACES`/ext-slot fallback menu lives client-side, so the server cannot apply
+    /// an ordering to the one tier it never materializes. Resolved `items` ARE already ordered by
+    /// this list; the echo lets the fallback tier apply the identical ordering itself. Present on
+    /// every source, including `Fallback`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub order: Vec<String>,
     /// The caller's **pinned favorites**, already resolved (cap-, uninstalled-ext-, and
     /// hidden-stripped — hide beats pin), in the member's order. Present on every source, including
     /// `Fallback` — pins render above whichever menu applies.

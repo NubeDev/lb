@@ -577,6 +577,14 @@ async fn apply_sidebar(
     // shape the workspace's menus by hand cannot hide via a pack either — no privileged path
     // (pack-core-scope §Caps). Declutter, never authz: hiding blocks no route.
     match crate::nav::nav_hidden_set(&node.store, principal, ws, sidebar.hidden.clone(), ts).await {
+        Ok(_) => {}
+        Err(crate::nav::NavError::Denied) => return DENIED.to_string(),
+        Err(_) => return FAILED.to_string(),
+    }
+    // The ordering rides the same object and the same gate — full-list LWW, clobbering alike. An
+    // empty `order` still writes (clearing it), so a pack that declares only `hidden` resets any
+    // ordering the workspace held, exactly as it resets the hidden-set it does not declare.
+    match crate::nav::nav_order_set(&node.store, principal, ws, sidebar.order.clone(), ts).await {
         Ok(_) => APPLIED.to_string(),
         Err(crate::nav::NavError::Denied) => DENIED.to_string(),
         Err(_) => FAILED.to_string(),

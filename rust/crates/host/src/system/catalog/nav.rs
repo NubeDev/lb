@@ -64,6 +64,12 @@ pub(super) const NAV: &[HostTool] = &[
         group: "nav",
         description: "replace the workspace sidebar hidden-set (admin)",
     },
+    // The ARRANGING counterpart on the same record — a partial order over the same opaque refs.
+    HostTool {
+        tool: "nav.order.set",
+        group: "nav",
+        description: "replace the workspace sidebar ordering (admin; partial order over item refs)",
+    },
     HostTool {
         tool: "nav.unshare",
         group: "nav",

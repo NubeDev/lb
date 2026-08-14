@@ -281,9 +281,13 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // hide-and-pins scope: reading the hidden-set is part of resolving one's own menu (the
         // resolver echoes it to every member anyway) — same `mcp:nav.resolve:call` read grant.
         "nav.resolve"
-    } else if qualified_tool == "nav.set_default" || qualified_tool == "nav.hidden.set" {
+    } else if qualified_tool == "nav.set_default"
+        || qualified_tool == "nav.hidden.set"
+        || qualified_tool == "nav.order.set"
+    {
         // hide-and-pins scope: curating the workspace hidden-set is the SAME authoring authority as
-        // the workspace-default pointer — it rides `mcp:nav.save:call`, no separate cap.
+        // the workspace-default pointer — it rides `mcp:nav.save:call`, no separate cap. Ordering
+        // the sidebar is that same curation, over the same record, so it rides the same cap.
         "nav.save"
     } else if qualified_tool == "grants.revoke" {
         // authz-verbs-mcp-dispatch scope: assign/revoke MUTATE the same grant surface and share the
