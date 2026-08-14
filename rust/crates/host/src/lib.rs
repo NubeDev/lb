@@ -223,10 +223,11 @@ pub use flows::schedule_store::{
 pub use flows::{
     arm_source, cron_is_valid, cron_run_id, disarm_source, fire_flipflop_node, fire_schedule_node,
     flipflop_run_id, placement_matches, react_to_flow_approvals, react_to_flow_sources,
-    react_to_flows_cron, react_to_flows_interval, react_to_flows_schedule, reconcile_flows,
-    reconcile_interval_timers, schedule_run_id, source_run_id, source_series, spawn_flow_reactors,
-    watch_flow_debug, watch_flow_run, FlowApprovalPass, FlowDebugWatch, FlowReactorPass,
-    FlowReconcilePass, FlowWatch, IntervalTimers, SourceReactorPass, TimerKey, TimerReconcilePass,
+    react_to_flows_cron, react_to_flows_interval, react_to_flows_schedule, reactor_caps,
+    reconcile_flows, reconcile_interval_timers, schedule_run_id, source_run_id, source_series,
+    spawn_flow_reactors, watch_flow_debug, watch_flow_run, FlowApprovalPass, FlowDebugWatch,
+    FlowReactorPass, FlowReconcilePass, FlowWatch, IntervalTimers, SourceReactorPass, TimerKey,
+    TimerReconcilePass,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
 pub use forms::{
@@ -310,9 +311,9 @@ pub use lb_authz::{Invite, InviteStatus};
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use media::{
-    call_media_tool, chunk_write, media_chunk_put, media_delete, media_get, media_list,
+    call_media_tool, chunk_write, media_chunk_put, media_delete, media_get, media_list, media_read,
     media_serve, media_upload_begin, media_upload_commit, plan_serve, MediaError, MediaStatus,
-    ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE,
+    ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE, MAX_READ_BYTES,
 };
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{

@@ -353,6 +353,16 @@ const VIEWER_CAPS: &[&str] = &[
     // CHANGING it (`versions.config.set`) is admin-only, below.
     "mcp:versions.config.get:call",
     "mcp:media.list:call",
+    // `media.read` returns BYTES (base64, in bounded slices) for callers that cannot set an
+    // `Authorization` header — a module-federated extension UI, which the host mounts without the
+    // session token on purpose. It sits on the viewer tier because it is a READ of media this
+    // workspace already holds, and because the alternative it replaces was extensions lifting the
+    // host's token out of `localStorage` to call `GET /media/{id}` themselves.
+    //
+    // This grant does NOT widen reach: the verb delegates to `media_serve`, which re-checks the
+    // per-item `store:media/{id}:read` capability, so holding this alone reaches no media the
+    // caller could not already serve over HTTP.
+    "mcp:media.read:call",
     "mcp:nav.hidden.get:call",
     "mcp:nav.pref.get:call",
     // generic per-workspace store READ. The verb-READ wildcards that used to live here

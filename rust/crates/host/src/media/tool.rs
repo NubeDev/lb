@@ -6,7 +6,9 @@ use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::{json, Value};
 
-use super::{media_delete, media_get, media_list, media_upload_begin, media_upload_commit};
+use super::{
+    media_delete, media_get, media_list, media_read, media_upload_begin, media_upload_commit,
+};
 
 /// Dispatch a `media.*` MCP call.
 pub async fn call_media_tool(
@@ -51,6 +53,24 @@ pub async fn call_media_tool(
                 .await
                 .map_err(ToolError::from)?;
             Ok(json!({ "media": list }))
+        }
+        // Bytes over the bridge, base64, in bounded slices — for a caller that cannot set an
+        // `Authorization` header and therefore cannot use `GET /media/{id}`. See `read.rs` for why
+        // that caller exists. `variant` selects a derived rendition (`thumb`); absent = original.
+        "media.read" => {
+            let id = str_arg(input, "id")?;
+            let variant = input.get("variant").and_then(|v| v.as_str());
+            let offset = input.get("offset").and_then(|v| v.as_u64()).unwrap_or(0);
+            // `as_u64` then narrow: a negative or fractional limit is simply absent rather than a
+            // rejection, and `media_read` clamps whatever survives to `MAX_READ_BYTES`.
+            let limit = input
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            let result = media_read(store, principal, ws, id, variant, offset, limit)
+                .await
+                .map_err(ToolError::from)?;
+            Ok(result)
         }
         "media.delete" => {
             let id = str_arg(input, "id")?;
