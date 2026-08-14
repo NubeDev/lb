@@ -42,20 +42,24 @@ pub async fn outbox_due(
     Ok(effects)
 }
 
-/// `outbox.mark_delivered {id}` — the target acknowledged delivery of effect `id`; mark it terminal so
-/// no later pass re-sends it. The driver calls this after its client confirms the external effect.
+/// `outbox.mark_delivered {id, ts?}` — the target acknowledged delivery of effect `id`; mark it
+/// terminal so no later pass re-sends it. The driver calls this after its client confirms the
+/// external effect. `ts` is the supersede guard (`lb_outbox::mark` module doc): the `ts` of the
+/// effect version the driver pulled — if the row was re-enqueued since, the mark is a no-op and the
+/// newer version stays pending.
 pub async fn outbox_mark_delivered(
     store: &Store,
     principal: &Principal,
     ws: &str,
     id: &str,
+    ts: Option<u64>,
 ) -> Result<(), OutboxError> {
     authorize_tool(principal, ws, "outbox.mark_delivered").map_err(|_| OutboxError::Denied)?;
-    mark_delivered(store, ws, id).await?;
+    mark_delivered(store, ws, id, ts).await?;
     Ok(())
 }
 
-/// `outbox.mark_failed {id, now, reason?, permanent?}` — record a failed delivery attempt of effect `id`
+/// `outbox.mark_failed {id, now, reason?, permanent?, ts?}` — record a failed delivery attempt of effect `id`
 /// at logical `now`: count the attempt, record `reason` on the row, then back off (push
 /// `next_attempt_ts`) or dead-letter (at `max_attempts`). Returns the resulting status so the relay can
 /// tally dead-letters without a re-read.
@@ -71,10 +75,11 @@ pub async fn outbox_mark_failed(
     now: u64,
     reason: &str,
     permanent: bool,
+    ts: Option<u64>,
 ) -> Result<lb_outbox::EffectStatus, OutboxError> {
     authorize_tool(principal, ws, "outbox.mark_failed").map_err(|_| OutboxError::Denied)?;
     if permanent {
-        return Ok(mark_dead_lettered(store, ws, id, reason).await?);
+        return Ok(mark_dead_lettered(store, ws, id, reason, ts).await?);
     }
-    Ok(mark_failed(store, ws, id, now, reason).await?)
+    Ok(mark_failed(store, ws, id, now, reason, ts).await?)
 }

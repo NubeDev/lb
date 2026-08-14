@@ -69,7 +69,7 @@ async fn dead_letter(node: &Node, ws: &str) {
     enqueue(&node.store, ws, "change", "c1", &json!({"k": "v"}), &effect)
         .await
         .unwrap();
-    mark_failed(&node.store, ws, "e1", 1, "target refused")
+    mark_failed(&node.store, ws, "e1", 1, "target refused", None)
         .await
         .unwrap();
 }

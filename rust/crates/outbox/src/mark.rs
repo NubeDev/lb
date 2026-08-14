@@ -14,6 +14,16 @@
 //! is the only transition that stops re-delivery on success (the receiver's `idempotency_key` dedup
 //! covers the race where it acknowledged but we crashed before marking).
 //!
+//! **The supersede guard (`delivered_ts`).** A stable-id effect (a setpoint keyed per point+slot,
+//! deliberately, so rapid re-writes coalesce) can be re-enqueued with a NEWER payload while an older
+//! version's delivery is still in flight. A mark keyed on id alone would then stamp the new,
+//! never-sent payload with the old attempt's outcome — for `Delivered` that is a lost update (the
+//! box keeps the old value forever; found live as "slide 4 times, the box settles on the middle
+//! one"). Every mark therefore takes the `ts` of the effect version the relay actually pulled: a
+//! mark whose `ts` no longer matches the row is a **no-op** — the newer version stays `Pending` and
+//! the next relay pass delivers it. `None` marks unconditionally (an operator replay / a caller
+//! that knows the id is never re-enqueued).
+//!
 //! Raw verbs — the relay (host) authorizes/owns the loop; these just persist the outcome.
 
 use lb_store::{read, write, Store, StoreError};
@@ -23,8 +33,14 @@ use super::TABLE;
 
 /// Mark effect `id` in workspace `ws` as `Delivered` and count the attempt. Errors if the effect
 /// is absent here (a mark for a missing or cross-workspace effect is a bug, not a silent create).
-pub async fn mark_delivered(store: &Store, ws: &str, id: &str) -> Result<(), StoreError> {
-    update(store, ws, id, |e| {
+/// `delivered_ts`: the supersede guard (module doc) — superseded marks are silent no-ops.
+pub async fn mark_delivered(
+    store: &Store,
+    ws: &str,
+    id: &str,
+    delivered_ts: Option<u64>,
+) -> Result<(), StoreError> {
+    update(store, ws, id, delivered_ts, |e| {
         e.status = EffectStatus::Delivered;
         e.attempts += 1;
         // Clear a previous attempt's reason: the row's last_error must describe its CURRENT state, and
@@ -32,13 +48,16 @@ pub async fn mark_delivered(store: &Store, ws: &str, id: &str) -> Result<(), Sto
         e.last_error = None;
     })
     .await
+    .map(|_| ())
 }
 
 /// Record a **transient** failed delivery of effect `id` in workspace `ws` at logical time `now`.
 /// Counts the attempt, records `reason` on the row, then dead-letters the effect if it has hit
 /// `max_attempts`, else schedules the next retry at `now + backoff(attempts)`. Errors if the effect is
 /// absent here. Returns the effect's status after the update (so the relay can tally dead-letters
-/// without a re-read).
+/// without a re-read). `delivered_ts`: the supersede guard (module doc) — a superseded failure
+/// leaves the newer pending version untouched (no attempt counted, no backoff) and returns its
+/// current status.
 ///
 /// `reason` must already be sanitized by the caller — it is durable, operator-visible text.
 pub async fn mark_failed(
@@ -47,9 +66,9 @@ pub async fn mark_failed(
     id: &str,
     now: u64,
     reason: &str,
+    delivered_ts: Option<u64>,
 ) -> Result<EffectStatus, StoreError> {
-    let mut resulting = EffectStatus::Failed;
-    update(store, ws, id, |e| {
+    let effect = update(store, ws, id, delivered_ts, |e| {
         e.attempts += 1;
         e.last_error = Some(reason.to_string());
         if e.attempts >= e.max_attempts {
@@ -58,10 +77,9 @@ pub async fn mark_failed(
             e.status = EffectStatus::Failed;
             e.next_attempt_ts = now.saturating_add(backoff(e.attempts));
         }
-        resulting = e.status;
     })
     .await?;
-    Ok(resulting)
+    Ok(effect.status)
 }
 
 /// Record a **permanent** delivery failure of effect `id` — park it immediately, with no further
@@ -75,36 +93,48 @@ pub async fn mark_failed(
 /// never resolve.
 ///
 /// Terminal, exactly like an exhausted retry budget: [`pending`](super::pending) does not return a
-/// dead-lettered effect, and the row is kept for audit and manual replay.
+/// dead-lettered effect, and the row is kept for audit and manual replay. `delivered_ts`: the
+/// supersede guard (module doc) — a newer pending version must not be parked for the OLD version's
+/// permanent failure (its payload may be deliverable), so a superseded park is a no-op too.
 pub async fn mark_dead_lettered(
     store: &Store,
     ws: &str,
     id: &str,
     reason: &str,
+    delivered_ts: Option<u64>,
 ) -> Result<EffectStatus, StoreError> {
-    update(store, ws, id, |e| {
+    let effect = update(store, ws, id, delivered_ts, |e| {
         e.attempts += 1;
         e.status = EffectStatus::DeadLettered;
         e.last_error = Some(reason.to_string());
     })
     .await?;
-    Ok(EffectStatus::DeadLettered)
+    Ok(effect.status)
 }
 
-/// Load `outbox:{id}` in `ws`, apply `mutate`, and upsert it back. The one read-modify-write seam
-/// both marks share, so the status/attempt bookkeeping lives in exactly one place.
+/// Load `outbox:{id}` in `ws`, apply `mutate`, and upsert it back — UNLESS `delivered_ts` says the
+/// row has been re-enqueued since the caller pulled it (the supersede guard, module doc), in which
+/// case the row is returned untouched. The one read-modify-write seam every mark shares, so the
+/// status/attempt bookkeeping AND the guard live in exactly one place.
 async fn update(
     store: &Store,
     ws: &str,
     id: &str,
+    delivered_ts: Option<u64>,
     mutate: impl FnOnce(&mut Effect),
-) -> Result<(), StoreError> {
+) -> Result<Effect, StoreError> {
     let value = read(store, ws, TABLE, id)
         .await?
         .ok_or_else(|| StoreError::Decode(format!("mark: no effect {id} in ws {ws}")))?;
     let mut effect: Effect =
         serde_json::from_value(value).map_err(|e| StoreError::Decode(e.to_string()))?;
+    if let Some(ts) = delivered_ts {
+        if effect.ts != ts {
+            return Ok(effect); // superseded — a newer version owns this row now
+        }
+    }
     mutate(&mut effect);
     let updated = serde_json::to_value(&effect).map_err(|e| StoreError::Decode(e.to_string()))?;
-    write(store, ws, TABLE, id, &updated).await
+    write(store, ws, TABLE, id, &updated).await?;
+    Ok(effect)
 }

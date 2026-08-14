@@ -1216,7 +1216,10 @@ async fn call_inbox_outbox_tool(
                 .get("id")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ToolError::BadInput("missing arg: id".into()))?;
-            outbox_mark_delivered(&node.store, principal, ws, id)
+            // The supersede guard: the `ts` of the effect version the driver pulled (see
+            // `lb_outbox::mark`). Optional — an omitted `ts` marks unconditionally, as before.
+            let ts = input.get("ts").and_then(|v| v.as_u64());
+            outbox_mark_delivered(&node.store, principal, ws, id, ts)
                 .await
                 .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "ok": true }))
@@ -1237,7 +1240,9 @@ async fn call_inbox_outbox_tool(
                 .get("permanent")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let status = outbox_mark_failed(&node.store, principal, ws, id, now, reason, permanent)
+            let ts = input.get("ts").and_then(|v| v.as_u64());
+            let status =
+                outbox_mark_failed(&node.store, principal, ws, id, now, reason, permanent, ts)
                 .await
                 .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "status": status }))
