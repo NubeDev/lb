@@ -1079,8 +1079,14 @@ mod tests {
         ] {
             let cap = read.to_string();
             assert!(author_caps().contains(&cap), "{read} must be an AUTHOR cap");
-            assert!(member_role_caps().contains(&cap), "the member bundle must hold {read} by name");
-            assert!(!admin_only_caps().contains(&cap), "{read} must NOT be admin-only — it is a read");
+            assert!(
+                member_role_caps().contains(&cap),
+                "the member bundle must hold {read} by name"
+            );
+            assert!(
+                !admin_only_caps().contains(&cap),
+                "{read} must NOT be admin-only — it is a read"
+            );
         }
         // `mcp:device.list:call` (bare, `notify`'s unrelated feature) must stay untouched by any of
         // ros's own `ros.device.list` caps — confirms the prefix actually avoids the collision rather
@@ -1101,9 +1107,18 @@ mod tests {
             "mcp:ros.restart:call",
         ] {
             let cap = write.to_string();
-            assert!(admin_only_caps().contains(&cap), "{write} must be admin-only — holds a credential or writes real hardware");
-            assert!(!author_caps().contains(&cap), "{write} must NOT leak into AUTHOR_CAPS");
-            assert!(!member_role_caps().contains(&cap), "{write} must NOT be in the member bundle");
+            assert!(
+                admin_only_caps().contains(&cap),
+                "{write} must be admin-only — holds a credential or writes real hardware"
+            );
+            assert!(
+                !author_caps().contains(&cap),
+                "{write} must NOT leak into AUTHOR_CAPS"
+            );
+            assert!(
+                !member_role_caps().contains(&cap),
+                "{write} must NOT be in the member bundle"
+            );
         }
     }
 

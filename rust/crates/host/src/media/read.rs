@@ -41,6 +41,7 @@ use serde_json::{json, Value};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 
+use super::chunk::media_chunk_put;
 use super::error::MediaError;
 use super::serve::media_serve;
 
@@ -93,6 +94,37 @@ pub async fn media_read(
     }))
 }
 
+/// Write one chunk of an in-flight upload, from base64 — the WRITE counterpart of [`media_read`].
+///
+/// Same motivation, same caller: `PUT /media/{id}/chunk/{n}` is an HTTP route and needs an
+/// `Authorization` header, which an extension page does not have. Without this verb, an extension
+/// can call `upload_begin` and `upload_commit` (both MCP) but has no way to put the bytes in
+/// between — which is a half-usable upload surface, and the shape that pushes an author back to
+/// lifting the host's token.
+///
+/// The gate is [`media_chunk_put`]'s, reused rather than restated: `mcp:media.upload:call`, the
+/// same status/range/size validation, and the same idempotent re-PUT. Everything this verb adds is
+/// base64 decoding.
+pub async fn media_chunk_write(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    id: &str,
+    n: u32,
+    bytes_b64: &str,
+) -> Result<Value, MediaError> {
+    // Decoded BEFORE the gate does its work, but the gate still runs first inside `media_chunk_put`
+    // — a malformed body is a bad request either way, and decoding here keeps the error specific
+    // rather than surfacing as a size mismatch downstream.
+    let bytes = BASE64
+        .decode(bytes_b64)
+        .map_err(|e| MediaError::BadInput(format!("bytes is not valid base64: {e}")))?;
+
+    media_chunk_put(store, principal, ws, id, n, &bytes).await?;
+
+    Ok(json!({ "ok": true, "n": n, "len": bytes.len() as u64 }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,7 +144,10 @@ mod tests {
     fn a_small_file_comes_back_whole_and_flags_eof() {
         let (start, len, eof) = slice_of(500, 0, None);
         assert_eq!((start, len), (0, 500));
-        assert!(eof, "a file inside one slice must terminate the loop immediately");
+        assert!(
+            eof,
+            "a file inside one slice must terminate the loop immediately"
+        );
     }
 
     #[test]
@@ -128,7 +163,10 @@ mod tests {
     fn a_file_that_is_exactly_one_slice_terminates() {
         let (_, len, eof) = slice_of(MAX_READ_BYTES, 0, None);
         assert_eq!(len, MAX_READ_BYTES);
-        assert!(eof, "exactly one slice is the whole file — eof, not a second empty read");
+        assert!(
+            eof,
+            "exactly one slice is the whole file — eof, not a second empty read"
+        );
     }
 
     #[test]

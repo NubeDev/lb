@@ -311,9 +311,9 @@ pub use lb_authz::{Invite, InviteStatus};
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use media::{
-    call_media_tool, chunk_write, media_chunk_put, media_delete, media_get, media_list, media_read,
-    media_serve, media_upload_begin, media_upload_commit, plan_serve, MediaError, MediaStatus,
-    ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE, MAX_READ_BYTES,
+    call_media_tool, chunk_write, media_chunk_put, media_chunk_write, media_delete, media_get,
+    media_list, media_read, media_serve, media_upload_begin, media_upload_commit, plan_serve,
+    MediaError, MediaStatus, ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE, MAX_READ_BYTES,
 };
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{
