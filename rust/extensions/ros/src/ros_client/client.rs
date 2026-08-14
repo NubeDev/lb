@@ -135,6 +135,13 @@ fn shared_http() -> &'static HttpClient {
     static HTTP: OnceLock<HttpClient> = OnceLock::new();
     HTTP.get_or_init(|| {
         HttpClient::builder()
+            // A remote box over the internet/VPN stalls sometimes. Without these, one stalled
+            // request wedges its tool call indefinitely — observed live as 60s+ hangs that ended
+            // only when the supervisor killed the child, taking every queued call down with it. A
+            // bounded failure (the caller sees "unreachable", the relay retries) beats a wedge.
+            // 30s total is generous for the biggest real response (a full with_points host tree).
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30))
             .build()
             .expect("reqwest client builder failed")
     })
