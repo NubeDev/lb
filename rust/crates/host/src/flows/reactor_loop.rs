@@ -79,6 +79,16 @@ pub fn reactor_caps() -> Vec<String> {
         "mcp:insight.raise:call".into(),
         "mcp:insight.ack:call".into(),
         "mcp:insight.resolve:call".into(),
+        // The OTHER finishing move a rule has: `alert(...)`. The host routes every alert-marked
+        // finding to the inbox (attention) + the outbox (must-deliver) at the END of a successful
+        // eval (`rules::run::route_alerts`), under the caller's principal. A deny there fails the
+        // whole `rules.eval`, so a scheduled rule whose body ends in `alert()` is `denied` on every
+        // fire even with `mcp:rules.eval:call` granted above — the same lb#167 asymmetry, one verb
+        // deeper. Both are workspace-scoped durable-write verbs the reactor already has the store
+        // surface for; neither reaches a third party (the outbox effect is enqueued, and DELIVERING
+        // it is the outbox worker's own principal's job).
+        "mcp:inbox.record:call".into(),
+        "mcp:outbox.enqueue:call".into(),
     ]
 }
 

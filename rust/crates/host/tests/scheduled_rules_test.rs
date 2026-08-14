@@ -55,6 +55,8 @@ const FULL: &[&str] = &[
     "mcp:flows.run:call",
     "mcp:insight.raise:call",
     "mcp:insight.list:call",
+    "mcp:inbox.list:call",
+    "mcp:rules.delete:call",
     "store:rule:write",
     "store:rule:read",
     "store:flow:write",
@@ -623,6 +625,155 @@ async fn scheduled_rule_fires_under_the_reactors_own_principal_not_the_authors()
     );
 }
 
+/// **An ALERTING scheduled rule, under the reactor's own authority** (lb#167, second half).
+///
+/// `insight.raise(...)` is one of a rule's two finishing moves; `alert(...)` is the other, and it
+/// takes a DIFFERENT door: the host fans every alert-marked finding out to the inbox + outbox at the
+/// end of a successful eval (`rules::run::route_alerts`), under the calling principal. A deny there
+/// fails the whole `rules.eval`, so granting `mcp:rules.eval:call` alone leaves an alerting rule
+/// `denied` on every fire — the same asymmetry, one verb deeper.
+///
+/// Same construction as the test above and for the same reason: the principal comes from
+/// `reactor_caps()` itself, so removing either grant fails this test rather than silently un-shipping
+/// the fix. Fails without `mcp:inbox.record:call` / `mcp:outbox.enqueue:call`; passes with them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn scheduled_alerting_rule_routes_to_inbox_under_the_reactors_own_principal() {
+    let ws = "sched-reactor-alert";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let author = principal(ws, FULL);
+
+    let body = "#[schedule(\"every 15 minutes\")]\n\n\
+                alert(#{ level: \"warning\", title: \"scheduled alert\", n: 1 });";
+    save_rule(&node, &author, ws, "alerter", body).await;
+    assert_eq!(
+        count_inbox(&node, &author, ws).await,
+        0,
+        "clean start: nothing on the rules channel"
+    );
+
+    let reactor = Principal::routed("node:reactor", ws, reactor_caps());
+    react_to_flows_cron(&node, &reactor, ws, 100).await.unwrap();
+    let next = cursor_next(&node, ws, "schedule:alerter", "trigger").await;
+    let pass = react_to_flows_cron(&node, &reactor, ws, next + 1)
+        .await
+        .unwrap();
+    assert_eq!(pass.fired, 1, "the managed cron flow fired exactly one run");
+
+    let run_id = cron_run_id("schedule:alerter", "trigger", next);
+    poll_run_terminal(&node, &author, ws, &run_id).await;
+
+    let run = call_tool(
+        &node,
+        &author,
+        ws,
+        "flows.runs.get",
+        &json!({ "run_id": run_id }).to_string(),
+    )
+    .await
+    .expect("flows.runs.get ok");
+    let run: Value = serde_json::from_str(&run).unwrap();
+    let rule_step = run["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["id"] == "rule")
+        .expect("the managed flow has a rule step")
+        .clone();
+    assert_ne!(
+        rule_step["error"],
+        json!("denied"),
+        "the alerting rule was DENIED under the reactor's principal — `reactor_caps()` is missing \
+         `mcp:inbox.record:call` / `mcp:outbox.enqueue:call` (lb#167)"
+    );
+    assert_eq!(run["status"], json!("success"), "no partialFailure");
+
+    // The routed item is the durable proof the fan-out ran, not just that the cage did.
+    assert_eq!(
+        count_inbox(&node, &author, ws).await,
+        1,
+        "the scheduled alert landed on the inbox's `rules` channel"
+    );
+}
+
+// --- Deleting a scheduled rule tears its cron down (lb#167 follow-up) ---------------------------
+
+/// A deleted rule must not leave its managed cron behind. Before the fix `rules.delete` tombstoned
+/// only the rule record, so `schedule:{id}` kept firing on its own schedule at a rule that no longer
+/// existed — an orphan with no owner left to delete it through the rules surface.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rules_delete_tears_down_the_managed_flow() {
+    let ws = "sched-delete";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal(ws, FULL);
+
+    save_rule(
+        &node,
+        &p,
+        ws,
+        "doomed",
+        &scheduled_rule_body("#[schedule(\"every 15 minutes\")]"),
+    )
+    .await;
+    assert_eq!(
+        flows_get(&node, &p, ws, "schedule:doomed").await["id"],
+        json!("schedule:doomed"),
+        "the managed flow exists before the delete"
+    );
+
+    let out = call_tool(
+        &node,
+        &p,
+        ws,
+        "rules.delete",
+        &json!({ "id": "doomed" }).to_string(),
+    )
+    .await
+    .expect("rules.delete ok");
+    let out: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(out["ok"], json!(true));
+    assert_eq!(
+        out["schedule"]["managed"],
+        json!(false),
+        "the delete reports the schedule as torn down"
+    );
+
+    let gone = call_tool(
+        &node,
+        &p,
+        ws,
+        "flows.get",
+        &json!({ "id": "schedule:doomed" }).to_string(),
+    )
+    .await;
+    assert!(
+        gone.is_err(),
+        "deleting the rule deletes its managed cron flow — an orphaned cron fires forever at a rule \
+         that no longer exists (lb#167 follow-up)"
+    );
+
+    // …and the reactor has nothing left to fire: the effect, not just the record.
+    let reactor = Principal::routed("node:reactor", ws, reactor_caps());
+    react_to_flows_cron(&node, &reactor, ws, 100).await.unwrap();
+    let pass = react_to_flows_cron(&node, &reactor, ws, u64::MAX / 2)
+        .await
+        .unwrap();
+    assert_eq!(
+        pass.fired, 0,
+        "a torn-down schedule fires nothing, even at a far-future tick"
+    );
+
+    // Idempotent: a second delete (and a delete of an absent rule) is a no-op, not an error.
+    call_tool(
+        &node,
+        &p,
+        ws,
+        "rules.delete",
+        &json!({ "id": "doomed" }).to_string(),
+    )
+    .await
+    .expect("a repeated rules.delete is a no-op");
+}
+
 // --- The ship gate: NO rule-cron reactor exists ------------------------------------------------
 
 #[test]
@@ -688,6 +839,14 @@ async fn count_insights(node: &Arc<HostNode>, p: &Principal, ws: &str) -> usize 
     .unwrap()
     .items
     .len()
+}
+
+/// Items on the inbox's `rules` channel — where `route_alerts` lands an `alert()` finding.
+async fn count_inbox(node: &Arc<HostNode>, p: &Principal, ws: &str) -> usize {
+    lb_host::list_inbox(&node.store, p, ws, "rules")
+        .await
+        .unwrap()
+        .len()
 }
 
 async fn cursor_next(node: &Arc<HostNode>, ws: &str, flow: &str, node_id: &str) -> u64 {

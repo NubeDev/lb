@@ -129,3 +129,89 @@ workspace test failure is a **pre-existing, unrelated** `lb-cli` fixture (`inclu
 - Debug: `debugging/rules/scheduled-rule-directive-breaks-cage.md`.
 - Public: `doc-site/content/public/rules/rules.md` (schedule section).
 - Skill: `skills/rules/SKILL.md` (schedule-a-rule walkthrough).
+
+---
+
+# Addendum — 2026-08-14: scheduled rules were denied on every fire (lb#167)
+
+Slice 4 above shipped a green end-to-end firing test, and scheduled rules **still never worked on a
+running node**. The follow-up session that closed [#167](https://github.com/NubeDev/lb/issues/167).
+
+## What was wrong
+
+A live probe (`#[schedule("every 1 minute")]`) saved, compiled `*/1 * * * *`, built the managed flow,
+and fired dead on the minute — with `{"id":"rule","outcome":"err","error":"denied"}` every time and
+the run settled `partialFailure`. Six consecutive fires, all identical. `rules.run` on the same rule
+succeeded.
+
+That asymmetry is the whole bug: a **manual** run rides the caller's token; a **scheduled** fire runs
+under the fixed system principal `node:reactor`, minted by `spawn_flow_reactors` from
+`reactor_caps()`. Two different authorities — and `reactor_caps()` had no `rules.*` at all. (`mcp:
+*.call:call`, already in the list, does not cover it: the mcp resource splits on `.`, so that pattern
+means "second segment is literally `call`".)
+
+The deny then **moved** as it was fixed, which is why this took two rounds:
+
+1. `mcp:rules.eval:call` — the `rule` node's dispatch. Without it nothing runs. *(shipped in #168)*
+2. `mcp:insight.raise:call` + `ack`/`resolve` — a raising rule is the ordinary FDD/EMS shape; raising
+   carries a lifecycle, so `raise` without the ageing pair is a half-grant. *(shipped in #168)*
+3. `mcp:inbox.record:call` + `mcp:outbox.enqueue:call` — the **other** finishing move, `alert(...)`.
+   `rules::run::route_alerts` fans every alert-marked finding to inbox + outbox at the *end* of a
+   successful eval, under the same principal, and a deny there fails the whole `rules.eval`. So an
+   alerting rule stayed `denied` with 1 and 2 granted. *(this session)*
+
+Named verbs throughout — the deliberate boundary in that function (blanket `mcp:*.*:call` refused for
+`ext-call`, a fixed system principal carries no third-party reach) is unchanged. None of these leave
+the workspace: an outbox effect is *enqueued*, and delivering it is the outbox worker's own
+principal's job.
+
+## Also fixed: `rules.delete` orphaned the managed cron
+
+`rules.delete` tombstoned the rule record and left `flow:{ws}:schedule:{id}` running — a cron firing
+forever at a rule that no longer exists, with no owner left to remove it through the rules surface.
+It now runs the **same** teardown a directive-less re-save runs (`schedule::sync_schedule(.., None)`),
+so there is one derived-state reconciler rather than two: idempotent (an absent flow is a no-op,
+which also self-heals an already-orphaned one), and a caller without flow-write gets the honest
+`pending` marker rather than a failed delete, exactly as on save. The delete response now carries the
+`schedule` block.
+
+## Why the green suite meant nothing
+
+`scheduled_rules_test.rs` drove the managed flow with the author's **FULL** principal, which holds
+every one of these caps. It exercised the reactor's *code path* while substituting a different
+*authority* — the single variable the bug lived in. The suite was green through all six failing
+fires.
+
+The regression tests therefore mint the **production** principal from the production function:
+`Principal::routed("node:reactor", ws, reactor_caps())` (`reactor_caps()` is `pub` for exactly this).
+A hand-copied cap list in a test is a mirror that goes stale silently and turns green precisely when
+the product breaks.
+
+## Tests (green; both revert-checked)
+
+- `scheduled_rule_fires_under_the_reactors_own_principal_not_the_authors` *(#168)* — rule step not
+  `denied`, run `success`, insight landed.
+- `scheduled_alerting_rule_routes_to_inbox_under_the_reactors_own_principal` — same for an `alert()`
+  body; asserts the routed inbox item on the `rules` channel. Fails `left: "denied"` with the two
+  caps removed.
+- `rules_delete_tears_down_the_managed_flow` — after the delete `flows.get` is gone AND a far-future
+  reactor tick fires **nothing** (the effect, not just the record); a repeat delete is a no-op. Fails
+  on the surviving flow with the teardown removed.
+
+```
+running 15 tests
+test scheduled_alerting_rule_routes_to_inbox_under_the_reactors_own_principal ... ok
+test rules_delete_tears_down_the_managed_flow ... ok
+test scheduled_rule_fires_under_the_reactors_own_principal_not_the_authors ... ok
+... (12 more)
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+```
+
+`versions_test` (14), `rules_workflow_convergence_test` (9), `flows_run_test` (49),
+`flows_triggers_test` (19), `flows_orphan_sweep_test` (3) all green. `rules_test` (3) and
+`flows_platform_nodes_test` (4) have failures that reproduce **identically on a stashed clean tree**
+— pre-existing, untouched by this change.
+
+## Cross-links
+- Debug: `debugging/rules/scheduled-rule-denied-under-reactor-principal.md`.
+- Issue: lb#167. First half: PR #168.

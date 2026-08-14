@@ -40,6 +40,16 @@ directive is authoring sugar for a flow, not a runtime that scans rules.
   the preview matches reality. `rules.list {scheduled:true}` returns only rules that run on a timer. A
   hand-edited managed flow shows `drift:true`; the next save re-asserts the directive (the rule is the
   source of truth). Schedules are UTC (v1).
+- **Delete.** `rules.delete` tears the managed flow down with the rule (the same reconciler a
+  directive-less re-save runs), so a deleted rule never leaves a cron firing at nothing. It is
+  idempotent — a delete also cleans up an already-orphaned schedule flow — and a caller without
+  flow-write gets the same honest `pending` marker rather than a failed delete. The response carries
+  the resulting `schedule` block.
+- **Who fires it.** A scheduled fire runs under the node's own system principal (`node:reactor`), not
+  the author's token. That principal is granted exactly the verbs a rule finishes with —
+  `rules.eval`, `insight.raise`/`ack`/`resolve`, and `inbox.record`/`outbox.enqueue` for `alert()` —
+  and nothing else: it carries **no** blanket reach to third-party extension tools. A scheduled rule
+  that must call `<ext>.<tool>` is the run-as-owner case, still a follow-up.
 
 See the skill (`docs/skills/rules/SKILL.md` §10) for the phrase table and worked payloads.
 

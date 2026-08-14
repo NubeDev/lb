@@ -303,7 +303,15 @@ pub async fn call_rules_tool(
         "rules.delete" => {
             let id = str_arg(input, "id")?;
             rules_delete(&node.store, principal, ws, id).await?;
-            Ok(json!({ "ok": true }))
+            // Tear the managed `cron → rule` flow down with the rule (lb#167 follow-up). Deleting a
+            // rule but leaving its schedule flow behind orphans a cron that fires forever at a rule
+            // that no longer exists. This is the SAME teardown a re-save without the directive runs
+            // (`sync_schedule(.., None)`), so there is one derived-state reconciler, not two: it is
+            // idempotent (an absent flow is a no-op — which also self-heals an already-orphaned one)
+            // and a caller without flow-write gets the honest `pending` marker rather than a failed
+            // delete, exactly as on save.
+            let sync = schedule::sync_schedule(node, principal, ws, id, None).await;
+            Ok(json!({ "ok": true, "schedule": sync }))
         }
         "rules.help" => {
             // The introspection surface: return the rule-cage function catalog verbatim (the single

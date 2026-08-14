@@ -433,7 +433,17 @@ lies. **Change** the directive + re-save → one `flows.node.update` to the new 
 + re-save → the managed flow is deleted (the rule reverts to run-on-demand). If a power user hand-edits
 the managed flow's cron, `rules.get` flags `drift:true` and the next save **re-asserts** the directive
 (the rule is the source of truth). The directive line is **stripped before the cage compiles the body**,
-so `insight.raise(#{…})` and other `#{}` map literals below it run normally.
+so `insight.raise(#{…})` and other `#{}` map literals below it run normally. `rules.delete` also tears
+the managed flow down (same reconciler), so deleting a scheduled rule never leaves an orphaned cron
+firing at nothing.
+
+**A scheduled fire runs as the node, not as you.** The managed flow is fired under the system principal
+`node:reactor`, whose caps are a fixed named list — `rules.eval`, `insight.raise`/`ack`/`resolve`, and
+`inbox.record`/`outbox.enqueue` (so `raise()` and `alert()` both work headless). It holds **no** blanket
+reach to extension tools: a rule whose body calls an `<ext>.<tool>` verb runs fine by hand and is
+`denied` on a schedule. If a scheduled run comes back `partialFailure` with the `rule` step `"denied"`
+while `rules.run` succeeds, that gap is the cause — check `flows.runs.get` for the failing step rather
+than re-reading the rule body.
 
 ## Gotchas
 
