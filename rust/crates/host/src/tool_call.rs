@@ -273,8 +273,26 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // and so never crossed the outer gate. This is the shipped-but-unusable state the
         // `viz.query_batch` / `series.latest_many` aliases below already exist to prevent.
         "series.retention.set"
-    } else if qualified_tool == "outbox.enqueue_held" {
-        "outbox.enqueue"
+    } else if qualified_tool == "media.upload_begin"
+        || qualified_tool == "media.chunk_write"
+        || qualified_tool == "media.upload_commit"
+    {
+        // media scope: the three phases of ONE upload ride the ONE `mcp:media.upload:call` grant —
+        // beginning, writing the bytes, and committing are not three privileges, and each verb's
+        // own gate (`begin.rs`, `chunk.rs` via `media_chunk_put`, `commit.rs`) already checks
+        // exactly that cap. No `mcp:media.upload_begin:call` / `.chunk_write:call` /
+        // `.upload_commit:call` exists in ANY role bundle, so without this arm the OUTER gate
+        // demanded a cap nobody can hold and **the entire upload surface was unreachable for every
+        // caller, admins included** — while `media.list`/`get`/`read` worked, because their literal
+        // names ARE their caps. Found by driving it from an extension page on a live node: the
+        // token held `mcp:media.upload:call` and all three verbs still answered a bare `denied`.
+        // Same shipped-but-unusable shape as `series.retention.delete` and `viz.query_batch` above.
+        "media.upload"
+    } else if qualified_tool == "media.list" {
+        // `media_list`'s own gate checks `media.get` (see `get.rs`) — the outer gate must ask the
+        // same question, or a caller holding `mcp:media.get:call` alone passes here and is denied
+        // inside. It works today only because the member bundle happens to grant BOTH.
+        "media.get"
     } else if qualified_tool.starts_with("telemetry.") {
         crate::read_or_admin_cap(qualified_tool)
     } else if qualified_tool.starts_with("nav.pref.") || qualified_tool == "nav.hidden.get" {
@@ -1400,5 +1418,45 @@ mod host_native_tests {
         assert!(is_host_native("flows.nodes"));
         assert!(is_host_native("rules.eval"));
         assert!(is_host_native("dashboard.get"));
+    }
+}
+
+#[cfg(test)]
+mod media_gate_tests {
+    use super::gate_tool_for;
+
+    /// **THE REGRESSION**: the outer gate asked for a cap that exists in no role bundle, so the
+    /// whole upload surface was unreachable for every caller while the read verbs worked. Each of
+    /// these three re-checks `media.upload` INSIDE itself (`begin.rs`, `chunk.rs`, `commit.rs`);
+    /// the outer gate must ask the same question or the two gates disagree and the strictest wins.
+    #[test]
+    fn the_upload_phases_ride_the_one_upload_cap() {
+        for verb in [
+            "media.upload_begin",
+            "media.chunk_write",
+            "media.upload_commit",
+        ] {
+            assert_eq!(
+                gate_tool_for(verb),
+                "media.upload",
+                "{verb} must gate on mcp:media.upload:call — no per-phase cap is minted"
+            );
+        }
+    }
+
+    /// `media_list` checks `media.get` inside (`get.rs`), so the outer gate must too — otherwise a
+    /// caller holding only `mcp:media.get:call` passes the outer gate and is denied within.
+    #[test]
+    fn list_gates_on_the_same_cap_its_body_checks() {
+        assert_eq!(gate_tool_for("media.list"), "media.get");
+    }
+
+    /// The verbs whose literal name IS their cap must stay unaliased — over-aliasing would widen
+    /// `read`/`delete` onto a grant their bodies never check.
+    #[test]
+    fn the_self_named_media_verbs_are_untouched() {
+        for verb in ["media.read", "media.get", "media.delete"] {
+            assert_eq!(gate_tool_for(verb), verb);
+        }
     }
 }

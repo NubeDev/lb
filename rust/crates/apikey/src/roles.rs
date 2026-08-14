@@ -62,6 +62,10 @@ const APIKEY_READ_CAPS: &[&str] = &[
     // same read at a different granularity (metadata vs content), and it widens nothing: the verb
     // re-checks the per-item `store:media/{id}:read` gate.
     "mcp:media.read:call",
+    // The per-item gate that re-check needs, named concretely: this bundle's `store:*:read` is
+    // SINGLE-SEGMENT and does not span `media/{id}`, so without this line the grant above reaches
+    // no media at all (the same gap the builtin viewer bundle carried).
+    "store:media/*:read",
     "mcp:insight.list:call",
     "mcp:insight.get:call",
     // saved queries + their compiled reads (query.run composes the target cap — no widening).

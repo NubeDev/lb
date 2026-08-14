@@ -205,6 +205,7 @@ mod tests {
             title: String::new(),
             items,
             hidden: Vec::new(),
+            order: Vec::new(),
             pinned: Vec::new(),
         }
     }

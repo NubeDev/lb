@@ -363,6 +363,14 @@ const VIEWER_CAPS: &[&str] = &[
     // per-item `store:media/{id}:read` capability, so holding this alone reaches no media the
     // caller could not already serve over HTTP.
     "mcp:media.read:call",
+    // …and that inner re-check needs the store-surface cap BESIDE the verb cap, named concretely
+    // for exactly the reason `store:asset/*` and `store:doc/*` are above: the generic
+    // `store:*:read` wildcard is SINGLE-SEGMENT and does not span the `media/{id}` resource path.
+    // Without this line `mcp:media.read:call` is a grant that reaches nothing — every call clears
+    // the outer gate and is denied inside `media_serve`. Measured on a live node: upload + commit
+    // succeeded and `media.get` returned the metadata, while `media.read` on that same id answered
+    // a bare `denied` with the verb cap plainly held in the token.
+    "store:media/*:read",
     "mcp:nav.hidden.get:call",
     "mcp:nav.pref.get:call",
     // generic per-workspace store READ. The verb-READ wildcards that used to live here
@@ -840,6 +848,31 @@ mod tests {
             assert!(
                 !member.contains(&admin_cap.to_string()),
                 "member bundle must NOT carry admin cap {admin_cap} (the escalation)"
+            );
+        }
+    }
+
+    /// **THE REGRESSION**: a verb cap whose inner per-item gate nothing in the bundle can satisfy
+    /// is a grant that reaches nothing. `mcp:media.read:call` shipped on the viewer tier without
+    /// `store:media/*:read` beside it, and the generic `store:*:read` is SINGLE-SEGMENT — it cannot
+    /// span `media/{id}`. So every `media.read` cleared the outer gate and was denied inside
+    /// `media_serve`. Asserting the literal cap string is not enough; this drives the real matcher
+    /// against a concrete id, which is the only form that fails when the wildcard shape is wrong.
+    #[test]
+    fn the_media_read_grant_actually_reaches_a_media_item() {
+        use lb_caps::{check, Action, Decision, Request, Surface};
+
+        for (tier, caps) in [
+            ("viewer", viewer_role_caps()),
+            ("member", member_role_caps()),
+            ("workspace-admin", workspace_admin_role_caps()),
+        ] {
+            let principal = Principal::routed("user:test", "nube", caps.clone());
+            let req = Request::new("nube", Surface::Store, "media/413d599d18e6", Action::Read);
+            assert!(
+                !matches!(check(&principal, &req), Decision::Denied(_)),
+                "{tier} holds mcp:media.read:call but cannot satisfy the per-item \
+                 store:media/{{id}}:read gate — the grant reaches no media at all"
             );
         }
     }
