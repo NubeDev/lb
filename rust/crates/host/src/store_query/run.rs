@@ -15,7 +15,7 @@ use serde_json::Value;
 use super::authorize::authorize_store_query;
 use super::error::StoreQueryError;
 use super::model::{QueryResult, MAX_QUERY_ROWS, QUERY_TIMEOUT_SECS};
-use super::parse::{ensure_read_only, ReadKind};
+use super::parse::{ensure_read_only_with_vars, ReadKind};
 
 /// Run a read-only `sql` (with optional `$`-bound `vars`) in `ws` and return its columns + rows.
 /// Gated `mcp:store.query:call`; parse-allowlisted to a single `SELECT`/`INFO`/`SHOW`; bounded to
@@ -33,7 +33,9 @@ pub async fn store_query_run(
     // The boundary: parse + allowlist by statement kind BEFORE the SQL ever reaches the store. A
     // write/schema/namespace statement is refused here, structurally, not by a string match. We get
     // back the (single) statement kind so we can bound a `SELECT` without breaking `INFO`/`SHOW`.
-    let kind = ensure_read_only(sql)?;
+    // `vars` are passed to the gate, not just to the store: the secret wall resolves a parameterised
+    // table position (`FROM type::table($tb)`) against these same bindings rather than refusing it.
+    let kind = ensure_read_only_with_vars(sql, &vars)?;
 
     // A `SELECT` is wrapped in a bounded sub-select so the row cap + timeout apply regardless of the
     // author's clauses (`($q)` is a subquery over the already-validated statement; we re-cap to the

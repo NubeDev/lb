@@ -134,38 +134,111 @@ async fn every_indirect_route_into_the_secret_plane_is_refused() {
     }
 }
 
-/// A table chosen at run time cannot be proven safe, so it is refused **whatever** the var holds —
-/// including the innocent case. This is the deliberate false-refusal edge the wall accepts.
+/// A table chosen at run time is judged by what it RESOLVES to, using the bindings the same request
+/// supplies — and refused as unprovable only when nothing resolves it.
+///
+/// The wall's promise is "no read of the secret plane", not "no parameterised table". `$t` is not
+/// unknowable when the caller hands over `vars = {t: …}` in the same call: the table it will read is
+/// known here, so it is checked by name. That is strictly stronger than blanket refusal (the
+/// dangerous binding is now named in the error), and it is what lets the injection-safe form through
+/// — the platform `store-read` node parameterises its table precisely so that user text is never
+/// spliced into SQL, and blanket refusal made that node fail every time it ran.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_dynamic_table_expression_is_refused_even_when_innocent() {
+async fn a_dynamic_table_is_resolved_from_its_binding_and_refused_when_unprovable() {
     let ws = "sw-dynamic";
     let store = seeded(ws).await;
     let p = principal("user:test", ws, &[QUERY]);
 
-    // The live bypass: the AST names no table at all; `vars` supplies it at run time.
-    let err = store_query_run(
+    // The live bypass, still shut — and now the refusal NAMES the table the binding chose.
+    for (sql, vars) in [
+        (
+            "SELECT * FROM type::table($t)",
+            vec![("t".to_string(), json!("secret"))],
+        ),
+        ("SELECT * FROM $t", vec![("t".to_string(), json!("secret"))]),
+        // …including through a subquery, where the table position is inherited.
+        (
+            "SELECT * FROM (SELECT * FROM type::table($t))",
+            vec![("t".to_string(), json!("secret"))],
+        ),
+        // …and the literal form, refused by name as before.
+        ("SELECT * FROM type::table('secret')", vec![]),
+    ] {
+        let err = store_query_run(&store, &p, ws, sql, vars)
+            .await
+            .unwrap_err_or_panic(sql);
+        assert!(
+            matches!(err, StoreQueryError::SecretTable("secret")),
+            "a binding that chooses the secret plane is refused BY NAME for `{sql}`: {err:?}"
+        );
+    }
+
+    // The innocent binding resolves to an ordinary table and reads it — the parameterised form the
+    // `store-read` node depends on.
+    let result = store_query_run(
         &store,
         &p,
         ws,
-        "SELECT * FROM type::table($t)",
-        vec![("t".into(), json!("secret"))],
+        "SELECT data.name AS name FROM type::table($t)",
+        vec![("t".to_string(), json!("site"))],
     )
     .await
-    .expect_err("a run-time table is refused");
-    assert!(
-        matches!(err, StoreQueryError::Rejected(_)),
-        "refused as unprovable: {err:?}"
+    .expect("a bound table position resolves to an ordinary table");
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "the innocent bound form reads for real"
     );
 
-    // The literal form is refused by name; the innocent-var form is refused as unprovable.
+    // The remaining honest false-refusal edge: nothing binds the table, so nothing proves it. An
+    // unbound param, a param bound to a non-string, and a computed idiom are all still refused.
     for (sql, vars) in [
-        ("SELECT * FROM type::table('secret')", vec![]),
+        ("SELECT * FROM type::table($t)", vec![]),
         (
             "SELECT * FROM type::table($t)",
-            vec![("t".to_string(), json!("site"))],
+            vec![("t".to_string(), json!({ "not": "a table name" }))],
         ),
+        ("SELECT * FROM some.field", vec![]),
     ] {
         let err = store_query_run(&store, &p, ws, sql, vars)
+            .await
+            .unwrap_err_or_panic(sql);
+        assert!(
+            matches!(err, StoreQueryError::Rejected(ref m) if m.contains("run time")),
+            "unresolvable stays refused as unprovable for `{sql}`: {err:?}"
+        );
+    }
+}
+
+/// A **composed** read — the shape every grid/plan builder produces, and the shape `store.query`
+/// itself produces when it wraps a validated SELECT for the row cap. The subquery's own projection,
+/// `WHERE` and `ORDER BY` name no table, so inheriting the table position past the statement
+/// boundary refused all of them (each field reference read as a runtime-computed table).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_composed_subquery_read_is_not_refused_for_its_own_field_references() {
+    let ws = "sw-composed";
+    let store = seeded(ws).await;
+    let p = principal("user:test", ws, &[QUERY]);
+
+    let result = store_query_run(
+        &store,
+        &p,
+        ws,
+        "SELECT * FROM (SELECT data.name AS name FROM site ORDER BY data.name) WHERE name = 'HQ'",
+        vec![],
+    )
+    .await
+    .expect("a composed read over an ordinary table is not the wall's business");
+    assert_eq!(result.rows.len(), 1);
+
+    // …and the boundary does not open a door: a secret read nested inside the subquery, in the
+    // subquery's OWN table position, is still refused.
+    for sql in [
+        "SELECT * FROM (SELECT * FROM secret)",
+        "SELECT * FROM site WHERE name IN (SELECT VALUE value FROM secret)",
+        "SELECT * FROM (SELECT * FROM (SELECT * FROM secret))",
+    ] {
+        let err = store_query_run(&store, &p, ws, sql, vec![])
             .await
             .unwrap_err_or_panic(sql);
         assert_secret_refusal(err, sql);
