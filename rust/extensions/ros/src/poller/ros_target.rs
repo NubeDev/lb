@@ -18,9 +18,13 @@ use crate::resolve::{resolve_api, RosApiFactory};
 use crate::ros_api::RosApiError;
 
 /// The decoded payload of a `point.write` effect (mirrors what `handlers::point::write` stages).
+/// `host_uuid` (the write's `X-Host` scoping) is defaulted so effects staged before it existed
+/// still decode and deliver.
 #[derive(Debug, Deserialize)]
 struct WritePayload {
     ros_uuid: String,
+    #[serde(default)]
+    host_uuid: Option<String>,
     point_uuid: String,
     slot: u8,
     value: Option<f64>,
@@ -30,6 +34,8 @@ struct WritePayload {
 #[derive(Debug, Deserialize)]
 struct ScheduleWritePayload {
     ros_uuid: String,
+    #[serde(default)]
+    host_uuid: Option<String>,
     schedule_uuid: String,
     schedule: serde_json::Value,
 }
@@ -93,7 +99,10 @@ async fn deliver_point_write(
         Err(e) => return DeliverOutcome::Retry(format!("resolving ros connection: {e}")),
     };
 
-    match api.write_point_slot(&w.point_uuid, w.slot, w.value).await {
+    match api
+        .write_point_slot(w.host_uuid.as_deref(), &w.point_uuid, w.slot, w.value)
+        .await
+    {
         Ok(_) => DeliverOutcome::Delivered,
         // The box is down — retry next pass (the setpoint must eventually land).
         Err(e @ RosApiError::Unreachable(_)) => DeliverOutcome::Retry(e.to_string()),
@@ -123,7 +132,10 @@ async fn deliver_schedule_write(
         Err(e) => return DeliverOutcome::Retry(format!("resolving ros connection: {e}")),
     };
 
-    match api.write_schedule(&w.schedule_uuid, w.schedule).await {
+    match api
+        .write_schedule(w.host_uuid.as_deref(), &w.schedule_uuid, w.schedule)
+        .await
+    {
         Ok(_) => DeliverOutcome::Delivered,
         Err(e @ RosApiError::Unreachable(_)) => DeliverOutcome::Retry(e.to_string()),
         Err(e) => DeliverOutcome::Fail(e.to_string()),

@@ -132,6 +132,13 @@ pub async fn write(
         ),
     };
 
+    // OPTIONAL Host scoping (rides the payload → the relay's `X-Host`). Absent → the box's
+    // default-Host lookup, exactly the pre-existing behaviour.
+    let host_uuid = input
+        .get("host_uuid")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+
     // Confirm the connection exists before staging (a write to an unknown box is a not_found, not a
     // silently-pending effect). Resolving also proves the shadow+token are present.
     if resolve_api(host, factory, &ros_uuid).await?.is_none() {
@@ -140,7 +147,8 @@ pub async fn write(
 
     let id = write_effect_id(&ros_uuid, &point_uuid, slot);
     let payload = json!({
-        "ros_uuid": ros_uuid, "point_uuid": point_uuid, "slot": slot, "value": value,
+        "ros_uuid": ros_uuid, "host_uuid": host_uuid, "point_uuid": point_uuid,
+        "slot": slot, "value": value,
     });
     host.client()
         .call_tool(

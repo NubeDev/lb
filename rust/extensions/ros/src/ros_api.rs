@@ -95,10 +95,12 @@ pub trait RosApi: Send + Sync {
     /// Read one point (its `present_value`, priority, …) — the per-tick poll read.
     async fn get_point(&self, point_uuid: &str) -> Result<Point, RosApiError>;
 
-    /// Write a priority slot on a point (the setpoint the outbox delivers). Reads the current
-    /// priority, sets `slot` to `value` (None releases), and PATCHes it back — idempotent at the slot.
+    /// Write a priority slot on a point (the setpoint the outbox delivers) — a sparse per-slot
+    /// PATCH, idempotent at the slot. `host_uuid` (optional) scopes the write to one supervised
+    /// Host via `X-Host`, matching the read chain; absent → the box's default-Host lookup.
     async fn write_point_slot(
         &self,
+        host_uuid: Option<&str>,
         point_uuid: &str,
         slot: u8,
         value: Option<f64>,
@@ -111,8 +113,10 @@ pub trait RosApi: Send + Sync {
     async fn get_schedule(&self, schedule_uuid: &str) -> Result<Schedule, RosApiError>;
 
     /// Write a schedule's weekly/exception/event payload back (must-deliver, same as a point write).
+    /// Same optional `X-Host` scoping as `write_point_slot`.
     async fn write_schedule(
         &self,
+        host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
     ) -> Result<Schedule, RosApiError>;
@@ -271,12 +275,13 @@ impl RosApi for RealRosApi {
 
     async fn write_point_slot(
         &self,
+        host_uuid: Option<&str>,
         point_uuid: &str,
         slot: u8,
         value: Option<f64>,
     ) -> Result<Point, RosApiError> {
         self.client
-            .write_point_priority_slot(point_uuid, slot, value)
+            .write_point_priority_slot(host_uuid, point_uuid, slot, value)
             .await
             .map_err(map_client_err)
     }
@@ -294,11 +299,12 @@ impl RosApi for RealRosApi {
 
     async fn write_schedule(
         &self,
+        host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
     ) -> Result<Schedule, RosApiError> {
         self.client
-            .write_schedule(schedule_uuid, schedule)
+            .write_schedule(host_uuid, schedule_uuid, schedule)
             .await
             .map_err(map_client_err)
     }

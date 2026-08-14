@@ -90,18 +90,23 @@ impl Client {
         Self::decode_json_response(response).await
     }
 
+    /// Same optional `X-Host` scoping as [`get_json`] — a write to a point/schedule on a supervised
+    /// Host must resolve against the SAME Host the read chain picked, not the box's default.
     pub(crate) async fn patch_json<B: serde::Serialize, T: DeserializeOwned>(
         &self,
         path: &str,
         body: &B,
+        host_uuid: Option<&str>,
     ) -> Result<T, RosClientError> {
-        let response = self
+        let mut req = self
             .http
             .patch(self.endpoint_url(path))
             .header(AUTHORIZATION, self.auth_header()?)
-            .json(body)
-            .send()
-            .await?;
+            .json(body);
+        if let Some(h) = host_uuid {
+            req = req.header("X-Host", h);
+        }
+        let response = req.send().await?;
         Self::decode_json_response(response).await
     }
 

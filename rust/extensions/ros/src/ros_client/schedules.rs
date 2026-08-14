@@ -50,11 +50,12 @@ impl Client {
 
     pub async fn write_schedule(
         &self,
+        host_uuid: Option<&str>,
         uuid: &str,
         schedule: Value,
     ) -> Result<Schedule, RosClientError> {
         let path = format!("/api/schedules/{uuid}/write");
         let payload = WriteSchedulePayload { schedule };
-        self.patch_json(&path, &payload).await
+        self.patch_json(&path, &payload, host_uuid).await
     }
 }

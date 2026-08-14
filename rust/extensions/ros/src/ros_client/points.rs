@@ -230,7 +230,7 @@ impl Client {
 
     pub async fn update_point(&self, uuid: &str, point: &Point) -> Result<Point, RosClientError> {
         let path = format!("/api/points/{uuid}");
-        self.patch_json(&path, point).await
+        self.patch_json(&path, point, None).await
     }
 
     // The box's `/write` endpoint wants a SPARSE, WRAPPED delta — `{"priority": {"_<slot>":
@@ -244,6 +244,7 @@ impl Client {
     // box computes every other slot's state itself.
     pub async fn write_point_priority_slot(
         &self,
+        host_uuid: Option<&str>,
         uuid: &str,
         slot: u8,
         value: Option<f64>,
@@ -255,7 +256,7 @@ impl Client {
         }
         let path = format!("/api/points/{uuid}/write");
         let body = serde_json::json!({ "priority": { format!("_{slot}"): value } });
-        self.patch_json(&path, &body).await
+        self.patch_json(&path, &body, host_uuid).await
     }
 }
 
