@@ -145,7 +145,7 @@ async fn outbox_status_reflects_pending_then_delivered() {
     );
     assert_eq!(status["delivered"].as_array().unwrap().len(), 0);
 
-    lb_outbox::mark_delivered(&node.store, "nube", "e1")
+    lb_outbox::mark_delivered(&node.store, "nube", "e1", None)
         .await
         .expect("mark delivered");
 

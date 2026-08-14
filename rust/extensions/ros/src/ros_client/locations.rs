@@ -47,6 +47,7 @@ impl Client {
         self.get_json(
             "/api/locations",
             &[("with_groups", with_groups.to_string())],
+            None,
         )
         .await
     }
@@ -57,6 +58,7 @@ impl Client {
         self.get_json(
             &format!("/api/groups/{uuid}"),
             &[("with_hosts", with_hosts.to_string())],
+            None,
         )
         .await
     }

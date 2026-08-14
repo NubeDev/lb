@@ -198,56 +198,11 @@ pub struct UpdatePointPayload {
     pub history_cov_threshold: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WritePointPriorityPayload {
-    pub priority: Priority,
-}
-
 impl Client {
-    pub async fn get_points(
-        &self,
-        params: Option<&GetPointsParams>,
-    ) -> Result<Vec<Point>, RosClientError> {
-        let mut query = Vec::new();
-
-        if let Some(params) = params {
-            if let Some(v) = params.with_priority {
-                query.push(("with_priority", v.to_string()));
-            }
-            if let Some(v) = params.with_tags {
-                query.push(("with_tags", v.to_string()));
-            }
-            if let Some(v) = params.with_meta_tags {
-                query.push(("with_meta_tags", v.to_string()));
-            }
-            push_opt_string(&mut query, "name", params.name.as_ref());
-            push_opt_string(&mut query, "address_uuid", params.address_uuid.as_ref());
-            push_opt_json_value(&mut query, "io_number", params.io_number.as_ref());
-            push_opt_json_value(&mut query, "address_id", params.address_id.as_ref());
-            push_opt_string(&mut query, "object_type", params.object_type.as_ref());
-            push_opt_string(&mut query, "meta_tags", params.meta_tags.as_ref());
-            push_opt_string(
-                &mut query,
-                "point_source_uuid",
-                params.point_source_uuid.as_ref(),
-            );
-            push_opt_string(&mut query, "host_uuid", params.host_uuid.as_ref());
-            push_opt_string(&mut query, "device_uuid", params.device_uuid.as_ref());
-            if let Some(v) = params.offset {
-                query.push(("offset", v.to_string()));
-            }
-            if let Some(v) = params.limit {
-                query.push(("limit", v.to_string()));
-            }
-            push_opt_string(&mut query, "search_keyword", params.search_keyword.as_ref());
-            push_opt_string(&mut query, "tag", params.tag.as_ref());
-            push_opt_string(&mut query, "meta_tag", params.meta_tag.as_ref());
-        }
-
-        query.push(("show_clones", "false".to_string()));
-        self.get_json("/api/points", &query).await
-    }
-
+    // No standalone points-list endpoint — matches the reference client (`points_service.ts` has no
+    // list method either): points come nested off a device fetch (`get_device_by_uuid` with
+    // `with_points: true`). `get_point_by_uuid` (fetch one point directly) is the only other point
+    // read — a point's uuid is globally unique on the box, no host scoping needed for it.
     pub async fn get_point_by_uuid(
         &self,
         uuid: &str,
@@ -270,47 +225,38 @@ impl Client {
         }
 
         let path = format!("/api/points/{uuid}");
-        self.get_json(&path, &query).await
+        self.get_json(&path, &query, None).await
     }
 
     pub async fn update_point(&self, uuid: &str, point: &Point) -> Result<Point, RosClientError> {
         let path = format!("/api/points/{uuid}");
-        self.patch_json(&path, point).await
+        self.patch_json(&path, point, None).await
     }
 
-    pub async fn get_point_priority(&self, uuid: &str) -> Result<Option<Priority>, RosClientError> {
-        let params = GetPointsParams {
-            with_priority: Some(true),
-            ..Default::default()
-        };
-        let point = self.get_point_by_uuid(uuid, Some(&params)).await?;
-        Ok(point.priority)
-    }
-
-    pub async fn write_point_priority(
+    // The box's `/write` endpoint wants a SPARSE, WRAPPED delta — `{"priority": {"_<slot>":
+    // value}}`, only the one changed slot — never the full 16-slot array. Confirmed live against
+    // two wrong shapes first: a flat (unwrapped) full array 500'd the box (empty body, no
+    // diagnosis); a wrapped FULL array (fetched via a prior `get_point_priority` then echoed
+    // back with one slot changed) 400'd — `"no priority & original value has been sent"` — the
+    // box's own validation rejects a full-state PATCH. Matches the reference read-write panel
+    // (`grafana-rubix-os-read-write-panel`'s `constructWriterPayloadValue`,
+    // `writerUiService.ts:15-21`), which sends exactly this sparse shape and nothing else — the
+    // box computes every other slot's state itself.
+    pub async fn write_point_priority_slot(
         &self,
+        host_uuid: Option<&str>,
         uuid: &str,
-        priority: &Priority,
+        slot: u8,
+        value: Option<f64>,
     ) -> Result<Point, RosClientError> {
+        if !(1..=16).contains(&slot) {
+            return Err(RosClientError::InvalidInput(format!(
+                "priority slot out of range (1-16): {slot}"
+            )));
+        }
         let path = format!("/api/points/{uuid}/write");
-        let payload = WritePointPriorityPayload {
-            priority: priority.clone(),
-        };
-        self.patch_json(&path, &payload).await
-    }
-
-    pub async fn write_point_priority_by_name(
-        &self,
-        network_name: &str,
-        device_name: &str,
-        point_name: &str,
-        priority: &Priority,
-    ) -> Result<Point, RosClientError> {
-        let path = format!("/api/points/name/{network_name}/{device_name}/{point_name}/write");
-        let payload = WritePointPriorityPayload {
-            priority: priority.clone(),
-        };
-        self.patch_json(&path, &payload).await
+        let body = serde_json::json!({ "priority": { format!("_{slot}"): value } });
+        self.patch_json(&path, &body, host_uuid).await
     }
 }
 
@@ -318,20 +264,6 @@ fn push_opt_string(query: &mut Vec<(&str, String)>, key: &'static str, value: Op
     if let Some(value) = value {
         if !value.is_empty() {
             query.push((key, value.clone()));
-        }
-    }
-}
-
-fn push_opt_json_value(query: &mut Vec<(&str, String)>, key: &'static str, value: Option<&Value>) {
-    if let Some(value) = value {
-        let query_value = match value {
-            Value::String(s) => s.clone(),
-            Value::Number(n) => n.to_string(),
-            Value::Bool(v) => v.to_string(),
-            _ => value.to_string(),
-        };
-        if !query_value.is_empty() {
-            query.push((key, query_value));
         }
     }
 }

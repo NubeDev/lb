@@ -56,6 +56,6 @@ impl Client {
         }
 
         let path = format!("/api/histories/points/point-uuid/{uuid}");
-        self.get_json(&path, &query).await
+        self.get_json(&path, &query, None).await
     }
 }

@@ -227,11 +227,14 @@ impl RosApi for std::sync::Arc<RosFake> {
     }
     async fn write_point_slot(
         &self,
+        host_uuid: Option<&str>,
         point_uuid: &str,
         slot: u8,
         value: Option<f64>,
     ) -> Result<Point, RosApiError> {
-        (**self).write_point_slot(point_uuid, slot, value).await
+        (**self)
+            .write_point_slot(host_uuid, point_uuid, slot, value)
+            .await
     }
     async fn list_schedules(&self) -> Result<Vec<Schedule>, RosApiError> {
         (**self).list_schedules().await
@@ -241,10 +244,13 @@ impl RosApi for std::sync::Arc<RosFake> {
     }
     async fn write_schedule(
         &self,
+        host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
     ) -> Result<Schedule, RosApiError> {
-        (**self).write_schedule(schedule_uuid, schedule).await
+        (**self)
+            .write_schedule(host_uuid, schedule_uuid, schedule)
+            .await
     }
 }
 
@@ -346,10 +352,13 @@ impl RosApi for RosFake {
 
     async fn write_point_slot(
         &self,
+        _host_uuid: Option<&str>,
         point_uuid: &str,
         slot: u8,
         value: Option<f64>,
     ) -> Result<Point, RosApiError> {
+        // The fake's tree has no Host tier — `host_uuid` is accepted (matching the real trait) but
+        // has nothing to scope against here, same posture as `list_devices`.
         self.guard()?;
         if !(1..=16).contains(&slot) {
             return Err(RosApiError::InvalidInput(format!(
@@ -397,6 +406,7 @@ impl RosApi for RosFake {
 
     async fn write_schedule(
         &self,
+        _host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
     ) -> Result<Schedule, RosApiError> {

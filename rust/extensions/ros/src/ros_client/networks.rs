@@ -56,11 +56,15 @@ pub struct GetNetworksParams {
 }
 
 impl Client {
+    // `host_uuid` rides as the `X-Host` header (matches the reference client's
+    // `HeaderKeys.hostUUID`) — not a query param. No `show_clones` override: the reference client
+    // never sends one either, relying entirely on the box's own default.
     pub async fn get_networks(
         &self,
         params: Option<&GetNetworksParams>,
     ) -> Result<Vec<Network>, RosClientError> {
         let mut query = Vec::new();
+        let mut host_uuid = None;
 
         if let Some(params) = params {
             if let Some(v) = params.with_devices {
@@ -82,12 +86,11 @@ impl Client {
             }
             if let Some(v) = &params.host_uuid {
                 if !v.is_empty() {
-                    query.push(("host_uuid", v.clone()));
+                    host_uuid = Some(v.as_str());
                 }
             }
         }
 
-        query.push(("show_clones", "false".to_string()));
-        self.get_json("/api/networks", &query).await
+        self.get_json("/api/networks", &query, host_uuid).await
     }
 }

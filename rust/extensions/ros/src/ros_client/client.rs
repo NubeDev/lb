@@ -68,33 +68,45 @@ impl Client {
             .map_err(|e| RosClientError::InvalidInput(format!("invalid token/header: {e}")))
     }
 
+    /// `host_uuid`, when given, rides as the `X-Host` header — the box's own scoping mechanism for a
+    /// multi-Host connection (matches the reference client's `HeaderKeys.hostUUID`, never a query
+    /// param — a query-param `host_uuid` is a DIFFERENT, endpoint-specific filter some of the box's
+    /// list routes also accept, not this).
     pub(crate) async fn get_json<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, String)],
+        host_uuid: Option<&str>,
     ) -> Result<T, RosClientError> {
-        let response = self
+        let mut req = self
             .http
             .get(self.endpoint_url(path))
             .header(AUTHORIZATION, self.auth_header()?)
-            .query(query)
-            .send()
-            .await?;
+            .query(query);
+        if let Some(h) = host_uuid {
+            req = req.header("X-Host", h);
+        }
+        let response = req.send().await?;
         Self::decode_json_response(response).await
     }
 
+    /// Same optional `X-Host` scoping as [`get_json`] — a write to a point/schedule on a supervised
+    /// Host must resolve against the SAME Host the read chain picked, not the box's default.
     pub(crate) async fn patch_json<B: serde::Serialize, T: DeserializeOwned>(
         &self,
         path: &str,
         body: &B,
+        host_uuid: Option<&str>,
     ) -> Result<T, RosClientError> {
-        let response = self
+        let mut req = self
             .http
             .patch(self.endpoint_url(path))
             .header(AUTHORIZATION, self.auth_header()?)
-            .json(body)
-            .send()
-            .await?;
+            .json(body);
+        if let Some(h) = host_uuid {
+            req = req.header("X-Host", h);
+        }
+        let response = req.send().await?;
         Self::decode_json_response(response).await
     }
 
@@ -128,6 +140,13 @@ fn shared_http() -> &'static HttpClient {
     static HTTP: OnceLock<HttpClient> = OnceLock::new();
     HTTP.get_or_init(|| {
         HttpClient::builder()
+            // A remote box over the internet/VPN stalls sometimes. Without these, one stalled
+            // request wedges its tool call indefinitely — observed live as 60s+ hangs that ended
+            // only when the supervisor killed the child, taking every queued call down with it. A
+            // bounded failure (the caller sees "unreachable", the relay retries) beats a wedge.
+            // 30s total is generous for the biggest real response (a full with_points host tree).
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30))
             .build()
             .expect("reqwest client builder failed")
     })

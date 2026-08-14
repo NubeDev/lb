@@ -70,18 +70,23 @@ pub async fn relay_pass(
         if id.is_empty() {
             continue;
         }
+        // The version of the effect THIS pass pulled — the marks below carry it as the supersede
+        // guard, so a re-enqueued (newer) payload is never stamped with this attempt's outcome
+        // (the host's `lb_outbox::mark` doc; found live as rapid slider writes settling on a
+        // middle value).
+        let ts = effect.get("ts").and_then(|v| v.as_u64());
         match deliver(host, factory, action, payload).await {
             DeliverOutcome::Delivered => {
-                mark_delivered(host, id).await?;
+                mark_delivered(host, id, ts).await?;
                 pass.delivered += 1;
             }
-            DeliverOutcome::Retry => {
+            DeliverOutcome::Retry(reason) => {
                 // Leave it schedulable but count the attempt + back off (mark_failed does both).
-                mark_failed(host, id, now).await?;
+                mark_failed(host, id, now, &reason, ts).await?;
                 pass.retried += 1;
             }
-            DeliverOutcome::Fail => {
-                mark_failed(host, id, now).await?;
+            DeliverOutcome::Fail(reason) => {
+                mark_failed(host, id, now, &reason, ts).await?;
                 pass.failed += 1;
             }
         }
@@ -89,16 +94,25 @@ pub async fn relay_pass(
     Ok(pass)
 }
 
-async fn mark_delivered(host: &HostCtx, id: &str) -> Result<(), HostError> {
+async fn mark_delivered(host: &HostCtx, id: &str, ts: Option<u64>) -> Result<(), HostError> {
     host.client()
-        .call_tool("outbox.mark_delivered", json!({ "id": id }))
+        .call_tool("outbox.mark_delivered", json!({ "id": id, "ts": ts }))
         .await?;
     Ok(())
 }
 
-async fn mark_failed(host: &HostCtx, id: &str, now: u64) -> Result<(), HostError> {
+async fn mark_failed(
+    host: &HostCtx,
+    id: &str,
+    now: u64,
+    reason: &str,
+    ts: Option<u64>,
+) -> Result<(), HostError> {
     host.client()
-        .call_tool("outbox.mark_failed", json!({ "id": id, "now": now }))
+        .call_tool(
+            "outbox.mark_failed",
+            json!({ "id": id, "now": now, "reason": reason, "ts": ts }),
+        )
         .await?;
     Ok(())
 }

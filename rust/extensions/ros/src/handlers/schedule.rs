@@ -96,6 +96,12 @@ pub async fn write(
         return Err(HostError::BadResponse("schedule must be an object".into()));
     }
 
+    // OPTIONAL Host scoping (rides the payload → the relay's `X-Host`), same posture as point.write.
+    let host_uuid = input
+        .get("host_uuid")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+
     // Confirm the connection exists before staging (a write to an unknown box is a not_found, not a
     // silently-pending effect).
     if resolve_api(host, factory, &ros_uuid).await?.is_none() {
@@ -104,7 +110,8 @@ pub async fn write(
 
     let id = write_effect_id(&ros_uuid, &schedule_uuid);
     let payload = json!({
-        "ros_uuid": ros_uuid, "schedule_uuid": schedule_uuid, "schedule": schedule,
+        "ros_uuid": ros_uuid, "host_uuid": host_uuid, "schedule_uuid": schedule_uuid,
+        "schedule": schedule,
     });
     host.client()
         .call_tool(

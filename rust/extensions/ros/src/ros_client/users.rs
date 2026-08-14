@@ -21,7 +21,7 @@ struct UsersResponse {
 
 impl Client {
     pub async fn get_users(&self) -> Result<Vec<User>, RosClientError> {
-        let response: UsersResponse = self.get_json("/api/users", &[]).await?;
+        let response: UsersResponse = self.get_json("/api/users", &[], None).await?;
         Ok(response.data)
     }
 }

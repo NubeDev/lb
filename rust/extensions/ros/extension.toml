@@ -248,7 +248,11 @@ connection_arg = "ros_uuid"
 fields = [
   { id = "locationUuid", label = "Location", control = "select", choices = { source = "tool", tool = "ros.location.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
   { id = "groupUuid", label = "Group", control = "select", choices = { source = "tool", tool = "ros.group.list", args = { ros_uuid = "$connectionUuid", location_uuid = "$locationUuid" }, valueField = "uuid", labelField = "name" } },
-  { id = "hostUuid", label = "Host", control = "select", choices = { source = "tool", tool = "ros.host.list", args = { ros_uuid = "$connectionUuid", group_uuid = "$groupUuid" }, valueField = "uuid", labelField = "name" } },
+  # `arg = "host_uuid"`: the picked Host also lands in the target args under the WRITE tool's arg
+  # name, so a control's write spread carries it and the relay scopes the write's `X-Host` to the
+  # same Host the read chain picked (a multi-Host box resolves uuids per Host; an unscoped write
+  # falls back to the box's default Host). `ros.point.get` ignores it — extra args are tolerated.
+  { id = "hostUuid", label = "Host", arg = "host_uuid", control = "select", choices = { source = "tool", tool = "ros.host.list", args = { ros_uuid = "$connectionUuid", group_uuid = "$groupUuid" }, valueField = "uuid", labelField = "name" } },
   { id = "networkUuid", label = "Network", control = "select", choices = { source = "tool", tool = "ros.network.list", args = { ros_uuid = "$connectionUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
   { id = "deviceUuid", label = "Device", control = "select", choices = { source = "tool", tool = "ros.device.list", args = { ros_uuid = "$connectionUuid", network_uuid = "$networkUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
   { id = "pointUuid", label = "Point", arg = "point_uuid", control = "select", choices = { source = "tool", tool = "ros.point.list", args = { ros_uuid = "$connectionUuid", device_uuid = "$deviceUuid", host_uuid = "$hostUuid" }, valueField = "uuid", labelField = "name" } },
@@ -271,7 +275,8 @@ connection_arg = "ros_uuid"
 fields = [
   { id = "locationUuid", label = "Location", control = "select", choices = { source = "tool", tool = "ros.location.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
   { id = "groupUuid", label = "Group", control = "select", choices = { source = "tool", tool = "ros.group.list", args = { ros_uuid = "$connectionUuid", location_uuid = "$locationUuid" }, valueField = "uuid", labelField = "name" } },
-  { id = "hostUuid", label = "Host", control = "select", choices = { source = "tool", tool = "ros.host.list", args = { ros_uuid = "$connectionUuid", group_uuid = "$groupUuid" }, valueField = "uuid", labelField = "name" } },
+  # `arg = "host_uuid"` for the same write-side X-Host scoping the point block documents.
+  { id = "hostUuid", label = "Host", arg = "host_uuid", control = "select", choices = { source = "tool", tool = "ros.host.list", args = { ros_uuid = "$connectionUuid", group_uuid = "$groupUuid" }, valueField = "uuid", labelField = "name" } },
   { id = "scheduleUuid", label = "Schedule", arg = "schedule_uuid", control = "select", choices = { source = "tool", tool = "ros.schedule.list", args = { ros_uuid = "$connectionUuid" }, valueField = "uuid", labelField = "name" } },
 ]
 # `ros.schedule.list` has no `host_uuid` filter on the box (unlike networks) — Location/Group/Host

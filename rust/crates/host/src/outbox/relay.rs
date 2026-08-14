@@ -49,7 +49,7 @@ pub async fn relay_outbox<T: Target>(
     for effect in due(store, ws, now).await? {
         match target.deliver(&effect).await {
             Ok(()) => {
-                mark_delivered(store, ws, &effect.id).await?;
+                mark_delivered(store, ws, &effect.id, Some(effect.ts)).await?;
                 pass.delivered += 1;
             }
             Err(error) => {
@@ -63,9 +63,9 @@ pub async fn relay_outbox<T: Target>(
                         effect = %effect.id, target = %effect.target, reason = %error.reason,
                         "outbox relay: permanent delivery failure — parked without retry"
                     );
-                    mark_dead_lettered(store, ws, &effect.id, &error.reason).await?
+                    mark_dead_lettered(store, ws, &effect.id, &error.reason, Some(effect.ts)).await?
                 } else {
-                    mark_failed(store, ws, &effect.id, now, &error.reason).await?
+                    mark_failed(store, ws, &effect.id, now, &error.reason, Some(effect.ts)).await?
                 };
                 match status {
                     EffectStatus::DeadLettered => pass.dead_lettered += 1,

@@ -731,8 +731,11 @@ async fn dispatch_at_depth(
         .await;
     }
 
-    // depth > 0 means this call ORIGINATED from a guest's host-callback (re-entrant): dispatch must
-    // not block on the instance lock (it may be the in-flight guest's own) — fail fast instead.
+    // Re-entrancy (a guest's host-callback dispatching back in) is handled generically inside
+    // `dispatch` itself now — it tracks which instance THIS call chain already holds and only
+    // fails fast on a genuine self-re-entry, never on a nested call to a different extension
+    // (`docs/debugging/mcp/gauge-panel-loses-extension-busy-race.md`). `depth` still bounds the
+    // chain length via `MAX_CALL_DEPTH`, enforced in `callback.rs` — unrelated to this call.
     lb_mcp::call_with_ctx(
         &node.registry,
         &node.bus,
@@ -741,7 +744,6 @@ async fn dispatch_at_depth(
         qualified_tool,
         input_json,
         ctx,
-        depth > 0,
     )
     .await
 }
@@ -1214,7 +1216,10 @@ async fn call_inbox_outbox_tool(
                 .get("id")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ToolError::BadInput("missing arg: id".into()))?;
-            outbox_mark_delivered(&node.store, principal, ws, id)
+            // The supersede guard: the `ts` of the effect version the driver pulled (see
+            // `lb_outbox::mark`). Optional — an omitted `ts` marks unconditionally, as before.
+            let ts = input.get("ts").and_then(|v| v.as_u64());
+            outbox_mark_delivered(&node.store, principal, ws, id, ts)
                 .await
                 .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "ok": true }))
@@ -1235,7 +1240,9 @@ async fn call_inbox_outbox_tool(
                 .get("permanent")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let status = outbox_mark_failed(&node.store, principal, ws, id, now, reason, permanent)
+            let ts = input.get("ts").and_then(|v| v.as_u64());
+            let status =
+                outbox_mark_failed(&node.store, principal, ws, id, now, reason, permanent, ts)
                 .await
                 .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "status": status }))

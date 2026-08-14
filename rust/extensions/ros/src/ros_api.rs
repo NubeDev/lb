@@ -95,10 +95,12 @@ pub trait RosApi: Send + Sync {
     /// Read one point (its `present_value`, priority, …) — the per-tick poll read.
     async fn get_point(&self, point_uuid: &str) -> Result<Point, RosApiError>;
 
-    /// Write a priority slot on a point (the setpoint the outbox delivers). Reads the current
-    /// priority, sets `slot` to `value` (None releases), and PATCHes it back — idempotent at the slot.
+    /// Write a priority slot on a point (the setpoint the outbox delivers) — a sparse per-slot
+    /// PATCH, idempotent at the slot. `host_uuid` (optional) scopes the write to one supervised
+    /// Host via `X-Host`, matching the read chain; absent → the box's default-Host lookup.
     async fn write_point_slot(
         &self,
+        host_uuid: Option<&str>,
         point_uuid: &str,
         slot: u8,
         value: Option<f64>,
@@ -111,8 +113,10 @@ pub trait RosApi: Send + Sync {
     async fn get_schedule(&self, schedule_uuid: &str) -> Result<Schedule, RosApiError>;
 
     /// Write a schedule's weekly/exception/event payload back (must-deliver, same as a point write).
+    /// Same optional `X-Host` scoping as `write_point_slot`.
     async fn write_schedule(
         &self,
+        host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
     ) -> Result<Schedule, RosApiError>;
@@ -225,37 +229,37 @@ impl RosApi for RealRosApi {
             .map_err(map_client_err)
     }
 
+    // No standalone devices-list endpoint (matches the reference client) — fetch the Host's
+    // networks WITH devices nested (`with_devices: true`) and pick the one matching `network_uuid`.
     async fn list_devices(
         &self,
         host_uuid: Option<&str>,
         network_uuid: &str,
     ) -> Result<Vec<Device>, RosApiError> {
-        let params = crate::ros_client::GetDevicesParams {
-            network_uuid: Some(network_uuid.to_string()),
-            host_uuid: host_uuid.map(|h| h.to_string()),
-            ..Default::default()
+        let networks = match host_uuid {
+            Some(h) => self.list_networks_for_host(h, true).await?,
+            None => self.list_networks(true).await?,
         };
-        self.client
-            .get_devices(Some(&params))
-            .await
-            .map_err(map_client_err)
+        Ok(networks
+            .into_iter()
+            .find(|n| n.uuid == network_uuid)
+            .and_then(|n| n.devices)
+            .unwrap_or_default())
     }
 
+    // No standalone points-list endpoint (matches the reference client) — fetch the device WITH
+    // points nested (`with_points: true`) and return them.
     async fn list_points(
         &self,
         host_uuid: Option<&str>,
         device_uuid: &str,
     ) -> Result<Vec<Point>, RosApiError> {
-        let params = crate::ros_client::GetPointsParams {
-            device_uuid: Some(device_uuid.to_string()),
-            host_uuid: host_uuid.map(|h| h.to_string()),
-            with_priority: Some(true),
-            ..Default::default()
-        };
-        self.client
-            .get_points(Some(&params))
+        let device = self
+            .client
+            .get_device_by_uuid(device_uuid, host_uuid, true)
             .await
-            .map_err(map_client_err)
+            .map_err(map_client_err)?;
+        Ok(device.points.unwrap_or_default())
     }
 
     async fn get_point(&self, point_uuid: &str) -> Result<Point, RosApiError> {
@@ -271,19 +275,13 @@ impl RosApi for RealRosApi {
 
     async fn write_point_slot(
         &self,
+        host_uuid: Option<&str>,
         point_uuid: &str,
         slot: u8,
         value: Option<f64>,
     ) -> Result<Point, RosApiError> {
-        let mut priority = self
-            .client
-            .get_point_priority(point_uuid)
-            .await
-            .map_err(map_client_err)?
-            .unwrap_or_default();
-        priority.set_slot(slot, value).map_err(map_client_err)?;
         self.client
-            .write_point_priority(point_uuid, &priority)
+            .write_point_priority_slot(host_uuid, point_uuid, slot, value)
             .await
             .map_err(map_client_err)
     }
@@ -301,11 +299,12 @@ impl RosApi for RealRosApi {
 
     async fn write_schedule(
         &self,
+        host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
     ) -> Result<Schedule, RosApiError> {
         self.client
-            .write_schedule(schedule_uuid, schedule)
+            .write_schedule(host_uuid, schedule_uuid, schedule)
             .await
             .map_err(map_client_err)
     }

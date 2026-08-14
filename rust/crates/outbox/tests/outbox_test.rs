@@ -74,7 +74,7 @@ async fn a_failed_delivery_stays_schedulable_and_redelivers() {
     // Pass 1 at now=1: the target is down → mark failed. The effect is still owed.
     let p1 = pending(&store, ws).await.unwrap();
     assert_eq!(p1.len(), 1);
-    let status = mark_failed(&store, ws, "e1", 1, "target refused")
+    let status = mark_failed(&store, ws, "e1", 1, "target refused", None)
         .await
         .unwrap();
     assert_eq!(
@@ -96,7 +96,7 @@ async fn a_failed_delivery_stays_schedulable_and_redelivers() {
         1,
         "due once backoff elapsed"
     );
-    mark_delivered(&store, ws, "e1").await.unwrap();
+    mark_delivered(&store, ws, "e1", None).await.unwrap();
     let p3 = pending(&store, ws).await.unwrap();
     assert!(p3.is_empty(), "a delivered effect is no longer scheduled");
 
@@ -128,7 +128,7 @@ async fn a_failed_effect_waits_out_its_backoff_before_it_is_due() {
     let ws = "outbox-backoff";
     enqueue_pr(&store, ws, "e1", "pr:2451", 10).await;
 
-    mark_failed(&store, ws, "e1", 10, "target refused")
+    mark_failed(&store, ws, "e1", 10, "target refused", None)
         .await
         .unwrap();
     let gate = 10 + backoff(1); // the earliest ts the relay may retry
@@ -159,13 +159,13 @@ async fn an_effect_dead_letters_after_exhausting_max_attempts() {
 
     // Two failures: still Failed (schedulable), backoff each time.
     assert_eq!(
-        mark_failed(&store, ws, "e1", 1, "target refused")
+        mark_failed(&store, ws, "e1", 1, "target refused", None)
             .await
             .unwrap(),
         EffectStatus::Failed
     );
     assert_eq!(
-        mark_failed(&store, ws, "e1", 100, "target refused")
+        mark_failed(&store, ws, "e1", 100, "target refused", None)
             .await
             .unwrap(),
         EffectStatus::Failed
@@ -178,7 +178,7 @@ async fn an_effect_dead_letters_after_exhausting_max_attempts() {
 
     // The third failure hits max_attempts → dead-lettered (terminal).
     assert_eq!(
-        mark_failed(&store, ws, "e1", 200, "target refused")
+        mark_failed(&store, ws, "e1", 200, "target refused", None)
             .await
             .unwrap(),
         EffectStatus::DeadLettered
@@ -211,7 +211,7 @@ async fn an_effect_is_invisible_across_the_workspace_wall() {
     assert!(from_b.is_empty(), "ws-B must not see ws-A's effects");
 
     // ws-B cannot mark ws-A's effect (it does not exist in B's namespace).
-    let err = mark_delivered(&store, "outbox-iso-b", "e1").await;
+    let err = mark_delivered(&store, "outbox-iso-b", "e1", None).await;
     assert!(err.is_err(), "ws-B cannot mark a ws-A effect delivered");
 
     // ws-A's effect is untouched — still pending.
@@ -298,4 +298,44 @@ async fn releasing_an_absent_effect_is_a_harmless_no_op() {
     let ws = "held-absent";
     assert!(!lb_outbox::release(&store, ws, "nope").await.unwrap());
     assert!(!lb_outbox::discard(&store, ws, "nope").await.unwrap());
+}
+
+#[tokio::test]
+async fn a_superseded_mark_is_a_no_op_and_the_newer_version_still_delivers() {
+    // The supersede guard (mark module doc; found live as rapid slider writes settling on a MIDDLE
+    // value): a stable-id effect re-enqueued with a newer payload while an older version's delivery
+    // is in flight must NOT be stamped `Delivered` by the old attempt's ack — the newer version is
+    // still owed. The relay passes the `ts` of the version it pulled; a mark whose ts no longer
+    // matches the row leaves it untouched.
+    let store = Store::memory().await.unwrap();
+    let ws = "outbox-supersede";
+
+    // v1 (ts=10) is pulled by a relay pass…
+    enqueue_pr(&store, ws, "e1", "pr:2451", 10).await;
+    let pulled = pending(&store, ws).await.unwrap();
+    assert_eq!(pulled[0].ts, 10);
+
+    // …and while its delivery is in flight, v2 (ts=20) re-enqueues the SAME id.
+    enqueue_pr(&store, ws, "e1", "pr:2451", 20).await;
+
+    // The old attempt acks with the ts IT delivered → no-op: v2 is still pending, still due.
+    mark_delivered(&store, ws, "e1", Some(10)).await.unwrap();
+    let still = pending(&store, ws).await.unwrap();
+    assert_eq!(still.len(), 1, "the newer version is still owed");
+    assert_eq!(still[0].ts, 20);
+    assert_eq!(still[0].status, EffectStatus::Pending);
+
+    // A superseded FAILURE is a no-op too: no attempt counted, no backoff pushed onto v2.
+    mark_failed(&store, ws, "e1", 30, "old attempt refused", Some(10))
+        .await
+        .unwrap();
+    let untouched = pending(&store, ws).await.unwrap();
+    assert_eq!(untouched[0].attempts, 0, "v2 pays nothing for v1's failure");
+
+    // The next pass delivers v2 and marks with ITS ts — that one lands.
+    mark_delivered(&store, ws, "e1", Some(20)).await.unwrap();
+    assert!(
+        pending(&store, ws).await.unwrap().is_empty(),
+        "v2 delivered — nothing owed"
+    );
 }

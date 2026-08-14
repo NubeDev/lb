@@ -129,6 +129,10 @@ fn init_reply() -> String {
                     "type": "object",
                     "properties": {
                         "ros_uuid": { "type": "string", "title": "Connection uuid" },
+                        // OPTIONAL: which supervised Host on the box (rides as the write's `X-Host`,
+                        // matching the read chain's scoping). Absent → the box's default-Host lookup,
+                        // today's exact behaviour — existing saved panels/effects keep working.
+                        "host_uuid": { "type": "string", "title": "Host uuid" },
                         "point_uuid": { "type": "string", "title": "Point uuid" },
                         "slot": {
                             "type": "integer", "minimum": 1, "maximum": 16,
@@ -153,6 +157,8 @@ fn init_reply() -> String {
                     "type": "object",
                     "properties": {
                         "ros_uuid": { "type": "string", "title": "Connection uuid" },
+                        // OPTIONAL Host scoping, same posture as `ros.point.write`.
+                        "host_uuid": { "type": "string", "title": "Host uuid" },
                         "schedule_uuid": { "type": "string", "title": "Schedule uuid" },
                         "schedule": { "type": "object", "title": "Schedule payload" },
                     },
