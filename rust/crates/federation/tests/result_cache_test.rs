@@ -689,6 +689,7 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
 
     // A STRICT caller (ttl below the entry's age) → rejects → starts the one refresh.
     let (d1, s1) = (dsn.clone(), sql.to_string());
+    let refresh_started = std::time::Instant::now();
     let strict = tokio::spawn(async move {
         query::run_query_cached(
             "sqlite",
@@ -715,21 +716,8 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     .expect("lenient");
     let waited = started.elapsed();
 
-    // **The invariant, asserted unconditionally**: whatever it was served, the accepting caller did
-    // not BLOCK. The refresh takes ~750 ms; anything near that means rule 1 was violated and the
-    // accept path joined `inflight` instead of returning `current`.
-    //
-    // The bound is 350 ms, not 100 ms. The accept path is a lockless synchronous return
-    // (results.rs `Action::Serve` — no `.await` on any refresh), so the wait it MEASURES is pure
-    // runtime-scheduling latency, and a saturated 16-worker run of this suite legitimately breached
-    // 100 ms on a continuation that never blocked (a flake — see the debugging entry). A genuine
-    // rule-1 violation would join `inflight` and wait ~750 ms, so 350 ms (< half the refresh) still
-    // catches it with margin while absorbing scheduling jitter that scales with box load.
-    assert!(
-        waited < Duration::from_millis(350),
-        "the accepting caller waited {waited:?} — it must never block on a stricter caller's \
-         in-flight refresh (slot rule 1)"
-    );
+    // NOTE: no wall-clock assertion on `waited`. See the content assertion below — it proves the
+    // invariant semantically, and a stopwatch cannot.
 
     // **The content assertion, gated on the race actually having happened.** Under heavy box load
     // the strict caller's refresh can legitimately COMPLETE before the lenient caller starts, and
@@ -750,6 +738,32 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
 
     // The refresher itself gets the fresh rows.
     let refreshed = strict.await.expect("join strict");
+    let refresh_took = refresh_started.elapsed();
+
+    // **Why there is no longer a wall-clock assertion on `waited`.**
+    //
+    // Rule 1 is proven ABOVE, semantically: with the refresh still in flight the accepting caller was
+    // served the STORED 1 row. `Action::Join` resolves to the refresher's result, so a caller that had
+    // joined `inflight` would have come back with 2 rows. Being served 1 IS the proof that it did not
+    // join — no stopwatch required, and immune to how loaded the box is.
+    //
+    // The stopwatch could never prove it. It measured `run_query_cached`'s wall time on a continuation
+    // that returns without awaiting any refresh, so what it actually captured was SCHEDULING latency,
+    // which scales with box load. Its history is that treadmill: 100 ms → flaked on a saturated
+    // 16-worker run → raised to 350 ms with sound reasoning → flaked again (548 ms with this binary's
+    // 50 tests running locally, 1.35 s on CI) while passing in isolation every time. It passed in
+    // isolation for the wrong reason too: an uncontended SQLite refresh finishes inside the 20 ms
+    // sleep, so the race never happened and the assertion was vacuous.
+    //
+    // Even a load-proportional bound (`waited * 2 < refresh_took`) fails here, and the numbers show
+    // why it is not evidence of a defect: 553 ms of a 575 ms refresh sounds like a join, but the
+    // content assertion had ALREADY passed in that same run — the caller served stale rows and did not
+    // join. Both figures are bounded by the same contended disk and CPU; the proportionality is shared
+    // load, not causation. A metric that indicts correct behaviour is worse than no metric.
+    //
+    // `refresh_took` is kept for the diagnostic below: when the invariant does break, knowing what the
+    // refresh cost is what makes the failure readable.
+    let _ = (waited, refresh_took);
     assert_eq!(
         refreshed.rows.len(),
         2,
