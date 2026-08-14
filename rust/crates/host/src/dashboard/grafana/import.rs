@@ -154,15 +154,27 @@ pub async fn dashboard_import(
         .and_then(serde_json::Value::as_str)
         .map(str::to_string);
 
-    // Toolbar chrome the import implies: show the date pickers when a wired query bounds itself on the
-    // host `$__from`/`$__to` window (the macro translation depends on the picker to feed those tokens),
-    // and show the refresh control when the source auto-refreshed.
+    // Toolbar chrome the import implies: show the date pickers when a wired query is TIME-WINDOWED —
+    // it either references the host `$__from`/`$__to` tokens directly, or carries a Grafana time macro
+    // the query path expands against that same window.
+    //
+    // Testing only for `$__from`/`$__to` was correct while the import-time translator rewrote
+    // `$__timeFilter(col)` into `to_timestamp($__from / 1000.0)`; the sql-time-macros scope retired
+    // that translator, so an imported panel now keeps `$__timeFilter(col)` verbatim and contains
+    // NEITHER token. The picker silently stopped appearing on exactly the dashboards that need it —
+    // every migrated Grafana board with a time-windowed panel — while the SQL stayed correct, so the
+    // failure looked like missing chrome rather than a broken inference.
+    //
+    // Match the macro family instead of one dialect's expansion of it. `$__time`-prefixed covers
+    // `$__timeFilter` / `$__time` / `$__timeGroup` / `$__timeFrom` / `$__timeTo` / `$__timeTable`;
+    // `$__interval` is window-derived too (its width comes from the picked range).
+    const WINDOW_TOKENS: &[&str] = &["$__from", "$__to", "$__time", "$__interval"];
     let needs_picker = cells.iter().any(|c| {
         c.sources.iter().any(|t| {
             t.args
                 .get("sql")
                 .and_then(serde_json::Value::as_str)
-                .is_some_and(|s| s.contains("$__from") || s.contains("$__to"))
+                .is_some_and(|s| WINDOW_TOKENS.iter().any(|tok| s.contains(tok)))
         })
     });
     let has_refresh = json

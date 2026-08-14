@@ -234,6 +234,25 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // `mcp:identity.manage:call` grant (the scope's MCP §6.1 decision), not a new per-verb cap.
         // Each verb re-checks `identity.manage` inside.
         "identity.manage"
+    } else if qualified_tool == "outbox.enqueue_held" {
+        // rules-approvals scope: staging a GATED effect is the same authority as enqueuing an
+        // ordinary one — the hold is a delivery decision, not a second privilege — so it rides
+        // `mcp:outbox.enqueue:call`, which the host fn re-checks inside.
+        //
+        // RESTORED. This arm existed, was removed, and no `mcp:outbox.enqueue_held:call` exists in
+        // any role bundle — so the outer gate demanded a cap nobody can hold and every held-effect
+        // stage answered a bare `denied`, for admins too. The whole approvals surface was
+        // unreachable: `approval_release_test` fails 7/7 on master with "stage held effect: Denied".
+        //
+        // The doc comment at the head of this function still describes the alias, which is what
+        // makes the removal read as accidental rather than intended.
+        //
+        // Note the same commit ADDED this exact arm for `media.upload_begin`/`chunk_write`/
+        // `upload_commit`, with a comment describing the identical failure ("the entire upload
+        // surface was unreachable for every caller, admins included"). Same trap, same commit,
+        // opposite directions — which is the argument for the alias table being the ONE place this
+        // mapping lives, and for a green suite that fails the moment an arm goes missing.
+        "outbox.enqueue"
     } else if qualified_tool == "viz.query_batch" {
         // dashboard-query-acceleration scope, slice 3: the batch fan-in is a fan-in of the SAME
         // authorized read, not a new privilege — it rides `mcp:viz.query:call`, checked ONCE for the

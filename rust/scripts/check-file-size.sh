@@ -23,7 +23,17 @@ cd "$ROOT"
 
 # Tracked source files, minus generated trees. `dist/` is build output (a few packages commit
 # their rolled-up .d.ts); it is not hand-written source and must never be counted.
-mapfile -t files < <(git ls-files '*.rs' '*.ts' '*.tsx' \
+#
+# Read with a `while read` loop, NOT `mapfile`. `mapfile` is a bash 4 builtin and macOS ships bash
+# 3.2 (and always will — bash 4 went GPLv3), so on a Mac this script died on line 1 of real work with
+# `mapfile: command not found` and exit 127. Not a wrong answer — NO answer, which took the gate away
+# from every developer on a Mac: they could neither check a file size before pushing nor run the
+# `--update` re-baseline this script documents as the remedy. An unrunnable gate is an unenforced one,
+# and the backlog grew accordingly. This loop is portable to bash 3.2 and behaves identically.
+files=()
+while IFS= read -r line; do
+  [ -n "$line" ] && files+=("$line")
+done < <(git ls-files '*.rs' '*.ts' '*.tsx' \
   | grep -v '/generated/' \
   | grep -v '/target/' \
   | grep -v '/dist/' || true)
@@ -36,7 +46,7 @@ if [ "${1:-}" = "--update" ]; then
     echo "# The list may only SHRINK. See check-file-size.sh for the ratchet rules."
     for f in "${files[@]}"; do
       [ -f "$f" ] || continue
-      n=$(wc -l < "$f")
+      n=$(wc -l < "$f" | tr -d "[:space:]")   # BSD wc pads; GNU does not
       [ "$n" -gt "$LIMIT" ] && echo "$f $n"
     done
   } > "$BASELINE"
@@ -44,22 +54,21 @@ if [ "${1:-}" = "--update" ]; then
   exit 0
 fi
 
-# Load the baseline into an assoc array: path -> allowed line count.
-declare -A allowed=()
-if [ -f "$BASELINE" ]; then
-  while read -r path count; do
-    [ -z "${path:-}" ] && continue
-    case "$path" in \#*) continue ;; esac
-    allowed["$path"]=$count
-  done < "$BASELINE"
-fi
+# The baseline is a path -> allowed-line-count lookup. It is queried with `awk` rather than loaded
+# into an associative array, because `declare -A` is ALSO bash 4 (like the `mapfile` above) and macOS
+# is stuck on bash 3.2 — the two together are what made this gate unrunnable on a Mac. One `awk` per
+# tracked file over a ~114-line baseline is imperceptible next to the `wc -l` this loop already does.
+baseline_cap() {
+  [ -f "$BASELINE" ] || return 0
+  awk -v want="$1" '$1 == want { print $2; exit }' "$BASELINE"
+}
 
 fail=0
 graduated=()
 for f in "${files[@]}"; do
   [ -f "$f" ] || continue
-  n=$(wc -l < "$f")
-  cap=${allowed["$f"]:-}
+  n=$(wc -l < "$f" | tr -d "[:space:]")   # BSD wc pads; GNU does not
+  cap=$(baseline_cap "$f")
 
   if [ -z "$cap" ]; then
     # Not grandfathered: the flat limit applies.
@@ -75,10 +84,15 @@ for f in "${files[@]}"; do
   fi
 done
 
-# A baseline entry whose file is gone is just stale — report it, don't fail.
-for path in "${!allowed[@]}"; do
-  [ -f "$path" ] || graduated+=("$path (deleted)")
-done
+# A baseline entry whose file is gone is just stale — report it, don't fail. Read the baseline back
+# rather than iterating a map's keys (`${!allowed[@]}` is bash 4 too).
+if [ -f "$BASELINE" ]; then
+  while read -r path _count; do
+    [ -z "${path:-}" ] && continue
+    case "$path" in \#*) continue ;; esac
+    [ -f "$path" ] || graduated+=("$path (deleted)")
+  done < "$BASELINE"
+fi
 
 if [ ${#graduated[@]} -gt 0 ]; then
   echo "FILE-LAYOUT: ${#graduated[@]} baseline file(s) now within the limit — run"
@@ -91,4 +105,4 @@ if [ "$fail" -ne 0 ]; then
   echo "::error::file(s) exceed the ${LIMIT}-line FILE-LAYOUT limit (or grew past their baseline)"
   exit 1
 fi
-echo "FILE-LAYOUT: OK — ${#files[@]} files checked, ${#allowed[@]} grandfathered (see $BASELINE)"
+echo "FILE-LAYOUT: OK — ${#files[@]} files checked, $(grep -cv "^#" "$BASELINE" 2>/dev/null || echo 0) grandfathered (see $BASELINE)"

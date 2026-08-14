@@ -669,7 +669,7 @@ async fn team_shared_member_reads_non_member_denied() {
     ));
 
     // Share to a team Ben belongs to.
-    add_member(&store, &test, ws, "team:ops", "user:ben")
+    add_member(&store, &test, ws, "ops", "user:ben")
         .await
         .unwrap();
     dashboard_share(

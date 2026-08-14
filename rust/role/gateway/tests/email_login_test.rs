@@ -163,7 +163,10 @@ async fn multi_workspace_login_returns_a_select_token_and_select_mints() {
         .iter()
         .map(|w| w["ws"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(roster, vec!["nube", "globex"], "roster lists both, sorted");
+    // `login_workspaces` sorts the roster by ws id (`out.sort_by(|a, b| a.ws.cmp(&b.ws))`), so sorted
+    // means lexicographic: `globex` precedes `nube`. The old expectation was insertion order, which
+    // only agreed with the implementation until the sort was applied.
+    assert_eq!(roster, vec!["globex", "nube"], "roster lists both, sorted");
 
     // Pick globex with the select-token → full token.
     let gw2 = gateway_on(node, &key);
@@ -264,7 +267,12 @@ async fn a_duplicate_email_is_refused_case_insensitively_and_lookup_is_case_inse
     // Lookup is case-insensitive: login with a differently-cased email finds test.
     set_password(&gw, &admin, "user:test", "pw").await;
     add_member(&gw, &admin, "user:test").await;
-    let (status, body) = auth_login(&gw, "ADA@nube.com", "pw").await;
+    // A DIFFERENTLY-CASED spelling of the identity's own `Test@Nube.com` — that is the whole point of
+    // the assertion. This read `ADA@nube.com` until now: the acme/ada → nube/test rename (12e58b59)
+    // folded the DOMAIN but left the upper-case local part behind, because a rename of `ada` does not
+    // match `ADA`. The result was a login for an address no identity had ever claimed, so the lookup
+    // correctly returned 401 and the case-insensitivity this test exists to prove went unchecked.
+    let (status, body) = auth_login(&gw, "TEST@NUBE.COM", "pw").await;
     assert_eq!(status, StatusCode::OK, "case-insensitive email lookup");
     assert_eq!(body["principal"], "user:test");
 }

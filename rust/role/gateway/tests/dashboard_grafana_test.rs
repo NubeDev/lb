@@ -99,10 +99,11 @@ fn grafana_iaq_export() -> Value {
 }
 
 /// The headline fidelity test (viz grafana-dashboard-fidelity scope, testing plan): a real Grafana IAQ
-/// export → commit on a real node → the stored `Dashboard` is wired, macro-free, grid-aligned, placeholder-
-/// free, and honestly reported. No mocks.
+/// export → commit on a real node → the stored `Dashboard` is wired, grid-aligned, placeholder-free,
+/// and honestly reported, with its Grafana time macros carried through VERBATIM for the federation
+/// child to expand per engine at query time (sql-time-macros scope). No mocks.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn iaq_import_is_wired_macro_free_grid_aligned_and_honest() {
+async fn iaq_import_is_wired_macros_verbatim_grid_aligned_and_honest() {
     let (gw, key) = gateway().await;
     seed_datasource(&gw.node, "nube", "pdnsw").await;
     let tok = token(&key, "user:test", "nube", IMPORT_CAPS);
@@ -137,7 +138,15 @@ async fn iaq_import_is_wired_macro_free_grid_aligned_and_honest() {
         "no unsupported/'no template' placeholder cells"
     );
 
-    // WIRED-AND-DRAWING: every data cell's target is executable — 0 `tool:""`, and macro-free.
+    // WIRED-AND-DRAWING: every data cell's target is executable — 0 `tool:""`.
+    //
+    // Macros are NOT expanded here, and asserting their absence is asserting the OLD design. The
+    // sql-time-macros scope retired the import-time SQL translator outright ("`grafana/macros.rs` is
+    // deleted"): an imported panel now keeps its macros BYTE-FOR-BYTE and the federation child expands
+    // them per engine at query time, so the panel is live and zoom-coarsening instead of frozen into
+    // one dialect at import. `grafana::bind` documents this and its own unit test
+    // (`grafana_macros_pass_through_verbatim_at_bind`) asserts the exact opposite of what this loop
+    // used to demand — the two could never both pass.
     for c in cells
         .iter()
         .filter(|c| !c["sources"].as_array().unwrap().is_empty())
@@ -145,22 +154,22 @@ async fn iaq_import_is_wired_macro_free_grid_aligned_and_honest() {
         for t in c["sources"].as_array().unwrap() {
             assert_eq!(t["tool"], "federation.query", "cell {} unwired", c["i"]);
             let sql = t["args"]["sql"].as_str().unwrap();
-            assert!(
-                !sql.contains("$__time("),
-                "untranslated $__time in {}",
-                c["i"]
-            );
-            assert!(
-                !sql.contains("$__timeFilter("),
-                "untranslated $__timeFilter in {}",
-                c["i"]
-            );
+            assert!(!sql.is_empty(), "cell {} carries no SQL", c["i"]);
         }
     }
-    // The bounded host window replaced $__timeFilter on a chart (the 30 s-cancel fix).
+    // BYTE-FOR-BYTE PASSTHROUGH: the chart's SQL still carries the Grafana macros exactly as the
+    // export wrote them. This previously asserted the import had rewritten `$__timeFilter` into a
+    // bounded host window (`to_timestamp($__from / 1000.0)`) — the import-time translation the
+    // sql-time-macros scope retired. Bounding the window is now the QUERY path's job (`viz.query`
+    // substitutes the values, the federation child expands the macro per engine), which is what keeps
+    // an imported panel live and zoom-coarsening rather than frozen into Postgres at import.
     let ts = cells.iter().find(|c| c["view"] == "timeseries").unwrap();
     let ts_sql = ts["sources"][0]["args"]["sql"].as_str().unwrap();
-    assert!(ts_sql.contains("to_timestamp($__from / 1000.0)"));
+    assert!(
+        ts_sql.contains("$__time(histories.timestamp)")
+            && ts_sql.contains("$__timeFilter(histories.timestamp)"),
+        "the imported chart keeps its Grafana macros verbatim, got: {ts_sql}"
+    );
 
     // GRID: nothing exceeds the 12-col width, and the three charts pack 3-across (distinct columns).
     for c in cells {

@@ -116,7 +116,7 @@ async fn closure_red_then_green_and_deny_matches_live() {
     dashboard_save(&store, &admin, ws, "aaaa", "Site Health", cells, vars, 2)
         .await
         .unwrap();
-    add_member(&store, &admin, ws, "team:ops", "user:bob")
+    add_member(&store, &admin, ws, "ops", "user:bob")
         .await
         .unwrap();
     dashboard_share(
@@ -368,7 +368,7 @@ async fn a_team_subject_resolves_assets_shared_to_that_team() {
     let ws = "nube";
     let admin = principal("user:test", ws, ADMIN);
 
-    add_member(&store, &admin, ws, "team:ops", "user:bob")
+    add_member(&store, &admin, ws, "ops", "user:bob")
         .await
         .unwrap();
 
@@ -453,7 +453,7 @@ async fn a_team_subject_resolves_assets_shared_to_that_team() {
 
     // The wall still holds: a team the panel is NOT shared to stays red (the fix must not blanket-green
     // every team subject).
-    add_member(&store, &admin, ws, "team:other", "user:mallory")
+    add_member(&store, &admin, ws, "other", "user:mallory")
         .await
         .unwrap();
     let other = dashboard_access_check(&store, &admin, ws, "page", &Subject::Team("other".into()))

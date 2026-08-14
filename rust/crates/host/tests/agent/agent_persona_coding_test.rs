@@ -29,6 +29,18 @@ use serde_json::json;
 
 const PERSONA: &str = "builtin.extension-builder";
 
+/// The runtimes `builtin.extension-builder` allows, mirroring its `runtimes = […]` line in
+/// `agent/personas/personas.toml`. It was `["default"]` while the persona was pinned to the in-house
+/// loop; the external-agent-authoring S2 work UNLOCKED the external runtimes ("the external bridge is
+/// now live"), and the two assertions below still pinned the pre-unlock value. Kept in one place so a
+/// future catalog change breaks one constant rather than drifting two tests apart.
+const ALLOWED_RUNTIMES: &[&str] = &[
+    "default",
+    "open-interpreter-default",
+    "vtcode-default",
+    "codex-default",
+];
+
 fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
     let claims = Claims {
@@ -290,7 +302,8 @@ async fn activating_the_persona_with_an_external_runtime_fails_with_a_named_erro
     .expect_err("the pairing is refused");
     assert!(
         matches!(&err, AgentError::PersonaRuntime { persona, runtime, allowed }
-            if persona == PERSONA && runtime == "some-external" && allowed == &vec!["default".to_string()]),
+            if persona == PERSONA && runtime == "some-external"
+                && allowed == &ALLOWED_RUNTIMES.iter().map(|s| s.to_string()).collect::<Vec<_>>()),
         "a named PersonaRuntime error, before any subprocess (got {err:?})"
     );
 }
@@ -348,7 +361,8 @@ async fn the_extension_builder_is_readable_in_every_workspace_but_seeded_once() 
             .await
             .expect("readable from every ws (built-in union)");
         assert!(p.builtin);
-        assert_eq!(p.runtimes.as_deref(), Some(&["default".to_string()][..]));
+        let expected: Vec<String> = ALLOWED_RUNTIMES.iter().map(|s| s.to_string()).collect();
+        assert_eq!(p.runtimes.as_deref(), Some(&expected[..]));
     }
 }
 

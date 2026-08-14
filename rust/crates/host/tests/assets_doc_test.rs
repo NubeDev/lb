@@ -78,7 +78,7 @@ async fn shared_to_a_team_a_member_reads_a_non_member_is_denied() {
     )
     .await
     .unwrap();
-    add_member(&store, &test, ws, "team:engineering", "user:ben")
+    add_member(&store, &test, ws, "engineering", "user:ben")
         .await
         .unwrap();
     share_doc(&store, &test, ws, "scope-x", "team:engineering")

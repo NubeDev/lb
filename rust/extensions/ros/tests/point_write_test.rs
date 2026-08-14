@@ -34,7 +34,7 @@ fn full_caps() -> Vec<String> {
     [
         "mcp:ros.create:call",
         "mcp:ros.get:call",
-        "mcp:point.write:call",
+        "mcp:ros.point.write:call",
         "mcp:assets.put_doc:call",
         "mcp:assets.get_doc:call",
         "mcp:assets.list_docs:call",
@@ -149,7 +149,7 @@ async fn point_write_stages_then_relay_delivers_to_box() {
     let staged = call(
         &host,
         &factory,
-        "point.write",
+        "ros.point.write",
         json!({ "ros_uuid": "ros-1", "point_uuid": "point-1", "slot": 8, "value": 21.5 }),
     )
     .await
@@ -197,7 +197,7 @@ async fn unreachable_box_retries_then_delivers() {
     call(
         &host,
         &factory,
-        "point.write",
+        "ros.point.write",
         json!({ "ros_uuid": "ros-r", "point_uuid": "point-r", "slot": 5, "value": 42.0 }),
     )
     .await
@@ -239,12 +239,12 @@ async fn write_without_cap_is_denied_before_enqueue() {
 
     // A grant WITHOUT mcp:point.write:call — the write is refused before any enqueue.
     let mut caps = full_caps();
-    caps.retain(|c| c != "mcp:point.write:call");
+    caps.retain(|c| c != "mcp:ros.point.write:call");
     let denied_host = host_for(&key, &base, ws, &caps);
     let denied = call(
         &denied_host,
         &factory,
-        "point.write",
+        "ros.point.write",
         json!({ "ros_uuid": "ros-1", "point_uuid": "point-1", "slot": 3, "value": 9.0 }),
     )
     .await;
@@ -275,7 +275,7 @@ async fn workspace_isolation_setpoint_invisible_to_b() {
     call(
         &host_a,
         &factory,
-        "point.write",
+        "ros.point.write",
         json!({ "ros_uuid": "a-1", "point_uuid": "point-i", "slot": 1, "value": 5.0 }),
     )
     .await
