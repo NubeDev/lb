@@ -431,9 +431,9 @@ pub use store_mutate::{
     StoreMutateError,
 };
 pub use store_query::{
-    authorize_store_query, call_store_query_tool, ensure_read_only, store_query_run,
-    store_schema_read, QueryResult, Schema, SchemaColumn, SchemaTable, StoreQueryError,
-    MAX_QUERY_ROWS, QUERY_TIMEOUT_SECS,
+    authorize_store_query, call_store_query_tool, ensure_read_only, ensure_read_only_with_vars,
+    store_query_run, store_schema_read, QueryResult, Schema, SchemaColumn, SchemaTable,
+    StoreQueryError, MAX_QUERY_ROWS, QUERY_TIMEOUT_SECS,
 };
 pub use sync::{replay_history, sync_channel, ChannelSync};
 pub use system::{

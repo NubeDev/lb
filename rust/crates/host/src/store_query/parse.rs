@@ -36,6 +36,17 @@ pub enum ReadKind {
 /// It also carries the **secret-plane wall** ([`ensure_no_secret_read`]) on the same parsed statement
 /// ([`StoreQueryError::SecretTable`]), so no caller can hold one gate and skip the other.
 pub fn ensure_read_only(sql: &str) -> Result<ReadKind, StoreQueryError> {
+    ensure_read_only_with_vars(sql, &[])
+}
+
+/// [`ensure_read_only`] with the request's own `vars` in hand, so the secret wall can *resolve* a
+/// parameterised table position (`FROM type::table($tb)`) instead of refusing it as unprovable. The
+/// var-less form above delegates here with an empty slice: passing no bindings can only refuse more,
+/// never less, so an existing caller stays safe — it just cannot use the parameterised form.
+pub fn ensure_read_only_with_vars(
+    sql: &str,
+    vars: &[(String, serde_json::Value)],
+) -> Result<ReadKind, StoreQueryError> {
     let query = surrealdb::syn::parse(sql).map_err(|e| StoreQueryError::Parse(e.to_string()))?;
     let statements = &query.0 .0;
 
@@ -76,7 +87,7 @@ pub fn ensure_read_only(sql: &str) -> Result<ReadKind, StoreQueryError> {
 
     // The second, independent wall: a read of the right KIND may still touch the secret plane. It is
     // checked on the same parsed statement — see `secret_wall.rs` for what it can and cannot prove.
-    ensure_no_secret_read(stmt)?;
+    ensure_no_secret_read(stmt, vars)?;
 
     Ok(kind)
 }

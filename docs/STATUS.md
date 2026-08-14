@@ -51,6 +51,28 @@ principal — exercising the reactor's code path while substituting the one vari
 Regression tests now mint `Principal::routed("node:reactor", ws, reactor_caps())` from the production
 function itself (`pub` for exactly this reason), and both were revert-checked.
 
+**Just shipped 2026-08-14 (unreleased — needs the next `node-v*` tag) — THE SECRET-PLANE WALL STOPS
+REFUSING THE READS IT WAS NEVER MEANT TO
+([debug entry](debugging/store/secret-wall-refuses-composed-and-parameterised-reads.md), session
+[`store/secret-wall-false-refusals`](sessions/store/secret-wall-false-refusals-session.md)).** Found
+by reading six failures that two sessions had written off as "pre-existing, unrelated" — accurate,
+and worthless. The wall (`9fd99175`, 2026-08-04) refused a **composed** read
+(`SELECT * FROM (SELECT … FROM t WHERE …)`, i.e. every rules grid *and* the wrapper `store_query_run`
+itself applies for the row cap) because its table position was inherited past the subquery's
+statement boundary, so each ordinary field reference inside read as a runtime-computed table. It also
+refused `FROM type::table($tb)` as unprovable — which was never true: `store.query` takes
+`{sql, vars}` and the binding arrives in the same request, so the wall was rejecting the one caller
+doing the safest possible thing (the `store-read`/`write`/`delete` flow nodes parameterise their
+table precisely so no user text is spliced into SQL — **all three nodes have been broken for ten
+days**). Now the position ends at a nested `Select` (the subquery re-opens it via its own `what`, so
+every nested/correlated secret read still refuses) and a dynamic position is resolved against the
+request's own bindings before being judged. **The wall got stronger:** a binding that chooses the
+secret plane was a generic "cannot be proven" and is now `SecretTable("secret")`, named, by the same
+rule that catches the literal. `a_dynamic_table_expression_is_refused_even_when_innocent` encoded the
+over-refusal as the intended contract and was replaced by a deliberately wider test; both halves of
+the fix are revert-checked independently, the resolution half against the product-level store-CRUD
+node tests.
+
 **Just shipped 2026-08-09 (unreleased — needs the next `node-v*` tag) — INGEST STOPS PAYING 3× FOR
 EVERY SAMPLE, AND A COMPACTION PASS NOW SAYS WHERE ITS TIME WENT
 ([`store/compaction-write-availability-scope.md`](scope/store/compaction-write-availability-scope.md),
