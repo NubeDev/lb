@@ -20,7 +20,9 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ros_api::{RosApi, RosApiError};
-use crate::ros_client::{Device, Group, Location, Network, PingResponse, Point, Priority, Schedule};
+use crate::ros_client::{
+    Device, Group, Location, Network, PingResponse, Point, Priority, Schedule,
+};
 
 /// A recorded schedule write — what a test asserts reached the box.
 #[derive(Debug, Clone, PartialEq)]
@@ -407,10 +409,13 @@ impl RosApi for RosFake {
         existing.schedule = Some(schedule.clone());
         let result = existing.clone();
         drop(schedules);
-        self.schedule_writes.lock().unwrap().push(RecordedScheduleWrite {
-            schedule_uuid: schedule_uuid.to_string(),
-            schedule,
-        });
+        self.schedule_writes
+            .lock()
+            .unwrap()
+            .push(RecordedScheduleWrite {
+                schedule_uuid: schedule_uuid.to_string(),
+                schedule,
+            });
         Ok(result)
     }
 }

@@ -44,8 +44,11 @@ impl Client {
     /// `GET /api/locations?with_groups={with_groups}` — every Location, each with its `groups`
     /// embedded when `with_groups` is true.
     pub async fn get_locations(&self, with_groups: bool) -> Result<Vec<Location>, RosClientError> {
-        self.get_json("/api/locations", &[("with_groups", with_groups.to_string())])
-            .await
+        self.get_json(
+            "/api/locations",
+            &[("with_groups", with_groups.to_string())],
+        )
+        .await
     }
 
     /// `GET /api/groups/{uuid}?with_hosts={with_hosts}` — one Group, with its `hosts` embedded when

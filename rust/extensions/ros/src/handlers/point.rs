@@ -111,7 +111,10 @@ pub async fn write(
     // `"8"`, not `8`. Rejecting that would make the picker-driven path unusable.
     let slot = input
         .get("slot")
-        .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok())))
+        .and_then(|v| {
+            v.as_u64()
+                .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
+        })
         .ok_or_else(|| HostError::BadResponse("missing integer arg: slot".into()))?;
     if !(1..=16).contains(&slot) {
         return Err(HostError::BadResponse(format!(
