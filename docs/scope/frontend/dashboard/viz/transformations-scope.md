@@ -168,6 +168,14 @@ for the editor; the shapes are mirrored and tested against the same cases).
   `$min`); the **caller passes the resolved `VarScope`** into `viz.query` (the host never resolves
   `${__user.*}` itself from a panel spec — identity comes from the token), and `lb-viz` interpolates option
   values before the step runs.
+- **Multi-value variables → `oneOf`/`notOneOf`:** `filterByValue` carries two matcher ids **beyond**
+  Grafana's `ValueMatcherID` set, which take an ARRAY `options.value` and test membership (`meter` in
+  `["MSB-2 Main","MSB-01"]`). They exist so a multi-value selection — what a table's multi-select row
+  click accumulates — can drive a row filter directly instead of being flattened into a regex alternation.
+  A **scalar** operand is a one-element list (a single-element selection round-trips out of the URL as a
+  plain string); an **empty** list matches nothing, never everything. Being non-Grafana ids, they are the
+  one part of this transform a Phase-4 Grafana export cannot round-trip.
+  See [`../../../../sessions/frontend/filter-by-value-one-of-session.md`](../../../../sessions/frontend/filter-by-value-one-of-session.md).
 
 ## Example flow
 

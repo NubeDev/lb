@@ -3,6 +3,10 @@
 //! `filters: [{fieldName, config: {id, options}}]`, `type: include|exclude`, `match: any|all`. One
 //! responsibility: row selection by value. Pure: rebuilds every field to the kept rows and `relen`s.
 //! Honest: a `ValueMatcherID` we don't know never matches (never a silent keep-all).
+//!
+//! Beyond Grafana's set: `oneOf`/`notOneOf` take an ARRAY `options.value` and test membership, so a
+//! multi-value dashboard variable (a table's multi-select row click) can filter rows directly — `meter`
+//! in `["MSB-2 Main","MSB-01"]`. See `one_of` for the scalar and empty-list rules.
 
 use serde_json::Value;
 
@@ -89,6 +93,8 @@ fn matches_value(id: &str, opts: Option<&Value>, value: &Value) -> bool {
         "lowerOrEqual" => bin(n, opt_num, |a, b| a <= b),
         "equal" => equal(value, opts),
         "notEqual" => !equal(value, opts),
+        "oneOf" => one_of(value, opts),
+        "notOneOf" => !one_of(value, opts),
         "between" => {
             let from = opts.and_then(|o| o.get("from")).and_then(Value::as_f64);
             let to = opts.and_then(|o| o.get("to")).and_then(Value::as_f64);
@@ -122,10 +128,15 @@ fn bin(a: Option<f64>, b: Option<f64>, f: impl Fn(f64, f64) -> bool) -> bool {
 /// Equality against the matcher's `options.value` — numeric when both are numbers, else string-wise,
 /// else raw JSON equality (so a bool/string target still compares honestly).
 fn equal(value: &Value, opts: Option<&Value>) -> bool {
-    let target = match opts.and_then(|o| o.get("value")) {
-        Some(t) => t,
-        None => return false,
-    };
+    match opts.and_then(|o| o.get("value")) {
+        Some(target) => equal_to(value, target),
+        None => false,
+    }
+}
+
+/// Equality between a cell value and ONE target. Split out of `equal` so `oneOf` compares list members
+/// by exactly the same rules — one equality semantic across the matcher set, not two that can drift.
+fn equal_to(value: &Value, target: &Value) -> bool {
     if let (Some(a), Some(b)) = (value.as_f64(), target.as_f64()) {
         return a == b;
     }
@@ -133,6 +144,37 @@ fn equal(value: &Value, opts: Option<&Value>) -> bool {
         return a == b;
     }
     value == target
+}
+
+/// Membership of the cell value in the matcher's `options.value` LIST — lb's own `ValueMatcherID` (Grafana
+/// has no equivalent), added so a MULTI dashboard variable can drive a row filter: a table's multi-select
+/// row click accumulates an array, and this is the matcher that consumes it (`meter` in `[$selectedMeters]`).
+///
+/// A SCALAR right-hand side is a ONE-ELEMENT list, not a non-match. That is not defensive slop — the client
+/// carries a multi-value selection as repeated `?var-<name>=` params, and a single-element selection
+/// round-trips back out of the URL as a plain string. Rejecting a scalar would make the filter work at two
+/// selected rows and silently empty the panel at one, which is exactly the class of quiet wrongness this
+/// transformer refuses elsewhere (see the module header).
+///
+/// An ABSENT operand is false (honest non-match, as `equal`). An EMPTY list matches NOTHING rather than
+/// everything: "nothing is selected" must not read as "no filter", or clearing a selection would silently
+/// widen the result instead of narrowing it. An author who means "all rows" removes the condition.
+///
+/// KNOWN GAP, shared with `equal` (deliberately not fixed here): a dashboard variable's values are
+/// STRINGS, so `oneOf` over a NUMERIC column with a variable operand compares `5` against `"5"` and finds
+/// nothing. Widening `equal_to` to parse numeric strings would fix both at once but would also make a
+/// text column holding `"007"` match a target of `7` — one silent wrongness traded for another. The fix
+/// belongs in one deliberate change to `equal_to` covering both matchers; `oneOf` must not fork its own
+/// coercion in the meantime.
+fn one_of(value: &Value, opts: Option<&Value>) -> bool {
+    let target = match opts.and_then(|o| o.get("value")) {
+        Some(t) => t,
+        None => return false,
+    };
+    match target.as_array() {
+        Some(list) => list.iter().any(|t| equal_to(value, t)),
+        None => equal_to(value, target),
+    }
 }
 
 #[cfg(test)]
@@ -203,6 +245,85 @@ mod tests {
             out[0].field("v").unwrap().values,
             vec![json!(5), json!(15), json!(25)]
         );
+    }
+
+    /// Build a one-condition `filterByValue` over `label` with the given matcher id + operand.
+    fn one_condition(id: &str, value: Value) -> Value {
+        json!({
+            "type": "include",
+            "match": "any",
+            "filters": [{ "fieldName": "label", "config": { "id": id, "options": { "value": value } } }],
+        })
+    }
+
+    #[test]
+    fn one_of_keeps_rows_whose_value_is_in_the_list() {
+        let out = apply(seeded(), &one_condition("oneOf", json!(["a", "c"])));
+        assert_eq!(
+            out[0].field("label").unwrap().values,
+            vec![json!("a"), json!("c")]
+        );
+        assert_eq!(out[0].field("v").unwrap().values, vec![json!(5), json!(25)]);
+    }
+
+    /// The URL round-trip collapses a single-element `?var-x=` selection back to a plain string, so a
+    /// one-row selection arrives as a scalar. It must behave as a one-element list, not silently empty
+    /// the panel at exactly n=1.
+    #[test]
+    fn one_of_treats_a_scalar_operand_as_a_one_element_list() {
+        let out = apply(seeded(), &one_condition("oneOf", json!("b")));
+        assert_eq!(out[0].field("label").unwrap().values, vec![json!("b")]);
+    }
+
+    /// `equal_to` is shared with `equal`, so a numeric column compares numerically inside the list.
+    #[test]
+    fn one_of_compares_numerically_on_a_numeric_column() {
+        let out = apply(
+            seeded(),
+            &json!({
+                "type": "include",
+                "match": "any",
+                "filters": [{ "fieldName": "v", "config": { "id": "oneOf", "options": { "value": [5, 25] } } }],
+            }),
+        );
+        assert_eq!(out[0].field("v").unwrap().values, vec![json!(5), json!(25)]);
+    }
+
+    #[test]
+    fn not_one_of_is_the_per_row_complement() {
+        let out = apply(seeded(), &one_condition("notOneOf", json!(["a", "c"])));
+        assert_eq!(
+            out[0].field("label").unwrap().values,
+            vec![json!("b"), json!("d")]
+        );
+    }
+
+    /// An empty selection selects NOTHING — it must not read as "no filter" and widen the result.
+    #[test]
+    fn one_of_empty_list_matches_nothing() {
+        let out = apply(seeded(), &one_condition("oneOf", json!([])));
+        assert_eq!(out[0].length, 0);
+    }
+
+    /// An un-resolved `$var` (unknown variable → left literal by the client) is just a string that no
+    /// row equals: an honest empty result, never a fabricated keep-all.
+    #[test]
+    fn one_of_unresolved_variable_literal_matches_nothing() {
+        let out = apply(seeded(), &one_condition("oneOf", json!("$selectedMeters")));
+        assert_eq!(out[0].length, 0);
+    }
+
+    #[test]
+    fn one_of_without_an_operand_never_matches() {
+        let out = apply(
+            seeded(),
+            &json!({
+                "type": "include",
+                "match": "any",
+                "filters": [{ "fieldName": "label", "config": { "id": "oneOf", "options": {} } }],
+            }),
+        );
+        assert_eq!(out[0].length, 0);
     }
 
     #[test]
