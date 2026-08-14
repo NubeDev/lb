@@ -12,7 +12,7 @@ packages/ce-wiresheet/src/ui/AgentChatPanel.tsx 481
 packages/ce-wiresheet/src/ui/CollectionWidget.tsx 495
 packages/ce-wiresheet/src/ui/JsEditorPanel.tsx 690
 rust/crates/authz/tests/scoped_grants_test.rs 413
-rust/crates/ext-loader/src/manifest.rs 1424
+rust/crates/ext-loader/src/manifest.rs 1428
 rust/crates/federation/src/profile.rs 481
 rust/crates/federation/src/query.rs 783
 rust/crates/federation/src/results.rs 516
@@ -42,7 +42,7 @@ rust/crates/host/src/nav/resolve.rs 686
 rust/crates/host/src/outbox/provider_smtp.rs 442
 rust/crates/host/src/pack/apply.rs 663
 rust/crates/host/src/pack/sqlite.rs 553
-rust/crates/host/src/tool_call.rs 1462
+rust/crates/host/src/tool_call.rs 1481
 rust/crates/host/src/viz/query.rs 482
 rust/crates/host/src/viz/resolution.rs 413
 rust/crates/host/tests/agent/agent_active_model_test.rs 506
@@ -99,9 +99,9 @@ rust/crates/host/tests/reusable_pages_test.rs 613
 rust/crates/host/tests/routed_ambiguity_test.rs 769
 rust/crates/host/tests/rules_buildings_examples_test.rs 413
 rust/crates/host/tests/rules_longrun_test.rs 526
-rust/crates/host/tests/rules_test.rs 1089
+rust/crates/host/tests/rules_test.rs 1099
 rust/crates/host/tests/rules_workflow_convergence_test.rs 663
-rust/crates/host/tests/scheduled_rules_test.rs 733
+rust/crates/host/tests/scheduled_rules_test.rs 892
 rust/crates/host/tests/schema_designer_test.rs 864
 rust/crates/host/tests/series_retention_patch_test.rs 433
 rust/crates/host/tests/store_budget_driver_test.rs 477
@@ -124,7 +124,7 @@ rust/crates/prefs/src/catalog/message.rs 491
 rust/crates/render/src/convert.rs 514
 rust/crates/secrets/src/lib.rs 781
 rust/crates/undo/tests/undo_test.rs 415
-rust/extensions/ros/src/ros_fake.rs 588
+rust/extensions/ros/src/ros_fake.rs 593
 rust/node/src/builder.rs 560
 rust/node/src/config.rs 981
 rust/role/ai-gateway/tests/openai_compat_test.rs 475
