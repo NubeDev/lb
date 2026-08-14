@@ -15,8 +15,8 @@ use lb_tags::Facet;
 use serde_json::{json, Value};
 
 use super::{
-    drain_workspace_bounded, ingest_write, own_batches, series_latest_many, series_latest_value,
-    IngestError,
+    drain_workspace_bounded, ingest_write_reporting, own_batches, series_latest_many,
+    series_latest_value, IngestError,
 };
 
 /// Dispatch an ingest/series MCP call. `input` is the verb's JSON arguments; the return is the
@@ -32,7 +32,10 @@ pub async fn call_ingest_tool(
         "ingest.write" => {
             let samples: Vec<Sample> = serde_json::from_value(arg(input, "samples")?.clone())
                 .map_err(|e| ToolError::BadInput(format!("samples: {e}")))?;
-            let n = ingest_write(store, principal, ws, samples)
+            // Take the DIRECT path's filter counts with the acceptance: that path commits here, so
+            // its counts exist nowhere else — the bounded drain below finds staging empty and
+            // reports zeroes. On the stage path these are zero and the drain supplies them.
+            let (n, direct_filtered) = ingest_write_reporting(store, principal, ws, samples)
                 .await
                 .map_err(ingest_error_to_tool)?;
             // Drain staging → the committed `series` table so the just-written sample is visible to
@@ -61,9 +64,15 @@ pub async fn call_ingest_tool(
             // Bounded honesty: this drain commits oldest-first across the workspace, so on a node
             // with a backlog the counts may include other producers' rows. That is the same bound
             // `accepted` already lives under, and it is still the only view a writer gets.
+            let mut filtered = direct_filtered;
+            filtered.muted += pass.filtered.muted;
+            filtered.range += pass.filtered.range;
+            filtered.min_interval += pass.filtered.min_interval;
+            filtered.deadband += pass.filtered.deadband;
+            filtered.clamped += pass.filtered.clamped;
             let mut out = json!({ "accepted": n });
-            if !pass.filtered.is_zero() {
-                out["filtered"] = json!(pass.filtered);
+            if !filtered.is_zero() {
+                out["filtered"] = json!(filtered);
             }
             Ok(out)
         }

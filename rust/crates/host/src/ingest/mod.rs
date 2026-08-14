@@ -65,7 +65,7 @@ pub use samples_update::series_samples_update;
 pub use stats::series_stats_get;
 pub use tool::call_ingest_tool;
 pub(crate) use tool::ingest_error_to_tool;
-pub use write::{ingest_write, DEFAULT_STAGING_BOUND};
+pub use write::{ingest_write, ingest_write_reporting, DEFAULT_STAGING_BOUND};
 
 // Re-export the wire envelope so host callers / tests use one `Sample`/`Qos` type.
 pub use lb_ingest::{Qos, Sample, SampleKey, SampleUpdate};

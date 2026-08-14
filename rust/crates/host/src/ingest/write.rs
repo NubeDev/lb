@@ -16,7 +16,7 @@
 //! producer-B's seq=5 on one series are two rows); only this stamp disagreed.
 
 use lb_auth::Principal;
-use lb_ingest::{write as stage_write, Sample};
+use lb_ingest::{write as stage_write, FilterCounts, Sample};
 use lb_store::Store;
 
 use super::authorize::authorize_ingest;
@@ -105,6 +105,30 @@ pub async fn ingest_write(
     ws: &str,
     samples: Vec<Sample>,
 ) -> Result<usize, IngestError> {
+    ingest_write_reporting(store, principal, ws, samples)
+        .await
+        .map(|(accepted, _)| accepted)
+}
+
+/// [`ingest_write`], additionally reporting what this call's commit FILTERED.
+///
+/// On the DIRECT path the batch is committed here, so the per-reason counts exist here and nowhere
+/// else: the caller's follow-up drain finds staging empty and reports zeroes. `ingest_write` dropped
+/// the `CommitPass` on the floor, which meant a producer on the fast path — the common one, since it
+/// is taken whenever staging is empty — saw `accepted: 4`, found 2 rows, and got nothing on the wire
+/// explaining the gap. That is exactly the hole the reply's `filtered` block exists to close, and it
+/// was open on every direct write while the staged path still reported correctly.
+///
+/// On the STAGE path nothing is committed yet, so the counts are zero here and arrive from the
+/// caller's bounded drain instead. Callers should merge the two.
+///
+/// Additive: `ingest_write`'s signature is unchanged, so no embedder has to move.
+pub async fn ingest_write_reporting(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    samples: Vec<Sample>,
+) -> Result<(usize, FilterCounts), IngestError> {
     authorize_ingest(principal, ws, "ingest.write")?;
     let sub = principal.sub();
     let stamped: Vec<Sample> = samples
@@ -119,10 +143,15 @@ pub async fn ingest_write(
     let staged_now = lb_ingest::staged_count(store, ws).await?;
     match take_path(staged_now) {
         Path::Direct => {
-            lb_ingest::commit_direct(store, ws, &stamped).await?;
-            Ok(stamped.len())
+            let pass = lb_ingest::commit_direct(store, ws, &stamped).await?;
+            // `accepted` stays the batch size: acceptance is deliberately UNFILTERED (the filter is a
+            // commit-time decision), and the direct path has no staging row to count instead.
+            Ok((stamped.len(), pass.filtered))
         }
-        Path::Stage => Ok(stage_write(store, ws, &stamped, DEFAULT_STAGING_BOUND).await?),
+        Path::Stage => Ok((
+            stage_write(store, ws, &stamped, DEFAULT_STAGING_BOUND).await?,
+            FilterCounts::default(),
+        )),
     }
 }
 
