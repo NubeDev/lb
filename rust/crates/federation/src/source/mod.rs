@@ -11,6 +11,10 @@
 //! `rubix-cube` (its `spice_engine` wrapper over the `datafusion` crate), MIT/Apache-2.0.
 
 #[cfg(feature = "postgres")]
+mod pg_cells;
+#[cfg(feature = "postgres")]
+mod pg_numeric;
+#[cfg(feature = "postgres")]
 mod postgres;
 mod sqlite;
 
