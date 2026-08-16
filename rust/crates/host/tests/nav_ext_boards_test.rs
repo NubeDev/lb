@@ -432,3 +432,135 @@ async fn bounds_and_shape_violations_are_rejected() {
         .slots
         .is_empty());
 }
+
+// ── Pinnable (Decision 2) — the property that makes a host row structurally better ─────────────
+
+/// **Decision 2, proven end to end.** A host row is pinnable BECAUSE its ref is stable without a
+/// mount — and that only holds if `nav.resolve` can resolve the ref. Both slot grammars would
+/// otherwise strip silently (a section-root row reads as a declared destination the manifest does
+/// not have; an item row has two slashes, which the shipped subref split deliberately refuses as a
+/// runtime published child). A pinned host row must resolve to a DASHBOARD entry carrying its vars,
+/// and round-trip back to the exact ref the shell pinned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_pinned_host_row_resolves_to_its_board_in_both_slot_grammars() {
+    let ws = "ws-eb-pin";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let admin = principal(
+        "user:ada",
+        ws,
+        &[
+            SAVE,
+            RESOLVE,
+            "mcp:dashboard.save:call",
+            "mcp:dashboard.get:call",
+            "mcp:ext.list:call",
+        ],
+    );
+    lb_host::dashboard_save(
+        &node.store,
+        &admin,
+        ws,
+        "board-iaq",
+        "IAQ",
+        vec![],
+        vec![],
+        1,
+    )
+    .await
+    .expect("seed the board");
+
+    let mut root_row = row("iaq", "dashboard:board-iaq");
+    root_row.vars = [("site".to_string(), "site-1".to_string())]
+        .into_iter()
+        .collect();
+    ext_nav_boards_set(
+        &node.store,
+        &admin,
+        ws,
+        slots(&[
+            ("ext:alpha", vec![root_row]),
+            (
+                "ext:alpha/sites",
+                vec![row("nested", "dashboard:board-iaq")],
+            ),
+        ]),
+        1,
+    )
+    .await
+    .unwrap();
+
+    lb_host::nav_pref_set(
+        &node.store,
+        &admin,
+        ws,
+        None,
+        Some(vec![
+            "ext:alpha/iaq".into(),
+            "ext:alpha/sites/nested".into(),
+        ]),
+        2,
+    )
+    .await
+    .unwrap();
+
+    let r = lb_host::nav_resolve(&node, &admin, ws).await.unwrap();
+    assert_eq!(
+        r.pinned.len(),
+        2,
+        "both host-row pins resolve: {:?}",
+        r.pinned
+    );
+
+    // The section-root row: opens the board, var-bound, and still identified as its ext destination
+    // so the pin lights the right rail row.
+    assert_eq!(r.pinned[0].kind, "dashboard");
+    assert_eq!(r.pinned[0].dashboard, "dashboard:board-iaq");
+    assert_eq!(
+        r.pinned[0].vars.get("site").map(String::as_str),
+        Some("site-1")
+    );
+    assert_eq!(r.pinned[0].ext, "alpha");
+    assert_eq!(r.pinned[0].nav, "iaq");
+
+    // The row under a declared item: the SAME resolution through the two-segment `nav`, so the ref
+    // reconstructs as `ext:alpha/sites/nested`.
+    assert_eq!(r.pinned[1].kind, "dashboard");
+    assert_eq!(r.pinned[1].ext, "alpha");
+    assert_eq!(r.pinned[1].nav, "sites/nested");
+}
+
+/// A pin whose row was REMOVED from the record strips silently (the shipped invariant: a strip never
+/// faults the menu and never mutates the stored pin, so re-adding the row restores it for free). And
+/// hide beats pin here as everywhere.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_pin_for_a_removed_row_strips_without_faulting() {
+    let ws = "ws-eb-pin-strip";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let admin = principal(
+        "user:ada",
+        ws,
+        &[SAVE, RESOLVE, "mcp:dashboard.get:call", "mcp:ext.list:call"],
+    );
+    lb_host::nav_pref_set(
+        &node.store,
+        &admin,
+        ws,
+        None,
+        Some(vec!["ext:alpha/gone".into()]),
+        1,
+    )
+    .await
+    .unwrap();
+
+    let r = lb_host::nav_resolve(&node, &admin, ws).await.unwrap();
+    assert!(
+        r.pinned.is_empty(),
+        "a pin naming no row strips: {:?}",
+        r.pinned
+    );
+    // The stored record is untouched — a strip is silent, never destructive.
+    let pref = lb_host::nav_pref_get(&node.store, &admin, ws)
+        .await
+        .unwrap();
+    assert_eq!(pref.pinned, vec!["ext:alpha/gone".to_string()]);
+}

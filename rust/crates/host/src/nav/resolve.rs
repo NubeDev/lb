@@ -26,6 +26,7 @@ use super::admin_lens::is_workspace_admin;
 use super::authorize::authorize_nav;
 use super::bounds::BUILTIN_PICK;
 use super::error::NavError;
+use super::ext_boards_pin::resolve_ext_board_pin;
 use super::model::{
     Nav, NavFacet, NavItem, ResolvedItem, ResolvedNav, ResolvedSource, Visibility, MAX_TAG_GROUP,
 };
@@ -213,6 +214,16 @@ async fn resolve_pins(
         // (ext-subref-pins scope), which the generic `resolve_item` pipeline has no kind for — it
         // resolves against the install's `[[ui.nav]]` list instead. Everything else keeps the
         // synthetic-item path unchanged.
+        // A HOST-AUTHORED board row (host-authored-ext-nav-boards scope, Decision 2) resolves FIRST,
+        // off the workspace record. Both of its ref shapes would otherwise strip silently below —
+        // `ext:<id>/<rowid>` reads as a declared destination the manifest does not have, and
+        // `ext:<id>/<navid>/<rowid>` is refused by `split_ext_subref` as a runtime published child.
+        // Being resolvable WITHOUT a mount is exactly what makes a host row pinnable at all, so this
+        // is the half that turns that claim into behaviour.
+        if let Some(resolved) = resolve_ext_board_pin(node, principal, ws, pin).await? {
+            pinned.push(resolved);
+            continue;
+        }
         if let Some((ext, nav)) = split_ext_subref(pin) {
             if let Some(resolved) = resolve_ext_nav(node, principal, ws, ext, nav).await? {
                 pinned.push(resolved);
@@ -427,7 +438,7 @@ async fn readable_nav(
 /// Resolve one item to its rendered form, or `None` if the caller can't reach it (the strip). A
 /// `tag-group` expands to a `group` of readable dashboards; a `group` recurses to any depth and prunes
 /// empty subtrees post-order (nested-nav scope); every other kind maps 1:1 iff reachable.
-async fn resolve_item(
+pub(super) async fn resolve_item(
     node: &Arc<Node>,
     principal: &Principal,
     ws: &str,

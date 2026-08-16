@@ -33,6 +33,7 @@ mod delete;
 mod error;
 mod ext_boards;
 mod ext_boards_model;
+mod ext_boards_pin;
 mod get;
 mod hidden;
 mod list;
