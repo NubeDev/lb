@@ -5,6 +5,7 @@
 
 use lb_store::{read, scan_all, write, Store, StoreError};
 
+use super::ext_boards_model::{ExtNavBoards, EXT_BOARDS_TABLE};
 use super::model::{Nav, NavHidden, NavPref, DEFAULT_TABLE, HIDDEN_TABLE, PREF_TABLE, TABLE};
 
 /// The `nav_pref` / `workspace_nav_default` composite id from a `[ws, key]` pair. `lb_store` already
@@ -19,6 +20,10 @@ const DEFAULT_ID: &str = "default";
 
 /// The constant record id of the one hidden-set per workspace (`nav_hidden:[ws]`).
 const HIDDEN_ID: &str = "hidden";
+
+/// The constant record id of the one host-authored ext-boards map per workspace
+/// (`nav_ext_boards:[ws]`).
+const EXT_BOARDS_ID: &str = "boards";
 
 /// Read `nav:{id}` in `ws`. `None` if absent in this namespace (the hard wall) — a tombstoned record
 /// still deserializes (callers treat `deleted` as absent).
@@ -99,6 +104,26 @@ pub async fn read_hidden(store: &Store, ws: &str) -> Result<Option<NavHidden>, S
 pub async fn write_hidden(store: &Store, ws: &str, h: &NavHidden) -> Result<(), StoreError> {
     let value = serde_json::to_value(h).map_err(|e| StoreError::Decode(e.to_string()))?;
     write(store, ws, HIDDEN_TABLE, HIDDEN_ID, &value).await
+}
+
+/// Read the workspace's host-authored ext board rows (`nav_ext_boards:[ws]`). `None` when no admin
+/// has ever bound one — every caller treats that as the empty map (the feature is inert until used).
+pub async fn read_ext_boards(store: &Store, ws: &str) -> Result<Option<ExtNavBoards>, StoreError> {
+    match read(store, ws, EXT_BOARDS_TABLE, EXT_BOARDS_ID).await? {
+        Some(v) => {
+            let b: ExtNavBoards =
+                serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string()))?;
+            Ok(Some(b))
+        }
+        None => Ok(None),
+    }
+}
+
+/// UPSERT the workspace's host-authored ext board rows. Idempotent on the one `[ws]` record (LWW;
+/// an empty `slots` clears it).
+pub async fn write_ext_boards(store: &Store, ws: &str, b: &ExtNavBoards) -> Result<(), StoreError> {
+    let value = serde_json::to_value(b).map_err(|e| StoreError::Decode(e.to_string()))?;
+    write(store, ws, EXT_BOARDS_TABLE, EXT_BOARDS_ID, &value).await
 }
 
 /// Read the workspace-default nav id (`workspace_nav_default:[ws]`). `None` when none is set.

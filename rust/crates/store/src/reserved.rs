@@ -44,6 +44,7 @@ pub const RESERVED_TABLES: &[&str] = &[
     "nav",
     "nav_pref",
     "nav_hidden",
+    "nav_ext_boards",
     "workspace_nav_default",
     "ui_layout",
     "channel_registry",

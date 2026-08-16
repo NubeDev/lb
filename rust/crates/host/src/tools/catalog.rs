@@ -52,7 +52,7 @@ pub async fn tools_catalog(
     // VISIBLE to a caller holding that grant — the cardinal rule cuts both ways (never offer a
     // tool that then denies, never hide one that would pass).
     for mut d in host_descriptors() {
-        if authorize_tool(principal, ws, crate::tool_call::gate_tool_for(&d.name)).is_ok() {
+        if authorize_tool(principal, ws, crate::tool_gate::gate_tool_for(&d.name)).is_ok() {
             if d.title.is_empty() {
                 d.title = d.name.clone();
             }
@@ -77,7 +77,7 @@ pub async fn tools_catalog(
         if !crate::tool_call::is_host_native(&info.tool) {
             continue;
         }
-        if authorize_tool(principal, ws, crate::tool_call::gate_tool_for(&info.tool)).is_ok() {
+        if authorize_tool(principal, ws, crate::tool_gate::gate_tool_for(&info.tool)).is_ok() {
             tools.push(ToolDescriptor {
                 emits_external: false,
                 name: info.tool,

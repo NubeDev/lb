@@ -171,7 +171,7 @@ fn narrow_scope(scope: &[String], granted: &[String]) -> Vec<String> {
     scope
         .iter()
         .filter(|t| {
-            let cap = format!("mcp:{}:call", crate::tool_call::gate_tool_for(t));
+            let cap = format!("mcp:{}:call", crate::tool_gate::gate_tool_for(t));
             granted.iter().any(|g| g == &cap)
         })
         .cloned()

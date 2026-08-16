@@ -63,7 +63,8 @@ pub async fn relay_outbox<T: Target>(
                         effect = %effect.id, target = %effect.target, reason = %error.reason,
                         "outbox relay: permanent delivery failure — parked without retry"
                     );
-                    mark_dead_lettered(store, ws, &effect.id, &error.reason, Some(effect.ts)).await?
+                    mark_dead_lettered(store, ws, &effect.id, &error.reason, Some(effect.ts))
+                        .await?
                 } else {
                     mark_failed(store, ws, &effect.id, now, &error.reason, Some(effect.ts)).await?
                 };

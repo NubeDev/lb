@@ -70,6 +70,19 @@ pub(super) const NAV: &[HostTool] = &[
         group: "nav",
         description: "replace the workspace sidebar ordering (admin; partial order over item refs)",
     },
+    // host-authored-ext-nav-boards scope: the host's own board rows inside an extension's section
+    // — placing a board under an extension without an extension release. Read is member-level
+    // (rides nav.resolve); the write rides nav.save like every other curation lever.
+    HostTool {
+        tool: "nav.ext_boards.get",
+        group: "nav",
+        description: "read the workspace's host-authored extension board rows",
+    },
+    HostTool {
+        tool: "nav.ext_boards.set",
+        group: "nav",
+        description: "replace the workspace's host-authored extension board rows (admin)",
+    },
     HostTool {
         tool: "nav.unshare",
         group: "nav",

@@ -77,6 +77,7 @@ mod telemetry;
 /// `parse`/`resolve`/`resolve_range`/`validate` — without lb-host growing a flat alias per item.
 pub mod timerange;
 mod tool_call;
+mod tool_gate;
 mod tools;
 mod ui_decl;
 mod undo;
@@ -326,13 +327,15 @@ pub use native::{
     NativeServiceError, NativeStatus, SidecarMap, Supervised,
 };
 pub use nav::{
-    call_nav_tool, dashboard_reach_ok, nav_delete, nav_get, nav_hidden_get, nav_hidden_set,
-    nav_list, nav_list_shares, nav_order_set, nav_pref_get, nav_pref_set,
-    nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
-    reach_caps, reach_check, reach_record_check, Nav, NavError, NavFacet, NavHidden, NavItem,
-    NavPref, NavSummary, ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
+    call_nav_tool, dashboard_reach_ok, ext_nav_boards_get, ext_nav_boards_set, nav_delete, nav_get,
+    nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_order_set, nav_pref_get,
+    nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share,
+    nav_unshare, reach_caps, reach_check, reach_record_check, ExtBoardRow as NavExtBoardRow,
+    ExtNavBoards, Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
+    ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility,
-    BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_GROUP_DEPTH as NAV_MAX_GROUP_DEPTH,
+    BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_EXT_BOARD_ROWS as NAV_MAX_EXT_BOARD_ROWS,
+    MAX_EXT_BOARD_SLOTS as NAV_MAX_EXT_BOARD_SLOTS, MAX_GROUP_DEPTH as NAV_MAX_GROUP_DEPTH,
     MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS, MAX_ORDER as NAV_MAX_ORDER,
     MAX_PINNED as NAV_MAX_PINNED, MAX_RECORD_REACH_CAPS as NAV_MAX_RECORD_REACH_CAPS,
     MAX_TAG_GROUP as NAV_MAX_TAG_GROUP, MAX_TITLE_TEMPLATE as NAV_MAX_TITLE_TEMPLATE, REACH_ALL,
