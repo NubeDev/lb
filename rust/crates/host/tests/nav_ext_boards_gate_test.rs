@@ -216,8 +216,8 @@ async fn a_pinned_host_row_resolves_to_its_board_in_both_slot_grammars() {
         ws,
         None,
         Some(vec![
-            "ext:alpha/iaq".into(),
-            "ext:alpha/sites/nested".into(),
+            "ext:alpha/b:iaq".into(),
+            "ext:alpha/sites/b:nested".into(),
         ]),
         2,
     )
@@ -233,7 +233,8 @@ async fn a_pinned_host_row_resolves_to_its_board_in_both_slot_grammars() {
     );
 
     // The section-root row: opens the board, var-bound, and still identified as its ext destination
-    // so the pin lights the right rail row.
+    // so the pin lights the right rail row. `nav` keeps the `b:` MARKER, because `item_ref`
+    // reconstructs the ref from `ext` + `nav` and the round-trip must be byte-stable.
     assert_eq!(r.pinned[0].kind, "dashboard");
     assert_eq!(r.pinned[0].dashboard, "dashboard:board-iaq");
     assert_eq!(
@@ -241,13 +242,13 @@ async fn a_pinned_host_row_resolves_to_its_board_in_both_slot_grammars() {
         Some("site-1")
     );
     assert_eq!(r.pinned[0].ext, "alpha");
-    assert_eq!(r.pinned[0].nav, "iaq");
+    assert_eq!(r.pinned[0].nav, "b:iaq");
 
     // The row under a declared item: the SAME resolution through the two-segment `nav`, so the ref
     // reconstructs as `ext:alpha/sites/nested`.
     assert_eq!(r.pinned[1].kind, "dashboard");
     assert_eq!(r.pinned[1].ext, "alpha");
-    assert_eq!(r.pinned[1].nav, "sites/nested");
+    assert_eq!(r.pinned[1].nav, "sites/b:nested");
 }
 
 /// A pin whose row was REMOVED from the record strips silently (the shipped invariant: a strip never
@@ -267,7 +268,7 @@ async fn a_pin_for_a_removed_row_strips_without_faulting() {
         &admin,
         ws,
         None,
-        Some(vec!["ext:alpha/gone".into()]),
+        Some(vec!["ext:alpha/b:gone".into()]),
         1,
     )
     .await
@@ -283,5 +284,5 @@ async fn a_pin_for_a_removed_row_strips_without_faulting() {
     let pref = lb_host::nav_pref_get(&node.store, &admin, ws)
         .await
         .unwrap();
-    assert_eq!(pref.pinned, vec!["ext:alpha/gone".to_string()]);
+    assert_eq!(pref.pinned, vec!["ext:alpha/b:gone".to_string()]);
 }

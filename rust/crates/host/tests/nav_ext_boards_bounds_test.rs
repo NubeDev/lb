@@ -98,6 +98,9 @@ async fn bounds_and_shape_violations_are_rejected() {
 
     bad(slots(&[("ext:alpha", vec![row("", "dashboard:b")])])).await;
     bad(slots(&[("ext:alpha", vec![row("a/b", "dashboard:b")])])).await;
+    // A `:` could forge or break the `b:` ref marker that tells a host row from a DECLARED
+    // destination (`ext_boards_pin`), so a row id stays a plain slug.
+    bad(slots(&[("ext:alpha", vec![row("a:b", "dashboard:b")])])).await;
     bad(slots(&[("ext:alpha", vec![row("a", "  ")])])).await;
     bad(slots(&[(
         "ext:alpha",

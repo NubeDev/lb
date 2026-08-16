@@ -130,6 +130,14 @@ fn validate_row(slot: &str, row: &ExtBoardRow) -> Result<(), NavError> {
             "row id {id:?} may not contain '/' — it is one ref segment"
         )));
     }
+    // A host row's ref segment is `b:<id>`, and that marker is what tells a DECLARED destination
+    // apart from a host row (`ext_boards_pin`). A `:` in the id could forge or break it, so the id
+    // stays a plain slug.
+    if id.contains(':') {
+        return Err(NavError::BadInput(format!(
+            "row id {id:?} may not contain ':' — it is a plain slug"
+        )));
+    }
     if row.dashboard.trim().is_empty() {
         return Err(NavError::BadInput(format!(
             "row {id:?} must name a dashboard ref"

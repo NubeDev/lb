@@ -16,6 +16,14 @@
 //! the whole structural argument for host rows over published children. So this runs FIRST, against
 //! the `nav_ext_boards` record, and only a miss falls through to the shipped paths.
 //!
+//! **The `b:` marker on the last segment is what makes this unambiguous.** A host row's ref is
+//! `<slot>/b:<rowid>`, never a bare `<slot>/<rowid>`. Without it, `ext:<id>/<rowid>` is
+//! indistinguishable from a DECLARED destination — and since host rows resolve first, a row whose id
+//! happened to match a declared nav id would silently SHADOW that destination. The marker also keeps
+//! the shell's node keys distinct where a host row sits beside a published child of the same id;
+//! identical keys there are a duplicate React key, not a harmless coincidence. `ext_boards.rs`
+//! rejects a `:` in a row id so the marker can never be forged from one.
+//!
 //! Rule 10: the ref is split on its LAST `/` into an opaque slot key and an opaque row id, and both
 //! are looked up as strings. Nothing here interprets an extension id, and both slot kinds resolve
 //! through the one lookup rather than two shaped branches.
@@ -31,11 +39,16 @@ use super::resolve::resolve_item;
 use super::store::read_ext_boards;
 use crate::boot::Node;
 
-/// Split a pin ref into `(slot, row_id)` — the last `/`-segment is the row id, everything before it
-/// is the slot key. `None` unless the result is the slot grammar (`ext:<id>` | `ext:<id>/<navid>`)
-/// with a non-empty row id, so a bare surface key / `dashboard:<id>` / whole-ext pin never enters.
+/// The marker on a host row's last ref segment — see the module doc for why it exists.
+pub(super) const ROW_MARKER: &str = "b:";
+
+/// Split a pin ref into `(slot, row_id)`. The last `/`-segment must carry [`ROW_MARKER`]; everything
+/// before it is the slot key, which must be the slot grammar (`ext:<id>` | `ext:<id>/<navid>`). Any
+/// other shape — a bare surface key, `dashboard:<id>`, a whole-ext pin, or a DECLARED destination —
+/// returns `None` and falls through to the shipped resolvers untouched.
 fn split_row_ref(pin: &str) -> Option<(&str, &str)> {
-    let (slot, row) = pin.rsplit_once('/')?;
+    let (slot, last) = pin.rsplit_once('/')?;
+    let row = last.strip_prefix(ROW_MARKER)?;
     if row.is_empty() || !slot.starts_with("ext:") || slot.len() == "ext:".len() {
         return None;
     }
@@ -92,6 +105,8 @@ pub async fn resolve_ext_board_pin(
         vars: row.vars.clone(),
         ..NavItem::default()
     };
+    // `ext`/`nav` carry the ref VERBATIM (marker included) so `item_ref` reconstructs exactly what
+    // the shell pinned — the round-trip has to be byte-stable or the pin lights no row.
     let ext_and_nav = pin.trim_start_matches("ext:");
     let Some((ext, nav)) = ext_and_nav.split_once('/') else {
         return Ok(None);
@@ -114,11 +129,21 @@ mod tests {
     /// Both slot grammars split into the SAME `(slot, row)` shape — one lookup, not two branches.
     #[test]
     fn both_slot_kinds_split_on_the_last_segment() {
-        assert_eq!(split_row_ref("ext:alpha/iaq"), Some(("ext:alpha", "iaq")));
+        assert_eq!(split_row_ref("ext:alpha/b:iaq"), Some(("ext:alpha", "iaq")));
         assert_eq!(
-            split_row_ref("ext:alpha/sites/iaq"),
+            split_row_ref("ext:alpha/sites/b:iaq"),
             Some(("ext:alpha/sites", "iaq"))
         );
+    }
+
+    /// **The shadowing guard.** A DECLARED destination is `ext:<id>/<navid>` with no marker, and it
+    /// must never read as a host row — host rows resolve FIRST, so without this a row whose id
+    /// matched a declared nav id would silently take that destination's place. A published child
+    /// (`ext:<id>/<navid>/<childid>`) is likewise not ours.
+    #[test]
+    fn a_declared_destination_is_never_mistaken_for_a_host_row() {
+        assert_eq!(split_row_ref("ext:alpha/sites"), None);
+        assert_eq!(split_row_ref("ext:alpha/sites/site-1"), None);
     }
 
     /// Refs that are not host-row refs never enter this path — they belong to the shipped resolvers.
