@@ -22,7 +22,7 @@ use lb_mcp::authorize_tool;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::tool_call::gate_tool_for;
+use crate::tool_gate::gate_tool_for;
 use crate::viz::panel_target_tools;
 
 /// The caller's capability fingerprint for `panel` in `ws`: a stable hash of the sorted set of the

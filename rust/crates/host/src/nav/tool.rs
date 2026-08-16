@@ -213,7 +213,7 @@ pub async fn call_nav_tool(
         }
         "nav.ext_boards.set" => {
             // Admin write (rides `mcp:nav.save:call`, like `nav.hidden.set`) — full-set LWW over
-            // the whole slot map. Aliased in `tool_call::gate_tool_for`; without that alias the
+            // the whole slot map. Aliased in `tool_gate::gate_tool_for`; without that alias the
             // outer gate demands a cap no bundle carries and every caller sees a bare `denied`.
             let slots: BTreeMap<String, Vec<ExtBoardRow>> =
                 serde_json::from_value(arg(input, "slots")?.clone())

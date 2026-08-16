@@ -43,6 +43,7 @@ mod pref;
 mod reach;
 mod reach_record;
 mod resolve;
+mod resolve_pins;
 mod resolve_template_group;
 mod save;
 mod share;
@@ -57,10 +58,7 @@ pub use default::nav_set_default;
 pub use delete::nav_delete;
 pub use error::NavError;
 pub use ext_boards::{ext_nav_boards_get, ext_nav_boards_set};
-pub use ext_boards_model::{
-    ExtBoardRow, ExtNavBoards, MAX_EXT_BOARD_ID_LEN, MAX_EXT_BOARD_LABEL_LEN, MAX_EXT_BOARD_ROWS,
-    MAX_EXT_BOARD_SLOTS, MAX_EXT_BOARD_TOTAL, MAX_EXT_BOARD_VARS,
-};
+pub use ext_boards_model::{ExtBoardRow, ExtNavBoards, MAX_EXT_BOARD_ROWS, MAX_EXT_BOARD_SLOTS};
 pub use get::nav_get;
 pub use hidden::{nav_hidden_get, nav_hidden_set, nav_order_set};
 pub use list::nav_list;

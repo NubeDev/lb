@@ -8,7 +8,7 @@
 //! authoring and rides `mcp:nav.save:call`, like `nav.hidden.set` / `nav.set_default` — no separate
 //! cap is minted for one more curation record.
 //!
-//! ⚠️ Both verbs MUST be aliased in `tool_call::gate_tool_for`. A verb riding an existing cap is
+//! ⚠️ Both verbs MUST be aliased in `tool_gate::gate_tool_for`. A verb riding an existing cap is
 //! gated on its own namesake by default, and `mcp:nav.ext_boards.set:call` exists in no role bundle
 //! — without the alias the outer gate answers `denied` for every caller, admins included, while
 //! every direct-call test stays green (`call_*_tool` tests never cross that gate).

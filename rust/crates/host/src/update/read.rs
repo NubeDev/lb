@@ -10,7 +10,7 @@ use super::context::{installed, prepare};
 use super::model::UpdateStatus;
 use crate::boot::Node;
 
-/// The capability all four read verbs ride (see `tool_call::gate_tool_for` for the alias table that
+/// The capability all four read verbs ride (see `tool_gate::gate_tool_for` for the alias table that
 /// makes the collapse expressible — a per-verb registry cannot express it, scope decision 7).
 pub const READ_CAP: &str = "update.read";
 

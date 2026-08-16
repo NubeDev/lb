@@ -471,9 +471,7 @@ pub fn router(gw: Gateway) -> Router {
         // The ARRANGING counterpart on the same record (admin — rides `nav.save`). Read-back is
         // `GET /nav/hidden`, which returns the whole record including `order`.
         .route("/nav/order", post(set_nav_order))
-        // host-authored-ext-nav-boards scope: the host's own board rows inside an extension's
-        // section. Read is member-level (the rail renders them for everyone the nav reaches); the
-        // write rides `nav.save`, the same authoring authority as `/nav/hidden` + `/nav/order`.
+        // The host's OWN board rows inside an extension's section (see `routes/nav.rs`).
         .route(
             "/nav/ext-boards",
             get(get_nav_ext_boards).post(set_nav_ext_boards),

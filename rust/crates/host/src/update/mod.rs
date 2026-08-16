@@ -32,7 +32,7 @@ pub use tool::{call_update_tool, UPDATE_VERBS};
 
 /// The three capabilities the family splits into, by **blast radius**: reading a version is not
 /// applying one, and applying one is not holding the backend's credential. They are collapsed onto
-/// eight verbs through the cap-alias table in `tool_call::gate_tool_for` — the only place that
+/// eight verbs through the cap-alias table in `tool_gate::gate_tool_for` — the only place that
 /// collapse is expressible (scope decision 7).
 pub use apply::APPLY_CAP;
 pub use enrol::CREDENTIAL_CAP;
