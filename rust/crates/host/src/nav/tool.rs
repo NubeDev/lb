@@ -8,17 +8,20 @@
 //! `save`/`delete`/`share`/`set_default`/`pref.set` take their logical `now` from the args (the
 //! caller's clock — determinism §3, never wall-clock in the verb), exactly as `dashboard.save` does.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use lb_auth::Principal;
 use lb_mcp::ToolError;
 use serde_json::{json, Value};
 
+use super::ext_boards_model::ExtBoardRow;
 use super::model::{NavItem, Visibility};
 use super::{
-    nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_order_set,
-    nav_pref_get, nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default,
-    nav_share, nav_unshare, NavError,
+    ext_nav_boards_get, ext_nav_boards_set, nav_delete, nav_get, nav_hidden_get, nav_hidden_set,
+    nav_list, nav_list_shares, nav_order_set, nav_pref_get, nav_pref_set,
+    nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
+    NavError,
 };
 use crate::boot::Node;
 
@@ -199,6 +202,26 @@ pub async fn call_nav_tool(
                 .await
                 .map_err(to_tool)?;
             Ok(serde_json::to_value(h).unwrap_or(Value::Null))
+        }
+        "nav.ext_boards.get" => {
+            // Member-level read (rides `mcp:nav.resolve:call`, like `nav.hidden.get`) — every
+            // member's rail needs these rows, not just the admin who authored them.
+            let b = ext_nav_boards_get(&node.store, principal, ws)
+                .await
+                .map_err(to_tool)?;
+            Ok(serde_json::to_value(b).unwrap_or(Value::Null))
+        }
+        "nav.ext_boards.set" => {
+            // Admin write (rides `mcp:nav.save:call`, like `nav.hidden.set`) — full-set LWW over
+            // the whole slot map. Aliased in `tool_call::gate_tool_for`; without that alias the
+            // outer gate demands a cap no bundle carries and every caller sees a bare `denied`.
+            let slots: BTreeMap<String, Vec<ExtBoardRow>> =
+                serde_json::from_value(arg(input, "slots")?.clone())
+                    .map_err(|e| ToolError::BadInput(format!("slots: {e}")))?;
+            let b = ext_nav_boards_set(&node.store, principal, ws, slots, u64_arg(input, "now")?)
+                .await
+                .map_err(to_tool)?;
+            Ok(serde_json::to_value(b).unwrap_or(Value::Null))
         }
         "nav.order.set" => {
             // Admin write (rides `mcp:nav.save:call`, like `nav.hidden.set`) — full-list LWW.

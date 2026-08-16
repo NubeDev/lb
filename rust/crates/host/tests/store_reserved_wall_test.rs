@@ -243,6 +243,7 @@ fn every_known_host_table_const_is_reserved() {
         "nav",
         "nav_pref",
         "nav_hidden",
+        "nav_ext_boards",
         "workspace_nav_default",
         "ui_layout",
         "channel_registry",

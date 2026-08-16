@@ -314,17 +314,29 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         "media.get"
     } else if qualified_tool.starts_with("telemetry.") {
         crate::read_or_admin_cap(qualified_tool)
-    } else if qualified_tool.starts_with("nav.pref.") || qualified_tool == "nav.hidden.get" {
+    } else if qualified_tool.starts_with("nav.pref.")
+        || qualified_tool == "nav.hidden.get"
+        || qualified_tool == "nav.ext_boards.get"
+    {
         // hide-and-pins scope: reading the hidden-set is part of resolving one's own menu (the
         // resolver echoes it to every member anyway) — same `mcp:nav.resolve:call` read grant.
+        // host-authored-ext-nav-boards scope: the host-authored ext board rows are read for the
+        // same reason by the same people — EVERY member's rail renders them, so gating the read on
+        // the authoring cap would make an admin-placed board invisible to the members it was placed
+        // for. The write below is the privileged half.
         "nav.resolve"
     } else if qualified_tool == "nav.set_default"
         || qualified_tool == "nav.hidden.set"
         || qualified_tool == "nav.order.set"
+        || qualified_tool == "nav.ext_boards.set"
     {
         // hide-and-pins scope: curating the workspace hidden-set is the SAME authoring authority as
         // the workspace-default pointer — it rides `mcp:nav.save:call`, no separate cap. Ordering
-        // the sidebar is that same curation, over the same record, so it rides the same cap.
+        // the sidebar is that same curation, over the same record, so it rides the same cap. So is
+        // binding a host board into an extension's section (host-authored-ext-nav-boards scope):
+        // it is menu authoring over an opaque ref, and `mcp:nav.ext_boards.set:call` exists in NO
+        // role bundle — without this arm the verb answers `denied` for every caller, admins
+        // included, exactly the shipped-but-unusable shape the media/retention arms above record.
         "nav.save"
     } else if qualified_tool == "grants.revoke" {
         // authz-verbs-mcp-dispatch scope: assign/revoke MUTATE the same grant surface and share the
@@ -1243,8 +1255,8 @@ async fn call_inbox_outbox_tool(
             let ts = input.get("ts").and_then(|v| v.as_u64());
             let status =
                 outbox_mark_failed(&node.store, principal, ws, id, now, reason, permanent, ts)
-                .await
-                .map_err(|_| ToolError::Denied)?;
+                    .await
+                    .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "status": status }))
         }
         "inbox.resolve" => {
@@ -1484,5 +1496,28 @@ mod media_gate_tests {
         for verb in ["media.read", "media.get", "media.delete"] {
             assert_eq!(gate_tool_for(verb), verb);
         }
+    }
+}
+
+#[cfg(test)]
+mod ext_boards_gate_tests {
+    use super::gate_tool_for;
+
+    /// The two host-authored-ext-nav-boards verbs ride EXISTING nav caps — the read with every
+    /// member's `nav.resolve`, the write with the admin's `nav.save`. No `nav.ext_boards.*` cap is
+    /// minted, so without these aliases the outer gate would deny both for every caller while the
+    /// direct-call tests stayed green (they never cross this gate).
+    #[test]
+    fn the_ext_board_verbs_ride_the_existing_nav_caps() {
+        assert_eq!(gate_tool_for("nav.ext_boards.get"), "nav.resolve");
+        assert_eq!(gate_tool_for("nav.ext_boards.set"), "nav.save");
+    }
+
+    /// The read must NOT ride the authoring cap: a board an admin places is rendered in EVERY
+    /// reached member's rail, so gating its read on `nav.save` would make the feature invisible to
+    /// exactly the people it exists for.
+    #[test]
+    fn the_read_is_member_level_not_admin() {
+        assert_ne!(gate_tool_for("nav.ext_boards.get"), "nav.save");
     }
 }

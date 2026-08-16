@@ -8,10 +8,12 @@
 //! `nav.resolve` needs the whole `&Node` (it discovers `ext` items via `ext.list`), so those routes
 //! pass `&gw.node`; the CRUD routes need only the store.
 
+use std::collections::BTreeMap;
+
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use lb_host::{NavError, NavItem, NavVisibility};
+use lb_host::{NavError, NavExtBoardRow, NavItem, NavVisibility};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -332,6 +334,47 @@ pub async fn set_nav_order(
         .await
         .map_err(status)?;
     Ok(Json(serde_json::to_value(h).unwrap_or(Value::Null)))
+}
+
+/// `GET /nav/ext-boards` — the workspace's HOST-authored extension board rows
+/// (host-authored-ext-nav-boards scope). Member-level (rides `nav.resolve`): every reached member's
+/// rail renders these rows, so the read cannot be admin-only. An absent record is the empty map.
+pub async fn get_nav_ext_boards(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let b = lb_host::ext_nav_boards_get(&gw.node.store, &p, p.ws())
+        .await
+        .map_err(status)?;
+    Ok(Json(serde_json::to_value(b).unwrap_or(Value::Null)))
+}
+
+/// `POST /nav/ext-boards` body — replace the whole slot map (an empty map clears it).
+#[derive(Debug, Deserialize)]
+pub struct SetNavExtBoards {
+    #[serde(default)]
+    pub slots: BTreeMap<String, Vec<NavExtBoardRow>>,
+}
+
+/// `POST /nav/ext-boards` — replace the workspace's host-authored extension board rows (full-set
+/// LWW; bounded). Gated `nav.save`, the same menu-authoring authority as `/nav/hidden` and
+/// `/nav/order`. A row is a LENS: it grants nothing, contributes no reach cap, and the board's own
+/// viewer gate stays the authority.
+pub async fn set_nav_ext_boards(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Json(body): Json<SetNavExtBoards>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let b = lb_host::ext_nav_boards_set(&gw.node.store, &p, p.ws(), body.slots, gw.now())
+        .await
+        .map_err(status)?;
+    Ok(Json(serde_json::to_value(b).unwrap_or(Value::Null)))
 }
 
 fn parse_visibility(s: &str) -> Option<NavVisibility> {

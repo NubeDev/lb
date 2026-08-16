@@ -20,6 +20,9 @@
 //!   - `nav.set_default` ([`nav_set_default`]) — set the one workspace-default pointer (admin-ish).
 //!   - `nav.resolve` ([`nav_resolve`]) — THE composite read: pick + tag-expand + cap-strip (member).
 //!   - `nav.pref.get`/`nav.pref.set` ([`nav_pref_get`]/[`nav_pref_set`]) — the member-owned active pick.
+//!   - `nav.ext_boards.get`/`nav.ext_boards.set` ([`ext_nav_boards_get`]/[`ext_nav_boards_set`]) —
+//!     the HOST-authored board rows merged into an extension's sidebar section, so placing a board
+//!     under an extension needs no extension release (host-authored-ext-nav-boards scope).
 //!   - the MCP bridge ([`call_nav_tool`]) — the one MCP contract over all of the above.
 
 mod admin_lens;
@@ -28,6 +31,8 @@ mod bounds;
 mod default;
 mod delete;
 mod error;
+mod ext_boards;
+mod ext_boards_model;
 mod get;
 mod hidden;
 mod list;
@@ -50,6 +55,11 @@ pub use bounds::BUILTIN_PICK;
 pub use default::nav_set_default;
 pub use delete::nav_delete;
 pub use error::NavError;
+pub use ext_boards::{ext_nav_boards_get, ext_nav_boards_set};
+pub use ext_boards_model::{
+    ExtBoardRow, ExtNavBoards, MAX_EXT_BOARD_ID_LEN, MAX_EXT_BOARD_LABEL_LEN, MAX_EXT_BOARD_ROWS,
+    MAX_EXT_BOARD_SLOTS, MAX_EXT_BOARD_TOTAL, MAX_EXT_BOARD_VARS,
+};
 pub use get::nav_get;
 pub use hidden::{nav_hidden_get, nav_hidden_set, nav_order_set};
 pub use list::nav_list;

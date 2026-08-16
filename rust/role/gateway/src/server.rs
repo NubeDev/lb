@@ -24,9 +24,9 @@ use crate::routes::{
     format_datetime, format_number, format_quantity, get_agent_config_route, get_apikey,
     get_asset_bin, get_brand, get_catalog, get_dashboard, get_def, get_doc, get_flow,
     get_flow_node, get_flow_run, get_history, get_identity, get_insight, get_layout, get_media,
-    get_nav, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_report,
-    get_rule, get_undo_compensations, get_undo_history, get_version, get_versions,
-    get_versions_config, get_webhook, grant_skill, health, identity_workspaces_route,
+    get_nav, get_nav_ext_boards, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel,
+    get_prefs, get_report, get_rule, get_undo_compensations, get_undo_history, get_version,
+    get_versions, get_versions_config, get_webhook, grant_skill, health, identity_workspaces_route,
     import_dashboard, inject_flow, insight_events, latest_sample, lifecycle_flow, link_doc,
     list_apikeys, list_brands, list_channels, list_dashboards, list_datasources, list_defs,
     list_docs, list_extension_versions, list_extensions, list_flow_nodes, list_flow_runs,
@@ -45,12 +45,12 @@ use crate::routes::{
     run_flow, run_query, run_rule, run_stream, save_brand, save_dashboard, save_flow, save_nav,
     save_panel, save_report, save_rule, scan_table, series_stream, serve_ext_ui,
     set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
-    set_nav_hidden, set_nav_order, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav,
-    share_panel, share_report, start_extension, surface_reach, system_acp, system_overview,
-    system_subsystem, system_tools, system_topology, telemetry_stream, test_active_def,
-    test_datasource, test_def, uninstall_extension, unshare_dashboard, unshare_nav, update_def,
-    update_flow_node, update_series_samples_route, upload_body_limit, upload_pack, upload_status,
-    write_samples,
+    set_nav_ext_boards, set_nav_hidden, set_nav_order, set_nav_pref, set_prefs, share_dashboard,
+    share_doc, share_nav, share_panel, share_report, start_extension, surface_reach, system_acp,
+    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
+    test_active_def, test_datasource, test_def, uninstall_extension, unshare_dashboard,
+    unshare_nav, update_def, update_flow_node, update_series_samples_route, upload_body_limit,
+    upload_pack, upload_status, write_samples,
 };
 use crate::state::Gateway;
 
@@ -471,6 +471,13 @@ pub fn router(gw: Gateway) -> Router {
         // The ARRANGING counterpart on the same record (admin — rides `nav.save`). Read-back is
         // `GET /nav/hidden`, which returns the whole record including `order`.
         .route("/nav/order", post(set_nav_order))
+        // host-authored-ext-nav-boards scope: the host's own board rows inside an extension's
+        // section. Read is member-level (the rail renders them for everyone the nav reaches); the
+        // write rides `nav.save`, the same authoring authority as `/nav/hidden` + `/nav/order`.
+        .route(
+            "/nav/ext-boards",
+            get(get_nav_ext_boards).post(set_nav_ext_boards),
+        )
         // ui-layout (data-studio scope v2) — the member-owned per-surface workbench layout.
         .route("/layout/{surface}", get(get_layout).put(set_layout))
         // rules (rules-workbench scope, Phase 1) — the browser's `rules.*` Playground CRUD + run.
