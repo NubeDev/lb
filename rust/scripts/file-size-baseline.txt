@@ -72,7 +72,7 @@ rust/crates/host/tests/flows_debug_test.rs 454
 rust/crates/host/tests/flows_flipflop_test.rs 401
 rust/crates/host/tests/flows_interval_timers_test.rs 448
 rust/crates/host/tests/flows_platform_nodes_test.rs 631
-rust/crates/host/tests/flows_run_test.rs 1725
+rust/crates/host/tests/flows_run_test.rs 1743
 rust/crates/host/tests/flows_runtime_control_test.rs 690
 rust/crates/host/tests/flows_triggers_test.rs 818
 rust/crates/host/tests/host_tools_test.rs 455
