@@ -181,26 +181,25 @@ async fn two_hosts_one_ext(
 
 /// A loopback port no other test in this binary will be handed.
 ///
-/// **Why not just bind `:0` and read the port back.** That is a TOCTOU race: the probe socket is
-/// dropped before Zenoh binds, so the OS is free to hand the same ephemeral port to a *concurrently
-/// running* test in the moment between. When it does, two hubs from different tests fight over one
-/// port — one loses its listener, its queryable never becomes reachable, and the victim fails with
-/// "queryable not yet reachable" after burning its full retry deadline. That reproduced here as a
-/// ~1-in-2 failure of `a_targeted_call_lands_on_the_named_node` once a third port-consuming test
-/// joined the file, and it is the *same class* as the duplicate-node-id flake recorded in
-/// debugging/mcp/duplicate-node-ids-across-concurrent-tests.md: a per-test resource that is only
-/// unique by luck.
+/// **Not `:0`.** The probe socket is dropped before Zenoh binds, so the OS can hand that port to a
+/// concurrently running test in the window — one hub loses its listener and its victim fails with
+/// "queryable not yet reachable" (~1-in-2 once a third port-consuming test joined this file; same
+/// class as debugging/mcp/duplicate-node-ids-across-concurrent-tests.md). A process-wide counter
+/// gives each caller a disjoint slice instead, so uniqueness never depends on luck.
 ///
-/// Instead each caller takes a **disjoint slice of the port space** via a process-wide counter, so
-/// no two tests can ever be handed the same number — no probe socket, no window, no luck involved.
-/// The base is high enough to sit above the usual ephemeral range, and the probe below only skips
-/// a port that is genuinely occupied (by something outside this binary).
+/// **The base sits BELOW the ephemeral range.** Linux's default `ip_local_port_range` is
+/// 32768–60999; a base inside it (41_000, previously) can be handed out by the kernel to any other
+/// process, and the counter only covers this binary. The probe below just skips a port already held.
 fn free_port() -> u16 {
     use std::sync::atomic::{AtomicU16, Ordering};
-    static NEXT: AtomicU16 = AtomicU16::new(41_000);
+    static NEXT: AtomicU16 = AtomicU16::new(21_000);
     loop {
         let port = NEXT.fetch_add(1, Ordering::Relaxed);
-        assert!(port < 60_000, "ran out of test ports");
+        // Stay clear of 32768, where Linux's default ephemeral allocation begins.
+        assert!(
+            port < 32_000,
+            "ran out of test ports below the ephemeral range"
+        );
         // Bind-and-drop is fine HERE because the counter — not the OS — guarantees uniqueness
         // within this binary; this only skips a port some *other* process already holds.
         if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
