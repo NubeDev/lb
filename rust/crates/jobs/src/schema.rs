@@ -29,6 +29,20 @@ pub async fn define_job_index(store: &Store, ws: &str) -> Result<(), StoreError>
          COLUMNS data.kind, data.status",
         table = super::TABLE,
     );
-    store.query_ws(ws, &sql, vec![]).await?;
+    // RETRYING. `IF NOT EXISTS` makes a re-run a semantic no-op, but it is still a SCHEMA
+    // transaction, and SurrealDB aborts one of two concurrent DDL statements on the same table with
+    // "read or write conflict … can be retried". `create` calls this before every write, so N
+    // concurrent job creations issue N concurrent `DEFINE INDEX` statements and some lose.
+    //
+    // The failure surfaced far from here: 8 concurrent `flows.run` calls sharing a run id (each
+    // seeding a job) came back with a bare store-backend error from the RUN verb, so it read as a
+    // run-store race — the shape a previous incident had already hardened with `write_locked`. It
+    // was neither the run store nor the writes; it was this DDL. A backtrace at the point the error
+    // is constructed named it in one line, after three plausible-but-wrong guesses from the message
+    // alone.
+    //
+    // Retry is the right remedy and the error says so: the statement is idempotent, an aborted DDL
+    // rolls back whole, and the losing caller simply re-runs into an index the winner just created.
+    store.query_ws_retrying(ws, &sql, vec![]).await?;
     Ok(())
 }
