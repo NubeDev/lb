@@ -39,14 +39,23 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 /// Grant `cap` to `user` in `ws` directly in the durable grant store (raw verb, no admin gate) —
 /// this is how the fire-time re-resolve sees the stored principal's CURRENT caps, and how a revoke
 /// (via `grant_revoke`) takes effect at the next fire.
+///
+/// **`user` is a principal `sub` and is PARSED**, exactly as the `grants.assign` verb parses it, so
+/// the row lands under the bare handle the store keys on. Wrapping the sub verbatim wrote a key
+/// nothing in production writes, which let these tests pass against a fire path that resolved zero
+/// caps for every real user.
+fn subject(user: &str) -> lb_authz::Subject {
+    lb_authz::Subject::parse(user).expect("a well-formed subject like `user:test`")
+}
+
 async fn grant(store: &lb_store::Store, ws: &str, user: &str, cap: &str) {
-    lb_authz::grant_assign(store, ws, &lb_authz::Subject::User(user.to_string()), cap)
+    lb_authz::grant_assign(store, ws, &subject(user), cap)
         .await
         .unwrap();
 }
 
 async fn revoke(store: &lb_store::Store, ws: &str, user: &str, cap: &str) {
-    lb_authz::grant_revoke(store, ws, &lb_authz::Subject::User(user.to_string()), cap)
+    lb_authz::grant_revoke(store, ws, &subject(user), cap)
         .await
         .unwrap();
 }
@@ -464,22 +473,43 @@ async fn a_revoked_action_grant_is_a_logged_deny_with_no_effect() {
         .unwrap()
         .is_empty());
 
-    // The reminder is LEFT SCHEDULED (not advanced) — runs unchanged, status active, same instant.
+    // `runs` is NOT bumped (nothing ran) and the reminder stays active — but it DOES move on to its
+    // next slot. That last part is the fix: leaving `next_attempt_ts` frozen looked like "the
+    // reminder waits for the grant to come back", and was in fact permanent death — the idempotency
+    // job for that instant already exists, so every later scan re-selected the same instant, skipped
+    // it, and the schedule never fired again. Silently, for ever.
     let after = lb_reminders::load(&node.store, ws, "revoked")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(after.runs, 0);
+    assert_eq!(after.runs, 0, "a denied firing ran nothing");
     assert_eq!(after.status, ReminderStatus::Active);
-    assert_eq!(after.next_attempt_ts, r.next_attempt_ts);
+    assert!(
+        after.next_attempt_ts > r.next_attempt_ts,
+        "a denied firing must advance to the next slot, not freeze on the one it was refused"
+    );
 
-    // The job for that instant exists (the attempt was recorded), so a re-scan skips it (no retry
-    // storm, no re-fire of the same denied instant).
+    // The denied instant is not re-fired (the job records the attempt) — no retry storm.
     let again = react_to_reminders(&node, ws, r.next_attempt_ts)
         .await
         .unwrap();
     assert_eq!(again.denied, 0);
     assert_eq!(again.fired, 0);
+
+    // THE REGRESSION: restore the grant, and the very next slot fires for real. Before the fix this
+    // reminder was unrecoverable — no grant, no operator action and no restart could revive it.
+    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
+    let recovered = react_to_reminders(&node, ws, after.next_attempt_ts)
+        .await
+        .unwrap();
+    assert_eq!(
+        recovered.fired, 1,
+        "a schedule must survive a denial it has since had fixed"
+    );
+    assert_eq!(
+        lb_inbox::list(&node.store, ws, "team").await.unwrap().len(),
+        1
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -570,4 +600,59 @@ async fn recurring_multi_day_schedule_on_the_injected_clock() {
         channel: "".into(),
         body: "".into(),
     }; // exercise re-export
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_firing_resolves_the_authors_grants_under_the_bare_handle_the_store_keys_on() {
+    // THE bug this guards: `Principal::sub()` is `"user:test"`, the durable grant store keys on the
+    // BARE `"test"` (`Subject::User`), and the fire path used to hand the prefixed sub straight to
+    // the resolver. It found nothing, every action was denied, and the effect was total — no
+    // reminder authored by any real user had ever fired, for any action kind. It went unnoticed
+    // because the tests here seeded their grants under the prefixed key too, so the fixture agreed
+    // with the bug.
+    //
+    // This test writes the grant EXACTLY as the `grants.assign` verb does (parse the subject) and
+    // asserts a real firing lands its real effect. It fails against the unfixed resolver.
+    let node = Arc::new(Node::boot().await.unwrap());
+    let ws = "react-bare-handle";
+    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
+
+    lb_authz::grant_assign(
+        &node.store,
+        ws,
+        &lb_authz::Subject::User("test".into()), // the bare handle — what production stores
+        "bus:chan/team:pub",
+    )
+    .await
+    .unwrap();
+
+    let r = reminder_create(
+        &node.store,
+        &creator,
+        ws,
+        "bare",
+        "* * * * *",
+        None,
+        Action::ChannelPost {
+            channel: "team".into(),
+            body: "hello".into(),
+        },
+        MON_JAN1_0000,
+    )
+    .await
+    .unwrap();
+
+    let pass = react_to_reminders(&node, ws, r.next_attempt_ts)
+        .await
+        .unwrap();
+    assert_eq!(
+        pass.fired, 1,
+        "the author's stored grant must resolve at fire time"
+    );
+    assert_eq!(pass.denied, 0);
+    assert_eq!(
+        lb_inbox::list(&node.store, ws, "team").await.unwrap().len(),
+        1,
+        "the action actually ran"
+    );
 }
