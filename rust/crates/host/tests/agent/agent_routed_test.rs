@@ -116,25 +116,43 @@ async fn an_edge_invokes_the_hub_agent_over_the_routed_namespace() {
     let (edge, _hub) = hub_and_edge(vec![ECHO.into()]).await;
     let caller = principal(ws, &[INVOKE, ECHO]);
 
-    let answer = tokio::time::timeout(
-        Duration::from_secs(10),
-        invoke_remote(
-            &edge.bus,
-            &caller,
-            ws,
-            "routed-sess",
-            "echo something",
-            None,
-            None,
-            None,
-            None,
-            &echo_tool(),
-            1,
-        ),
-    )
-    .await
-    .expect("the routed invocation returns in time")
-    .expect("the hub agent answered the edge");
+    // Retry until the hub's queryable has PROPAGATED, rather than calling once and hoping. A routed
+    // call issued before propagation finds no responder and returns `NotFound` — indistinguishable
+    // from "not yet converged" — which is what made this test fail intermittently on CI. Same
+    // rationale and shape as `routed_ambiguity_test::ask_node` / `cross_node_routing_test::
+    // route_until_reachable`: retry the REAL call, no mock and no fixed sleep.
+    let mut last_err: Option<String> = None;
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let answer = loop {
+        let attempt = tokio::time::timeout(
+            Duration::from_secs(5),
+            invoke_remote(
+                &edge.bus,
+                &caller,
+                ws,
+                "routed-sess",
+                "echo something",
+                None,
+                None,
+                None,
+                None,
+                &echo_tool(),
+                1,
+            ),
+        )
+        .await;
+        match attempt {
+            Ok(Ok(a)) => break a,
+            Ok(Err(e)) => last_err = Some(format!("{e:?}")),
+            // A timed-out attempt is the same signal as `NotFound` here: nobody answered yet.
+            Err(_) => last_err = Some("attempt timed out (queryable not yet reachable)".into()),
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the hub agent never answered the edge: {last_err:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
 
     assert_eq!(
         answer, "routed: done",
