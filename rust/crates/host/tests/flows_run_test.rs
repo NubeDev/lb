@@ -1687,14 +1687,32 @@ async fn suspend_resume_between_any_firings_rebuilds_the_slot_set() {
     // (same drive batch), its sibling has not — the partial slot set.
     let req = json!({ "id": "suspany", "run_id": "susp-1", "ts": 1 }).to_string();
     call_tool(&host, &p, "ws", "flows.run", &req).await.unwrap();
-    let s1 = await_run_status(&host, &p, "ws", "susp-1", "suspended").await;
-    let settled_fn = slots_of(&s1, "fn")
-        .iter()
-        .filter(|s| s["outcome"] == "ok")
-        .count();
+    // `await_run_status` quiesces on "no step is `running`", but a firing sitting at `enqueued`
+    // also passes that check — and `dl` is *legitimately* `enqueued` for the whole suspension, so
+    // quiesce cannot simply exclude it. That leaves a window where the run already reads
+    // `suspended` while `fn`'s settled firing has not been written yet. Poll for the settled
+    // firing instead of assuming it landed in the same drive batch; the parked sibling cannot
+    // settle until the resume past the timer, so "exactly one" is still asserted, not weakened.
+    let mut s1 = await_run_status(&host, &p, "ws", "susp-1", "suspended").await;
+    let mut settled_fn = 0;
+    for _ in 0..600 {
+        settled_fn = slots_of(&s1, "fn")
+            .iter()
+            .filter(|s| s["outcome"] == "ok")
+            .count();
+        if settled_fn > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        s1 = runs_get(&host, &p, "ws", "susp-1").await;
+    }
     assert_eq!(
         settled_fn, 1,
         "exactly one any-firing settled pre-suspend: {s1}"
+    );
+    assert_eq!(
+        s1["status"], "suspended",
+        "the run is still parked on the durable delay: {s1}"
     );
     // Resume past the timer: the parked branch completes; the settled firing is NOT re-run.
     let req = json!({ "run_id": "susp-1", "ts": 2000 }).to_string();
