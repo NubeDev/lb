@@ -110,6 +110,37 @@ impl Client {
         Self::decode_json_response(response).await
     }
 
+    /// PATCH `body` and return the box's response body as RAW JSON (`Value`), never a typed struct —
+    /// for writes whose reply we only need to be a 2xx. A typed decode here dead-lettered a write the
+    /// box had ACCEPTED (its `/schedules/{uuid}/write` reply did not fit `Schedule`), which is the one
+    /// outcome the outbox must never produce: "failed" for a delivered effect. An empty body is
+    /// `Value::Null`; a non-JSON body is kept as a string. Non-2xx still maps to the status error.
+    pub(crate) async fn patch_json_raw<B: serde::Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+        host_uuid: Option<&str>,
+    ) -> Result<serde_json::Value, RosClientError> {
+        let mut req = self
+            .http
+            .patch(self.endpoint_url(path))
+            .header(AUTHORIZATION, self.auth_header()?)
+            .json(body);
+        if let Some(h) = host_uuid {
+            req = req.header("X-Host", h);
+        }
+        let response = req.send().await?;
+        if !response.status().is_success() {
+            // Same shape as `decode_json_response`'s error branch — one status → error mapping.
+            return Self::decode_json_response::<serde_json::Value>(response).await;
+        }
+        let text = response.text().await?;
+        if text.trim().is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+        Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text)))
+    }
+
     pub(crate) fn endpoint_url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
     }
