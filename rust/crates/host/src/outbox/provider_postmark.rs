@@ -59,7 +59,7 @@ impl Default for PostmarkConfig {
             from_addr: String::new(),
             reply_to: None,
             message_stream: "outbound".to_string(),
-            timeout: Duration::from_secs(super::provider_smtp::DEFAULT_SEND_TIMEOUT_SECS),
+            timeout: Duration::from_secs(super::smtp_transport_config::DEFAULT_SEND_TIMEOUT_SECS),
         }
     }
 }

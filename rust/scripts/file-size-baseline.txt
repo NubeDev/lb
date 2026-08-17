@@ -39,7 +39,6 @@ rust/crates/host/src/flows/schedule_store.rs 433
 rust/crates/host/src/lib.rs 507
 rust/crates/host/src/nav/reach.rs 534
 rust/crates/host/src/nav/resolve.rs 532
-rust/crates/host/src/outbox/provider_smtp.rs 442
 rust/crates/host/src/pack/apply.rs 663
 rust/crates/host/src/pack/sqlite.rs 553
 rust/crates/host/src/tool_call.rs 1258

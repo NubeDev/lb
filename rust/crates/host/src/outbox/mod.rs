@@ -33,6 +33,7 @@ mod relay;
 mod relay_ops;
 mod relay_reactor;
 mod router_target;
+mod smtp_transport_config;
 mod status;
 mod target;
 
@@ -49,13 +50,12 @@ pub use error::OutboxError;
 /// never sideways onto a leaf crate it happens to use.
 pub use lb_mail::{AuthMechanism, TlsMode};
 pub use provider_postmark::{PostmarkConfig, PostmarkEmailProvider};
-pub use provider_smtp::{
-    SmtpEmailProvider, SmtpOauthConfig, SmtpTransportConfig, DEFAULT_SEND_TIMEOUT_SECS,
-};
+pub use provider_smtp::SmtpEmailProvider;
 pub use relay::{relay_outbox, RelayPass};
 pub use relay_ops::{outbox_due, outbox_mark_delivered, outbox_mark_failed};
 pub use relay_reactor::spawn_relay_reactors;
 pub use router_target::{DynTarget, RouterTarget};
+pub use smtp_transport_config::{SmtpOauthConfig, SmtpTransportConfig, DEFAULT_SEND_TIMEOUT_SECS};
 pub use status::{outbox_status, OutboxStatus};
 pub use target::Target;
 
