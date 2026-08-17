@@ -33,11 +33,6 @@ pub struct Schedule {
     pub updated_on: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WriteSchedulePayload {
-    pub schedule: Value,
-}
-
 impl Client {
     pub async fn get_schedules(&self) -> Result<Vec<Schedule>, RosClientError> {
         self.get_json("/api/schedules", &[], None).await
@@ -48,14 +43,19 @@ impl Client {
         self.get_json(&path, &[], None).await
     }
 
+    /// Write the schedule document. `schedule` IS the request body: the box binds the whole PATCH
+    /// body as its `ScheduleData` (`{schedules: {weekly, events, exception}, config}`,
+    /// `api/schedule.go::getBODYScheduleData`) — wrapped under a `schedule` key it bound nothing and
+    /// stored nulls while replying 200, which is exactly the silent failure this once had. Returns the
+    /// box's reply as raw JSON — the relay only needs the 2xx; the reply's shape is the box's business
+    /// (a strict `Schedule` decode here once dead-lettered an accepted write).
     pub async fn write_schedule(
         &self,
         host_uuid: Option<&str>,
         uuid: &str,
         schedule: Value,
-    ) -> Result<Schedule, RosClientError> {
+    ) -> Result<Value, RosClientError> {
         let path = format!("/api/schedules/{uuid}/write");
-        let payload = WriteSchedulePayload { schedule };
-        self.patch_json(&path, &payload, host_uuid).await
+        self.patch_json_raw(&path, &schedule, host_uuid).await
     }
 }
