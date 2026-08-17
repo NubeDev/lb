@@ -119,7 +119,7 @@ pub trait RosApi: Send + Sync {
         host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
-    ) -> Result<Schedule, RosApiError>;
+    ) -> Result<Value, RosApiError>;
 }
 
 /// How long a fetched Locations+Groups tree stays fresh (see `list_locations`'s dedup cache). Short
@@ -302,7 +302,7 @@ impl RosApi for RealRosApi {
         host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
-    ) -> Result<Schedule, RosApiError> {
+    ) -> Result<Value, RosApiError> {
         self.client
             .write_schedule(host_uuid, schedule_uuid, schedule)
             .await

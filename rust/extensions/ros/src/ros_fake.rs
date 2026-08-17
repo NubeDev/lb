@@ -247,7 +247,7 @@ impl RosApi for std::sync::Arc<RosFake> {
         host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
-    ) -> Result<Schedule, RosApiError> {
+    ) -> Result<Value, RosApiError> {
         (**self)
             .write_schedule(host_uuid, schedule_uuid, schedule)
             .await
@@ -409,7 +409,7 @@ impl RosApi for RosFake {
         _host_uuid: Option<&str>,
         schedule_uuid: &str,
         schedule: Value,
-    ) -> Result<Schedule, RosApiError> {
+    ) -> Result<Value, RosApiError> {
         self.guard()?;
         let mut schedules = self.schedules.lock().unwrap();
         let existing = schedules
@@ -417,7 +417,7 @@ impl RosApi for RosFake {
             .find(|s| s.uuid == schedule_uuid)
             .ok_or_else(|| RosApiError::NotFound(schedule_uuid.to_string()))?;
         existing.schedule = Some(schedule.clone());
-        let result = existing.clone();
+        let result = serde_json::to_value(existing.clone()).unwrap_or(Value::Null);
         drop(schedules);
         self.schedule_writes
             .lock()
