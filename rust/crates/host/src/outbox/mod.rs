@@ -19,6 +19,10 @@
 
 mod delivered;
 mod delivery_error;
+mod email_attachment;
+mod email_content;
+mod email_payload;
+mod email_provider_dev;
 mod email_target;
 mod enqueue;
 mod enqueue_held;
@@ -34,10 +38,9 @@ mod target;
 
 pub use delivered::{delivery_check, delivery_mark, OUTBOX_DELIVERED_TABLE};
 pub use delivery_error::DeliveryError;
-pub use email_target::{
-    EmailMessage, EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, RecordedEmail,
-    RecordingEmailProvider, EMAIL_TARGET,
-};
+pub use email_attachment::EmailAttachment;
+pub use email_provider_dev::{LoggingEmailProvider, RecordedEmail, RecordingEmailProvider};
+pub use email_target::{EmailMessage, EmailMeta, EmailProvider, EmailTarget, EMAIL_TARGET};
 pub use enqueue::enqueue_outbox;
 pub use enqueue_held::enqueue_held_outbox;
 pub use error::OutboxError;

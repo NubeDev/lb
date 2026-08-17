@@ -125,7 +125,10 @@ page-cache = ["dep:moka"]
 datasource-profile = []
 
 [dev-dependencies]
-tokio.workspace = true
+# `net` is test-only: `email_attachment_wire_test.rs` runs the sanctioned in-test SMTP listener on a
+# real socket, so the report PDF is asserted where it actually matters — the bytes a server read off
+# the wire. The host itself binds nothing, so the workspace tokio features stay net-free.
+tokio = { workspace = true, features = ["net"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 # The artifact-cache blob-path tests (registry/blob.rs) need a scratch LB_DIR, same idiom the CLI's

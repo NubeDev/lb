@@ -257,7 +257,13 @@ impl EmailProvider for SmtpEmailProvider {
             text: message.text.clone(),
             html: message.html.clone(),
             message_id: message.message_id.clone(),
-            attachments: Vec::new(),
+            // `lb-mail` takes `(content_type, filename, bytes)` and builds the `multipart/mixed` wrapper
+            // around the text/html alternative. Nothing is re-encoded here — the bytes are the asset's.
+            attachments: message
+                .attachments
+                .iter()
+                .map(|a| (a.mime.clone(), a.filename.clone(), a.bytes.clone()))
+                .collect(),
         };
 
         match send_smtp(&self.endpoint(), &credentials, &mail).await {
