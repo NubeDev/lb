@@ -601,6 +601,7 @@ async fn concurrent_cold_queries_collapse_to_one() {
     let sql = SLOW_SQL;
     let inp = input("sfsrc", sql, Some(60.0));
 
+    let started = std::time::Instant::now();
     let mut handles = Vec::new();
     for _ in 0..8 {
         let (d, s, i) = (dsn.clone(), sql.to_string(), inp.clone());
@@ -619,7 +620,6 @@ async fn concurrent_cold_queries_collapse_to_one() {
     // simply have finished first and the insert would be irrelevant. `started` + the assertion after
     // the joins pin that — if the whole race completed in under the insert delay, the test FAILS
     // rather than passing vacuously.
-    let started = std::time::Instant::now();
     tokio::time::sleep(Duration::from_millis(150)).await;
     insert_row(&dsn, 2);
 
@@ -658,15 +658,10 @@ async fn concurrent_cold_queries_collapse_to_one() {
 async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     // Shared: runs concurrently with other cache tests, but never while the kill-switch test
     // holds the global env var (see ENV_LOCK).
-    // WRITE, not read. The read lock is shared, so this test ran alongside every other reader — and
-    // they all share ONE process-global result cache. A sibling test's entries evict this one's
-    // `current`, `fresh_enough` is then `None`, and the accepting caller correctly falls through to
-    // `Join` — a `Miss`, 571 ms, the refresh's 2 rows. That is the code behaving properly against a
-    // cache the test no longer controls, and it is what every earlier "flake" here actually was:
-    // first blamed on a stopwatch, then on `is_finished()` lagging, when the entry was simply gone.
-    //
-    // This test owns a race across the shared cache, so it needs the cache to itself for its
-    // duration. Exclusivity is the fix; the assertions below can then be exact.
+    // WRITE, not read: the result cache is a process-global static, so a shared lock let sibling
+    // tests evict this one's `current` — after which the accepting caller correctly JOINs and the
+    // assertions below fire on correct behaviour. This test owns a race across that cache, so it
+    // needs the cache to itself.
     let _env = ENV_LOCK.write().expect("env lock");
     let dsn = seed_db("refresh", 1);
     seed_burn(&dsn, 12_000); // ~750 ms — see the sizing note in the single-flight test.
@@ -717,7 +712,6 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     // to know is whether the refresh was in flight *for the duration of that call* — sampling only
     // afterwards cannot tell "still running throughout" from "finished while we were inside it".
     let inflight_before = !strict.is_finished();
-    let started = std::time::Instant::now();
     // Call the CACHE layer directly, not the `run_query_cached` wrapper, because only this level
     // reports WHICH path answered — and that, not the row count, is what rule 1 is about.
     let (lenient_env, lenient_state, _age) = results::cached_query(
@@ -729,10 +723,6 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     )
     .await;
     let lenient = lenient_env.expect("lenient");
-    let waited = started.elapsed();
-
-    // NOTE: no wall-clock assertion on `waited`. See the content assertion below — it proves the
-    // invariant semantically, and a stopwatch cannot.
 
     // **The content assertion, gated on the race actually having happened.** Under heavy box load
     // the strict caller's refresh can legitimately COMPLETE before the lenient caller starts, and
@@ -741,31 +731,14 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     // loaded machine for a reason that was not a defect — a flake, and worse, one that would have
     // trained the next reader to distrust a real signal. `strict_done` distinguishes the two worlds
     // instead of guessing, so the assertion still has teeth in the case it was written for.
-    // Both samples must say "in flight". If the refresh finished at any point around the accepting
-    // call, serving 2 rows is CORRECT (a completed refresh replaced `current`, and rule 3 says
-    // fresher-than-asked is never wrong) — so the assertion is skipped rather than guessed at.
-    //
-    // The previous single sample was taken AFTER the call and was itself a race: on a loaded runner
-    // the refresh can complete *inside* the accepting call, which serves the fresh 2 rows correctly,
-    // and `is_finished()` can still read false a moment later — so the gate opened on a world that
-    // had already ended and the assertion failed on correct behaviour. Two samples close that window:
-    // in flight before AND still in flight after means it was in flight throughout.
+    // Sampled both sides: in flight before AND after means in flight throughout.
     let inflight_after = !strict.is_finished();
 
-    // **Rule 1, proven by the PATH taken — no timing, no row counting.**
-    //
-    // `cached_query` answers `Hit` from `Action::Serve` (returns `current`, awaits nothing) and
-    // `Miss` from `Action::Join` (subscribes to the refresher's broadcast and waits). So `Hit` IS
-    // "did not join", decided by the branch the code took, and no amount of box load can blur it.
-    // The closure asserts the same thing from the other side: an accepting caller must never reach
-    // the query at all.
-    //
-    // Row count cannot do this job, and two earlier attempts to make it work both failed on loaded
-    // runners. Serving 1 row proves a serve, but serving 2 is AMBIGUOUS — a completed refresh
-    // installs `current` before its task reports finished, so `is_finished()` reads false while
-    // `current` already holds the fresh rows, and a correct serve returns 2. Gating on
-    // `is_finished()` (before, after, or both) samples a flag that lags the very state it is being
-    // asked about.
+    // Rule 1, proven by the PATH taken. `cached_query` answers `Hit` from `Action::Serve` (returns
+    // `current`, awaits nothing) and `Miss` from `Action::Join` (subscribes and waits) — so `Hit` IS
+    // "did not join", decided by the branch, not inferred from a clock or a row count. Row count
+    // cannot do it: a completed refresh installs `current` before its task reports finished, so a
+    // correct serve may return the fresh rows.
     assert_eq!(
         lenient_state,
         results::ResultCache::Hit,
@@ -773,9 +746,7 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
          stricter caller's in-flight refresh (a `Miss`) — slot rule 1"
     );
 
-    // With the refresh demonstrably in flight either side of the call, the served rows are also the
-    // STORED ones. Kept as a second, narrower check: it only runs when the timing world it assumes
-    // actually held, and `Hit` above is what carries the invariant.
+    // Narrower second check: only meaningful when the in-flight world it assumes actually held.
     if inflight_before && inflight_after && !lenient.rows.is_empty() {
         assert_eq!(
             lenient.rows.len(),
@@ -788,30 +759,10 @@ async fn an_accepting_caller_never_waits_on_a_stricter_callers_refresh() {
     let refreshed = strict.await.expect("join strict");
     let refresh_took = refresh_started.elapsed();
 
-    // **Why there is no longer a wall-clock assertion on `waited`.**
-    //
-    // Rule 1 is proven ABOVE, semantically: with the refresh still in flight the accepting caller was
-    // served the STORED 1 row. `Action::Join` resolves to the refresher's result, so a caller that had
-    // joined `inflight` would have come back with 2 rows. Being served 1 IS the proof that it did not
-    // join — no stopwatch required, and immune to how loaded the box is.
-    //
-    // The stopwatch could never prove it. It measured `run_query_cached`'s wall time on a continuation
-    // that returns without awaiting any refresh, so what it actually captured was SCHEDULING latency,
-    // which scales with box load. Its history is that treadmill: 100 ms → flaked on a saturated
-    // 16-worker run → raised to 350 ms with sound reasoning → flaked again (548 ms with this binary's
-    // 50 tests running locally, 1.35 s on CI) while passing in isolation every time. It passed in
-    // isolation for the wrong reason too: an uncontended SQLite refresh finishes inside the 20 ms
-    // sleep, so the race never happened and the assertion was vacuous.
-    //
-    // Even a load-proportional bound (`waited * 2 < refresh_took`) fails here, and the numbers show
-    // why it is not evidence of a defect: 553 ms of a 575 ms refresh sounds like a join, but the
-    // content assertion had ALREADY passed in that same run — the caller served stale rows and did not
-    // join. Both figures are bounded by the same contended disk and CPU; the proportionality is shared
-    // load, not causation. A metric that indicts correct behaviour is worse than no metric.
-    //
-    // `refresh_took` is kept for the diagnostic below: when the invariant does break, knowing what the
-    // refresh cost is what makes the failure readable.
-    let _ = (waited, refresh_took);
+    // No wall-clock assertion here, deliberately: the accept path awaits no refresh, so its wall
+    // time is scheduling latency. That bound was 100 ms, then 350 ms, and flaked at both. The `Hit`
+    // assertion above is the invariant; `refresh_took` is kept only to make a failure readable.
+    let _ = refresh_took;
     assert_eq!(
         refreshed.rows.len(),
         2,
