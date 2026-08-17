@@ -16,11 +16,13 @@
 //! missed instant), so "every minute" can't enqueue a thousand jobs after a long outage.
 //!
 //! Authorization — the firing runs under the reminder's STORED principal (caps re-resolved at fire
-//! time). A denied firing (the action's grant was revoked) is LOGGED and the reminder is LEFT
-//! SCHEDULED (not advanced) — the scope's "stays scheduled / dead-letters per the job's retry
-//! policy". The job for that instant already exists, so a re-scan does not re-fire it (no
-//! privilege escalation, no double-fire). The workspace wall holds at the scan: `due` selects the
-//! namespace, so a ws-B reactor never sees/fires/advances a ws-A reminder.
+//! time). A denied firing (the action's grant was revoked) is LOGGED, counted, and RESCHEDULED to
+//! the next slot without counting a run. It used to be left pointed at the refused instant, which
+//! read as "it waits for the grant to come back" and was actually permanent death: the idempotency
+//! job for that instant already exists, so every later scan skipped it and the schedule never fired
+//! again. The job still prevents a re-fire of the denied instant itself (no escalation, no
+//! double-fire). The workspace wall holds at the scan: `due` selects the namespace, so a ws-B
+//! reactor never sees/fires/advances a ws-A reminder.
 
 use std::sync::Arc;
 
@@ -68,15 +70,27 @@ pub async fn react_to_reminders(
             json!({ "reminder_id": reminder.id, "scheduled_ts": scheduled_ts }).to_string();
         create(&node.store, ws, &Job::new(&job_id, FIRE_KIND, payload, now)).await?;
 
-        // Dispatch the action under the stored principal (re-checked). A deny is logged and the
-        // reminder is LEFT scheduled (not advanced) — the job already exists, so a re-scan will not
-        // re-fire this instant.
+        // Dispatch the action under the stored principal (re-checked).
+        //
+        // A DENIED firing advances too, and that is a fix, not a relaxation. The old comment here
+        // said the reminder was "left scheduled" so it would fire once the grant came back — but it
+        // could not: `next_attempt_ts` never moved, so every later scan re-selected the SAME instant,
+        // found the idempotency job written above, and skipped. One denied firing killed the schedule
+        // permanently, in silence — the reactor logged a single `denied=1` and then nothing, for ever.
+        //
+        // Skipping a missed instant is already this reactor's documented semantics (fire-once-then-
+        // skip, no backfill), so advancing past a denied one is the behaviour that was intended all
+        // along: the reminder keeps its schedule and tries again at the next slot, by which time an
+        // operator may well have restored the grant. The deny itself is loud — `fire.rs` names the
+        // underlying reason, and the pass line still counts it.
         match fire_reminder(node, ws, &reminder, scheduled_ts, now).await {
             Ok(()) => {
                 advance(&node.store, ws, reminder, now).await?;
                 pass.fired += 1;
             }
             Err(ReminderError::Denied) => {
+                // Reschedule, NOT advance: nothing ran, so `runs` must not move (see `reschedule`).
+                reschedule(&node.store, ws, reminder, now).await?;
                 pass.denied += 1;
             }
             Err(e) => return Err(e),
@@ -107,6 +121,25 @@ async fn advance(
         // missed instant), so a long outage yields one fire + one advance, never a backfill storm.
         reminder.next_attempt_ts = next_after(&reminder.schedule, now)?;
     }
+    reminder.ts = now;
+    save(store, ws, &reminder).await?;
+    Ok(())
+}
+
+/// Move `reminder` to its next slot WITHOUT counting a run — what a denied firing gets.
+///
+/// Deliberately not [`advance`]: nothing ran, so `runs` must not move (it is the audit count of
+/// firings, and a `max_runs` one-shot must not be burned by a denial it never executed). What must
+/// move is `next_attempt_ts`, because the idempotency job for the refused instant already exists —
+/// leaving the reminder pointed at that instant means every later scan skips it and the schedule is
+/// dead for good.
+async fn reschedule(
+    store: &lb_store::Store,
+    ws: &str,
+    mut reminder: Reminder,
+    now: u64,
+) -> Result<(), ReminderError> {
+    reminder.next_attempt_ts = next_after(&reminder.schedule, now)?;
     reminder.ts = now;
     save(store, ws, &reminder).await?;
     Ok(())

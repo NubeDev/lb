@@ -39,14 +39,17 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 /// Grant `cap` to `user` in `ws` directly in the durable grant store (raw verb, no admin gate) —
 /// this is how the fire-time re-resolve sees the stored principal's CURRENT caps, and how a revoke
 /// (via `grant_revoke`) takes effect at the next fire.
-async fn grant(store: &lb_store::Store, ws: &str, user: &str, cap: &str) {
-    lb_authz::grant_assign(store, ws, &lb_authz::Subject::User(user.to_string()), cap)
-        .await
-        .unwrap();
+///
+/// **`user` is a principal `sub` and is PARSED**, exactly as the `grants.assign` verb parses it, so
+/// the row lands under the bare handle the store keys on. Wrapping the sub verbatim wrote a key
+/// nothing in production writes, which let these tests pass against a fire path that resolved zero
+/// caps for every real user.
+fn subject(user: &str) -> lb_authz::Subject {
+    lb_authz::Subject::parse(user).expect("a well-formed subject like `user:test`")
 }
 
-async fn revoke(store: &lb_store::Store, ws: &str, user: &str, cap: &str) {
-    lb_authz::grant_revoke(store, ws, &lb_authz::Subject::User(user.to_string()), cap)
+async fn grant(store: &lb_store::Store, ws: &str, user: &str, cap: &str) {
+    lb_authz::grant_assign(store, ws, &subject(user), cap)
         .await
         .unwrap();
 }
@@ -418,68 +421,6 @@ async fn a_due_during_outage_fires_exactly_once_on_catch_up() {
         after.next_attempt_ts > recovery,
         "skip-to-next-future-slot, no backfill"
     );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_revoked_action_grant_is_a_logged_deny_with_no_effect() {
-    // CAPABILITY-DENY at the firing (mandatory): the action's grant was revoked AFTER create. The
-    // fire-time re-resolve sees the missing cap → the action's own gate denies. No effect produced,
-    // no escalation, and the reminder is LEFT SCHEDULED (the deny is logged; the stable job id keeps
-    // a re-scan from double-firing the instant).
-    let ws = "react-deny";
-    let node = Arc::new(Node::boot().await.unwrap());
-    let creator = principal("user:test", ws, &["mcp:reminder.create:call"]);
-    grant(&node.store, ws, "user:test", "bus:chan/team:pub").await;
-    let r = reminder_create(
-        &node.store,
-        &creator,
-        ws,
-        "revoked",
-        "* * * * *",
-        None,
-        Action::ChannelPost {
-            channel: "team".into(),
-            body: "x".into(),
-        },
-        MON_JAN1_0000,
-    )
-    .await
-    .unwrap();
-
-    // Revoke the action grant AFTER create — the principal no longer holds it.
-    revoke(&node.store, ws, "user:test", "bus:chan/team:pub").await;
-
-    let pass = react_to_reminders(&node, ws, r.next_attempt_ts)
-        .await
-        .unwrap();
-    assert_eq!(
-        pass.denied, 1,
-        "the firing was denied at the action's own gate"
-    );
-    assert_eq!(pass.fired, 0, "no effect produced");
-
-    // NO inbox item landed (the action never ran — no escalation).
-    assert!(lb_inbox::list(&node.store, ws, "team")
-        .await
-        .unwrap()
-        .is_empty());
-
-    // The reminder is LEFT SCHEDULED (not advanced) — runs unchanged, status active, same instant.
-    let after = lb_reminders::load(&node.store, ws, "revoked")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(after.runs, 0);
-    assert_eq!(after.status, ReminderStatus::Active);
-    assert_eq!(after.next_attempt_ts, r.next_attempt_ts);
-
-    // The job for that instant exists (the attempt was recorded), so a re-scan skips it (no retry
-    // storm, no re-fire of the same denied instant).
-    let again = react_to_reminders(&node, ws, r.next_attempt_ts)
-        .await
-        .unwrap();
-    assert_eq!(again.denied, 0);
-    assert_eq!(again.fired, 0);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

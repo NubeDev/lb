@@ -21,6 +21,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use base64ct::{Base64, Encoding};
 use lb_store::Store;
 use serde::Deserialize;
 
@@ -58,7 +59,7 @@ impl Default for PostmarkConfig {
             from_addr: String::new(),
             reply_to: None,
             message_stream: "outbound".to_string(),
-            timeout: Duration::from_secs(super::provider_smtp::DEFAULT_SEND_TIMEOUT_SECS),
+            timeout: Duration::from_secs(super::smtp_transport_config::DEFAULT_SEND_TIMEOUT_SECS),
         }
     }
 }
@@ -141,6 +142,24 @@ impl EmailProvider for PostmarkEmailProvider {
         });
         if let Some(html) = message.html.as_deref().filter(|h| !h.trim().is_empty()) {
             body["HtmlBody"] = serde_json::Value::String(html.to_string());
+        }
+        if !message.attachments.is_empty() {
+            // Postmark takes attachments inline, base64, in the same JSON body. Without this arm a
+            // report email would arrive with its subject and its body and no report — the
+            // silent-success failure mode this whole path exists to avoid.
+            body["Attachments"] = serde_json::Value::Array(
+                message
+                    .attachments
+                    .iter()
+                    .map(|a| {
+                        serde_json::json!({
+                            "Name": a.filename,
+                            "ContentType": a.mime,
+                            "Content": Base64::encode_string(&a.bytes),
+                        })
+                    })
+                    .collect(),
+            );
         }
         if let Some(reply_to) = self.config.reply_to.as_deref() {
             body["ReplyTo"] = serde_json::Value::String(reply_to.to_string());

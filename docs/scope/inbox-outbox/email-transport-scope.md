@@ -343,6 +343,20 @@ What landed, in the order it matters:
 6. **Container vs listener for the real-SMTP test** → in-test listener, so `cargo test --workspace` stays
    self-contained. See the gaps below for the container half.
 
+### Gaps CLOSED since (2026-08-17)
+
+The target in front of this transport could only ever deliver an invite — one recipient, catalog words
+under a hardcoded `send_invite` arm, no attachment concept. Recipient fan-out, attachments by asset
+reference, and payload-authored words landed in
+[`email-attachments-and-fanout-scope.md`](./email-attachments-and-fanout-scope.md). Verified live
+against AWS SES from an embedded `rubix-ai` node (which needed `kind: "smtp"` and nothing else — SES
+is an ordinary STARTTLS relay, as open question 1 predicted).
+
+That work also found why nobody would have noticed if it were broken: an EMBEDDED node's
+`BootConfig.telemetry` defaults to `SinkConfig::Off`, so the loud "email is being DROPPED" boot
+warning this scope added was itself discarded. `lb-node` now re-exports the type as `TelemetrySink`
+so a host can turn it on.
+
 ### Gaps still owed (stated, not hidden)
 
 - **No real-TLS test.** The docker-compose-gated integration test is not in this slice; TLS is covered by

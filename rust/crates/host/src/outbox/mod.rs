@@ -19,6 +19,10 @@
 
 mod delivered;
 mod delivery_error;
+mod email_attachment;
+mod email_content;
+mod email_payload;
+mod email_provider_dev;
 mod email_target;
 mod enqueue;
 mod enqueue_held;
@@ -29,15 +33,15 @@ mod relay;
 mod relay_ops;
 mod relay_reactor;
 mod router_target;
+mod smtp_transport_config;
 mod status;
 mod target;
 
 pub use delivered::{delivery_check, delivery_mark, OUTBOX_DELIVERED_TABLE};
 pub use delivery_error::DeliveryError;
-pub use email_target::{
-    EmailMessage, EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, RecordedEmail,
-    RecordingEmailProvider, EMAIL_TARGET,
-};
+pub use email_attachment::EmailAttachment;
+pub use email_provider_dev::{LoggingEmailProvider, RecordedEmail, RecordingEmailProvider};
+pub use email_target::{EmailMessage, EmailMeta, EmailProvider, EmailTarget, EMAIL_TARGET};
 pub use enqueue::enqueue_outbox;
 pub use enqueue_held::enqueue_held_outbox;
 pub use error::OutboxError;
@@ -46,13 +50,12 @@ pub use error::OutboxError;
 /// never sideways onto a leaf crate it happens to use.
 pub use lb_mail::{AuthMechanism, TlsMode};
 pub use provider_postmark::{PostmarkConfig, PostmarkEmailProvider};
-pub use provider_smtp::{
-    SmtpEmailProvider, SmtpOauthConfig, SmtpTransportConfig, DEFAULT_SEND_TIMEOUT_SECS,
-};
+pub use provider_smtp::SmtpEmailProvider;
 pub use relay::{relay_outbox, RelayPass};
 pub use relay_ops::{outbox_due, outbox_mark_delivered, outbox_mark_failed};
 pub use relay_reactor::spawn_relay_reactors;
 pub use router_target::{DynTarget, RouterTarget};
+pub use smtp_transport_config::{SmtpOauthConfig, SmtpTransportConfig, DEFAULT_SEND_TIMEOUT_SECS};
 pub use status::{outbox_status, OutboxStatus};
 pub use target::Target;
 

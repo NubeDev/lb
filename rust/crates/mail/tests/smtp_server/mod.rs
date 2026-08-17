@@ -59,8 +59,12 @@ pub struct Received {
     pub auth_line: Option<String>,
     pub mail_from: Option<String>,
     pub rcpt_to: Vec<String>,
-    /// The `DATA` payload (headers + body) with dot-unstuffing NOT applied — the raw wire bytes.
+    /// The LAST `DATA` payload (headers + body) with dot-unstuffing NOT applied — the raw wire bytes.
     pub message: Option<Vec<u8>>,
+    /// Every `DATA` payload this server accepted, in arrival order. A single effect can fan out to
+    /// several recipients over several sessions, and "each recipient got the attachment" is only
+    /// provable if each session's bytes are kept rather than overwritten.
+    pub messages: Vec<Vec<u8>>,
 }
 
 /// A running test server. Drop it and the accept loop stops.
@@ -140,7 +144,14 @@ async fn serve(
                     data_bytes.extend_from_slice(&buf[..pos]);
                     buf.drain(..pos + 5);
                     in_data = false;
-                    received.lock().unwrap().message = Some(std::mem::take(&mut data_bytes));
+                    // Scoped so the guard is provably gone before the next `.await` — an async block
+                    // that holds a `std::sync::MutexGuard` across a suspension point is not `Send`.
+                    {
+                        let payload = std::mem::take(&mut data_bytes);
+                        let mut seen = received.lock().unwrap();
+                        seen.messages.push(payload.clone());
+                        seen.message = Some(payload);
+                    }
                     let reply = script
                         .data_reply
                         .clone()

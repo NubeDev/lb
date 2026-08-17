@@ -35,12 +35,12 @@ fn channel_post_action(channel: &str, body: &str) -> Value {
     json!({ "kind": "channel-post", "channel": channel, "body": body })
 }
 
-/// Grant `cap` to `user` in `ws` directly in the durable grant store — this is how the fire-time
-/// re-resolve sees the stored principal's CURRENT caps (the action's own gate).
+/// Grant `cap` to `user` in `ws` in the durable grant store — how the fire-time re-resolve sees the
+/// stored principal's CURRENT caps. The sub is PARSED, as `grants.assign` parses it, so the row
+/// lands under the bare handle the store keys on (wrapping it verbatim hid a dead fire path).
 async fn grant(store: &lb_store::Store, ws: &str, user: &str, cap: &str) {
-    lb_authz::grant_assign(store, ws, &lb_authz::Subject::User(user.to_string()), cap)
-        .await
-        .unwrap();
+    let s = lb_authz::Subject::parse(user).expect("a subject like `user:test`");
+    lb_authz::grant_assign(store, ws, &s, cap).await.unwrap();
 }
 
 /// Create a channel-post reminder `id` in `ws` as `p` (schedule irrelevant to run-now).

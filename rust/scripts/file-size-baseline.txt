@@ -39,7 +39,6 @@ rust/crates/host/src/flows/schedule_store.rs 433
 rust/crates/host/src/lib.rs 507
 rust/crates/host/src/nav/reach.rs 534
 rust/crates/host/src/nav/resolve.rs 532
-rust/crates/host/src/outbox/provider_smtp.rs 442
 rust/crates/host/src/pack/apply.rs 663
 rust/crates/host/src/pack/sqlite.rs 553
 rust/crates/host/src/tool_call.rs 1258
@@ -93,7 +92,7 @@ rust/crates/host/tests/panel_test.rs 644
 rust/crates/host/tests/proof_panel_test.rs 1224
 rust/crates/host/tests/query_test.rs 818
 rust/crates/host/tests/reminder_fire_test.rs 456
-rust/crates/host/tests/reminders_reactor_test.rs 573
+rust/crates/host/tests/reminders_reactor_test.rs 514
 rust/crates/host/tests/report_test.rs 408
 rust/crates/host/tests/reusable_pages_test.rs 613
 rust/crates/host/tests/routed_ambiguity_test.rs 769

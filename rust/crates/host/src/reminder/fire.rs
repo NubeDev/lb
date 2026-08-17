@@ -36,11 +36,14 @@ pub fn fire_job_id(reminder_id: &str, scheduled_ts: u64) -> String {
 /// The lb-jobs job kind for a reminder firing. The reactor tags every enqueued firing job with it.
 pub const FIRE_KIND: &str = "reminder-fire";
 
+/// The prefix a user principal's `sub` carries and the durable grant store does NOT.
+const USER_PREFIX: &str = "user:";
+
 /// Dispatch the action for `reminder` (whose `next_attempt_ts` is `scheduled_ts`) at logical time
 /// `now`, under the reminder's stored principal (caps re-resolved from the grant store). A denial
-/// is returned as [`ReminderError::Denied`] — the reactor logs it and leaves the reminder scheduled
-/// (it does NOT advance a denied firing, so the reminder waits; the stable job id keeps a re-scan
-/// from double-firing the same instant).
+/// is returned as [`ReminderError::Denied`] — the reactor logs it, counts it, and advances the
+/// reminder to its next slot (the stable job id keeps a re-scan from double-firing this instant; see
+/// `react.rs` for why NOT advancing killed the schedule outright).
 pub async fn fire_reminder(
     node: &Arc<Node>,
     ws: &str,
@@ -96,7 +99,17 @@ async fn resolve_fire_principal(
     ws: &str,
     sub: &str,
 ) -> Result<Principal, ReminderError> {
-    let caps = resolve_caps(store, ws, sub).await?;
+    // Grants are stored under the BARE user name — `resolve_caps` re-wraps it as `Subject::User`,
+    // so handing it the `user:`-prefixed sub looks up `Subject::User("user:test")` and finds NOTHING.
+    // The session mint has always stripped it (`role/gateway/src/session/mint_session.rs`); this path
+    // did not, and the consequence was total: EVERY reminder authored by a real user resolved ZERO
+    // caps at fire time, so every action kind was denied, for every reminder, always. It presented as
+    // `denied=1` in the reactor's pass line with no reason, and (see `react.rs`) the reminder was then
+    // left un-advanced behind its own idempotency marker, so it never even retried.
+    let bare = sub.strip_prefix(USER_PREFIX).unwrap_or(sub);
+    let caps = resolve_caps(store, ws, bare).await?;
+    // The principal keeps the PREFIXED sub: that is the identity every downstream gate, audit row and
+    // `by` field records. Only the grant lookup wants the bare handle.
     Ok(Principal::routed(sub, ws, caps))
 }
 
@@ -208,5 +221,17 @@ async fn fire_outbox(
         store, principal, ws, &effect_id, target, action, &payload, now,
     )
     .await
-    .map_err(|_| ReminderError::Denied)
+    .map_err(|e| {
+        // The caller only ever sees `Denied` — deliberately, so a firing cannot probe the caps wall.
+        // But the reactor then reports `denied=1` and LEAVES the reminder scheduled, and the
+        // underlying reason was thrown away here, so an operator watching a schedule that silently
+        // stops firing has nothing at all to go on. `enqueue_outbox` returns `Denied` for the cap
+        // and a store error for anything else; those want completely different fixes and must not
+        // look identical in the log.
+        tracing::warn!(
+            reminder = %reminder_id, ws, target, action, effect = %effect_id, error = %e,
+            "reminder firing could not stage its outbox effect"
+        );
+        ReminderError::Denied
+    })
 }

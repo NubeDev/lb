@@ -128,6 +128,22 @@ pub use lb_host::timerange;
 /// [`TimeRangeError`] is `std::error::Error`, so `anyhow` callers `?` it with no glue.
 pub use lb_host::timerange::{resolve_range, ResolvedRange, TimeRangeError};
 
+/// The telemetry sink selection [`BootConfig::telemetry`](config::BootConfig::telemetry) takes, and
+/// the env reader behind it.
+///
+/// Re-exported because without it an embedder **cannot set the field it is required to fill**: the
+/// type lived only in `lb-telemetry`, which a product host does not (and should not) depend on
+/// directly, so the only reachable value was the embed `Default` — [`TelemetrySink::Off`]. That
+/// default installs no `tracing` subscriber at all, so every `info!`/`warn!` the core emits is
+/// silently discarded in an embedded node: the boot line naming the mail transport, "email sent",
+/// the store-budget marks, the clock-skew warning. An operator debugging a delivery had nothing to
+/// read, and a node that had dropped every email looked exactly like one that had sent them.
+///
+/// `Off` stays the embed default — an embedder that installs its own subscriber must not find one
+/// already set — but a host can now opt in with one line at its binary boundary:
+/// `cfg.telemetry = lb_node::TelemetrySink::from_env();`
+pub use lb_telemetry::SinkConfig as TelemetrySink;
+
 /// `NodeId` — the identity a discovery advertisement carries, shared with fleet-presence's bus
 /// roster so a discovered peer correlates with a roster entry once connected.
 pub use lb_bus::{NodeId, NodeIdError};
