@@ -35,19 +35,12 @@ fn channel_post_action(channel: &str, body: &str) -> Value {
     json!({ "kind": "channel-post", "channel": channel, "body": body })
 }
 
-/// Grant `cap` to `user` in `ws` directly in the durable grant store — this is how the fire-time
-/// re-resolve sees the stored principal's CURRENT caps (the action's own gate).
-///
-/// **`user` is a principal `sub` (`"user:test"`) and is PARSED, exactly as the `grants.assign` verb
-/// parses it, so the row lands under the bare handle the store actually keys on.** This helper used
-/// to wrap the sub verbatim as `Subject::User("user:test")` — a key nothing in production ever
-/// writes — which made every test here pass against a fire path that could not resolve a single cap
-/// for a real user. The tests encoded the bug. Keep the parse.
+/// Grant `cap` to `user` in `ws` in the durable grant store — how the fire-time re-resolve sees the
+/// stored principal's CURRENT caps. The sub is PARSED, as `grants.assign` parses it, so the row
+/// lands under the bare handle the store keys on (wrapping it verbatim hid a dead fire path).
 async fn grant(store: &lb_store::Store, ws: &str, user: &str, cap: &str) {
-    let subject = lb_authz::Subject::parse(user).expect("a well-formed subject like `user:test`");
-    lb_authz::grant_assign(store, ws, &subject, cap)
-        .await
-        .unwrap();
+    let s = lb_authz::Subject::parse(user).expect("a subject like `user:test`");
+    lb_authz::grant_assign(store, ws, &s, cap).await.unwrap();
 }
 
 /// Create a channel-post reminder `id` in `ws` as `p` (schedule irrelevant to run-now).
