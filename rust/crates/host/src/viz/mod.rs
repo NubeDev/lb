@@ -11,6 +11,8 @@
 //!   - `query.rs` ([`viz_query`]) — the resolver: dispatch targets → assemble frames → run `lb-viz`.
 //!   - `batch.rs` ([`viz_query_batch`]) — the `viz.query_batch` fan-in: resolve many panels in ONE call,
 //!     concurrently, per-item partial failure (dashboard-query-acceleration scope, slice 3).
+//!   - `batch_stream.rs` ([`viz_query_batch_stream`]) — the SAME fan-in yielded per panel as each
+//!     resolves (slice 4, progressive first paint); the gateway serves it as an NDJSON body.
 //!   - `reach.rs` ([`reach::apply_entity_reach`]) — the OPTIONAL entity-grant reach filter: a target
 //!     that names an `entity` hint honors the same `scope_filter` the entity's `.list` verb applies.
 //!   - `time_override.rs` — the panel `timeFrom`/`timeShift` override applied to target args
@@ -20,6 +22,7 @@
 
 mod authorize;
 mod batch;
+mod batch_stream;
 mod error;
 mod frame;
 mod macros;
@@ -29,6 +32,7 @@ mod resolution;
 mod time_override;
 mod tool;
 
+pub use batch_stream::{viz_query_batch_stream, BatchItem};
 pub use error::VizError;
 pub use query::viz_query;
 pub use tool::call_viz_tool;
