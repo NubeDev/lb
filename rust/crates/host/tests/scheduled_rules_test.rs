@@ -18,8 +18,13 @@ use std::sync::Arc;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    call_tool, cron_run_id, insight_list, react_to_flows_cron, reactor_caps, Node as HostNode,
+    call_tool, cron_run_id, insight_list, owner_principal, react_to_flows_cron, reactor_caps,
+    Node as HostNode,
 };
+
+/// The cap a `query("<datasource>", ..)` rule body needs at collect, deliberately absent from
+/// `reactor_caps()` (blanket datasource reach for every scheduled flow on the node).
+const FEDERATION_QUERY: &str = "mcp:federation.query:call";
 use lb_insights::ListQuery;
 use lb_reminders::next_after;
 use serde_json::{json, Value};
@@ -889,4 +894,391 @@ async fn poll_run_terminal(node: &Arc<HostNode>, p: &Principal, ws: &str, run_id
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
+}
+
+/// **A scheduled rule runs as its OWNER, not as the reactor** (lb#167, third verb deep).
+///
+/// The two tests above fix the fires that die on `rules.eval` / `inbox.record` — verbs it was right
+/// to hand the reactor, because they are the mechanics of running a rule at all. This one covers the
+/// class that CANNOT be fixed that way: a rule body whose first statement is
+/// `query("<datasource>", ...)`, which collects via `federation.query`. That cap is deliberately
+/// absent from `reactor_caps()` (granting it would give every scheduled flow on the node blanket
+/// read access to every registered datasource), so the fire is `denied` while `rules.run` from the
+/// UI succeeds under the user's own token — the lb#167 asymmetry, unfixable by widening.
+///
+/// The fix is run-as-owner: the fire executes as `SavedRule::scheduled_by` with that subject's caps
+/// re-resolved LIVE from the grant store. So the assertion here is deliberately about a cap the
+/// reactor does not have and the owner does — if the substitution stops happening, the rule is
+/// denied and this fails.
+///
+/// Fails before `execute_node::run_as_owner`; passes after.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn scheduled_rule_runs_as_its_owner_with_caps_the_reactor_lacks() {
+    use lb_authz::{grant_assign, Subject};
+
+    let ws = "sched-run-as-owner";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let author = principal(ws, FULL);
+
+    // The owner's authority must come from the GRANT STORE, not from the author's minted token:
+    // run-as-owner re-resolves caps live on every fire, precisely so a demoted author's schedule
+    // loses reach. Seeding a real grant row is what makes this test exercise that resolve.
+    let owner = Subject::User("test".into());
+    for cap in [
+        "mcp:rules.eval:call",
+        "mcp:insight.raise:call",
+        "store:rule:read",
+        "store:insight:write",
+        // The cap that makes this test mean something: the reactor does NOT have it.
+        FEDERATION_QUERY,
+    ] {
+        grant_assign(&node.store, ws, &owner, cap)
+            .await
+            .expect("grant assigned");
+    }
+
+    save_rule(
+        &node,
+        &author,
+        ws,
+        "owned",
+        &scheduled_rule_body("#[schedule(\"every 15 minutes\")]"),
+    )
+    .await;
+
+    // The owner is captured at save, on the record — the identity the fire resolves.
+    let saved = get_rule(&node, &author, ws, "owned").await;
+    assert_eq!(
+        saved["scheduled_by"],
+        json!("user:test"),
+        "rules.save recorded the scheduling subject as the rule's owner"
+    );
+
+    // Fire under the REAL reactor principal, exactly as `spawn_flow_reactors` mints it.
+    let reactor = Principal::routed("node:reactor", ws, reactor_caps());
+    react_to_flows_cron(&node, &reactor, ws, 100).await.unwrap();
+    let next = cursor_next(&node, ws, "schedule:owned", "trigger").await;
+    let pass = react_to_flows_cron(&node, &reactor, ws, next + 1)
+        .await
+        .unwrap();
+    assert_eq!(pass.fired, 1, "the managed cron flow fired exactly one run");
+
+    // THE MECHANISM, asserted directly. A body-level effect cannot prove this on its own: every verb
+    // the cage can reach without a live datasource sidecar is one `reactor_caps()` already grants, so
+    // such a test passes with the substitution ripped out (it was written that way first, and did).
+    // What actually distinguishes fixed from broken is WHICH principal the rule node dispatches under.
+    let reactor_only = Principal::routed("node:reactor", ws, reactor_caps());
+    assert!(
+        !reactor_only.caps().iter().any(|c| c == FEDERATION_QUERY),
+        "precondition: `reactor_caps()` must NOT grant {FEDERATION_QUERY} — if it ever does, the \
+         blanket-datasource-reach boundary was crossed and run-as-owner is no longer what carries \
+         a scheduled rule to its datasource"
+    );
+    let swapped = owner_principal(&node, &reactor_only, ws, "owned")
+        .await
+        .expect("a headless fire of an owned rule substitutes the owner's principal");
+    assert_eq!(
+        swapped.sub(),
+        "user:test",
+        "the fire runs AS the owner, not as node:reactor"
+    );
+    assert_eq!(swapped.ws(), ws, "the owner principal is workspace-pinned");
+    assert!(
+        swapped.caps().iter().any(|c| c == FEDERATION_QUERY),
+        "the owner's live grant carried {FEDERATION_QUERY} into the fire — this is the cap the \
+         reactor lacks and the whole reason a `query(<datasource>, ..)` rule was denied on every \
+         scheduled fire (lb#167)"
+    );
+
+    let run_id = cron_run_id("schedule:owned", "trigger", next);
+    poll_run_terminal(&node, &author, ws, &run_id).await;
+    assert_eq!(
+        count_insights(&node, &author, ws).await,
+        1,
+        "the scheduled rule ran to its effect"
+    );
+}
+
+/// **The substitution is actually WIRED into the `rule` node** — not merely available.
+///
+/// The test above proves `owner_principal` resolves the right authority; it cannot prove that
+/// `core::rule` *uses* it (ripping the two-line swap out of `core.rs` leaves that test green — which
+/// it did, verified). This one closes that gap the only way that is honest: fire the managed flow
+/// under a reactor principal with `mcp:rules.eval:call` REMOVED, so the run can only succeed if the
+/// node dispatched under the owner's caps instead of the ones it was handed.
+///
+/// That is a faithful stand-in for the production failure. On a live node the missing cap is
+/// `mcp:federation.query:call` (needed by a `query("<datasource>", ..)` body and deliberately not in
+/// `reactor_caps()`), which cannot be exercised here without a registered datasource + sidecar. The
+/// mechanism under test is identical: a cap the reactor lacks and the owner holds.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_rule_node_dispatches_under_the_owner_not_the_principal_it_was_handed() {
+    use lb_authz::{grant_assign, Subject};
+
+    let ws = "sched-owner-wired";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let author = principal(ws, FULL);
+
+    let owner = Subject::User("test".into());
+    for cap in [
+        "mcp:rules.eval:call",
+        "mcp:insight.raise:call",
+        "store:rule:read",
+        "store:insight:write",
+    ] {
+        grant_assign(&node.store, ws, &owner, cap)
+            .await
+            .expect("grant assigned");
+    }
+
+    save_rule(
+        &node,
+        &author,
+        ws,
+        "owned",
+        &scheduled_rule_body("#[schedule(\"every 15 minutes\")]"),
+    )
+    .await;
+
+    // A CRIPPLED reactor: everything it normally has except the one verb the rule node needs. Without
+    // run-as-owner wired in, the fire is `denied` and no insight is ever raised.
+    let crippled: Vec<String> = reactor_caps()
+        .into_iter()
+        .filter(|c| c != "mcp:rules.eval:call")
+        .collect();
+    let reactor = Principal::routed("node:reactor", ws, crippled);
+
+    react_to_flows_cron(&node, &reactor, ws, 100).await.unwrap();
+    let next = cursor_next(&node, ws, "schedule:owned", "trigger").await;
+    react_to_flows_cron(&node, &reactor, ws, next + 1)
+        .await
+        .unwrap();
+
+    let run_id = cron_run_id("schedule:owned", "trigger", next);
+    poll_run_terminal(&node, &author, ws, &run_id).await;
+
+    let run = call_tool(
+        &node,
+        &author,
+        ws,
+        "flows.runs.get",
+        &json!({ "run_id": run_id }).to_string(),
+    )
+    .await
+    .expect("flows.runs.get ok");
+    let run: Value = serde_json::from_str(&run).unwrap();
+    let rule_step = run["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["id"] == "rule")
+        .expect("the managed flow has a rule step")
+        .clone();
+    assert_ne!(
+        rule_step["error"],
+        json!("denied"),
+        "the rule node was DENIED — `core::rule` did not dispatch under the owner's principal, so \
+         run-as-owner is resolvable but NOT wired in"
+    );
+    assert_eq!(run["status"], json!("success"), "no partialFailure");
+    assert_eq!(
+        count_insights(&node, &author, ws).await,
+        1,
+        "the fire reached its effect on a cap ONLY the owner held"
+    );
+}
+
+/// **A manual run is never substituted.** Run-as-owner keys strictly off the reactor subject, so a
+/// user-driven run keeps the caller's own authority — the substitution can neither widen a weak
+/// caller nor narrow a strong one on a path nobody asked about.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_user_driven_run_keeps_its_own_principal() {
+    let ws = "sched-manual-untouched";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let author = principal(ws, FULL);
+    save_rule(
+        &node,
+        &author,
+        ws,
+        "owned",
+        &scheduled_rule_body("#[schedule(\"every 15 minutes\")]"),
+    )
+    .await;
+    assert!(
+        owner_principal(&node, &author, ws, "owned").await.is_none(),
+        "a run under the author's own principal must not be swapped for the owner's"
+    );
+}
+
+/// **Run-as-owner is fail-CLOSED**: no recorded owner ⇒ the reactor principal stands, unchanged.
+///
+/// The substitution must never become a way to acquire authority. A rule with no `scheduled_by` (one
+/// saved before this shipped, or whose owner was cleared) has to keep behaving exactly as it did —
+/// running on `reactor_caps()` alone — rather than falling back to anything wider. This pins the
+/// degrade direction so a later refactor cannot quietly invert it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_scheduled_rule_without_a_recorded_owner_keeps_the_reactor_principal() {
+    let ws = "sched-owner-absent";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let author = principal(ws, FULL);
+
+    save_rule(
+        &node,
+        &author,
+        ws,
+        "unowned",
+        &scheduled_rule_body("#[schedule(\"every 15 minutes\")]"),
+    )
+    .await;
+
+    // Strip the owner, simulating a record written before run-as-owner existed.
+    let raw = lb_store::read(&node.store, ws, "rule", "unowned")
+        .await
+        .unwrap()
+        .expect("the saved rule");
+    let mut rule: Value = raw;
+    rule.as_object_mut().unwrap().remove("scheduled_by");
+    lb_store::write(&node.store, ws, "rule", "unowned", &rule)
+        .await
+        .unwrap();
+
+    // It still fires — on `reactor_caps()`, which since lb#167 does carry `rules.eval` + raise. The
+    // point is that it neither errors nor gains anything: identical to the pre-run-as-owner path.
+    let reactor = Principal::routed("node:reactor", ws, reactor_caps());
+    react_to_flows_cron(&node, &reactor, ws, 100).await.unwrap();
+    let next = cursor_next(&node, ws, "schedule:unowned", "trigger").await;
+    react_to_flows_cron(&node, &reactor, ws, next + 1)
+        .await
+        .unwrap();
+
+    let run_id = cron_run_id("schedule:unowned", "trigger", next);
+    poll_run_terminal(&node, &author, ws, &run_id).await;
+    assert_eq!(
+        count_insights(&node, &author, ws).await,
+        1,
+        "an ownerless scheduled rule still runs on the reactor's own caps (no regression)"
+    );
+}
+
+/// **`rules.adopt_schedule` claims an ownerless schedule** — the migration path for rules saved
+/// before run-as-owner existed.
+///
+/// Those rules carry no `scheduled_by`, so they keep firing on `reactor_caps()` alone and stay broken
+/// exactly as lb#167 describes. There is deliberately NO silent backfill: stamping a guessed subject
+/// onto every ownerless rule would be a privilege grant made by a migration rather than by a person,
+/// and the store holds no record of who authored a rule before the field existed. Adoption is
+/// therefore an explicit act that can only ever confer the caller's OWN authority.
+///
+/// The `call_tool` path is load-bearing here, not incidental: it exercises the OUTER cap gate. A verb
+/// with no alias derives `mcp:rules.adopt_schedule:call`, a cap that exists in no role bundle — so
+/// without the `tool_gate` arm this verb would answer a bare `denied` for every caller, admins
+/// included, while its own body's check passed. That failure is invisible to a test that calls the
+/// host fn directly, and it has shipped twice before (`outbox.enqueue_held`, `media.upload_*`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn adopt_schedule_records_the_caller_as_owner_through_the_cap_gate() {
+    use lb_authz::{grant_assign, Subject};
+
+    let ws = "sched-adopt";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let author = principal(ws, FULL);
+
+    // The owner's authority comes from the GRANT STORE — adoption records an identity, and the fire
+    // resolves that identity's caps live. Without a grant row the adopted owner resolves to nothing
+    // and run-as-owner correctly declines to substitute (the fail-closed path).
+    grant_assign(
+        &node.store,
+        ws,
+        &Subject::User("test".into()),
+        "mcp:rules.eval:call",
+    )
+    .await
+    .expect("grant assigned");
+
+    save_rule(
+        &node,
+        &author,
+        ws,
+        "legacy",
+        &scheduled_rule_body("#[schedule(\"every 15 minutes\")]"),
+    )
+    .await;
+
+    // Strip the owner — this IS the pre-run-as-owner record shape.
+    let mut rule = lb_store::read(&node.store, ws, "rule", "legacy")
+        .await
+        .unwrap()
+        .expect("the saved rule");
+    rule.as_object_mut().unwrap().remove("scheduled_by");
+    lb_store::write(&node.store, ws, "rule", "legacy", &rule)
+        .await
+        .unwrap();
+    assert!(
+        owner_principal(
+            &node,
+            &Principal::routed("node:reactor", ws, reactor_caps()),
+            ws,
+            "legacy"
+        )
+        .await
+        .is_none(),
+        "precondition: the stripped rule has no owner to run as"
+    );
+
+    let out = call_tool(
+        &node,
+        &author,
+        ws,
+        "rules.adopt_schedule",
+        &json!({ "id": "legacy" }).to_string(),
+    )
+    .await
+    .expect("rules.adopt_schedule passes the cap gate under `mcp:rules.save:call`");
+    let out: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        out["scheduled_by"],
+        json!("user:test"),
+        "the caller owns it"
+    );
+
+    // …and the fire now resolves that owner's live caps.
+    let swapped = owner_principal(
+        &node,
+        &Principal::routed("node:reactor", ws, reactor_caps()),
+        ws,
+        "legacy",
+    )
+    .await;
+    assert!(
+        swapped.is_some(),
+        "after adoption the scheduled fire runs as the owner"
+    );
+}
+
+/// Adopting a rule with no `#[schedule(...)]` directive is refused: an unscheduled rule has no
+/// headless fire, so an owner on it would be an identity nothing ever reads.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn adopt_schedule_refuses_an_unscheduled_rule() {
+    let ws = "sched-adopt-unscheduled";
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let author = principal(ws, FULL);
+    save_rule(
+        &node,
+        &author,
+        ws,
+        "ondemand",
+        "insight.raise(#{ dedup_key: \"x\", severity: \"warning\", title: \"t\", body: #{} });",
+    )
+    .await;
+    assert!(
+        call_tool(
+            &node,
+            &author,
+            ws,
+            "rules.adopt_schedule",
+            &json!({ "id": "ondemand" }).to_string(),
+        )
+        .await
+        .is_err(),
+        "an unscheduled rule has no scheduled fire to own"
+    );
 }

@@ -11,6 +11,7 @@ use crate::boot::Node;
 use crate::tool_call::call_tool;
 
 use super::super::run_store::NodeOutcome;
+use super::run_as_owner;
 use super::{call_tool_node, merge_tool_args, payload_size, tool_err_string, unwrap_rule_output};
 
 /// The entry node (D6): emits `{ payload: <firing value>, topic: <config.topic?> }`. The firing value
@@ -99,6 +100,12 @@ pub(super) async fn rule(
         "ts": now,
     });
     apply_timeout(&mut req, config);
+    // Run-as-owner: a HEADLESS fire executes as the subject that scheduled the rule, with that
+    // subject's CURRENT caps (see `run_as_owner`). Falls back to the passed principal for a manual
+    // run, or for a scheduled rule with no resolvable owner. This is what lets a scheduled rule
+    // reach a federation datasource that `reactor_caps()` deliberately does not grant (lb#167).
+    let owner = run_as_owner::owner_principal(node, principal, ws, rule_id).await;
+    let principal = owner.as_ref().unwrap_or(principal);
     eval_rule(node, principal, ws, req).await
 }
 

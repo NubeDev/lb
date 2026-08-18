@@ -27,6 +27,7 @@ mod debug;
 mod delay;
 mod ext_call;
 mod pure;
+pub mod run_as_owner;
 mod sink;
 mod stateful;
 mod store_crud;

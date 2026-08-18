@@ -349,6 +349,27 @@ would reopen one of them is a finding to raise against this doc, not a silent di
   tracked as a follow-up. Regression:
   `reactor_loop::reactor_drives_the_builtin_platform_nodes_but_not_arbitrary_ext_call`.
 
+- **run-as-owner is BUILT (the follow-up above, closed).** The widening argument recurred exactly as
+  predicted, one verb deeper: a scheduled rule whose body opens `query("<datasource>", ...)` collects
+  via `federation.query`, which `reactor_caps()` does not grant and should not — granting it would
+  give every scheduled flow on the node blanket read access to every registered datasource. Every
+  fire of every estate BMS/FDD rule was `partialFailure` with the `rule` step `denied`, while
+  `rules.run` from the UI succeeded (lb#167's third verb; the caps fix addressed the first two).
+  Rather than widen again, a HEADLESS `rule` node now dispatches as the rule's **owner** —
+  `SavedRule::scheduled_by`, captured at save when (and only when) the body carries a directive —
+  with that subject's caps **re-resolved live** from the grant store on every fire
+  (`flows/execute_node/run_as_owner.rs`). Properties that make it not-an-escalation: the owner is an
+  identity, never a stored credential (a demoted author's schedule loses the same reach they did, on
+  the next fire); the minted principal is workspace-pinned; it is never wider than what the owner
+  could already do by hand; and every failure path (no owner, unresolvable owner, store error)
+  degrades to the reactor principal, so a miss is the old denial and never a widening. Manual runs
+  are untouched — the substitution keys strictly off the `node:reactor` subject. Regression:
+  `scheduled_rules_test::the_rule_node_dispatches_under_the_owner_not_the_principal_it_was_handed`,
+  which fires under a reactor principal with `rules.eval` REMOVED so it can only pass if the node
+  really dispatched under the owner. That shape is load-bearing: the first version of the test
+  asserted an ordinary raise-an-insight body and stayed GREEN with the substitution ripped out — the
+  same green-while-broken trap that let lb#167 ship in the first place.
+
 ## Related
 
 - Spine & contract: [`flows-scope.md`](./flows-scope.md) (Decisions 6, 10),
