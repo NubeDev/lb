@@ -12,6 +12,7 @@
 //! store/inbox/outbox surface gate. The cage + the per-source `caps::check` inside every collect are
 //! the security boundary (rule 5/7). Attribution + the port lives in the `lb-rules` crate docs.
 
+mod adopt;
 mod config;
 mod delete;
 mod error;
@@ -26,13 +27,14 @@ mod save;
 mod schedule;
 mod seam;
 
+pub use adopt::rules_adopt_schedule;
 pub use config::{ai_limits, rule_limits};
 pub use delete::rules_delete;
 pub use error::RulesError;
 pub use eval::rules_eval;
 pub use get::{rules_get, rules_list};
 pub use model::AgentRuleModel;
-pub use record::SavedRule;
+pub use record::{SavedRule, RULE_TABLE};
 pub use run::{params_to_rhai, rules_run, RunResult};
 pub use runs::RuleRunMap;
 pub use save::rules_save;
@@ -299,6 +301,13 @@ pub async fn call_rules_tool(
                 rules.retain(|r| r.schedule.is_some());
             }
             Ok(json!({ "rules": rules }))
+        }
+        "rules.adopt_schedule" => {
+            // Claim a pre-run-as-owner schedule (see `adopt.rs`). The caller becomes the subject the
+            // headless fire runs as, conferring their OWN authority and nothing more.
+            let id = str_arg(input, "id")?;
+            let (id, owner) = rules_adopt_schedule(&node.store, principal, ws, id).await?;
+            Ok(json!({ "id": id, "scheduled_by": owner }))
         }
         "rules.delete" => {
             let id = str_arg(input, "id")?;

@@ -31,12 +31,27 @@ pub async fn rules_save(
 ) -> Result<(String, Option<RuleSchedule>), RulesError> {
     authorize_store_write(principal, ws)?;
     let schedule = compile_body_schedule(body)?;
+    // Capture the AUTHOR only when the rule is actually scheduled. A run-on-demand rule already runs
+    // under whoever calls `rules.run`, so recording an owner for it would store an identity nothing
+    // reads. When the directive is dropped on a later save, `scheduled_by` goes back to `None` with
+    // it — the record never keeps an owner for a rule that has no headless fire path.
+    //
+    // A re-save REASSIGNS ownership to the saver, deliberately. The body being stored is the one
+    // this caller wrote and it is their caps it was written against, so binding the fire to them is
+    // the honest reading — and it is what makes "just re-save it" the natural repair for a rule with
+    // no owner. It cannot be used to escalate: the saver can only ever confer their own authority,
+    // exactly as `rules.adopt_schedule` does, and editing a rule already requires rule-write.
+    let scheduled_by = schedule
+        .as_ref()
+        .map(|_| principal.sub().to_string())
+        .filter(|sub| !sub.is_empty());
     let rule = SavedRule {
         id: id.to_string(),
         name: name.to_string(),
         body: body.to_string(),
         params,
         schedule: schedule.clone(),
+        scheduled_by,
         deleted: false,
     };
     let value = serde_json::to_value(&rule).map_err(|e| RulesError::Internal(e.to_string()))?;
