@@ -44,7 +44,9 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
 ```
 
 Caps: reads (`mcp:nav.get|list|resolve:call`) are **member-level** (every member resolves their own
-menu + curates their own pick — `nav.pref.*` gate on `nav.resolve`); writes
+menu + curates their own pick — `nav.pref.*` gate on `nav.resolve`, and so does `nav.get_default`:
+the workspace default is already the third tier of the caller's own resolve, so reading WHICH nav it
+names discloses nothing their menu doesn't); writes
 (`mcp:nav.save|delete|share:call`, and `nav.set_default` under `nav.save`) are **admin-ish** (the
 `workspace-admin` role holds them). Store caps `store:nav:read|write`, `store:nav_pref:read|write`.
 
@@ -58,6 +60,7 @@ menu + curates their own pick — `nav.pref.*` gate on `nav.resolve`); writes
 | Delete (tombstone) | `DELETE /navs/{id}` | `{"tool":"nav.delete","args":{"id":"…","now":…}}` | `id,now*` |
 | Share / visibility | `POST /navs/{id}/share` | `{"tool":"nav.share","args":{…}}` | `id,visibility,team?,now*` |
 | Set workspace default | `POST /nav/default` | `{"tool":"nav.set_default","args":{"id":"…","now":…}}` | `id,now*` |
+| Read workspace default | `GET /nav/default` | `{"tool":"nav.get_default","args":{}}` | — |
 | Resolve effective menu | `GET /nav/resolve` | `{"tool":"nav.resolve","args":{}}` | — |
 | Read/set my pick + pins | `GET|POST /nav/pref` | `{"tool":"nav.pref.get|set","args":{…}}` | `id?,pinned?,now*` |
 | Read/set workspace hidden-set | `GET|POST /nav/hidden` | `{"tool":"nav.hidden.get|set","args":{…}}` | `hidden[],now*` |

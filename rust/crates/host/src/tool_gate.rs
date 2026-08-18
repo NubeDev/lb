@@ -38,7 +38,10 @@ use crate::tool_call::is_host_native;
 /// - `nav.pref.*` — nav scope: the member-owned active pick gates on the SAME `mcp:nav.resolve:call`
 ///   read grant its verb re-checks; curating which nav you use is part of resolving your own menu.
 /// - `nav.set_default` — nav scope: the workspace-default pointer is an authoring action — it gates
-///   on the `mcp:nav.save:call` grant that creates the navs it points at. Re-checked inside.
+///   on the `mcp:nav.save:call` grant that creates the navs it points at. Re-checked inside. Its
+///   READ half `nav.get_default` is the asymmetric case: the pointer is already the third tier of
+///   every member's own resolve, so reading it rides `mcp:nav.resolve:call` — gating the read on the
+///   authoring cap would hide the default from exactly the people it shapes.
 ///   The capability name the dispatcher's gate will ACTUALLY check for `qualified_tool`, across both
 ///   tiers — a host-native verb resolves through the [`gate_tool_for`] alias table, while an
 ///   `<ext>.<tool>` is gated on its own qualified name by `lb_mcp`'s `authorize`.
@@ -158,9 +161,12 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
     } else if qualified_tool.starts_with("nav.pref.")
         || qualified_tool == "nav.hidden.get"
         || qualified_tool == "nav.ext_boards.get"
+        || qualified_tool == "nav.get_default"
     {
         // hide-and-pins scope: reading the hidden-set is part of resolving one's own menu (the
-        // resolver echoes it to every member anyway) — same `mcp:nav.resolve:call` read grant.
+        // resolver echoes it to every member anyway) — same `mcp:nav.resolve:call` read grant. The
+        // workspace-default POINTER (`nav.get_default`) reads for the same reason: it is the
+        // resolver's third tier, already applied to the caller's own menu.
         // host-authored-ext-nav-boards scope: the host-authored ext board rows are read for the
         // same reason by the same people — EVERY member's rail renders them, so gating the read on
         // the authoring cap would make an admin-placed board invisible to the members it was placed

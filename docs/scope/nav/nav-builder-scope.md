@@ -213,6 +213,17 @@ records (no mocks, rule 9):
   single `workspace_nav_default:[ws]` pointer record. `nav.resolve` reads that pointer for the
   workspace-default tier. *Rejected:* "first/most-recent `visibility:workspace` nav wins" — nondeterministic
   and surprising when a second workspace nav appears.
+- **…and a matching read, `nav.get_default` (`GET /nav/default`)** — added 2026-08-18. The pointer
+  shipped **write-only**, which made a correct write indistinguishable from a failed one: no UI could
+  ask which nav is the default (a builder's "Default" badge could only echo its own write, in that
+  session), and setting it changes nothing on the *admin's own* rail because admins skip tiers 2/3
+  (`nav-no-lockout-scope.md`). Two symptoms, one missing read (rubix-ai#165 the durable badge,
+  rubix-ai#144 the no-lockout restore naming the nav to put back). The read is **member-level**
+  (`mcp:nav.resolve:call`), deliberately asymmetric with the admin-ish write: the pointer is already
+  the third tier of the caller's own resolve, so naming it discloses nothing their menu doesn't, while
+  gating it on the authoring cap would hide the default from everyone it shapes. *Rejected:* folding
+  the id into `nav.resolve`'s payload — resolve answers "what is MY menu", and for an admin the
+  default is precisely what does *not* apply, so the answer would be absent exactly where it is needed.
 - **Per-user pick: a dedicated `nav_pref:[ws, user]` record** owned by the nav module — NOT a `lb-prefs`
   axis (its axis set stays closed to formatting/localization). Member-owned (`store:nav_pref:read|write`).
 - **Uninstalled-ext entries: strip silently at resolve**, exactly like a cap-stripped item (an `ext` page
