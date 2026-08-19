@@ -78,6 +78,15 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // `mcp:identity.manage:call` grant (the scope's MCP §6.1 decision), not a new per-verb cap.
         // Each verb re-checks `identity.manage` inside.
         "identity.manage"
+    } else if qualified_tool == "rules.adopt_schedule" {
+        // Adopting a scheduled rule's ownership is a rule WRITE — it changes whose authority the
+        // headless fire runs under — so it rides `mcp:rules.save:call`, which is the cap every role
+        // that can author a rule already holds. A dedicated `mcp:rules.adopt_schedule:call` exists in
+        // NO role bundle, so deriving one by convention would make the verb unreachable for every
+        // caller including admins: the "shipped but unusable" trap this alias table exists to stop
+        // (see the `outbox.enqueue_held` and `media.upload_*` notes below). The host fn re-checks the
+        // `store:rule:write` surface inside.
+        "rules.save"
     } else if qualified_tool == "outbox.enqueue_held" {
         // rules-approvals scope: staging a GATED effect is the same authority as enqueuing an
         // ordinary one — the hold is a delivery decision, not a second privilege — so it rides

@@ -28,6 +28,11 @@ pub(super) const RULES: &[HostTool] = &[
         description: "delete a rule",
     },
     HostTool {
+        tool: "rules.adopt_schedule",
+        group: "rules",
+        description: "become the owner a scheduled rule's headless fire runs as",
+    },
+    HostTool {
         tool: "rules.run",
         group: "rules",
         description: "run a rule now against real data",

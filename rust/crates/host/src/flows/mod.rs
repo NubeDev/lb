@@ -44,6 +44,7 @@ pub mod trigger_store;
 pub mod triggers;
 pub mod watch;
 
+pub use execute_node::run_as_owner::owner_principal;
 pub use interval_timers::{
     reconcile_interval_timers, IntervalTimers, TimerKey, TimerReconcilePass,
 };

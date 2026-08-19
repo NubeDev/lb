@@ -272,6 +272,57 @@ directive-less re-save uses — one derived-state path, idempotent, self-healing
 the frontend rule-page schedule block (the backend contract is complete + tested; the React surface
 lives in a product host, and must assert the shared `(cron,now)→next-5` fixture for preview parity).
 
+## Under whose authority a scheduled rule runs (run-as-owner, lb#167)
+
+A scheduled rule has no caller. The flow reactor fires it under the fixed system principal
+`node:reactor` (`reactor_caps()`), and that single fact produced the longest-lived bug in this
+feature: **scheduled rules had never once run to completion in the estate.** Every fire was a
+`partialFailure` whose `rule` step read `denied`, while the same rule run by hand from the Rules page
+succeeded — because a manual run carries the user's own token.
+
+It surfaced in three layers, each looking like the last one's fix had been incomplete:
+
+1. `mcp:rules.eval:call` — the `rule` node's own dispatch verb, absent from `reactor_caps()`. Fixed by
+   granting it (lb#169).
+2. `mcp:inbox.record:call` / `mcp:outbox.enqueue:call` — a body ending in `alert(...)` routes through
+   the inbox+outbox at the end of a successful eval, so it died one verb deeper. Granted alongside.
+3. `mcp:federation.query:call` — a body opening `query("<datasource>", ...)`, which is the ordinary
+   shape of every BMS/FDD rule we write. **This one could not be fixed by granting it.**
+
+The stopping point matters. Adding `federation.query` to `reactor_caps()` would hand every scheduled
+flow on the node blanket read access to every registered datasource, permanently and with no
+relationship to who wrote the rule — the same blanket-third-party-reach argument `reactor_caps()`
+already refuses for `ext-call`. The list was being extended one denial at a time toward exactly the
+omnipotent system principal it was written to avoid.
+
+**Decision: a scheduled rule runs as its OWNER.** `rules.save` records `scheduled_by` — the saving
+subject — on the rule record, but only when the body actually carries a directive (a run-on-demand
+rule already runs as whoever calls `rules.run`, so an owner there would be an identity nothing reads).
+At fire time the `rule` node substitutes a principal for that owner, built from caps **re-resolved
+live** from the grant store (`flows/execute_node/run_as_owner.rs`).
+
+Why this is not an escalation dressed up as a fix:
+
+- **Identity, not credential.** Nothing is frozen into the record but a name. Caps are resolved on
+  every fire, so a demoted, revoked, or deleted author's schedule loses precisely the reach they lost,
+  on the next tick. There is no standing grant to leak or to forget to revoke.
+- **Never wider than the owner.** The owner could always run the rule by hand with these exact caps.
+  Scheduling it changes when it runs, not what it may do.
+- **Workspace-pinned.** An owner with reach in two workspaces cannot make a ws-A schedule read ws-B.
+- **Fail-closed.** No recorded owner, an unresolvable owner, or a store error all degrade to the
+  reactor principal — i.e. to the old behaviour. A miss is a denial, never a widening.
+- **Manual runs untouched.** The swap keys strictly off the `node:reactor` subject, so a user-driven
+  run keeps its own authority in both directions.
+
+**The testing trap, recorded because it bit twice.** lb#167 shipped green because the suite drove the
+managed flow with a FULL test principal that happened to hold `rules.eval` — it never exercised the
+real reactor. The first run-as-owner test repeated the mistake in a new costume: it asserted an
+ordinary `insight.raise` body and **passed with the substitution deleted**, because every verb a rule
+can reach without a live datasource sidecar is one the reactor already holds. A test here only means
+something if it turns on a cap the reactor lacks and the owner has. The shipped regression
+(`the_rule_node_dispatches_under_the_owner_not_the_principal_it_was_handed`) fires under a reactor
+principal with `rules.eval` deliberately stripped, and was verified red before green.
+
 ## Related
 
 - `scope/rules/rules-engine-scope.md` (the saved rule + `rules.save`/`rules.get` this extends),

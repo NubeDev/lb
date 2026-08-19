@@ -105,3 +105,70 @@ principal from the production function — a hand-copied list is a mirror that g
 turns the test green precisely when the product breaks. And when a fixed system principal gains one
 verb, ask what that verb *finishes with*: `rules.eval` alone left the alerting half of the same bug
 alive, because the deny had moved one call deeper.
+
+---
+
+## Layer 3 (2026-08-18) — the deny the caps list could not fix
+
+Reported still-broken on a live node: `schedule:pdnsw-aq-device-frozen` running every 30 minutes,
+trigger `ok`, `rule` node `{"lastError":"denied"}` — with **both** fixes above shipped and the pin on
+`node-v0.23.0`. The binary genuinely contained the grants (verified with `strings` on the running
+`target/debug/rubix-ai`), so the caps list was not the problem this time.
+
+The rule's body opens:
+
+```rhai
+let rows = query("pdnsw", ` ... `).records();
+```
+
+`query(<source>, sql)` resolves through the rule data seam and, for a **datasource** source, collects
+via `federation.query` (`crates/host/src/rules/seam.rs::collect_federation`). That needs
+`mcp:federation.query:call`, which `reactor_caps()` does not grant. Third layer, same asymmetry:
+`rules.run` from the Rules page works (the user's token holds it), every scheduled fire is `denied`.
+
+**Why layer 3 was not another `.into()` line.** Granting `federation.query` to `reactor_caps()` would
+give every scheduled flow on the node blanket read access to every registered datasource, forever,
+with no relationship to who wrote the rule — the same blanket-third-party-reach argument the
+function's own comment already refuses for `ext-call`. Three layers in, the list was being extended
+one denial at a time toward exactly the omnipotent system principal it was written to avoid.
+
+**Fix: run-as-owner** (`crates/host/src/flows/execute_node/run_as_owner.rs`), the follow-up
+`ext-store-nodes-scope.md` §348 had reserved. `rules.save` records `SavedRule::scheduled_by` (only
+when the body carries a directive); a HEADLESS `rule` node substitutes a principal for that owner,
+built from caps **re-resolved live** from the grant store on every fire. Owner is an identity, never a
+stored credential; workspace-pinned; never wider than what the owner could already do by hand; and
+every failure path (no owner, unresolvable, store error) degrades to the reactor principal, so a miss
+is the old denial and never a widening. Manual runs are untouched — the swap keys on the
+`node:reactor` sub.
+
+Two traps hit while building it, both nearly invisible:
+
+1. **The `user:` prefix.** Grants are stored under the BARE user name; `principal.sub()` is
+   `user:test`. Passing the prefixed form to `resolve_caps_live` returns zero caps, which this code
+   reads as "revoked owner" and degrades to the reactor — i.e. it fails exactly like the bug it
+   fixes. Same prefix bug as lb#176's reminder fire path.
+2. **The test passed with the fix deleted.** A first regression test *did* use the real reactor
+   principal — the lesson from layer 2 — and still proved nothing, because its rule body only called
+   `insight.raise`, a verb the reactor already holds. Every verb a rule can reach without a live
+   datasource sidecar is one `reactor_caps()` grants.
+
+The shipped regression
+(`the_rule_node_dispatches_under_the_owner_not_the_principal_it_was_handed`) fires under a reactor
+principal with `mcp:rules.eval:call` **deliberately stripped**, so the run can only succeed if the
+node dispatched under the owner. Verified red before green.
+
+**Migration.** Rules saved before this have no `scheduled_by` and stay broken until claimed. New verb
+`rules.adopt_schedule {id}` (gate-aliased to `mcp:rules.save:call` — a bespoke
+`mcp:rules.adopt_schedule:call` exists in no role bundle and would be unreachable for everyone,
+including admins) records the caller as owner; re-saving the rule does the same thing. There is
+deliberately **no silent backfill**: stamping a guessed subject onto every ownerless rule is a
+privilege grant performed by a migration rather than by a person, and nothing in the store records
+who authored a rule before the field existed.
+
+## Lesson (layer 3)
+
+**When a fixed system principal needs a third verb, the answer is probably not the third verb.** Two
+grants were right — `rules.eval` and the alert pair are the mechanics of running a rule at all. The
+third was a *data-reach* cap, and data reach belongs to a person, not to the node. The tell is that
+the cap would have been granted to every scheduled flow rather than to this one: at that point the
+question stops being "what may the reactor do" and becomes "who is this run acting for".
