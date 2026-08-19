@@ -53,6 +53,49 @@ pub async fn dispatch(
             // in `lb-host`) separately bounds legitimate cross-instance re-entrant chains.
             let ptr = Arc::as_ptr(&hosted.instance) as *const () as usize;
             reentrancy::in_scope(async {
+                // ONE short acquisition: ask whether the target multiplexes and, if it does, build
+                // its detached future — both under the same guard, which is then dropped. A
+                // re-entrant chain must not block here, hence the `try_lock` branch; a failed
+                // `try_lock` means self-re-entry, which falls through to the exclusive path below
+                // and fails fast as "extension busy" exactly as before.
+                let detached = {
+                    let guard = if reentrancy::is_held(ptr) {
+                        match hosted.instance.try_lock() {
+                            Ok(g) => Some(g),
+                            Err(_) => None,
+                        }
+                    } else {
+                        Some(hosted.instance.lock().await)
+                    };
+                    guard.and_then(|g| {
+                        g.is_multiplexing()
+                            .then(|| g.call_tool_detached(ws, tool, input_json, ctx.clone()))
+                            .flatten()
+                    })
+                };
+
+                // A MULTIPLEXING target (a native sidecar — a separate process whose wire serves
+                // many calls at once, correlating replies by `id`) must not be serialised by the
+                // per-instance mutex. That mutex exists for a wasm instance, which genuinely cannot
+                // run two calls; holding it across a sidecar round-trip caps the whole extension at
+                // concurrency 1 node-wide, however well the child multiplexes underneath.
+                //
+                // Measured on a live node before this branch existed (ext-esr, database confirmed
+                // idle): a 20 ms LOCAL store read took 8.96 s behind one slow verb, and three cheap
+                // calls issued in parallel released at the SAME instant — a mutex signature, not a
+                // queue. See ext-esr/docs/debugging/backend/sidecar-head-of-line-blocking.md.
+                //
+                // `call_tool_shared` takes `&self`, so it runs with NO lock held. `holding` still
+                // wraps it: the re-entrancy guard tracks the call CHAIN, not the mutex, and a
+                // sidecar can still call back into the host and re-enter itself.
+                // The guard is dropped by now, so the round-trip runs UNLOCKED — that release is
+                // the whole fix. A target that claims to multiplex but offers no detached path
+                // yields `None` here and simply falls through to the exclusive path below: always
+                // correct, only slower.
+                if let Some(fut) = detached {
+                    return reentrancy::holding(ptr, fut).await.map_err(map_err);
+                }
+
                 let mut instance = if reentrancy::is_held(ptr) {
                     hosted.instance.try_lock().map_err(|_| {
                         ToolError::Extension("extension busy (re-entrant call)".into())
@@ -293,4 +336,140 @@ mod tests {
             "self-re-entry into an already-held instance must fail fast, got {result:?}"
         );
     }
+
+    /// A **multiplexing** target (a native sidecar: a separate process that serves many calls at
+    /// once) must NOT be serialised by the per-instance mutex. The mutex exists for a wasm
+    /// instance, which genuinely cannot run two calls; applying it to a sidecar caps a whole
+    /// extension at concurrency 1 node-wide however well the child multiplexes underneath.
+    ///
+    /// Measured before the fix (ext-esr, live node, database confirmed idle): a 20 ms LOCAL store
+    /// read took **8.96 s** while one slow verb was in flight, and three cheap calls issued in
+    /// parallel behind it all released at the SAME instant (9.78/9.78/9.79 s) — a mutex signature,
+    /// not a queue.
+    ///
+    /// Revert-checked: with `is_multiplexing` forced to `false` this hangs until the timeout and
+    /// fails, because the second call waits for the first to release the lock.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_multiplexing_target_is_not_serialised_by_the_instance_lock() {
+        /// Stands in for a native sidecar: blocks on its first call, answers instantly after, and
+        /// declares that it multiplexes.
+        struct Multiplexing {
+            started: Arc<Notify>,
+            release: Arc<Notify>,
+            blocked_once: Arc<AtomicBool>,
+        }
+
+        #[async_trait]
+        impl LocalDispatch for Multiplexing {
+            fn is_multiplexing(&self) -> bool {
+                true
+            }
+
+            /// The detached path: everything it needs is cloned out here, under the lock, so the
+            /// returned future owns its state and the host can await it unlocked.
+            fn call_tool_detached(
+                &self,
+                _ws: &str,
+                _tool: &str,
+                _input_json: &str,
+                _ctx: Option<CallContext>,
+            ) -> Option<lb_runtime::BoxFuture<'static, Result<String, RuntimeError>>> {
+                let (started, release, blocked_once) = (
+                    self.started.clone(),
+                    self.release.clone(),
+                    self.blocked_once.clone(),
+                );
+                Some(Box::pin(async move {
+                    if !blocked_once.swap(true, Ordering::SeqCst) {
+                        started.notify_one();
+                        release.notified().await;
+                    }
+                    Ok("{}".into())
+                }))
+            }
+
+            async fn call_tool(
+                &mut self,
+                _ws: &str,
+                _tool: &str,
+                _input_json: &str,
+                _ctx: Option<CallContext>,
+            ) -> Result<String, RuntimeError> {
+                unreachable!("dispatch must take the detached path for a multiplexing target")
+            }
+        }
+
+        let bus = Bus::peer().await.unwrap();
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let target = Arc::new(Target::Local(hosted(Multiplexing {
+            started: started.clone(),
+            release: release.clone(),
+            blocked_once: Arc::new(AtomicBool::new(false)),
+        })));
+
+        // The slow call, left in flight.
+        let slow = {
+            let (target, bus) = (Arc::clone(&target), bus.clone());
+            tokio::spawn(async move {
+                reentrancy::in_scope(dispatch(&target, &bus, "ws", "x.slow", "{}", None)).await
+            })
+        };
+        started.notified().await; // it is genuinely inside the handler now
+
+        // The cheap call beside it must answer WITHOUT waiting for the slow one.
+        let cheap = tokio::time::timeout(
+            Duration::from_secs(5),
+            reentrancy::in_scope(dispatch(&target, &bus, "ws", "x.cheap", "{}", None)),
+        )
+        .await;
+
+        assert!(
+            cheap.is_ok(),
+            "a cheap call was BLOCKED behind a slow one on a multiplexing target — the per-instance \
+             mutex is still serialising a native sidecar (concurrency 1 per extension, node-wide)"
+        );
+        assert!(cheap.unwrap().is_ok(), "the cheap call itself must succeed");
+
+        release.notify_one();
+        assert!(slow.await.unwrap().is_ok(), "the slow call must still complete");
+    }
+
+    /// The wasm case is unchanged: a non-multiplexing instance is STILL serialised, because one
+    /// wasm instance really cannot run two calls at once. The fix must not widen concurrency for
+    /// the target the mutex was built for.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_non_multiplexing_target_is_still_serialised() {
+        let bus = Bus::peer().await.unwrap();
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let target = Arc::new(Target::Local(hosted(Blocking {
+            started: started.clone(),
+            release: release.clone(),
+            blocked_once: Arc::new(AtomicBool::new(false)),
+        })));
+
+        let slow = {
+            let (target, bus) = (Arc::clone(&target), bus.clone());
+            tokio::spawn(async move {
+                reentrancy::in_scope(dispatch(&target, &bus, "ws", "x.slow", "{}", None)).await
+            })
+        };
+        started.notified().await;
+
+        // This MUST time out: the wasm instance is exclusive, so the second call waits.
+        let cheap = tokio::time::timeout(
+            Duration::from_millis(300),
+            reentrancy::in_scope(dispatch(&target, &bus, "ws", "x.cheap", "{}", None)),
+        )
+        .await;
+        assert!(
+            cheap.is_err(),
+            "a wasm instance must STILL be serialised — one instance cannot run two calls"
+        );
+
+        release.notify_one();
+        assert!(slow.await.unwrap().is_ok());
+    }
+
 }

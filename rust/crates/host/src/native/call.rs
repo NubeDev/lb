@@ -171,6 +171,39 @@ impl SidecarDispatch {
 
 #[async_trait::async_trait]
 impl LocalDispatch for SidecarDispatch {
+    /// **Yes.** A native sidecar is a separate process whose wire multiplexes: `lb-ext-native`'s
+    /// `serve` spawns each `call` and the supervisor's `Conn` correlates replies by `id`. Holding
+    /// the host's per-instance mutex across a round-trip would cap the whole extension at
+    /// concurrency 1 node-wide and undo all of that.
+    ///
+    /// Measured on a live node before this was declared (ext-esr, database confirmed idle): a 20 ms
+    /// LOCAL store read took 8.96 s behind one slow verb, and three cheap calls issued in parallel
+    /// released at the SAME instant — a mutex signature, not a queue. See
+    /// `ext-esr/docs/debugging/backend/sidecar-head-of-line-blocking.md`.
+    fn is_multiplexing(&self) -> bool {
+        true
+    }
+
+    /// The path `dispatch` actually takes. Everything the call needs is cloned out here — under the
+    /// host's lock, which is then released — so the returned future owns its state and runs
+    /// unlocked. `SidecarDispatch` is only an `Arc<SidecarMap>` and an ext id, so this is cheap.
+    fn call_tool_detached(
+        &self,
+        ws: &str,
+        tool: &str,
+        input_json: &str,
+        ctx: Option<CallContext>,
+    ) -> Option<lb_runtime::BoxFuture<'static, Result<String, RuntimeError>>> {
+        let (sidecars, ext_id) = (Arc::clone(&self.sidecars), self.ext_id.clone());
+        let (ws, tool, input) = (ws.to_string(), tool.to_string(), input_json.to_string());
+        Some(Box::pin(async move {
+            dispatch_to_sidecar(&sidecars, &ext_id, &ws, &tool, &input, ctx).await
+        }))
+    }
+
+    /// The exclusive path, kept so the trait stays complete and a host that has not taken the
+    /// detached branch still works. Both funnel into the same [`dispatch_to_sidecar`], so the two
+    /// cannot drift.
     async fn call_tool(
         &mut self,
         ws: &str,
@@ -178,34 +211,46 @@ impl LocalDispatch for SidecarDispatch {
         input_json: &str,
         ctx: Option<CallContext>,
     ) -> Result<String, RuntimeError> {
-        // Resolve the live child for THIS workspace — `None` means not running here (or a ws-mismatch
-        // that structurally cannot cross the wall).
-        let handle = self
-            .sidecars
-            .get(ws, &self.ext_id)
-            .ok_or_else(|| RuntimeError::Call(format!("no running sidecar for {}", self.ext_id)))?;
-
-        // The registry passed the BARE tool name (`dispatch`/`serve_call` unqualify). Re-qualify it
-        // as `<ext_id>.<tool>` for the sidecar's control-line ABI, which dispatches on the qualified
-        // name (its manifest declares tools qualified). This mirrors the direct `call_sidecar` path,
-        // which passes the qualified name through. Generic: `ext_id` + `.` + the bare tool.
-        let qualified = format!("{}.{}", self.ext_id, tool);
-
-        // Stamp the authorized caller into the frame so the child can enforce per-caller row
-        // visibility (native-caller-identity scope). Projected from `ctx` — a READ of the principal
-        // the host already gated (`mcp:<tool>:call` fired first, workspace-first); NOT a token. A
-        // routed cross-node call carries no `ctx` (the serve side passes `None`), so the frame is the
-        // old shape — the caller-in-frame guarantee is single-node this slice, matching the scope's
-        // non-goal. `LB_EXT_TOKEN` remains the child's identity for its OWN callbacks; the frame
-        // caller is a separate, inert projection the child reads to attribute a decision.
-        let caller = ctx.and_then(|c| c.caller).map(project);
-
-        // No-op recovery: the adapter carries no `Launcher` (see module doc), so a transport fault
-        // surfaces; the typed lifecycle path drives supervised restart.
-        call_once_or_restart(&handle, &qualified, input_json, caller, || async { Ok(()) })
-            .await
-            .map_err(|e| RuntimeError::Tool(e.to_string()))
+        dispatch_to_sidecar(&self.sidecars, &self.ext_id, ws, tool, input_json, ctx).await
     }
+}
+
+/// Resolve this workspace's child and dispatch one call to it. The single body behind both
+/// `LocalDispatch` paths.
+async fn dispatch_to_sidecar(
+    sidecars: &SidecarMap,
+    ext_id: &str,
+    ws: &str,
+    tool: &str,
+    input_json: &str,
+    ctx: Option<CallContext>,
+) -> Result<String, RuntimeError> {
+    // Resolve the live child for THIS workspace — `None` means not running here (or a ws-mismatch
+    // that structurally cannot cross the wall).
+    let handle = sidecars
+        .get(ws, ext_id)
+        .ok_or_else(|| RuntimeError::Call(format!("no running sidecar for {ext_id}")))?;
+
+    // The registry passed the BARE tool name (`dispatch`/`serve_call` unqualify). Re-qualify it
+    // as `<ext_id>.<tool>` for the sidecar's control-line ABI, which dispatches on the qualified
+    // name (its manifest declares tools qualified). This mirrors the direct `call_sidecar` path,
+    // which passes the qualified name through. Generic: `ext_id` + `.` + the bare tool.
+    let qualified = format!("{ext_id}.{tool}");
+
+    // Stamp the authorized caller into the frame so the child can enforce per-caller row
+    // visibility (native-caller-identity scope). Projected from `ctx` — a READ of the principal
+    // the host already gated (`mcp:<tool>:call` fired first, workspace-first); NOT a token. A
+    // routed cross-node call carries no `ctx` (the serve side passes `None`), so the frame is the
+    // old shape — the caller-in-frame guarantee is single-node this slice, matching the scope's
+    // non-goal. `LB_EXT_TOKEN` remains the child's identity for its OWN callbacks; the frame
+    // caller is a separate, inert projection the child reads to attribute a decision.
+    let caller = ctx.and_then(|c| c.caller).map(project);
+
+    // No-op recovery: the adapter carries no `Launcher` (see module doc), so a transport fault
+    // surfaces; the typed lifecycle path drives supervised restart.
+    call_once_or_restart(&handle, &qualified, input_json, caller, || async { Ok(()) })
+        .await
+        .map_err(|e| RuntimeError::Tool(e.to_string()))
 }
 
 /// Map the runtime's [`lb_runtime::Caller`] (carried on `CallContext`, shared with the wasm path)
