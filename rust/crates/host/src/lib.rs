@@ -475,7 +475,7 @@ pub use versions::{
     call_versions_tool, descriptors as versions_descriptors, VersionsError, DEFAULT_VERSION_CAP,
     ENTITY_VERSION_TABLE,
 };
-pub use viz::{call_viz_tool, viz_query, VizError};
+pub use viz::{call_viz_tool, viz_query, viz_query_batch_stream, BatchItem, VizError};
 /// The **webhook** service — a first-class inbound-HTTP surface, keyed and mediated (webhooks
 /// scope). A webhook is `API-key ⊕ ingest-producer ⊕ flow-source`, glued by the gateway route
 /// `POST /hooks/{ws}/{id}`. `bearer` mode reuses the apikey credential verbatim; `signature` mode
