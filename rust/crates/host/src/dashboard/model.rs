@@ -434,6 +434,17 @@ pub struct Variable {
     /// Bar visibility (`dontHide` | `hideLabel` | `hideVariable`).
     #[serde(default, deserialize_with = "null_default")]
     pub hide: String,
+    /// CONDITIONAL bar visibility — an expression over the OTHER variables' resolved values, evaluated
+    /// client-side by the same rule a panel's `showWhen` uses (`${comparison} == Sites`). Empty ⇒ always
+    /// shown. Host-opaque: this struct stores the DEFINITION and never evaluates it, exactly like
+    /// `regex` and `query`.
+    ///
+    /// Typed rather than left to ride along BECAUSE this struct is CLOSED — it drops unknown keys, so an
+    /// untyped `showWhen` round-trips to nothing on the first `dashboard.save` and the author's
+    /// condition silently reverts to "always shown". That is the same silent-drop class the `entity`
+    /// field's note names, and the reason the test below asserts re-serialization and not just parsing.
+    #[serde(default, rename = "showWhen", deserialize_with = "null_default")]
+    pub show_when: String,
 
     // ── Grafana-parity P1 (viz grafana-parity-backend scope) ────────────────────────────────────────
     // Additive/defaulted like every field above; host-opaque definition data.
@@ -715,6 +726,7 @@ mod tests {
             "sort": "alphaAsc",
             "refresh": "onTimeRange",
             "hide": "hideLabel",
+            "showWhen": "${comparison} == Sites",
             "options": [{ "text": "West", "value": "WST" }],
         });
         let v: Variable = serde_json::from_value(sent.clone()).expect("deserializes");
@@ -724,6 +736,7 @@ mod tests {
         assert_eq!(v.sort, "alphaAsc");
         assert_eq!(v.refresh, "onTimeRange");
         assert_eq!(v.hide, "hideLabel");
+        assert_eq!(v.show_when, "${comparison} == Sites");
         assert_eq!(
             v.options,
             serde_json::json!([{ "text": "West", "value": "WST" }])
@@ -737,6 +750,9 @@ mod tests {
         assert_eq!(out["sort"], "alphaAsc");
         assert_eq!(out["refresh"], "onTimeRange");
         assert_eq!(out["hide"], "hideLabel");
+        // The one that matters most for a CONDITION: dropped here, the control quietly goes back to
+        // "always shown" and the author has no way to tell save from no-op.
+        assert_eq!(out["showWhen"], "${comparison} == Sites");
         assert_eq!(
             out["options"],
             serde_json::json!([{ "text": "West", "value": "WST" }])
