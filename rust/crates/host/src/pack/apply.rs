@@ -458,6 +458,7 @@ async fn apply_dashboard(
                 .get("time")
                 .and_then(|v| serde_json::from_value(v.clone()).ok()),
             width: str_key("width"),
+            compact: str_key("compact"),
             vars_display: str_key("varsDisplay"),
             kind: str_key("kind"),
             report_ids: d.json.get("reportIds").and_then(Value::as_array).map(|r| {

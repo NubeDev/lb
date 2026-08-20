@@ -72,6 +72,7 @@ pub async fn call_dashboard_tool(
                     toolbar: opt_toolbar_arg(input),
                     time: opt_time_arg(input),
                     width: opt_str_arg(input, "width"),
+                    compact: opt_str_arg(input, "compact"),
                     vars_display: opt_str_arg(input, "varsDisplay"),
                     kind: opt_str_arg(input, "kind"),
                     report_ids: opt_str_vec_arg(input, "reportIds"),
