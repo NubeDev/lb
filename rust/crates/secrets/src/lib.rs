@@ -20,9 +20,14 @@
 //! result, or `secret.list`. Ownership is the host-derived `caller ∩ install-grant` principal
 //! (`ext:{id}` / `user:…`), never a guest-supplied claim — the host stamps `owner` at write time.
 //!
-//! NOTE (honest scope): envelope-encryption-at-rest is its own dedicated stage (the crate stays the
-//! seam); values are plaintext-in-store for now. Stored in the one datastore, never a separate
-//! secrets service (rule 2).
+//! **At rest** the value is sealed by `crypto.rs` (secrets-at-rest): an XChaCha20-Poly1305 envelope
+//! under a boot-installed master key, Grafana-style — a copied store file never contains a
+//! credential in the clear. No key installed ⇒ the shipped plaintext behaviour, unchanged; legacy
+//! plaintext records stay readable and re-seal on their next write. Stored in the one datastore,
+//! never a separate secrets service (rule 2).
+
+mod crypto;
+pub use crypto::{install_master_key, master_key_installed, CryptoError};
 
 use lb_auth::Principal;
 use lb_caps::{check, Action, Decision, Request, Surface};
@@ -36,6 +41,10 @@ pub enum SecretsError {
     Denied,
     #[error("not found")]
     NotFound,
+    /// The stored envelope would not open (missing/wrong master key, or a corrupt record) — never
+    /// carries the payload. See `crypto.rs`.
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
     #[error(transparent)]
     Store(#[from] StoreError),
 }
@@ -150,7 +159,8 @@ pub async fn set_with(
     }
     let rec = json!({
         "path": path,
-        "value": value,
+        // Sealed at the write chokepoint — the store never sees the clear value (crypto.rs).
+        "value": crypto::seal(value),
         "owner": principal.sub(),
         "visibility": visibility,
     });
@@ -180,7 +190,7 @@ pub async fn reclaim(
     authorize(principal, ws, path, Action::Write)?;
     let rec = json!({
         "path": path,
-        "value": value,
+        "value": crypto::seal(value),
         "owner": principal.sub(),
         "visibility": visibility,
     });
@@ -204,7 +214,7 @@ pub async fn get(
     if rec.visibility == Visibility::Private && rec.owner != principal.sub() {
         return Err(SecretsError::Denied);
     }
-    Ok(rec.value)
+    Ok(crypto::open(&rec.value)?)
 }
 
 /// **Host-mediated** read of a `Workspace`-visibility secret at `path` in `ws` — for the HOST itself
@@ -226,7 +236,7 @@ pub async fn get_workspace(store: &Store, ws: &str, path: &str) -> Result<String
     if rec.visibility != Visibility::Workspace {
         return Err(SecretsError::Denied);
     }
-    Ok(rec.value)
+    Ok(crypto::open(&rec.value)?)
 }
 
 /// Flip a secret's visibility at runtime (owner-only). Gated `secret:<path>:write`, then gate 3:

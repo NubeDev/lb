@@ -416,6 +416,7 @@ const AUTHOR_CAPS: &[&str] = &[
     // — so the viewer tier can execute the verb it is granted without any authoring reach.
     "mcp:native.call:call",
     "mcp:datasource.add:call",
+    "mcp:datasource.update:call",
     "mcp:datasource.remove:call",
     "mcp:datasource.test:call",
     "secret:federation/*:write",

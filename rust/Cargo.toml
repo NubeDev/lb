@@ -225,6 +225,10 @@ hostname = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "io-util", "time"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
+# XChaCha20-Poly1305 for lb-secrets' at-rest envelope (secrets-at-rest). RustCrypto like the rest of
+# the tree (sha2/hmac/argon2); the X variant's 24-byte nonce is safe to draw at random per write,
+# which is the whole nonce-management story. Same AEAD class as Grafana's secureJsonData (AES-GCM).
+chacha20poly1305 = "0.10"
 # Artifact content digest for the signed extension registry (registry scope). SHA-256 over
 # manifest ‖ wasm; the Ed25519 signature (above) is over that digest.
 sha2 = "0.10"

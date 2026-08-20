@@ -275,6 +275,15 @@ pub struct ConnectDef {
     /// An optional health-check tool (the roster's Probe column). Absent ⇒ no Probe for this kind.
     #[serde(default)]
     pub probe_tool: Option<String>,
+    /// An optional edit tool (editable-datasources scope) — takes `{uuid}` plus any subset of the
+    /// `create_tool` schema's fields; an omitted field (a secret the operator did not retype) is
+    /// KEPT, never cleared. Absent ⇒ this kind's rows are not editable.
+    #[serde(default)]
+    pub update_tool: Option<String>,
+    /// An optional single-row read (`{uuid}` → the `list_tool` row shape) — what an edit form
+    /// pre-fills from. Absent ⇒ the client falls back to the `list_tool` row it already has.
+    #[serde(default)]
+    pub get_tool: Option<String>,
 }
 
 /// One field of a `[[query]]` block's cascading chain (panel-datasource-query scope) — identical
@@ -691,6 +700,8 @@ impl Manifest {
             for tool in [&c.create_tool, &c.list_tool, &c.delete_tool]
                 .into_iter()
                 .chain(c.probe_tool.iter())
+                .chain(c.update_tool.iter())
+                .chain(c.get_tool.iter())
             {
                 if !tool_names.contains(tool) {
                     return Err(ManifestError::InvalidConnectBlock(format!(

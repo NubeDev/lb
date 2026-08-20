@@ -35,7 +35,9 @@ pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option
     let tools_ok = has(&c.create_tool)
         && has(&c.list_tool)
         && has(&c.delete_tool)
-        && c.probe_tool.as_deref().is_none_or(has);
+        && c.probe_tool.as_deref().is_none_or(has)
+        && c.update_tool.as_deref().is_none_or(has)
+        && c.get_tool.as_deref().is_none_or(has);
     if !tools_ok {
         return None;
     }
@@ -47,6 +49,8 @@ pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option
         list_tool: c.list_tool.clone(),
         delete_tool: c.delete_tool.clone(),
         probe_tool: c.probe_tool.clone(),
+        update_tool: c.update_tool.clone(),
+        get_tool: c.get_tool.clone(),
     })
 }
 
