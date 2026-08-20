@@ -31,7 +31,7 @@ rust/crates/host/src/channel/agent_worker.rs 515
 rust/crates/host/src/channel/context_items.rs 402
 rust/crates/host/src/channel/payload.rs 565
 rust/crates/host/src/dashboard/access_check.rs 654
-rust/crates/host/src/dashboard/model.rs 1040
+rust/crates/host/src/dashboard/model.rs 1056
 rust/crates/host/src/dashboard/pin.rs 623
 rust/crates/host/src/dashboard/share_closure.rs 462
 rust/crates/host/src/flows/run_store.rs 1008
@@ -39,7 +39,7 @@ rust/crates/host/src/flows/schedule_store.rs 433
 rust/crates/host/src/lib.rs 507
 rust/crates/host/src/nav/reach.rs 534
 rust/crates/host/src/nav/resolve.rs 532
-rust/crates/host/src/pack/apply.rs 663
+rust/crates/host/src/pack/apply.rs 664
 rust/crates/host/src/pack/sqlite.rs 553
 rust/crates/host/src/tool_call.rs 1258
 rust/crates/host/src/viz/query.rs 482
@@ -58,7 +58,7 @@ rust/crates/host/tests/channel_agent_worker_test.rs 1185
 rust/crates/host/tests/core_skills_test.rs 487
 rust/crates/host/tests/dashboard_access_check_test.rs 466
 rust/crates/host/tests/dashboard_share_closure_test.rs 957
-rust/crates/host/tests/dashboard_test.rs 987
+rust/crates/host/tests/dashboard_test.rs 1026
 rust/crates/host/tests/doc_extraction_test.rs 429
 rust/crates/host/tests/document_store_test.rs 459
 rust/crates/host/tests/ext_boot_spawn_test.rs 604
