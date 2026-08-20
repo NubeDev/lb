@@ -138,6 +138,7 @@ mod tests {
                 tool: String::new(),
                 args: target,
                 hide: false,
+                show_when: String::new(),
             }],
             ..Cell::default()
         }

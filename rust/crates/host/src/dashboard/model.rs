@@ -99,6 +99,19 @@ pub struct Target {
     /// Skip this target's data (Grafana parity).
     #[serde(default, deserialize_with = "null_default")]
     pub hide: bool,
+    /// CONDITIONAL version of [`Self::hide`] — an expression over the dashboard's variables saying when
+    /// this target should RUN (`${comparison} == Sites`). Empty ⇒ always. Same polarity as every other
+    /// visibility expression in the product: it says when the thing is ON.
+    ///
+    /// HOST-OPAQUE, and it never reaches `viz.query`: the client resolves it against the live variable
+    /// scope and sends a plain `hide`, which [`crate::viz`]'s `panel_targets` already skips. That is what
+    /// lets a panel carry several alternative comparison baselines — previous period, a chosen site, the
+    /// estate average — and still dispatch exactly one query.
+    ///
+    /// Typed for the usual closed-struct reason: unknown keys are dropped, so an untyped `showWhen`
+    /// survives until the first `dashboard.save` and then silently reverts the target to unconditional.
+    #[serde(default, rename = "showWhen", deserialize_with = "null_default")]
+    pub show_when: String,
 }
 
 /// Panel-level query options (viz grafana-parity-backend scope, P1) — the editor's "Query options"
@@ -704,6 +717,33 @@ mod tests {
         assert_eq!(cell.title, "");
         assert!(cell.sources.is_empty());
         assert_eq!(cell.panel_ref, "");
+    }
+
+    /// A TARGET's conditional gate round-trips. Same closed-struct hazard as the variable field below,
+    /// and the same remedy — but the consequence differs and is worse: a dropped `showWhen` leaves the
+    /// target UNCONDITIONAL, so every alternative comparison baseline on the panel runs at once and the
+    /// stat badge silently reads whichever frame happened to answer.
+    #[test]
+    fn target_round_trips_its_conditional_gate() {
+        let sent = serde_json::json!({
+            "refId": "C",
+            "tool": "federation.query",
+            "args": { "sql": "SELECT 1" },
+            "showWhen": "${comparison} == Sites",
+        });
+        let t: Target = serde_json::from_value(sent).expect("deserializes");
+        assert_eq!(t.show_when, "${comparison} == Sites");
+        // Unconditional by default — every target authored before the field keeps running.
+        assert!(!t.hide);
+
+        let out = serde_json::to_value(&t).expect("serializes");
+        assert_eq!(out["showWhen"], "${comparison} == Sites");
+
+        let bare: Target = serde_json::from_value(serde_json::json!({
+            "refId": "A", "tool": "series.read", "args": {}
+        }))
+        .expect("a pre-gate target deserializes");
+        assert_eq!(bare.show_when, "");
     }
 
     /// The advanced-variables fields (icon + regex/sort/refresh/allValue/hide/options + the `datasource`

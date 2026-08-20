@@ -329,6 +329,8 @@ pub fn mint_cell_from_envelope(
                 tool,
                 args: Value::Null,
                 hide: true,
+                // Unconditionally hidden — a pinned extra tool is not a gated alternative.
+                show_when: String::new(),
             }),
     );
 
