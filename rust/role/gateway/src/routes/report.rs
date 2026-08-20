@@ -136,13 +136,33 @@ pub async fn share_report(
     Ok(Json(serde_json::to_value(report).unwrap_or(Value::Null)))
 }
 
-/// One client-captured panel snapshot in the export payload: the block's `cell.i` (`cellId`) and a
-/// base64-encoded PNG. Decoded to raw bytes and handed to `report_export` as `(cellId, png_bytes)`.
+/// One client-captured panel in the export payload: the cell's `i` (`cellId`), a base64-encoded PNG,
+/// and the grid rect the panel was RENDERED at.
+///
+/// The rect is the part that makes the PDF match the page. Without it the host laid the export out from
+/// the stored cells — a different list that put a dashed "not captured" tile under every section header
+/// and every filter-hidden panel, and threw away a repeat clone's capture entirely. It is OPTIONAL on
+/// the wire (defaulting to a zero area, which the host reads as "no rendered geometry" and falls back to
+/// the record for), so an older client keeps working unchanged.
+///
+/// `reason` marks a panel that WAS on the page but could not be rasterised — the host places its error
+/// tile in the right rect instead of dropping it. "Never rendered" and "rendered but unrasterisable" are
+/// different facts and the PDF shows them differently.
 #[derive(Debug, Deserialize)]
 pub struct Snapshot {
     #[serde(rename = "cellId")]
     pub cell_id: String,
     pub png: String,
+    #[serde(default)]
+    pub x: u32,
+    #[serde(default)]
+    pub y: u32,
+    #[serde(default)]
+    pub w: u32,
+    #[serde(default)]
+    pub h: u32,
+    #[serde(default)]
+    pub reason: String,
 }
 
 /// `POST /reports/{id}/export.pdf` body — the snapshot payload. The client renders each panel block
@@ -166,17 +186,27 @@ pub async fn export_report(
         Ok(p) => p,
         Err(e) => return e.into_response().into_response(),
     };
-    // Decode each snapshot's base64 PNG → raw bytes. A bad base64 is a client error (400).
-    let mut snapshots: Vec<(String, Vec<u8>)> = Vec::with_capacity(body.snapshots.len());
+    // Decode each snapshot's base64 PNG → raw bytes. A bad base64 is a client error (400). An EMPTY
+    // `png` is not an error: it is how the client reports a panel that was on the page and could not be
+    // rasterised, which still earns an error tile at its own rect.
+    let mut panels: Vec<lb_host::RenderedPanel> = Vec::with_capacity(body.snapshots.len());
     for s in body.snapshots {
         match B64.decode(s.png.as_bytes()) {
-            Ok(bytes) => snapshots.push((s.cell_id, bytes)),
+            Ok(png) => panels.push(lb_host::RenderedPanel {
+                cell_id: s.cell_id,
+                png,
+                x: s.x,
+                y: s.y,
+                w: s.w,
+                h: s.h,
+                reason: s.reason,
+            }),
             Err(_) => {
                 return (StatusCode::BAD_REQUEST, "bad base64 snapshot").into_response();
             }
         }
     }
-    match lb_host::report_export(&gw.node.store, &p, p.ws(), &id, snapshots, gw.now()).await {
+    match lb_host::report_export(&gw.node.store, &p, p.ws(), &id, panels, gw.now()).await {
         Ok(pdf) => (
             StatusCode::OK,
             [(

@@ -37,11 +37,43 @@ pub const GRID_ROW_H_PX: f64 = 56.0;
 /// The gutter between cells, and the board's own padding (`gridGeometry.ts` `GRID_MARGIN`).
 pub const GRID_MARGIN_PX: f64 = 10.0;
 
-/// The paper column's pixel width — what the report builder locks the grid container to, so a cell
-/// occupies the same fraction of the page on screen and in the PDF.
+/// How much WIDER than true A4 the report board lays out, and therefore how far the PDF scales the
+/// whole thing back down. `1.0` is true size; `2.0` lays the board out at twice the printable width and
+/// reduces it by half onto the page. Mirrored verbatim in `a4-sheet.ts` as `REPORT_PRINT_SCALE`.
+///
+/// WHY IT IS NOT 1. At true size the board's column is 627px — roughly half a desktop's reading width —
+/// and the panels do not merely look smaller there, they RE-FLOW: a chart given 300px instead of 550px
+/// drops axis ticks, wraps its legend and truncates labels. The exported report was therefore not a
+/// smaller copy of the page but a differently-laid-out one, which is what "the PDF looks squeezed"
+/// meant. Laying out wide and reducing uniformly fixes it by construction — every panel keeps the
+/// proportions and the tick density it had on screen, and the page holds a reduced photograph of it.
+///
+/// The cost is real and unavoidable: content prints at `1/SCALE` of physical size, so a 12px axis label
+/// lands near 4.5pt at `2.0`. That trade is what this constant IS, which is why it is one named number
+/// rather than arithmetic spread across the file.
+pub const REPORT_PRINT_SCALE: f64 = 2.0;
+
+/// The A4 printable width in CSS px — TRUE size, the 96 dpi reference. This is the page, not the
+/// layout: see [`report_layout_w_px`] for the width the board is actually laid out at.
 #[must_use]
 pub fn a4_content_w_px() -> u32 {
     (A4_CONTENT_W_MM * PX_PER_MM).round() as u32
+}
+
+/// The paper column's pixel width — what the report builder locks the grid container to, so a cell
+/// occupies the same fraction of the page on screen and in the PDF. `REPORT_PRINT_SCALE ×` the true
+/// printable width; the reduction back onto the page happens in [`cell_rect_mm_on_page`], which derives
+/// its millimetres-per-pixel from this rather than from the true-size width.
+#[must_use]
+pub fn report_layout_w_px() -> u32 {
+    (f64::from(a4_content_w_px()) * REPORT_PRINT_SCALE).round() as u32
+}
+
+/// One A4 page's height in the LAYOUT's pixels — the page box scaled by the same factor as the width,
+/// so a page stays the same shape whatever the scale.
+#[must_use]
+pub fn report_layout_page_h_px() -> u32 {
+    (f64::from(a4_content_h_px()) * REPORT_PRINT_SCALE).round() as u32
 }
 
 /// The paper column's pixel height (one page's worth of board).
@@ -52,103 +84,14 @@ pub fn a4_content_h_px() -> u32 {
 
 /// How many whole grid rows fit on one page. The last row on a page needs no trailing gutter, hence
 /// the `+ GRID_MARGIN_PX` before dividing by the row PITCH.
+///
+/// Measured against the SCALED page height, because the rows are laid out in scaled pixels too. At
+/// scale 2 that is 28 rows to a page rather than 14 — the same paper holding twice as much board, which
+/// is exactly what scaling down buys.
 #[must_use]
 pub fn a4_rows_per_page() -> u32 {
-    ((f64::from(a4_content_h_px()) + GRID_MARGIN_PX) / (GRID_ROW_H_PX + GRID_MARGIN_PX)).floor()
-        as u32
-}
-
-/// Which page a cell at grid row `y` lands on (0-based). Page breaks fall at whole-row boundaries —
-/// a cell is never split across two pages, it moves wholly onto the next one.
-///
-/// This is the FIXED-BAND rule: rows 0..13 are page 0, 14..27 page 1, and so on. It only knows where a
-/// cell *starts*, not how tall it is, so a tall cell starting near a band's end gets clamped by
-/// [`cell_rect_mm`] instead of flowing. Prefer [`paginate`], which accounts for height; this remains
-/// for callers that genuinely want the fixed band (and for the page a `y` belongs to in isolation).
-#[must_use]
-pub fn page_of_row(y: u32) -> u32 {
-    y / a4_rows_per_page()
-}
-
-/// One row band's page assignment: the page it lands on, and the board row that page starts at.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PagedRow {
-    /// The board row this entry describes.
-    pub y: u32,
-    /// 0-based page the row lands on.
-    pub page: u32,
-    /// The board row that `page` begins at — the origin [`cell_rect_mm_on_page`] measures from.
-    pub page_start_y: u32,
-}
-
-/// Assign each distinct row band to a page by whether its cells actually FIT, flowing a band that
-/// would overflow onto the next page instead of squashing it.
-///
-/// `rows` is `(y, height_in_grid_rows)` for every cell; entries sharing a `y` are one band and are
-/// collapsed to the tallest, so cells laid side by side (three KPI tiles on one row) always page
-/// together and never split mid-band.
-///
-/// Why this exists: the fixed-band rule pages on `y / rows_per_page` alone. A 7-row panel starting at
-/// row 13 is "on page 0" because its top is, but only one row of space remains — so `cell_rect_mm`
-/// clamped it to a sliver and the author got a thumbnail with an empty page underneath. Fitting the
-/// band instead moves it whole to the next page, where it renders at its authored size. A band taller
-/// than a whole page still cannot fit anywhere; it starts its own page and is clamped there, which is
-/// the honest "this panel is too tall for A4" signal the clamp was written for.
-///
-/// Deliberate blank space is PRESERVED. The fixed band a row falls in is treated as a floor, so an
-/// author who leaves a page's worth of empty rows to force a page break still gets that break; this
-/// only ever moves a band *later* than the fixed rule would, never earlier. Overflow flows; layout
-/// intent is not compacted away.
-///
-/// The returned entries are sorted by `y`, one per distinct row.
-#[must_use]
-pub fn paginate(rows: &[(u32, u32)]) -> Vec<PagedRow> {
-    let per_page = a4_rows_per_page();
-    if per_page == 0 || rows.is_empty() {
-        return Vec::new();
-    }
-
-    // Collapse to one entry per row band, keeping the tallest cell on that row.
-    let mut bands: Vec<(u32, u32)> = Vec::new();
-    for &(y, h) in rows {
-        let h = h.max(1);
-        match bands.iter_mut().find(|(by, _)| *by == y) {
-            Some((_, bh)) => *bh = (*bh).max(h),
-            None => bands.push((y, h)),
-        }
-    }
-    bands.sort_unstable_by_key(|(y, _)| *y);
-
-    let mut out: Vec<PagedRow> = Vec::with_capacity(bands.len());
-    let mut page = 0;
-    let mut page_start_y = 0;
-
-    for (y, h) in bands {
-        // Start from where the AUTHOR put this band. Deliberate empty space is meaningful — a board
-        // whose next panel sits at row 28 wants a blank page between, and compacting that away would
-        // silently rewrite the author's layout. So the fixed band is a FLOOR, never a ceiling.
-        let banded = y / per_page;
-        if banded > page {
-            page = banded;
-            page_start_y = banded * per_page;
-        }
-
-        // Rows the band occupies on the current page, measured from that page's first row. `y` is
-        // never below `page_start_y` because the bands are sorted and the floor only moves forward.
-        let row_on_page = y - page_start_y;
-        // Push to the next page when the band would run past the page's last row — unless it already
-        // starts at the top, where no move can help and the clamp is the honest signal.
-        if row_on_page + h > per_page && row_on_page > 0 {
-            page += 1;
-            page_start_y = y;
-        }
-        out.push(PagedRow {
-            y,
-            page,
-            page_start_y,
-        });
-    }
-    out
+    ((f64::from(report_layout_page_h_px()) + GRID_MARGIN_PX) / (GRID_ROW_H_PX + GRID_MARGIN_PX))
+        .floor() as u32
 }
 
 /// A placed rectangle on the page, in millimetres from the content box's top-left corner.
@@ -194,7 +137,11 @@ pub fn cell_rect_mm(x: u32, y: u32, w: u32, h: u32) -> RectMm {
 /// next page would be drawn at the vertical position it had on the old one.
 #[must_use]
 pub fn cell_rect_mm_on_page(x: u32, y: u32, w: u32, h: u32, page_start_y: u32) -> RectMm {
-    let mm_per_px = A4_CONTENT_W_MM / f64::from(a4_content_w_px());
+    // Millimetres per LAYOUT pixel — the uniform reduction. Deriving it from `report_layout_w_px`
+    // rather than the true-size width is the whole scale-down: the board's own px arithmetic below is
+    // unchanged, so every rect comes out at exactly `1/REPORT_PRINT_SCALE` of true size and a panel's
+    // aspect ratio is preserved to the last decimal.
+    let mm_per_px = A4_CONTENT_W_MM / f64::from(report_layout_w_px());
     let margin = GRID_MARGIN_PX * mm_per_px;
     let row_h = GRID_ROW_H_PX * mm_per_px;
 
@@ -219,26 +166,66 @@ pub fn cell_rect_mm_on_page(x: u32, y: u32, w: u32, h: u32, page_start_y: u32) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paginate::{page_of_row, paginate};
 
     /// The screen↔print contract. These exact numbers are asserted on the other side by
     /// `ui/src/components/markdown-editor/a4-sheet.test.ts`; changing one without the other is the
     /// drift this test exists to make impossible.
     #[test]
     fn geometry_round_trips_with_the_screen_preset() {
+        // The PAGE — true size, unchanged, and what the Typst template's margins produce.
         assert_eq!(A4_CONTENT_W_MM, 166.0);
         assert_eq!(A4_CONTENT_H_MM, 251.0);
         assert_eq!(a4_content_w_px(), 627);
         assert_eq!(a4_content_h_px(), 949);
-        assert_eq!(a4_rows_per_page(), 14);
+        // The LAYOUT — what the board is actually laid out at, and reduced from.
+        assert_eq!(REPORT_PRINT_SCALE, 2.0);
+        assert_eq!(report_layout_w_px(), 1254);
+        assert_eq!(report_layout_page_h_px(), 1898);
+        assert_eq!(a4_rows_per_page(), 28);
     }
 
+    /// THE PROPERTY THE SCALE-DOWN IS FOR. A panel's printed rectangle must have the SAME aspect ratio
+    /// as the box it was rendered in, at every size — otherwise `fit: "contain"` letterboxes the
+    /// capture inside its slot and the panel reads as shrunken with white space around it.
+    ///
+    /// This is checked against react-grid-layout's own arithmetic at the layout width, which is the
+    /// thing the browser actually did, not against a restatement of the formula below.
     #[test]
-    fn page_breaks_fall_every_whole_page_of_rows() {
-        assert_eq!(page_of_row(0), 0);
-        assert_eq!(page_of_row(13), 0);
-        assert_eq!(page_of_row(14), 1);
-        assert_eq!(page_of_row(27), 1);
-        assert_eq!(page_of_row(28), 2);
+    fn a_printed_rect_has_the_same_aspect_as_the_box_the_browser_rendered() {
+        let w_px = f64::from(report_layout_w_px());
+        // RGL: colWidth = (containerWidth − margin×(cols−1) − padding×2) / cols.
+        let col_w_px =
+            (w_px - GRID_MARGIN_PX * (f64::from(GRID_COLS) - 1.0) - GRID_MARGIN_PX * 2.0)
+                / f64::from(GRID_COLS);
+
+        for (w, h) in [(1_u32, 1_u32), (4, 3), (6, 5), (12, 2), (3, 8), (12, 20)] {
+            let px_w = col_w_px * f64::from(w) + GRID_MARGIN_PX * f64::from(w - 1);
+            let px_h = GRID_ROW_H_PX * f64::from(h) + GRID_MARGIN_PX * f64::from(h - 1);
+            let r = cell_rect_mm_on_page(0, 0, w, h, 0);
+            let drift = ((r.w / r.h) - (px_w / px_h)).abs() / (px_w / px_h);
+            assert!(
+                drift < 0.001,
+                "{w}x{h}: rendered {px_w:.1}x{px_h:.1}px (aspect {:.4}) vs printed {:.1}x{:.1}mm (aspect {:.4})",
+                px_w / px_h,
+                r.w,
+                r.h,
+                r.w / r.h,
+            );
+        }
+    }
+
+    /// …and the reduction is UNIFORM: every rect is exactly `1/REPORT_PRINT_SCALE` of the true-size
+    /// millimetres it would have had. Aspect alone would still allow a per-panel scale drift.
+    #[test]
+    fn the_whole_board_reduces_by_exactly_the_print_scale() {
+        let mm_per_layout_px = A4_CONTENT_W_MM / f64::from(report_layout_w_px());
+        let mm_per_true_px = A4_CONTENT_W_MM / f64::from(a4_content_w_px());
+        assert!(
+            (mm_per_true_px / mm_per_layout_px - REPORT_PRINT_SCALE).abs() < 1e-9,
+            "the reduction must be exactly the scale, got {}",
+            mm_per_true_px / mm_per_layout_px
+        );
     }
 
     /// The bug this whole change exists for, in the shape it actually shipped in: the demo energy
@@ -247,28 +234,32 @@ mod tests {
     /// — a thumbnail — while the page below it sat empty.
     #[test]
     fn a_tall_band_that_would_be_squashed_flows_to_the_next_page_at_full_height() {
-        // hdr, the three KPI tiles (one band), the trend chart, the water chart, the table.
-        let rows = [(0, 4), (4, 4), (4, 4), (4, 4), (8, 5), (13, 7), (20, 7)];
+        // hdr, the three KPI tiles (one band), the trend chart, the water chart, the table — scaled to
+        // the current rows-per-page so the shape of the bug is preserved rather than its old numbers:
+        // the water chart's band starts just inside the page and is taller than the room left.
+        let per = a4_rows_per_page();
+        let (a, b, c, d) = (per / 2, per - 1, 7, per * 3 / 2);
+        let rows = [(0, 4), (4, 4), (4, 4), (4, 4), (a, 5), (b, c), (d, c)];
         let paged = paginate(&rows);
         let page_of = |y: u32| paged.iter().find(|r| r.y == y).unwrap();
 
         assert_eq!(page_of(0).page, 0);
         assert_eq!(page_of(4).page, 0);
-        assert_eq!(page_of(8).page, 0);
-        // The fix: row 13 no longer clings to page 0 just because its top fits there.
-        assert_eq!(page_of(13).page, 1, "the water chart must flow, not squash");
+        assert_eq!(page_of(a).page, 0);
+        // The fix: the band no longer clings to page 0 just because its top fits there.
+        assert_eq!(page_of(b).page, 1, "the water chart must flow, not squash");
         assert_eq!(
-            page_of(20).page,
+            page_of(d).page,
             1,
             "the table follows it onto the same page"
         );
 
         // And on its new page it is measured from ITS OWN first row, so it draws at full height
         // rather than being clamped by an offset inherited from the page it left.
-        let start = page_of(13).page_start_y;
-        assert_eq!(start, 13);
-        let r = cell_rect_mm_on_page(0, 13, 12, 7, start);
-        let unclamped = cell_rect_mm_on_page(0, 0, 12, 7, 0);
+        let start = page_of(b).page_start_y;
+        assert_eq!(start, b);
+        let r = cell_rect_mm_on_page(0, b, 12, c, start);
+        let unclamped = cell_rect_mm_on_page(0, 0, 12, c, 0);
         assert!(
             (r.h - unclamped.h).abs() < 0.01,
             "expected full height {:.1}mm, drew {:.1}mm",
@@ -278,23 +269,15 @@ mod tests {
     }
 
     #[test]
-    fn cells_sharing_a_row_always_page_together() {
-        // Three KPI tiles side by side, plus a tall neighbour on the same row. The band pages as one,
-        // so a row can never be torn in half across a page boundary.
-        let paged = paginate(&[(10, 2), (10, 2), (10, 8)]);
-        assert_eq!(paged.len(), 1, "one entry per row band, not per cell");
-        assert_eq!(paged[0].y, 10);
-    }
-
-    #[test]
     fn a_band_taller_than_a_whole_page_still_gets_its_own_page_and_is_clamped() {
-        // 20 rows cannot fit on a 14-row page anywhere. It must not loop forever looking for room; it
-        // starts a page and the clamp remains the honest "too tall for A4" signal.
-        let paged = paginate(&[(0, 4), (4, 20)]);
+        // A band taller than a whole page cannot fit anywhere. It must not loop forever looking for
+        // room; it starts a page and the clamp remains the honest "too tall for A4" signal.
+        let too_tall = a4_rows_per_page() + 6;
+        let paged = paginate(&[(0, 4), (4, too_tall)]);
         let tall = paged.iter().find(|r| r.y == 4).unwrap();
         assert_eq!(tall.page, 1);
         assert_eq!(tall.page_start_y, 4);
-        let r = cell_rect_mm_on_page(0, 4, 12, 20, tall.page_start_y);
+        let r = cell_rect_mm_on_page(0, 4, 12, too_tall, tall.page_start_y);
         assert!(r.h <= A4_CONTENT_H_MM, "must stay inside the content box");
     }
 
@@ -313,27 +296,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn paginate_is_empty_for_no_rows() {
-        assert!(paginate(&[]).is_empty());
-    }
-
     /// The counterweight to the flow rule: an author who leaves a whole page of empty rows means it.
     /// Flowing must never COMPACT — it only ever pushes a band later than the fixed rule would.
-    #[test]
-    fn deliberate_blank_pages_are_preserved_not_compacted() {
-        // Nothing occupies page 1; the row-28 band belongs on page 2 and must stay there.
-        let paged = paginate(&[(0, 5), (28, 5)]);
-        assert_eq!(paged.iter().find(|r| r.y == 0).unwrap().page, 0);
-        let late = paged.iter().find(|r| r.y == 28).unwrap();
-        assert_eq!(late.page, 2, "the author's blank page survives");
-        assert_eq!(late.page_start_y, 28);
-    }
 
     #[test]
     fn a_full_width_cell_spans_the_content_box_between_the_gutters() {
         let r = cell_rect_mm(0, 0, 12, 4);
-        let margin = GRID_MARGIN_PX * (A4_CONTENT_W_MM / f64::from(a4_content_w_px()));
+        let margin = GRID_MARGIN_PX * (A4_CONTENT_W_MM / f64::from(report_layout_w_px()));
         // Left gutter in, right gutter out: the drawn width is the content box minus both gutters.
         assert!((r.x - margin).abs() < 1e-9, "x = one gutter, got {}", r.x);
         assert!(
@@ -359,15 +328,16 @@ mod tests {
 
     #[test]
     fn a_cell_on_the_second_page_is_measured_from_that_page_top() {
-        // Row 14 is the first row of page 1 — it must sit at the same offset row 0 does on page 0.
-        assert_eq!(cell_rect_mm(0, 0, 6, 4).y, cell_rect_mm(0, 14, 6, 4).y);
-        assert_eq!(page_of_row(14), 1);
+        // The first row of page 1 must sit at the same offset row 0 does on page 0.
+        let per = a4_rows_per_page();
+        assert_eq!(cell_rect_mm(0, 0, 6, 4).y, cell_rect_mm(0, per, 6, 4).y);
+        assert_eq!(page_of_row(per), 1);
     }
 
     #[test]
     fn an_over_tall_cell_is_clamped_inside_the_content_box() {
-        // 40 rows is far more than a page holds; the rect must still end inside the page.
-        let r = cell_rect_mm(0, 0, 12, 40);
+        // Far more than a page holds; the rect must still end inside the page.
+        let r = cell_rect_mm(0, 0, 12, a4_rows_per_page() * 3);
         assert!(
             r.y + r.h <= A4_CONTENT_H_MM + 1e-9,
             "clamped rect {r:?} must not spill past {A4_CONTENT_H_MM}mm"
