@@ -24,7 +24,7 @@
 //!   - the MCP bridge ([`call_report_tool`]) — get/list/save/delete/share **and** export.
 
 mod authorize;
-mod compose;
+pub mod compose;
 mod delete;
 mod error;
 mod export;
@@ -32,6 +32,7 @@ mod export_media;
 mod get;
 mod list;
 mod model;
+mod rendered;
 mod save;
 mod share;
 mod store;
@@ -45,6 +46,7 @@ pub use export_media::{report_export_media, REPORT_ORIGIN};
 pub use get::report_get;
 pub use list::report_list;
 pub use model::{Block, Report, ReportSummary, Visibility as ReportVisibility, MAX_BLOCKS};
+pub use rendered::RenderedPanel;
 pub use save::report_save;
 pub use share::report_share;
 pub use tool::call_report_tool;

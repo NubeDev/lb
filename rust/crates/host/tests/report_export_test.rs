@@ -7,7 +7,7 @@
 //! ratchet's baseline.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{dashboard_save_meta, report_export, Cell, PageMeta, ReportError};
+use lb_host::{dashboard_save_meta, report_export, Cell, PageMeta, ReportError, RenderedPanel};
 use lb_store::Store;
 
 /// A principal `sub` in workspace `ws` holding `caps`.
@@ -57,8 +57,8 @@ async fn export_composes_a_report_kind_dashboard_to_pdf() {
         ws,
         "energy",
         vec![
-            ("p1".to_string(), png.clone()),
-            ("p3".to_string(), png.clone()),
+            RenderedPanel { cell_id: "p1".into(), png: png.clone(), ..RenderedPanel::default() },
+            RenderedPanel { cell_id: "p3".into(), png: png.clone(), ..RenderedPanel::default() },
         ],
         1,
     )

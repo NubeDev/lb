@@ -94,6 +94,11 @@ pub struct SaveDashboard {
     /// OPTIONAL, same preserve-on-omit discipline; the settings dialog sends it.
     #[serde(default)]
     pub width: Option<String>,
+    /// Grid compaction (dashboard page-settings) — `"none"` (default) | `"vertical"` | `"horizontal"`
+    /// | `"both"`.
+    /// Additive & OPTIONAL, same preserve-on-omit discipline; the settings dialog sends it.
+    #[serde(default)]
+    pub compact: Option<String>,
     /// Record kind — `"dashboard"` (default) or `"report"`. Additive & OPTIONAL, same preserve-on-omit
     /// discipline: a layout save omits it and the stored kind survives. Sent by the create path
     /// ("New report") and the settings dialog.
@@ -173,6 +178,9 @@ pub async fn save_dashboard(
     }
     if let Some(v) = &body.width {
         args.insert("width".into(), json!(v));
+    }
+    if let Some(v) = &body.compact {
+        args.insert("compact".into(), json!(v));
     }
     if let Some(v) = &body.kind {
         args.insert("kind".into(), json!(v));
