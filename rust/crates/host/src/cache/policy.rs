@@ -93,8 +93,8 @@ pub fn read_class(verb: &str) -> Option<Class> {
 pub fn dirties(verb: &str) -> &'static [Class] {
     match verb {
         // Datasource CRUD → datasource.list. `federation.*` write verbs mutate the same records.
-        "datasource.add" | "datasource.remove" | "datasource.test" | "federation.write"
-        | "federation.delete" | "federation.migrate" => &[Class::Datasource],
+        "datasource.add" | "datasource.update" | "datasource.remove" | "datasource.test"
+        | "federation.write" | "federation.delete" | "federation.migrate" => &[Class::Datasource],
         // A durable sample append can introduce a new series name → series.list.
         "ingest.write" => &[Class::Series],
         // Flow authoring → flows.list / flows.get.

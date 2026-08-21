@@ -53,6 +53,7 @@ mod schema;
 mod secret;
 mod test;
 mod tool;
+mod update;
 mod validate;
 mod write;
 
@@ -98,4 +99,5 @@ pub use sample::{federation_sample, sample_descriptor};
 pub use schema::{federation_schema, schema_descriptor};
 pub use test::datasource_test;
 pub use tool::call_federation_tool;
+pub use update::datasource_update;
 pub use write::{federation_write, write_descriptor};

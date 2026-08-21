@@ -16,15 +16,19 @@
 //!     validated).
 //!   - `report.delete` ([`report_delete`]) — idempotent tombstone (owner-only; plain soft-delete).
 //!   - `report.share` ([`report_share`]) — set visibility / write the S4 `share` edge.
-//!   - `report.export` ([`report_export`]) — assemble blocks + brand + snapshots → branded PDF bytes
-//!     (a gateway binary route, not the JSON MCP bridge; gated on its own `report.export` cap).
-//!   - the MCP bridge ([`call_report_tool`]) — get/list/save/delete/share (NOT export).
+//!   - `report.export` ([`report_export`]) — assemble a report-kind DASHBOARD's cell grid + brand +
+//!     client snapshots → branded PDF bytes. Gated on its own `report.export` cap.
+//!   - `report.export` on the JSON bridge ([`report_export_media`]) — the same composition with
+//!     **media ids on both ends**, for callers that cannot set an `Authorization` header (a
+//!     module-federated extension UI). Adds no authorization: it calls [`report_export`].
+//!   - the MCP bridge ([`call_report_tool`]) — get/list/save/delete/share **and** export.
 
 mod authorize;
 pub mod compose;
 mod delete;
 mod error;
 mod export;
+mod export_media;
 mod get;
 mod list;
 mod model;
@@ -38,6 +42,7 @@ mod visibility;
 pub use delete::report_delete;
 pub use error::ReportError;
 pub use export::report_export;
+pub use export_media::{report_export_media, REPORT_ORIGIN};
 pub use get::report_get;
 pub use list::report_list;
 pub use model::{Block, Report, ReportSummary, Visibility as ReportVisibility, MAX_BLOCKS};

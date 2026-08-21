@@ -57,6 +57,10 @@ pub async fn install_extension(
     // `hvac.comfort`) would otherwise 403 forever because the tool is in no login role. Best-effort
     // (never fails the install), same as native. (Symmetric-tiers doctrine: tier is not a privilege.)
     crate::authz::grant_ui_scope_to_admin(&node.store, ws, &manifest, &granted).await;
+    // And the extension's DECLARED role tiers (`[[tools]] role = …`) — the data-driven half of
+    // "who may call this tool", registered into the same grant store (ext-role-tiers scope; see
+    // `authz/grant_role_tiers.rs`). This is why builtin_roles.rs names no extension.
+    crate::authz::grant_role_tiers(&node.store, ws, &manifest, &granted).await;
 
     // Then bring the component online with exactly that approved set.
     load_extension(node, manifest_toml, wasm_bytes, admin_approved).await
