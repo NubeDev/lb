@@ -3,9 +3,15 @@
 //! JSON in/out. The MCP gate runs inside each verb FIRST (workspace-first, then `mcp:report.<verb>:
 //! call`). `save`/`delete`/`share` take their logical `now` from the args (the caller's clock).
 //!
-//! `report.export` is deliberately **absent** here — it is a gateway binary route (binary response +
-//! snapshot payload don't fit the JSON MCP envelope), so a JSON `report.export` call falls through to
-//! `NotFound`.
+//! `report.export` **is** here now, and it is the one verb in this family that does not take and
+//! return what its gateway sibling does. The route is a binary one — snapshot PNGs up in the body,
+//! `%PDF` bytes down — and neither half fits the JSON MCP envelope, so the bridge arm trades
+//! **media ids** instead: `{ id, snapshotMediaId? }` → `{ pdfMediaId, bytes, mime }`, with the
+//! snapshots riding up through the shipped `media.upload_*` path and the PDF walking down through
+//! the shipped `media.read`. The route stays the primary path for any caller that can set an
+//! `Authorization` header; this is the narrow exception for the ones that cannot — a
+//! module-federated extension UI — exactly as `media/read.rs` is. See [`super::export_media`] for
+//! the whole argument and the measurement (the `/mcp/call` 2 MiB cap) that decided the shape.
 
 use lb_auth::Principal;
 use lb_mcp::ToolError;
@@ -13,7 +19,10 @@ use lb_store::Store;
 use serde_json::{json, Value};
 
 use super::model::{Block, Visibility};
-use super::{report_delete, report_get, report_list, report_save, report_share, ReportError};
+use super::{
+    report_delete, report_export_media, report_get, report_list, report_save, report_share,
+    ReportError,
+};
 
 /// Dispatch a `report.<verb>` MCP call. Each verb authorizes first; denials are opaque.
 pub async fn call_report_tool(
@@ -80,6 +89,27 @@ pub async fn call_report_tool(
             .map_err(to_tool)?;
             Ok(serde_json::to_value(r).unwrap_or(Value::Null))
         }
+        "report.export" => {
+            // `snapshotMediaId` is OPTIONAL: composing with no captures places a titled error tile
+            // in every cell and leaves the page count unchanged, which is a useful shape (the
+            // report's skeleton) and never a silent success.
+            let snapshot_media_id = input.get("snapshotMediaId").and_then(Value::as_str);
+            // The caller's clock, as every other verb in this family takes it — but defaulted
+            // rather than required, matching `media.*`'s own arm: the media record this stores is
+            // the only thing that reads it, and a caller that omits it gets an epoch-zero
+            // `created_ts` rather than a refusal it cannot act on.
+            let now = input.get("now").and_then(Value::as_u64).unwrap_or(0);
+            report_export_media(
+                store,
+                principal,
+                ws,
+                str_arg(input, "id")?,
+                snapshot_media_id,
+                now,
+            )
+            .await
+            .map_err(to_tool)
+        }
         _ => Err(ToolError::NotFound),
     }
 }
@@ -91,6 +121,7 @@ fn to_tool(e: ReportError) -> ToolError {
         ReportError::BadInput(m) => ToolError::BadInput(m),
         ReportError::Render(m) => ToolError::Extension(m),
         ReportError::Store(s) => ToolError::Extension(s.to_string()),
+        ReportError::Media(m) => ToolError::Extension(m),
     }
 }
 

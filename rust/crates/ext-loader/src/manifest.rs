@@ -44,6 +44,11 @@ pub enum ManifestError {
     /// reference is a load-time reject, not a runtime "no such tool".
     #[error("invalid [connect] block: {0}")]
     InvalidConnectBlock(String),
+    /// A `[[tools]]` entry is malformed — today: an unknown `role` tier (ext-role-tiers scope). A
+    /// typo like `role = "memmber"` silently meaning "admin-only" is exactly the kind of quiet
+    /// narrowing this rejects at load time.
+    #[error("invalid [[tools]] entry: {0}")]
+    InvalidTool(String),
 }
 
 /// The `[[ui.nav]]` caps (ext-nav-contribution scope). A declared nav tree is small and reviewed —
@@ -275,6 +280,22 @@ pub struct ConnectDef {
     /// An optional health-check tool (the roster's Probe column). Absent ⇒ no Probe for this kind.
     #[serde(default)]
     pub probe_tool: Option<String>,
+    /// An optional edit tool (editable-datasources scope) — takes `{uuid}` plus any subset of the
+    /// `create_tool` schema's fields; an omitted field (a secret the operator did not retype) is
+    /// KEPT, never cleared. Absent ⇒ this kind's rows are not editable.
+    #[serde(default)]
+    pub update_tool: Option<String>,
+    /// An optional single-row read (`{uuid}` → the `list_tool` row shape) — what an edit form
+    /// pre-fills from. Absent ⇒ the client falls back to the `list_tool` row it already has.
+    #[serde(default)]
+    pub get_tool: Option<String>,
+    /// An optional DEEP-LINK route template into this extension's own page for ONE connection
+    /// (editable-datasources scope) — e.g. `"{uuid}"` when the page's `ctx.route` grammar starts
+    /// with the connection uuid. The Datasources roster substitutes `{uuid}` and opens
+    /// `/ext/<id>/<resolved>`; absent ⇒ the roster opens the extension's page root, as before.
+    /// Presentation data, not a tool — no capability gates it.
+    #[serde(default)]
+    pub open_route: Option<String>,
 }
 
 /// One field of a `[[query]]` block's cascading chain (panel-datasource-query scope) — identical
@@ -343,6 +364,15 @@ pub struct Tool {
     /// (The `lb-ext-sdk` manifest authoring type gains the same optional field — flagged there.)
     #[serde(default)]
     pub emits_external: bool,
+    /// Which built-in role TIER may call this tool (ext-role-tiers scope): `"viewer"`, `"member"`,
+    /// or `"admin"`. At install the host grants `mcp:<name>:call` to that tier's role records (a
+    /// viewer-tier cap reaches viewer+member+admin, member-tier reaches member+admin, admin-tier
+    /// admin only) through the SAME durable grant store an admin edits — so an extension's caps are
+    /// registered by DATA, and lb's `builtin_roles.rs` never names an extension (rule 10; third
+    /// parties cannot edit core). **Absent = admin-only**, and even that only via the UI-scope
+    /// grant: fail-closed, an undeclared tool widens nothing.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 /// The `[native]` block — present iff `tier="native"` (native-tier scope, the extensions-scope
@@ -691,10 +721,25 @@ impl Manifest {
             for tool in [&c.create_tool, &c.list_tool, &c.delete_tool]
                 .into_iter()
                 .chain(c.probe_tool.iter())
+                .chain(c.update_tool.iter())
+                .chain(c.get_tool.iter())
             {
                 if !tool_names.contains(tool) {
                     return Err(ManifestError::InvalidConnectBlock(format!(
                         "connect block references tool '{tool}', which is not a declared [[tools]] entry"
+                    )));
+                }
+            }
+        }
+
+        // Validate each `[[tools]]` role tier (ext-role-tiers scope): an unknown tier is a load-time
+        // reject — a typo like `role = "memmber"` must never silently mean admin-only.
+        for t in &raw.tools {
+            if let Some(role) = &t.role {
+                if !matches!(role.as_str(), "viewer" | "member" | "admin") {
+                    return Err(ManifestError::InvalidTool(format!(
+                        "tool '{}' declares unknown role tier '{role}' (viewer|member|admin)",
+                        t.name
                     )));
                 }
             }
@@ -1194,6 +1239,49 @@ label = "Plain""#,
     }
 
     #[test]
+    /// ext-role-tiers: a declared tier parses onto the tool; an unknown tier is a LOUD load-time
+    /// reject (a typo silently meaning admin-only is the quiet narrowing this forbids).
+    #[test]
+    fn tool_role_tier_parses_and_unknown_tier_rejects() {
+        let ok = Manifest::parse(
+            r#"
+[extension]
+id = "t"
+version = "0.0.1"
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.2.0"
+placement = "either"
+[visibility]
+class = "private"
+[[tools]]
+name = "t.list"
+role = "member"
+"#,
+        )
+        .expect("a known tier must parse");
+        assert_eq!(ok.tools[0].role.as_deref(), Some("member"));
+
+        let err = Manifest::parse(
+            r#"
+[extension]
+id = "t"
+version = "0.0.1"
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.2.0"
+placement = "either"
+[visibility]
+class = "private"
+[[tools]]
+name = "t.list"
+role = "memmber"
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("unknown role tier"), "{err}");
+    }
+
     fn absent_ui_nav_is_empty_not_error() {
         // The additive guarantee: a `[ui]` with no nav (and every pre-field manifest) parses to an
         // empty vec — one flat slot, exactly today's behavior — never an error.

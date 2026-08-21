@@ -148,6 +148,15 @@ pub struct BootConfig {
     /// key (matching `make dev`/test behaviour when `LB_SIGNING_KEY` is unset).
     pub signing_key: SigningKey,
 
+    /// The 32-byte master key sealing secret VALUES at rest (`lb-secrets` crypto.rs,
+    /// secrets-at-rest; `LB_SECRET_KEY`, 64-hex). Custody mirrors `signing_key`: filled at the
+    /// binary boundary, never logged. `None` (the default) keeps the shipped plaintext-in-store
+    /// behaviour, so no embedder changes posture by upgrading — but boot warns, because a secret
+    /// store an embedder believes is sealed and is not is exactly the failure worth a loud line.
+    /// Unlike `signing_key` this MUST NOT default to a fresh per-boot key: a random key would strand
+    /// every sealed value on the next restart. Durable key or no key.
+    pub secret_key: Option<[u8; 32]>,
+
     /// The boot workspace (today's `LB_WORKSPACE`, default `nube`). The dev-identity seed, extension
     /// re-load, reactors, and default-skill grants all scope to this workspace.
     pub workspace: String,
@@ -509,6 +518,7 @@ impl Default for BootConfig {
             // boot byte-identical to before the field existed.
             retention_seed: Vec::new(),
             signing_key: SigningKey::generate(),
+            secret_key: None,
             workspace: "nube".into(),
             seed_user: Some("user:test".into()),
             gateway: GatewayMode::Off,
@@ -602,6 +612,7 @@ impl BootConfig {
                 .ok()
                 .filter(|p| !p.is_empty()),
             signing_key: gateway_signing_key(),
+            secret_key: secret_key_from_env(),
             // The standalone binary seeds no policy: a retention policy is structured data, not a
             // scalar `LB_*` knob, so there is nothing at the binary boundary to read it from.
             retention_seed: Vec::new(),
@@ -951,6 +962,33 @@ fn gateway_signing_key() -> SigningKey {
         }
     }
     SigningKey::from_seed(&seed)
+}
+
+/// Read the secrets master key from `LB_SECRET_KEY` (64 hex chars → 32 bytes). Unlike the signing
+/// key there is NO generate fallback: a random key would seal values this node could never open
+/// again after a restart. Malformed input is refused loudly and the node boots unsealed — the same
+/// posture as the var being absent, and visible in the boot warning either way.
+fn secret_key_from_env() -> Option<[u8; 32]> {
+    let hex_key = std::env::var("LB_SECRET_KEY").ok()?;
+    let hex_key = hex_key.trim();
+    if hex_key.len() != 64 {
+        eprintln!(
+            "LB_SECRET_KEY: expected 64 hex chars (32-byte key), got {} — secrets stay UNSEALED",
+            hex_key.len()
+        );
+        return None;
+    }
+    let mut key = [0u8; 32];
+    for (i, byte) in key.iter_mut().enumerate() {
+        match u8::from_str_radix(&hex_key[i * 2..i * 2 + 2], 16) {
+            Ok(b) => *byte = b,
+            Err(_) => {
+                eprintln!("LB_SECRET_KEY: not valid hex — secrets stay UNSEALED");
+                return None;
+            }
+        }
+    }
+    Some(key)
 }
 
 /// Read the in-house model config from `LB_AGENT_MODEL_*` (provider / model / api-key-env NAME /

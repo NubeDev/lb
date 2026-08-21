@@ -70,6 +70,7 @@ mod surface;
 mod system;
 mod telemetry_stream;
 mod undo;
+mod viz_stream;
 // node-update scope §Seam 2: the generic streaming upload lane, mounted only when the embedder
 // registered a sink. Its own folder — five routes, one responsibility each.
 mod uploads;
@@ -197,6 +198,7 @@ pub use uploads::{abort_upload, append_upload, begin_upload, complete_upload, up
 pub use versions::{
     get_version, get_versions, get_versions_config, post_version_restore, put_versions_config,
 };
+pub use viz_stream::viz_query_batch_stream;
 pub use webhook::post_webhook;
 pub use workspace::{create_workspace, list_workspaces};
 pub use workspace_provision::{provision_workspace, reconcile_workspace};

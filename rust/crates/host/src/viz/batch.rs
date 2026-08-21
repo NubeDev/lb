@@ -41,15 +41,18 @@ const MAX_PANELS: usize = 64;
 /// slow panel, and a slow panel returns its own error without wedging its siblings.
 const MAX_CONCURRENCY: usize = 16;
 
-/// Resolve a batch of panels. `input` is the verb args (`{panels:[…], now?, cache?}`); the return is
-/// `{results:[…]}`, one entry per input panel, in order.
-pub async fn viz_query_batch(
-    node: &Arc<Node>,
-    principal: &Principal,
-    ws: &str,
-    input: &Value,
-    depth: u32,
-) -> Result<Value, VizError> {
+/// The validated batch input: the panels plus the batch-level defaults every panel inherits. Shared by
+/// the synchronous fan-in ([`viz_query_batch`]) and the streamed one (`batch_stream.rs`) so the two can
+/// never drift on the cap, the `now`/`cache` defaults, or the shape of a bad request.
+pub(super) struct BatchInput {
+    pub panels: Vec<Value>,
+    pub now: u64,
+    pub cache: Option<Value>,
+}
+
+/// Validate `{panels:[…], now?, cache?}`. Over-cap ⇒ `BadInput` (never a silent truncation that reads
+/// as "resolved everything").
+pub(super) fn parse_batch(input: &Value) -> Result<BatchInput, VizError> {
     let panels = input
         .get("panels")
         .and_then(Value::as_array)
@@ -66,14 +69,36 @@ pub async fn viz_query_batch(
     // `now`/`cache` are batch-level defaults, applied to every panel exactly as a single `viz.query`
     // carries them (a per-panel spec that already names its own is untouched — the single-panel input we
     // build only adds the batch-level ones alongside the panel).
-    let now = input.get("now").and_then(Value::as_u64).unwrap_or(0);
-    let cache = input.get("cache").cloned();
+    Ok(BatchInput {
+        panels: panels.clone(),
+        now: input.get("now").and_then(Value::as_u64).unwrap_or(0),
+        cache: input.get("cache").cloned(),
+    })
+}
+
+/// The shared fan-out bound (see [`MAX_CONCURRENCY`]) — one semaphore per batch, handed to both paths.
+pub(super) fn batch_semaphore() -> Arc<Semaphore> {
+    Arc::new(Semaphore::new(MAX_CONCURRENCY))
+}
+
+/// Resolve a batch of panels. `input` is the verb args (`{panels:[…], now?, cache?}`); the return is
+/// `{results:[…]}`, one entry per input panel, in order.
+pub async fn viz_query_batch(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    input: &Value,
+    depth: u32,
+) -> Result<Value, VizError> {
+    let batch = parse_batch(input)?;
+    let now = batch.now;
+    let cache = batch.cache;
 
     // Resolve each panel through the SHARED cached single-panel path, concurrently, bounded. Cooperative
     // concurrency (join_all on one task) is right for I/O-bound resolves (DB round trips); the semaphore
     // caps the in-flight count.
-    let sem = Arc::new(Semaphore::new(MAX_CONCURRENCY));
-    let futures = panels.iter().map(|panel| {
+    let sem = batch_semaphore();
+    let futures = batch.panels.iter().map(|panel| {
         let sem = Arc::clone(&sem);
         let cache = cache.clone();
         async move {
@@ -93,7 +118,7 @@ pub async fn viz_query_batch(
 /// (`{panel, now, cache?}`) and hands it to [`crate::cache::dispatch`] under `viz.query` at the caller's
 /// depth — so the `subject_scoped` gateway cache, the capability fingerprint, and the quantiser all apply
 /// per panel, identically to the non-batch path.
-async fn resolve_one_panel(
+pub(super) async fn resolve_one_panel(
     node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
