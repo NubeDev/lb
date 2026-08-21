@@ -293,3 +293,37 @@ mod ext_boards_gate_tests {
         assert_ne!(gate_tool_for("nav.ext_boards.get"), "nav.save");
     }
 }
+
+#[cfg(test)]
+mod report_gate_tests {
+    use super::gate_tool_for;
+
+    /// `report.export` reached the JSON bridge in the reports scope's Track A, and the FIRST
+    /// question a new host-native verb has to answer is the one this file exists for: which cap
+    /// does the outer gate actually demand, and does anything grant it?
+    ///
+    /// The answer here is "its own, and yes" — `mcp:report.export:call` is a concrete cap in the
+    /// AUTHOR bundle (`authz/builtin_roles.rs`, beside `report.save`/`report.share`), deliberately
+    /// NOT covered by any `mcp:*.*:call` wildcard because view-without-export is a real posture.
+    /// So the fall-through arm is correct and no alias is needed.
+    ///
+    /// This test pins that fall-through rather than asserting nothing, because the failure it
+    /// guards against is silent in both directions: an alias added later would quietly widen the
+    /// export gate to whatever it aliased onto (handing export to everyone who can READ a report),
+    /// and the absence of an alias is otherwise indistinguishable from nobody having thought about
+    /// it. Every one of the four incidents this module documents was invisible until someone drove
+    /// the verb on a live node.
+    #[test]
+    fn export_gates_on_its_own_concrete_cap() {
+        assert_eq!(gate_tool_for("report.export"), "report.export");
+    }
+
+    /// The read verbs are viewer-level and must not be dragged up to the author's export cap.
+    #[test]
+    fn the_read_verbs_are_untouched() {
+        for verb in ["report.get", "report.list"] {
+            assert_eq!(gate_tool_for(verb), verb);
+            assert_ne!(gate_tool_for(verb), "report.export");
+        }
+    }
+}

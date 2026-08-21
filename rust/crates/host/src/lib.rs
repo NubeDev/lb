@@ -359,9 +359,9 @@ pub use panel::{
     PanelSpec, PanelSummary, PanelUsageRow, Visibility as PanelVisibility,
 };
 pub use report::{
-    call_report_tool, report_delete, report_export, report_get, report_list, report_save,
-    report_share, Block as ReportBlock, Report, ReportError, ReportSummary, ReportVisibility,
-    MAX_BLOCKS,
+    call_report_tool, report_delete, report_export, report_export_media, report_get, report_list,
+    report_save, report_share, Block as ReportBlock, Report, ReportError, ReportSummary,
+    ReportVisibility, MAX_BLOCKS, REPORT_ORIGIN,
 };
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching
