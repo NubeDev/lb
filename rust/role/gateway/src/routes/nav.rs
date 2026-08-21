@@ -208,6 +208,25 @@ pub async fn set_default_nav(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `GET /nav/default` — read the one workspace-default pointer (`{"id": "ops"}`, or `{"id": null}`
+/// when none is set). Gated `nav.resolve` — **member-level**, deliberately asymmetric with the
+/// `POST` above: the pointer is already the third tier of the caller's own `nav.resolve`, so naming
+/// it discloses nothing their menu doesn't, while gating the read on the authoring cap would leave
+/// the default unreadable to everyone it shapes. Without this route the pointer was write-only and
+/// no UI could ever show WHICH nav is the default (rubix-ai#165) or restore it (rubix-ai#144).
+pub async fn get_default_nav(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let id = lb_host::nav_get_default(&gw.node.store, &p, p.ws())
+        .await
+        .map_err(status)?;
+    Ok(Json(json!({ "id": id })))
+}
+
 /// `GET /nav/pref` — read the caller's own active-nav pick. Gated `nav.resolve`; member-level.
 pub async fn get_nav_pref(
     State(gw): State<Gateway>,
