@@ -14,6 +14,7 @@
 mod builtin_caps;
 mod builtin_roles;
 mod error;
+mod grant_role_tiers;
 mod grant_ui;
 mod grants;
 mod hold;
@@ -31,6 +32,7 @@ pub use builtin_roles::{
     viewer_role_caps, workspace_admin_role_caps, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
 };
 pub use error::AuthzError;
+pub use grant_role_tiers::grant_role_tiers;
 pub use grant_ui::grant_ui_scope_to_admin;
 pub use grants::{grants_assign, grants_list, grants_list_scoped, grants_revoke};
 pub use hold::holds_cap;

@@ -102,6 +102,10 @@ pub async fn install_native<L: Launcher>(
     // to the `workspace-admin` role, so `resolve_caps` folds them into an admin's token on next login.
     // Generic + revocable (admin console): no per-extension code touches the login path.
     crate::authz::grant_ui_scope_to_admin(&node.store, ws, &manifest, &granted).await;
+    // And the extension's DECLARED role tiers (`[[tools]] role = …`) — the data-driven half of
+    // "who may call this tool", registered into the same grant store (ext-role-tiers scope; see
+    // `authz/grant_role_tiers.rs`). This is why builtin_roles.rs names no extension.
+    crate::authz::grant_role_tiers(&node.store, ws, &manifest, &granted).await;
 
     // If a sidecar for this id is already running here, stop it before swapping (re-install in
     // place — the durable id/records stay stable, only the process is replaced).
