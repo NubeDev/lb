@@ -5,7 +5,9 @@
   (this repo's Typst/brand scope) and, for the ask this delivers,
   ext-ros `docs/scope/reports/report-builder-scope.md` **Track A**
 - Stage: S3 — an existing surface reaches a caller that could not use it
-- Status: done (code + tests). **Not yet released as a `node-v*` tag** — see Follow-ups.
+- Status: **done and RELEASED as `node-v0.25.0`** (2026-08-21). rubix-ai is bumped off
+  `node-v0.24.0` and the local `[patch]` that carried this work is retired. Driven from a real
+  browser end to end: a 1.67 MB / 8-page branded PDF.
 
 ## Goal
 
@@ -179,16 +181,43 @@ convention exists to prevent.
   PDFs are **tagged** (`origin = "report.export"`) and the sweep is named as housekeeping below.
   Tagging now is what makes that sweep a query rather than a migration.
 
-## Follow-ups
+## The release, and what it also carried
 
-1. **Cut a `node-v*` tag.** This is the release vehicle the upstream issue names, and nothing
-   downstream can use the verb without it — an extension calling it against an older node gets
-   `NotFound`, which reads as "export is broken" rather than "your node is old" (the kit already
-   detects and re-words exactly that case). Deliberately **not** done in this session: tagging and
-   publishing is an outward-facing release decision, not a code change.
+`node-v0.25.0` (2026-08-21), cut from `master` at `9b81f294`.
+
+⚠ **It carries a second, unrelated change, and that was nearly missed.** `rubix-ai`'s
+`.cargo/config.toml` had a live `[patch]` pointing `lb-node` at the local checkout — for the
+**native-sidecar head-of-line fix** (#182, `9f86fd0b`), which landed *after* `node-v0.24.0` was cut
+and had been patch-only since 2026-08-20. A tag cut from anything but `master` would have silently
+left it behind while the box that "verified" the release kept running it.
+
+The lesson generalises and is now written into that file: **check what the patch is currently
+carrying before cutting a tag**, rather than assuming it is only your own change.
+
+Two more traps hit on the way out, both already documented in that same file and both live again:
+
+- A `cargo build` under the patch **stripped `source = "git+…?tag=…"` from 42 crates down to 1**.
+  Caught by diffing against a pre-build copy; the lock was regenerated with the patch OFF.
+- `Cargo.lock` had **`skip-worktree`** set as a guard — and the guard did exactly what the file
+  warns it does: `git status` showed a clean lock while the committed one still pinned
+  `node-v0.24.0`. Clearing it with `git update-index --no-skip-worktree` is the only honest check.
+
+## Follow-ups
 2. **Bound the generated PDFs.** A report exported nightly leaves a PDF per run and nothing reaps
    them. The record carries `origin = "report.export"`, so a sweep is a query over one field —
    but the media module has no job seam to put it in, so this is its own small scope rather than a
    patch here.
-3. **A live drive on a node, then the SKILL.md.** Both wait on (1).
-4. **`docs/skills/reports/SKILL.md`** — see above.
+3. ~~**A live drive on a node.**~~ **DONE.** `rubix-ai/ui/e2e/esr-energy-report.spec.ts`, 3/3
+   against a node built from the released tag: board push → snapshots up via `media.upload_*` →
+   `report.export` → `media.read` → a 1,665,480-byte `%PDF-1.7` with 8 pages, 18 embedded panel
+   images and Libertinus Serif embedded. No bearer token anywhere in the chain.
+4. **`docs/skills/reports/SKILL.md`** — the directory exists and is empty. Now unblocked: there IS
+   a live run to ground it in.
+5. **Promote to `doc-site/content/public/`.** Also unblocked now that a released node serves the
+   verb.
+6. ⚠ **A missing board and an un-upgraded node are indistinguishable to a caller.** Measured on the
+   released node: exporting a board that does not exist answers `403 "no such tool"`, and so does a
+   node that does not serve the verb. That is the deny contract working — an error must not become
+   an existence oracle for records the caller cannot read — but the ext-ros kit had been reading
+   that string and confidently telling operators to upgrade a node that was fine. Fixed downstream
+   (ext-ros `cd9d6d1`); worth knowing here because the ambiguity is this module's, not theirs.
