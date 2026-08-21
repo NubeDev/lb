@@ -50,6 +50,9 @@ pub(crate) fn map_err(e: lb_secrets::SecretsError) -> ToolError {
         SecretsError::Denied => ToolError::Denied,
         SecretsError::NotFound => ToolError::BadInput("not found".into()),
         SecretsError::Store(s) => ToolError::Extension(s.to_string()),
+        // The envelope would not open (missing/wrong master key, corrupt record) — the error string
+        // is already payload-free (crypto.rs) and the operator-facing fix is a boot-config one.
+        SecretsError::Crypto(c) => ToolError::Extension(c.to_string()),
     }
 }
 

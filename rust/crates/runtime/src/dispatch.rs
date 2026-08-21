@@ -29,8 +29,54 @@ use crate::instance::Instance;
 /// `ctx` is the host-callback context, honored by wasm guests (their `host.call-tool` import runs
 /// under it) and ignored by natives (a sidecar has its own `SidecarClient` identity via
 /// `LB_EXT_TOKEN`).
+/// An owned, `Send` future the host can await after releasing a lock — what
+/// [`LocalDispatch::call_tool_detached`] hands back.
+pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+
 #[async_trait::async_trait]
 pub trait LocalDispatch: Send {
+    /// Can this target serve several calls at once?
+    ///
+    /// **Default `false`** — the conservative answer, and the right one for a wasm [`Instance`],
+    /// which genuinely cannot run two calls concurrently. The host therefore holds the
+    /// per-instance mutex across the whole call for it, exactly as before.
+    ///
+    /// A **native sidecar** overrides this to `true`: it is a separate process whose wire
+    /// multiplexes (`lb-ext-native` spawns each `call`, correlating replies by `id`), so the
+    /// exclusive lock buys it nothing and costs it everything — it caps a whole extension at
+    /// concurrency 1 node-wide. Measured on a live node before this existed: a 20 ms LOCAL store
+    /// read took 8.96 s while one slow verb was in flight.
+    ///
+    /// This is deliberately a property the TARGET declares rather than a Tier branch at the call
+    /// site, so the registry and `dispatch` stay Tier-agnostic (§3.1) — the one trait keeps
+    /// reaching either kind, and only the honest answer to "can you multiplex?" differs.
+    fn is_multiplexing(&self) -> bool {
+        false
+    }
+
+    /// A **detached** call for a target that answered `true` to
+    /// [`is_multiplexing`](Self::is_multiplexing): build the whole round-trip as an owned future
+    /// while the host still holds the per-instance mutex, so the host can then **drop the guard**
+    /// and await it unlocked.
+    ///
+    /// This shape (rather than a plain `&self` method) is deliberate: a wasm [`Instance`] is not
+    /// `Sync` — it owns wasmtime state that cannot be shared across threads — so a `&self` future
+    /// would force a `Sync` bound the wasm tier genuinely cannot satisfy. Returning an owned
+    /// `'static` future keeps the bound local to the impls that opt in.
+    ///
+    /// **Default:** `None` — "I do not offer a detached path". `dispatch` only consults this when
+    /// `is_multiplexing` is `true`, and falls back to the exclusive [`call_tool`](Self::call_tool)
+    /// if an impl nonetheless returns `None`, so the two methods cannot disagree into a broken call.
+    fn call_tool_detached(
+        &self,
+        _ws: &str,
+        _tool: &str,
+        _input_json: &str,
+        _ctx: Option<CallContext>,
+    ) -> Option<BoxFuture<'static, Result<String, RuntimeError>>> {
+        None
+    }
+
     async fn call_tool(
         &mut self,
         ws: &str,

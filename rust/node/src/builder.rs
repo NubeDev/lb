@@ -227,6 +227,25 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // subsequent instrumented call is captured. Shares the node's OWN store + bus handles.
     lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), cfg.telemetry);
 
+    // SECRETS at-rest posture (secrets-at-rest): install the master key before anything writes a
+    // secret, so the first seeded DSN is already sealed. Process-global and once-only — a second
+    // boot_full in one process (tests) keeps the first key, warned not crashed. No key ⇒ the shipped
+    // plaintext behaviour, stated loudly for the reason the BootConfig doc gives.
+    match cfg.secret_key {
+        Some(key) => {
+            if !lb_secrets::install_master_key(key) {
+                eprintln!("boot: secrets master key already installed — keeping the existing key");
+            }
+        }
+        None => {
+            if !lb_secrets::master_key_installed() {
+                eprintln!(
+                    "WARN secrets at rest: no master key configured — secret values are stored                      UNSEALED. Set one on BootConfig::secret_key (LB_SECRET_KEY, 64 hex) to seal them."
+                );
+            }
+        }
+    }
+
     // S1 hello demo bring-up (gated): load the `hello` extension and call `hello.echo` once. The binary
     // runs it; an embedder wants it off.
     if cfg.hello_demo {

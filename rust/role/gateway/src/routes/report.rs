@@ -200,7 +200,11 @@ fn parse_visibility(s: &str) -> Option<ReportVisibility> {
 }
 
 /// Map a report gate outcome onto an HTTP status. `Denied`/`Store` are `403` (opaque); `NotFound`
-/// `404`; `BadInput` `400`; a `Render` fault is `500` (a server-side compile failure).
+/// `404`; `BadInput` `400`; a `Render` or `Media` fault is `500` (a server-side failure).
+///
+/// `Media` cannot reach THIS route — it is raised only by the bridge verb, which stores the PDF as
+/// a media record; this route streams the bytes. It is mapped rather than `unreachable!()` because
+/// a panic in a status mapper turns a storage fault into a dropped connection with no log line.
 fn status(e: ReportError) -> (StatusCode, String) {
     match e {
         ReportError::Denied => (StatusCode::FORBIDDEN, e.to_string()),
@@ -208,5 +212,6 @@ fn status(e: ReportError) -> (StatusCode, String) {
         ReportError::BadInput(m) => (StatusCode::BAD_REQUEST, m),
         ReportError::Render(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
         ReportError::Store(s) => (StatusCode::FORBIDDEN, s.to_string()),
+        ReportError::Media(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
     }
 }

@@ -13,10 +13,10 @@ use lb_supervisor::OsLauncher;
 use serde_json::{json, Value};
 
 use super::{
-    datasource_add, datasource_list, datasource_remove, datasource_test, dbschema_delete,
-    dbschema_get, dbschema_list, dbschema_save, federation_delete, federation_export,
-    federation_migrate, federation_mirror, federation_query, federation_sample, federation_schema,
-    federation_write, ExportFrom,
+    datasource_add, datasource_list, datasource_remove, datasource_test, datasource_update,
+    dbschema_delete, dbschema_get, dbschema_list, dbschema_save, federation_delete,
+    federation_export, federation_migrate, federation_mirror, federation_query, federation_sample,
+    federation_schema, federation_write, ExportFrom,
 };
 #[cfg(feature = "datasource-profile")]
 use super::{
@@ -304,6 +304,15 @@ pub async fn call_federation_tool(
                 node, principal, ws, name, kind, endpoint, secret_ref, dsn, ts,
             )
             .await?;
+            Ok(json!({ "ok": true }))
+        }
+        "datasource.update" => {
+            let name = str_arg(input, "name")?;
+            let kind = input.get("kind").and_then(|v| v.as_str());
+            let endpoint = input.get("endpoint").and_then(|v| v.as_str());
+            let dsn = input.get("dsn").and_then(|v| v.as_str());
+            let dsn_set = input.get("dsn_set");
+            datasource_update(node, principal, ws, name, kind, endpoint, dsn, dsn_set, ts).await?;
             Ok(json!({ "ok": true }))
         }
         "datasource.remove" => {

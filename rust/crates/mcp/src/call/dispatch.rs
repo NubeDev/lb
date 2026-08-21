@@ -53,6 +53,49 @@ pub async fn dispatch(
             // in `lb-host`) separately bounds legitimate cross-instance re-entrant chains.
             let ptr = Arc::as_ptr(&hosted.instance) as *const () as usize;
             reentrancy::in_scope(async {
+                // ONE short acquisition: ask whether the target multiplexes and, if it does, build
+                // its detached future — both under the same guard, which is then dropped. A
+                // re-entrant chain must not block here, hence the `try_lock` branch; a failed
+                // `try_lock` means self-re-entry, which falls through to the exclusive path below
+                // and fails fast as "extension busy" exactly as before.
+                let detached = {
+                    let guard = if reentrancy::is_held(ptr) {
+                        match hosted.instance.try_lock() {
+                            Ok(g) => Some(g),
+                            Err(_) => None,
+                        }
+                    } else {
+                        Some(hosted.instance.lock().await)
+                    };
+                    guard.and_then(|g| {
+                        g.is_multiplexing()
+                            .then(|| g.call_tool_detached(ws, tool, input_json, ctx.clone()))
+                            .flatten()
+                    })
+                };
+
+                // A MULTIPLEXING target (a native sidecar — a separate process whose wire serves
+                // many calls at once, correlating replies by `id`) must not be serialised by the
+                // per-instance mutex. That mutex exists for a wasm instance, which genuinely cannot
+                // run two calls; holding it across a sidecar round-trip caps the whole extension at
+                // concurrency 1 node-wide, however well the child multiplexes underneath.
+                //
+                // Measured on a live node before this branch existed (ext-esr, database confirmed
+                // idle): a 20 ms LOCAL store read took 8.96 s behind one slow verb, and three cheap
+                // calls issued in parallel released at the SAME instant — a mutex signature, not a
+                // queue. See ext-esr/docs/debugging/backend/sidecar-head-of-line-blocking.md.
+                //
+                // `call_tool_shared` takes `&self`, so it runs with NO lock held. `holding` still
+                // wraps it: the re-entrancy guard tracks the call CHAIN, not the mutex, and a
+                // sidecar can still call back into the host and re-enter itself.
+                // The guard is dropped by now, so the round-trip runs UNLOCKED — that release is
+                // the whole fix. A target that claims to multiplex but offers no detached path
+                // yields `None` here and simply falls through to the exclusive path below: always
+                // correct, only slower.
+                if let Some(fut) = detached {
+                    return reentrancy::holding(ptr, fut).await.map_err(map_err);
+                }
+
                 let mut instance = if reentrancy::is_held(ptr) {
                     hosted.instance.try_lock().map_err(|_| {
                         ToolError::Extension("extension busy (re-entrant call)".into())
@@ -144,153 +187,5 @@ fn map_err(e: RuntimeError) -> ToolError {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use async_trait::async_trait;
-    use lb_bus::Bus;
-    use lb_runtime::{CallContext, LocalDispatch, RuntimeError};
-    use tokio::sync::{Mutex, Notify};
-
-    use crate::registry::Hosted;
-
-    use super::*;
-
-    /// Blocks on its FIRST call until released, then answers instantly on any call after — lets
-    /// a test hold an instance's real lock for a controlled window without racing on timing, and
-    /// without hanging forever once a nested call reaches it a second time.
-    struct Blocking {
-        started: Arc<Notify>,
-        release: Arc<Notify>,
-        blocked_once: Arc<AtomicBool>,
-    }
-
-    #[async_trait]
-    impl LocalDispatch for Blocking {
-        async fn call_tool(
-            &mut self,
-            _ws: &str,
-            _tool: &str,
-            _input_json: &str,
-            _ctx: Option<CallContext>,
-        ) -> Result<String, RuntimeError> {
-            if !self.blocked_once.swap(true, Ordering::SeqCst) {
-                self.started.notify_one();
-                self.release.notified().await;
-            }
-            Ok("{}".into())
-        }
-    }
-
-    /// The well-behaved case: answers instantly, never blocks.
-    struct Immediate;
-
-    #[async_trait]
-    impl LocalDispatch for Immediate {
-        async fn call_tool(
-            &mut self,
-            _ws: &str,
-            _tool: &str,
-            _input_json: &str,
-            _ctx: Option<CallContext>,
-        ) -> Result<String, RuntimeError> {
-            Ok("{}".into())
-        }
-    }
-
-    fn hosted(instance: impl LocalDispatch + 'static) -> Hosted {
-        Hosted {
-            tools: vec![],
-            instance: Arc::new(Mutex::new(instance)),
-        }
-    }
-
-    fn instance_ptr(target: &Target) -> usize {
-        match target {
-            Target::Local(h) => Arc::as_ptr(&h.instance) as *const () as usize,
-            Target::Remote { .. } => unreachable!("test targets are always Local"),
-        }
-    }
-
-    /// THE bug this guards (`docs/debugging/mcp/gauge-panel-loses-extension-busy-race.md`): a
-    /// nested call that targets a DIFFERENT extension than any this call chain already holds
-    /// must WAIT for its lock like a top-level call, never fail fast — even under genuine
-    /// concurrent contention on that lock. This is the Gauge-vs-Slider shape: `viz.query_batch`
-    /// (holding some unrelated instance, stood in by `ptr_a` below) nests a call into `ros`
-    /// (`target_b`) while an independent top-level call is already mid-flight against `ros`.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn nested_call_to_a_different_ext_waits_instead_of_failing_fast() {
-        let bus = Bus::peer().await.unwrap();
-        let started = Arc::new(Notify::new());
-        let release = Arc::new(Notify::new());
-        let target_b = Target::Local(hosted(Blocking {
-            started: started.clone(),
-            release: release.clone(),
-            blocked_once: Arc::new(AtomicBool::new(false)),
-        }));
-
-        // An unrelated top-level call takes B's lock and holds it…
-        let b1 = target_b.clone();
-        let bus1 = bus.clone();
-        let holder =
-            tokio::spawn(async move { dispatch(&b1, &bus1, "ws", "b.tool", "{}", None).await });
-        started.notified().await; // …confirmed actually held before proceeding.
-
-        // A nested call (a different ancestor instance, `ptr_a`, already held on THIS task)
-        // targets B while it's genuinely contended.
-        let b2 = target_b.clone();
-        let bus2 = bus.clone();
-        let nested = tokio::spawn(async move {
-            reentrancy::in_scope(async {
-                reentrancy::holding(0xA_usize, dispatch(&b2, &bus2, "ws", "b.tool", "{}", None))
-                    .await
-            })
-            .await
-        });
-
-        // Give it ample scheduling time to reach (and register on) B's lock. If dispatch still
-        // took the old try_lock/fail-fast branch, it would have resolved (with an error) almost
-        // immediately — long before this window elapses.
-        tokio::time::sleep(Duration::from_millis(80)).await;
-        assert!(
-            !nested.is_finished(),
-            "a nested call to a DIFFERENT ext must wait for its lock, not fail fast"
-        );
-
-        release.notify_one();
-        let nested_result = nested.await.unwrap();
-        assert!(
-            nested_result.is_ok(),
-            "nested call must succeed once the lock frees, got {nested_result:?}"
-        );
-        holder.await.unwrap().unwrap();
-    }
-
-    /// The ORIGINAL protection, unchanged: a call chain re-entering the SAME instance an
-    /// ancestor already holds must still fail fast as "extension busy" — awaiting it would
-    /// deadlock (nothing else will ever release it).
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn nested_call_to_the_same_already_held_ext_fails_fast() {
-        let bus = Bus::peer().await.unwrap();
-        let target_a = Target::Local(hosted(Immediate));
-        let ptr_a = instance_ptr(&target_a);
-        let Target::Local(hosted_a) = &target_a else {
-            unreachable!()
-        };
-
-        // Actually hold the real lock (as an in-flight ancestor call would) AND mark it held on
-        // this task — both conditions dispatch() must see to take the fail-fast branch.
-        let _guard = hosted_a.instance.lock().await;
-        let result = reentrancy::in_scope(async {
-            reentrancy::holding(ptr_a, dispatch(&target_a, &bus, "ws", "a.tool", "{}", None)).await
-        })
-        .await;
-
-        assert!(
-            matches!(result, Err(ToolError::Extension(ref m)) if m.contains("extension busy")),
-            "self-re-entry into an already-held instance must fail fast, got {result:?}"
-        );
-    }
-}
+#[path = "dispatch_tests.rs"]
+mod tests;

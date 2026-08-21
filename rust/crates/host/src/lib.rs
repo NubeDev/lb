@@ -359,9 +359,9 @@ pub use panel::{
     PanelSpec, PanelSummary, PanelUsageRow, Visibility as PanelVisibility,
 };
 pub use report::{
-    call_report_tool, report_delete, report_export, report_get, report_list, report_save,
-    report_share, Block as ReportBlock, Report, ReportError, ReportSummary, ReportVisibility,
-    MAX_BLOCKS,
+    call_report_tool, report_delete, report_export, report_export_media, report_get, report_list,
+    report_save, report_share, Block as ReportBlock, Report, ReportError, ReportSummary,
+    ReportVisibility, MAX_BLOCKS, REPORT_ORIGIN,
 };
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching
@@ -475,7 +475,7 @@ pub use versions::{
     call_versions_tool, descriptors as versions_descriptors, VersionsError, DEFAULT_VERSION_CAP,
     ENTITY_VERSION_TABLE,
 };
-pub use viz::{call_viz_tool, viz_query, VizError};
+pub use viz::{call_viz_tool, viz_query, viz_query_batch_stream, BatchItem, VizError};
 /// The **webhook** service — a first-class inbound-HTTP surface, keyed and mediated (webhooks
 /// scope). A webhook is `API-key ⊕ ingest-producer ⊕ flow-source`, glued by the gateway route
 /// `POST /hooks/{ws}/{id}`. `bearer` mode reuses the apikey credential verbatim; `signature` mode

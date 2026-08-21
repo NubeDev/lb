@@ -1,6 +1,28 @@
 # Reports scope — the report builder + branded PDF exporter
 
-Status: scope (the ask). Promotes to `doc-site/content/public/reports/reports.md` once shipped.
+Status: shipped, plus one **later delta** — see the box below.
+
+> ### 2026-08-21 — `report.export` gained a SECOND DOOR (the MCP bridge)
+>
+> The export below is a gateway binary route: `POST /reports/{id}/export.pdf`, authenticating on
+> `Authorization: Bearer`. That is still the primary path for any caller that can set a header.
+>
+> It is not reachable from a module-federated **extension page**, which has no bearer token by
+> design — so `report.export` now also has a JSON MCP arm that trades **media ids, not bytes**:
+>
+> ```text
+> report.export { id, snapshotMediaId? }  ->  { pdfMediaId, bytes, mime }
+> ```
+>
+> Snapshots ride up through the shipped `media.upload_*` path and the PDF walks down through
+> `media.read`. Both doors call the SAME `report_export`, and a test asserts they compose
+> **byte-identical** PDFs. Shape, reasoning and measurements:
+> [`sessions/reports/report-export-bridge-session.md`](../../sessions/reports/report-export-bridge-session.md).
+> Asked for by ext-ros `docs/scope/reports/report-builder-scope.md` Track A (NubeIO/ext-ros#6).
+>
+> ⚠ **The composed PDFs are media records with no reaper.** They are tagged
+> `origin = "report.export"` so a future sweep is a query over one field, but no such sweep exists —
+> the media module has no job seam. Named as housekeeping in the session doc's Follow-ups.
 
 A **notebook-style report builder**: a workspace asset made of **ordered blocks** — markdown
 text, images, and **the workspace's existing dashboard widgets/panels** — authored in a

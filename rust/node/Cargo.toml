@@ -27,6 +27,8 @@ path = "src/main.rs"
 # Boot-time diagnostics for the config-selected mail transport (`mail.rs`): "email is being DROPPED"
 # has to be a real log line, not a comment.
 tracing.workspace = true
+# The at-rest master-key install at boot (secrets-at-rest) — builder.rs.
+lb-secrets.workspace = true
 lb-host.workspace = true
 # The series-retention plane, for `BootConfig::retention_seed` (`seed_retention.rs`). A real
 # dependency, not the dev-only one it used to be: provisioning a retention policy is now part of the

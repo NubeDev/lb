@@ -50,7 +50,7 @@ use crate::routes::{
     system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
     test_active_def, test_datasource, test_def, uninstall_extension, unshare_dashboard,
     unshare_nav, update_def, update_flow_node, update_series_samples_route, upload_body_limit,
-    upload_pack, upload_status, write_samples,
+    upload_pack, upload_status, viz_query_batch_stream, write_samples,
 };
 use crate::state::Gateway;
 
@@ -321,6 +321,9 @@ pub fn router(gw: Gateway) -> Router {
         .route("/extensions/{ext}/versions", get(list_extension_versions))
         .route("/extensions/{ext}/ui/{*path}", get(serve_ext_ui))
         .route("/mcp/call", post(mcp_call))
+        // The streamed batch (dashboard-query-acceleration slice 4): same session, same cap as the
+        // `viz.query_batch` verb, NDJSON body written per panel as each resolves.
+        .route("/viz/query_batch/stream", post(viz_query_batch_stream))
         // A pack as ONE `.zip` (pack-upload scope, U-pack-upload). Pure transport: it inflates the
         // archive and dispatches to the SAME `pack.validate`/`pack.apply` verbs `/mcp/call` reaches,
         // through the same chokepoint and the same caps wall. The body limit is DERIVED from the

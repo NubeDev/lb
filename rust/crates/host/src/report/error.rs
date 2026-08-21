@@ -23,4 +23,13 @@ pub enum ReportError {
     /// The durable store rejected the operation.
     #[error("store error: {0}")]
     Store(#[from] StoreError),
+    /// The media store failed while reading the snapshot bundle or storing the composed PDF.
+    ///
+    /// Its own variant rather than folding into [`Self::Store`] because the two are different
+    /// subsystems failing, and an operator reading "store error" while the report record is fine
+    /// looks in the wrong place. `Denied` / `NotFound` from media deliberately do NOT arrive here —
+    /// they are mapped onto the report's own opaque variants so the export verb cannot be used to
+    /// probe which media ids exist.
+    #[error("media error: {0}")]
+    Media(String),
 }

@@ -35,7 +35,11 @@ pub(super) const REPORT: &[HostTool] = &[
     HostTool {
         tool: "report.export",
         group: "report",
-        description: "export a report to branded PDF (gateway binary route; own cap)",
+        description: "export a report-kind dashboard to branded PDF. Over the JSON bridge it trades \
+                      MEDIA IDS, not bytes: { id, snapshotMediaId? } -> { pdfMediaId, bytes, mime }, \
+                      snapshots up via media.upload_*, PDF down via media.read. The binary route \
+                      POST /reports/{id}/export.pdf remains the path for callers that can set an \
+                      Authorization header. Own cap: mcp:report.export:call",
     },
     // brand.* — the reusable brand-profile asset (reports scope).
     HostTool {
