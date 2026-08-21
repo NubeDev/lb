@@ -183,6 +183,8 @@ fn targets_to_sources(obj: &Map<String, Value>) -> Vec<Target> {
                         tool: String::new(),
                         args: Value::Object(to),
                         hide: t.get("hide").and_then(Value::as_bool).unwrap_or(false),
+                        // Grafana has no conditional-target concept, so an import is unconditional.
+                        show_when: String::new(),
                     }
                 })
                 .collect()
