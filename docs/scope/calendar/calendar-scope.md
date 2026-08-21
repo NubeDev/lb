@@ -273,7 +273,7 @@ fakes (`rrule`/`icalendar` are in-process libraries, nothing to fake):
 - `scope/reminders/reminders-scope.md` + `scope/jobs/jobs-scope.md` (scheduling),
   `scope/inbox-outbox/outbox-scope.md` + `push-target-scope.md` (delivery).
 - `scope/extensions/extensions-scope.md`, `ui-federation-scope.md`,
-  `extension-watch-scope.md`; `rust/extensions/ros/` (data-heavy ext reference).
+  `extension-watch-scope.md`; `NubeIO/rust-ros` (the ros extension's own repo — data-heavy ext reference; it moved out of this tree).
 - Crates: [`rrule`](https://github.com/fmeringdal/rust-rrule) (expansion),
   [`icalendar`](https://github.com/hoodie/icalendar) (.ics codec); rejected:
   [`calico`](https://github.com/eikopf/calendar-crates) (pre-1.0, revisit for iTIP).

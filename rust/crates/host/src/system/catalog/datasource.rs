@@ -23,6 +23,11 @@ pub(super) const DATASOURCE: &[HostTool] = &[
         description: "register an external datasource (DSN sealed into lb-secrets)",
     },
     HostTool {
+        tool: "datasource.update",
+        group: "datasource",
+        description: "edit a registered datasource; an untouched credential is kept (dsn_set merge)",
+    },
+    HostTool {
         tool: "datasource.remove",
         group: "datasource",
         description: "remove a registered datasource",
