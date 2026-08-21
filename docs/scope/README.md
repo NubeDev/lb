@@ -667,7 +667,7 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   digesting, which is the opposite shape. Index: `insights/README.md`.
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
-  `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of
+  `control-engine`. Authoritative scope: `docs/ros-scope.md` in the `NubeIO/rust-ros` repo (the extension moved out of this tree). Manages a fleet of
   ROS (Rubix) REST
   appliances as caps-gated resources — CRUD over the `connection → network → device → point` tree
   (`ros|network|device|point.list|get|create|update|delete`), a **reusable poller**

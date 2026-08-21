@@ -61,7 +61,6 @@ members = [
     "crates/viz",
     "extensions/echo-sidecar",
     "extensions/fleet-monitor",
-    "extensions/ros",
     "node",
     "role/acp",
     "role/external-agent",
