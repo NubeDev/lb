@@ -284,6 +284,13 @@ pub struct ConnectDef {
     /// pre-fills from. Absent ⇒ the client falls back to the `list_tool` row it already has.
     #[serde(default)]
     pub get_tool: Option<String>,
+    /// An optional DEEP-LINK route template into this extension's own page for ONE connection
+    /// (editable-datasources scope) — e.g. `"{uuid}"` when the page's `ctx.route` grammar starts
+    /// with the connection uuid. The Datasources roster substitutes `{uuid}` and opens
+    /// `/ext/<id>/<resolved>`; absent ⇒ the roster opens the extension's page root, as before.
+    /// Presentation data, not a tool — no capability gates it.
+    #[serde(default)]
+    pub open_route: Option<String>,
 }
 
 /// One field of a `[[query]]` block's cascading chain (panel-datasource-query scope) — identical

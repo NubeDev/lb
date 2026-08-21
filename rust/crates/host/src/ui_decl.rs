@@ -51,6 +51,7 @@ pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option
         probe_tool: c.probe_tool.clone(),
         update_tool: c.update_tool.clone(),
         get_tool: c.get_tool.clone(),
+        open_route: c.open_route.clone(),
     })
 }
 

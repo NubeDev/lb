@@ -157,6 +157,8 @@ pub struct ExtConnect {
     pub update_tool: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub get_tool: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_route: Option<String>,
 }
 
 /// A persisted mirror of a manifest `[[query]]` field (panel-datasource-query scope). See
