@@ -495,17 +495,25 @@ async fn resolve_group(
     if children.is_empty() {
         return Ok(None);
     }
+    // A folder may carry its OWN destination (nav-folder-target): the site folder opens the site's
+    // overview while its children stay nested, the old product's "click the folder" behaviour. It
+    // rides the same readability gate as a `dashboard` item — a folder whose board the caller cannot
+    // read stays a plain container rather than a dead link. `vars` ride beside it as on any board link.
+    let (dashboard, vars) = match resolve_dashboard(node, principal, ws, item).await? {
+        Some(target) => (target.dashboard, target.vars),
+        None => (String::new(), BTreeMap::new()),
+    };
     Ok(Some(ResolvedItem {
         kind: "group".into(),
         label: label_or(&item.label, "Group"),
         icon: item.icon.clone(),
         icon_color: item.icon_color.clone(),
         surface: String::new(),
-        dashboard: String::new(),
+        dashboard,
         ext: String::new(),
         nav: String::new(),
         items: children,
-        vars: BTreeMap::new(),
+        vars,
         title_template: item.title_template.clone(),
     }))
 }

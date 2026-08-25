@@ -189,6 +189,14 @@ fn collect(item: &ResolvedItem, out: &mut Reached) {
             out.dashboards.insert(id.to_string());
         }
         "group" => {
+            // A folder's own destination (nav-folder-target) is reach like any board link.
+            if !item.dashboard.is_empty() {
+                let id = item
+                    .dashboard
+                    .strip_prefix("dashboard:")
+                    .unwrap_or(&item.dashboard);
+                out.dashboards.insert(id.to_string());
+            }
             for child in &item.items {
                 collect(child, out);
             }
