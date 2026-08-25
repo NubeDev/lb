@@ -602,6 +602,22 @@ pub struct Dashboard {
     /// serde; the UI reads it and clamps the board container.
     #[serde(default, deserialize_with = "null_default")]
     pub width: String,
+    /// How the board PACKS gaps (dashboard page-settings) — `"none"` (the default/empty: panels stay
+    /// exactly where the author put them), `"vertical"` (float them up), `"horizontal"` (float them
+    /// left) or `"both"` (float up and left until nothing moves; performed by the UI, which alternates
+    /// single-axis passes because its grid library has no two-axis mode). Follows `width`'s four layers exactly (model field, save schema + preserve-on-omit, tool
+    /// arg, gateway body field) and is opaque to the host beyond serde for the same reason: the host
+    /// stores no geometry opinion, the UI hands the value to its grid.
+    ///
+    /// Typed rather than left to ride along BECAUSE this struct drops unknown top-level keys — an
+    /// untyped `compact` round-trips to nothing on the first save, which is exactly what a UI-only
+    /// attempt at this setting produces: a control that appears to work and silently forgets.
+    ///
+    /// `"none"` is a real value, not an omission, because the save path preserves on omit — an author
+    /// turning compaction back OFF has to be able to say so. Empty (every pre-compact dashboard) reads
+    /// as `"none"`, so nothing needs migrating.
+    #[serde(default, deserialize_with = "null_default")]
+    pub compact: String,
     /// What this record IS — see [`super::kind`] for the vocabulary and why it is typed.
     #[serde(default, deserialize_with = "null_default")]
     pub kind: String,

@@ -171,6 +171,8 @@ async fn page_settings_round_trip_and_preserve() {
                 cached: false,
             }),
             width: Some("centered".into()), // page width — a centred column, not full-bleed
+            // Grid compaction (dashboard page-settings) — the board packs gaps upward.
+            compact: Some("vertical".into()),
             // How the variable controls present themselves (dashboard variable-display).
             vars_display: Some("bar".into()),
             // kind / reportIds — see dashboard_kind_test.rs
@@ -192,6 +194,9 @@ async fn page_settings_round_trip_and_preserve() {
     assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
     // Page width persists through save → get (dashboard page-settings).
     assert_eq!(got.width, "centered");
+    // Grid compaction persists too — the SAME failure mode as the client-only keys below: untyped, it
+    // was dropped on the first save and the UI's setting silently forgot itself.
+    assert_eq!(got.compact, "vertical");
     // The heading block + the variable presentation persist too. These were CLIENT-ONLY keys before
     // they were typed here — the struct drops unknown top-level keys, so every one of them was
     // silently discarded on the first save. This is the pin that they are stored now.
@@ -231,6 +236,10 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.cache_ttl_s, Some(120));
     // Page width is page chrome too — a plain layout save preserves it.
     assert_eq!(got.width, "centered");
+    // So is grid compaction. This is the one that matters most for it: a layout save is what the board
+    // fires on every drag, so a compaction setting that did NOT survive it would reset itself the
+    // moment the author moved a panel — the exact interaction the setting exists to serve.
+    assert_eq!(got.compact, "vertical");
     // …as are the heading block and the variable presentation.
     assert_eq!(got.heading, "Fleet Operations");
     assert_eq!(got.heading_size, "large");
@@ -270,6 +279,36 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.cache_ttl_s, Some(120));
     // `None` width on the meta save preserved the page width (preserve-on-omit).
     assert_eq!(got.width, "centered");
+    // `None` compact likewise — which is why "none" has to be a real VALUE the dialog can send, not an
+    // omission: omitting it means "keep", so absence could never turn compaction back off.
+    assert_eq!(got.compact, "vertical");
+
+    // The two-axis mode and the way back OFF, on the SAME record — the two ends of the field's range.
+    // `both` is the UI's own pack (this struct only stores the word), so the host's job is purely that
+    // it survives; `none` is the state a preserve-on-omit field could not otherwise reach.
+    for mode in ["both", "none"] {
+        dashboard_save_meta(
+            &store,
+            &test,
+            ws,
+            "ops",
+            "Ops v2",
+            PageMeta {
+                compact: Some(mode.into()),
+                ..PageMeta::default()
+            },
+            got.cells.clone(),
+            vec![],
+            30,
+        )
+        .await
+        .unwrap();
+        let back = dashboard_get(&store, &test, ws, "ops").await.unwrap();
+        assert_eq!(back.compact, mode);
+        // …and the neighbouring page settings are untouched by a compaction-only edit.
+        assert_eq!(back.width, "centered");
+        assert_eq!(back.vars_display, "bar");
+    }
 }
 
 /// Freshness is a TRI-STATE, and each state has to survive the store (dashboard-query-acceleration §C).

@@ -59,6 +59,7 @@ use base64::Engine as _;
 use super::authorize::authorize_report;
 use super::error::ReportError;
 use super::export::report_export;
+use super::rendered::RenderedPanel;
 use crate::{
     media_chunk_put, media_serve, media_upload_begin, media_upload_commit, MediaError, CHUNK_SIZE,
 };
@@ -156,7 +157,7 @@ async fn read_snapshots(
     principal: &Principal,
     ws: &str,
     media_id: &str,
-) -> Result<Vec<(String, Vec<u8>)>, ReportError> {
+) -> Result<Vec<RenderedPanel>, ReportError> {
     // `media_serve` is the shipped per-item gate (`store:media/{id}:read`) and it refuses anything
     // that is not `Ready` — so a bundle whose upload never committed cannot be composed from.
     let served = media_serve(store, principal, ws, media_id, None)
@@ -179,7 +180,14 @@ async fn read_snapshots(
                 s.cell_id
             ))
         })?;
-        out.push((s.cell_id, bytes));
+        // The bundle carries `{ cellId, png }` and no geometry, which is exactly the older wire
+        // shape `RenderedPanel` documents: a zero-area rect means "no rendered geometry", so each
+        // entry resolves its rect from the record — the shipped layout behaviour, unchanged.
+        out.push(RenderedPanel {
+            cell_id: s.cell_id,
+            png: bytes,
+            ..RenderedPanel::default()
+        });
     }
     Ok(out)
 }
