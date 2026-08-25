@@ -81,8 +81,10 @@ pub async fn mint_full_session_with_ttl(
         workspace.to_string(),
         claims.caps.clone(),
     );
+    // Admin-aware (`reach_caps_for`, nav-no-lockout completed): a workspace ADMIN's own tier-1 pick
+    // shapes their menu but never narrows their reach — a member's pick narrows exactly as before.
     let reach = match lb_host::nav_resolve(node, &reach_principal, workspace).await {
-        Ok(resolved) => lb_host::reach_caps(&resolved),
+        Ok(resolved) => lb_host::reach_caps_for(&reach_principal, workspace, &resolved),
         Err(_) => vec![lb_host::REACH_ALL.to_string()],
     };
     claims.caps.extend(reach);
