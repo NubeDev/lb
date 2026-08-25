@@ -69,7 +69,7 @@ pub use model::{
     MAX_TAG_GROUP, MAX_TITLE_TEMPLATE,
 };
 pub use pref::{nav_pref_get, nav_pref_set, nav_pref_set_force_builtin};
-pub use reach::{reach_caps, reach_check, REACH_ALL};
+pub use reach::{reach_caps, reach_caps_for, reach_check, REACH_ALL};
 pub use reach_record::{dashboard_reach_ok, reach_record_check, MAX_RECORD_REACH_CAPS};
 pub use resolve::nav_resolve;
 pub use save::nav_save;

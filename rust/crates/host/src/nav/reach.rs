@@ -25,6 +25,7 @@ use std::collections::BTreeSet;
 
 use lb_auth::Principal;
 
+use super::admin_lens::is_workspace_admin;
 use super::model::{ResolvedItem, ResolvedNav, ResolvedSource};
 use super::reach_record::{record_reach_caps, DASHBOARD_SURFACE};
 use crate::authz::holds_cap;
@@ -129,6 +130,23 @@ pub fn reach_caps(resolved: &ResolvedNav) -> Vec<String> {
     caps
 }
 
+/// [`reach_caps`], admin-aware — the reach fold the login mint calls (nav-no-lockout scope,
+/// completed). `pick_nav` already refuses to let a HANDED nav (team share / workspace default)
+/// narrow a workspace admin; this closes the remaining door: the admin's own tier-1 PICK. The
+/// 2026-08-05 incident argument applies unchanged — a preference you set on yourself must not be
+/// able to revoke your own access, and a pick cannot confine anyone (clearing it is one click), so
+/// narrowing an ADMIN on it bought no restriction and cost the console (observed live 2026-08-25:
+/// the seed admin picked a dashboards-only nav, and the next mint subtracted the entire admin
+/// console — including the nav editor that undoes the pick). Record reach was already exempt for
+/// picks (valve 2); surface reach for admins now follows. A MEMBER's pick still narrows exactly as
+/// shipped — viewer containment is untouched, because a member was never classified admin.
+pub fn reach_caps_for(principal: &Principal, ws: &str, resolved: &ResolvedNav) -> Vec<String> {
+    if resolved.source == ResolvedSource::Pick && is_workspace_admin(principal, ws) {
+        return vec![REACH_ALL.to_string()];
+    }
+    reach_caps(resolved)
+}
+
 /// **The reach gate** — may `principal` OPEN the core `surface` (page) in `ws`? True iff they hold
 /// `reach:<surface>:view` (or the fallback wildcard `reach:*:view`). Called at each core surface's
 /// ENTRY route, keyed on the surface (NOT the entry verb) so the two gate-cap-vs-entry-read mismatches
@@ -136,6 +154,7 @@ pub fn reach_caps(resolved: &ResolvedNav) -> Vec<String> {
 /// matter. `surface` is opaque data (rule 10). Every real human token is minted with at least
 /// `reach:*:view` (fallback) or the curated set; a token with NO `reach:` cap at all degrades OPEN (see
 /// below). Composes at the same `lb_caps::check` primitive every other cap rides — no new choke.
+
 pub fn reach_check(principal: &Principal, ws: &str, surface: &str) -> bool {
     if holds_cap(principal, ws, &format!("reach:{surface}:view")) {
         return true;
@@ -529,6 +548,48 @@ mod tests {
                 "reach:dashboards:view".to_string(),
                 "reach:telemetry:view".to_string(),
             ]
+        );
+    }
+
+    /// nav-no-lockout, completed: a workspace ADMIN's own tier-1 pick shapes their MENU but never
+    /// narrows their REACH — the next mint keeps the wildcard, so the admin console never vanishes
+    /// on a stale self-pick (the 2026-08-25 seed-admin lockout).
+    #[test]
+    fn admin_pick_keeps_wildcard_reach() {
+        let resolved = nav(ResolvedSource::Pick, vec![surface_item("dashboards")]);
+        let admin = lb_auth::Principal::routed(
+            "user:ada",
+            "nube",
+            crate::authz::workspace_admin_role_caps(),
+        );
+        assert_eq!(
+            reach_caps_for(&admin, "nube", &resolved),
+            vec![REACH_ALL.to_string()]
+        );
+    }
+
+    /// ...and a MEMBER's pick still narrows exactly as shipped — viewer containment untouched.
+    #[test]
+    fn member_pick_still_narrows() {
+        let resolved = nav(ResolvedSource::Pick, vec![surface_item("dashboards")]);
+        let member =
+            lb_auth::Principal::routed("user:bob", "nube", crate::authz::member_role_caps());
+        assert_eq!(
+            reach_caps_for(&member, "nube", &resolved),
+            vec!["reach:dashboards:view".to_string()]
+        );
+    }
+
+    /// A HANDED nav still narrows through `reach_caps_for` for a member — the admin-aware wrapper
+    /// only special-cases the (Pick, admin) pair; every other (source, subject) falls through.
+    #[test]
+    fn handed_nav_narrows_member_through_wrapper() {
+        let resolved = nav(ResolvedSource::Team, vec![surface_item("dashboards")]);
+        let member =
+            lb_auth::Principal::routed("user:bob", "nube", crate::authz::member_role_caps());
+        assert_eq!(
+            reach_caps_for(&member, "nube", &resolved),
+            vec!["reach:dashboards:view".to_string()]
         );
     }
 }
