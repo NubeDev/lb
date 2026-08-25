@@ -31,7 +31,7 @@ rust/crates/host/src/channel/agent_worker.rs 515
 rust/crates/host/src/channel/context_items.rs 402
 rust/crates/host/src/channel/payload.rs 565
 rust/crates/host/src/dashboard/access_check.rs 654
-rust/crates/host/src/dashboard/model.rs 1056
+rust/crates/host/src/dashboard/model.rs 1112
 rust/crates/host/src/dashboard/pin.rs 623
 rust/crates/host/src/dashboard/share_closure.rs 462
 rust/crates/host/src/flows/run_store.rs 1008
