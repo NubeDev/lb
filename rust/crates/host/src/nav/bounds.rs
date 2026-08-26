@@ -47,6 +47,16 @@ const KINDS: &[&str] = &[
 /// item names an unknown kind. Both checks run so a wide-but-shallow tree and a narrow-but-deep tree
 /// each fail on their own limit.
 pub fn check_items(items: &[NavItem]) -> Result<(), NavError> {
+    // At most ONE home across the whole tree (nav-home scope). A menu with two homes has no answer to
+    // "where does this person land", and the client would have to invent one — so the ambiguity is
+    // refused at the door rather than resolved by a tie-break nobody authored. Counted over every
+    // depth, because a marked entry nested in a group is just as much the home as a top-level one.
+    let homes = count_homes(items);
+    if homes > 1 {
+        return Err(NavError::BadInput(format!(
+            "nav marks {homes} items as home, at most 1 allowed"
+        )));
+    }
     let total = count(items);
     if total > MAX_ITEMS {
         return Err(NavError::BadInput(format!(
@@ -58,6 +68,15 @@ pub fn check_items(items: &[NavItem]) -> Result<(), NavError> {
         check_item(item, 1)?;
     }
     Ok(())
+}
+
+/// Home markers over EVERY depth (nav-home scope). Recurses through `group` children exactly as
+/// [`count`] does, so a home nested inside a folder is seen.
+fn count_homes(items: &[NavItem]) -> usize {
+    items
+        .iter()
+        .map(|i| usize::from(i.home) + count_homes(&i.items))
+        .sum()
 }
 
 /// Total node count over EVERY depth (groups counted as nodes too — nested-nav scope).

@@ -192,6 +192,24 @@ pub struct NavItem {
         skip_serializing_if = "Option::is_none"
     )]
     pub title_template: Option<String>,
+    /// The author's **home** marker (nav-home scope): the ONE entry a caller narrowed to this menu
+    /// lands on after login, instead of the client's positional guess.
+    ///
+    /// Landing already followed the menu, but by POSITION — whatever destination came first. That is
+    /// invisible in the record and moves the moment someone reorders the rail: a site dragged above
+    /// the portfolio silently becomes everyone's home. Saying it here makes it an authored fact the
+    /// order cannot disturb.
+    ///
+    /// Meaningful on any kind that HAS a destination (`surface` / `dashboard` / `ext`, and a `group`
+    /// carrying its own `dashboard`); carried opaquely on the rest. At most one per nav, enforced at
+    /// save. The client still falls back to its positional pick when a nav marks none, and when the
+    /// marked item was stripped from THAT caller's menu by their caps — a home nobody can reach is
+    /// not a lockout, it is simply absent (nav's degrade-open posture).
+    ///
+    /// Additive: serde-defaulted and skipped when false, so every record written before this field
+    /// reads as `false` and [`SCHEMA_VERSION`] is unchanged — the `title_template` precedent.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub home: bool,
 }
 
 /// A nav record. The persisted menu + sharing metadata (nav scope, "Data").
@@ -394,4 +412,11 @@ pub struct ResolvedItem {
         skip_serializing_if = "Option::is_none"
     )]
     pub title_template: Option<String>,
+    /// The authored [`NavItem::home`], relayed verbatim (nav-home scope) so the client can land on
+    /// the marked entry rather than guessing from position. Carried on the RESOLVED item because the
+    /// menu the client sees is cap-stripped and tag-expanded: a home the caller may not reach never
+    /// arrives, which is exactly the fallback signal the client needs. Serde-defaulted + skipped when
+    /// false, so an old client and a pre-field record read as today.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub home: bool,
 }
