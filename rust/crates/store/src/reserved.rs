@@ -52,6 +52,12 @@ pub const RESERVED_TABLES: &[&str] = &[
     "render_template",
     "report",
     "brand",
+    // -- mail sources (mail-source scope) --
+    // A forged `mail_source` row would aim a poller at an arbitrary host WITH the workspace's own
+    // sealed credentials; a forged `mail_import` row would make a real message permanently
+    // un-importable. Both are host-owned, and neither is reachable through generic `store.write`.
+    "mail_source",
+    "mail_import",
     // -- auth / identity (scope list + the authz-plane tables the scope missed) --
     "workspace",
     "user",

@@ -563,13 +563,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   outbox `Target`** — per-member `device` registrations (FCM/APNs/WebPush) + a generic opaque
   notification effect fanned out behind one `PushProvider` trait, token-gone auto-eviction, a prefs
   quiet-hours gate; the outbox already owns durability/retry, so this is a target, not a service).
-  Also holds `mail-source-scope.md` (**inbound email as a generic producer**, receive-only):
-  `mail.source.*` CRUD with credentials as a **secrets path** (never values), a durable poll job
-  per source (IMAP v1 behind one `MailFetch` trait; UID cursor, Message-ID ledger, resumable,
-  node-claimed) running as a narrow per-source api-key principal, normalizing each message to the
-  existing surfaces — raw `.eml` as media, body as a markdown doc, attachments through
-  `docs.extract` — plus an arrival bus event; routing/tagging policy stays caller-side (rules),
-  sender allowlist/quarantine ships v1. Sending stays the outbox's job — and
+  Also holds `mail-source-scope.md` (**inbound email as a generic producer**, receive-only) —
+  **SHIPPED (v1, 2026-08-26)**: `mail.source.*` CRUD with credentials as a **secrets path** (never
+  values), a poll reactor per source (IMAP behind one `MailFetch` trait), and each message
+  normalized to raw-message + attachment **assets**, decoded **series samples**, and an **inbox
+  item** whose new `meta` carries the lot. Two mechanisms, deliberately: a `(uidValidity, lastUid)`
+  cursor is the optimization, and a per-message **ledger** keyed on `Message-ID` is the correctness
+  guarantee — a mailbox renumbering, a crash before the cursor write, and a re-delivery at a new UID
+  all defeat a cursor and none defeat the ledger. The importer is a narrow `node:mail` principal
+  that provably cannot read the corpus it writes into; the sender allowlist ships v1
+  (reject-and-ledger, exact domain match). The attachment→samples half is
+  `../ingest/file-decode-scope.md`. Routing/tagging policy stays caller-side (rules). Sending stays the outbox's job — and
   `email-transport-scope.md` was that job's missing half and is now **SHIPPED (send half, 2026-07-30,
   issue #118)**: before it, the only non-test impl was `LoggingEmailProvider`, which logged every invite
   email and *acked* it. Built: a `lb-mail` crate over `mail-send`/`mail-builder`, an `SmtpEmailProvider`
@@ -582,6 +586,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   questions and the gaps still owed.
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
+  Holds `file-decode-scope.md` — **SHIPPED (v1, 2026-08-26)**: a **file** becomes samples
+  (`lb_ingest::decode`), over an **opaque** format id resolved through a registry, so a new format
+  is a new file in `decode/` and no caller changes (rule 10's shape, one layer down). `nem12` and
+  `csv-grid` ship. The load-bearing decision is `seq = ts_ms / 1000` — deriving the dedup key from
+  the *instant* rather than from file order, so a second file covering an overlapping period
+  converges instead of overwriting. First consumer: the mail source's attachments.
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
   emitting an ingest `Sample`, wrapped by a generic flow `webhook` source node; no provider nodes),
   and `series-observability-scope.md` — the **read-back half** of retention: `series.stats` (per-series

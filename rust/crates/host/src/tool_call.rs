@@ -128,6 +128,13 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     // agree. Without this the whole family fell through to extension resolution and answered
     // "no such tool" — the caps existed, the catalog listed it, but nothing could call it.
     "schedule.",
+    // mail-source scope: the `mail.source.*` roster + the grant-free `mail.formats` listing. A
+    // PREFIX, because the family is CRUD that will grow (a Gmail-API adapter adds config, not a
+    // dispatcher arm) and each verb re-checks its own cap inside `call_mail_tool`. Reserving
+    // `mail.` does NOT collide with an extension whose id is `mail` in the way `ext.`/`update.`
+    // would (rule 10's concern): the host owns the mailbox surface the same way it owns
+    // `ingest.`/`series.`, and an extension wanting mail verbs names its own id.
+    "mail.",
     // login-hardening scope: the admin credential-management verb (`identity.set_credential`) rides
     // the one MCP bridge like every other admin action, gated `mcp:identity.manage:call`. The other
     // `identity.*` verbs also have dedicated admin REST routes; reaching them here too is uniform.
@@ -801,6 +808,11 @@ pub(crate) async fn run_host_verb(
         crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("reminder.") {
         crate::call_reminder_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("mail.") {
+        // mail-source scope: the watched-mailbox roster. Every verb re-checks
+        // `mcp:mail.source.<verb>:call` inside, so the outer gate and the inner one agree; the
+        // wall-clock is stamped here (the service takes `now` injected, testing §3).
+        crate::call_mail_tool(&node.store, principal, ws, qualified_tool, &input, now_ts()).await?
     } else if qualified_tool == "undo"
         || qualified_tool == "redo"
         || qualified_tool.starts_with("history.")

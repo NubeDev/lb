@@ -18,5 +18,5 @@ mod resolve;
 
 pub use error::InboxError;
 pub use list::list_inbox;
-pub use record::record_inbox;
+pub use record::{record_inbox, record_inbox_with_meta};
 pub use resolve::resolve_inbox;

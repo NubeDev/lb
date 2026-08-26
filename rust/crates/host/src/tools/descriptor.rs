@@ -111,6 +111,10 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
     // `{kind, id, version_id}` — and so a bad `kind` is a typed argument error at the validator
     // rather than an empty list that reads as "this entity has no history". Gated by each verb's own
     // cap in the catalog (no `if`), exactly like every other host-native descriptor.
+    // The watched-mailbox roster (mail-source scope): register / list / check / poll. Each is named
+    // after its verb, so the admin-only `mcp:mail.source.*:call` gates decide visibility with no
+    // `if` here — a member simply never sees these commands.
+    out.extend(crate::mail_descriptors());
     out.extend(crate::versions_descriptors());
     out.extend(crate::host_tools::secret_descriptors());
     out

@@ -436,6 +436,19 @@ seed-demo-sqlite:
 seed-demo-energy:
 	bash docs/testing/inbox-outbox/seed-demo-energy.sh $(GW_URL) $(SEED_USER) $(WS)
 
+# THE INBOX/OUTBOX LOOP, end to end, on real sockets (mail-source scope): lb's OUTBOX emails the
+# sample NEM12 export to a mailbox, and lb's MAIL SOURCE polls it back over IMAP, decodes the
+# attachment into series samples, and shows the arrival in the lb inbox. A real SMTP+IMAP server
+# (GreenMail, in Docker) sits in the middle — no fakes on either side (rule 9). Needs a RUNNING node
+# whose OUTBOX transport points at GreenMail:
+#   LB_MAIL_KIND=smtp LB_MAIL_HOST=127.0.0.1 LB_MAIL_PORT=3025 LB_MAIL_TLS=none LB_MAIL_AUTH=none \
+#   LB_MAIL_FROM='Meter Data <data@example.com>' make cloud
+# The mail SOURCE half needs no boot config at all — it is a record. Idempotent; re-running proves
+# the convergence (a second copy of the same data adds no samples).
+.PHONY: mail-source-demo
+mail-source-demo: ## Prove the mail loop end to end: outbox → SMTP → IMAP → ingest → inbox.
+	bash docs/testing/inbox-outbox/mail-source-demo.sh $(GW_URL) $(SEED_EMAIL) $(SEED_PASSWORD)
+
 # Serve the BUILT shell so extension pages actually load. The `dev`/`ui` targets run the Vite DEV
 # server, where @originjs/vite-plugin-federation's host runtime is absent -- every federated remote
 # fails with `getUrl(...).then is not a function`. A federated remote needs a production build.

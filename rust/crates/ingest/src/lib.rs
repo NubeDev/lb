@@ -29,6 +29,7 @@ mod clock_sanity;
 mod commit;
 mod cursor;
 mod dead_letter_gc;
+mod decode;
 mod delete;
 mod direct;
 mod filter;
@@ -68,6 +69,10 @@ pub use clock_sanity::{
 pub use commit::{commit_batch, commit_batch_capped, commit_staged, CommitPass, Dequeue};
 pub use cursor::Cursor;
 pub use dead_letter_gc::{prune_dead_letters, DEAD_LETTER_KEEP_MS};
+pub use decode::{
+    decode, detect, DecodeError, DecodeInput, DecodeOptions, Decoded, FormatInfo, AUTO,
+    DEFAULT_MAX_DECODE_SAMPLES, FORMATS,
+};
 pub use delete::delete_series;
 pub use direct::{commit_direct, commit_direct_capped, DIRECT_COMMIT_BATCH};
 pub use filter::{
