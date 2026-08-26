@@ -19,8 +19,7 @@ use base64::Engine as _;
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     dashboard_save_meta, media_chunk_put, media_read, media_upload_begin, media_upload_commit,
-    report_export, report_export_media, Cell, PageMeta, ReportError,
-};
+    report_export, report_export_media, Cell, PageMeta, ReportError, RenderedPanel};
 use lb_store::Store;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -131,7 +130,7 @@ async fn the_bridge_and_the_route_compose_byte_identical_pdfs() {
         &p,
         ws,
         "energy",
-        vec![("p1".to_string(), png.clone())],
+        vec![RenderedPanel { cell_id: "p1".into(), png: png.clone(), ..RenderedPanel::default() }],
         1,
     )
     .await

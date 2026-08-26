@@ -885,6 +885,45 @@ async fn group_children_are_stripped_independently() {
     assert_eq!(grp.items.len(), 2, "both survive with the cap");
 }
 
+// --- nav-folder-target: a group may open a board of its own ---------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn group_carries_its_own_dashboard_when_readable_and_stays_a_container_otherwise() {
+    let ws = "ws-nav-folder-target";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let owner = principal("user:test", ws, &[SAVE, RESOLVE, GET, DASH_SAVE, DASH_GET]);
+    seed_dashboard(store, &owner, ws, "site-overview", "Site overview").await;
+
+    let mut folder = group_item("Site", vec![surface_item("Channels", "channels")]);
+    folder.dashboard = "dashboard:site-overview".into();
+    nav_save(store, &owner, ws, "site", "Site", vec![folder], 1)
+        .await
+        .unwrap();
+    nav_pref_set(store, &owner, ws, Some("site"), None, 2)
+        .await
+        .unwrap();
+
+    // The owner can read the board → the folder carries it as its own destination, children intact.
+    let r = nav_resolve(&node, &owner, ws).await.unwrap();
+    let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
+    assert_eq!(grp.dashboard, "dashboard:site-overview");
+    assert_eq!(grp.items.len(), 1, "children still nest under a folder with a target");
+
+    // A member without dashboard read caps still gets the folder (its children resolve), but as a
+    // plain container: no dead link to a board the caller cannot open.
+    let member = principal("user:member", ws, &[SAVE, RESOLVE]);
+    nav_pref_set(store, &member, ws, Some("site"), None, 3)
+        .await
+        .ok();
+    let r = nav_resolve(&node, &member, ws).await;
+    if let Ok(r) = r {
+        if let Some(grp) = r.items.iter().find(|i| i.kind == "group") {
+            assert_eq!(grp.dashboard, "", "unreadable board → plain container");
+        }
+    }
+}
+
 // --- share roster: list_shares + unshare (the add/remove team surface) --------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

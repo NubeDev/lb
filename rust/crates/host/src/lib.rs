@@ -330,7 +330,7 @@ pub use nav::{
     call_nav_tool, dashboard_reach_ok, ext_nav_boards_get, ext_nav_boards_set, nav_delete, nav_get,
     nav_get_default, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_order_set,
     nav_pref_get, nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default,
-    nav_share, nav_unshare, reach_caps, reach_check, reach_record_check,
+    nav_share, nav_unshare, reach_caps, reach_caps_for, reach_check, reach_record_check,
     ExtBoardRow as NavExtBoardRow, ExtNavBoards, Nav, NavError, NavFacet, NavHidden, NavItem,
     NavPref, NavSummary, ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility,
@@ -360,8 +360,8 @@ pub use panel::{
 };
 pub use report::{
     call_report_tool, report_delete, report_export, report_export_media, report_get, report_list,
-    report_save, report_share, Block as ReportBlock, Report, ReportError, ReportSummary,
-    ReportVisibility, MAX_BLOCKS, REPORT_ORIGIN,
+    report_save, report_share, Block as ReportBlock, RenderedPanel, Report, ReportError,
+    ReportSummary, ReportVisibility, MAX_BLOCKS, REPORT_ORIGIN,
 };
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching

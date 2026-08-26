@@ -21,19 +21,26 @@ use lb_store::Store;
 use super::authorize::authorize_report;
 use super::compose::compose_pages;
 use super::error::ReportError;
+use super::rendered::RenderedPanel;
 use crate::brand::{brand_get, Brand};
 use crate::dashboard::{dashboard_get, DashboardError};
 
-/// Export the report-kind dashboard `id` in `ws` as `principal` to branded PDF bytes. `snapshots` are
-/// the client's per-cell PNG captures, each `(cell.i, png_bytes)`; a cell with no capture is placed
-/// as an error tile rather than dropped. `now` is unused today (kept for signature symmetry / future
-/// cover-date). Returns `%PDF`-prefixed bytes.
+/// Export the report-kind dashboard `id` in `ws` as `principal` to branded PDF bytes.
+///
+/// `panels` is what the client actually RENDERED — one entry per panel on the page, each with the grid
+/// rect it was drawn at and the PNG it captured (empty when it could not be rasterised, in which case an
+/// error tile is placed in its rect rather than the panel being dropped). That list, not the stored
+/// cells, is the page: see [`super::compose`] for the four ways the two differ and what each looked like
+/// in the PDF. A client that sends no geometry falls back to the record, unchanged.
+///
+/// `now` is unused today (kept for signature symmetry / future cover-date). Returns `%PDF`-prefixed
+/// bytes.
 pub async fn report_export(
     store: &Store,
     principal: &Principal,
     ws: &str,
     id: &str,
-    snapshots: Vec<(String, Vec<u8>)>,
+    panels: Vec<RenderedPanel>,
     _now: u64,
 ) -> Result<Vec<u8>, ReportError> {
     // The export-specific gate (its own cap — view-without-export is a real posture). Checked FIRST,
@@ -72,7 +79,7 @@ pub async fn report_export(
         }
     }
 
-    let (pages, images) = compose_pages(&report.cells, &snapshots);
+    let (pages, images) = compose_pages(&report.cells, &panels);
     for (src, filename, bytes) in images {
         assembled.images.push(ImageAsset::new(src, filename, bytes));
     }

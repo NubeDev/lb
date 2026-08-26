@@ -58,6 +58,7 @@ pub fn save_descriptor() -> ToolDescriptor {
                     "to": { "type": "string" }
                 }, "x-lb": { "label": "Default time range", "description": "Optional default window as RELATIVE expressions, e.g. { from: 'last-7-days' } or { from: 'now-6h' } — a range token (today, yesterday, this-month, last-3-months) in 'from' with 'to' absent, or endpoint pair (now-4h, now-1d/d, ISO day/instant, epoch ms). Validated on save; omit to keep the existing one; { from: '', to: '' } clears" } },
                 "width": { "type": "string", "x-lb": { "label": "Page width", "description": "Optional page content width: 'wide' (full-bleed, default) or 'centered' (constrained centred column) (omit to keep the existing one)" } },
+                "compact": { "type": "string", "enum": ["none", "vertical", "horizontal", "both"], "x-lb": { "label": "Grid compaction", "description": "Optional grid packing: 'none' (default, panels stay where they are put), 'vertical' (panels float up into empty space), 'horizontal' (panels float left) or 'both' (panels float up and left until nothing moves) (omit to keep the existing one)" } },
                 "kind": { "type": "string", "enum": ["dashboard", "report"], "x-lb": { "label": "Kind", "description": "Optional record kind: 'dashboard' (default) or 'report' (a paper-shaped board report.export composes A4 pages from) (omit to keep the existing one)" } },
                 "reportIds": { "type": "array", "items": { "type": "string" }, "x-lb": { "label": "Bound reports", "description": "Optional report-kind dashboard ids this page's Generate-report control offers (omit to keep the existing ones)" } },
                 "toolbar": { "type": "object", "properties": {
@@ -103,6 +104,8 @@ pub struct PageMeta {
     /// the `reportIds` empty-array precedent (an author must be able to remove the default).
     pub time: Option<DashboardTime>,
     pub width: Option<String>,
+    /// Grid compaction — `"none"` (default) | `"vertical"` | `"horizontal"` | `"both"`. `None` preserves.
+    pub compact: Option<String>,
     pub vars_display: Option<String>,
     pub kind: Option<String>,
     pub report_ids: Option<Vec<String>>,
@@ -288,6 +291,7 @@ pub async fn dashboard_save_meta(
         // sets; `Some(None)` is the explicit clear.
         time: time.unwrap_or(prev.time),
         width: meta.width.unwrap_or(prev.width),
+        compact: meta.compact.unwrap_or(prev.compact),
         vars_display: meta.vars_display.unwrap_or(prev.vars_display),
         // Preserve-on-omit like every other page-settings field: a layout save (which sends no `kind`)
         // must never silently turn a report back into a dashboard.
