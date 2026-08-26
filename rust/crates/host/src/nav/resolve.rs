@@ -313,6 +313,7 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         items: Vec::new(),
         vars: BTreeMap::new(),
         title_template: item.title_template.clone(),
+        home: item.home,
     })
 }
 
@@ -347,6 +348,7 @@ async fn resolve_dashboard(
             // nav-context-builtins scope: the heading override rides through beside the binding,
             // verbatim — the client interpolates it, the host expands nothing.
             title_template: item.title_template.clone(),
+            home: item.home,
         })),
         // Denied / not-found → stripped (the caller can't read it). Any other is a real fault.
         // (`ManagedDenied` is a WRITE refusal — a read never produces it — but it IS a denial, so it
@@ -397,6 +399,7 @@ async fn resolve_ext(
             items: Vec::new(),
             vars: BTreeMap::new(),
             title_template: item.title_template.clone(),
+            home: item.home,
         })),
         None => Ok(None), // uninstalled → stripped silently.
     }
@@ -448,8 +451,10 @@ async fn resolve_tag_group(
                 vars: BTreeMap::new(),
                 // A tag-group expands to MANY distinct boards, each with its own stored heading —
                 // unlike a template-group's one-board-many-bindings fan-out, so the group's override
-                // does not descend onto a child that is a different record entirely.
+                // does not descend onto a child that is a different record entirely. Home is the same
+                // kind of fact: the AUTHOR marked one entry, not each board it fanned out into.
                 title_template: None,
+                home: false,
             });
         }
     }
@@ -466,6 +471,7 @@ async fn resolve_tag_group(
         items: children,
         vars: BTreeMap::new(),
         title_template: item.title_template.clone(),
+        home: item.home,
     }))
 }
 
@@ -515,6 +521,7 @@ async fn resolve_group(
         items: children,
         vars,
         title_template: item.title_template.clone(),
+        home: item.home,
     }))
 }
 
