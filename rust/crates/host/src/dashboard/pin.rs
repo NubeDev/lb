@@ -329,6 +329,7 @@ pub fn mint_cell_from_envelope(
                 tool,
                 args: Value::Null,
                 hide: true,
+                show_when: String::new(),
             }),
     );
 

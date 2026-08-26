@@ -99,6 +99,24 @@ pub struct Target {
     /// Skip this target's data (Grafana parity).
     #[serde(default, deserialize_with = "null_default")]
     pub hide: bool,
+    /// CONDITIONAL target (conditional-targets scope) — a `${var} == value` expression saying when
+    /// this target RUNS. Blank ⇒ always. The client evaluates it against the current variable scope
+    /// and resolves it to a plain `hide` before dispatch, so nothing below has to understand it; the
+    /// record has to carry the expression, which is why it is typed here rather than left to
+    /// `args`. It is what makes N alternative baselines on one panel — previous period, a chosen
+    /// site, the estate average, selected by one `comparison` variable — cost ONE query, not N.
+    ///
+    /// Untyped, this field was silently DROPPED on every `dashboard.save`: serde discards unknown
+    /// keys, so an authored report round-tripped through the host with its comparison gating erased
+    /// and every baseline drawing at once. Same failure as the query-options regression this module
+    /// already carries a pin for (`docs/debugging/dashboard/query-options-silently-dropped-on-save.md`).
+    #[serde(
+        default,
+        rename = "showWhen",
+        deserialize_with = "null_default",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub show_when: String,
 }
 
 /// Panel-level query options (viz grafana-parity-backend scope, P1) — the editor's "Query options"
@@ -451,6 +469,18 @@ pub struct Variable {
         deserialize_with = "null_default"
     )]
     pub allow_custom_value: bool,
+    /// CONDITIONAL variable (conditional-variables scope) — the same `${var} == value` grammar as
+    /// [`Target::show_when`], here saying when this variable's CONTROL is shown: a "compare site"
+    /// picker that appears only while `comparison` is `Site`. Blank ⇒ always shown. Client-evaluated;
+    /// the host stores the expression and never branches on it. Typed for the same reason the
+    /// target's twin is: unknown keys do not survive a save.
+    #[serde(
+        default,
+        rename = "showWhen",
+        deserialize_with = "null_default",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub show_when: String,
 }
 
 /// Toolbar-chrome visibility flags (dashboard toolbar-settings). Each names one optional header

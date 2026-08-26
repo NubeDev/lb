@@ -181,6 +181,13 @@ fn targets_to_sources(obj: &Map<String, Value>) -> Vec<Target> {
                             .cloned()
                             .unwrap_or_else(|| panel_ds.clone()),
                         tool: String::new(),
+                        // Grafana has no conditional target, but a board exported from OUR own UI
+                        // through this path does — read it when it is there rather than dropping it.
+                        show_when: to
+                            .get("showWhen")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
                         args: Value::Object(to),
                         hide: t.get("hide").and_then(Value::as_bool).unwrap_or(false),
                     }
