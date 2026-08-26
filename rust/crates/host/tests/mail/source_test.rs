@@ -5,8 +5,6 @@
 //! categories (capability deny with **nothing written**, workspace isolation across two mailboxes),
 //! plus `check` proving credentials while importing nothing, and re-registration keeping its cursor.
 
-mod mail;
-
 use lb_host::list_inbox;
 use lb_host::mail::{
     check_source, mail_source_list, mail_source_register, poll_source, read_source, save_source,
@@ -14,8 +12,8 @@ use lb_host::mail::{
 use lb_mail::MailboxCursor;
 use lb_store::Store;
 
-use mail::imap_server::{Script, StoredMessage, TestImapServer};
-use mail::{
+use crate::harness::imap_server::{Script, StoredMessage, TestImapServer};
+use crate::harness::{
     admin, fetcher_for, meter_email, nem12_source, principal, series_count, NEM12_FILENAME,
 };
 

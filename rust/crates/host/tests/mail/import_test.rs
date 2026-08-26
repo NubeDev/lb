@@ -9,19 +9,17 @@
 //! tests exercise is the actual outbound MIME shape arriving at the actual inbound parser, with a
 //! real meter file inside it. Nothing about the message is hand-shaped to be easy to parse.
 
-mod mail;
-
 use lb_host::list_inbox;
 use lb_host::mail::{already_imported, message_key, poll_source, read_source, save_source};
 use lb_mail::MailboxCursor;
 use lb_store::Store;
 
-use lb_host::mail::AttachmentPolicy;
-use mail::imap_server::{Script, StoredMessage, TestImapServer};
-use mail::{
+use crate::harness::imap_server::{Script, StoredMessage, TestImapServer};
+use crate::harness::{
     admin, fetcher_for, meter_email, nem12_source, pdf_email, series_count, series_tag,
     EXPECTED_SAMPLES, NEM12_FILENAME, REAL_NEM12,
 };
+use lb_host::mail::AttachmentPolicy;
 
 // ---------------------------------------------------------------------------------------------
 // The headline: an email with a meter file becomes series data and an inbox item.
