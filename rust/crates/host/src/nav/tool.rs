@@ -18,8 +18,8 @@ use serde_json::{json, Value};
 use super::ext_boards_model::ExtBoardRow;
 use super::model::{NavItem, Visibility};
 use super::{
-    ext_nav_boards_get, ext_nav_boards_set, nav_delete, nav_get, nav_hidden_get, nav_hidden_set,
-    nav_list, nav_list_shares, nav_order_set, nav_pref_get, nav_pref_set,
+    ext_nav_boards_get, ext_nav_boards_set, nav_delete, nav_get, nav_get_default, nav_hidden_get,
+    nav_hidden_set, nav_list, nav_list_shares, nav_order_set, nav_pref_get, nav_pref_set,
     nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
     NavError,
 };
@@ -123,6 +123,15 @@ pub async fn call_nav_tool(
             .await
             .map_err(to_tool)?;
             Ok(json!({ "ok": true }))
+        }
+        "nav.get_default" => {
+            // The READ half of the workspace-default pointer — member-level (it rides
+            // `mcp:nav.resolve:call`, see `tool_gate.rs`), so the same people the default shapes can
+            // ask which nav it names. `null` when no default is set.
+            let id = nav_get_default(&node.store, principal, ws)
+                .await
+                .map_err(to_tool)?;
+            Ok(json!({ "id": id }))
         }
         "nav.resolve" => {
             let resolved = nav_resolve(node, principal, ws).await.map_err(to_tool)?;

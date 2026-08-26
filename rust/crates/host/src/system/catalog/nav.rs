@@ -38,6 +38,11 @@ pub(super) const NAV: &[HostTool] = &[
         description: "set the workspace-default navigation menu",
     },
     HostTool {
+        tool: "nav.get_default",
+        group: "nav",
+        description: "read the workspace-default navigation menu pointer",
+    },
+    HostTool {
         tool: "nav.resolve",
         group: "nav",
         description: "resolve the caller's effective menu (picked, tag-expanded, cap-stripped)",

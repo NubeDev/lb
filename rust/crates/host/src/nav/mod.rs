@@ -18,6 +18,8 @@
 //!   - `nav.unshare` ([`nav_unshare`]) — revoke one S4 `share` edge (the inverse write).
 //!   - `nav.list_shares` ([`nav_list_shares`]) — enumerate the live team shares (the builder roster).
 //!   - `nav.set_default` ([`nav_set_default`]) — set the one workspace-default pointer (admin-ish).
+//!   - `nav.get_default` ([`nav_get_default`]) — read that same pointer (member-level, rides
+//!     `nav.resolve`) — so a UI can show WHICH nav is the default instead of echoing its own write.
 //!   - `nav.resolve` ([`nav_resolve`]) — THE composite read: pick + tag-expand + cap-strip (member).
 //!   - `nav.pref.get`/`nav.pref.set` ([`nav_pref_get`]/[`nav_pref_set`]) — the member-owned active pick.
 //!   - `nav.ext_boards.get`/`nav.ext_boards.set` ([`ext_nav_boards_get`]/[`ext_nav_boards_set`]) —
@@ -54,7 +56,7 @@ mod unshare;
 mod visibility;
 
 pub use bounds::BUILTIN_PICK;
-pub use default::nav_set_default;
+pub use default::{nav_get_default, nav_set_default};
 pub use delete::nav_delete;
 pub use error::NavError;
 pub use ext_boards::{ext_nav_boards_get, ext_nav_boards_set};
