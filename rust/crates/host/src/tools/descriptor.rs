@@ -228,6 +228,25 @@ pub(crate) fn federation_query_schema() -> Value {
                     }
                 },
                 "required": ["ttl_s"]
+            },
+            "resolution": {
+                "type": "object",
+                "description": "The render window the SQL time macros ($__timeFilter, $__timeGroup, \
+                                $__timeTable, …) expand against. viz.query derives and attaches this \
+                                for a dashboard panel; a caller dispatching federation.query DIRECTLY \
+                                (an authoring surface's Run) passes it explicitly, or a macro-bearing \
+                                statement fails with \"needs the render window\". Participates in the \
+                                result-cache key: two widths of one statement are two queries.",
+                "properties": {
+                    "from_ms": { "type": "number", "description": "Window start, epoch ms." },
+                    "to_ms": { "type": "number", "description": "Window end (exclusive), epoch ms." },
+                    "width_ms": {
+                        "type": "number",
+                        "description": "Bucket width in ms — what $__interval and $__timeTable's tier \
+                                        selection resolve to."
+                    }
+                },
+                "required": ["from_ms", "to_ms", "width_ms"]
             }
         },
         "required": ["source", "sql"]

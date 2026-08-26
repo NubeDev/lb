@@ -13,11 +13,11 @@
 use lb_assets::{record_install, ExtNavItem, ExtUi, Install};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    add_member, dashboard_save, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list,
-    nav_list_shares, nav_order_set, nav_pref_get, nav_pref_set, nav_pref_set_force_builtin,
-    nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare, tags_add, Cell, NavError,
-    NavFacet, NavItem, NavResolvedItem, NavResolvedSource, NavVisibility, Node,
-    NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN, NAV_MAX_ITEMS, NAV_MAX_ORDER, NAV_MAX_PINNED,
+    add_member, dashboard_save, nav_delete, nav_get, nav_get_default, nav_hidden_get,
+    nav_hidden_set, nav_list, nav_list_shares, nav_order_set, nav_pref_get, nav_pref_set,
+    nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
+    tags_add, Cell, NavError, NavFacet, NavItem, NavResolvedItem, NavResolvedSource, NavVisibility,
+    Node, NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN, NAV_MAX_ITEMS, NAV_MAX_ORDER, NAV_MAX_PINNED,
 };
 use lb_store::Store;
 use lb_tags::{Provenance, Source as TagSource, Tag};
@@ -312,6 +312,120 @@ async fn each_verb_is_denied_without_its_cap() {
             .unwrap_err(),
         NavError::Denied
     ));
+    // …and so does READING the workspace-default pointer — a caller with no nav grant at all learns
+    // nothing about which nav the workspace points at.
+    assert!(matches!(
+        nav_get_default(&store, &nobody, ws).await.unwrap_err(),
+        NavError::Denied
+    ));
+}
+
+// --- the workspace-default pointer: the READ half ------------------------------------------------
+
+/// The pointer round-trips: unset reads `None`, a set reads back the id, an empty `id` clears it —
+/// and it is workspace-walled. The regression this locks: the pointer used to be **write-only**, so
+/// a builder UI could only echo its own write in-session and lost the "Default" badge on reload
+/// (rubix-ai#165).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn workspace_default_pointer_reads_back_and_clears() {
+    let ws = "ws-nav-default-read";
+    let store = Store::memory().await.unwrap();
+    let admin = principal("user:admin", ws, ALL);
+
+    // Nothing set yet — the same absence the resolver falls through on.
+    assert_eq!(nav_get_default(&store, &admin, ws).await.unwrap(), None);
+
+    nav_save(&store, &admin, ws, "ops", "Ops", vec![], 1)
+        .await
+        .unwrap();
+    nav_set_default(&store, &admin, ws, "ops", 2).await.unwrap();
+    assert_eq!(
+        nav_get_default(&store, &admin, ws)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("ops"),
+        "the read names the nav the write pointed at — no session echo needed"
+    );
+
+    // LWW on the one pointer: the second write wins, the read follows it.
+    nav_save(&store, &admin, ws, "night", "Night", vec![], 3)
+        .await
+        .unwrap();
+    nav_set_default(&store, &admin, ws, "night", 4)
+        .await
+        .unwrap();
+    assert_eq!(
+        nav_get_default(&store, &admin, ws)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("night")
+    );
+
+    // An empty `id` clears it — and the read reports the clear, not the stale pointer.
+    nav_set_default(&store, &admin, ws, "", 5).await.unwrap();
+    assert_eq!(nav_get_default(&store, &admin, ws).await.unwrap(), None);
+}
+
+/// The read is MEMBER-level (rides `mcp:nav.resolve:call`) while the write stays admin-ish
+/// (`mcp:nav.save:call`) — the asymmetry is the point: the default shapes every member's menu, so
+/// every member may ask which nav it names, and none of them may set it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn default_pointer_read_is_member_level_write_is_not() {
+    let ws = "ws-nav-default-tiers";
+    let store = Store::memory().await.unwrap();
+    let admin = principal("user:admin", ws, ALL);
+    nav_save(&store, &admin, ws, "ops", "Ops", vec![], 1)
+        .await
+        .unwrap();
+    nav_set_default(&store, &admin, ws, "ops", 2).await.unwrap();
+
+    // A plain member: the resolve grant only.
+    let member = principal("user:bob", ws, &[RESOLVE]);
+    assert_eq!(
+        nav_get_default(&store, &member, ws)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("ops"),
+        "a member reads the pointer that already shapes their own menu"
+    );
+    assert!(
+        matches!(
+            nav_set_default(&store, &member, ws, "other", 3)
+                .await
+                .unwrap_err(),
+            NavError::Denied
+        ),
+        "…but setting it still needs the authoring cap"
+    );
+}
+
+/// Two workspaces, one pointer each — a ws-B caller never reads ws-A's default (§7, the hard wall).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn default_pointer_is_workspace_walled() {
+    let store = Store::memory().await.unwrap();
+    let a = principal("user:test", "ws-a", ALL);
+    let b = principal("user:ben", "ws-b", ALL);
+
+    nav_save(&store, &a, "ws-a", "ops", "Ops A", vec![], 1)
+        .await
+        .unwrap();
+    nav_set_default(&store, &a, "ws-a", "ops", 2).await.unwrap();
+
+    assert_eq!(
+        nav_get_default(&store, &a, "ws-a")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("ops")
+    );
+    assert_eq!(
+        nav_get_default(&store, &b, "ws-b").await.unwrap(),
+        None,
+        "ws-B has its own (unset) pointer — ws-A's default is structurally invisible"
+    );
 }
 
 // --- mandatory: workspace isolation -------------------------------------------------------------
@@ -769,6 +883,49 @@ async fn group_children_are_stripped_independently() {
     let r = nav_resolve(&node, &ada2, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 2, "both survive with the cap");
+}
+
+// --- nav-folder-target: a group may open a board of its own ---------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn group_carries_its_own_dashboard_when_readable_and_stays_a_container_otherwise() {
+    let ws = "ws-nav-folder-target";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let owner = principal("user:test", ws, &[SAVE, RESOLVE, GET, DASH_SAVE, DASH_GET]);
+    seed_dashboard(store, &owner, ws, "site-overview", "Site overview").await;
+
+    let mut folder = group_item("Site", vec![surface_item("Channels", "channels")]);
+    folder.dashboard = "dashboard:site-overview".into();
+    nav_save(store, &owner, ws, "site", "Site", vec![folder], 1)
+        .await
+        .unwrap();
+    nav_pref_set(store, &owner, ws, Some("site"), None, 2)
+        .await
+        .unwrap();
+
+    // The owner can read the board → the folder carries it as its own destination, children intact.
+    let r = nav_resolve(&node, &owner, ws).await.unwrap();
+    let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
+    assert_eq!(grp.dashboard, "dashboard:site-overview");
+    assert_eq!(
+        grp.items.len(),
+        1,
+        "children still nest under a folder with a target"
+    );
+
+    // A member without dashboard read caps still gets the folder (its children resolve), but as a
+    // plain container: no dead link to a board the caller cannot open.
+    let member = principal("user:member", ws, &[SAVE, RESOLVE]);
+    nav_pref_set(store, &member, ws, Some("site"), None, 3)
+        .await
+        .ok();
+    let r = nav_resolve(&node, &member, ws).await;
+    if let Ok(r) = r {
+        if let Some(grp) = r.items.iter().find(|i| i.kind == "group") {
+            assert_eq!(grp.dashboard, "", "unreadable board → plain container");
+        }
+    }
 }
 
 // --- share roster: list_shares + unshare (the add/remove team surface) --------------------------

@@ -72,6 +72,7 @@ the item normalized to `{kind:"surface", surface:"channels", label:"Chat"}`.
 ```bash
 # workspace default → resolve reflects it
 curl -s -X POST $BASE/nav/default -H "$A" -H "$C" -d '{"id":"e2e-nav"}' -w "%{http_code}\n"   # 204
+curl -s $BASE/nav/default -H "$A"    # {"id":"e2e-nav"} — the READ half; {"id":null} when unset
 curl -s $BASE/nav/resolve -H "$A"    # source:"workspace-default", items cap-stripped
 # per-user pick (keyed to the token sub — can't curate another user's pick)
 curl -s -X POST $BASE/nav/pref -H "$A" -H "$C" -d '{"id":"e2e-nav"}'   # {"active":"e2e-nav",...}
@@ -89,15 +90,28 @@ kind:"surface", surface:"channels", label:"Chat"}]}`. The resolve output is **ca
 curl -s -X POST $BASE/navs -H "$C" -d '{"id":"x","title":"x","items":[]}' -o /dev/null -w "%{http_code}\n"  # NO token → 401
 ```
 
-**Access**: a `globex` token's `/navs` and `/nav/resolve` never surface `nube`'s nav — the
-default pointer and the pref are both workspace-keyed.
+**Access**: a `globex` token's `/navs`, `/nav/resolve` and `/nav/default` never surface `nube`'s nav
+— the default pointer and the pref are both workspace-keyed.
+
+> **`GET /nav/default` is the read half, and it is member-level.** Until 2026-08-18 the pointer was
+> write-only: `POST` persisted, nothing could ask what it holds. A builder could only badge the row it
+> had just written *in that browser session*, and — because admins skip tiers 2/3
+> (`scope/nav/nav-no-lockout-scope.md`) — setting a default changes nothing on the setting admin's own
+> rail either, so a correct write read as a failed one from both directions (rubix-ai#165). The route
+> is gated `mcp:nav.resolve:call`, NOT the authoring cap: the pointer is already the third tier of the
+> caller's own resolve. Asserted over the real gateway in
+> [`nav_default_route_test.rs`](../../../rust/role/gateway/tests/nav_default_route_test.rs) (round
+> trip + clear, member-reads/member-cannot-write, workspace wall) and headless in
+> [`nav_test.rs`](../../../rust/crates/host/tests/nav_test.rs).
 
 ### Read-only (viewer) — nav EDITING is capability-gated, resolving is not
 
 Editing the nav is **not** a member right. Authoring rides the admin-ish write caps —
 `mcp:nav.save:call` (create/update = `POST /navs`, and it *also* gates the workspace-default
 pointer `POST /nav/default` — see [`nav.rs`](../../../rust/role/gateway/src/routes/nav.rs)
-`set_default_nav`, "Gated `nav.save` (admin-ish)"), `mcp:nav.delete:call` (`DELETE /navs/{id}`),
+`set_default_nav`, "Gated `nav.save` (admin-ish)"; the matching `GET /nav/default` is member-level,
+gated `mcp:nav.resolve:call`, so a viewer may READ which nav is the default even though they cannot
+set one), `mcp:nav.delete:call` (`DELETE /navs/{id}`),
 and `mcp:nav.share:call`. A **viewer** (read-only) holds only the reads — `mcp:nav.resolve:call`
 (member-level,
 the lens `NavRail` renders) and `nav.list`/`nav.get`. A viewer can **read** their menu but

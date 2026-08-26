@@ -69,6 +69,27 @@ password (`mcp:secret.set:call` clears the MCP gate; `lb_secrets::set` re-checks
 "shipped but unusable" family `tool_gate.rs` already catalogues — one at the schema chokepoint, one
 at the inner resource gate. Reproduce the whole loop with **`make mail-source-demo`**.
 
+**Just shipped 2026-08-18 — THE WORKSPACE-DEFAULT NAV IS READABLE
+([`nav/nav-builder-scope.md`](scope/nav/nav-builder-scope.md), session
+[`nav/nav-get-default`](sessions/nav/nav-get-default-session.md), downstream
+[`NubeIO/rubix-ai#165`](https://github.com/NubeIO/rubix-ai/issues/165) and
+[`#144`](https://github.com/NubeIO/rubix-ai/issues/144)).** `nav.set_default` shipped **write-only**:
+the pointer persisted, and nothing could ever ask what it holds. Downstream that read as a broken
+feature from both directions at once — a builder's "Default" badge could only echo its own write in
+the current browser session (gone on reload, invisible to a second admin), and setting a default
+changes nothing on the *setting admin's own* rail, because admins deliberately skip resolve tiers 2/3
+(`scope/nav/nav-no-lockout-scope.md`). A correct, persisted write was indistinguishable from a failed
+one. Added: **`nav.get_default` / `GET /nav/default`** → `{"id": "ops"}` (or `{"id": null}` — "no
+default" is an answer, not a 404), wired store → `call_nav_tool` → gateway, catalog row + `tool_gate`
+alias included. The gate is **asymmetric on purpose**: the write stays admin-ish
+(`mcp:nav.save:call`), the read is member-level (`mcp:nav.resolve:call`), because the pointer is
+already the third tier of the caller's own resolve — gating the read on the authoring cap would hide
+the default from exactly the people it shapes. One route, two downstream consumers (the durable badge;
+the no-lockout restore naming the nav to put back). **Tests:** `crates/host/tests/nav_test.rs` 49
+green (3 new: read-back/clear, member-reads-admin-writes, workspace wall — plus a `get_default` arm on
+the deny-per-verb test) and the new
+`role/gateway/tests/nav_default_route_test.rs` 3 green over the real gateway + SurrealDB.
+
 **Just shipped 2026-08-14 (unreleased — needs the next `node-v*` tag) — SCHEDULED RULES ACTUALLY FIRE
 NOW ([`rules/scheduled-rules-scope.md`](scope/rules/scheduled-rules-scope.md), issue
 [#167](https://github.com/NubeDev/lb/issues/167), debug entry

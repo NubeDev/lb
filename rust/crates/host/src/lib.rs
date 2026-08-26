@@ -329,9 +329,9 @@ pub use native::{
 };
 pub use nav::{
     call_nav_tool, dashboard_reach_ok, ext_nav_boards_get, ext_nav_boards_set, nav_delete, nav_get,
-    nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_order_set, nav_pref_get,
-    nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default, nav_share,
-    nav_unshare, reach_caps, reach_caps_for, reach_check, reach_record_check,
+    nav_get_default, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_order_set,
+    nav_pref_get, nav_pref_set, nav_pref_set_force_builtin, nav_resolve, nav_save, nav_set_default,
+    nav_share, nav_unshare, reach_caps, reach_caps_for, reach_check, reach_record_check,
     ExtBoardRow as NavExtBoardRow, ExtNavBoards, Nav, NavError, NavFacet, NavHidden, NavItem,
     NavPref, NavSummary, ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility,
