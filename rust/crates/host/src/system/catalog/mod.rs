@@ -30,6 +30,7 @@ mod host;
 mod identity;
 mod insight;
 mod layout;
+mod mail;
 mod media;
 mod nav;
 mod notify;
@@ -83,6 +84,7 @@ const FAMILIES: &[&[HostTool]] = &[
     identity::IDENTITY,
     insight::INSIGHT,
     layout::LAYOUT,
+    mail::MAIL,
     media::MEDIA,
     nav::NAV,
     notify::NOTIFY,

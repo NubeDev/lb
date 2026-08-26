@@ -279,6 +279,15 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 mail-send = { version = "0.6", default-features = false, features = ["ring", "tls12"] }
 mail-builder = "0.4"
 mail-parser = "0.11"
+# The RECEIVE half (mail-source scope): an IMAP client, the one protocol a plain mailbox always
+# speaks. `runtime-tokio` because the poll job runs on the node's tokio runtime — the async-std
+# default would drag a second executor into the tree for one crate. TLS is NOT async-imap's: it takes
+# any `AsyncRead + AsyncWrite`, so the socket is opened by `tokio-rustls` with the SAME `ring`
+# provider + `webpki-roots` trust anchors the rest of the workspace already compiles in (no system
+# OpenSSL, no second crypto backend, no CA bundle to ship).
+async-imap = { version = "0.11", default-features = false, features = ["runtime-tokio"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+webpki-roots = "1"
 
 # Operator CLI (`lb`) tooling (operator-cli scope, Risk "New external deps"). These are CLI ergonomics
 # — argument parsing + table rendering + the config-dir locator — NOT persistence/auth/bus libraries,

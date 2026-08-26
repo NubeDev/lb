@@ -908,7 +908,11 @@ async fn group_carries_its_own_dashboard_when_readable_and_stays_a_container_oth
     let r = nav_resolve(&node, &owner, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.dashboard, "dashboard:site-overview");
-    assert_eq!(grp.items.len(), 1, "children still nest under a folder with a target");
+    assert_eq!(
+        grp.items.len(),
+        1,
+        "children still nest under a folder with a target"
+    );
 
     // A member without dashboard read caps still gets the folder (its children resolve), but as a
     // plain container: no dead link to a board the caller cannot open.

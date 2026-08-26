@@ -1,6 +1,12 @@
 # Inbox/outbox scope — mail source (inbound email as a generic producer)
 
-Status: scope (the ask). Promotes to `public/inbox-outbox/` once shipped.
+Status: **SHIPPED (v1) 2026-08-26** — branch `feat/mail-source-ingest`, unreleased (needs the next
+`node-v*` tag). Session:
+[`sessions/inbox-outbox/mail-source-session.md`](../../sessions/inbox-outbox/mail-source-session.md).
+Public: `doc-site/content/public/inbox-outbox/mail-source.md`. Operator runbook:
+[`skills/mail-source/SKILL.md`](../../skills/mail-source/SKILL.md).
+**Read the "Shipped (v1)" section at the bottom before building on this** — it records what landed,
+the answered open questions, and the gaps that are still owed.
 
 > Read with: `inbox-outbox-scope.md` (the normalized-item posture this extends to an
 > external source), `../files/media-scope.md` (attachments + raw-message storage),
@@ -178,3 +184,128 @@ validating with `check`, reading import results, pausing/re-running, the allowli
   pipeline imported mail flows into (mail → doc → vector → search, zero product code).
 - `../secrets/`, `../auth-caps/api-keys-scope.md`, `../jobs/jobs-scope.md`.
 - README §3 rule 10, §6.5/§6.6, §6.10, §6.12.
+
+
+---
+
+## Shipped (v1) — 2026-08-26
+
+What landed, in the order it matters:
+
+- **`lb-mail`'s `fetch/` half** (`rust/crates/mail/src/fetch/`) over `async-imap` (feature
+  `runtime-tokio`) on a `tokio-rustls` socket, with `mail-parser` promoted from a dev-dependency to
+  a normal one — parsing a fetched message is production behaviour, not test scaffolding.
+  `MailFetch` is the one contract; `ImapFetch` is the v1 impl; `MailboxCursor` carries
+  `(uidValidity, lastUid)` together because a UID is only unique within its generation.
+- **A file-decoder registry in `lb-ingest`** (`decode/`): `decode(format_id, input, options)` over an
+  **opaque** format id resolved through `FORMATS`. Two formats shipped — `nem12` (the AEMO interval
+  format the ask arrived in) and `csv-grid` (a timestamp column, one series per remaining column) —
+  plus `detect()`, which reads the bytes before the extension. This is the "new service for
+  converting an email attachment to an ingest" the ask named, built as a seam rather than a feature:
+  a new format is a new file in that folder, not a change to any caller.
+- **The `crates/host/src/mail/` service**: `mail.source.register / list / get / update / delete /
+  pause / check / poll` + `mail.formats`, admin-tier, plus `spawn_mail_reactors` — the driver,
+  shipped *with* the mechanism this time.
+- **`lb_inbox::Item` gained `meta: Option<Value>`**, answering this scope's sibling open question
+  (see below). All 77 existing `Item::new` call sites are unchanged.
+- **`secret:mail/*:write`** added to the `workspace-admin` bundle, because an admin who may register
+  a mailbox must be able to seal its password
+  ([debug entry](../../debugging/inbox-outbox/mail-source-admin-cannot-seal-its-own-credential.md)).
+
+### Decisions worth stating
+
+**1. `seq` is derived from the sample's timestamp (`ts_ms / 1000`), never from file order.** The
+obvious choice — 0, 1, 2 in file order — is wrong in a way that only appears in production: a
+*second* file covering an overlapping period (a corrected re-issue, a monthly export repeating the
+last week) would reuse `seq 0..N` for *different* instants and silently overwrite real data. Deriving
+from the instant makes re-imports exact upserts and overlapping files converge. Verified live: the
+same 21,120-sample export emailed twice produced two inbox items (two genuine messages) and left
+`raw_count: 5280` on the channel under test — exactly one file's worth.
+
+**2. The ledger, not the cursor, is the correctness guarantee.** The cursor is an optimization, and
+three ordinary things defeat it: a UIDVALIDITY bump, a crash before the cursor write, and a provider
+re-delivering at a new UID. All three are caught by a per-source ledger keyed on the `Message-ID`
+(hashed; a content digest when absent) — which is also why the cursor may be reset freely.
+
+**3. A rejected sender is ledgered, and stores nothing else.** The scope asked whether to reject at
+fetch or quarantine for audit. Neither, exactly: nothing of the message is stored (no asset, no item,
+no series — a mailbox is spam-reachable and storage is the workspace's), but the *decision* is a
+ledger row carrying from/subject/uid. That is the audit trail without the storage cost, and it is
+what stops a later widening of the allowlist backfilling a surprise.
+
+**4. The importer principal is NOT the flow reactor's.** `node:mail` holds exactly
+`{assets.put_asset + store:asset/*:write, inbox.record, ingest.write}`. Reusing
+`flows::reactor_caps()` would have been one line and would have handed an untrusted external ingress
+`store:*:read`/`write` and `store.query`. The property under test is what is missing from the bundle.
+
+**5. Order is the containment strategy.** Raw message → asset FIRST; ledger row LAST, on every
+outcome. A crash mid-import re-imports, harmlessly, because every id is derived from the message key.
+The opposite order (ledger first) would mark a message imported that is not.
+
+**6. STARTTLS on IMAP 143 is refused, not half-built.** Hosted IMAP is implicit TLS on 993, and
+`async-imap` offers no safe seam to re-wrap its buffered stream mid-session. A refusal naming the
+working mode beats an untested upgrade whose failure mode is a mailbox password on a cleartext socket.
+
+### Open questions, answered
+
+1. **IMAP crate + TLS posture** → `async-imap` with `runtime-tokio` (no second executor), TLS by
+   `tokio-rustls` with the workspace's existing `ring` provider and `webpki-roots` — no system CA
+   bundle, no second crypto backend.
+2. **Body→markdown converter** → **neither, for now.** The body is best-effort text (plain, else
+   HTML) and rides on the inbox item as a preview; the raw message asset is the fidelity escape
+   hatch. Mail arrived here **document-shaped in the scope's telling and data-shaped in practice** —
+   the first real consumer wanted the *attachment*, not the prose. A markdown doc per message is a
+   cheap addition on top of the stored raw asset when a consumer asks for one.
+3. **Sender allowlist semantics** → reject-and-ledger (decision 3 above). Empty admits everyone,
+   stated plainly.
+4. **Does the arrival event carry the doc id only, or a summary?** → a summary. There is no separate
+   bus event in v1; the **inbox item is the arrival notification**, and its `meta` carries subject,
+   from, asset ids, series, and per-attachment decode results. The scope rejected "mail → inbox items
+   only" because a chat-shaped item loses the attachments — correct, and the answer was not to skip
+   the item but to give `Item` a `meta`. A ws-scoped bus event remains a small addition for a live UI.
+5. **Cadence bounds** → `pollSeconds` ≥ 15, enforced at registration *and* at tick time (a record
+   written before the floor existed cannot bypass it). Per-source storage quotas are not built;
+   bounded work is (`MAIL_BATCH` messages/pass, `MAX_ATTACHMENTS`/message, `INGEST_CHUNK`
+   samples/write, `DecodeOptions::max_samples`/file).
+6. **One-poller node claim** → **still open.** Convention, not a lease. Two nodes polling one source
+   both import; the ledger makes it idempotent, so the failure is wasted work rather than duplicate
+   data. A lease field on the source record is the likely answer.
+
+### Deltas from the scope as written
+
+- **Docs/media, not docs-then-media.** The scope's normalization was "(1) raw → media, (2) body →
+  markdown doc, (3) attachments → media + `docs.extract`". What shipped is (1) raw → **asset**,
+  (2) attachments → **assets**, (3) attachments → **samples**, (4) the item. `lb_assets`' asset
+  surface is the byte store this needed; `docs.extract` is not wired in, because the first consumer's
+  attachment was a data file, not a document. Calling `docs.extract` on a stored attachment is a
+  small, additive step and the asset is already there for it.
+- **No dedicated api-key principal per source.** The scope wanted each poll job to run as a minted
+  api-key principal. It runs as a per-workspace system principal (`node:mail`) with the same
+  *narrowness*, which is the property that mattered; a per-source key would add a revocable kill
+  switch per source, which `mail.source.pause` already provides.
+
+### Regression tests to keep green
+
+`lb-mail`: `imap_fetch_test` (10, against a real IMAP server on a real socket), 34 unit.
+`lb-ingest`: `decode_test` (13, against the real 163 KB four-channel NEM12 export), 19 unit.
+`lb-host`: `mail_import_test` (11 — the full import, cap-deny with no record written, workspace
+isolation across two mailboxes, re-read/re-delivery dedup, the allowlist, a file no decoder handles,
+`check` importing nothing, re-register keeping its cursor), 18 unit.
+
+Five security/behaviour-critical tests were **revert-checked** (each fails against deliberately
+broken code): the capability gate, the import ledger, the `UID n:*` cursor filter, the
+re-register cursor preservation, and the sender allowlist.
+
+### Gaps still owed (stated, not hidden)
+
+- **No real-TLS IMAP test.** The in-test server is plaintext; implicit TLS is covered by construction
+  and error mapping. The same gap the send half still carries.
+- **XOAUTH2 is built and unit-tested but not driven against a live Google/Microsoft tenant.** The
+  SASL frame is asserted from what a real server received; the refresh exchange has its own tests.
+  The consent ceremony is documented in the skill doc; the browser flow is not automated.
+- **The one-poller-per-source claim** (open question 6).
+- **Nothing prunes the `mail_import` ledger.** One small row per message, for ever — the same
+  retention question `inbox-outbox-scope.md` already has open for channel history and delivered
+  effects.
+- **No bus event on arrival** (open question 4) — a live UI polls `inbox.list` today.
+- **`docs.extract` is not called** on stored attachments (see the deltas above).

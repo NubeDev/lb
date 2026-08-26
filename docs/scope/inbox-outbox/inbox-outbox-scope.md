@@ -79,10 +79,28 @@ separate tables keep each verb single-responsibility and let the relay scan only
 vision §5 "inbox item resolution" finding shipped as a **`Resolution` sibling record** (`lb_inbox`),
 NOT a new `Item` column — the `Item` shape stayed stable.
 
+## What the mail source leaned on (2026-08-26)
+
+Inbound email is the **second normalized source** (`mail-source-scope.md`, shipped): an arriving
+message is recorded as an ordinary `Item` on a configured channel, authored `node:mail`, ordered by
+the message's own `Date` (falling back to arrival time — the header is the sender's clock and
+untrusted). It settled the `meta` open question below, and it is the first consumer of the item's
+idempotency contract from *outside* the platform: the item id is derived from the message's
+`Message-ID`, so a re-delivered or re-read message upserts one row rather than filling a channel.
+
 ## Open questions
 
-- Item `meta`: do richer payloads ride in a `meta: Value` field on `Item`, or in a typed
-  per-source extension record the item references? (Defer until a second source exists.)
+- ~~Item `meta`: do richer payloads ride in a `meta: Value` field on `Item`, or in a typed
+  per-source extension record the item references?~~ — **DECIDED 2026-08-26**, when the second
+  source arrived (`mail-source-scope.md`): a **`meta: Option<Value>` field on `Item`**. The
+  alternative would make the *reader* — one inbox view rendering items from every source — join
+  against a table whose name it has to know, which is exactly the per-source knowledge the
+  normalized `Item` exists to abolish. The rule that keeps it from becoming a dumping ground:
+  **nothing in the inbox ever reads inside it** — no ordering, no filtering, no gating, no dedup
+  key; it rides through `record` and out of `list` untouched. `Option` +
+  `skip_serializing_if` left all 77 existing `Item::new` call sites byte-for-byte unchanged, and
+  `record_inbox_with_meta` is a second entry point rather than a widened signature (the MCP bridge
+  and the flow/rule paths do not thread a `Value::Null` through to serve one caller).
 - ~~Outbox storage: a dedicated `outbox` table vs reusing the job queue~~ — **DECIDED at S6:** a
   dedicated `outbox` table (separate lifecycle from jobs). See `outbox-scope.md`.
 - Retention/compaction of channel history *and* delivered outbox rows (both grow forever today).

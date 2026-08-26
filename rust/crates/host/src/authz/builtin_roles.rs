@@ -645,6 +645,20 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:grants.assign:call",
     "mcp:grants.list:call",
     "mcp:identity.manage:call",
+    // mail sources (mail-source scope). ADMIN, and the reasoning is the point: registering a
+    // mailbox opens an **external ingress** into the workspace — anyone who can email the address
+    // can put documents and series data in front of the workspace's agents — and it spends storage
+    // and network on a schedule. The sender allowlist is the containment; who gets to set it is
+    // this tier. `check`/`poll` are separate caps beside `register` because each SPENDS an external
+    // connection on demand (the same reasoning that made `federation.profile_refresh` its own cap
+    // next to a free read), and `poll` additionally ADVANCES the cursor — it really imports.
+    // `mail.source.update` / `get` / `mail.formats` ride these through `tool_gate`'s alias table.
+    "mcp:mail.source.register:call",
+    "mcp:mail.source.list:call",
+    "mcp:mail.source.delete:call",
+    "mcp:mail.source.pause:call",
+    "mcp:mail.source.check:call",
+    "mcp:mail.source.poll:call",
     // packs (packs scope): APPLYING a pack writes through every object family at once — a
     // datasource, saved rules that then RUN, dashboards, channels, and the workspace-shared agent
     // context. That is the admin authority, so the surface cap is admin-only. It is a gate, not a
@@ -759,6 +773,13 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:agent.def.test:call",
     "mcp:secret.set:call",
     "secret:agent/*:write",
+    // mail-source scope: the mailbox credential. `mcp:secret.set:call` alone is not enough —
+    // `lb_secrets::set` re-checks the PER-PATH `secret:<path>:write`, and the `secret:*:write`
+    // wildcard is single-segment, so it does not span `mail/…` (the same trap `store:media/{id}`
+    // records above). Found on a live node: an admin holding every `mcp:mail.source.*:call` could
+    // register a mailbox and then could not seal the password it needs — a shipped-but-unusable
+    // feature, one layer sideways from the ones `tool_gate`'s alias table exists to prevent.
+    "secret:mail/*:write",
     // schema-designer: applying DDL to an external DB is the destructive authority — admin-only
     // (open-question lean #1: member saves the design, admin migrates). The dry_run default keeps
     // a plan-only call safe, but the cap gates the apply step regardless.

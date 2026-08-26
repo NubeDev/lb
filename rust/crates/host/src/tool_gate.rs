@@ -194,6 +194,21 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // role bundle — without this arm the verb answers `denied` for every caller, admins
         // included, exactly the shipped-but-unusable shape the media/retention arms above record.
         "nav.save"
+    } else if qualified_tool == "mail.source.update" {
+        // mail-source scope: `register` upserts, so `update` IS `register` — one write, one cap.
+        // No `mcp:mail.source.update:call` exists in any role bundle, so without this arm the verb
+        // would answer `denied` for every caller including admins: the shipped-but-unusable shape
+        // the media/retention arms above record.
+        "mail.source.register"
+    } else if qualified_tool == "mail.source.get" {
+        // Reading ONE source is the same read privilege as listing them; `list` is the cap that
+        // exists in the admin bundle.
+        "mail.source.list"
+    } else if qualified_tool == "mail.formats" {
+        // The decoder registry is a static property of this BINARY — no workspace data, no external
+        // call, nothing tenant-specific. It rides the roster read so a UI that can see the mailbox
+        // form can populate its format picker, rather than minting a cap for a constant list.
+        "mail.source.list"
     } else if qualified_tool == "grants.revoke" {
         // authz-verbs-mcp-dispatch scope: assign/revoke MUTATE the same grant surface and share the
         // ONE cap `mcp:grants.assign:call` — the verb's inner gate (`authz/grants.rs`) checks that

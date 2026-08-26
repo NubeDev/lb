@@ -9,9 +9,10 @@
 //! socket, so the whole crate is exercisable against a **real SMTP server** on its own (see
 //! `tests/`), which is the only way to prove TLS/auth/MIME rather than asserting a recorder.
 //!
-//! Folder split (FILE-LAYOUT, folder-of-verbs): [`send`] is the submission half. The **receive** half
-//! lands as a sibling `fetch/` when `mail-source-scope.md` builds (IMAP poll → `mail-parser` →
-//! normalized message), sharing this crate's address/MIME vocabulary so RFC 5322 lives in one place.
+//! Folder split (FILE-LAYOUT, folder-of-verbs): [`send`] is the submission half and [`fetch`] is the
+//! receive half (IMAP poll → `mail-parser` → normalized message), sharing this crate's address/MIME
+//! vocabulary so RFC 5322 lives in one place. Neither half knows the other exists; they share a
+//! crate because they share a *grammar*, not a code path.
 //!
 //! Credentials are **values passed in at send time**, never held: a [`MailCredentials`] is built by
 //! the caller from a `secrets/` read and dropped when the send returns. This crate never reads a
@@ -20,9 +21,14 @@
 //! a credential disclosure.
 
 pub mod error;
+pub mod fetch;
 pub mod send;
 
 pub use error::{redact, MailError, MailResult};
+pub use fetch::{
+    parse_message, FetchBatch, FetchedMessage, ImapEndpoint, ImapFetch, MailAddress,
+    MailAttachment, MailFetch, MailboxCursor, ParsedMail, DEFAULT_FETCH_LIMIT,
+};
 pub use send::{
     access_token, send_smtp, AuthMechanism, MailCredentials, MailMessage, SmtpEndpoint, TlsMode,
     TokenCache,

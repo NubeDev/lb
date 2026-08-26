@@ -30,6 +30,45 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-08-26 (unreleased — needs the next `node-v*` tag) — EMAIL COMES *IN* NOW: A
+WATCHED MAILBOX BECOMES ASSETS, SERIES AND INBOX ITEMS
+([`inbox-outbox/mail-source-scope.md`](scope/inbox-outbox/mail-source-scope.md),
+[`ingest/file-decode-scope.md`](scope/ingest/file-decode-scope.md), session
+[`inbox-outbox/mail-source-session.md`](sessions/inbox-outbox/mail-source-session.md)).** The
+platform could send mail with attachments and could not receive any: `mail-source-scope.md` was a
+scope with no code, and `lb-mail` had a `send/` folder plus a comment promising a `fetch/` sibling.
+Three things landed together. **(1)** `lb-mail`'s receive half — a `MailFetch` trait over
+`async-imap` on a `tokio-rustls` socket, shaped entirely around the fact that **`UID FETCH n:*`
+always matches something**: a poller that trusted the range would re-import the newest message on
+every idle tick, for ever, so every returned UID is filtered against the cursor in code (and the
+test fails the instant that filter goes). The mailbox is never mutated (`EXAMINE` *and*
+`BODY.PEEK[]`). **(2)** A **file-decoder registry** in `lb-ingest` (`decode/`) over an *opaque*
+format id — the "attachment → ingest" service, built as a seam, so a new format is a new file in
+that folder and no caller changes. `nem12` + `csv-grid` shipped. The load-bearing decision is
+`seq = ts_ms / 1000`: file-order numbering is correct for re-importing the *same* file and silently
+destructive for a **second** file covering an overlapping period, which would reuse `seq 0..N` for
+different instants and overwrite real data. **(3)** The `mail.source.*` service + the reactor —
+shipped *with* the driver this time, unlike the ingest drain / retention GC / reminders / flow cron
+before it. Order is the containment: raw message → asset FIRST, ledger row LAST, every id derived
+from the message key, so a crash mid-import re-imports harmlessly. The importer runs as a
+deliberately narrow `node:mail` principal (write an asset, record an item, write samples — and
+provably **cannot read the corpus it writes into**); reusing `flows::reactor_caps()` would have been
+one line and would have handed an untrusted external ingress `store:*:read`. `lb_inbox::Item`
+finally gained `meta` (the inbox-outbox scope's deferred open question, unblocked by mail being the
+second source) — all 77 `Item::new` call sites unchanged. **Driven live end to end**: lb's own
+outbox emailed the real 163 KB four-channel NEM12 export through a real SMTP server, lb's own mail
+source polled it back over real IMAP, and it landed as 21,120 samples across 4 series plus an inbox
+item — then the same file re-emailed left `raw_count` unchanged, proving the `seq` decision on live
+data, and a bucketed read came back as a textbook solar curve peaking at midday, which is how the
+NEM+10 offset and the period-ENDING convention got validated in a way no unit test can. Also
+verified against **real AWS SES**. **The two bugs the green suite could not see are the lesson**:
+the verb disagreed with its own palette descriptor (`validate_args` runs in `call_tool_at_depth`,
+which no test crosses), and a workspace admin could register a mailbox and then could not seal its
+password (`mcp:secret.set:call` clears the MCP gate; `lb_secrets::set` re-checks a per-path
+`secret:<path>:write`, and the single-segment wildcard does not span `mail/…`). Both are the
+"shipped but unusable" family `tool_gate.rs` already catalogues — one at the schema chokepoint, one
+at the inner resource gate. Reproduce the whole loop with **`make mail-source-demo`**.
+
 **Just shipped 2026-08-18 — THE WORKSPACE-DEFAULT NAV IS READABLE
 ([`nav/nav-builder-scope.md`](scope/nav/nav-builder-scope.md), session
 [`nav/nav-get-default`](sessions/nav/nav-get-default-session.md), downstream

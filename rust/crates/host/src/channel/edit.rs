@@ -55,6 +55,10 @@ pub async fn edit(
         author: stored.author,
         body: body.to_string(),
         ts,
+        // An edit changes the words, never the source-specific payload the item was recorded with
+        // (`lb_inbox::Item::meta`) — carried through so editing a mail-sourced item does not erase
+        // its attachments/provenance.
+        meta: stored.meta,
     };
 
     // STATE: durable first.

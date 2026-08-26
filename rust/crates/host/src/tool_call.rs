@@ -128,6 +128,8 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     // agree. Without this the whole family fell through to extension resolution and answered
     // "no such tool" — the caps existed, the catalog listed it, but nothing could call it.
     "schedule.",
+    // mail-source scope: the watched-mailbox roster; each verb re-checks its own cap inside.
+    "mail.",
     // login-hardening scope: the admin credential-management verb (`identity.set_credential`) rides
     // the one MCP bridge like every other admin action, gated `mcp:identity.manage:call`. The other
     // `identity.*` verbs also have dedicated admin REST routes; reaching them here too is uniform.
@@ -801,6 +803,9 @@ pub(crate) async fn run_host_verb(
         crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("reminder.") {
         crate::call_reminder_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("mail.") {
+        crate::mail::call_mail_tool(&node.store, principal, ws, qualified_tool, &input, now_ts())
+            .await? // `now` injected (determinism §3)
     } else if qualified_tool == "undo"
         || qualified_tool == "redo"
         || qualified_tool.starts_with("history.")

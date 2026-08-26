@@ -43,6 +43,7 @@ mod installed;
 mod invites;
 mod layout;
 mod load;
+pub mod mail; // inbound email as a generic producer — see `mail/mod.rs`
 mod media;
 mod members;
 mod membership;
@@ -271,7 +272,7 @@ pub use identity_credential::{
 };
 // The email-fold (trim + lower-case) used at the login front door — re-exported so the gateway can
 // key its rate limiter + email lookup on the SAME canonical form the store index uses.
-pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
+pub use inbox::{list_inbox, record_inbox, record_inbox_with_meta, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, drain_workspace_bounded, effective_width,
     ingest_write, ingest_write_reporting, own_batches, publish_sample, series_delete, series_find,
