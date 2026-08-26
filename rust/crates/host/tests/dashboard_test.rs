@@ -872,6 +872,7 @@ fn v3_timeseries_cell() -> Cell {
             tool: "store.query".into(),
             args: json!({ "sql": "SELECT value FROM reading" }),
             hide: false,
+            show_when: String::new(),
         }],
         transformations: vec![json!({ "id": "reduce", "options": { "reducers": ["last"] } })],
         field_config: json!({
