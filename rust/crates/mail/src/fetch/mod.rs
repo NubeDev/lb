@@ -17,6 +17,7 @@ mod cursor;
 mod imap;
 mod message;
 mod parse;
+mod socket;
 
 pub use cursor::MailboxCursor;
 pub use imap::{ImapEndpoint, ImapFetch};

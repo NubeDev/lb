@@ -114,7 +114,7 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
     // The watched-mailbox roster (mail-source scope): register / list / check / poll. Each is named
     // after its verb, so the admin-only `mcp:mail.source.*:call` gates decide visibility with no
     // `if` here — a member simply never sees these commands.
-    out.extend(crate::mail_descriptors());
+    out.extend(crate::mail::mail_descriptors());
     out.extend(crate::versions_descriptors());
     out.extend(crate::host_tools::secret_descriptors());
     out

@@ -43,7 +43,7 @@ mod installed;
 mod invites;
 mod layout;
 mod load;
-mod mail;
+pub mod mail; // inbound email as a generic producer — see `mail/mod.rs`
 mod media;
 mod members;
 mod membership;
@@ -312,24 +312,6 @@ pub use lb_authz::fold_email;
 pub use lb_authz::{Invite, InviteStatus};
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
-/// The **mail source** service — inbound email as a generic producer (mail-source scope). One
-/// watched mailbox becomes assets + inbox items + series data, through the same capability-gated
-/// verbs any other producer uses. See `mail/mod.rs` for the pipeline.
-pub use mail::{
-    already_imported, attachment_asset_id, authorize_mail_source, build_fetcher, call_mail_tool,
-    check_source, delete_source, http_client as mail_http_client, import_message,
-    ingest_attachment, item_id as mail_item_id, ledger_id, list_sources, mail_descriptors,
-    mail_import_caps, mail_import_principal, mail_source_check, mail_source_delete,
-    mail_source_get, mail_source_list, mail_source_pause, mail_source_register, message_key,
-    poll_source, provenance_labels, raw_asset_id, read_source, record_import, save_source,
-    spawn_mail_reactors, token_cache as mail_token_cache, AttachmentPolicy, CheckResult,
-    ImportOutcome, ImportRecord, ImportStatus, IngestOutcome, MailSource, MailSourceError,
-    MessagePeek, OauthConfig, PollPass, DEFAULT_CHANNEL as MAIL_DEFAULT_CHANNEL,
-    DEFAULT_POLL_SECONDS as MAIL_DEFAULT_POLL_SECONDS, INGEST_CHUNK as MAIL_INGEST_CHUNK,
-    MAIL_BATCH, MAIL_IMPORT_SUB, MAIL_IMPORT_TABLE, MAIL_SOURCE_TABLE, MAIL_TICK,
-    MAX_ATTACHMENTS as MAIL_MAX_ATTACHMENTS, MIN_POLL_SECONDS as MAIL_MIN_POLL_SECONDS,
-    POLL_TIMEOUT as MAIL_POLL_TIMEOUT,
-};
 pub use media::{
     call_media_tool, chunk_write, media_chunk_put, media_chunk_write, media_delete, media_get,
     media_list, media_read, media_serve, media_upload_begin, media_upload_commit, plan_serve,

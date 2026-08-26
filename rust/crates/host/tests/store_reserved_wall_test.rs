@@ -218,8 +218,8 @@ fn every_known_host_table_const_is_reserved() {
         lb_host::WEBHOOK_TABLE,
         lb_host::CHUNK_TABLE,
         // mail sources (mail-source scope).
-        lb_host::MAIL_SOURCE_TABLE,
-        lb_host::MAIL_IMPORT_TABLE,
+        lb_host::mail::MAIL_SOURCE_TABLE,
+        lb_host::mail::MAIL_IMPORT_TABLE,
     ];
     for t in consts {
         assert!(

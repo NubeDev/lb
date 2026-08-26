@@ -146,7 +146,11 @@ pub async fn spawn(
     // above, and the reason the reactor is part of the slice rather than a follow-up. The tick is
     // the RESOLUTION, not the cadence: each source is polled when `now - lastPollTs >=
     // pollSeconds`, so a workspace with no sources costs one small scan every `MAIL_TICK`.
-    lb_host::spawn_mail_reactors(node.clone(), vec![ws.to_string()], lb_host::MAIL_TICK);
+    lb_host::mail::spawn_mail_reactors(
+        node.clone(),
+        vec![ws.to_string()],
+        lb_host::mail::MAIL_TICK,
+    );
 
     // INSIGHT DIGEST REACTOR TICK: digest the anti-spam ladder — one message per (sub, window), decay
     // quiet keys, post under each sub's stored principal. 30s cadence (windows are hours/days).

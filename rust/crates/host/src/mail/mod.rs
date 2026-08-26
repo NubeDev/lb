@@ -29,6 +29,7 @@
 //!
 //! One responsibility per file (FILE-LAYOUT §3):
 //!   - `source` — the [`MailSource`] record + validation + the sender allowlist.
+//!   - `attachments` — [`AttachmentPolicy`]: what a source does with the files inside a message.
 //!   - `store` — its durable read/write verbs (raw; run after the gate).
 //!   - `authorize` — the `mcp:mail.source.<verb>:call` gate.
 //!   - `register` / `list` / `remove` — the gated CRUD verbs.
@@ -43,6 +44,7 @@
 //!   - `tool` / `descriptor` — the MCP bridge and the palette entries.
 
 mod attachment_ingest;
+mod attachments;
 mod authorize;
 mod check;
 mod descriptor;
@@ -61,6 +63,7 @@ mod store;
 mod tool;
 
 pub use attachment_ingest::{ingest_attachment, provenance_labels, IngestOutcome, INGEST_CHUNK};
+pub use attachments::AttachmentPolicy;
 pub use authorize::authorize_mail_source;
 pub use check::{check_source, mail_source_check, CheckResult, MessagePeek};
 pub use descriptor::mail_descriptors;
@@ -80,8 +83,8 @@ pub use reactor::{spawn_mail_reactors, MAIL_BATCH, MAIL_TICK};
 pub use register::mail_source_register;
 pub use remove::{mail_source_delete, mail_source_pause};
 pub use source::{
-    AttachmentPolicy, MailSource, OauthConfig, DEFAULT_CHANNEL, DEFAULT_POLL_SECONDS,
-    MAIL_SOURCE_TABLE, MIN_POLL_SECONDS,
+    MailSource, OauthConfig, DEFAULT_CHANNEL, DEFAULT_POLL_SECONDS, MAIL_SOURCE_TABLE,
+    MIN_POLL_SECONDS,
 };
 pub use store::{delete_source, list_sources, read_source, save_source};
 pub use tool::call_mail_tool;
