@@ -1,7 +1,9 @@
-//! The dashboard record + cell types (dashboard scope, "Data"). A dashboard is an **asset**: a
-//! workspace-namespaced `dashboard:{id}` record holding the grid layout (`cells[]`), the owner, and
-//! the S4 visibility tier. Sharing to a *team* is a `share` EDGE (reused from `lb_assets`), not a
-//! field — so the existing three-gate read check applies unchanged (dashboard scope, "How it fits").
+//! The dashboard RECORD (dashboard scope, "Data") — the page and everything about it except the
+//! cells themselves, which live in [`super::cell`] and [`super::binding`] and are re-exported below.
+//! A dashboard is an **asset**: a workspace-namespaced `dashboard:{id}` record holding the grid
+//! layout (`cells[]`), the owner, and the S4 visibility tier. Sharing to a *team* is a `share` EDGE
+//! (reused from `lb_assets`), not a field — so the existing three-gate read check applies unchanged
+//! (dashboard scope, "How it fits").
 //!
 //! `cells` is a typed nested object (queryable, no app-side JSON parsing) — the storage discipline
 //! the ingest scope established. The binding is the forever-contract Phase 2 moves behind the bridge
