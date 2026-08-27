@@ -70,9 +70,15 @@ async fn conditional_targets_and_variables_survive_save_get() {
     .await
     .expect("save");
 
-    let got = call_dashboard_tool(&store, &test, ws, "dashboard.get", &json!({ "id": "report" }))
-        .await
-        .expect("get");
+    let got = call_dashboard_tool(
+        &store,
+        &test,
+        ws,
+        "dashboard.get",
+        &json!({ "id": "report" }),
+    )
+    .await
+    .expect("get");
 
     let sources = got["cells"][0]["sources"].as_array().expect("sources");
     assert_eq!(sources.len(), 3);
@@ -106,9 +112,15 @@ async fn an_ungated_target_carries_no_show_when_key() {
     .await
     .expect("save");
 
-    let got = call_dashboard_tool(&store, &test, ws, "dashboard.get", &json!({ "id": "plain" }))
-        .await
-        .expect("get");
+    let got = call_dashboard_tool(
+        &store,
+        &test,
+        ws,
+        "dashboard.get",
+        &json!({ "id": "plain" }),
+    )
+    .await
+    .expect("get");
 
     assert!(got["cells"][0]["sources"][0].get("showWhen").is_none());
     assert!(got["variables"][0].get("showWhen").is_none());
