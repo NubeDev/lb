@@ -108,6 +108,10 @@ pub struct SaveDashboard {
     /// EMPTY array is an explicit clear.
     #[serde(default, rename = "reportIds")]
     pub report_ids: Option<Vec<String>>,
+    /// Named `report.export` option sets the export dialog offers. Additive & OPTIONAL,
+    /// preserve-on-omit; an EMPTY array is an explicit clear (how the last profile is deleted).
+    #[serde(default, rename = "exportProfiles")]
+    pub export_profiles: Option<Vec<lb_host::ExportProfile>>,
     #[serde(default)]
     pub cells: Vec<Cell>,
     /// Variable definitions (widget-config-vars Slice 2) — additive; a pre-variables client omits it.
@@ -187,6 +191,12 @@ pub async fn save_dashboard(
     }
     if let Some(v) = &body.report_ids {
         args.insert("reportIds".into(), json!(v));
+    }
+    if let Some(v) = &body.export_profiles {
+        args.insert(
+            "exportProfiles".into(),
+            serde_json::to_value(v).unwrap_or(json!([])),
+        );
     }
     if let Some(v) = &body.toolbar {
         args.insert(

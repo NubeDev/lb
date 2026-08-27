@@ -13,6 +13,7 @@ use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::{json, Value};
 
+use crate::report::ExportProfile;
 use lb_authz::Subject;
 
 use super::model::{Cell, DashboardTime, Toolbar, Visibility};
@@ -76,6 +77,7 @@ pub async fn call_dashboard_tool(
                     vars_display: opt_str_arg(input, "varsDisplay"),
                     kind: opt_str_arg(input, "kind"),
                     report_ids: opt_str_vec_arg(input, "reportIds"),
+                    export_profiles: opt_profiles_arg(input),
                 },
                 cells,
                 variables,
@@ -264,6 +266,22 @@ fn opt_str_vec_arg(input: &Value, key: &str) -> Option<Vec<String>> {
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect()
     })
+}
+
+/// The OPTIONAL `exportProfiles` arg (report-pagination-and-export-options scope): `Some` when
+/// present and an array, `None` when absent — the preserve-the-stored-list signal, exactly like
+/// `opt_str_vec_arg`. A present `[]` is `Some(vec![])`, the explicit clear. A malformed entry is
+/// DROPPED rather than failing the save: the host stores profiles and reads none of them, so a
+/// half-written one must not cost the author their layout.
+fn opt_profiles_arg(input: &Value) -> Option<Vec<ExportProfile>> {
+    input
+        .get("exportProfiles")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|v| serde_json::from_value::<ExportProfile>(v.clone()).ok())
+                .collect()
+        })
 }
 
 /// An OPTIONAL u64 arg: `Some` when present and a number (or a numeric string, the lenient form AI

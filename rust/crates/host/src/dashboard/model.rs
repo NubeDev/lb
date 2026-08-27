@@ -10,6 +10,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::report::ExportProfile;
+
 /// The table dashboards live in. Record id is `dashboard:{id}` (the id is a stable slug, unique per
 /// workspace).
 pub const TABLE: &str = "dashboard";
@@ -341,6 +343,29 @@ pub struct Dashboard {
     /// simply does not appear in a roster the viewer can see.
     #[serde(default, deserialize_with = "null_default", rename = "reportIds")]
     pub report_ids: Vec<String>,
+    /// The board's saved **export profiles** — named [`ExportOptions`] sets the export dialog offers
+    /// (report-pagination-and-export-options scope; see [`ExportProfile`] for why the scope's
+    /// "no stored profiles" non-goal was reversed).
+    ///
+    /// Typed for the same reason `kind`/`reportIds` are, and this is the whole argument: this struct
+    /// DROPS unknown top-level keys, so a client-authored `exportProfiles` vanishes on the first save.
+    /// There is no other place on the record for it to live.
+    ///
+    /// **The host never reads a profile.** `report.export` takes no profile id; the client picks one
+    /// and sends that profile's `options` on the export call. Opaque beyond serde — no id resolution,
+    /// no uniqueness check, no validation of the options until an export actually asks for them.
+    ///
+    /// Preserve-on-omit like every page setting: an absent key keeps the stored list (a layout save
+    /// must not wipe an admin's profiles), an EMPTY array is the explicit clear that gets a board back
+    /// to the shipped default. `skip_serializing_if` keeps an empty list off the wire, so a board that
+    /// never had profiles round-trips byte-clean.
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        rename = "exportProfiles",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub export_profiles: Vec<ExportProfile>,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
     /// The BARE id of the extension that generates this board (`"modbus"`), or empty for an

@@ -54,14 +54,42 @@ serde-defaulted, so every shipped caller keeps its exact current behaviour.
   export is still `report.export`. This adds fields to both, nothing more.
 - **No server-side data fetching for export.** The lens holds: the PDF still contains only
   what the exporter's browser could see and send. Unchanged.
-- **No stored export profiles here.** *Where an admin's chosen options are saved* is the
-  rubix-ai scope's problem (it stores a profile on the dashboard record and sends it at export
-  time). lb only needs to accept options on the call — storing a blob it never interprets
-  would be state without a reader.
+- ~~**No stored export profiles here.**~~ **REVERSED — see below.** The original wording:
+  *"Where an admin's chosen options are saved is the rubix-ai scope's problem (it stores a
+  profile on the dashboard record and sends it at export time). lb only needs to accept options
+  on the call — storing a blob it never interprets would be state without a reader."*
 - **No preview endpoint.** The preview is real `report.export` bytes rendered client-side;
   it needs no new surface.
 - **No reflow of panel CONTENT to fit a page.** A panel is a photograph; the page places it.
   Making a chart re-render at a different aspect for print is a different, much larger ask.
+
+### Reversal — stored export profiles ARE an lb field
+
+Recorded rather than deleted, because the reasoning that produced the non-goal was sound and
+still wrong: it assumed *"the client stores it"* was an available option, and on this record it
+is not.
+
+`Dashboard` has no `#[serde(flatten)]` catch-all, so it **drops unknown top-level keys on save**.
+A client-authored `exportProfiles` survives exactly until the next layout save and then silently
+vanishes — a control that appears to work and forgets. There is no other place on the record for
+a profile to live, so "lb stores nothing" and "an admin can save a profile" cannot both hold.
+
+That is the same mechanical reason `heading`, `headingSize`, `icon`, `color`, `varsDisplay`,
+`reportIds`, `width` and `compact` are all typed lb fields whose ONLY reader is the client. The
+"state without a reader" worry does not survive that precedent: the reader is the client, and
+the fourth layer of the shipped preserve-on-omit `meta` pattern is a typed lb field.
+
+So lb gains:
+
+- `ExportProfile { id, name, options }` (`rust/crates/host/src/report/profile.rs`), reusing
+  `ExportOptions` verbatim — a profile IS a named set of the options the export already takes, so
+  there stays exactly ONE option vocabulary.
+- `Dashboard.export_profiles: Vec<ExportProfile>` (`exportProfiles` on the wire), riding the
+  `reportIds` contract exactly: **absent preserves, `[]` clears**, empty stays off the wire.
+
+What did NOT change: **lb still never reads a profile at export time.** `report.export` takes no
+profile id; the client picks a profile and sends that profile's `options` on the call. The field
+is storage and serde — the export path is untouched.
 
 ## Intent / approach
 

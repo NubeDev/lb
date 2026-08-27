@@ -28,6 +28,7 @@ use lb_packs::{Decision, Kind, Pack, PlannedObject, Receipt};
 use serde_json::Value;
 
 use super::error::PackError;
+use super::page_meta::page_meta_of;
 use super::store::write_receipt;
 use crate::boot::Node;
 
@@ -430,43 +431,13 @@ async fn apply_dashboard(
         None => Vec::new(),
     };
 
-    // A pack declares page settings with the SAME keys the settings dialog sends, and with the same
-    // preserve-on-omit meaning: an absent key keeps the stored value, so re-applying a pack never
-    // blanks page chrome an author has since set (nor silently demotes a report back to a dashboard).
-    let str_key = |k: &str| d.json.get(k).and_then(Value::as_str).map(String::from);
     match crate::dashboard::dashboard_save_meta(
         &node.store,
         principal,
         ws,
         id,
         &title,
-        crate::dashboard::PageMeta {
-            description: str_key("description"),
-            heading: str_key("heading"),
-            heading_size: str_key("headingSize"),
-            show_heading: d.json.get("showHeading").and_then(Value::as_bool),
-            icon: str_key("icon"),
-            color: str_key("color"),
-            timezone: str_key("timezone"),
-            cache_ttl_s: d.json.get("cacheTtlS").and_then(Value::as_u64),
-            toolbar: None,
-            // Same keys, same preserve-on-omit: a pack page may declare a default window
-            // (`"time": { "from": "last-7-days" }`); `dashboard_save_meta` validates it like any
-            // other writer (a pack with a bad expression fails apply loudly, never stores a typo).
-            time: d
-                .json
-                .get("time")
-                .and_then(|v| serde_json::from_value(v.clone()).ok()),
-            width: str_key("width"),
-            compact: str_key("compact"),
-            vars_display: str_key("varsDisplay"),
-            kind: str_key("kind"),
-            report_ids: d.json.get("reportIds").and_then(Value::as_array).map(|r| {
-                r.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            }),
-        },
+        page_meta_of(&d.json),
         cells,
         variables,
         ts,

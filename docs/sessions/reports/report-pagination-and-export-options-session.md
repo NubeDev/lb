@@ -149,6 +149,54 @@ Also noted, **not** fixed: `cargo test` across the workspace fails to build `lb-
 `ext_publish_test` because a `hello-v2` wasm artifact is missing from the tree. Pre-existing, out of
 scope here.
 
+## Second pass — the CI gates, a stored profile, and one file off the backlog
+
+Three CI jobs were red on the PR. Two of them were red on `master` too, which is the reason they
+had stopped meaning anything:
+
+- **fmt** — two over-width `call_dashboard_tool` chains in `dashboard_show_when_test.rs`, landed
+  with #192. Formatter output taken as-is.
+- **build-and-test (rest)** — `a_due_reminder_fires_from_the_boot_spawned_tick`, red since #176.
+  Not the reactor: #176 correctly made `fire_reminder` strip the `user:` prefix before re-resolving
+  the author's caps (grants are keyed by the BARE name — `membership_add`, the gateway grant routes
+  and `mint_session` all strip it), and this fixture still seeded `Subject::User("user:alice")`.
+  The fire resolved zero caps, `outbox.enqueue` denied, the reactor rescheduled and went quiet, and
+  the panic pointed at the tick. Fixture seeded under the bare handle; the principal keeps its
+  prefixed `sub`, which is exactly what the code under test strips.
+- **file-layout** — the ratchet's three unbaselined violations, split rather than re-baselined
+  (`report_export_media_test.rs` into four files by what each asserts + a shared
+  `tests/support/report_media.rs`; `nav/model.rs` → `nav/resolved.rs`; gateway `routes/nav.rs` →
+  `routes/nav_pref.rs`). `--update` was NOT used: it would have RAISED twelve caps to match
+  master's grown files, which is the re-baselining the ratchet exists to forbid.
+
+Fourteen baseline files remain over their recorded caps. Every one is master's backlog from other
+PRs; each needs its own split and none is this scope's.
+
+### `Dashboard.exportProfiles` — a non-goal reversed
+
+Building the rubix-ai consumer half against this branch proved the scope's *"no stored export
+profiles here"* non-goal unbuildable: `Dashboard` drops unknown top-level keys, so there is nowhere
+else on the record for a profile to live. Recorded as a **reversal** in the scope doc (not deleted —
+the reasoning was sound and still wrong, and that is worth reading later). `ExportProfile` reuses
+`ExportOptions` verbatim so one option vocabulary stays one; the field rides `reportIds`'
+preserve-on-omit / clear-on-empty contract, tested in both directions; and the host still reads a
+profile nowhere — the client sends the chosen profile's `options` on the export call.
+
+### `dashboard/model.rs` off the backlog
+
+This branch had pushed `model.rs` from 1086 to 1109 against a 1056 baseline, and the field above
+grew it further. Rather than add to the backlog, `Cell` and its binding types moved out —
+`cell.rs` (265), `binding.rs` (130), `null_default.rs` (17) — taking `model.rs` to 745, comfortably
+back under its baseline and off the offender list. Re-exported through `model.rs`, so not one call
+site changed.
+
+```
+lb-host --lib                       533 passed
+dashboard_export_profiles_test.rs     3 passed
+report_export_media_*                 8 passed  (4 files)
+embedder_seams_test.rs                4 passed
+```
+
 ## Follow-ups
 
 - **This is not tagged.** The change is committed on `feat/report-pagination-and-export-options` and

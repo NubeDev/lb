@@ -30,6 +30,7 @@
 mod apply;
 mod authorize;
 mod error;
+mod page_meta;
 mod read;
 mod retention_policy;
 mod run;
