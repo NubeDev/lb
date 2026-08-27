@@ -22,7 +22,8 @@ use lb_auth::Principal;
 use serde_json::Value;
 
 use super::error::NavError;
-use super::model::{NavItem, ResolvedItem, MAX_TAG_GROUP};
+use super::model::{NavItem, MAX_TAG_GROUP};
+use super::resolved::ResolvedItem;
 use crate::boot::Node;
 use crate::dashboard::dashboard_get;
 use crate::tags::tags_facet_values;

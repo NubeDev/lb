@@ -26,8 +26,8 @@ use std::collections::BTreeSet;
 use lb_auth::Principal;
 
 use super::admin_lens::is_workspace_admin;
-use super::model::{ResolvedItem, ResolvedNav, ResolvedSource};
 use super::reach_record::{record_reach_caps, DASHBOARD_SURFACE};
+use super::resolved::{ResolvedItem, ResolvedNav, ResolvedSource};
 use crate::authz::holds_cap;
 
 /// The wildcard reach cap a fallback (no-curated-nav) subject holds — reaches every core surface, so a

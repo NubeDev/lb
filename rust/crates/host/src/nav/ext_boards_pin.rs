@@ -34,8 +34,9 @@ use lb_auth::Principal;
 
 use super::error::NavError;
 use super::ext_boards_model::ExtBoardRow;
-use super::model::{NavItem, ResolvedItem};
+use super::model::NavItem;
 use super::resolve::resolve_item;
+use super::resolved::ResolvedItem;
 use super::store::read_ext_boards;
 use crate::boot::Node;
 

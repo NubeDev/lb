@@ -23,8 +23,9 @@ use lb_auth::Principal;
 
 use super::error::NavError;
 use super::ext_boards_pin::resolve_ext_board_pin;
-use super::model::{NavItem, ResolvedItem};
+use super::model::NavItem;
 use super::resolve::{label_or, resolve_item};
+use super::resolved::ResolvedItem;
 use super::store::read_pref;
 use crate::boot::Node;
 use crate::ext::ext_list;

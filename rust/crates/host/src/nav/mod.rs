@@ -47,6 +47,7 @@ mod reach_record;
 mod resolve;
 mod resolve_pins;
 mod resolve_template_group;
+mod resolved;
 mod save;
 mod share;
 mod store;
@@ -66,14 +67,14 @@ pub use hidden::{nav_hidden_get, nav_hidden_set, nav_order_set};
 pub use list::nav_list;
 pub use list_shares::nav_list_shares;
 pub use model::{
-    Nav, NavFacet, NavHidden, NavItem, NavPref, NavSummary, ResolvedItem, ResolvedNav,
-    ResolvedSource, Visibility, MAX_GROUP_DEPTH, MAX_HIDDEN, MAX_ITEMS, MAX_ORDER, MAX_PINNED,
-    MAX_TAG_GROUP, MAX_TITLE_TEMPLATE,
+    Nav, NavFacet, NavHidden, NavItem, NavPref, NavSummary, Visibility, MAX_GROUP_DEPTH,
+    MAX_HIDDEN, MAX_ITEMS, MAX_ORDER, MAX_PINNED, MAX_TAG_GROUP, MAX_TITLE_TEMPLATE,
 };
 pub use pref::{nav_pref_get, nav_pref_set, nav_pref_set_force_builtin};
 pub use reach::{reach_caps, reach_caps_for, reach_check, REACH_ALL};
 pub use reach_record::{dashboard_reach_ok, reach_record_check, MAX_RECORD_REACH_CAPS};
 pub use resolve::nav_resolve;
+pub use resolved::{ResolvedItem, ResolvedNav, ResolvedSource};
 pub use save::nav_save;
 pub use share::nav_share;
 pub use tool::call_nav_tool;

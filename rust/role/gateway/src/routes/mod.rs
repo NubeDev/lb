@@ -49,6 +49,7 @@ mod membership;
 mod message;
 mod native;
 mod nav;
+mod nav_pref;
 mod node_identity;
 // embedder-build-info scope: the `product` object `GET /node` and `GET /health` share.
 mod outbox;
@@ -162,10 +163,11 @@ pub use membership::{
 pub use message::{delete_message, edit_message};
 pub use native::native_call;
 pub use nav::{
-    delete_nav, get_default_nav, get_nav, get_nav_ext_boards, get_nav_hidden, get_nav_pref,
-    list_navs, list_shares_nav, resolve_nav, save_nav, set_default_nav, set_nav_ext_boards,
-    set_nav_hidden, set_nav_order, set_nav_pref, share_nav, unshare_nav,
+    delete_nav, get_default_nav, get_nav, get_nav_ext_boards, get_nav_hidden, list_navs,
+    list_shares_nav, resolve_nav, save_nav, set_default_nav, set_nav_ext_boards, set_nav_hidden,
+    set_nav_order, share_nav, unshare_nav,
 };
+pub use nav_pref::{get_nav_pref, set_nav_pref};
 pub use node_identity::node_identity;
 pub use outbox::get_outbox_status;
 pub use packs::{upload_body_limit, upload_pack};
