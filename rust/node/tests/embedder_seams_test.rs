@@ -126,7 +126,12 @@ async fn a_due_reminder_fires_from_the_boot_spawned_tick() {
     let store = running.node.store.clone();
 
     // The firing runs under the AUTHOR's re-resolved caps, so the author must really hold them.
-    lb_authz::membership_add_raw(&store, "nube", "user:alice", 1)
+    //
+    // Seeded under the BARE handle, which is how the shipped write paths store both rows:
+    // `lb_host::membership_add` and the gateway's grant routes strip the `user:` prefix before they
+    // touch the store, and `mint_session` strips it again to read them back. Seeding the prefixed
+    // sub writes rows no production path ever writes, and none of them resolve.
+    lb_authz::membership_add_raw(&store, "nube", "alice", 1)
         .await
         .unwrap();
     let p = lb_node::Principal::routed(
@@ -138,11 +143,13 @@ async fn a_due_reminder_fires_from_the_boot_spawned_tick() {
         ],
     );
     // Firing re-resolves the author's caps from the DURABLE grant store (not from the create-time
-    // principal), so the grant has to really be there or the fire is a deny.
+    // principal), so the grant has to really be there or the fire is a deny — under the bare handle,
+    // per the note above. The PRINCIPAL keeps its prefixed `sub`: that is the identity, and
+    // `fire_reminder` strips it for the grant lookup exactly as the session mint does.
     lb_authz::grant_assign(
         &store,
         "nube",
-        &lb_authz::Subject::User("user:alice".to_string()),
+        &lb_authz::Subject::User("alice".to_string()),
         "mcp:outbox.enqueue:call",
     )
     .await
