@@ -287,6 +287,29 @@ pub struct Cell {
         skip_serializing_if = "QueryOptions::is_empty"
     )]
     pub query_options: QueryOptions,
+    /// **Start a new page before this band** (report-pagination scope). The author's explicit page
+    /// break, honoured by [`lb_render::paginate::paginate_with`] ahead of its fit rule.
+    ///
+    /// It is a MARKER, not a page number, and that is the whole design. `page: u32` would be absolute
+    /// on a relative board: insert a panel on page 1 and every later cell's number is stale, so the
+    /// record would need a renumbering pass on every edit, and two cells claiming the same page with
+    /// incompatible rows would have no defined meaning. A boolean on the band that STARTS a page is
+    /// local — it survives dragging, reordering and insertion untouched, and composes with the fit
+    /// rule instead of replacing it. (It is also the shape the retired notebook `Block` used.)
+    ///
+    /// Every cell on one board row is one band, so the marker is read from whichever cell of that row
+    /// carries it; setting it on one tile of a KPI row breaks before the whole row.
+    ///
+    /// Typed, not free-form: the `Dashboard` model drops unknown top-level keys, so an untyped field
+    /// would round-trip to nothing on the first save. Skip-if-false so a pre-feature cell serialises
+    /// byte-identically to today.
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        rename = "pageBreakBefore",
+        skip_serializing_if = "is_false"
+    )]
+    pub page_break_before: bool,
     /// Transparent panel background (Grafana parity) — renderers honor it UI-side; the host carries
     /// it. Skip-if-false so a pre-P1 cell round-trips byte-stable.
     #[serde(

@@ -172,6 +172,14 @@ pub struct Snapshot {
 pub struct ExportBody {
     #[serde(default)]
     pub snapshots: Vec<Snapshot>,
+    /// What the caller asks of the PAGE — paper, orientation, margins, scale, page numbers, index.
+    ///
+    /// Additive and defaulted: a client that posts only `{ snapshots }` — which is every client that
+    /// existed before this field — gets `ExportOptions::default()`, the document that shipped. This
+    /// is THE SAME type the `report.export` MCP arm takes, deliberately: two doors onto one export
+    /// must not grow two option vocabularies.
+    #[serde(default)]
+    pub options: lb_host::ExportOptions,
 }
 
 /// `POST /reports/{id}/export.pdf` — assemble → branded PDF bytes. Authenticated (unlike `ext_ui`),
@@ -206,7 +214,17 @@ pub async fn export_report(
             }
         }
     }
-    match lb_host::report_export(&gw.node.store, &p, p.ws(), &id, panels, gw.now()).await {
+    match lb_host::report_export(
+        &gw.node.store,
+        &p,
+        p.ws(),
+        &id,
+        panels,
+        &body.options,
+        gw.now(),
+    )
+    .await
+    {
         Ok(pdf) => (
             StatusCode::OK,
             [(

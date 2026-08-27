@@ -36,10 +36,15 @@ pub(super) const REPORT: &[HostTool] = &[
         tool: "report.export",
         group: "report",
         description: "export a report-kind dashboard to branded PDF. Over the JSON bridge it trades \
-                      MEDIA IDS, not bytes: { id, snapshotMediaId? } -> { pdfMediaId, bytes, mime }, \
-                      snapshots up via media.upload_*, PDF down via media.read. The binary route \
-                      POST /reports/{id}/export.pdf remains the path for callers that can set an \
-                      Authorization header. Own cap: mcp:report.export:call",
+                      MEDIA IDS, not bytes: { id, snapshotMediaId?, options? } -> { pdfMediaId, \
+                      bytes, mime }, snapshots up via media.upload_*, PDF down via media.read. The \
+                      binary route POST /reports/{id}/export.pdf remains the path for callers that \
+                      can set an Authorization header, and takes the same optional options. \
+                      options: { paper (a4|a3|a5|letter|legal|tabloid), orientation \
+                      (portrait|landscape), marginXMm, marginTopMm, marginBottomMm, scale, \
+                      pageNumbers, index } — every field optional; omitted composes the shipped A4 \
+                      portrait document byte-for-byte. An unknown paper/orientation is a 400 naming \
+                      the field, never a silent A4. Own cap: mcp:report.export:call",
     },
     // brand.* — the reusable brand-profile asset (reports scope).
     HostTool {

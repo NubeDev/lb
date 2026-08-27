@@ -19,7 +19,7 @@ use base64::Engine as _;
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     dashboard_save_meta, media_chunk_put, media_read, media_upload_begin, media_upload_commit,
-    report_export, report_export_media, Cell, PageMeta, RenderedPanel, ReportError,
+    report_export, report_export_media, Cell, ExportOptions, PageMeta, RenderedPanel, ReportError,
 };
 use lb_store::Store;
 use serde_json::{json, Value};
@@ -86,9 +86,17 @@ async fn the_bridge_verb_round_trips_snapshots_and_pdf_through_media() {
 
     // 2 — compose. Two ids in, one id out; the reply fits inside `/mcp/call`'s 2 MiB cap with room
     // to spare, which is the whole reason the verb trades ids rather than bytes.
-    let reply = report_export_media(&store, &p, ws, "energy", Some(&snapshot_id), 1)
-        .await
-        .expect("export ok");
+    let reply = report_export_media(
+        &store,
+        &p,
+        ws,
+        "energy",
+        Some(&snapshot_id),
+        &ExportOptions::default(),
+        1,
+    )
+    .await
+    .expect("export ok");
     let pdf_id = reply["pdfMediaId"].as_str().expect("a pdf media id");
     assert_eq!(reply["mime"], "application/pdf");
     let declared = reply["bytes"].as_u64().expect("a byte total");
@@ -136,6 +144,7 @@ async fn the_bridge_and_the_route_compose_byte_identical_pdfs() {
             png: png.clone(),
             ..RenderedPanel::default()
         }],
+        &ExportOptions::default(),
         1,
     )
     .await
@@ -144,14 +153,60 @@ async fn the_bridge_and_the_route_compose_byte_identical_pdfs() {
     // The BRIDGE's path: the same snapshots, carried through the media store instead.
     let bundle = json!({ "snapshots": [{ "cellId": "p1", "png": BASE64.encode(&png) }] });
     let snapshot_id = upload_json(&store, &p, ws, &bundle).await;
-    let reply = report_export_media(&store, &p, ws, "energy", Some(&snapshot_id), 1)
-        .await
-        .expect("bridge export ok");
+    let reply = report_export_media(
+        &store,
+        &p,
+        ws,
+        "energy",
+        Some(&snapshot_id),
+        &ExportOptions::default(),
+        1,
+    )
+    .await
+    .expect("bridge export ok");
     let via_bridge = read_media(&store, &p, ws, reply["pdfMediaId"].as_str().unwrap()).await;
 
     assert_eq!(
         via_route, via_bridge,
         "the two doors must produce the SAME document, byte for byte"
+    );
+
+    // …AND THEY MUST CARRY THE OPTIONS IDENTICALLY. Parity on the defaults would still hold if one
+    // door quietly ignored `options`, so the same non-default profile goes through both: a different
+    // paper, a different orientation and page numbers on — three things that each change the bytes.
+    let opts = ExportOptions {
+        paper: "letter".into(),
+        orientation: "landscape".into(),
+        page_numbers: true,
+        ..ExportOptions::default()
+    };
+    let route_opts = report_export(
+        &store,
+        &p,
+        ws,
+        "energy",
+        vec![RenderedPanel {
+            cell_id: "p1".into(),
+            png: png.clone(),
+            ..RenderedPanel::default()
+        }],
+        &opts,
+        1,
+    )
+    .await
+    .expect("route export ok");
+    let reply_opts = report_export_media(&store, &p, ws, "energy", Some(&snapshot_id), &opts, 1)
+        .await
+        .expect("bridge export ok");
+    let bridge_opts = read_media(&store, &p, ws, reply_opts["pdfMediaId"].as_str().unwrap()).await;
+
+    assert_eq!(
+        route_opts, bridge_opts,
+        "both doors must honour the SAME options, byte for byte"
+    );
+    assert_ne!(
+        route_opts, via_route,
+        "…and the options must actually have done something, or this proves nothing"
     );
 }
 
@@ -172,7 +227,7 @@ async fn composing_with_no_snapshots_still_produces_a_pdf() {
     )
     .await;
 
-    let reply = report_export_media(&store, &p, ws, "energy", None, 1)
+    let reply = report_export_media(&store, &p, ws, "energy", None, &ExportOptions::default(), 1)
         .await
         .expect("export with no captures ok");
     let pdf = read_media(&store, &p, ws, reply["pdfMediaId"].as_str().unwrap()).await;
@@ -202,9 +257,17 @@ async fn a_snapshot_that_is_not_raw_base64_is_refused_by_name() {
 
     let bad = json!({ "snapshots": [{ "cellId": "p1", "png": "data:image/png;base64,####" }] });
     let id = upload_json(&store, &p, ws, &bad).await;
-    let err = report_export_media(&store, &p, ws, "energy", Some(&id), 1)
-        .await
-        .unwrap_err();
+    let err = report_export_media(
+        &store,
+        &p,
+        ws,
+        "energy",
+        Some(&id),
+        &ExportOptions::default(),
+        1,
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, ReportError::BadInput(ref m) if m.contains("p1") && m.contains("data:")),
         "the refusal must name the cell and the actual mistake, got {err:?}"
@@ -214,9 +277,17 @@ async fn a_snapshot_that_is_not_raw_base64_is_refused_by_name() {
     // caller who genuinely wants no captures omits `snapshotMediaId` instead. Defaulting the field
     // to empty would answer a half-written blob with a plausible PDF of error tiles.
     let not_a_bundle = upload_json(&store, &p, ws, &json!({ "hello": "world" })).await;
-    let err = report_export_media(&store, &p, ws, "energy", Some(&not_a_bundle), 1)
-        .await
-        .unwrap_err();
+    let err = report_export_media(
+        &store,
+        &p,
+        ws,
+        "energy",
+        Some(&not_a_bundle),
+        &ExportOptions::default(),
+        1,
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, ReportError::BadInput(ref m) if m.contains("snapshotMediaId")),
         "the refusal must point at the honest way to ask for a skeleton, got {err:?}"
@@ -226,9 +297,17 @@ async fn a_snapshot_that_is_not_raw_base64_is_refused_by_name() {
     // nothing and says so.
     let empty = upload_json(&store, &p, ws, &json!({ "snapshots": [] })).await;
     assert!(
-        report_export_media(&store, &p, ws, "energy", Some(&empty), 1)
-            .await
-            .is_ok(),
+        report_export_media(
+            &store,
+            &p,
+            ws,
+            "energy",
+            Some(&empty),
+            &ExportOptions::default(),
+            1
+        )
+        .await
+        .is_ok(),
         "an explicitly empty bundle composes the skeleton"
     );
 }
@@ -254,7 +333,16 @@ async fn the_bridge_verb_denies_without_export_and_without_media_upload() {
     let no_export = principal("user:test", ws, &[D_GET, D_SAVE, M_UPLOAD, M_READ]);
     assert!(
         matches!(
-            report_export_media(&store, &no_export, ws, "energy", None, 1).await,
+            report_export_media(
+                &store,
+                &no_export,
+                ws,
+                "energy",
+                None,
+                &ExportOptions::default(),
+                1
+            )
+            .await,
             Err(ReportError::Denied)
         ),
         "report.export is its own concrete cap"
@@ -265,16 +353,27 @@ async fn the_bridge_verb_denies_without_export_and_without_media_upload() {
     let no_upload = principal("user:test", ws, &[D_GET, D_SAVE, EXPORT, M_READ]);
     assert!(
         matches!(
-            report_export_media(&store, &no_upload, ws, "energy", None, 1).await,
+            report_export_media(
+                &store,
+                &no_upload,
+                ws,
+                "energy",
+                None,
+                &ExportOptions::default(),
+                1
+            )
+            .await,
             Err(ReportError::Denied)
         ),
         "the PDF is stored under the CALLER's media grant, not the host's"
     );
 
     // Negative control — with everything, it works.
-    assert!(report_export_media(&store, &p, ws, "energy", None, 1)
-        .await
-        .is_ok());
+    assert!(
+        report_export_media(&store, &p, ws, "energy", None, &ExportOptions::default(), 1)
+            .await
+            .is_ok()
+    );
 }
 
 /// Workspace isolation: a board id that exists in ws-A does not export from ws-B, and the refusal is
@@ -294,12 +393,28 @@ async fn the_bridge_verb_is_workspace_isolated() {
     )
     .await;
 
-    assert!(report_export_media(&store, &a, "ws-a", "energy", None, 1)
-        .await
-        .is_ok());
-    let err = report_export_media(&store, &b, "ws-b", "energy", None, 1)
-        .await
-        .unwrap_err();
+    assert!(report_export_media(
+        &store,
+        &a,
+        "ws-a",
+        "energy",
+        None,
+        &ExportOptions::default(),
+        1
+    )
+    .await
+    .is_ok());
+    let err = report_export_media(
+        &store,
+        &b,
+        "ws-b",
+        "energy",
+        None,
+        &ExportOptions::default(),
+        1,
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, ReportError::NotFound | ReportError::Denied),
         "the other workspace must not see it, got {err:?}"
@@ -327,9 +442,17 @@ async fn a_snapshot_bundle_from_another_workspace_is_not_reachable() {
     )
     .await;
 
-    let err = report_export_media(&store, &a, "ws-a", "energy", Some(&theirs), 1)
-        .await
-        .unwrap_err();
+    let err = report_export_media(
+        &store,
+        &a,
+        "ws-a",
+        "energy",
+        Some(&theirs),
+        &ExportOptions::default(),
+        1,
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, ReportError::NotFound | ReportError::Denied),
         "media is workspace-namespaced too, got {err:?}"
@@ -358,7 +481,7 @@ async fn the_stored_pdf_is_tagged_as_report_output() {
     )
     .await;
 
-    let reply = report_export_media(&store, &p, ws, "energy", None, 1)
+    let reply = report_export_media(&store, &p, ws, "energy", None, &ExportOptions::default(), 1)
         .await
         .unwrap();
     let media = lb_host::media_get(&store, &p, ws, reply["pdfMediaId"].as_str().unwrap())

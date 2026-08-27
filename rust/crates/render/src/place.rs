@@ -8,7 +8,7 @@
 //! picks per page — which is what lets a report keep the shipped cover, header/footer and index.
 
 use crate::convert::typst_string;
-use crate::geometry::{A4_CONTENT_H_MM, A4_CONTENT_W_MM};
+use crate::geometry::PageGeometry;
 use crate::model::Placement;
 
 /// Render the placements of one page to Typst markup.
@@ -18,11 +18,19 @@ use crate::model::Placement;
 /// **error tile** in situ — a bordered box carrying the panel's title and the reason — never an empty
 /// hole and never a failed render. That is the whole point: a scheduled export whose browser could
 /// not capture one panel still produces a PDF, and the gap is visible in it.
-pub fn placed_page(placements: &[Placement], resolve: impl Fn(&str) -> Option<String>) -> String {
+pub fn placed_page(
+    placements: &[Placement],
+    geo: &PageGeometry,
+    resolve: impl Fn(&str) -> Option<String>,
+) -> String {
     let mut out = String::new();
     // One full-content-box canvas; every child is positioned against its top-left corner.
+    // The canvas is the CONTENT BOX of the page the placements were computed against — not a literal
+    // A4 one. A mismatch here would put every rect in the right millimetre of the wrong box.
     out.push_str(&format!(
-        "#block(width: {A4_CONTENT_W_MM}mm, height: {A4_CONTENT_H_MM}mm, breakable: false)[\n"
+        "#block(width: {}mm, height: {}mm, breakable: false)[\n",
+        geo.content_w_mm(),
+        geo.content_h_mm()
     ));
     for p in placements {
         let inner = match resolve(&p.src) {
@@ -59,7 +67,7 @@ fn error_tile(title: &str, note: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geometry::RectMm;
+    use crate::cell_rect::RectMm;
 
     fn placement(src: &str, title: &str) -> Placement {
         Placement {
@@ -77,9 +85,11 @@ mod tests {
 
     #[test]
     fn a_resolved_placement_emits_a_positioned_contained_image() {
-        let out = placed_page(&[placement("snapshot:p1", "Energy")], |_| {
-            Some("img-0.png".into())
-        });
+        let out = placed_page(
+            &[placement("snapshot:p1", "Energy")],
+            &PageGeometry::a4_portrait(),
+            |_| Some("img-0.png".into()),
+        );
         assert!(out.contains("#place(top + left"), "positioned: {out}");
         assert!(out.contains("dx: 2.600mm"), "carries its x: {out}");
         assert!(out.contains("dy: 2.600mm"), "carries its y: {out}");
@@ -92,7 +102,11 @@ mod tests {
 
     #[test]
     fn an_unresolved_placement_becomes_a_titled_error_tile_not_a_hole() {
-        let out = placed_page(&[placement("snapshot:missing", "Chiller load")], |_| None);
+        let out = placed_page(
+            &[placement("snapshot:missing", "Chiller load")],
+            &PageGeometry::a4_portrait(),
+            |_| None,
+        );
         assert!(!out.contains("#image("), "no image is emitted: {out}");
         assert!(out.contains("Chiller load"), "names the panel: {out}");
         assert!(out.contains("not captured"), "states the reason: {out}");
@@ -102,7 +116,7 @@ mod tests {
 
     #[test]
     fn an_empty_page_still_emits_a_full_size_canvas() {
-        let out = placed_page(&[], |_| None);
+        let out = placed_page(&[], &PageGeometry::a4_portrait(), |_| None);
         assert!(out.contains("height: 251mm"), "one page tall: {out}");
     }
 }

@@ -19,6 +19,7 @@ use lb_store::Store;
 use serde_json::{json, Value};
 
 use super::model::{Block, Visibility};
+use super::options::ExportOptions;
 use super::{
     report_delete, report_export_media, report_get, report_list, report_save, report_share,
     ReportError,
@@ -99,12 +100,23 @@ pub async fn call_report_tool(
             // the only thing that reads it, and a caller that omits it gets an epoch-zero
             // `created_ts` rather than a refusal it cannot act on.
             let now = input.get("now").and_then(Value::as_u64).unwrap_or(0);
+            // The page contract, additive: an older client sends no `options` key at all and gets
+            // `ExportOptions::default()`, which is the document that shipped. A malformed one is a
+            // named BadInput rather than a silent fall back to A4 — a caller who asked for Letter and
+            // quietly got A4 has a wrong PDF they cannot see.
+            let options: ExportOptions = match input.get("options") {
+                None | Some(Value::Null) => ExportOptions::default(),
+                Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+                    to_tool(ReportError::BadInput(format!("options is malformed: {e}")))
+                })?,
+            };
             report_export_media(
                 store,
                 principal,
                 ws,
                 str_arg(input, "id")?,
                 snapshot_media_id,
+                &options,
                 now,
             )
             .await

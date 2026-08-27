@@ -723,6 +723,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   binary gateway route. Sharing a report is a lens — embedded panel data re-checks the viewer's
   caps per render. GitHub publishing, sources/RAG, and scheduled/emailed exports are named
   deferrals.
+  Extended by `report-pagination-and-export-options-scope.md`: an author-set page break
+  (`Cell.pageBreakBefore`, honoured by `paginate` ahead of its fit rule) and a typed
+  `ExportOptions` on both export doors (paper/orientation/margins/scale + the already-rendered
+  but never-set `page_numbers`/`index`), with the hardcoded A4 page geometry becoming one
+  `PageGeometry` value threaded through placement and the Typst template. All additive and
+  serde-defaulted — options absent composes a byte-identical PDF. Consumed by rubix-ai's
+  `report-builder-ux-scope.md` (builder affordances, saved export profiles, live PDF preview)
+  on the next `node-v*` tag.
 - `prefs/` — per-(workspace,user) preferences + localization: language (en/es), timezone, date/number
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.

@@ -55,7 +55,9 @@ pub fn render_pdf(assembled: &Assembled) -> Result<Vec<u8>, RenderError> {
         .iter()
         .enumerate()
         .map(|(i, page)| match assembled.placements.get(i) {
-            Some(placed) if !placed.is_empty() => placed_page(placed, |src| resolve(src)),
+            Some(placed) if !placed.is_empty() => {
+                placed_page(placed, &assembled.page, |src| resolve(src))
+            }
             _ => markdown_to_typst(page, |src| resolve(src)),
         })
         .collect::<Vec<_>>()
@@ -111,8 +113,14 @@ fn build_template(a: &Assembled, logo_path: Option<&str>, body: &str) -> String 
     // so these only ever decorate body pages.
     let header = running_header(&a.brand.header_text, &muted, &rule);
     let footer = running_footer(&a.brand.footer_text, &muted, &rule, a.options.page_numbers);
+    // The page box comes from `a.page` rather than a literal `paper: "a4"`: an export can ask for
+    // another paper, and the placements it carries were computed against THAT box. Emitted as explicit
+    // millimetres instead of a Typst paper NAME so the two sides cannot disagree about what "a4" is —
+    // the mm are the same numbers `cell_rect_mm_on_page` placed against.
+    let g = a.page;
     out.push_str(&format!(
-        "#set page(paper: \"a4\", margin: (x: 2.2cm, top: 2.4cm, bottom: 2.2cm), fill: {background}, header: {header}, header-ascent: 40%, footer: {footer}, footer-descent: 40%)\n"
+        "#set page(width: {}mm, height: {}mm, margin: (x: {}mm, top: {}mm, bottom: {}mm), fill: {background}, header: {header}, header-ascent: 40%, footer: {footer}, footer-descent: 40%)\n",
+        g.w_mm, g.h_mm, g.margin_x_mm, g.margin_top_mm, g.margin_bottom_mm
     ));
 
     // ---- Text + paragraph defaults ---------------------------------------
