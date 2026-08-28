@@ -89,6 +89,7 @@ pub async fn resolve_template_group(
             // One authored entry fanned out into N instances: the author marked the ENTRY, so the
             // marker stays on the group below and never lands on an arbitrary generated child.
             home: false,
+            footer: false,
         });
     }
 
@@ -108,6 +109,7 @@ pub async fn resolve_template_group(
         // board of its own, so a client landing on it descends to its first instance — the same walk
         // it does for any pure container.
         home: item.home,
+        footer: item.footer,
     }))
 }
 

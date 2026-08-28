@@ -57,6 +57,14 @@ pub fn check_items(items: &[NavItem]) -> Result<(), NavError> {
             "nav marks {homes} items as home, at most 1 allowed"
         )));
     }
+    // A footer marker is a TOP-LEVEL fact (nav-footer scope): it moves an entry out of the tree to
+    // the end of the menu's axis, and a nested entry has no axis to move along. Refused at the door
+    // rather than silently ignored, so the author learns the mark did nothing.
+    if let Some(nested) = items.iter().find_map(|i| nested_footer(&i.items)) {
+        return Err(NavError::BadInput(format!(
+            "nav marks nested item {nested:?} as footer, only top-level items may be"
+        )));
+    }
     let total = count(items);
     if total > MAX_ITEMS {
         return Err(NavError::BadInput(format!(
@@ -68,6 +76,17 @@ pub fn check_items(items: &[NavItem]) -> Result<(), NavError> {
         check_item(item, 1)?;
     }
     Ok(())
+}
+
+/// The label of the first footer-marked item BELOW the top level, if any (nav-footer scope).
+fn nested_footer(items: &[NavItem]) -> Option<String> {
+    items.iter().find_map(|i| {
+        if i.footer {
+            Some(i.label.clone())
+        } else {
+            nested_footer(&i.items)
+        }
+    })
 }
 
 /// Home markers over EVERY depth (nav-home scope). Recurses through `group` children exactly as
