@@ -313,6 +313,7 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         vars: BTreeMap::new(),
         title_template: item.title_template.clone(),
         home: item.home,
+        footer: item.footer,
     })
 }
 
@@ -348,6 +349,7 @@ async fn resolve_dashboard(
             // verbatim — the client interpolates it, the host expands nothing.
             title_template: item.title_template.clone(),
             home: item.home,
+            footer: item.footer,
         })),
         // Denied / not-found → stripped (the caller can't read it). Any other is a real fault.
         // (`ManagedDenied` is a WRITE refusal — a read never produces it — but it IS a denial, so it
@@ -399,6 +401,7 @@ async fn resolve_ext(
             vars: BTreeMap::new(),
             title_template: item.title_template.clone(),
             home: item.home,
+            footer: item.footer,
         })),
         None => Ok(None), // uninstalled → stripped silently.
     }
@@ -454,6 +457,7 @@ async fn resolve_tag_group(
                 // kind of fact: the AUTHOR marked one entry, not each board it fanned out into.
                 title_template: None,
                 home: false,
+                footer: false,
             });
         }
     }
@@ -471,6 +475,7 @@ async fn resolve_tag_group(
         vars: BTreeMap::new(),
         title_template: item.title_template.clone(),
         home: item.home,
+        footer: item.footer,
     }))
 }
 
@@ -521,6 +526,7 @@ async fn resolve_group(
         vars,
         title_template: item.title_template.clone(),
         home: item.home,
+        footer: item.footer,
     }))
 }
 

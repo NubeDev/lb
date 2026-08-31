@@ -126,4 +126,8 @@ pub struct ResolvedItem {
     /// false, so an old client and a pre-field record read as today.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub home: bool,
+    /// The authored [`NavItem::footer`], relayed verbatim (nav-footer scope). Serde-defaulted +
+    /// skipped when false, so an old client and a pre-field record read as today.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub footer: bool,
 }

@@ -210,6 +210,14 @@ pub struct NavItem {
     /// reads as `false` and [`SCHEMA_VERSION`] is unchanged — the `title_template` precedent.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub home: bool,
+    /// The author's **footer** marker (nav-footer scope): this TOP-LEVEL entry renders at the END of
+    /// the menu's axis (the bottom of a rail, the trailing end of a top bar) instead of in the tree.
+    /// Legal only at depth 0 (a footer nested in a folder has no meaning), enforced at save.
+    ///
+    /// Additive: serde-defaulted and skipped when false, so every record written before this field
+    /// reads as `false` and [`SCHEMA_VERSION`] is unchanged — the `home` precedent.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub footer: bool,
 }
 
 /// A nav record. The persisted menu + sharing metadata (nav scope, "Data").
