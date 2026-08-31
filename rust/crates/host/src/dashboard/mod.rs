@@ -20,8 +20,10 @@
 
 mod access_check;
 mod authorize;
+mod binding;
 mod bounds;
 mod catalog;
+mod cell;
 mod closure;
 mod delete;
 mod error;
@@ -33,6 +35,7 @@ mod list;
 mod list_shares;
 mod managed;
 mod model;
+mod null_default;
 mod pin;
 mod reach_gate;
 mod save;

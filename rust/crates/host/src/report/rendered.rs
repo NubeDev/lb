@@ -51,20 +51,45 @@ pub(super) struct Placed {
     pub w: u32,
     pub h: u32,
     pub title: String,
+    /// The author's explicit page break (`Cell::page_break_before`).
+    ///
+    /// THE TRAP THIS FIELD EXISTS FOR. `paginate` lays out over `Placed`, which is built from the
+    /// client's rendered panels — and a `RenderedPanel` has no marker, because the marker is a
+    /// property of the RECORD, not of the photograph. Without carrying it here the feature passes
+    /// every unit test over `cells` and does nothing whatsoever in a real export.
+    pub break_before: bool,
 }
 
-/// The title for a rendered panel. An exact cell match first; failing that, a repeat clone's derived
-/// key (`{source}-clone-{n}`) resolves to the cell it was cloned from, so the N tiles of a repeat carry
-/// the panel's name instead of going blank. Anything else is untitled — never guessed.
-pub(super) fn title_for(cells: &[Cell], id: &str) -> String {
+/// The record cell a rendered panel came from. An exact `cell.i` match first; failing that, a repeat
+/// clone's derived key (`{source}-clone-{n}`) resolves to the cell it was cloned from, because a clone
+/// is in no record at all. Anything else is `None` — never guessed.
+///
+/// ONE resolution, used by everything that reads the record for a rendered panel. It was inlined in
+/// `title_for` until the page-break marker needed the same lookup; two copies of "which cell is this"
+/// is exactly the kind of pair that drifts, and the drift would be silent (a clone keeping its title
+/// but losing its page break).
+fn cell_for<'a>(cells: &'a [Cell], id: &str) -> Option<&'a Cell> {
     if let Some(c) = cells.iter().find(|c| c.i == id) {
-        return c.title.clone();
+        return Some(c);
     }
     id.rsplit_once("-clone-")
         .and_then(|(source, n)| n.parse::<u32>().ok().map(|_| source))
         .and_then(|source| cells.iter().find(|c| c.i == source))
+}
+
+/// The title for a rendered panel — the panel's own, or its source cell's for a repeat clone, so the N
+/// tiles of a repeat carry the panel's name instead of going blank. Untitled when unknown.
+pub(super) fn title_for(cells: &[Cell], id: &str) -> String {
+    cell_for(cells, id)
         .map(|c| c.title.clone())
         .unwrap_or_default()
+}
+
+/// Whether a rendered panel's cell carries the author's page break. A repeat clone inherits its
+/// source's marker for the same reason it inherits the title: the clone is in no record, and the
+/// author marked the panel, not the copy.
+pub(super) fn break_before_for(cells: &[Cell], id: &str) -> bool {
+    cell_for(cells, id).is_some_and(|c| c.page_break_before)
 }
 
 /// The list to lay the PDF out over.
@@ -90,6 +115,9 @@ pub(super) fn panels_to_place(cells: &[Cell], panels: &[RenderedPanel]) -> Vec<P
                 // A clone is in no record, so its title comes from the cell it was cloned FROM when we
                 // can find one; the export never invents a name it was not given.
                 title: title_for(cells, &p.cell_id),
+                // …and the same for the page break: the marker lives on the record, and the client's
+                // capture cannot carry it.
+                break_before: break_before_for(cells, &p.cell_id),
             })
             .collect()
     } else {
@@ -102,6 +130,7 @@ pub(super) fn panels_to_place(cells: &[Cell], panels: &[RenderedPanel]) -> Vec<P
                 w: c.w,
                 h: c.h,
                 title: c.title.clone(),
+                break_before: c.page_break_before,
             })
             .collect()
     }
@@ -155,5 +184,78 @@ mod tests {
         assert_eq!(title_for(&[cell("meter", "Meter")], "meter-clone-x"), "");
         // An unknown source is untitled, never guessed.
         assert_eq!(title_for(&cells, "ghost-clone-0"), "");
+    }
+
+    #[test]
+    fn a_page_break_marker_survives_the_trip_through_a_client_rendered_panel() {
+        // THE TRAP. The layout is computed over the client's rendered panels, which carry no marker —
+        // so unless `panels_to_place` reads it back off the record, the feature works in every test
+        // over `cells` and does nothing at all in a real export.
+        let cells = [
+            Cell {
+                i: "top".into(),
+                ..Cell::default()
+            },
+            Cell {
+                i: "chart".into(),
+                page_break_before: true,
+                ..Cell::default()
+            },
+        ];
+        let panels = [
+            RenderedPanel {
+                cell_id: "top".into(),
+                w: 12,
+                h: 4,
+                ..RenderedPanel::default()
+            },
+            RenderedPanel {
+                cell_id: "chart".into(),
+                y: 4,
+                w: 12,
+                h: 6,
+                ..RenderedPanel::default()
+            },
+        ];
+        let placed = panels_to_place(&cells, &panels);
+        assert_eq!(placed.len(), 2);
+        assert!(!placed[0].break_before);
+        assert!(placed[1].break_before, "the marker must reach the layout");
+    }
+
+    #[test]
+    fn a_repeat_clone_inherits_its_source_cell_s_page_break() {
+        // A clone's derived key is in no record, so without the same fallback `title_for` uses, a
+        // repeated panel marked "start a new page" would silently lose the break on every copy.
+        let cells = [Cell {
+            i: "meter".into(),
+            page_break_before: true,
+            ..Cell::default()
+        }];
+        assert!(break_before_for(&cells, "meter"));
+        assert!(break_before_for(&cells, "meter-clone-0"));
+        assert!(break_before_for(&cells, "meter-clone-7"));
+        // …and nothing is inherited from a source that does not exist, or a non-numeric suffix.
+        assert!(!break_before_for(&cells, "ghost-clone-0"));
+        assert!(!break_before_for(&cells, "meter-clone-x"));
+    }
+
+    #[test]
+    fn the_record_fallback_path_reads_the_marker_straight_off_the_cell() {
+        // An older client sends no rendered geometry at all; the marker still has to work there.
+        let cells = [
+            Cell {
+                i: "a".into(),
+                ..Cell::default()
+            },
+            Cell {
+                i: "b".into(),
+                page_break_before: true,
+                ..Cell::default()
+            },
+        ];
+        let placed = panels_to_place(&cells, &[]);
+        assert!(!placed[0].break_before);
+        assert!(placed[1].break_before);
     }
 }

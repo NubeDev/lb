@@ -36,6 +36,13 @@ pub struct Assembled {
     pub page_titles: Vec<String>,
     /// Layout options the author toggles (page numbers, table-of-contents index).
     pub options: RenderOptions,
+    /// The page box every page is set up with, and that placed content is measured against.
+    ///
+    /// `Default` is A4 portrait, to the millimetre — so a caller that never sets it renders exactly
+    /// the document it rendered before this field existed. It is on `Assembled` rather than threaded
+    /// through `render_pdf`'s signature because the placements were ALREADY computed against a page:
+    /// carrying a different one here would silently place a board laid out for A4 onto Letter.
+    pub page: crate::geometry::PageGeometry,
     /// **Placed** page content, positionally aligned with [`pages`](Assembled::pages).
     ///
     /// A page whose entry here is present and non-empty is laid out by absolute position
@@ -57,7 +64,7 @@ pub struct Placement {
     /// Why the image is missing, shown on the error tile. Empty ⇒ a generic "not captured".
     pub note: String,
     /// Where it sits on the page, in mm from the content box's top-left.
-    pub rect: crate::geometry::RectMm,
+    pub rect: crate::cell_rect::RectMm,
 }
 
 /// Author-facing layout toggles that affect both the PDF export and the HTML

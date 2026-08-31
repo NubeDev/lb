@@ -21,6 +21,7 @@ use lb_store::Store;
 use super::authorize::authorize_report;
 use super::compose::compose_pages;
 use super::error::ReportError;
+use super::options::ExportOptions;
 use super::rendered::RenderedPanel;
 use crate::brand::{brand_get, Brand};
 use crate::dashboard::{dashboard_get, DashboardError};
@@ -33,6 +34,10 @@ use crate::dashboard::{dashboard_get, DashboardError};
 /// cells, is the page: see [`super::compose`] for the four ways the two differ and what each looked like
 /// in the PDF. A client that sends no geometry falls back to the record, unchanged.
 ///
+/// `options` is what the caller asked of the page — paper, orientation, margins, scale, page numbers,
+/// index. [`ExportOptions::default()`] is the document that shipped, to the millimetre, so a caller
+/// that passes it is byte-for-byte unaffected by the option contract existing.
+///
 /// `now` is unused today (kept for signature symmetry / future cover-date). Returns `%PDF`-prefixed
 /// bytes.
 pub async fn report_export(
@@ -41,11 +46,16 @@ pub async fn report_export(
     ws: &str,
     id: &str,
     panels: Vec<RenderedPanel>,
+    options: &ExportOptions,
     _now: u64,
 ) -> Result<Vec<u8>, ReportError> {
     // The export-specific gate (its own cap — view-without-export is a real posture). Checked FIRST,
     // before the record read, so a caller without it learns nothing about what exists.
     authorize_report(principal, ws, "report.export")?;
+
+    // Resolve the page BEFORE the record read. A malformed `paper` is the caller's mistake and owes
+    // them an immediate, named 400 — not a read, a brand resolve and a Typst compile first.
+    let geo = options.geometry()?;
 
     // Read + hydrate through the dashboard verb — its own three gates re-run under this principal,
     // so export grants no read it did not already have (the exporter also needs `dashboard.get`).
@@ -67,6 +77,10 @@ pub async fn report_export(
     let mut assembled = Assembled::default();
     assembled.title.clone_from(&report.title);
     assembled.brand = render_brand(&brand);
+    assembled.page = geo;
+    // The two toggles the renderer has always implemented and that nothing ever set. THIS is the line
+    // that turns page numbers and the index from dead code into features.
+    assembled.options = options.render_options();
 
     // Brand logo bytes → the render logo (best-effort; a missing/unreadable logo just drops it).
     if !brand.logo_asset_id.is_empty() {
@@ -79,7 +93,7 @@ pub async fn report_export(
         }
     }
 
-    let (pages, images) = compose_pages(&report.cells, &panels);
+    let (pages, images) = compose_pages(&report.cells, &panels, &geo);
     for (src, filename, bytes) in images {
         assembled.images.push(ImageAsset::new(src, filename, bytes));
     }

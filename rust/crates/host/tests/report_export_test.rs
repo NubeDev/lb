@@ -7,7 +7,9 @@
 //! ratchet's baseline.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{dashboard_save_meta, report_export, Cell, PageMeta, RenderedPanel, ReportError};
+use lb_host::{
+    dashboard_save_meta, report_export, Cell, ExportOptions, PageMeta, RenderedPanel, ReportError,
+};
 use lb_store::Store;
 
 /// A principal `sub` in workspace `ws` holding `caps`.
@@ -68,6 +70,7 @@ async fn export_composes_a_report_kind_dashboard_to_pdf() {
                 ..RenderedPanel::default()
             },
         ],
+        &ExportOptions::default(),
         1,
     )
     .await
@@ -76,9 +79,17 @@ async fn export_composes_a_report_kind_dashboard_to_pdf() {
 
     // An ORDINARY dashboard is not a report — refused loudly, never laid onto A4.
     save_plain_dashboard(&store, &test, ws, "ops", "Ops", cells).await;
-    let err = report_export(&store, &test, ws, "ops", vec![], 1)
-        .await
-        .unwrap_err();
+    let err = report_export(
+        &store,
+        &test,
+        ws,
+        "ops",
+        vec![],
+        &ExportOptions::default(),
+        1,
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, ReportError::BadInput(ref m) if m.contains("not a report")),
         "a plain dashboard must be refused, got {err:?}"
@@ -106,7 +117,16 @@ async fn export_is_denied_without_the_export_cap_and_without_dashboard_read() {
     let no_export = principal("user:test", ws, &[D_GET, D_SAVE, D_LIST]);
     assert!(
         matches!(
-            report_export(&store, &no_export, ws, "energy", vec![], 1).await,
+            report_export(
+                &store,
+                &no_export,
+                ws,
+                "energy",
+                vec![],
+                &ExportOptions::default(),
+                1
+            )
+            .await,
             Err(ReportError::Denied)
         ),
         "report.export is its own cap"
@@ -116,16 +136,33 @@ async fn export_is_denied_without_the_export_cap_and_without_dashboard_read() {
     let no_read = principal("user:test", ws, &["mcp:report.export:call"]);
     assert!(
         matches!(
-            report_export(&store, &no_read, ws, "energy", vec![], 1).await,
+            report_export(
+                &store,
+                &no_read,
+                ws,
+                "energy",
+                vec![],
+                &ExportOptions::default(),
+                1
+            )
+            .await,
             Err(ReportError::Denied)
         ),
         "export must not bypass the dashboard read gate"
     );
 
     // Negative control: with BOTH, it works — so the denies above are not tautologies.
-    assert!(report_export(&store, &test, ws, "energy", vec![], 1)
-        .await
-        .is_ok());
+    assert!(report_export(
+        &store,
+        &test,
+        ws,
+        "energy",
+        vec![],
+        &ExportOptions::default(),
+        1
+    )
+    .await
+    .is_ok());
 }
 
 /// Workspace isolation: a report id that exists in ws-A does not export from ws-B.
@@ -144,12 +181,28 @@ async fn export_is_workspace_isolated() {
     )
     .await;
 
-    assert!(report_export(&store, &test_a, "ws-a", "energy", vec![], 1)
-        .await
-        .is_ok());
-    let err = report_export(&store, &test_b, "ws-b", "energy", vec![], 1)
-        .await
-        .unwrap_err();
+    assert!(report_export(
+        &store,
+        &test_a,
+        "ws-a",
+        "energy",
+        vec![],
+        &ExportOptions::default(),
+        1
+    )
+    .await
+    .is_ok());
+    let err = report_export(
+        &store,
+        &test_b,
+        "ws-b",
+        "energy",
+        vec![],
+        &ExportOptions::default(),
+        1,
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, ReportError::NotFound | ReportError::Denied),
         "the other workspace must not see it, got {err:?}"

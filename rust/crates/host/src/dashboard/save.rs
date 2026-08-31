@@ -19,6 +19,8 @@ use lb_auth::Principal;
 use lb_mcp::ToolDescriptor;
 use lb_store::Store;
 
+use crate::report::ExportProfile;
+
 use super::authorize::authorize_dashboard;
 use super::error::DashboardError;
 use super::kind::{KIND_DASHBOARD, KIND_REPORT};
@@ -61,6 +63,11 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "compact": { "type": "string", "enum": ["none", "vertical", "horizontal", "both"], "x-lb": { "label": "Grid compaction", "description": "Optional grid packing: 'none' (default, panels stay where they are put), 'vertical' (panels float up into empty space), 'horizontal' (panels float left) or 'both' (panels float up and left until nothing moves) (omit to keep the existing one)" } },
                 "kind": { "type": "string", "enum": ["dashboard", "report"], "x-lb": { "label": "Kind", "description": "Optional record kind: 'dashboard' (default) or 'report' (a paper-shaped board report.export composes A4 pages from) (omit to keep the existing one)" } },
                 "reportIds": { "type": "array", "items": { "type": "string" }, "x-lb": { "label": "Bound reports", "description": "Optional report-kind dashboard ids this page's Generate-report control offers (omit to keep the existing ones)" } },
+                "exportProfiles": { "type": "array", "items": { "type": "object", "properties": {
+                    "id": { "type": "string" },
+                    "name": { "type": "string" },
+                    "options": { "type": "object" }
+                } }, "x-lb": { "label": "Export profiles", "description": "Optional named report.export option sets the export dialog offers, e.g. [{ id: 'a3-landscape', name: 'A3 landscape', options: { paper: 'a3', orientation: 'landscape' } }] — omit to keep the existing ones, [] clears them" } },
                 "toolbar": { "type": "object", "properties": {
                     "dateSelect": { "type": "boolean" },
                     "refreshRate": { "type": "boolean" },
@@ -109,6 +116,10 @@ pub struct PageMeta {
     pub vars_display: Option<String>,
     pub kind: Option<String>,
     pub report_ids: Option<Vec<String>>,
+    /// The board's saved export profiles. `None` preserves the stored list, `Some` sets it, and
+    /// `Some(vec![])` CLEARS — the `reportIds` empty-array precedent, and the reason an admin can
+    /// delete their last profile and get back to the shipped default.
+    pub export_profiles: Option<Vec<ExportProfile>>,
 }
 
 /// Upsert dashboard `id` in `ws` with `title` + `cells`, as `principal`, at logical time `now`.
@@ -297,6 +308,10 @@ pub async fn dashboard_save_meta(
         // must never silently turn a report back into a dashboard.
         kind: meta.kind.unwrap_or(prev.kind),
         report_ids: meta.report_ids.unwrap_or(prev.report_ids),
+        // Preserve-on-omit / empty-is-clear, the identical path `report_ids` rides: a layout save
+        // carries `None` and keeps the author's profiles; an explicit `[]` is how the last one is
+        // deleted.
+        export_profiles: meta.export_profiles.unwrap_or(prev.export_profiles),
         owner,
         managed_by,
         visibility,

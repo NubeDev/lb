@@ -59,6 +59,7 @@ use base64::Engine as _;
 use super::authorize::authorize_report;
 use super::error::ReportError;
 use super::export::report_export;
+use super::options::ExportOptions;
 use super::rendered::RenderedPanel;
 use crate::{
     media_chunk_put, media_serve, media_upload_begin, media_upload_commit, MediaError, CHUNK_SIZE,
@@ -112,6 +113,10 @@ struct SnapshotBundle {
 /// Compose the report-kind dashboard `id` from the snapshot bundle stored at `snapshot_media_id`,
 /// store the PDF as a media record, and return `{ pdfMediaId, bytes }`.
 ///
+/// `options` is the SECOND DOOR's copy of the same export contract the route takes — the two must
+/// carry it identically or the MCP arm and the HTTP route would compose different documents from the
+/// same request, which is exactly the drift the byte-identical test exists to catch.
+///
 /// `snapshot_media_id` may be absent (`None`), which composes the report with **no** captures at
 /// all — every cell gets its titled error tile and the page count is unchanged. That is a
 /// deliberate, useful shape: it is how a caller renders the report's skeleton, and it is what a
@@ -122,6 +127,7 @@ pub async fn report_export_media(
     ws: &str,
     id: &str,
     snapshot_media_id: Option<&str>,
+    options: &ExportOptions,
     now: u64,
 ) -> Result<Value, ReportError> {
     // The SAME gate `report_export` runs first, run early so no media byte is read on behalf of a
@@ -133,7 +139,7 @@ pub async fn report_export_media(
         None => Vec::new(),
     };
 
-    let pdf = report_export(store, principal, ws, id, snapshots, now).await?;
+    let pdf = report_export(store, principal, ws, id, snapshots, options, now).await?;
 
     let pdf_media_id = store_pdf(store, principal, ws, &pdf, now).await?;
 

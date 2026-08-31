@@ -123,7 +123,6 @@ rust/crates/prefs/src/catalog/message.rs 491
 rust/crates/render/src/convert.rs 514
 rust/crates/secrets/src/lib.rs 781
 rust/crates/undo/tests/undo_test.rs 415
-rust/extensions/ros/src/ros_fake.rs 603
 rust/node/src/builder.rs 560
 rust/node/src/config.rs 981
 rust/role/ai-gateway/tests/openai_compat_test.rs 475

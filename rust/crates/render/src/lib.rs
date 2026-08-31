@@ -29,6 +29,7 @@
 //! - `pulldown-cmark = "0.13"`
 //! - toolchain: Rust 1.96 (workspace `rust-version = 1.93`, edition 2024)
 
+pub mod cell_rect;
 mod chrome;
 mod convert;
 mod error;
@@ -39,9 +40,10 @@ mod pdf;
 mod place;
 mod world;
 
+pub use cell_rect::{RectMm, cell_rect_mm, cell_rect_mm_on_page};
 pub use convert::{image_sources, markdown_to_typst, markdown_to_typst_plain};
 pub use error::RenderError;
-pub use geometry::{RectMm, cell_rect_mm, cell_rect_mm_on_page};
+pub use geometry::PageGeometry;
 pub use model::{Assembled, Brand, Colors, Fonts, ImageAsset, Placement, RenderOptions};
 pub use paginate::{PagedRow, page_of_row, paginate};
 pub use pdf::render_pdf;

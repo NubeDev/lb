@@ -3807,6 +3807,39 @@ pages, this slice) (+ `public/SCOPE.md`).
 
 ## Next up
 
+00. **Reports — authored page breaks + a real export-options contract. BUILT 2026-08-27 on
+    `feat/report-pagination-and-export-options`, NOT TAGGED.** Scope:
+    `docs/scope/reports/report-pagination-and-export-options-scope.md`; session:
+    `docs/sessions/reports/report-pagination-and-export-options-session.md`.
+
+    Two additive things and the refactor they both need. **`Cell.pageBreakBefore`** — an author-set
+    page break honoured by `paginate` ahead of its fit rule, so a report author states what goes on
+    a page instead of dragging panels until the row arithmetic agrees. **`ExportOptions`** on both
+    export doors (the HTTP route and the `report.export` MCP arm, the same type deliberately) —
+    paper, orientation, margins, scale, `pageNumbers`, `index`; the last two had rendered for months
+    with **nothing setting them**, two finished features dark behind one unplumbed line. And the six
+    hardcoded `A4_*` consts become one `PageGeometry` threaded through pagination, placement and the
+    Typst template, landed first as a pure refactor exactly as the scope ordered.
+
+    **The backward-compatibility claim is measured, not asserted.** The scope demands "options
+    absent ⇒ byte-identical PDF to the current implementation", which a test inside the branch cannot
+    prove. Verified against `master` directly — same board (including a band at row 26, the flow
+    case), exported on both, `sha256 18ce9828…` on each, `cmp` clean — *despite* `#set page` moving
+    from `paper: "a4"` to explicit millimetres.
+
+    The trap the scope flagged was real and is handled: `paginate` never sees `Cell` (it lays out
+    over the client's rendered panels), so `Placed` carries the marker and `panels_to_place` resolves
+    it by id, with a repeat clone inheriting its source's — through one shared `cell_for` rather than
+    a second copy of the lookup that would have silently drifted from `title_for`.
+
+    **Next step is a release decision, not a coding one:** PR → `node-v*` tag. That tag is what
+    unblocks rubix-ai's `report-builder-ux-scope.md` Phase 1 (its Phase 0 shipped 2026-08-27 and is
+    live). Nothing is tagged yet.
+
+    Watch item carried into the consumer: `rows_per_page` **stops being a constant** once paper is a
+    parameter. rubix-ai hardcodes `28` today and must compute it from the same profile the export
+    uses, including the scheduled one — the seam where screen and print can silently diverge again.
+
 000. **Dashboard editor parity — Phase 3.5 (scoped 2026-07-03, NOT built, user-reported).** A
     hands-on pass found the panel editor unusable for a real person despite the green spine:
     `organize` + 6 other transforms edit via a raw-JSON textarea, overrides take free-typed dotted

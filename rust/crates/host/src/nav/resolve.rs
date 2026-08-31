@@ -26,11 +26,10 @@ use super::admin_lens::is_workspace_admin;
 use super::authorize::authorize_nav;
 use super::bounds::BUILTIN_PICK;
 use super::error::NavError;
-use super::model::{
-    Nav, NavFacet, NavItem, ResolvedItem, ResolvedNav, ResolvedSource, Visibility, MAX_TAG_GROUP,
-};
+use super::model::{Nav, NavFacet, NavItem, Visibility, MAX_TAG_GROUP};
 use super::resolve_pins::resolve_pins;
 use super::resolve_template_group::resolve_template_group;
+use super::resolved::{ResolvedItem, ResolvedNav, ResolvedSource};
 use super::store::{read_default, read_hidden, read_nav, read_pref, scan_navs};
 use super::surfaces::surface_gate_cap;
 use super::visibility::may_read_nav;

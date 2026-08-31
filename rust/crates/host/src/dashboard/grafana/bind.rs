@@ -138,6 +138,10 @@ mod tests {
                 tool: String::new(),
                 args: target,
                 hide: false,
+                // PRE-EXISTING BREAKAGE, repaired in passing: `Target::show_when` was added without
+                // this fixture, so `cargo test -p lb-host --lib` had stopped compiling on master
+                // entirely. Unrelated to the pagination work — see the session doc.
+                show_when: String::new(),
             }],
             ..Cell::default()
         }
