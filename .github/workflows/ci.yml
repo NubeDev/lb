@@ -107,6 +107,16 @@ jobs:
                       /usr/local/share/powershell /usr/share/swift || true
           sudo docker image prune -af || true
           df -h /
+      # `test-timeout-runner.sh` dumps gdb/eu-stack backtraces when a test binary wedges, and
+      # degrades to WCHAN + cpu/elapsed when neither is present. It degraded: `flows_data_nodes_test`
+      # was killed at its full budget reporting `cpu/elapsed 00:00:01 / 20:02` — one second of CPU
+      # against twenty minutes, which is the runner's own signature for a parked lock — and then
+      # said "no gdb/eu-stack on this host — install one for full backtraces".
+      #
+      # So install one. A hang we cannot read is a hang we cannot fix, and this class (issues/109)
+      # has now cost two CI cycles guessing. ~30s of apt for a real stack trace next time.
+      - name: Install gdb (backtraces when a test binary wedges)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gdb
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
