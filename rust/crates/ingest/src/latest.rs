@@ -34,7 +34,7 @@ use crate::staging::SERIES_TABLE;
 pub async fn latest(store: &Store, ws: &str, series: &str) -> Result<Option<Sample>, StoreError> {
     // Fast path: the maintained pointer.
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT series, producer, seq, ts, payload FROM ONLY type::record('{SERIES_LATEST_TABLE}', $series)"),
             vec![("series".into(), Value::String(series.to_string()))],
@@ -63,7 +63,7 @@ async fn latest_by_scan(
     series: &str,
 ) -> Result<Option<Sample>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT series, producer, seq, time::millis(ts) AS ts, payload FROM {SERIES_TABLE} \
@@ -133,7 +133,7 @@ pub async fn latest_many(
     // keyed by series name — the pointer holds exactly the newest per series, no ORDER BY, no
     // per-series 10k-row sort). A name with no pointer row simply doesn't come back here.
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT series, producer, seq, ts, payload FROM {SERIES_LATEST_TABLE} \

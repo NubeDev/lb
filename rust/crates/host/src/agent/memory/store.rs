@@ -61,7 +61,7 @@ pub async fn read_memory(
     slug: &str,
 ) -> Result<Option<Memory>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT {MEMORY_COLUMNS} FROM type::record('{MEMORY_TABLE}', [$scope, $slug])"
@@ -114,7 +114,7 @@ pub async fn list_memories(
 ) -> Result<Vec<Memory>, StoreError> {
     let keys: Vec<Value> = scopes.iter().map(|s| Value::String(s.key())).collect();
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT {MEMORY_COLUMNS} FROM {MEMORY_TABLE} WHERE scope IN $scopes \

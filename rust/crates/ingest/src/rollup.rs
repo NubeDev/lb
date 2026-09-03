@@ -156,7 +156,7 @@ pub async fn read_rollups(
 /// `stats::producers`).
 pub async fn rollup_widths(store: &Store, ws: &str, prefix: &str) -> Result<Vec<u64>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT width_ms FROM {ROLLUP_TABLE} \

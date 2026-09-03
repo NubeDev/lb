@@ -60,7 +60,7 @@ pub async fn enforce_bound(
 /// direct commit ([`commit_direct`](crate::commit_direct)) safe to take.
 pub async fn staged_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
             vec![],

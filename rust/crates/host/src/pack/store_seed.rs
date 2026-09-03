@@ -207,7 +207,7 @@ fn read_sqlite_rows(
 async fn store_table_empty(node: &Node, ws: &str, table: &str) -> Result<bool, PackError> {
     let mut resp = node
         .store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             "SELECT count() AS n FROM type::table($tb) GROUP ALL",
             vec![("tb".into(), Value::from(table))],

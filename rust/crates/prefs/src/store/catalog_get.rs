@@ -19,7 +19,7 @@ pub async fn get_catalog_override(
 ) -> Result<(BTreeMap<String, String>, bool), StoreError> {
     define_catalog_schema(store, ws).await?;
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT {CATALOG_COLUMNS} FROM type::record('{CATALOG_TABLE}', [$ws, $locale])"

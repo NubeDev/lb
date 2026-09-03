@@ -75,7 +75,7 @@ async fn migrate_one(store: &Store, ws: &str) -> Result<bool, StoreError> {
 /// Raw read of the legacy column — deliberately NOT `get_agent_config` (which no longer projects it).
 async fn read_legacy_active_persona(store: &Store, ws: &str) -> Result<Option<String>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT active_persona FROM type::record('{AGENT_CONFIG_TABLE}', [$ws])"),
             vec![("ws".into(), Value::String(ws.to_string()))],

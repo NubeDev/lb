@@ -21,7 +21,7 @@ pub async fn facet_values(store: &Store, ws: &str, key: &str) -> Result<Vec<Valu
         return Ok(Vec::new());
     }
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             // tkey/tval are the edge's denormalized tag key/value (a RELATION drops literal key/value
             // fields — debugging/tags/relation-drops-key-value-fields.md). GROUP BY tval dedups.

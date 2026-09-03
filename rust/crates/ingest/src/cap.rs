@@ -49,7 +49,7 @@ pub const CAP_EVICT_BATCH: usize = 5_000;
 /// Count of committed raw samples for `series` in `ws`.
 pub async fn sample_count(store: &Store, ws: &str, series: &str) -> Result<u64, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT count() FROM {SERIES_TABLE} WHERE series = $series GROUP ALL"),
             vec![("series".into(), Value::String(series.to_string()))],
@@ -84,7 +84,7 @@ pub(crate) async fn keep_cutoff_ts(
     // use). Projecting `time::millis(ts)` alone and ordering by bare `ts` is a PARSE error, not a
     // silent mis-sort — the one mercy here.
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT ts, seq, time::millis(ts) AS ts_ms FROM {SERIES_TABLE} \

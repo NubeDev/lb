@@ -84,7 +84,7 @@ pub async fn find_similar(
     // ordered by ascending distance, so no ORDER BY is needed. We return the caller's logical `vid`.
     let ef = (k * 4).max(40);
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT vid FROM {VECTOR_TABLE} WHERE embedding <|{k},{ef}|> $q"),
             vec![("q".into(), json!(query))],

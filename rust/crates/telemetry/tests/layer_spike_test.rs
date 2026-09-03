@@ -26,8 +26,12 @@ async fn spike_layer_writes_and_reads() {
 
     for i in 0..100 {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        // `_retrying`: this read POLLS while the layer's fire-and-forget `capped_insert` tasks are
+        // writing the same table. SurrealDB runs a plain SELECT in a transaction a concurrent writer
+        // can abort, so the unretried read lost the race and failed the test with
+        // "Transaction conflict ... can be retried" — the read had not failed, it had been aborted.
         let mut r = store
-            .query_ws(
+            .query_ws_retrying(
                 "spike",
                 "SELECT count() AS c FROM type::table($tb) GROUP ALL",
                 vec![("tb".into(), json!(TABLE))],

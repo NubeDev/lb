@@ -43,7 +43,7 @@ pub async fn read_filter_state(
         return Ok(HashMap::new());
     }
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT series, {FILTER_STATE_FIELD} FROM {SERIES_META_TABLE} \

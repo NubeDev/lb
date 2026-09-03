@@ -41,7 +41,7 @@ pub async fn store_schema_read(
 
 /// The table names defined in `ws` (the keys of `INFO FOR DB`'s `tables` map).
 async fn db_tables(store: &Store, ws: &str) -> Result<Vec<String>, StoreQueryError> {
-    let mut resp = store.query_ws(ws, "INFO FOR DB", vec![]).await?;
+    let mut resp = store.query_ws_retrying(ws, "INFO FOR DB", vec![]).await?;
     let info: Option<DbInfo> = resp.take(0).map_err(decode)?;
     Ok(info
         .map(|i| i.tables.into_keys().collect())
@@ -60,7 +60,7 @@ async fn table_columns(
     // input — but we still backtick-quote it so an unusual-but-valid table name is a single literal
     // identifier and can never be more than one. Its `fields` map is field-name → DEFINE FIELD text.
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("INFO FOR TABLE `{}`", escape_ident(table)),
             vec![],
@@ -100,7 +100,7 @@ async fn sample_columns(
     table: &str,
 ) -> Result<Vec<SchemaColumn>, StoreQueryError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             "SELECT * OMIT id, in, out FROM type::table($tb) LIMIT 1",
             vec![("tb".into(), Value::String(table.to_string()))],

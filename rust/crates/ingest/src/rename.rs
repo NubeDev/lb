@@ -96,7 +96,7 @@ pub async fn rename_series(
 /// Does `series` have any committed sample rows in `ws`? (The row-level half of the merge guard.)
 async fn has_rows(store: &Store, ws: &str, series: &str) -> Result<bool, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT series FROM {SERIES_TABLE} WHERE series = $series LIMIT 1"),
             vec![("series".into(), Value::String(series.to_string()))],

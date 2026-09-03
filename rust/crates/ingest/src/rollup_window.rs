@@ -81,7 +81,7 @@ pub(crate) async fn oldest_raw_ts(
     series: &str,
 ) -> Result<Option<u64>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT time::millis(ts) AS ts FROM {SERIES_TABLE} \

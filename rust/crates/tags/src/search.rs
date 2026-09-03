@@ -36,7 +36,7 @@ pub async fn find_text(
     text: &str,
 ) -> Result<Vec<(String, Value)>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT key, value FROM {TAG_TABLE} WHERE value @@ $text"),
             vec![("text".into(), Value::String(text.to_string()))],

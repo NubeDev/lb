@@ -17,7 +17,7 @@ pub const DEFAULT_SERIES_CAP: usize = 10_000;
 /// Count of registered (distinct) series names in `ws`.
 pub async fn series_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT count() FROM {SERIES_META_TABLE} GROUP ALL"),
             vec![],
@@ -32,7 +32,7 @@ pub async fn series_count(store: &Store, ws: &str) -> Result<usize, StoreError> 
 /// Is `series` already registered in `ws`?
 pub async fn is_registered(store: &Store, ws: &str, series: &str) -> Result<bool, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT series FROM type::record('{SERIES_META_TABLE}', $series)"),
             vec![("series".into(), Value::String(series.to_string()))],
@@ -62,7 +62,7 @@ pub async fn register(store: &Store, ws: &str, series: &str) -> Result<(), Store
 /// Has this series' labels already been converted to tag edges?
 pub async fn labels_applied(store: &Store, ws: &str, series: &str) -> Result<bool, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT labels_applied FROM type::record('{SERIES_META_TABLE}', $series)"),
             vec![("series".into(), Value::String(series.to_string()))],
@@ -95,7 +95,7 @@ pub async fn series_names(
     prefix: &str,
 ) -> Result<Vec<String>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT series FROM {SERIES_META_TABLE} \

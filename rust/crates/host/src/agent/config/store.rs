@@ -44,7 +44,7 @@ pub async fn define_agent_config_schema(store: &Store, ws: &str) -> Result<(), S
 /// node's compiled-in default runtime).
 pub async fn get_agent_config(store: &Store, ws: &str) -> Result<Option<AgentConfig>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT {AGENT_CONFIG_COLUMNS} FROM type::record('{AGENT_CONFIG_TABLE}', [$ws])"

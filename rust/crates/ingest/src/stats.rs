@@ -65,7 +65,7 @@ pub async fn series_stats(
     let bind = || vec![("series".into(), Value::String(series.to_string()))];
 
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT count() FROM {SERIES_TABLE} WHERE series = $series GROUP ALL"),
             bind(),
@@ -138,7 +138,7 @@ async fn rollup_tiers(
     series: &str,
 ) -> Result<(u64, Vec<TierRows>), StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT width_ms, count() AS rows FROM {ROLLUP_TABLE} \
@@ -174,7 +174,7 @@ pub async fn series_producers(
 
 async fn producers(store: &Store, ws: &str, series: &str) -> Result<Vec<String>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT producer FROM {SERIES_TABLE} WHERE series = $series GROUP BY producer"

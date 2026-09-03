@@ -48,7 +48,7 @@ pub async fn define_counts_view(store: &Store, ws: &str) -> Result<(), StoreErro
 /// with a single `GROUP BY` (the edge's denormalized `tkey` aliased back to `key`).
 pub async fn count_by_key(store: &Store, ws: &str) -> Result<Vec<KeyCount>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT count() AS n, tkey AS key FROM {TAGGED_TABLE} GROUP BY key"),
             vec![],

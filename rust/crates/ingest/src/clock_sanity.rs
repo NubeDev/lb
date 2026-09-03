@@ -130,7 +130,7 @@ pub fn backwards_warning(now_ms: u64, last_run_ms: Option<u64>) -> Option<String
 /// never over-reports, which is the correct direction for something that raises an alarm.
 pub async fn newest_sample_ms(store: &Store, ws: &str) -> Result<Option<u64>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT math::max(ts) AS ts FROM {SERIES_LATEST_TABLE} GROUP ALL"),
             vec![],
