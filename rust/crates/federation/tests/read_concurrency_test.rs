@@ -106,6 +106,61 @@ async fn scan(src: &Arc<SqliteSource>) -> f64 {
     arr.value(0)
 }
 
+/// 1. THE HEADLINE, asserted on the MECHANISM instead of the clock.
+///
+/// The property is "concurrent reads spread across separate connections". `concurrent_wall_beats_a_
+/// serial_staircase` below measures that property's SHADOW — elapsed time — and the shadow is blurry
+/// on a shared runner: it once failed by 0.155 ms out of 11.59 (a 1.3% margin) while the concurrency
+/// was in fact working, because a 6 ms unit of work is mostly scheduling noise on a virtualised box.
+/// A test that fails on a coin flip is worse than no test; people learn to wave the red through.
+///
+/// So the gating assertion is this one, and it needs no clock: SQLite gets its concurrency from
+/// SEPARATE CONNECTIONS, so `READ_SLOTS` concurrent reads must occupy `READ_SLOTS` distinct slots.
+/// Deterministic, and it answers the same on any machine.
+///
+/// **Mutation check:** set `READ_SLOTS = 1` and this goes red on the `> 1` assertion — one slot is
+/// exactly the upstream shape that produced the 228/444/654/865 ms staircase.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_reads_occupy_every_slot() {
+    assert!(
+        READ_SLOTS > 1,
+        "READ_SLOTS = {READ_SLOTS}: a single connection serializes every concurrent read, which is \
+         the upstream behaviour this whole module exists to work around"
+    );
+
+    let dsn = seed_scan_db("slots");
+    let src = Arc::new(SqliteSource::connect(&dsn).await.expect("connect"));
+    assert_eq!(src.built_slots(), 1, "connect builds slot 0 and no more");
+
+    let results = futures::future::join_all((0..READ_SLOTS).map(|_| {
+        let src = Arc::clone(&src);
+        async move { scan(&src).await }
+    }))
+    .await;
+
+    // The whole assertion: the round-robin handed each read its own connection.
+    assert_eq!(
+        src.built_slots(),
+        READ_SLOTS,
+        "{READ_SLOTS} concurrent reads occupied only {} slot(s) — they are funnelling onto one \
+         connection and will serialize",
+        src.built_slots()
+    );
+
+    // Spreading must not corrupt anything: every scan still returns the real aggregate.
+    let expected: f64 = (0..ROWS).map(|i| (i as f64) * 1.5).sum();
+    for r in &results {
+        assert!(
+            (r - expected).abs() < 1.0,
+            "a concurrent scan returned {r}, expected {expected} — results corrupted under concurrency"
+        );
+    }
+}
+
+/// 1b. The same property measured in TIME — `#[ignore]`d, because a wall-clock margin this small is
+/// a coin flip on shared CI. Run it by hand (`--ignored`) when you want the number; the gating
+/// guarantee is `concurrent_reads_occupy_every_slot` above.
+#[ignore = "wall-clock margin is noise-dominated on shared CI; run by hand for the number"]
 /// 1. THE HEADLINE. N concurrent reads on one source cost ≈ the slowest one, not the sum.
 ///
 /// Method: measure a serial baseline (2 sequential scans, warm) in this same process, then run 4
@@ -115,7 +170,7 @@ async fn scan(src: &Arc<SqliteSource>) -> f64 {
 ///
 /// **Mutation check:** set `READ_SLOTS = 1` and watch this go red.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn concurrent_reads_do_not_serialize() {
+async fn concurrent_wall_beats_a_serial_staircase() {
     let dsn = seed_scan_db("staircase");
     let src = Arc::new(SqliteSource::connect(&dsn).await.expect("connect"));
 
