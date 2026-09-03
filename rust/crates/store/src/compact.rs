@@ -38,10 +38,17 @@ fn noop_record(reason: &str) -> CompactionRecord {
 /// Online pass: nothing to do, and — importantly — **no write stall**. The previous implementation
 /// held the handle write guard for the duration of whole-log I/O (~94 s measured on RC-6).
 pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
-    let _ = store;
-    Ok(noop_record(
-        "engine compacts automatically (surrealkv 0.21 LSM)",
-    ))
+    let rec = noop_record("engine compacts automatically (surrealkv 0.21 LSM)");
+    // A no-op pass is still a pass that HAPPENED, and `store.status` reports the last one. Record it
+    // in both places status can be read from: this process's slot, and beside the store for the next
+    // one.
+    if let Ok(mut slot) = store.last_compaction_slot().lock() {
+        *slot = Some(rec.clone());
+    }
+    if let Some(dir) = store.dir() {
+        crate::last_pass::store_last_compaction(dir, &rec);
+    }
+    Ok(rec)
 }
 
 pub(crate) fn epoch_ms() -> u64 {

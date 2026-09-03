@@ -59,6 +59,32 @@ pub fn last_persisted_compaction(store: &crate::open::Store) -> Option<Compactio
     load_last_compaction(store.dir()?)
 }
 
+/// Persist `rec` beside the store so `store.status` still reports the last pass after a restart.
+///
+/// Best-effort: losing the record costs a status line, never data. It was briefly deleted with the
+/// boot memory guard on the strength of a "never used" warning — but the WRITER was unused only
+/// because the guard's boot pass had been the caller, while the READER stayed live behind
+/// `store.status`. The result was a status that could never report a compaction at all.
+pub(crate) fn store_last_compaction(store_dir: &str, rec: &CompactionRecord) {
+    let path = record_path(store_dir);
+    if let Err(e) = write_atomically(&path, rec) {
+        tracing::warn!(
+            path = %path.display(),
+            error = %e,
+            "store: could not persist the last-compaction record"
+        );
+    }
+}
+
+fn write_atomically(path: &std::path::Path, rec: &CompactionRecord) -> std::io::Result<()> {
+    let body = serde_json::to_vec_pretty(rec)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    // Same directory as the target, so the rename is within one filesystem and therefore atomic.
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, body)?;
+    std::fs::rename(&tmp, path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

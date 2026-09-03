@@ -226,7 +226,12 @@ impl Store {
         Ok(Self {
             handle: Arc::new(RwLock::new(db)),
             path: Some(Arc::from(path)),
-            last_compaction: Arc::new(std::sync::Mutex::new(None)),
+            // Seed from the record beside the store, so `store.status` still reports the last pass
+            // across a restart. (The boot compaction pass used to do this; it is gone, the record
+            // is not.)
+            last_compaction: Arc::new(std::sync::Mutex::new(
+                crate::last_pass::load_last_compaction(path),
+            )),
             readers: Arc::new(crate::reader::Readers::default()),
             reader_secret: Arc::from(crate::reader::new_secret()),
         })
