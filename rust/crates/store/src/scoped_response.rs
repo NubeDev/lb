@@ -30,7 +30,7 @@ use crate::open::StoreError;
 /// This narrows nothing that was previously reported: under SurrealDB 2 a misspelled table name
 /// also read as empty rather than erroring. Matching is on the TYPED detail, never on the message
 /// text.
-fn check_absent_table_as_empty(
+pub(crate) fn check_absent_table_as_empty(
     mut resp: surrealdb::IndexedResults,
 ) -> Result<surrealdb::IndexedResults, surrealdb::Error> {
     // `take_errors` drains EVERY errored slot, so re-raise the lowest-indexed survivor to keep
@@ -84,7 +84,7 @@ impl<'a> ScopedIndex for (usize, &'a str) {
 /// The result of a scoped store query. Wraps SurrealDB's `Response` and hides the leading `USE`
 /// statement's result slot: `take(0)` returns the caller's FIRST statement (the USE lives at the
 /// real index 0), so every one of the ~140 `query_ws` callers keeps its existing selectors.
-pub struct ScopedResponse(surrealdb::IndexedResults);
+pub struct ScopedResponse(pub(crate) surrealdb::IndexedResults);
 
 impl ScopedResponse {
     /// Extract a result selected 0-based over the caller's OWN statements (the injected `USE` at real

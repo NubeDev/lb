@@ -24,6 +24,7 @@
 mod align;
 mod bucket;
 mod bucket_acc;
+mod bucket_rows;
 mod cap;
 mod clock_sanity;
 mod commit;
