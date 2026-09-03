@@ -418,15 +418,11 @@ async fn the_driver_writes_one_attributable_job_that_drains_normally() {
     cleanup(&path);
 }
 
-/// **The engine reclaims deleted rows on its own.** This test used to assert the opposite — that a
-/// delete only appends a tombstone and that nothing but an explicit compaction frees the bytes —
-/// and it was written on real bytes precisely "so a future engine change cannot quietly invalidate
-/// it". The engine changed, and it did not go quietly: this is what caught it.
-///
-/// surrealkv 0.9 was an append-only log. 0.21 is an LSM tree whose background flush and level
-/// compaction reclaim superseded versions and tombstones with no stop-the-world pass, so the
-/// ordering rule the budget driver was built around ("evict, THEN compact, or the log only grows")
-/// no longer describes this engine.
+/// **The engine reclaims deleted rows on its own.** This asserted the opposite until surrealkv
+/// 0.21: an append-only log where only an explicit compaction freed bytes. The LSM engine reclaims
+/// superseded versions and tombstones in the background, so the budget driver's ordering rule
+/// ("evict, THEN compact, or the log only grows") no longer describes it. Written on real bytes, so
+/// the engine change could not pass quietly — and it did not.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn deleting_rows_is_reclaimed_by_the_engine_without_an_explicit_pass() {
     let ws = "budget-tombstone";
@@ -451,17 +447,16 @@ async fn deleting_rows_is_reclaimed_by_the_engine_without_an_explicit_pass() {
     for k in 0..300 {
         delete(&store, ws, "kv", &format!("k{k}")).await.unwrap();
     }
-    // Give the background flush/compaction a moment; it is not synchronous with the delete.
+    // The background flush is not synchronous with the delete.
     tokio::time::sleep(std::time::Duration::from_millis(750)).await;
     let after_delete = status(&store).log_bytes;
     assert!(
         after_delete <= before_delete,
-        "the engine reclaims deleted rows itself: {after_delete} must not exceed the pre-delete \
-         {before_delete} (it used to grow, when the engine was an append-only log)"
+        "the engine reclaims deleted rows itself: {after_delete} must not exceed {before_delete}"
     );
 
-    // The explicit pass still ANSWERS — the verb, the job and the budget driver all depend on it —
-    // but it reclaims nothing, and says so rather than reporting a shrink it did not perform.
+    // The explicit pass still ANSWERS (the verb, the job and the driver depend on it) but reclaims
+    // nothing, and says so rather than reporting a shrink it did not perform.
     let rec = compact(&store).await.expect("pass");
     assert!(rec.ok, "{:?}", rec.error);
     assert!(
