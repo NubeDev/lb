@@ -59,3 +59,27 @@ pub(crate) fn retention_period_from_env() -> Option<std::time::Duration> {
         _ => None,
     }
 }
+
+/// Parse `LB_SERIES_TIME_INDEX` into the `(series, ts)` index switch. Only the exact value `1`
+/// enables it; anything else (including unset) leaves it OFF, which is the correct-by-default
+/// setting — see `BootConfig::series_time_index` for why.
+pub(crate) fn series_time_index_from_env() -> bool {
+    match std::env::var("LB_SERIES_TIME_INDEX") {
+        Ok(v) if v == "1" => {
+            tracing::warn!(
+                "LB_SERIES_TIME_INDEX=1: defining the (series, ts) index. SurrealDB 3.2.4 answers a \
+                 datetime range over an indexed field WRONGLY (out-of-range rows, ORDER BY dropped) \
+                 — timeseries windows may return wrong data silently."
+            );
+            true
+        }
+        Ok(v) if !v.is_empty() => {
+            tracing::warn!(
+                "bad LB_SERIES_TIME_INDEX '{v}': only the exact value '1' enables the (series, ts) \
+                 index — leaving it off"
+            );
+            false
+        }
+        _ => false,
+    }
+}

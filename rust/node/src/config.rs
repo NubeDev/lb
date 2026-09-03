@@ -20,7 +20,9 @@ use std::time::Duration;
 use lb_auth::SigningKey;
 use lb_role_gateway::Authenticity;
 
-use crate::store_env::{retention_period_from_env, store_budget_bytes_from_env};
+use crate::store_env::{
+    retention_period_from_env, series_time_index_from_env, store_budget_bytes_from_env,
+};
 
 /// The default `POST /extensions` upload ceiling (extension-upload-limit fix): 384 MiB. Sized to the
 /// largest real native sidecar artifact observed (the ems modbus bundle ~317 MiB — a 6.2 MB release
@@ -338,6 +340,17 @@ pub struct BootConfig {
     /// `LB_STORE_MAX_BYTES` at the binary boundary — the one place `LB_*` is read.
     pub store_budget_bytes: Option<u64>,
 
+    /// Define the `(series, ts)` index on the series table. **Default `false`, deliberately.**
+    ///
+    /// SurrealDB 3.2.4 answers a datetime range over an indexed field wrongly — out-of-range rows,
+    /// and the `ORDER BY` dropped (measured: `store/tests/index_range_scan_probe.rs`). A paged read
+    /// returned a sample 500 ms below its own window. Off, the same query is correct.
+    ///
+    /// Config, never a code branch (rule 1). `from_env` reads `LB_SERIES_TIME_INDEX=1` at the binary
+    /// boundary. Turn it on only if you accept wrong rows for scan speed, or once the engine is
+    /// fixed; with it off the index is REMOVED from stores that already carry one.
+    pub series_time_index: bool,
+
     /// How often the **retention GC reactor** ticks. `None` (the default) ⇒
     /// [`lb_host::RETENTION_PERIOD`] — 300 s, unchanged.
     ///
@@ -558,6 +571,7 @@ impl Default for BootConfig {
             // 256 MiB advisory and no marks, forever. No auto-derivation from filesystem size — a
             // node must not silently acquire a new behaviour on upgrade.
             store_budget_bytes: None,
+            series_time_index: false,
             // The stock 300 s retention cadence (disk-budget/series-retention): slow on purpose —
             // a GC pass is a full table scan and nothing waits on an eviction. Configurable so the
             // cadence can be TESTED, not so it can be run fast.
@@ -669,6 +683,8 @@ impl BootConfig {
             // The node's store disk budget from `LB_STORE_MAX_BYTES` (bytes); unset/empty/
             // unparseable ⇒ `None` ⇒ today's flat 256 MiB advisory and no marks. Read only here.
             store_budget_bytes: store_budget_bytes_from_env(),
+            // The `(series, ts)` index is opt-in; see the field.
+            series_time_index: series_time_index_from_env(),
             // The retention-GC cadence from `LB_RETENTION_PERIOD_SECS` (whole seconds);
             // unset/empty/unparseable/`0` ⇒ `None` ⇒ the 300 s default. Read only here.
             retention_period: retention_period_from_env(),

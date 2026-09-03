@@ -192,6 +192,10 @@ fn printed_gateway_url_from(addr: &str, public: Option<&str>, scheme: Option<&st
 /// their own `LB_FEDERATION_*` / `LB_CONTROL_ENGINE_*` env; that de-env'ing is an explicit documented
 /// follow-up — the core ritual store/key/workspace/seeds/reactors/gateway is fully struct-config).
 pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
+    // The `(series, ts)` index switch, from config — BEFORE anything can commit, because the first
+    // commit is what defines (or removes) it. See `BootConfig::series_time_index`.
+    lb_ingest::set_series_time_index(cfg.series_time_index);
+
     // Boot the spine over the config's store. `Arc` so the reactors + role mounts share it.
     let node = Arc::new(Node::boot_with_store(open_store(&cfg).await?).await?);
 
