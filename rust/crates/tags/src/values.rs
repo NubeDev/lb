@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::edge::TAGGED_TABLE;
+use lb_store::SurrealValue;
 
 /// The distinct values present for tag `key` in `ws`, one entry per value (deduped by `GROUP BY`).
 /// Empty when the key is unused. Values are returned verbatim (a string, number, or bool tag value).
@@ -34,7 +35,8 @@ pub async fn facet_values(store: &Store, ws: &str, key: &str) -> Result<Vec<Valu
     Ok(rows.into_iter().map(|r| r.value).collect())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, SurrealValue)]
+#[surreal(crate = "lb_store::surreal_types")]
 struct ValueRow {
     value: Value,
 }

@@ -174,7 +174,7 @@ async fn evict_older_than(
             ws,
             &format!(
                 "LET $doomed = (SELECT id, ts AS _ts, seq AS _seq FROM {SERIES_TABLE} \
-                 WHERE series = $series AND ts < time::from::millis($cutoff) \
+                 WHERE series = $series AND ts < time::from_millis($cutoff) \
                  ORDER BY _ts ASC, _seq ASC LIMIT $limit);
                  DELETE $doomed;
                  RETURN count($doomed);"

@@ -125,7 +125,7 @@ async fn raw_extent(
     ))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct TsRow {
     ts_ms: u64,
 }
@@ -189,3 +189,8 @@ async fn producers(store: &Store, ws: &str, series: &str) -> Result<Vec<String>,
     names.dedup();
     Ok(names)
 }
+
+// SurrealDB 3 reads query rows through `SurrealValue`. These delegate to serde rather than
+// deriving, so `#[serde(default)]` and `deserialize_with = "de_opt_lenient_f64"` keep working
+// unchanged — the derive supports neither. See `lb_store::surreal_value_via_serde!`.
+lb_store::surreal_value_via_serde!(TsRow, TierRows);

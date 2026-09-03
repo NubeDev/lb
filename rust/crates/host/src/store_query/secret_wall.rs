@@ -1,191 +1,225 @@
-//! The **raw-read wall over the secret plane** for SurrealQL (node-update scope, decision 9). The
-//! owner gate on `secret.get` is only as strong as every *other* way to read the store, and
-//! `store.query` is one: its cap `mcp:store.query:call` sits in the author-tier bundle, so without
-//! this file `SELECT * FROM secret` hands a plain member the sealed value in plaintext, straight past
-//! the owner wall. `parse.rs` bounds the statement's KIND (a single read); this file bounds what that
-//! read may TOUCH.
+//! The **secret-plane wall** for `store.query` — no statement may name a credential table.
 //!
-//! It applies to **every principal** — member, workspace admin, extension, and the host's own MCP
-//! surfaces alike. There is no override capability, by design (rule 10: no caller is special-cased).
-//! The list of tables is `lb_store::secret_tables::SECRET_TABLES`, the same slice `snapshot_guard`
-//! refuses to copy — one list, two surfaces.
+//! # Why this is a token scan and not an AST walk
 //!
-//! ## How the proof works, and what it cannot prove
+//! It used to walk the parsed statement and check each table position. SurrealDB 3 sealed the AST
+//! (`parse.rs` records the exhaustive check), so the table positions are no longer visible to us.
 //!
-//! The check runs on the **parsed AST**, never on the SQL text — a substring blocklist is defeated by
-//! whitespace, a comment, a quoted identifier or an alias, and it over-matches on any string that
-//! merely contains the word. We serialise the parsed [`Statement`] with serde and walk that tree,
-//! which gives two structural signals:
+//! The read/write half of the old gate did not need replacing in kind — the ENGINE now refuses
+//! writes, in a session that cannot perform them (`lb_store`'s `reader.rs`). That substitution is
+//! not available here: a `VIEWER` at database level **bypasses table permissions for reads**
+//! (`ctx::check_perms`, measured in `store/tests/viewer_reads_secrets_probe.rs`), so the engine will
+//! happily read `secret` for us. The wall has to stay host-side.
 //!
-//!   1. **A secret-plane name anywhere in the statement.** Post-parse, the tree contains only what the
-//!      parser recognised, so `FROM secret`, `FROM secret:abc`, an aliased/`AS`-projected read, a
-//!      correlated subquery, a JOIN-shaped multi-table `FROM a, secret`, a graph part `->secret`, and
-//!      a literal `type::table("secret")` all surface the same string. This is deliberately wider than
-//!      a table position: a *string literal* equal to a secret table name (`WHERE kind = 'secret'`)
-//!      is also refused. That is a **known false refusal** — cheap and visible — accepted because
-//!      narrowing it would mean trusting our own reading of which AST slots can become a table.
-//!   2. **A table position we cannot evaluate.** `SELECT * FROM type::table($t)` names no table in the
-//!      AST at all — the table is chosen at runtime from caller-supplied `vars`. Any dynamic construct
-//!      (a param, a function call, a block, a future, a cast, a model, a computed idiom) appearing in a
-//!      **table position** (`FROM …`, a graph `->…`) is refused unless the request's own bindings
-//!      resolve it: `$t` is *not* unknowable when the same call supplies `vars = {t: "site"}`, so we
-//!      resolve it and judge the name. That keeps the wall's promise (the read is checked by table
-//!      name) while letting the injection-safe parameterised form through — the platform `store-read`
-//!      node builds exactly that shape on purpose, so that the author's table is a binding rather
-//!      than spliced text.
+//! # Why a token scan is sound HERE, where it would not be for writes
 //!
-//! Two boundaries make the "table position" precise, and both matter:
-//!   - it is **inherited** down a subtree, so a `type::table($t)` nested inside `FROM (…)` is still
-//!     choosing a table;
-//!   - it **ends at a nested statement**. `FROM (SELECT … FROM t WHERE …)` is a subquery whose own
-//!     projection / `WHERE` / `ORDER BY` name no table, and whose `FROM` re-opens the position by its
-//!     own key. Inheriting past that boundary refused every *composed* read in the product (each
-//!     `Idiom` field reference inside the subquery read as a runtime-computed table).
+//! The two walls fail in opposite directions, and that is the whole argument:
 //!
-//! Honestly stated limits: we do **not** prove anything about what the store then does with the rows
-//! — this is a wall on the request, not row-level filtering; and if the serde tree of a statement ever
-//! failed to build, we refuse rather than pass (the `Err` arm below). `INFO`/`SHOW` go through the
-//! same walk, so `INFO FOR TABLE secret` is refused too — it discloses the shape of the secret plane.
+//!   * A text check for **writes** that misses one silently executes a mutation. Unsafe.
+//!   * A text check for **secret tables** that misses one would disclose a credential — so it is
+//!     built to over-match instead: any identifier token equal to a secret table name refuses the
+//!     whole statement, wherever it appears. A refused `SELECT note FROM log WHERE kind = apikey`
+//!     is a visible false refusal; there is no silent failure mode.
+//!
+//! Tokens are compared with [`lb_store::secret_tables::is_secret_table`] — the one canonical list,
+//! never a second copy. Matching is on whole identifiers, so `secrets`, `my_secret` and `sec` are
+//! not refused, exactly as that module's own tests require.
+//!
+//! # The one hole, closed explicitly
+//!
+//! A token scan cannot see a table named *indirectly* — `FROM type::table($t)` builds the name at
+//! run time from a value. The old AST wall resolved that against the bindings. We cannot, so
+//! dynamic table construction is **refused outright** ([`DYNAMIC_TABLE_FNS`]). That narrows the verb
+//! (a parameterised table position used to be allowed) and is the honest trade: a narrower verb
+//! beats a wall with a documented way through it.
 
+use lb_store::secret_tables::secret_table_of;
 use serde_json::Value;
-use surrealdb::sql::Statement;
 
 use super::error::StoreQueryError;
+use super::sql_scan::{
+    dynamic_table_args, from_terms, identifiers, resolve_arg, strip_comments,
+    table_term_is_provable,
+};
 
-/// AST nodes whose value is only known at run time. In a **table position** none of these can be
-/// statically proven not to resolve to a secret table, so their presence there is a refusal. (In a
-/// projection or a `WHERE` they are ordinary and allowed — they cannot name a table to read.)
-const DYNAMIC_IN_TABLE_POSITION: &[&str] = &[
-    "Param",      // FROM $t  /  type::table($t)
-    "Function",   // FROM type::table(...), FROM fn::whatever()
-    "Model",      // FROM ml::model(...)
-    "Block",      // FROM { ... }
-    "Future",     // FROM <future> { ... }
-    "Cast",       // FROM <record> $x
-    "Expression", // FROM a ?: b
-    "Idiom",      // FROM some.field  — resolves against the document, not a literal table
-    "Mock",       // FROM |secret:1..10|  — generated ids over a runtime-shaped table
-];
+pub(crate) type Vars<'a> = &'a [(String, Value)];
 
-/// The serde keys that open a **table position** — the slot in a statement where a value is resolved
-/// to a table to read. `what` is `SELECT … FROM <what>` and a graph part's `->(<what>)`; `tb` is a
-/// record id's table. Everything reachable under one of these is judged by the stricter rule.
-const TABLE_POSITION_KEYS: &[&str] = &["what", "tb", "table", "tables"];
-
-/// The serde variant tag of a nested **statement**. A statement is its own scope: an enclosing table
-/// position ends at its boundary, because the statement re-opens the positions it actually has (its
-/// own `what`/`tb`). Only the read statement qualifies — anything else nested in a table position
-/// keeps the strict treatment.
-const NESTED_STATEMENT: &str = "Select";
-
-/// The bound variables supplied with this same request (`store.query {sql, vars}`), used to *resolve*
-/// a parameterised table position. See [`resolved_table`].
-pub type Vars<'a> = &'a [(String, Value)];
-
-/// Refuse `stmt` if it can read the secret plane — or if it cannot be *proven* not to. Runs after
-/// `ensure_read_only`, on the same parsed statement, before any SQL reaches the store.
+/// Refuse `sql` if it names a secret-plane table, or if it could name one indirectly.
 ///
-/// `vars` are the bindings that will be sent with the statement. They are part of the proof, not a
-/// convenience: `FROM type::table($tb)` names no table in the AST, but when the same request binds
-/// `$tb` to a string, the table it will read is known *here* and can be checked by name. Passing an
-/// empty slice is always safe — it can only refuse more.
-pub fn ensure_no_secret_read(stmt: &Statement, vars: Vars<'_>) -> Result<(), StoreQueryError> {
-    // The AST is walked as serde data, not by matching every `sql::Value` variant by hand: the enum
-    // is `#[non_exhaustive]` and grows, and a hand-written match silently stops covering a new
-    // variant the day it lands — which here would be a credential leak, not a compile error.
-    let tree = serde_json::to_value(stmt).map_err(|e| {
-        StoreQueryError::Rejected(format!(
-            "statement could not be inspected for secret-table access, so it is refused: {e}"
-        ))
-    })?;
-    walk(&tree, false, vars)
-}
-
-fn walk(node: &Value, table_position: bool, vars: Vars<'_>) -> Result<(), StoreQueryError> {
-    match node {
-        Value::String(s) => {
-            if let Some(t) = lb_store::secret_table_of(s) {
-                return Err(refused(t));
-            }
-            Ok(())
-        }
-        Value::Array(items) => items.iter().try_for_each(|v| walk(v, table_position, vars)),
-        Value::Object(map) => {
-            // A dynamic node in a table position is refused for being *unprovable*, not for being
-            // dynamic — so try to prove it first. When the request's own bindings say which table it
-            // resolves to, that name is the thing to judge, and the subtree below it is just the
-            // parameter name.
-            if table_position {
-                if let Some(name) = resolved_table(node, vars) {
-                    return match lb_store::secret_table_of(&name) {
-                        Some(t) => Err(refused(t)),
-                        None => Ok(()),
-                    };
+/// `vars` are checked too: a binding whose *value* is a secret table name is refused, so a caller
+/// cannot move the name out of the statement text and into a parameter.
+pub fn ensure_no_secret_tables(sql: &str, vars: Vars<'_>) -> Result<(), StoreQueryError> {
+    let stripped = strip_comments(sql);
+    // A dynamically-named table is resolved to the name it will actually take, so an innocent
+    // parameterised table position still works; one that cannot be resolved is refused.
+    for arg in dynamic_table_args(&stripped) {
+        match resolve_arg(&arg, vars) {
+            Some(name) => {
+                if let Some(t) = secret_table_of(&name) {
+                    return Err(StoreQueryError::SecretTable(t));
                 }
             }
-            for (key, val) in map {
-                if table_position && DYNAMIC_IN_TABLE_POSITION.contains(&key.as_str()) {
-                    return Err(StoreQueryError::Rejected(format!(
-                        "a table computed at run time ({key}) cannot be proven not to be a secret \
-                         table, so the query is refused — name the table literally"
-                    )));
-                }
-                // A table position is entered by key and stays open for the whole subtree — a nested
-                // `type::table($t)` inside `FROM (…)` is still choosing a table to read — but it ENDS
-                // at a nested statement. `FROM (SELECT …)` is a subquery, and inside it a field
-                // reference, a `WHERE`, an `ORDER BY` are ordinary: they cannot name a table to read,
-                // and the subquery's own `FROM` re-opens the position by its own `what` key. Without
-                // this boundary every composed read (`SELECT * FROM (SELECT … FROM t) WHERE …`) is
-                // refused for the `Idiom` of its own projection — see the debug entry.
-                let inner = if key == NESTED_STATEMENT {
-                    false
-                } else {
-                    table_position || TABLE_POSITION_KEYS.contains(&key.as_str())
-                };
-                walk(val, inner, vars)?;
+            None => {
+                return Err(StoreQueryError::Rejected(format!(
+                    "the table name in `{arg}` is built at run time and cannot be checked against \
+                     the secret plane. Name the table directly, or bind it to a literal."
+                )))
             }
-            Ok(())
         }
-        _ => Ok(()),
     }
+    // A table position that is COMPUTED — `FROM some.field` — names a table we cannot know. The
+    // token scan would read `some` and `field` as ordinary identifiers and let it through, so the
+    // term after each `FROM` is judged on its own.
+    for term in from_terms(&stripped) {
+        if !table_term_is_provable(&term, vars) {
+            return Err(StoreQueryError::Rejected(format!(
+                "the table in `FROM {term}` is chosen at run time and cannot be checked against \
+                 the secret plane. Name the table directly, or bind it to a literal."
+            )));
+        }
+    }
+    for token in identifiers(&stripped) {
+        if let Some(t) = secret_table_of(&token) {
+            return Err(StoreQueryError::SecretTable(t));
+        }
+    }
+    for (_, v) in vars {
+        if let Some(s) = v.as_str() {
+            if let Some(t) = secret_table_of(s) {
+                return Err(StoreQueryError::SecretTable(t));
+            }
+        }
+    }
+    Ok(())
 }
 
-/// The literal table name a table-position node resolves to, when the request's bindings make that
-/// knowable. `None` means "not provable here" — the caller then falls back to refusing.
-///
-/// Deliberately narrow: exactly the two shapes that carry a table through a binding —
-/// `FROM $tb` and `FROM type::table(<literal|$tb>)`. Anything else (a computed expression, another
-/// function, a block, an idiom) stays unprovable, because widening this is widening the wall.
-fn resolved_table(node: &Value, vars: Vars<'_>) -> Option<String> {
-    let map = node.as_object()?;
-    if let Some(Value::String(param)) = map.get("Param") {
-        return bound_string(param, vars);
-    }
-    // {"Function":{"Normal":["type::table",[<arg>]]}}
-    let args = map
-        .get("Function")?
-        .get("Normal")?
-        .as_array()
-        .filter(|f| f.first().and_then(Value::as_str) == Some("type::table"))?
-        .get(1)?
-        .as_array()?;
-    let [arg] = args.as_slice() else { return None };
-    match arg.as_object()? {
-        m if m.contains_key("Strand") => m.get("Strand")?.as_str().map(str::to_string),
-        m => bound_string(m.get("Param")?.as_str()?, vars),
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// The string a `$name` binding carries, if it is bound to a plain string in this request.
-fn bound_string(name: &str, vars: Vars<'_>) -> Option<String> {
-    vars.iter()
-        .find(|(k, _)| k == name)
-        .and_then(|(_, v)| v.as_str())
-        .map(str::to_string)
-}
+    fn refused(sql: &str) -> bool {
+        ensure_no_secret_tables(sql, &[]).is_err()
+    }
 
-/// The one refusal message, naming the table so the SQL editor can explain it. Safe to surface: the
-/// caller wrote the name, so it carries no existence signal.
-fn refused(table: &'static str) -> StoreQueryError {
-    StoreQueryError::SecretTable(table)
+    #[test]
+    fn a_direct_secret_read_is_refused() {
+        for sql in [
+            "SELECT * FROM secret",
+            "SELECT * FROM credential",
+            "SELECT * FROM identity_credential",
+            "SELECT * FROM apikey",
+        ] {
+            assert!(refused(sql), "{sql} must be refused");
+        }
+    }
+
+    #[test]
+    fn case_backticks_and_nesting_do_not_get_through() {
+        for sql in [
+            "SELECT * FROM SECRET",
+            "SELECT * FROM `secret`",
+            "SELECT * FROM ⟨secret⟩",
+            "SELECT * FROM (SELECT * FROM secret)",
+            "SELECT * FROM ApiKey",
+            "SELECT * FROM r\"secret:abc\"",
+        ] {
+            assert!(refused(sql), "{sql} must be refused");
+        }
+    }
+
+    #[test]
+    fn a_name_split_by_a_comment_does_not_get_through() {
+        assert!(refused("SELECT * FROM /* x */ secret"));
+        assert!(refused("SELECT * FROM secret -- trailing\n"));
+    }
+
+    #[test]
+    fn ordinary_tables_are_not_refused() {
+        for sql in [
+            "SELECT * FROM series",
+            "SELECT * FROM secrets",
+            "SELECT * FROM my_secret",
+            "SELECT * FROM sec",
+            "SELECT * FROM dashboard WHERE name = 'apikey rotation'",
+        ] {
+            assert!(!refused(sql), "{sql} must NOT be refused");
+        }
+    }
+
+    #[test]
+    fn a_dynamic_table_is_resolved_from_its_binding() {
+        let secret = vec![("t".to_string(), Value::from("secret"))];
+        assert!(matches!(
+            ensure_no_secret_tables("SELECT * FROM type::table($t)", &secret),
+            Err(StoreQueryError::SecretTable("secret"))
+        ));
+        let ordinary = vec![("t".to_string(), Value::from("site"))];
+        assert!(ensure_no_secret_tables("SELECT * FROM type::table($t)", &ordinary).is_ok());
+    }
+
+    /// `type::record` is SurrealDB 3's name for what 2.x called `type::thing`, and lb uses it in
+    /// 167 places — so a wall that watched only `type::table`/`type::thing` left the commonest
+    /// dynamic form completely unguarded.
+    #[test]
+    fn the_record_constructor_is_watched_too() {
+        assert!(matches!(
+            ensure_no_secret_tables("SELECT * FROM type::record('secret', 'x')", &[]),
+            Err(StoreQueryError::SecretTable("secret"))
+        ));
+        let bound = vec![("t".to_string(), Value::from("secret"))];
+        assert!(matches!(
+            ensure_no_secret_tables("SELECT * FROM type::record($t, 'x')", &bound),
+            Err(StoreQueryError::SecretTable("secret"))
+        ));
+        // …and the innocent form still reads.
+        assert!(ensure_no_secret_tables("SELECT * FROM type::record('site', 'x')", &[]).is_ok());
+    }
+
+    /// Any OTHER `type::` call in a table position is unprovable, not waved through.
+    #[test]
+    fn an_unknown_type_constructor_is_not_assumed_safe() {
+        // A real `type::` function that is NOT a table constructor: it must not inherit the prefix
+        // shortcut just because its path starts with `type::`.
+        assert!(refused("SELECT * FROM type::field(meta.tb)"));
+    }
+
+    #[test]
+    fn a_dynamic_table_literal_is_refused_by_name() {
+        assert!(matches!(
+            ensure_no_secret_tables("SELECT * FROM type::table('secret')", &[]),
+            Err(StoreQueryError::SecretTable("secret"))
+        ));
+        assert!(ensure_no_secret_tables("SELECT * FROM type::table('site')", &[]).is_ok());
+    }
+
+    #[test]
+    fn a_computed_table_position_is_refused_but_ordinary_field_reads_are_not() {
+        assert!(refused("SELECT * FROM some.field"));
+        // A field reference that is NOT a table position must still be fine — this is the shape
+        // every composed/bounded subquery produces.
+        assert!(!refused(
+            "SELECT data.name AS n FROM site WHERE data.id = 'x' ORDER BY data.name"
+        ));
+        assert!(!refused("SELECT * FROM (SELECT data.name FROM site)"));
+        assert!(!refused("SELECT * FROM site"));
+        assert!(!refused("SELECT * FROM `site`"));
+    }
+
+    /// The case the wall exists for: a table position it cannot prove is refused, not guessed.
+    #[test]
+    fn an_unprovable_dynamic_table_is_refused() {
+        // No binding for `$t`.
+        assert!(refused("SELECT * FROM type::table($t)"));
+        // An expression, not a literal or a parameter.
+        assert!(refused(
+            "SELECT * FROM type::table(string::concat('sec','ret'))"
+        ));
+        assert!(refused("SELECT * FROM type::record(meta.tb, meta.id)"));
+    }
+
+    #[test]
+    fn a_secret_name_hidden_in_a_binding_is_refused() {
+        let vars = vec![("t".to_string(), Value::from("secret"))];
+        assert!(ensure_no_secret_tables("SELECT * FROM series", &vars).is_err());
+    }
 }

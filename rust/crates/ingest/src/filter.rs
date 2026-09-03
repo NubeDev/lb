@@ -77,9 +77,13 @@ pub struct Filter {
     /// Keep at most one stored sample per N ms per `(series, producer)` — the FIRST of each interval.
     #[serde(default)]
     pub min_interval_ms: u64,
-    #[serde(default)]
+    // `#[serde(default)]` covers an ABSENT key. A key that IS present and empty is a different
+    // case: SurrealDB stores it as NULL/NONE and hands it to serde as a unit, which plain
+    // `Option<T>` rejects ("invalid type: unit value, expected struct Deadband"). `null_as_none`
+    // covers that half, and every policy row written without a filter block hits it.
+    #[serde(default, deserialize_with = "lb_store::null_as_none")]
     pub deadband: Option<Deadband>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lb_store::null_as_none")]
     pub range: Option<Range>,
 }
 

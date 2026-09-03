@@ -126,7 +126,7 @@ pub async fn capped_insert(
     // cross-version-safe shape SurrealDB accepts for LIMIT); `n` is a caller constant, not runtime.
     let sql = format!(
         "BEGIN TRANSACTION;\
-         CREATE type::thing($tb, $id) CONTENT $value;\
+         CREATE type::record($tb, $id) CONTENT $value;\
          LET $keep = (SELECT VALUE seq FROM type::table($tb) WHERE cap_key = $key ORDER BY seq DESC LIMIT {n});\
          DELETE FROM type::table($tb) WHERE cap_key = $key AND seq NOT IN $keep;\
          COMMIT TRANSACTION;"

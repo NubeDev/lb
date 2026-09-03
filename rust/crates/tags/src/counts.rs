@@ -20,9 +20,11 @@ use lb_store::{Store, StoreError};
 use serde::Deserialize;
 
 use crate::edge::TAGGED_TABLE;
+use lb_store::SurrealValue;
 
 /// A per-dimension count row: how many edges carry tag `key`.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, SurrealValue)]
+#[surreal(crate = "lb_store::surreal_types")]
 pub struct KeyCount {
     pub key: String,
     pub n: i64,

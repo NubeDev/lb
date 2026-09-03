@@ -613,7 +613,7 @@ async fn poison_snapshot(
     node.store
         .query_ws(
             ws,
-            "UPDATE type::thing($tb, $id) MERGE { snapshot: $snapshot, cap_key: $key, seq: $id }",
+            "UPDATE type::record($tb, $id) MERGE { snapshot: $snapshot, cap_key: $key, seq: $id }",
             vec![
                 (
                     "tb".into(),

@@ -42,7 +42,7 @@ pub async fn upsert_memory(store: &Store, ws: &str, mem: &Memory) -> Result<(), 
     store
         .query_ws(
             ws,
-            &format!("UPSERT type::thing('{MEMORY_TABLE}', [$scope, $slug]) CONTENT $content"),
+            &format!("UPSERT type::record('{MEMORY_TABLE}', [$scope, $slug]) CONTENT $content"),
             vec![
                 ("scope".into(), Value::String(mem.scope.clone())),
                 ("slug".into(), Value::String(mem.slug.clone())),
@@ -63,7 +63,9 @@ pub async fn read_memory(
     let mut resp = store
         .query_ws(
             ws,
-            &format!("SELECT {MEMORY_COLUMNS} FROM type::thing('{MEMORY_TABLE}', [$scope, $slug])"),
+            &format!(
+                "SELECT {MEMORY_COLUMNS} FROM type::record('{MEMORY_TABLE}', [$scope, $slug])"
+            ),
             vec![
                 ("scope".into(), Value::String(scope.key())),
                 ("slug".into(), Value::String(slug.to_string())),
@@ -91,7 +93,7 @@ pub async fn delete_memory(
     store
         .query_ws(
             ws,
-            &format!("DELETE type::thing('{MEMORY_TABLE}', [$scope, $slug])"),
+            &format!("DELETE type::record('{MEMORY_TABLE}', [$scope, $slug])"),
             vec![
                 ("scope".into(), Value::String(scope.key())),
                 ("slug".into(), Value::String(slug.to_string())),

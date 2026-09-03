@@ -79,7 +79,11 @@ pub struct RollupRow {
     /// `BadInput` rather than approximate. Defaults keep every pre-existing row readable.
     #[serde(default)]
     pub first: Value,
-    #[serde(default)]
+    /// `default` covers a row written before the column existed (the field is absent). The
+    /// `deserialize_with` covers a row written WITH the column as `None`: SurrealDB 3 stores that
+    /// as NULL and hands serde a **unit**, which `Option<u64>` rejects outright — "invalid type:
+    /// unit value, expected u64". Both shapes are on disc, so both have to read.
+    #[serde(default, deserialize_with = "lb_store::null_as_none")]
     pub first_ts: Option<u64>,
 }
 
@@ -95,7 +99,7 @@ pub async fn write_rollups(store: &Store, ws: &str, rows: &[RollupRow]) -> Resul
             .query_ws_retrying(
                 ws,
                 &format!(
-                    "UPSERT type::thing('{ROLLUP_TABLE}', [$series, $width, $t]) CONTENT $row"
+                    "UPSERT type::record('{ROLLUP_TABLE}', [$series, $width, $t]) CONTENT $row"
                 ),
                 vec![
                     ("series".into(), Value::String(r.series.clone())),
@@ -265,3 +269,8 @@ mod tests {
         assert!(e.is_err(), "a string sum must not silently become a number");
     }
 }
+
+// SurrealDB 3 reads query rows through `SurrealValue`. These delegate to serde rather than
+// deriving, so `#[serde(default)]` and `deserialize_with = "de_opt_lenient_f64"` keep working
+// unchanged — the derive supports neither. See `lb_store::surreal_value_via_serde!`.
+lb_store::surreal_value_via_serde!(RollupRow);

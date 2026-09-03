@@ -52,7 +52,7 @@ pub async fn ensure_series_schema(store: &Store, ws: &str) -> Result<(), StoreEr
     // Migration FIRST (a numeric `ts` under a datetime-typed index definition would be rejected):
     // legacy rows committed `ts` as epoch milliseconds; convert in place. Type-guarded → idempotent.
     let sql = format!(
-        "UPDATE {SERIES_TABLE} SET ts = time::from::millis(ts) WHERE type::is::number(ts);
+        "UPDATE {SERIES_TABLE} SET ts = time::from_millis(ts) WHERE type::is_number(ts);
          DEFINE FIELD IF NOT EXISTS ts ON {SERIES_TABLE} TYPE datetime;
          DEFINE INDEX IF NOT EXISTS series_seq_idx ON {SERIES_TABLE} FIELDS series, seq;
          DEFINE INDEX IF NOT EXISTS series_ts_idx ON {SERIES_TABLE} FIELDS series, ts;

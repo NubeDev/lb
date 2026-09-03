@@ -49,23 +49,6 @@ pub(crate) fn load_last_compaction(store_dir: &str) -> Option<CompactionRecord> 
     }
 }
 
-/// Persist `rec` beside the store at `store_dir`, atomically. Best-effort: a failure warns and is
-/// otherwise ignored — losing the record only costs one unnecessary boot pass.
-///
-/// Only a record of a pass that actually **ran** belongs here: persisting a skip would overwrite the
-/// outcome the next boot's precondition needs to read (see [`crate::boot_pass`]).
-pub(crate) fn store_last_compaction(store_dir: &str, rec: &CompactionRecord) {
-    let path = record_path(store_dir);
-    if let Err(e) = write_atomically(&path, rec) {
-        tracing::warn!(
-            path = %path.display(),
-            error = %e,
-            "store: could not persist the last-compaction record — the next boot will decide \
-             without it (it will compact, as it does today)"
-        );
-    }
-}
-
 /// The persisted record of the last pass that actually ran on `store`, if there is one. `None` for
 /// a memory store (no log, no sidecar) and for any read failure.
 ///
@@ -74,15 +57,6 @@ pub(crate) fn store_last_compaction(store_dir: &str, rec: &CompactionRecord) {
 /// compaction pays here, and boot's own benefit precondition reads the same file.
 pub fn last_persisted_compaction(store: &crate::open::Store) -> Option<CompactionRecord> {
     load_last_compaction(store.dir()?)
-}
-
-fn write_atomically(path: &std::path::Path, rec: &CompactionRecord) -> std::io::Result<()> {
-    let body = serde_json::to_vec_pretty(rec)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    // Same directory as the target, so the rename is within one filesystem and therefore atomic.
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, body)?;
-    std::fs::rename(&tmp, path)
 }
 
 #[cfg(test)]
@@ -99,40 +73,5 @@ mod tests {
             record_path("store"),
             std::path::PathBuf::from("last-compaction.json")
         );
-    }
-
-    #[test]
-    fn roundtrips_and_degrades_on_corruption() {
-        let dir = std::env::temp_dir().join(format!("lb-last-pass-{}", crate::new_ulid()));
-        let store_dir = dir.join("store");
-        std::fs::create_dir_all(&store_dir).unwrap();
-        let store_dir = store_dir.to_str().unwrap();
-
-        assert!(
-            load_last_compaction(store_dir).is_none(),
-            "no file yet ⇒ None"
-        );
-
-        let rec = CompactionRecord {
-            at_epoch_ms: 42,
-            ok: true,
-            before_bytes: 1000,
-            after_bytes: 100,
-            duration_ms: 7,
-            error: None,
-            skipped: None,
-            phases: crate::compaction_record::CompactionPhases::default(),
-        };
-        store_last_compaction(store_dir, &rec);
-        let back = load_last_compaction(store_dir).expect("persisted");
-        assert_eq!(back.before_bytes, 1000);
-        assert_eq!(back.after_bytes, 100);
-        assert_eq!(back.at_epoch_ms, 42);
-
-        // A truncated/garbage file degrades to None rather than failing the boot.
-        std::fs::write(record_path(store_dir), b"{not json").unwrap();
-        assert!(load_last_compaction(store_dir).is_none());
-
-        std::fs::remove_dir_all(&dir).ok();
     }
 }

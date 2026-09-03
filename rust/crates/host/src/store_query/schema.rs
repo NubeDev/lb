@@ -149,15 +149,20 @@ fn decode(e: surrealdb::Error) -> StoreQueryError {
 }
 
 /// The `tables` slice of `INFO FOR DB` (table-name → DEFINE text); other fields ignored.
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct DbInfo {
     #[serde(default)]
     tables: BTreeMap<String, Value>,
 }
 
 /// The `fields` slice of `INFO FOR TABLE` (field-name → DEFINE FIELD text); other fields ignored.
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct TableInfo {
     #[serde(default)]
     fields: BTreeMap<String, String>,
 }
+
+// Read-back types for `IndexedResults::take`, which under SurrealDB 3 wants `SurrealValue` rather
+// than `DeserializeOwned`. Both are introspection shapes with `#[serde(default)]` fields, so the
+// serde delegation keeps "missing key → empty map" exactly as before.
+lb_store::surreal_value_via_serde!(DbInfo, TableInfo);

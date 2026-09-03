@@ -239,7 +239,7 @@ async fn degradable_feature_matrix() {
         "spike",
         "search-bm25",
         "DEFINE ANALYZER simple TOKENIZERS blank FILTERS lowercase;
-         DEFINE INDEX tag_text ON TABLE tag FIELDS value SEARCH ANALYZER simple BM25;",
+         DEFINE INDEX tag_text ON TABLE tag FIELDS value FULLTEXT ANALYZER simple BM25;",
     )
     .await;
 

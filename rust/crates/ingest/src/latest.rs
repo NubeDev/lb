@@ -36,7 +36,7 @@ pub async fn latest(store: &Store, ws: &str, series: &str) -> Result<Option<Samp
     let mut resp = store
         .query_ws(
             ws,
-            &format!("SELECT series, producer, seq, ts, payload FROM ONLY type::thing('{SERIES_LATEST_TABLE}', $series)"),
+            &format!("SELECT series, producer, seq, ts, payload FROM ONLY type::record('{SERIES_LATEST_TABLE}', $series)"),
             vec![("series".into(), Value::String(series.to_string()))],
         )
         .await?;
@@ -82,9 +82,9 @@ async fn latest_by_scan(
 /// like the commit-path advance: only writes if no newer pointer landed concurrently.
 async fn backfill_pointer(store: &Store, ws: &str, s: &Sample) -> Result<(), StoreError> {
     let sql = format!(
-        "LET $cur = (SELECT ts, seq FROM ONLY type::thing('{SERIES_LATEST_TABLE}', $series))?.{{ ts: ts, seq: seq }} ?? {{ ts: -1, seq: -1 }};\
+        "LET $cur = (SELECT ts, seq FROM ONLY type::record('{SERIES_LATEST_TABLE}', $series)).{{ ts: ts, seq: seq }} ?? {{ ts: -1, seq: -1 }};\
          IF [$ts, $seq] > [$cur.ts, $cur.seq] {{ \
-           UPSERT type::thing('{SERIES_LATEST_TABLE}', $series) CONTENT {{ \
+           UPSERT type::record('{SERIES_LATEST_TABLE}', $series) CONTENT {{ \
              series: $series, producer: $producer, seq: $seq, ts: $ts, payload: $payload }}; }};"
     );
     store

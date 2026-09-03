@@ -7,7 +7,7 @@
 //! `store-read` builds a **parameterized** SELECT host-side: the table rides as a `type::table($tb)`
 //! binding, every filter value / the id is a `$`-bound var, and the only spliced text is
 //! identifier-checked field names plus a host-clamped integer limit — user text is NEVER spliced
-//! into the SQL (the scope's injection posture; `store.query`'s parse gate stays the backstop).
+//! into the SQL. It runs on the read-only session, behind the secret-plane wall (see `store_read`).
 //!
 //! Config-vs-payload precedence is uniform (the scope rule): an explicit config field wins; a
 //! missing config field reads the incoming `payload` (`payload.id`, `payload.filter`, the payload
@@ -68,6 +68,11 @@ fn table_of(node_type: &str, config: &Value) -> Result<String, String> {
     Ok(table.to_string())
 }
 
+/// The alias the ordered path is projected under so SurrealDB 3's "order idiom must be selected"
+/// rule is satisfied. Leading underscore and a name no caller writes, because it is `OMIT`ed and
+/// must never collide with a real field.
+const ORDER_ALIAS: &str = "_ord";
+
 /// Build the parameterized SELECT for a `store-read`: `(sql, vars)` ready for `store.query`'s
 /// `{sql, vars}` args. Every value is `$`-bound; the spliced text is limited to identifier-checked
 /// field names and the clamped integer limit.
@@ -100,16 +105,47 @@ fn build_read_sql(
     }
     // Project explicitly: the raw record `id` is a SurrealDB Thing, which does not serialize to
     // JSON through `store.query`'s row decode — `record::id(id)` yields the plain id string.
-    let mut sql = String::from("SELECT record::id(id) AS id, data, rev FROM type::table($tb)");
+    //
+    // ORDERING, and why the projection grows a helper column. SurrealDB requires the ORDER BY idiom
+    // to appear in the statement's selection, matching a selected field or alias EXACTLY (the prefix
+    // relaxation is GROUP BY only). We select the `data` envelope and order by a path inside it, so
+    // a plain `ORDER BY data.<field>` is a PARSE error — "Missing order idiom ... in selection".
+    //
+    // NOT a SurrealDB 3 change: `debugging/store/order-by-needs-selected-idiom.md` hit the same rule
+    // on 2.x in 2026-06. What is new is noticing it here — the emitted SQL was only asserted as a
+    // string, never executed, so this ordering path had been broken the whole time.
+    //
+    // That note weighed `data.ts AS ts` and rejected it for polluting a generic verb with a
+    // caller-specific column, choosing instead to sort in the layer that owns the shape. That
+    // reasoning holds for `lb_store::list`, which is handed an opaque `data` and must not guess
+    // where the order key lives. It does not bind here: this is the flow `store-read` node, whose
+    // `order_by` is named BY THE CALLER, so the shape is declared rather than assumed. And `OMIT`
+    // answers the pollution objection outright — the alias never reaches the caller's row.
+    //
+    // `store/tests/order_by_idiom_probe.rs` pins all of it on the real engine, including that OMIT
+    // still hides the alias after the sort.
+    let order = match order_by {
+        None => None,
+        Some(field) => {
+            if !is_ident(field) {
+                return Err(format!("invalid order_by identifier: {field}"));
+            }
+            Some(field)
+        }
+    };
+    let mut sql = String::from("SELECT record::id(id) AS id, data, rev");
+    if let Some(field) = order {
+        sql.push_str(&format!(
+            ", data.{field} AS {ORDER_ALIAS} OMIT {ORDER_ALIAS}"
+        ));
+    }
+    sql.push_str(" FROM type::table($tb)");
     if !conds.is_empty() {
         sql.push_str(" WHERE ");
         sql.push_str(&conds.join(" AND "));
     }
-    if let Some(field) = order_by {
-        if !is_ident(field) {
-            return Err(format!("invalid order_by identifier: {field}"));
-        }
-        sql.push_str(&format!(" ORDER BY data.{field}"));
+    if order.is_some() {
+        sql.push_str(&format!(" ORDER BY {ORDER_ALIAS}"));
         if desc {
             sql.push_str(" DESC");
         }
@@ -166,14 +202,28 @@ pub(super) async fn store_read(
         Ok(built) => built,
         Err(e) => return NodeOutcome::Err(format!("store-read node: {e}")),
     };
-    let args = json!({ "sql": sql, "vars": vars });
-    match call_tool_node(node, principal, ws, "store.query", &args).await {
-        NodeOutcome::Ok { emitted, .. } => {
-            let rows: Vec<Value> = emitted
-                .get("rows")
-                .and_then(|v| v.as_array())
-                .map(|a| a.iter().map(unwrap_row).collect())
-                .unwrap_or_default();
+    // Composed SQL, so it needs no untrusted-text handling — but it keeps every OTHER protection
+    // `store.query` carries. Dropping one was a real hole: a node configured with `table: "secret"`
+    // returned the credential (`a_store_read_node_cannot_read_the_secret_plane`). Hence the cap
+    // check, the secret-plane wall (the table is author CONFIG), and a read-only session.
+    if let Err(e) = crate::store_query::authorize_store_query(principal, ws, "store.query") {
+        return NodeOutcome::Err(format!("store-read node: {e}"));
+    }
+    let bindings: Vec<(String, Value)> = vars.into_iter().collect();
+    if let Err(e) = crate::store_query::ensure_read_only_with_vars(&sql, &bindings) {
+        return NodeOutcome::Err(format!("store-read node: {e}"));
+    }
+    let queried = node
+        .store
+        .query_ws_readonly(ws, &sql, bindings)
+        .await
+        .and_then(|mut resp| {
+            resp.take::<Vec<Value>>(0)
+                .map_err(|e| lb_store::StoreError::Decode(e.to_string()))
+        });
+    match queried {
+        Ok(raw) => {
+            let rows: Vec<Value> = raw.iter().map(unwrap_row).collect();
             let payload = if id.is_some() {
                 json!({ "row": rows.first().cloned().unwrap_or(Value::Null) })
             } else {
@@ -181,7 +231,9 @@ pub(super) async fn store_read(
             };
             NodeOutcome::ok(json!({ "payload": payload }))
         }
-        other => other,
+        // The store's own error, surfaced as the node's — not swallowed into an empty row set,
+        // which would read to a flow author as "the table is empty" rather than "the read failed".
+        Err(e) => NodeOutcome::Err(format!("store-read node: {e}")),
     }
 }
 
@@ -286,8 +338,9 @@ mod tests {
             build_read_sql("site", None, Some(&f), Some(50), Some("ts"), true).unwrap();
         assert_eq!(
             sql,
-            "SELECT record::id(id) AS id, data, rev FROM type::table($tb) WHERE data.region = $f0 AND data.active = $f1 \
-             ORDER BY data.ts DESC LIMIT 50"
+            "SELECT record::id(id) AS id, data, rev, data.ts AS _ord OMIT _ord \
+             FROM type::table($tb) WHERE data.region = $f0 AND data.active = $f1 \
+             ORDER BY _ord DESC LIMIT 50"
         );
         assert_eq!(vars["f0"], "nsw");
         assert_eq!(vars["f1"], true);
@@ -298,8 +351,9 @@ mod tests {
             build_read_sql("device", Some("d1"), Some(&f), Some(7), Some("name"), false).unwrap();
         assert_eq!(
             sql,
-            "SELECT record::id(id) AS id, data, rev FROM type::table($tb) WHERE record::id(id) = $id AND data.kind = $f0 \
-             ORDER BY data.name LIMIT 7"
+            "SELECT record::id(id) AS id, data, rev, data.name AS _ord OMIT _ord \
+             FROM type::table($tb) WHERE record::id(id) = $id AND data.kind = $f0 \
+             ORDER BY _ord LIMIT 7"
         );
 
         // Limit clamps to the hard max (and up to the floor).

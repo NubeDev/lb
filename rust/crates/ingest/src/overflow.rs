@@ -107,7 +107,7 @@ async fn dead_letter(store: &Store, ws: &str, sample: &Sample) -> Result<(), Sto
         .query_ws(
             ws,
             &format!(
-                "UPSERT type::thing('{DEAD_LETTER_TABLE}', [$series, $producer, $seq]) CONTENT $row"
+                "UPSERT type::record('{DEAD_LETTER_TABLE}', [$series, $producer, $seq]) CONTENT $row"
             ),
             vec![
                 ("series".into(), Value::String(sample.series.clone())),

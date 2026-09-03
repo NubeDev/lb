@@ -433,8 +433,8 @@ async fn evict_raw(
             ws,
             &format!(
                 "SELECT count() FROM {SERIES_TABLE} WHERE series = $series \
-                 AND ts < time::from::millis($cutoff) GROUP ALL;
-                 DELETE {SERIES_TABLE} WHERE series = $series AND ts < time::from::millis($cutoff);"
+                 AND ts < time::from_millis($cutoff) GROUP ALL;
+                 DELETE {SERIES_TABLE} WHERE series = $series AND ts < time::from_millis($cutoff);"
             ),
             vec![
                 ("series".into(), Value::String(series.to_string())),

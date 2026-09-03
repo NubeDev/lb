@@ -43,13 +43,13 @@ pub async fn write_journaled(
         .query_ws(
             ws,
             "BEGIN TRANSACTION;
-             UPSERT type::thing($ct, $cid) CONTENT { \
+             UPSERT type::record($ct, $cid) CONTENT { \
                 data: $cdata, \
-                rev: (type::thing($ct, $cid).rev ?? ($first - 1)) + 1 \
+                rev: (type::record($ct, $cid).rev ?? ($first - 1)) + 1 \
              } RETURN NONE;
-             UPSERT type::thing($jt, $jid) CONTENT { \
+             UPSERT type::record($jt, $jid) CONTENT { \
                 data: $jdata, \
-                rev: (type::thing($jt, $jid).rev ?? ($first - 1)) + 1 \
+                rev: (type::record($jt, $jid).rev ?? ($first - 1)) + 1 \
              } RETURN NONE;
              COMMIT TRANSACTION;",
             vec![

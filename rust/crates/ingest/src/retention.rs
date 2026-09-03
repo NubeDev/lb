@@ -192,7 +192,7 @@ pub async fn set_policy(store: &Store, ws: &str, policy: &Policy) -> Result<(), 
     store
         .query_ws(
             ws,
-            &format!("UPSERT type::thing('{RETENTION_TABLE}', $prefix) CONTENT $row"),
+            &format!("UPSERT type::record('{RETENTION_TABLE}', $prefix) CONTENT $row"),
             vec![
                 ("prefix".into(), Value::String(policy.prefix.clone())),
                 ("row".into(), json!(policy)),
@@ -231,7 +231,7 @@ pub async fn delete_policy(store: &Store, ws: &str, prefix: &str) -> Result<(), 
     store
         .query_ws(
             ws,
-            &format!("DELETE type::thing('{RETENTION_TABLE}', $prefix)"),
+            &format!("DELETE type::record('{RETENTION_TABLE}', $prefix)"),
             vec![("prefix".into(), Value::String(prefix.to_string()))],
         )
         .await?;

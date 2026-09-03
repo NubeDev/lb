@@ -312,7 +312,7 @@ pub async fn list(
 /// JSON, exactly like [`read`].
 async fn store_list_all(store: &Store, ws: &str) -> Result<Vec<Value>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             "SELECT data FROM type::table($tb)",
             vec![("tb".into(), Value::String(TABLE.to_string()))],

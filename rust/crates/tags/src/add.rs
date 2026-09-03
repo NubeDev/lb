@@ -44,7 +44,7 @@ pub async fn add(
     }
 
     // Deterministic edge id = [entity, key, value, source] → same-source re-tag upserts; different
-    // source is a distinct edge. The entity is a record reference passed as `type::thing`.
+    // source is a distinct edge. The entity is a record reference passed as `type::record`.
     //
     // The tag's key/value are denormalized onto the edge as `tkey`/`tval` (NOT `key`/`value`):
     // a RELATION row carrying `in`/`out` silently drops user fields named `key`/`value`
@@ -52,10 +52,10 @@ pub async fn add(
     // filterable without a node hop. The shared `tag` NODE still uses `key`/`value` (no in/out there).
     let sql = format!(
         "BEGIN TRANSACTION;
-         UPSERT type::thing('{TAG_TABLE}', [$key, $value]) SET key = $key, value = $value;
-         UPSERT type::thing('{TAGGED_TABLE}', [$entity, $key, $value, $source]) SET
-            in = type::thing($etb, $eid),
-            out = type::thing('{TAG_TABLE}', [$key, $value]),
+         UPSERT type::record('{TAG_TABLE}', [$key, $value]) SET key = $key, value = $value;
+         UPSERT type::record('{TAGGED_TABLE}', [$entity, $key, $value, $source]) SET
+            in = type::record($etb, $eid),
+            out = type::record('{TAG_TABLE}', [$key, $value]),
             ent = $entity, tkey = $key, tval = $value,
             at = $at, by = $by, source = $source, confidence = $confidence, expires = $expires;
          COMMIT TRANSACTION;"

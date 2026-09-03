@@ -22,7 +22,7 @@ pub async fn get_catalog_override(
         .query_ws(
             ws,
             &format!(
-                "SELECT {CATALOG_COLUMNS} FROM type::thing('{CATALOG_TABLE}', [$ws, $locale])"
+                "SELECT {CATALOG_COLUMNS} FROM type::record('{CATALOG_TABLE}', [$ws, $locale])"
             ),
             vec![
                 ("ws".into(), Value::String(ws.to_string())),

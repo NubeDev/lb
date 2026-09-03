@@ -11,15 +11,13 @@
 
 use std::sync::Arc;
 
-use serde::de::DeserializeOwned;
 use surrealdb::engine::local::{Db, Mem, SurrealKv};
 use surrealdb::Surreal;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-use crate::boot_guard::open_would_not_fit;
-use crate::boot_pass::boot_compact;
 use crate::compaction_record::CompactionRecord;
+use crate::scoped_response::{check_absent_table_as_empty, ScopedResponse};
 
 /// How [`Store::open_with`] treats this machine's memory. Built from `default()` and mutated
 /// through the builder methods — the struct is `#[non_exhaustive]` so a future knob stays additive
@@ -27,10 +25,6 @@ use crate::compaction_record::CompactionRecord;
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct OpenOptions {
-    /// Disable the **open guard** only (never the compaction preconditions — skipping a pass is
-    /// always safe, so there is nothing to force). Filled at the binary boundary from
-    /// `LB_STORE_OPEN_UNGUARDED=1`; the store crate reads no env itself.
-    pub unguarded: bool,
     /// Use this figure as the machine's available RAM instead of probing `/proc/meminfo`.
     ///
     /// For an embedder that measures its own budget (a cgroup limit is a truer ceiling than the
@@ -40,12 +34,6 @@ pub struct OpenOptions {
 }
 
 impl OpenOptions {
-    /// Turn the open guard off (`LB_STORE_OPEN_UNGUARDED=1`).
-    pub fn allow_unguarded(mut self, yes: bool) -> Self {
-        self.unguarded = yes;
-        self
-    }
-
     /// Override the measured available RAM.
     pub fn with_available_ram(mut self, bytes: Option<u64>) -> Self {
         self.available_ram_bytes = bytes;
@@ -53,8 +41,9 @@ impl OpenOptions {
     }
 }
 
-/// `#[non_exhaustive]` since the boot memory guard (issue #128) added [`StoreError::WontFit`]:
-/// embedders match with a `_` arm, and a future variant stays source-compatible.
+/// `#[non_exhaustive]` so a future variant stays source-compatible: embedders match with a `_`
+/// arm. (It was added when the boot memory guard introduced `WontFit`; that guard is gone — see
+/// [`Store::open_with`] — but the compatibility promise it established is kept.)
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum StoreError {
@@ -67,25 +56,6 @@ pub enum StoreError {
     /// first", not a backend failure.
     #[error("record already exists (first-write conflict)")]
     Conflict,
-    /// The commit log is too large for this machine's memory to replay: opening would build the
-    /// whole live-set index in RAM and, on the incident that motivated this guard, take the
-    /// **machine** down with the kernel's global OOM killer rather than just the node
-    /// (boot-memory-guard scope, issue #128). Refused before a byte is allocated.
-    ///
-    /// The message names both numbers and every remedy, because it is the entire diagnostic an
-    /// operator gets from `journalctl` on a box they may only just have got back.
-    #[error(
-        "store at {path} will not fit in memory: the commit log is {log_bytes} bytes and only \
-         {available_ram} bytes of RAM are available, so replaying it would likely OOM this \
-         machine. Refusing to open (this is a heuristic guard). Remedies: add RAM or swap; \
-         compact the store on a larger machine; lower retention so the next compaction shrinks \
-         the live set; or, if you know it fits, set LB_STORE_OPEN_UNGUARDED=1 to force the open."
-    )]
-    WontFit {
-        path: String,
-        log_bytes: u64,
-        available_ram: u64,
-    },
 }
 
 impl From<surrealdb::Error> for StoreError {
@@ -128,6 +98,12 @@ pub struct Store {
     /// Outcome of the most recent compaction pass (boot or online), served by `status`.
     /// In-memory only — a restart re-seeds it from the boot pass.
     last_compaction: Arc<std::sync::Mutex<Option<CompactionRecord>>>,
+    /// Per-workspace READ-ONLY handles for `store.query`, built on first use. See `reader.rs`:
+    /// the caller's own SurrealQL runs in a session the engine will not let write, and which is
+    /// scoped to the one workspace database, so neither guarantee depends on inspecting the SQL.
+    readers: Arc<crate::reader::Readers>,
+    /// The per-boot password for those reader users. In memory only, never logged.
+    reader_secret: Arc<str>,
 }
 
 /// A workspace id is a slug — validate it before interpolating into `USE NS <ws>`, so a `ws` can
@@ -148,63 +124,50 @@ fn scope_sql(ws: &str, sql: &str) -> Result<String, StoreError> {
     Ok(format!("USE NS `{ws}` DB main;\n{sql}"))
 }
 
-/// A statement selector for [`ScopedResponse::take`], shifted by one to skip the injected `USE` at
-/// real index 0. Mirrors the selectors SurrealDB's `Response::take` accepts — a statement index
-/// (`usize`), a field of the first statement (`&str`), or a field of statement N (`(usize, &str)`) —
-/// so every existing caller idiom works verbatim while the caller's index 0 maps to real index 1.
-pub trait ScopedIndex {
-    /// The real (USE-inclusive) selector this caller-facing one maps to.
-    type Shifted;
-    fn shift(self) -> Self::Shifted;
-}
-impl ScopedIndex for usize {
-    type Shifted = usize;
-    fn shift(self) -> usize {
-        self + 1
-    }
-}
-impl<'a> ScopedIndex for &'a str {
-    type Shifted = (usize, &'a str);
-    fn shift(self) -> (usize, &'a str) {
-        // `take("field")` means "field of the caller's FIRST statement" — real statement 1.
-        (1, self)
-    }
-}
-impl<'a> ScopedIndex for (usize, &'a str) {
-    type Shifted = (usize, &'a str);
-    fn shift(self) -> (usize, &'a str) {
-        (self.0 + 1, self.1)
-    }
-}
+/// How long to keep retrying an open that is blocked by the previous holder's directory lock.
+/// Measured release is ~150 ms (`store/tests/store_lock_probe.rs`); five seconds is ~30x that, so it
+/// absorbs a loaded box without turning a genuinely-held lock into a long hang.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// The result of a scoped store query. Wraps SurrealDB's `Response` and hides the leading `USE`
-/// statement's result slot: `take(0)` returns the caller's FIRST statement (the USE lives at the
-/// real index 0), so every one of the ~140 `query_ws` callers keeps its existing selectors.
-pub struct ScopedResponse(surrealdb::Response);
-
-impl ScopedResponse {
-    /// Extract a result selected 0-based over the caller's OWN statements (the injected `USE` at real
-    /// index 0 is invisible here). Accepts the same selectors as `Response::take`, each shifted past
-    /// the USE by [`ScopedIndex`].
-    // The selector is an `impl ScopedIndex` ARGUMENT (a hidden generic), so `R` is the only turbofish
-    // param — `take::<Vec<Foo>>(0)` binds the result type exactly as `Response::take::<Vec<Foo>>(0)`
-    // does. The associated-type bound threads the shifted selector into SurrealDB's `QueryResult`.
-    // `surrealdb::Error` is ~144 bytes and is NOT ours to box: it is the type every one of the ~140
-    // `query_ws` callers already matches on, so wrapping it here would be an API break across the
-    // workspace to move bytes we do not own.
-    #[allow(clippy::result_large_err)]
-    pub fn take<R: DeserializeOwned>(
-        &mut self,
-        index: impl ScopedIndex<Shifted: surrealdb::opt::QueryResult<R>>,
-    ) -> Result<R, surrealdb::Error> {
-        self.0.take(index.shift())
-    }
-
-    /// Surface any statement error. `query_ws` already `check`s internally, so this is a no-op that
-    /// preserves the `…await?.check()?` caller idiom.
-    #[allow(clippy::result_large_err)] // see `take` above — the error type is surrealdb's.
-    pub fn check(self) -> Result<Self, surrealdb::Error> {
-        Ok(self)
+/// Open the on-disk engine, waiting out a directory lock the previous holder has not yet released.
+///
+/// surrealkv 0.21 takes an exclusive lock on the store directory and does NOT release it
+/// synchronously when the handle drops — an immediate reopen of the same path fails with
+/// "Database at <path>/store/LOCK is already locked by another process". That is a race, not a
+/// permanent state: `store_lock_probe.rs` measures the release at ~150 ms, and shows that a LOCK
+/// left behind by a killed process does NOT block a later open (a clean close removes the file, and
+/// a forged stale one is opened straight through). So a node restart is never bricked — but a
+/// restart quick enough to beat the old handle's release would fail for no good reason, and five
+/// `lb-host` tests plus the boot guard hit exactly that.
+///
+/// Retrying is therefore right, and bounded: a lock genuinely held by a LIVE second process must
+/// still surface as an error rather than hang, which is what the deadline gives us.
+async fn open_engine_awaiting_lock(path: &str) -> Result<Surreal<Db>, StoreError> {
+    let deadline = std::time::Instant::now() + LOCK_WAIT;
+    let mut attempts = 0u32;
+    loop {
+        attempts += 1;
+        match Surreal::new::<SurrealKv>(path).await {
+            Ok(db) => {
+                if attempts > 1 {
+                    tracing::info!(
+                        path = %path,
+                        attempts,
+                        "store opened after waiting out the previous holder's directory lock"
+                    );
+                }
+                return Ok(db);
+            }
+            // Match on the message because surrealkv surfaces this through SurrealDB as an opaque
+            // `Other` error with no typed variant to match — checked against surrealdb 3.2.4.
+            Err(e)
+                if e.to_string().contains("is already locked")
+                    && std::time::Instant::now() < deadline =>
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
 }
 
@@ -218,6 +181,8 @@ impl Store {
             handle: Arc::new(RwLock::new(db)),
             path: None,
             last_compaction: Arc::new(std::sync::Mutex::new(None)),
+            readers: Arc::new(crate::reader::Readers::default()),
+            reader_secret: Arc::from(crate::reader::new_secret()),
         })
     }
 
@@ -227,88 +192,44 @@ impl Store {
     /// guarantee. The engine is SurrealKV; the namespace-per-workspace wall holds identically to
     /// the in-memory engine (all workspaces live in one on-disk store, scoped by `use_ns`).
     ///
-    /// The commit log is compacted first (see [`compact_log`]) — SurrealKV is append-only and
-    /// replays every byte of the log at open, so a long-running node otherwise pays its whole
-    /// write history on every boot (measured: a 1.5 GB log ≈ 13 s to open, live set ~2% of it).
-    /// The boot pass and the open guard both apply — see [`Store::open_with`], of which this is
-    /// the default-options form (the guard on, the machine measured).
+    /// Opening is cheap and does **not** replay the write history. Under surrealkv 0.9 it did —
+    /// the engine was an append-only log, so a long-running node paid its whole history on every
+    /// boot (a 1.5 GB log ≈ 13 s), which is why a boot compaction pass and a memory guard used to
+    /// stand in front of this call. surrealkv 0.21 is an LSM tree that opens from a manifest plus
+    /// the WAL tail. Measured on the same machine: a 92,657-byte store reopened in 114 ms and a
+    /// 42,816,755-byte one — 462x the bytes — in 143 ms. Both are gone; see [`Store::open_with`].
     pub async fn open(path: &str) -> Result<Self, StoreError> {
         Self::open_with(path, &OpenOptions::default()).await
     }
 
-    /// Open a persistent store with the boot memory guards configured (boot-memory-guard scope,
-    /// issue #128). Three things happen, in this order:
+    /// Open a persistent store with explicit [`OpenOptions`].
     ///
-    /// 1. Any pending `.merge/` is completed — **always**, before any decision (the P0 in
-    ///    `compact.rs`); skipping compaction must never mean skipping merge completion.
-    /// 2. The boot compaction pass runs **only if the machine can afford it and it is expected to
-    ///    pay** ([`crate::boot_compaction_skip`]). A skip is logged at warn with every number and
-    ///    surfaces in `store.status` as `last_compaction.skipped`.
-    /// 3. The open itself is **refused** with [`StoreError::WontFit`] when the (possibly
-    ///    uncompacted) log is larger than available RAM — unless `opts.unguarded`. `lb-node` turns
-    ///    that into a clean nonzero exit and never falls back to `mem://`: a silently-empty node
-    ///    serving a workspace that "lost" its data is strictly worse than a down node with a
-    ///    legible reason (scope decision 3).
+    /// # What used to be here, and why it is not
     ///
-    /// Both guards **fail open** on a machine whose memory cannot be measured (`/proc/meminfo`
-    /// absent or unreadable): today's behaviour, byte for byte.
+    /// This call carried two guards (boot-memory-guard scope, issue #128): a boot compaction pass,
+    /// and a refusal (`WontFit`) when the commit log was larger than available RAM. Both existed
+    /// because surrealkv 0.9 REPLAYED the whole log at open to rebuild its live set, so opening a
+    /// log bigger than memory took the machine down with the kernel OOM killer.
+    ///
+    /// surrealkv 0.21 opens from a manifest plus the WAL tail. Measured: a 92,657-byte store
+    /// reopened in 114 ms; a 42,816,755-byte store — 462x the bytes — in 143 ms. Open cost is no
+    /// longer a function of history, so the premise is false.
+    ///
+    /// Keeping the refusal would have been worse than useless. It read `log_stats`, which counts a
+    /// commit-log file the LSM engine does not create, so it could only ever refuse **zero** bytes
+    /// — and had anyone "fixed" that measurement to report real on-disc size, the guard would have
+    /// started refusing to open perfectly healthy large stores. A safety net that can only brick a
+    /// working node is not a safety net, so it was removed rather than repaired.
     pub async fn open_with(path: &str, opts: &OpenOptions) -> Result<Self, StoreError> {
-        let available_ram = opts
-            .available_ram_bytes
-            .or_else(crate::meminfo::available_ram_bytes);
-        let owned = path.to_string();
-        // The pass is synchronous file I/O over the whole log — keep it off the async workers.
-        // Best-effort by design: a failed compaction only means a slower boot.
-        //
-        // The caller's `tracing` dispatcher is carried ONTO the blocking thread: a subscriber is
-        // thread-local unless it was installed globally, and the guard's whole contract is that its
-        // decision is loud. A warn line emitted on a pool thread that no subscriber is listening to
-        // is a silent skip — the exact failure mode this scope exists to remove.
-        let dispatch = tracing::dispatcher::get_default(|d| d.clone());
-        let boot_pass = tokio::task::spawn_blocking(move || {
-            tracing::dispatcher::with_default(&dispatch, || boot_compact(&owned, available_ram))
-        })
-        .await
-        .ok();
-
-        // Re-stat AFTER the pass: a productive pass is exactly what can bring a log back under the
-        // guard, and refusing on the pre-pass number would refuse a store that now fits.
-        let (log_bytes, _) = crate::status::log_stats(path);
-        if open_would_not_fit(log_bytes, available_ram) {
-            let available_ram = available_ram.unwrap_or(0);
-            if opts.unguarded {
-                tracing::warn!(
-                    path = %path,
-                    log_bytes,
-                    available_ram,
-                    "store: the commit log is larger than available RAM, but the open guard is \
-                     DISABLED (LB_STORE_OPEN_UNGUARDED=1) — attempting the open anyway; if this \
-                     machine OOMs, that is why"
-                );
-            } else {
-                let err = StoreError::WontFit {
-                    path: path.to_string(),
-                    log_bytes,
-                    available_ram,
-                };
-                tracing::error!(path = %path, log_bytes, available_ram, "{err}");
-                return Err(err);
-            }
-        }
-
-        let db = Surreal::new::<SurrealKv>(path).await?;
+        let _ = opts;
+        let db = open_engine_awaiting_lock(path).await?;
         Ok(Self {
             handle: Arc::new(RwLock::new(db)),
             path: Some(Arc::from(path)),
-            last_compaction: Arc::new(std::sync::Mutex::new(boot_pass)),
+            last_compaction: Arc::new(std::sync::Mutex::new(None)),
+            readers: Arc::new(crate::reader::Readers::default()),
+            reader_secret: Arc::from(crate::reader::new_secret()),
         })
-    }
-
-    /// The handle cell, for the online compaction pass only (`compact.rs`). Compaction takes the
-    /// WRITE guard to swap the engine; every data op takes the READ guard, so the swap waits for
-    /// in-flight ops and no query ever runs against a half-open engine.
-    pub(crate) fn session_cell(&self) -> Arc<RwLock<Surreal<Db>>> {
-        Arc::clone(&self.handle)
     }
 
     /// The on-disk directory (`None` for a memory store).
@@ -343,10 +264,62 @@ impl Store {
         for (k, v) in bindings {
             q = q.bind((k, v));
         }
-        let resp = q.await?.check()?;
+        let resp = check_absent_table_as_empty(q.await?)?;
         // `guard` (the RwLock read lock) is still held here — dropping it now, AFTER the query has
         // executed and the response is materialized, is correct: compaction's WRITE guard could not
         // have swapped the engine while this read guard was alive.
+        drop(guard);
+        Ok(ScopedResponse(resp))
+    }
+
+    /// Run a workspace-scoped statement on a **read-only** session — the path `store.query` uses
+    /// for SurrealQL the caller wrote.
+    ///
+    /// Identical in shape to [`query_ws`], with one difference that is the whole point: the session
+    /// is authenticated as a `VIEWER` on the workspace's own database, so the ENGINE refuses to
+    /// write and refuses to read another workspace. Neither guarantee depends on parsing the SQL,
+    /// which is what SurrealDB 3 took away (`reader.rs` documents why, and what it replaced).
+    ///
+    /// A statement that tries to write is not an error: it comes back having changed nothing, as
+    /// `Ok([])`. Callers that want to *tell* the author they sent a write add that message
+    /// themselves — this method's contract is only that the write cannot land.
+    ///
+    /// A retryable optimistic-transaction conflict is **retried**, and needs no opt-in from the
+    /// caller: SurrealDB runs even a plain `SELECT` in a transaction that a concurrent writer can
+    /// abort, and re-running a statement this session cannot use to write has no side effect to
+    /// repeat. That is a property of the session, not of the SQL, so it holds for whatever the
+    /// caller wrote.
+    ///
+    /// The READ guard is held across the query for the same reason [`query_ws`] holds it.
+    pub async fn query_ws_readonly(
+        &self,
+        ws: &str,
+        sql: &str,
+        bindings: Vec<(String, serde_json::Value)>,
+    ) -> Result<ScopedResponse, StoreError> {
+        // Validate `ws` and build the prepended USE with the SAME function the writable path uses,
+        // so the wall cannot be spelled two ways and drift apart.
+        let scoped = scope_sql(ws, sql)?;
+        retry_conflicts(|| self.readonly_once(ws, &scoped, bindings.clone())).await
+    }
+
+    /// One attempt of [`query_ws_readonly`], on the workspace's read-only session.
+    async fn readonly_once(
+        &self,
+        ws: &str,
+        scoped: &str,
+        bindings: Vec<(String, serde_json::Value)>,
+    ) -> Result<ScopedResponse, StoreError> {
+        let guard = self.handle.read().await;
+        let reader = self
+            .readers
+            .get_or_build(&guard, ws, &self.reader_secret)
+            .await?;
+        let mut q = reader.query(scoped.to_string());
+        for (k, v) in bindings {
+            q = q.bind((k, v));
+        }
+        let resp = check_absent_table_as_empty(q.await?)?;
         drop(guard);
         Ok(ScopedResponse(resp))
     }
@@ -358,33 +331,65 @@ impl Store {
     /// collided writers desynchronize rather than re-collide — instead of surfacing. A non-retryable
     /// error returns immediately, unchanged.
     ///
-    /// Use this for a `series`-table MUTATION that runs concurrently with other writers or the GC
+    /// # When to use it
+    ///
+    /// **Any pure read.** SurrealDB runs a plain `SELECT` inside a transaction, so a concurrent
+    /// writer can abort it — the read did not fail, it lost a race. Re-running has no side effect
+    /// to repeat, so every typed read verb (`read`, `read_versioned`, `list`, `scan`, `graph`,
+    /// `tables`) goes through here, as does `lb_secrets`' own `SELECT`.
+    ///
+    /// The gap was not theoretical. Eight concurrent `update.status` calls each read the sealed
+    /// credential while one of them, holding the seal lock, wrote it; the read lost, nothing
+    /// retried, and the caller reported "secret read failed" for a transient race. Measured with
+    /// the retry removed and restored: `update_seam_test::concurrent_triggers_seal_exactly_one_\
+    /// credential` failed **10 of 10 runs** without it and **0 of 10** with it. That test is the
+    /// regression proof; a synthetic store-level contention test could not reproduce the conflict
+    /// at all, so none was kept — a test that passes either way would only give false confidence.
+    ///
+    /// **An IDEMPOTENT mutation** — a `series`-table write running against other writers or the GC
     /// pass (ingest `commit_batch`, raw/rollup eviction). It is safe to wrap a whole `BEGIN…COMMIT`
-    /// here because a retried transaction is **atomic** (a conflict aborts and fully rolls back — no
+    /// because a retried transaction is **atomic** (a conflict aborts and fully rolls back — no
     /// partial state to reconcile) and the ingest writes are **idempotent** (the commit UPSERTs keyed
     /// on `[series, producer, seq]` and deletes exactly the staged rows it read), so a retry
     /// re-applies the batch exactly once — the same exactly-once guarantee the drain already relies
-    /// on. A plain read (e.g. the drain `SELECT`) does not need this.
+    /// on.
+    ///
+    /// **Not** a mutation whose effect depends on how many times it runs. Retrying one of those
+    /// would apply it twice; that is the caller's judgement to make, and this method cannot make it.
     pub async fn query_ws_retrying(
         &self,
         ws: &str,
         sql: &str,
         bindings: Vec<(String, serde_json::Value)>,
     ) -> Result<ScopedResponse, StoreError> {
-        use crate::conflict::{conflict_backoff, is_retryable_conflict, MAX_CONFLICT_RETRIES};
+        // `bindings` is consumed per attempt, so it is re-cloned inside the loop. Cheap next to a
+        // store round-trip, and only paid on the rare retry path.
+        retry_conflicts(|| self.query_ws(ws, sql, bindings.clone())).await
+    }
+}
 
-        let mut attempt = 0;
-        loop {
-            // `bindings` is consumed by `query_ws`, so re-clone per attempt. Cheap next to a store
-            // round-trip, and only paid on the rare retry path.
-            match self.query_ws(ws, sql, bindings.clone()).await {
-                Ok(resp) => return Ok(resp),
-                Err(e) if is_retryable_conflict(&e) && attempt < MAX_CONFLICT_RETRIES => {
-                    attempt += 1;
-                    tokio::time::sleep(conflict_backoff(attempt)).await;
-                }
-                Err(e) => return Err(e),
+/// Run `op` again while it fails with SurrealDB's **retryable** optimistic-transaction conflict,
+/// up to [`MAX_CONFLICT_RETRIES`](crate::conflict) times with the crate's shared jittered backoff.
+///
+/// The ONE retry loop in this file, so the read path and the write path cannot drift in how many
+/// times they try or how long they wait. Whether retrying is *safe* is the caller's judgement, not
+/// this function's: it re-runs whatever it is given.
+async fn retry_conflicts<F, Fut>(mut op: F) -> Result<ScopedResponse, StoreError>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<ScopedResponse, StoreError>>,
+{
+    use crate::conflict::{conflict_backoff, is_retryable_conflict, MAX_CONFLICT_RETRIES};
+
+    let mut attempt = 0;
+    loop {
+        match op().await {
+            Ok(resp) => return Ok(resp),
+            Err(e) if is_retryable_conflict(&e) && attempt < MAX_CONFLICT_RETRIES => {
+                attempt += 1;
+                tokio::time::sleep(conflict_backoff(attempt)).await;
             }
+            Err(e) => return Err(e),
         }
     }
 }

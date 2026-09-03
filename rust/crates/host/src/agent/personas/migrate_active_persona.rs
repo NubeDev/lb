@@ -62,7 +62,9 @@ async fn migrate_one(store: &Store, ws: &str) -> Result<bool, StoreError> {
     store
         .query_ws(
             ws,
-            &format!("UPDATE type::thing('{AGENT_CONFIG_TABLE}', [$ws]) SET active_persona = NONE"),
+            &format!(
+                "UPDATE type::record('{AGENT_CONFIG_TABLE}', [$ws]) SET active_persona = NONE"
+            ),
             vec![("ws".into(), Value::String(ws.to_string()))],
         )
         .await?;
@@ -75,7 +77,7 @@ async fn read_legacy_active_persona(store: &Store, ws: &str) -> Result<Option<St
     let mut resp = store
         .query_ws(
             ws,
-            &format!("SELECT active_persona FROM type::thing('{AGENT_CONFIG_TABLE}', [$ws])"),
+            &format!("SELECT active_persona FROM type::record('{AGENT_CONFIG_TABLE}', [$ws])"),
             vec![("ws".into(), Value::String(ws.to_string()))],
         )
         .await?;

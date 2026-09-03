@@ -75,15 +75,18 @@ async fn an_unpoliced_series_is_bounded_by_the_default_cap() {
         .query_ws(
             "nube",
             "SELECT count() FROM series WHERE series = 'unpoliced' \
-             AND ts < time::from::millis(6000) GROUP ALL",
+             AND ts < time::from_millis(6000) GROUP ALL",
             vec![],
         )
         .await
         .unwrap();
     let oldest: Option<i64> = resp.take("count").unwrap();
-    assert_eq!(
-        oldest, None,
-        "the five OLDEST samples are the ones that went (FIFO by ts)"
+    // Zero old samples remain — asserted on the NUMBER, not on how the engine spells "none".
+    // SurrealDB 2 returned no row at all for a `GROUP ALL` whose filter matched nothing; 3 returns
+    // one row holding `0`. Both mean the same thing, and the thing under test is the FIFO order.
+    assert!(
+        matches!(oldest, None | Some(0)),
+        "the five OLDEST samples are the ones that went (FIFO by ts), got {oldest:?}"
     );
 
     // Idempotent: a second pass at the bound evicts nothing and says nothing.

@@ -37,7 +37,7 @@ pub async fn delete_series(store: &Store, ws: &str, series: &str) -> Result<(), 
     let (etb, eid) = entity_parts(&entity);
     // One multi-statement query: sample rows (raw + rollup + not-yet-committed staging), the registry
     // row, then the tag edges pointing at the `series:<name>` entity. `sample.series`/`series` are the
-    // denormalized name fields; the tag edge links via `in = type::thing($etb, $eid)` (dotted-id safe).
+    // denormalized name fields; the tag edge links via `in = type::record($etb, $eid)` (dotted-id safe).
     let sql = format!(
         "DELETE {SERIES_TABLE} WHERE series = $series;
          DELETE {ROLLUP_TABLE} WHERE series = $series;
@@ -45,7 +45,7 @@ pub async fn delete_series(store: &Store, ws: &str, series: &str) -> Result<(), 
          DELETE {STAGING_TABLE} WHERE sample.series = $series;
          DELETE {DEAD_LETTER_TABLE} WHERE sample.series = $series;
          DELETE {SERIES_META_TABLE} WHERE series = $series;
-         DELETE {TAGGED_TABLE} WHERE in = type::thing($etb, $eid);"
+         DELETE {TAGGED_TABLE} WHERE in = type::record($etb, $eid);"
     );
     store
         .query_ws(

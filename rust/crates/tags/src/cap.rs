@@ -50,7 +50,7 @@ async fn tag_exists(store: &Store, ws: &str, tag: &Tag) -> Result<bool, StoreErr
     let mut resp = store
         .query_ws(
             ws,
-            &format!("SELECT count() FROM type::thing('{TAG_TABLE}', [$key, $value]) GROUP ALL"),
+            &format!("SELECT count() FROM type::record('{TAG_TABLE}', [$key, $value]) GROUP ALL"),
             vec![
                 ("key".into(), serde_json::Value::String(tag.key.clone())),
                 ("value".into(), tag.value.clone()),

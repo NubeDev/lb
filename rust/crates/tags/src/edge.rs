@@ -23,6 +23,13 @@ pub enum Source {
     System,
 }
 
+// Delegated, NOT `#[derive(SurrealValue)]`. The write path stores a BARE lowercase string --
+// `add.rs` binds `$source` as `json!(provenance.source.as_str())` -- so the read must decode a
+// bare string too. The SurrealValue derive uses its own enum wire form, which did not match: rows
+// written by `tag.add` came back as `Decode("Failed to decode Source, no variants matched")`.
+// Routing through serde keeps one definition of what a `Source` looks like on disc.
+lb_store::surreal_value_via_serde!(Source);
+
 impl Source {
     pub fn as_str(self) -> &'static str {
         match self {

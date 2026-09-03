@@ -629,3 +629,49 @@ async fn store_read_in_ws_b_reads_none_of_ws_a_rows_for_the_same_table() {
     assert_eq!(outcome, "ok");
     assert_eq!(output["payload"]["row"], json!({"ws": "a"}));
 }
+
+/// A `store-read` node must NOT be able to read the secret plane.
+///
+/// The node builds its own SELECT, so it does not need the untrusted-text gate — but the table name
+/// is **author-supplied config**, and `store.query` was also what kept the secret-plane wall in
+/// front of it. A flow author with `mcp:store.query:call` (an ordinary workspace capability) must
+/// not be able to point a read node at `secret` and receive credentials.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_store_read_node_cannot_read_the_secret_plane() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal_with("ws", STORE_EXTRA);
+
+    // Seed a credential the way the secret plane really holds one.
+    node.store
+        .query_ws(
+            "ws",
+            "CREATE secret:token SET data = { value: 'super-secret' };",
+            vec![],
+        )
+        .await
+        .expect("seed")
+        .check()
+        .expect("seeded");
+
+    for table in ["secret", "credential", "identity_credential", "apikey"] {
+        let (_, outcome, output) = run_one_on(
+            &node,
+            &p,
+            "ws",
+            &format!("f_sec_{table}"),
+            &format!("f_sec_{table}-r"),
+            "store-read",
+            json!({ "table": table }),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(
+            outcome, "err",
+            "reading `{table}` through a store-read node must fail, got {output}"
+        );
+        assert!(
+            !output.to_string().contains("super-secret"),
+            "the credential must never reach a flow payload: {output}"
+        );
+    }
+}

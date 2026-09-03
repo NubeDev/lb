@@ -1,5 +1,4 @@
 //! The **store** boot-config env readers — `LB_STORE_MAX_BYTES` (the disk budget, issue #122),
-//! `LB_STORE_OPEN_UNGUARDED` (the boot memory-guard override, issue #128), and
 //! `LB_RETENTION_PERIOD_SECS` (the retention-GC cadence, rubix-ai#84).
 //!
 //! Split out of `config.rs` rather than added to it: that file is long past the FILE-LAYOUT limit,
@@ -58,30 +57,5 @@ pub(crate) fn retention_period_from_env() -> Option<std::time::Duration> {
             }
         },
         _ => None,
-    }
-}
-
-/// Parse `LB_STORE_OPEN_UNGUARDED` into the boot memory-guard override (boot-memory-guard scope,
-/// decision 6). Only the exact value `1` disables the guard; unset/empty ⇒ the guard stays on
-/// silently, and any OTHER value warns and leaves it ON — a typo must never quietly remove the
-/// protection that keeps a box reachable. It disables the *open* guard only: the boot-compaction
-/// preconditions are not overridable, because skipping a pass is always safe.
-pub(crate) fn store_open_unguarded_from_env() -> bool {
-    match std::env::var("LB_STORE_OPEN_UNGUARDED") {
-        Ok(v) if v.trim() == "1" => {
-            eprintln!(
-                "LB_STORE_OPEN_UNGUARDED=1: the store boot memory guard is DISABLED — a commit log \
-                 larger than available RAM will be opened anyway, which can OOM this machine"
-            );
-            true
-        }
-        Ok(v) if !v.trim().is_empty() => {
-            eprintln!(
-                "bad LB_STORE_OPEN_UNGUARDED '{v}': only the exact value '1' disables the store \
-                 boot memory guard — leaving it ON"
-            );
-            false
-        }
-        _ => false,
     }
 }

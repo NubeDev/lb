@@ -20,9 +20,7 @@ use std::time::Duration;
 use lb_auth::SigningKey;
 use lb_role_gateway::Authenticity;
 
-use crate::store_env::{
-    retention_period_from_env, store_budget_bytes_from_env, store_open_unguarded_from_env,
-};
+use crate::store_env::{retention_period_from_env, store_budget_bytes_from_env};
 
 /// The default `POST /extensions` upload ceiling (extension-upload-limit fix): 384 MiB. Sized to the
 /// largest real native sidecar artifact observed (the ems modbus bundle ~317 MiB — a 6.2 MB release
@@ -373,12 +371,6 @@ pub struct BootConfig {
     /// the standalone binary seeds none.
     pub retention_seed: Vec<lb_ingest::Policy>,
 
-    /// Force the store open past the **boot memory guard** (`LB_STORE_OPEN_UNGUARDED=1`, parsed in
-    /// [`crate::store_env`]): `false` (default) ⇒ a log larger than available RAM is refused with
-    /// `StoreError::WontFit` and the binary exits nonzero rather than risking a machine-wide OOM
-    /// (#128). The *open* guard only — the compaction preconditions are not overridable.
-    pub store_open_unguarded: bool,
-
     /// What that guard should treat as this machine's available RAM. `None` (default, and what the
     /// binary always fills) ⇒ read `/proc/meminfo`. An embedder sets it when it knows a truer
     /// ceiling (under a cgroup, `MemoryMax` is the node's real budget). Never read from env.
@@ -512,7 +504,6 @@ impl Default for BootConfig {
             // The boot memory guard is ON by default for every embedder: it only ever fires on a
             // store this machine provably cannot replay, and the failure it replaces is a
             // machine-wide OOM (boot-memory-guard scope, issue #128).
-            store_open_unguarded: false,
             store_available_ram_bytes: None,
             // Seed nothing by default: the embedder declares its own bounds, and an empty vec makes
             // boot byte-identical to before the field existed.
@@ -681,10 +672,6 @@ impl BootConfig {
             // The retention-GC cadence from `LB_RETENTION_PERIOD_SECS` (whole seconds);
             // unset/empty/unparseable/`0` ⇒ `None` ⇒ the 300 s default. Read only here.
             retention_period: retention_period_from_env(),
-            // The boot memory-guard override from `LB_STORE_OPEN_UNGUARDED` (exactly `1`);
-            // anything else warns and leaves the guard on. Read only here, at the binary boundary —
-            // the store crate reads no env and takes this as a parameter.
-            store_open_unguarded: store_open_unguarded_from_env(),
             // The binary measures the machine (`/proc/meminfo`); only an embedder overrides it.
             store_available_ram_bytes: None,
             // LAN discovery from `LB_DISCOVERY_*` — OFF unless `LB_DISCOVERY=1`, so the standalone

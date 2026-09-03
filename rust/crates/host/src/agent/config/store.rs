@@ -28,7 +28,7 @@ pub async fn define_agent_config_schema(store: &Store, ws: &str) -> Result<(), S
         "DEFINE TABLE IF NOT EXISTS {AGENT_CONFIG_TABLE} SCHEMAFULL;
          DEFINE FIELD IF NOT EXISTS ws ON {AGENT_CONFIG_TABLE} TYPE string;
          DEFINE FIELD IF NOT EXISTS default_runtime ON {AGENT_CONFIG_TABLE} TYPE option<string>;
-         DEFINE FIELD IF NOT EXISTS model_endpoint ON {AGENT_CONFIG_TABLE} FLEXIBLE TYPE option<object>;
+         DEFINE FIELD IF NOT EXISTS model_endpoint ON {AGENT_CONFIG_TABLE} TYPE option<object> FLEXIBLE;
          DEFINE FIELD IF NOT EXISTS active_definition ON {AGENT_CONFIG_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS active_persona ON {AGENT_CONFIG_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS enabled_personas ON {AGENT_CONFIG_TABLE} TYPE option<array<string>>;
@@ -47,7 +47,7 @@ pub async fn get_agent_config(store: &Store, ws: &str) -> Result<Option<AgentCon
         .query_ws(
             ws,
             &format!(
-                "SELECT {AGENT_CONFIG_COLUMNS} FROM type::thing('{AGENT_CONFIG_TABLE}', [$ws])"
+                "SELECT {AGENT_CONFIG_COLUMNS} FROM type::record('{AGENT_CONFIG_TABLE}', [$ws])"
             ),
             vec![("ws".into(), Value::String(ws.to_string()))],
         )
@@ -86,7 +86,7 @@ pub async fn set_agent_config(
     store
         .query_ws(
             ws,
-            &format!("UPSERT type::thing('{AGENT_CONFIG_TABLE}', [$ws]) MERGE $patch"),
+            &format!("UPSERT type::record('{AGENT_CONFIG_TABLE}', [$ws]) MERGE $patch"),
             vec![
                 ("ws".into(), Value::String(ws.to_string())),
                 ("patch".into(), Value::Object(merge)),

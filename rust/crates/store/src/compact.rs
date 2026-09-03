@@ -1,354 +1,47 @@
-//! Compact the SurrealKV commit log — the boot-time pass ([`compact_log`], called by
-//! `Store::open`) and the **online** pass ([`compact`], the `store.compact` job's engine).
+//! Compaction — **a no-op since SurrealDB 3 / surrealkv 0.21**.
 //!
-//! The engine is append-only: every write (including each superseded version and every
-//! tombstone) stays in the log forever, and open replays ALL of it to rebuild the in-memory
-//! index — so boot time grows with write history, not with live data. SurrealKV ships
-//! `Store::compact()`, but surrealdb 2.x exposes no path to it, so it is invoked here directly,
-//! on the same engine version cargo resolves for surrealdb (one `surrealkv` copy in the lock).
+//! ## Why this file is now empty of machinery
 //!
-//! **The merge-completion rule (P0, do not remove).** `surrealkv::Store::compact()` does NOT
-//! rewrite the log in place: it writes the live set into `.merge/` and the swap happens at the
-//! NEXT `Store::new` (`restore_from_compaction`). At the pinned surrealkv 0.9.3 that next open
-//! applies the merge with the append-log **already open**, leaving the session appending into
-//! unlinked inodes — every write made in a merge-applying session is silently lost at close
-//! (debugging/store/compaction-merge-eats-next-sessions-writes.md; upstream ordering bug in
-//! `Core::new`). So this module guarantees **no writing session ever applies a merge**: after
-//! `compact()` we immediately do a throwaway open+close (applies the merge, writes nothing),
-//! and if that throwaway fails the fresh `.merge/` is DELETED — dropping a compaction is always
-//! safe (the old log is untouched until a merge applies); leaving one pending never is.
+//! Under surrealkv 0.9.x the engine was an append-only commit log: every write, every superseded
+//! version and every tombstone stayed in the log for ever, and only a manual `Store::compact()`
+//! pass reclaimed any of it. surrealdb 2.x exposed no path to that call, so this module reached
+//! past surrealdb with a SECOND direct `surrealkv` handle — quiescing writes, swapping the live
+//! handle out, compacting on disk, reopening, and working around an upstream ordering bug that
+//! silently lost a merge-applying session's writes (lb#68).
 //!
-//! Best-effort by contract: any failure leaves the log valid and only costs a slower boot /
-//! a skipped pass; errors are recorded in the returned [`CompactionRecord`], never panicked.
-
-use surrealdb::engine::local::SurrealKv;
-use surrealdb::Surreal;
+//! surrealkv 0.21 is an LSM tree. Compaction is **automatic and continuous** (`task.rs`'s
+//! `TaskManager` runs memtable-flush and level-compaction as background tasks), there is no
+//! stop-the-world pass, and open reads a manifest plus the WAL tail rather than replaying history.
+//! There is nothing left to invoke, so the direct handle, the engine-options mirroring, the
+//! merge-completion rule and the boot-time pass all go away with it.
+//!
+//! The public shape is kept so callers (the `store.compact` verb, the budget driver, `store.status`)
+//! keep compiling; each call now reports "nothing to do" rather than doing whole-log I/O.
 
 use crate::compaction_record::{CompactionPhases, CompactionRecord};
 use crate::open::{Store, StoreError};
-use crate::status::log_stats;
 
-/// The value cache this crate's own (compaction-only) handle runs with — 256 MiB, against a stock
-/// default of 100_000 **bytes** (surrealkv weighs this cache by byte, not by entry: `option.rs:60`,
-/// `util.rs` `ByteWeighter`). At the default it is a ~100 kB cache in front of a multi-hundred-MB
-/// log, i.e. a no-op.
-///
-/// This matters because of HOW `surrealkv::Store::compact()` works: it walks a snapshot of the
-/// in-memory index and calls `resolve()` on every live value, and every value above
-/// `max_value_threshold` (64 B — so effectively every sample payload) is a separate `pread` into the
-/// log. That scattered read pass is one of the two halves of the ~94 s pause measured on RC-6.
-///
-/// Safe to set precisely because it is **runtime-only**: unlike the layout knobs below it is not a
-/// property of the on-disk data, so surrealdb's own handle is unaffected — it simply opens with its
-/// own default next time. We are buying cache for the one handle that provably needs it.
-const COMPACTION_VALUE_CACHE_BYTES: u64 = 256 << 20;
-
-/// Engine options for a direct `surrealkv` handle — the layout knobs MUST mirror surrealdb's own
-/// wrapper (`surrealdb-core/src/kvs/surrealkv/mod.rs`, the unversioned `surrealkv://` scheme lb
-/// uses): versions off, disk persistence on, 512 MiB segments, 64-byte value threshold. Those four
-/// describe the data and must not diverge. [`COMPACTION_VALUE_CACHE_BYTES`] is the one deliberate
-/// difference, and it is deliberate because it describes only this handle's behaviour.
-fn engine_options(dir: &std::path::Path) -> surrealkv::Options {
-    let mut opts = surrealkv::Options::new();
-    opts.dir = dir.to_path_buf();
-    opts.disk_persistence = true;
-    opts.enable_versions = false;
-    opts.max_segment_size = 1 << 29;
-    opts.max_value_threshold = 64;
-    opts.max_value_cache_size = COMPACTION_VALUE_CACHE_BYTES;
-    opts
-}
-
-/// Open + close a throwaway direct handle: applies any pending `.merge/` (the physical swap)
-/// while performing zero user writes. See the module doc for why this MUST happen before any
-/// writing session opens the store.
-pub(crate) fn complete_pending_merge(dir: &std::path::Path) -> Result<(), String> {
-    let store = surrealkv::Store::new(engine_options(dir)).map_err(|e| e.to_string())?;
-    store.close().map_err(|e| e.to_string())
-}
-
-/// Compact the SurrealKV commit log at `path` while **no other handle holds the directory**
-/// (the caller guarantees that: boot runs it before SurrealDB opens; the online pass swaps the
-/// handle out first). Blocking file I/O over the whole log — call via `spawn_blocking`.
-pub(crate) fn compact_log(path: &str) -> CompactionRecord {
-    let started = std::time::Instant::now();
-    let dir = std::path::Path::new(path);
-    let mut rec = CompactionRecord {
+/// A record describing a pass that did not need to happen.
+fn noop_record(reason: &str) -> CompactionRecord {
+    CompactionRecord {
         at_epoch_ms: epoch_ms(),
-        ok: false,
+        ok: true,
         before_bytes: 0,
         after_bytes: 0,
         duration_ms: 0,
         error: None,
-        skipped: None,
+        skipped: Some(reason.to_string()),
         phases: CompactionPhases::default(),
-    };
-    let fail = |mut rec: CompactionRecord, started: std::time::Instant, e: String| {
-        eprintln!("store: log compaction failed ({e}) — continuing on the uncompacted log");
-        rec.error = Some(e);
-        rec.duration_ms = started.elapsed().as_millis() as u64;
-        rec.at_epoch_ms = epoch_ms();
-        rec
-    };
-
-    if !dir.exists() {
-        // A fresh path (no store yet): nothing to compact, and not an error.
-        rec.ok = true;
-        return rec;
     }
-    let (before_bytes, _) = log_stats(path);
-    rec.before_bytes = before_bytes;
-
-    // An earlier interrupted run may have left a merge pending — complete it FIRST, so the
-    // compacting open below never applies a merge itself (the merge-completion rule).
-    if dir.join(".merge").exists() {
-        if let Err(e) = complete_pending_merge(dir) {
-            return fail(rec, started, format!("pending-merge completion: {e}"));
-        }
-    }
-
-    // PHASE `open_ms` — a full sequential replay of the uncompacted log to rebuild the index.
-    let phase = std::time::Instant::now();
-    let store = match surrealkv::Store::new(engine_options(dir)) {
-        Ok(s) => s,
-        Err(e) => return fail(rec, started, format!("open-for-compaction: {e}")),
-    };
-    rec.phases.open_ms = phase.elapsed().as_millis() as u64;
-
-    // PHASE `compact_ms` — the index-snapshot walk, the per-value reads, the `.merge/` write.
-    let phase = std::time::Instant::now();
-    if let Err(e) = store.compact() {
-        let _ = store.close();
-        return fail(rec, started, format!("compact: {e}"));
-    }
-    if let Err(e) = store.close() {
-        return fail(rec, started, format!("close-after-compaction: {e}"));
-    }
-    rec.phases.compact_ms = phase.elapsed().as_millis() as u64;
-
-    // Apply the merge NOW, with a non-writing session. If this fails, drop the compaction —
-    // a pending merge left behind would be applied by the (writing!) surrealdb open and eat
-    // that session's writes (the P0).
-    // PHASE `merge_ms` — the physical swap plus a replay of the now-compacted log.
-    let phase = std::time::Instant::now();
-    if let Err(e) = complete_pending_merge(dir) {
-        let _ = std::fs::remove_dir_all(dir.join(".merge"));
-        let _ = std::fs::remove_dir_all(dir.join(".tmp.merge"));
-        return fail(
-            rec,
-            started,
-            format!("merge-completion (compaction dropped): {e}"),
-        );
-    }
-
-    rec.phases.merge_ms = phase.elapsed().as_millis() as u64;
-
-    let (after_bytes, _) = log_stats(path);
-    rec.after_bytes = after_bytes;
-    rec.ok = true;
-    rec.duration_ms = started.elapsed().as_millis() as u64;
-    rec.at_epoch_ms = epoch_ms();
-    rec
 }
 
-/// How long the online pass will wait for the dropped engine to quiesce before giving up
-/// (and reopening WITHOUT compacting — never compact under an engine that might still write).
-const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// Fast-path window for full fd release. When no index-builder leak exists (see
-/// [`wait_for_quiesce`]) the engine releases in 74–240 ms (spike Q2); past this window we stop
-/// expecting release and fall back to the stability check.
-const RELEASE_FAST_PATH: std::time::Duration = std::time::Duration::from_secs(5);
-
-/// The stability window for the quiesce fallback: every file in the store dir must keep an
-/// unchanged (size, mtime) across this span before the pass may proceed.
-const QUIESCE_WINDOW: std::time::Duration = std::time::Duration::from_millis(2000);
-
-/// Run an **online** compaction pass: quiesce writes (the handle WRITE guard), swap the handle out,
-/// compact the log on disk (shared with boot), reopen, swap back in. Concurrent store operations
-/// (each holding the READ guard across its query) drain before the write guard is granted, then
-/// block on it for the duration — exactly as they would behind any long transaction — and land
-/// after the swap; none are lost.
-///
-/// Whole-log I/O with no upper bound: callers MUST treat this as a job (`store.compact`),
-/// never a tick. Errors leave the log valid; the handle is always restored (a fresh open) even
-/// when the pass itself failed.
+/// Online pass: nothing to do, and — importantly — **no write stall**. The previous implementation
+/// held the handle write guard for the duration of whole-log I/O (~94 s measured on RC-6).
 pub async fn compact(store: &Store) -> Result<CompactionRecord, StoreError> {
-    let path = store
-        .dir()
-        .ok_or_else(|| StoreError::Backend("memory store has no commit log to compact".into()))?
-        .to_string();
-
-    // 1. Quiesce: hold the handle WRITE guard. No store operation can run while we hold it, and
-    //    acquiring it means none is in flight (every verb holds the READ guard across its query, and
-    //    the write guard waits for all readers to drain).
-    let cell = store.session_cell();
-    let mut guard = cell.write_owned().await;
-
-    // 2. Swap the live handle out for an unconnected placeholder and drop it. The local engine
-    //    shuts down asynchronously after the last clone drops (router drain + kvs.shutdown), so
-    //    quiescence is DETECTED, never assumed (spike Q2: 74–240 ms observed).
-    let old = std::mem::replace(&mut *guard, Surreal::init());
-    drop(old);
-    let quiesce_started = std::time::Instant::now();
-    let released = wait_for_quiesce(&path, RELEASE_TIMEOUT).await;
-    let quiesce_ms = quiesce_started.elapsed().as_millis() as u64;
-
-    // 3. Compact on disk — only once the old engine provably quiesced. Compacting under an
-    //    engine that can still write is the exact data-loss the spike disqualified (Q1);
-    //    a timeout skips the pass.
-    let mut rec = if released {
-        let p = path.clone();
-        tokio::task::spawn_blocking(move || compact_log(&p))
-            .await
-            .unwrap_or_else(|e| CompactionRecord {
-                at_epoch_ms: epoch_ms(),
-                ok: false,
-                before_bytes: 0,
-                after_bytes: 0,
-                duration_ms: 0,
-                error: Some(format!("compaction task join error: {e}")),
-                skipped: None,
-                phases: CompactionPhases::default(),
-            })
-    } else {
-        CompactionRecord {
-            at_epoch_ms: epoch_ms(),
-            ok: false,
-            before_bytes: 0,
-            after_bytes: 0,
-            duration_ms: 0,
-            error: Some(format!(
-                "engine did not quiesce at {path} within {RELEASE_TIMEOUT:?}; pass skipped"
-            )),
-            skipped: None,
-            phases: CompactionPhases::default(),
-        }
-    };
-    // Quiesce-wait happens under the write guard, so it is part of the write-unavailability window
-    // whether or not the pass that followed it ran. Attribute it either way.
-    rec.phases.quiesce_ms = quiesce_ms;
-
-    // 4. Reopen and swap back in — ALWAYS, even after a failed pass (the log is still valid;
-    //    the node must keep serving). One retry for transient open failures.
-    let reopened = match Surreal::new::<SurrealKv>(path.as_str()).await {
-        Ok(db) => db,
-        Err(first) => {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            Surreal::new::<SurrealKv>(path.as_str()).await.map_err(|e| {
-                StoreError::Backend(format!(
-                    "reopen after compaction failed twice ({first}; then {e}) — store handle is down"
-                ))
-            })?
-        }
-    };
-    *guard = reopened;
-    drop(guard);
-
-    // Persist the outcome beside the store: this is a pass that actually ran, and it is what the
-    // NEXT boot's benefit precondition reads (slice 3). Best-effort — a failure only warns.
-    crate::last_pass::store_last_compaction(&path, &rec);
-    *store
-        .last_compaction_slot()
-        .lock()
-        .expect("last_compaction poisoned") = Some(rec.clone());
-    if rec.ok {
-        Ok(rec)
-    } else {
-        Err(StoreError::Backend(
-            rec.error.unwrap_or_else(|| "compaction failed".into()),
-        ))
-    }
-}
-
-/// Wait until the dropped engine has provably quiesced. Two acceptable end states:
-///
-/// 1. **Full release** (the fast path): this process holds no fd under `dir`
-///    (`/proc/self/fd`). Observed 74–240 ms after the drop (spike Q2) — but it CANNOT be the
-///    only gate: at surrealdb-core 2.6.5 a `DEFINE INDEX` spawns an index-builder task that
-///    holds the transaction factory (the engine) **forever**, so any store that ever defined
-///    an index (every real node — the jobs `(kind,status)` index) never reaches fd-zero.
-///    Measured: still held 120 s after the last handle dropped.
-/// 2. **Stability** (the leak fallback): every file under `dir` keeps an unchanged
-///    (size, mtime) across [`QUIESCE_WINDOW`]. The leaked holder is inert by construction —
-///    the router exited (last handle dropped), its background tickers were cancelled and
-///    `kvs.shutdown()` completed before the router task ended, and no query can reach the old
-///    engine (no handle points at it) — so once its shutdown writes stop moving the files,
-///    nothing can ever write through it again. Stability across the window IS that proof.
-///
-/// Returns false only on `timeout` (the pass is skipped — never compact under an engine that
-/// might still write). On platforms without `/proc`, the stability check alone decides.
-async fn wait_for_quiesce(dir: &str, timeout: std::time::Duration) -> bool {
-    let started = std::time::Instant::now();
-    let has_proc = std::fs::read_dir("/proc/self/fd").is_ok();
-    let mut last_snapshot: Option<(std::time::Instant, Vec<FileStamp>)> = None;
-    loop {
-        // Fast path: full fd release (only reachable when no index-builder leak exists).
-        if has_proc && started.elapsed() < RELEASE_FAST_PATH {
-            let open = std::fs::read_dir("/proc/self/fd")
-                .map(|rd| {
-                    rd.flatten()
-                        .filter_map(|e| std::fs::read_link(e.path()).ok())
-                        .any(|t| t.starts_with(dir))
-                })
-                .unwrap_or(false);
-            if !open {
-                return true;
-            }
-        }
-        // Fallback: (size, mtime) stability across the window — sampled from the FIRST iteration,
-        // concurrently with the fast path rather than after it. The two are independent proofs of
-        // the same fact and both are pure reads, so there is no reason to serialize them; doing so
-        // cost every real node ~5 s of dead time under the write guard, because a node that ever
-        // defined an index NEVER reaches fd-zero (see 1. above) and so always ended up waiting out
-        // the whole fast-path window before the stability clock could even start. Overlapped, the
-        // leaked-holder case settles at ~QUIESCE_WINDOW instead of RELEASE_FAST_PATH + QUIESCE_WINDOW
-        // — and that saving is subtracted directly from the write-unavailability window, which is
-        // the number this scope exists to shrink.
-        //
-        // The proof itself is unweakened: it still requires an unchanged snapshot across a full
-        // QUIESCE_WINDOW, and the engine's shutdown writes keep the snapshot moving until they are
-        // done, so an early window simply resets.
-        let snap = dir_snapshot(std::path::Path::new(dir));
-        match &last_snapshot {
-            Some((at, prev)) if *prev == snap => {
-                if at.elapsed() >= QUIESCE_WINDOW {
-                    return true;
-                }
-            }
-            _ => last_snapshot = Some((std::time::Instant::now(), snap)),
-        }
-        if started.elapsed() > timeout {
-            eprintln!(
-                "store: compaction quiesce-wait timed out at {dir} — files still changing; pass skipped"
-            );
-            return false;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-}
-
-/// One file's identity for the stability probe: path + size + mtime.
-type FileStamp = (std::path::PathBuf, u64, std::time::SystemTime);
-
-/// Every file under `dir` (recursive) with its (size, mtime) — the stability probe's unit.
-fn dir_snapshot(dir: &std::path::Path) -> Vec<FileStamp> {
-    let mut out = Vec::new();
-    fn walk(d: &std::path::Path, out: &mut Vec<FileStamp>) {
-        if let Ok(rd) = std::fs::read_dir(d) {
-            for e in rd.flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    walk(&p, out);
-                } else if let Ok(m) = e.metadata() {
-                    out.push((p, m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
-                }
-            }
-        }
-    }
-    walk(dir, &mut out);
-    out.sort();
-    out
+    let _ = store;
+    Ok(noop_record(
+        "engine compacts automatically (surrealkv 0.21 LSM)",
+    ))
 }
 
 pub(crate) fn epoch_ms() -> u64 {

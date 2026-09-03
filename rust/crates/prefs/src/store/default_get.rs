@@ -13,7 +13,7 @@ pub async fn get_workspace_prefs(store: &Store, ws: &str) -> Result<Option<Prefs
     let mut resp = store
         .query_ws(
             ws,
-            &format!("SELECT {PREFS_COLUMNS} FROM type::thing('{WORKSPACE_PREFS_TABLE}', [$ws])"),
+            &format!("SELECT {PREFS_COLUMNS} FROM type::record('{WORKSPACE_PREFS_TABLE}', [$ws])"),
             vec![("ws".into(), Value::String(ws.to_string()))],
         )
         .await?;

@@ -67,7 +67,12 @@ async fn log_bytes_includes_the_manifest_and_segment_count_does_not() {
     let snap = status(&store);
     let clog = clog_only_bytes(&path);
     let manifest = manifest_bytes(&path);
-    assert!(clog > 0, "seeded writes must produce commit-log bytes");
+    // NOT `clog > 0`. surrealkv 0.9 appended to `clog/*.clog` segments; 0.21 is an LSM tree whose
+    // data lives in `wal/`, `sstables/` and `vlog/`, and it creates no `clog` directory at all. The
+    // segment count below is therefore 0 by construction, which is the point of this test now: the
+    // reported `log_bytes` must still be the sum of what IS on disc, and must not silently become
+    // a number the engine no longer produces.
+    let _ = clog;
     assert!(
         manifest > 0,
         "a real SurrealKV store directory carries a manifest — got none at {path}"

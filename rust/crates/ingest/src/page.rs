@@ -88,11 +88,11 @@ pub async fn read_page(
         bindings.push(("to_seq".into(), Value::Number(to.into())));
     }
     if let Some(from) = q.from_ts {
-        clauses.push_str(" AND ts >= time::from::millis($from_ts)");
+        clauses.push_str(" AND ts >= time::from_millis($from_ts)");
         bindings.push(("from_ts".into(), Value::Number(from.into())));
     }
     if let Some(to) = q.to_ts {
-        clauses.push_str(" AND ts < time::from::millis($to_ts)");
+        clauses.push_str(" AND ts < time::from_millis($to_ts)");
         bindings.push(("to_ts".into(), Value::Number(to.into())));
     }
     if let Some(wire) = &q.cursor {
@@ -106,14 +106,14 @@ pub async fn read_page(
         // node issues from here on is `v2`.
         match (c.ts, q.direction) {
             (Some(_), Direction::Fwd) => clauses.push_str(
-                " AND (ts > time::from::millis($cts) \
-                   OR (ts = time::from::millis($cts) AND seq > $cseq) \
-                   OR (ts = time::from::millis($cts) AND seq = $cseq AND producer > $cprod))",
+                " AND (ts > time::from_millis($cts) \
+                   OR (ts = time::from_millis($cts) AND seq > $cseq) \
+                   OR (ts = time::from_millis($cts) AND seq = $cseq AND producer > $cprod))",
             ),
             (Some(_), Direction::Back) => clauses.push_str(
-                " AND (ts < time::from::millis($cts) \
-                   OR (ts = time::from::millis($cts) AND seq < $cseq) \
-                   OR (ts = time::from::millis($cts) AND seq = $cseq AND producer < $cprod))",
+                " AND (ts < time::from_millis($cts) \
+                   OR (ts = time::from_millis($cts) AND seq < $cseq) \
+                   OR (ts = time::from_millis($cts) AND seq = $cseq AND producer < $cprod))",
             ),
             (None, Direction::Fwd) => {
                 clauses.push_str(" AND (seq > $cseq OR (seq = $cseq AND producer > $cprod))")

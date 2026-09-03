@@ -34,7 +34,7 @@ pub async fn is_registered(store: &Store, ws: &str, series: &str) -> Result<bool
     let mut resp = store
         .query_ws(
             ws,
-            &format!("SELECT series FROM type::thing('{SERIES_META_TABLE}', $series)"),
+            &format!("SELECT series FROM type::record('{SERIES_META_TABLE}', $series)"),
             vec![("series".into(), Value::String(series.to_string()))],
         )
         .await?;
@@ -50,7 +50,7 @@ pub async fn register(store: &Store, ws: &str, series: &str) -> Result<(), Store
         .query_ws(
             ws,
             &format!(
-                "UPSERT type::thing('{SERIES_META_TABLE}', $series) SET series = $series, \
+                "UPSERT type::record('{SERIES_META_TABLE}', $series) SET series = $series, \
                  labels_applied = labels_applied OR false"
             ),
             vec![("series".into(), Value::String(series.to_string()))],
@@ -64,7 +64,7 @@ pub async fn labels_applied(store: &Store, ws: &str, series: &str) -> Result<boo
     let mut resp = store
         .query_ws(
             ws,
-            &format!("SELECT labels_applied FROM type::thing('{SERIES_META_TABLE}', $series)"),
+            &format!("SELECT labels_applied FROM type::record('{SERIES_META_TABLE}', $series)"),
             vec![("series".into(), Value::String(series.to_string()))],
         )
         .await?;
@@ -80,7 +80,7 @@ pub async fn mark_labels_applied(store: &Store, ws: &str, series: &str) -> Resul
         .query_ws(
             ws,
             &format!(
-                "UPDATE type::thing('{SERIES_META_TABLE}', $series) SET labels_applied = true"
+                "UPDATE type::record('{SERIES_META_TABLE}', $series) SET labels_applied = true"
             ),
             vec![("series".into(), Value::String(series.to_string()))],
         )

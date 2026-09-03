@@ -12,6 +12,7 @@ use lb_store::{Store, StoreError};
 use serde_json::Value;
 
 use crate::edge::TAGGED_TABLE;
+use lb_store::SurrealValue;
 
 /// One facet of a query: an exact `key=value`, or key-only when `value` is `None`.
 #[derive(Debug, Clone, PartialEq)]
@@ -87,7 +88,8 @@ pub async fn find(store: &Store, ws: &str, facets: &[Facet]) -> Result<Vec<Strin
         .collect())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, SurrealValue)]
+#[surreal(crate = "lb_store::surreal_types")]
 struct MatchRow {
     entity: String,
     m: i64,

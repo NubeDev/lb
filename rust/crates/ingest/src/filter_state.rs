@@ -62,7 +62,7 @@ pub async fn read_filter_state(
 }
 
 /// One projected `series_meta` row. `filter_state` is absent on every row written before this slice.
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Row {
     series: String,
     #[serde(default)]
@@ -78,7 +78,7 @@ struct Row {
 /// `series` field.
 pub fn write_filter_state_sql(idx: usize) -> String {
     let (s, v) = (format!("fss{idx}"), format!("fsv{idx}"));
-    format!("UPDATE type::thing('{SERIES_META_TABLE}', ${s}) SET {FILTER_STATE_FIELD} = ${v};\n")
+    format!("UPDATE type::record('{SERIES_META_TABLE}', ${s}) SET {FILTER_STATE_FIELD} = ${v};\n")
 }
 
 /// The bindings [`write_filter_state_sql`] expects, for `series` at the same `idx`.
@@ -92,3 +92,8 @@ pub fn write_filter_state_bindings(
         (format!("fsv{idx}"), json!(state)),
     ]
 }
+
+// SurrealDB 3 reads query rows through `SurrealValue`. These delegate to serde rather than
+// deriving, so `#[serde(default)]` and `deserialize_with = "de_opt_lenient_f64"` keep working
+// unchanged — the derive supports neither. See `lb_store::surreal_value_via_serde!`.
+lb_store::surreal_value_via_serde!(Row);
