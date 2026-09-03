@@ -30,6 +30,46 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-09-03 (unreleased — needs the next `node-v*` tag) — THE SIGN-IN SCREEN CAN BE
+BRANDED BEFORE ANYONE HAS EVER SIGNED IN
+([`frontend/workspace-branding-scope.md`](scope/frontend/workspace-branding-scope.md), session
+[`frontend/public-branding-route-session.md`](sessions/frontend/public-branding-route-session.md),
+downstream report [NubeIO/rubix-ai#306](https://github.com/NubeIO/rubix-ai/issues/306)).**
+On a browser that had never signed in to a deployment, the login screen was **unbranded** — neutral
+card, product favicon, product default theme — and only became branded after the first successful
+sign-in. Not a shell bug: every `prefs.*` verb takes its workspace from the bearer, so pre-auth the
+shell could only repaint a brand that some *earlier authenticated* visit had left in `localStorage`,
+and nothing seeds that cache on a new device, a new browser or a cleared profile. The fix is the read
+this scope always named and deferred: **`GET /public/branding?ws=<ws>`**, unauthenticated, returning
+the workspace-default **`ui_branding` + `ui_theme`** blobs and nothing else
+(`role/gateway/src/routes/public_branding.rs`). It is the fifth pre-auth route, and a deliberate
+read-only break in the workspace wall (§7), so the load-bearing decisions are all about keeping it
+hairline. **(1) The whitelist is construction, not filtering** — the handler destructures the loaded
+`Prefs` into two named fields and builds the body from them, never `to_value(prefs)`, so a future
+prefs axis cannot leak by merely existing; the test sets *every other axis* on the record and asserts
+each is absent from the raw body. **(2) It is not a workspace-existence oracle** — unknown workspace,
+unbranded workspace, store-rejected slug, and absent `ws` all return the byte-identical
+`200 {"ui_branding":null,"ui_theme":null}` (asserted as equal bodies, not merely equal statuses).
+**(3) `ws` is required and never inferred** — the tempting "a single-workspace node answers for its
+own workspace" convenience would have the gateway enumerate workspaces for an anonymous caller, which
+is the exact thing the route must not do; the shell already knows which workspace it is signing into.
+**(4) A `?ws=` query, not a `/{ws}` path** — a path segment turns a missing workspace into a router
+`404`, a *different* answer from an unknown one, i.e. an oracle by routing table. Ships rate-limited
+per client key from day one (60/min, its own budget beside the invite limiter's 10/min — the shared
+`limit()` body in `routes/rate_limit.rs` is now the one place that dance lives) and
+`Cache-Control: public, max-age=60`. Tests (real gateway, real store, no bearer anywhere):
+`role/gateway/tests/public_branding_route_test.rs` **5/5** — brand served with no token · **workspace
+isolation** (A's brand for A, and A's body carries no byte of B) · the field-whitelist audit · the
+five-way identical-miss oracle guard · the per-IP ceiling with a second client proving it is per-key.
+`cargo fmt --check` clean. **Unverified:** the whole-crate `cargo test -p lb-role-gateway` sweep —
+two attempts were killed by the OOM killer (`rust-lld invoked oom-killer`; ~60 debug test binaries
+linked concurrently on a 14 GB box), so the shared `limit()` extraction in `routes/rate_limit.rs` is
+unproven against `invite_rate_limit_test`. Run that one binary under `-j 2` before tagging.
+**Downstream half (rubix-ai, not this repo):** `LoginView` fetches this keyed on the same hints `resolveBootBrand` uses, with the
+`localStorage` cache as the instant first paint and the fetch as the correction.
+
+---
+
 **Just shipped 2026-08-26 (unreleased — needs the next `node-v*` tag) — EMAIL COMES *IN* NOW: A
 WATCHED MAILBOX BECOMES ASSETS, SERIES AND INBOX ITEMS
 ([`inbox-outbox/mail-source-scope.md`](scope/inbox-outbox/mail-source-scope.md),

@@ -863,7 +863,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   top `Menubar` with dropdowns; frontend-only, two data axes + two sibling renderers, no backend),
   and `workspace-branding-scope.md` (admin-owned workspace **identity**
   — logo, favicon, site/login heading — via workspace-default prefs + `assets.*`, including the narrow
-  read-only pre-auth `/public/branding/{ws}` seam that brands the login page before any token exists),
+  read-only pre-auth seam that brands the login page before any token exists. **That seam SHIPPED
+  2026-09-03** as `GET /public/branding?ws=<ws>` (`routes/public_branding.rs`), returning the
+  workspace-default `ui_branding` + `ui_theme` blobs and nothing else: until it existed, a browser
+  that had never signed in painted the compiled product default, because pre-auth the shell could
+  only repaint a brand an *earlier authenticated* visit had cached in `localStorage`
+  ([rubix-ai#306](https://github.com/NubeIO/rubix-ai/issues/306)). A deliberate read-only break in the
+  workspace wall, kept hairline by four tested invariants — the whitelist is **construction, not
+  filtering** (two named fields off `Prefs`, never `to_value`, so a future axis cannot leak by
+  existing); every miss answers **byte-identically**, so it is not a workspace-existence oracle; `ws`
+  is **required, never inferred**, because inferring it means enumerating workspaces for an anonymous
+  caller; and it is rate-limited per client from day one on its own budget),
   and `rules-workbench-scope.md` (the rules workbench: a Playground to write/run/save Rhai rules, a
   React Flow chain canvas that colours steps as they settle, and a datasources admin page — first-party
   shell driving the shipped `rules.*`/`flows.*`/`datasource.*` verbs over the gateway, mirroring the

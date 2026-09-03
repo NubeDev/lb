@@ -31,6 +31,11 @@ mod spa_fallback;
 mod state;
 
 pub use routes::{INVITE_ACCEPT_MAX_PER_WINDOW, INVITE_ACCEPT_WINDOW_SECS};
+// workspace-branding scope: the pre-auth `GET /public/branding` ceiling + cache TTL, so a test (and
+// an embedder sizing an ingress cache) reads the contract from the crate rather than hardcoding it.
+pub use routes::{
+    BRANDING_MAX_AGE_SECS, PUBLIC_BRANDING_MAX_PER_WINDOW, PUBLIC_BRANDING_WINDOW_SECS,
+};
 pub use server::{router, serve, serve_listener};
 pub use session::{authenticate, dev_claims, verify_token, AuthRejection};
 pub use session::{mint_full_session, mint_full_session_with_ttl, MintedSession, SESSION_TTL_SECS};
