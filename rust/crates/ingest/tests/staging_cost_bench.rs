@@ -1,32 +1,37 @@
-//! **What does the staging hop actually cost?** `#[ignore]`d — ~2 min, and it measures rather than
-//! asserts. Run with `cargo test -p lb-ingest --test staging_cost_bench -- --ignored --nocapture`.
+//! **What does the staging hop cost?** `#[ignore]`d — ~2 min, and it measures rather than asserts.
+//! `cargo test -p lb-ingest --test staging_cost_bench -- --ignored --nocapture`
 //!
-//! Staging exists to make a producer's write CHEAP: land it in a table with no secondary index, no
-//! rollup-view upkeep and no tag edges, and pay the indexed write once per batch at the commit. This
-//! measures whether that trade pays. Three arms, same 20,000 samples, same batch size, same engine:
+//! Read `direct.rs` first: `commit_direct` ALREADY exists and the host ALREADY prefers it — a batch
+//! goes direct whenever staging is empty, and stages only behind a backlog. So this is not "staging
+//! vs a hypothetical", it is "the backlog path vs the path production already takes".
+//!
+//! Same 20,000 samples, same batch size, same engine:
 //!
 //! | arm | time | on disc |
 //! |---|---|---|
-//! | staged, as shipped | 110,502 ms | 11,873,746 B |
-//! | staged, appends batched | 8,837 ms | 9,838,675 B |
-//! | direct into `series` | 3,163 ms | 4,009,581 B |
+//! | `write()` + drain, as shipped | 115,398 ms | 11,873,949 B |
+//! | the same, appends batched | 9,025 ms | 9,838,861 B |
+//! | `commit_direct` | 3,752 ms | 4,023,639 B |
 //!
-//! Two separate findings, and they want different fixes:
+//! Three findings:
 //!
-//! 1. **`write()` commits once per sample.** `append_one` issues its own `query_ws` per sample, so
-//!    20,000 samples are 20,000 transactions. That alone is **12.5x** (110.5s → 8.8s). It is a bug in
-//!    the staging path, not a property of staging, and the split timing says where: `write()`=103.3s
-//!    against `drain`=7.2s, so 93% of the cost is the append loop.
-//! 2. **Even batched, the hop still costs 2.8x the time and 2.5x the disc.** Staging does not avoid
-//!    the indexed write; it adds a write and a tombstone in front of it. The disc figure is the one
-//!    that matters for an edge node buffering through a partition — 2.5x the bytes is 2.5x less
-//!    survivable time on the same card.
+//! 1. **`write()` commits once per sample.** `append_one` issues its own `query_ws`, so 20,000
+//!    samples are 20,000 transactions — `write()`=108.1s against `drain`=7.3s, 93% of the cost. At
+//!    ~5.4 ms each that is a durability barrier per sample, not a memtable insert. **12.8x**, and a
+//!    bug in the staging path rather than a property of staging.
+//! 2. **Even batched, the hop costs 2.4x the time and 2.4x the disc.** It cannot be otherwise: a
+//!    staged sample is three log appends (staging UPSERT, series UPSERT, staging DELETE tombstone)
+//!    where direct is one.
+//! 3. **The extra duties are free.** An earlier arm hand-rolled a bare series UPSERT with no
+//!    cardinality gate, no filters and no `series_latest` upkeep: 3,163 ms / 4,009,581 B against
+//!    `commit_direct`'s 3,752 ms / 4,023,639 B. So the indexed commit is not where the cost is, and
+//!    "staging defers the expensive part" does not survive measurement on an LSM — index entries are
+//!    just more keys in the same memtable and WAL.
 //!
-//! **Caveat, so the numbers are not over-read.** The `direct` arm is deliberately minimal: it skips
-//! cap enforcement, dead-letter diversion, `series_latest` maintenance and `series_meta`
-//! registration, all of which the real commit does. Its true cost is therefore higher than 3,163 ms
-//! and the gap narrower than 2.8x. Single producer, one series, no concurrency, a fast SSD — not an
-//! SD card. The direction and order of magnitude are solid; the exact ratio is not.
+//! **Caveats.** One machine, one producer, one series, no concurrency, an SSD not an SD card. This
+//! measures throughput, NOT what staging is actually for on the shipped path: absorbing a burst that
+//! arrives faster than the commit can drain, and holding ordering behind an existing backlog.
+//! Removing it is a decision about backpressure, not about these numbers.
 
 use std::time::Instant;
 
@@ -91,29 +96,18 @@ async fn staged(dir: &str) -> (u128, u64) {
     (ms, dir_bytes(std::path::Path::new(dir)))
 }
 
-/// DIRECT: the same rows, same batching, straight into `series` — no staging hop.
+/// DIRECT: the path production ALREADY takes when staging is empty — `commit_direct`, which runs
+/// the same transaction builder as the drain (same cardinality gate, same filters, same
+/// `series_latest` pointer) and differs only in having no staged row to delete.
 async fn direct(dir: &str) -> (u128, u64) {
     let store = Store::open(dir).await.unwrap();
     ensure_series_schema(&store, "w").await.unwrap();
     let t = Instant::now();
     for chunk in 0..(N / BATCH as u64) {
         let s = samples("bench", chunk * BATCH as u64, BATCH as u64);
-        let mut sql = String::from("BEGIN TRANSACTION;");
-        let mut binds: Vec<(String, serde_json::Value)> = Vec::new();
-        for (i, smp) in s.iter().enumerate() {
-            sql.push_str(&format!(
-                " UPSERT type::record('series', [$se{i}, $pr{i}, $sq{i}]) CONTENT \
-                 {{ series: $se{i}, producer: $pr{i}, seq: $sq{i}, \
-                    ts: time::from_millis($ts{i}), payload: $pl{i} }} RETURN NONE;"
-            ));
-            binds.push((format!("se{i}"), json!(smp.series)));
-            binds.push((format!("pr{i}"), json!(smp.producer)));
-            binds.push((format!("sq{i}"), json!(smp.seq)));
-            binds.push((format!("ts{i}"), json!(smp.ts)));
-            binds.push((format!("pl{i}"), smp.payload.clone()));
+        for part in s.chunks(lb_ingest::DIRECT_COMMIT_BATCH) {
+            lb_ingest::commit_direct(&store, "w", part).await.unwrap();
         }
-        sql.push_str(" COMMIT TRANSACTION;");
-        store.query_ws("w", &sql, binds).await.unwrap();
     }
     let ms = t.elapsed().as_millis();
     drop(store);
