@@ -6,7 +6,7 @@
 //! Real node boot, real store, real ingest path, real MCP dispatch — no mocks (testing §0).
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_ingest_tool, drain_workspace, Node};
+use lb_host::{call_ingest_tool, Node};
 use lb_ingest::{Qos, Sample};
 use lb_mcp::ToolError;
 use serde_json::{json, Value};
@@ -52,12 +52,11 @@ async fn call(
     call_ingest_tool(&node.store, p, ws, tool, &args).await
 }
 
-/// Commit `samples` through the real write → drain path.
+/// Commit `samples` through the real write path.
 async fn seed(node: &Node, ws: &str, samples: Vec<Sample>) {
-    lb_ingest::write(&node.store, ws, &samples, 0)
+    lb_ingest::commit_direct(&node.store, ws, &samples)
         .await
         .unwrap();
-    drain_workspace(&node.store, ws).await.unwrap();
 }
 
 fn sample_at(series: &str, producer: &str, seq: u64, ts: u64, payload: Value) -> Sample {
@@ -166,14 +165,18 @@ async fn an_existing_policy_row_keeps_its_exact_meaning() {
     assert_eq!(rows["samples"].as_array().unwrap().len(), 5);
 }
 
-/// REGRESSION — `debugging/ingest/filtered-batch-stops-the-drain-loop.md`.
+/// REGRESSION — `debugging/ingest/filtered-batch-stops-the-drain-loop.md`, carried forward.
 ///
-/// The drain loop used to stop on `pass.committed == 0`. A muted prefix commits zero rows while
-/// consuming a whole 256-row batch, so the very first pass looked like "staging is empty" and the
-/// unbounded drain abandoned the rest of the backlog — the drain-backpressure stall, re-created
-/// through a new door. The bound must be "nothing was DEQUEUED", not "nothing was committed".
+/// The original bug was a commit loop that stopped on `pass.committed == 0`: a muted prefix commits
+/// zero rows while consuming a whole batch, so the first pass looked like "nothing left" and the
+/// remainder was abandoned. The loop it broke is gone with staging, but `commit_direct` has a loop of
+/// its own — it chunks a push into `DIRECT_COMMIT_BATCH` transactions — and the same mistake there
+/// would silently drop every chunk after the first.
+///
+/// So: push three chunks' worth of samples that the operator's own filter discards entirely, and
+/// require the reply to account for all of them.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_fully_filtered_backlog_drains_completely_instead_of_stalling_after_one_batch() {
+async fn a_fully_filtered_push_accounts_for_every_chunk() {
     let node = Node::boot().await.unwrap();
     let p = admin("nube");
     call(
@@ -186,32 +189,40 @@ async fn a_fully_filtered_backlog_drains_completely_instead_of_stalling_after_on
     .await
     .unwrap();
 
-    // Three batches' worth (COMMIT_BATCH is 256), staged directly so nothing drains inline.
+    // 700 samples — three chunks at DIRECT_COMMIT_BATCH (256), so the chunk loop must iterate.
     let n = 700u64;
-    lb_ingest::write(
-        &node.store,
+    let samples: Vec<Value> = (1..=n)
+        .map(|i| json!(sample_at("quiet.v", "p", i, i * 1_000, json!(i as f64))))
+        .collect();
+    let out = call(
+        &node,
+        &p,
         "nube",
-        &(1..=n)
-            .map(|i| sample_at("quiet.v", "p", i, i * 1_000, json!(i as f64)))
-            .collect::<Vec<_>>(),
-        0,
+        "ingest.write",
+        json!({ "samples": samples }),
     )
     .await
     .unwrap();
 
-    let pass = drain_workspace(&node.store, "nube").await.unwrap();
-    assert_eq!(pass.committed, 0, "everything was muted");
+    assert_eq!(out["accepted"], n, "acceptance is unfiltered");
     assert_eq!(
-        pass.filtered.muted, n as usize,
-        "ONE drain_workspace call must consume the WHOLE backlog, not just the first batch"
+        out["filtered"]["muted"], n,
+        "every chunk's discards are reported, not just the first batch's"
     );
-
-    // And staging really is empty — a second pass has nothing left to do.
-    assert!(drain_workspace(&node.store, "nube")
-        .await
-        .unwrap()
-        .filtered
-        .is_zero());
+    let rows = call(
+        &node,
+        &p,
+        "nube",
+        "series.read",
+        json!({"series": "quiet.v"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        rows["samples"].as_array().unwrap().len(),
+        0,
+        "nothing was stored — the filter dropped all of it"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -261,10 +272,6 @@ async fn the_live_write_path_reports_what_it_filtered() {
         json!(2),
         "the two redundant samples are counted, not vanished: {accepted}"
     );
-
-    // A later drain finds nothing left — the write already committed its own batch.
-    let pass = drain_workspace(&node.store, "nube").await.unwrap();
-    assert!(pass.filtered.is_zero());
 
     let rows = call(&node, &p, "nube", "series.read", json!({"series": "d.v"}))
         .await

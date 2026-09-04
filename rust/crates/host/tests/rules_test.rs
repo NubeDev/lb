@@ -14,7 +14,7 @@ use lb_host::{
     call_tool, ingest_write, insight_get, insight_list, rules_get, rules_run, rules_save, Node,
     RuleModel,
 };
-use lb_ingest::{commit_batch, Qos, Sample};
+use lb_ingest::{Qos, Sample};
 use lb_insights::{ListQuery, Status};
 
 fn principal(ws: &str, caps: &[&str]) -> Principal {
@@ -110,7 +110,6 @@ async fn seed_series(node: &Node, p: &Principal, ws: &str, series: &str, values:
         })
         .collect();
     ingest_write(&node.store, p, ws, samples).await.unwrap();
-    commit_batch(&node.store, ws, 1000).await.unwrap();
 }
 
 // ----- capability-deny -------------------------------------------------------------------------

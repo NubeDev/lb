@@ -13,7 +13,7 @@
 //! `(series, producer)` only, and ordering by it across producers is exactly what caused #63.
 
 use lb_ingest::{
-    commit_batch, read_buckets, read_page, run_gc, sample_count, set_policy, write, BucketQuery,
+    commit_direct, read_buckets, read_page, run_gc, sample_count, set_policy, BucketQuery,
     PageQuery, Policy, Qos, Sample, Tier, DEFAULT_MAX_SAMPLES,
 };
 use lb_store::Store;
@@ -32,15 +32,7 @@ fn sample(series: &str, producer: &str, seq: u64, ts: u64, payload: serde_json::
 }
 
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
-    write(store, ws, &samples, 0).await.unwrap();
-    loop {
-        // `drained()`, not `committed` — a fully-filtered batch commits nothing while consuming a
-        // whole batch, and stopping there would leave staging half-drained (see
-        // `debugging/ingest/filtered-batch-stops-the-drain-loop.md`).
-        if commit_batch(store, ws, 256).await.unwrap().drained() == 0 {
-            break;
-        }
-    }
+    commit_direct(store, ws, &samples).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

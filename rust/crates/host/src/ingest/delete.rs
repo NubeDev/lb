@@ -1,7 +1,7 @@
 //! `series.delete` — the host's capability chokepoint for removing a whole series (data-console
 //! scope: series lifecycle). Gates first (`mcp:series.delete:call`, workspace-first §3.6 then
 //! capability §3.5), then calls the raw `lb_ingest::delete_series`, which clears the series' samples,
-//! rollups, staged rows, registry row, and tag edges in `ws`.
+//! rollups, dead letters, registry row, and tag edges in `ws`.
 //!
 //! A denial is opaque [`IngestError::Denied`] — no existence signal. Destructive, so it carries its
 //! own cap (not folded into `ingest.write`): the privilege to *destroy* a series is distinct from the

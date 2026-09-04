@@ -5,9 +5,8 @@
 //! GC (rollup-then-evict + tier eviction + rollup-backed bucket reads).
 
 use lb_ingest::{
-    commit_batch, commit_batch_capped, latest, latest_many, read_buckets, read_buckets_fold,
-    read_page, write, Bucket, BucketQuery, Cursor, Direction, PageQuery, Qos, Sample,
-    DEAD_LETTER_TABLE,
+    commit_direct, commit_direct_capped, latest, latest_many, read_buckets, read_buckets_fold,
+    read_page, Bucket, BucketQuery, Cursor, Direction, PageQuery, Qos, Sample, DEAD_LETTER_TABLE,
 };
 use lb_store::Store;
 use serde_json::json;
@@ -25,15 +24,7 @@ fn sample(series: &str, producer: &str, seq: u64, ts: u64, payload: serde_json::
 }
 
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
-    write(store, ws, &samples, 0).await.unwrap();
-    loop {
-        // `drained()`, not `committed` — a fully-filtered batch commits nothing while consuming a
-        // whole batch, and stopping there would leave staging half-drained (see
-        // `debugging/ingest/filtered-batch-stops-the-drain-loop.md`).
-        if commit_batch(store, ws, 256).await.unwrap().drained() == 0 {
-            break;
-        }
-    }
+    commit_direct(store, ws, &samples).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -396,14 +387,15 @@ async fn latest_many_covers_every_name_and_scopes_by_workspace() {
 async fn series_cardinality_cap_dead_letters_new_series() {
     let store = Store::memory().await.unwrap();
     // Cap = 2: series a and b are admitted; series c is diverted to the dead-letter table.
-    // Distinct seqs → deterministic drain order (a, b, c) — the cap decision is order-dependent.
+    // Distinct seqs → deterministic batch order (a, b, c) — the cap decision is order-dependent.
     let samples = vec![
         sample("a", "p", 1, 1000, json!(1)),
         sample("b", "p", 2, 1000, json!(2)),
         sample("c", "p", 3, 1000, json!(3)),
     ];
-    write(&store, "nube", &samples, 0).await.unwrap();
-    let pass = commit_batch_capped(&store, "nube", 256, 2).await.unwrap();
+    let pass = commit_direct_capped(&store, "nube", &samples, 2)
+        .await
+        .unwrap();
     assert_eq!(pass.committed, 2);
     assert_eq!(
         pass.dead_lettered, 1,
@@ -430,10 +422,9 @@ async fn series_cardinality_cap_dead_letters_new_series() {
     );
 
     // An EXISTING series is never blocked by the cap.
-    write(&store, "nube", &[sample("a", "p", 4, 2000, json!(4))], 0)
+    let pass = commit_direct_capped(&store, "nube", &[sample("a", "p", 4, 2000, json!(4))], 2)
         .await
         .unwrap();
-    let pass = commit_batch_capped(&store, "nube", 256, 2).await.unwrap();
     assert_eq!(pass.committed, 1);
 }
 

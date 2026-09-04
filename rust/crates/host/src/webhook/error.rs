@@ -37,7 +37,7 @@ pub enum WebhookError {
 }
 
 impl From<crate::ingest::IngestError> for WebhookError {
-    /// The inbound accept path threads `ingest_write`/`drain_workspace` errors here. A denied
+    /// The inbound accept path threads `ingest_write` errors here. A denied
     /// ingest (the synthetic principal somehow lacked `mcp:ingest.write:call`) is `Denied`; a
     /// store failure stays a store failure; bad input is bad input.
     fn from(e: crate::ingest::IngestError) -> Self {

@@ -1,5 +1,5 @@
 //! `seed_iot_demo` — "real data without a real sensor" (dashboard scope, build step 1). Emits real
-//! `Sample`s through the **real ingest path** (`lb_ingest::write` → `commit_batch`) and tags the
+//! `Sample`s through the **real ingest path** (`lb_ingest::commit_direct`) and tags the
 //! series entities over the **real tag graph** (`lb_tags::add`), so every later test and demo is
 //! honest (the no-mocks/seed rule, CLAUDE §9 — this seeds real records, it does not fake them).
 //!
@@ -9,7 +9,7 @@
 //! harness). The IoT-ness lives entirely in *which* series it writes and *what tags* it attaches —
 //! the core never knows "cooler" or "fryer" (ingest/vision rule).
 
-use lb_ingest::{commit_batch, write as stage_write, Qos, Sample};
+use lb_ingest::{commit_direct, Qos, Sample};
 use lb_store::{Store, StoreError};
 use lb_tags::{add as tag_add, Provenance, Source, Tag, DEFAULT_TAG_NODE_CAP};
 use serde_json::json;
@@ -57,9 +57,8 @@ pub async fn seed_iot_demo(store: &Store, ws: &str, now: u64) -> Result<SeedRepo
         });
     }
 
-    stage_write(store, ws, &samples, 100_000).await?;
     // Drain in one pass (the batch is small) so the committed series is immediately readable.
-    let pass = commit_batch(store, ws, samples.len()).await?;
+    let pass = commit_direct(store, ws, &samples).await?;
 
     // Tag both series for faceted discovery (`series.find`). System provenance — the seed asserts it.
     let prov = Provenance::new(now, "seed:iot-demo", Source::System);

@@ -1,8 +1,7 @@
-//! Core ingest round-trip + the resolved-design invariants (ingest scope): durable append → batched
-//! exactly-once commit → typed read; the two-producer collision (BOTH survive); and overflow honored
-//! at the staging end for both QoS classes.
+//! Core ingest round-trip + the resolved-design invariants (ingest scope): commit → typed read, the
+//! exactly-once UPSERT key on a producer's replay, and the two-producer collision (BOTH survive).
 
-use lb_ingest::{commit_batch, latest, read, write, Qos, Sample, DEAD_LETTER_TABLE, STAGING_TABLE};
+use lb_ingest::{commit_direct, latest, read, Qos, Sample};
 use lb_store::Store;
 
 fn sample(series: &str, producer: &str, seq: u64, payload: serde_json::Value, qos: Qos) -> Sample {
@@ -53,16 +52,8 @@ async fn write_commit_read_round_trips_typed() {
             Qos::BestEffort,
         ),
     ];
-    let n = write(&store, "nube", &samples, 0).await.unwrap();
-    assert_eq!(n, 2);
-
-    let pass = commit_batch(&store, "nube", 100).await.unwrap();
+    let pass = commit_direct(&store, "nube", &samples).await.unwrap();
     assert_eq!(pass.committed, 2);
-    // Staging is drained after commit (atomic dequeue).
-    assert_eq!(
-        commit_batch(&store, "nube", 100).await.unwrap().committed,
-        0
-    );
 
     let got = read(&store, "nube", "cpu", None, None).await.unwrap();
     assert_eq!(got.len(), 2);
@@ -105,8 +96,7 @@ async fn latest_follows_wall_clock_across_a_producer_restart() {
             serde_json::json!(230.9),
         ),
     ];
-    write(&store, "nube", &old, 0).await.unwrap();
-    commit_batch(&store, "nube", 100).await.unwrap();
+    commit_direct(&store, "nube", &old).await.unwrap();
     assert_eq!(latest(&store, "nube", "v").await.unwrap().unwrap().seq, 807);
 
     // Epoch 2: the process restarted — seq resets to 0, but the clock moved FORWARD.
@@ -114,8 +104,7 @@ async fn latest_follows_wall_clock_across_a_producer_restart() {
         sample_at("v", "ext:modbus/net@2", 0, 9_000, serde_json::json!(239.8)),
         sample_at("v", "ext:modbus/net@2", 1, 9_001, serde_json::json!(240.1)),
     ];
-    write(&store, "nube", &new, 0).await.unwrap();
-    commit_batch(&store, "nube", 100).await.unwrap();
+    commit_direct(&store, "nube", &new).await.unwrap();
 
     let last = latest(&store, "nube", "v").await.unwrap().unwrap();
     assert_eq!(
@@ -147,23 +136,20 @@ async fn latest_breaks_a_ts_tie_by_seq() {
         sample_at("v", "p", 1, 5_000, serde_json::json!("first")),
         sample_at("v", "p", 2, 5_000, serde_json::json!("second")),
     ];
-    write(&store, "nube", &s, 0).await.unwrap();
-    commit_batch(&store, "nube", 100).await.unwrap();
+    commit_direct(&store, "nube", &s).await.unwrap();
     let last = latest(&store, "nube", "v").await.unwrap().unwrap();
     assert_eq!(last.payload, serde_json::json!("second"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn commit_is_idempotent_on_redrain() {
-    // Re-appending the same logical samples and re-committing must not double-count: the UPSERT key
-    // is [series, producer, seq].
+async fn commit_is_idempotent_on_a_producers_replay() {
+    // A producer that lost an ack and re-pushes must not double-count: the UPSERT key is
+    // [series, producer, seq], so the second commit lands on the same row.
     let store = Store::memory().await.unwrap();
     let s = vec![sample("m", "p", 5, serde_json::json!(1), Qos::MustDeliver)];
-    write(&store, "nube", &s, 0).await.unwrap();
-    commit_batch(&store, "nube", 100).await.unwrap();
-    // Replay (offline producer reconnecting): same sample again.
-    write(&store, "nube", &s, 0).await.unwrap();
-    commit_batch(&store, "nube", 100).await.unwrap();
+    commit_direct(&store, "nube", &s).await.unwrap();
+    // Replay (a producer reconnecting after a lost ack): same sample again.
+    commit_direct(&store, "nube", &s).await.unwrap();
 
     let got = read(&store, "nube", "m", None, None).await.unwrap();
     assert_eq!(got.len(), 1, "a replayed sample commits exactly once");
@@ -190,139 +176,11 @@ async fn two_producers_same_seq_both_survive() {
             Qos::MustDeliver,
         ),
     ];
-    write(&store, "nube", &s, 0).await.unwrap();
-    commit_batch(&store, "nube", 100).await.unwrap();
+    commit_direct(&store, "nube", &s).await.unwrap();
 
     let got = read(&store, "nube", "shared", None, None).await.unwrap();
     assert_eq!(got.len(), 2, "both producers' seq=5 must coexist");
     let payloads: Vec<_> = got.iter().map(|s| s.payload.clone()).collect();
     assert!(payloads.contains(&serde_json::json!("a")));
     assert!(payloads.contains(&serde_json::json!("b")));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn best_effort_overflow_drops_oldest() {
-    // Bound the staging at 2; a 3rd best-effort sample evicts the oldest. Staging never exceeds bound.
-    let store = Store::memory().await.unwrap();
-    for seq in 1..=3 {
-        let s = vec![sample(
-            "t",
-            "p",
-            seq,
-            serde_json::json!(seq),
-            Qos::BestEffort,
-        )];
-        write(&store, "nube", &s, 2).await.unwrap();
-    }
-    let mut resp = store
-        .query_ws(
-            "nube",
-            &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
-            vec![],
-        )
-        .await
-        .unwrap();
-    let n: Option<i64> = resp.take("count").unwrap();
-    assert_eq!(
-        n,
-        Some(2),
-        "best-effort staging stays at its bound (drop-oldest)"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn one_batch_larger_than_the_bound_still_stays_bounded() {
-    // The intra-batch bound. `write` takes ONE staged-count up front and skips `enforce_bound` while
-    // it holds proven headroom (the per-sample full-table count made a 1680-sample batch cost 41s on
-    // armv7). A batch BIGGER than the bound is exactly the case that headroom must not swallow: the
-    // skip has to run out mid-batch and hand back to the real per-sample enforcement.
-    //
-    // The pre-existing overflow tests all write one sample per `write` call, so every check was a
-    // fresh call — none of them can see an intra-batch regression.
-    let store = Store::memory().await.unwrap();
-    let batch: Vec<_> = (1..=10)
-        .map(|seq| sample("t", "p", seq, serde_json::json!(seq), Qos::BestEffort))
-        .collect();
-    let accepted = write(&store, "nube", &batch, 3).await.unwrap();
-    assert_eq!(accepted, 10, "every sample is handled");
-
-    let mut resp = store
-        .query_ws(
-            "nube",
-            &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
-            vec![],
-        )
-        .await
-        .unwrap();
-    let n: Option<i64> = resp.take("count").unwrap();
-    assert_eq!(
-        n,
-        Some(3),
-        "a single over-sized batch is still capped at the bound"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_batch_within_headroom_stages_every_sample() {
-    // The other side of the same knob: when the batch fits, headroom skips every check and all
-    // samples must still land. A too-eager skip would be invisible here, but an off-by-one that
-    // under-counts headroom would show up as a dropped sample.
-    let store = Store::memory().await.unwrap();
-    let batch: Vec<_> = (1..=5)
-        .map(|seq| sample("t", "p", seq, serde_json::json!(seq), Qos::BestEffort))
-        .collect();
-    write(&store, "nube", &batch, 100).await.unwrap();
-    let got = read(&store, "nube", "t", None, None).await.unwrap();
-    assert!(
-        got.is_empty(),
-        "staged, not committed — read sees nothing yet"
-    );
-
-    let mut resp = store
-        .query_ws(
-            "nube",
-            &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
-            vec![],
-        )
-        .await
-        .unwrap();
-    let n: Option<i64> = resp.take("count").unwrap();
-    assert_eq!(n, Some(5), "a batch inside the bound stages in full");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn must_deliver_overflow_dead_letters() {
-    // Bound at 1; a 2nd must-deliver sample is dead-lettered, not dropped — never silently lost.
-    let store = Store::memory().await.unwrap();
-    write(
-        &store,
-        "nube",
-        &[sample("t", "p", 1, serde_json::json!(1), Qos::MustDeliver)],
-        1,
-    )
-    .await
-    .unwrap();
-    write(
-        &store,
-        "nube",
-        &[sample("t", "p", 2, serde_json::json!(2), Qos::MustDeliver)],
-        1,
-    )
-    .await
-    .unwrap();
-
-    let mut resp = store
-        .query_ws(
-            "nube",
-            &format!("SELECT count() FROM {DEAD_LETTER_TABLE} GROUP ALL"),
-            vec![],
-        )
-        .await
-        .unwrap();
-    let n: Option<i64> = resp.take("count").unwrap();
-    assert_eq!(
-        n,
-        Some(1),
-        "the overflowing must-deliver sample is dead-lettered"
-    );
 }

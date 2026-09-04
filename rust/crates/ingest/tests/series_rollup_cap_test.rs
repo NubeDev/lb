@@ -8,7 +8,7 @@
 //! `series_retention_test.rs`.
 
 use lb_ingest::{
-    commit_batch, last_pass, read_rollups, run_gc, set_policy, write, write_rollups, Policy, Qos,
+    commit_direct, last_pass, read_rollups, run_gc, set_policy, write_rollups, Policy, Qos,
     RollupRow, Sample, Tier,
 };
 use lb_store::Store;
@@ -48,15 +48,9 @@ fn rollup_row(series: &str, t: u64) -> RollupRow {
 /// Register `series` (the GC only visits series the meta table knows) and store `n` rollup rows on
 /// the tier grid, oldest at `t = WIDTH`.
 async fn seed(store: &Store, ws: &str, series: &str, n: u64) {
-    write(store, ws, &[sample(series, 1, WIDTH)], 0)
+    commit_direct(store, ws, &[sample(series, 1, WIDTH)])
         .await
         .unwrap();
-    loop {
-        // `drained()`, not `committed` — see `series_retention_test.rs`.
-        if commit_batch(store, ws, 256).await.unwrap().drained() == 0 {
-            break;
-        }
-    }
     let rows: Vec<RollupRow> = (1..=n).map(|i| rollup_row(series, i * WIDTH)).collect();
     write_rollups(store, ws, &rows).await.unwrap();
 }

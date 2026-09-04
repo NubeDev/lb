@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::cursor::Cursor;
 use crate::sample::Sample;
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// Default page size when the caller sends no `limit` — bounded by design; "no limit" is impossible.
 pub const DEFAULT_PAGE_LIMIT: usize = 10_000;

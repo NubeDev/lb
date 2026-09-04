@@ -2,7 +2,7 @@
 //! series.find discovery built on the tag graph (tags + ingest scopes).
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_ingest_tool, call_tags_tool, drain_workspace};
+use lb_host::{call_ingest_tool, call_tags_tool};
 use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::json;
@@ -119,7 +119,6 @@ async fn series_find_discovers_by_tags() {
     call_ingest_tool(&store, &p, "nube", "ingest.write",
         &json!({ "samples": [{"series":"node.cpu_temp","producer":"x","ts":1,"seq":1,"payload":61.4,"qos":"best-effort"}] }))
         .await.unwrap();
-    drain_workspace(&store, "nube").await.unwrap();
     call_tags_tool(&store, &p, "nube", "tags.add",
         &json!({ "entity": "series:node.cpu_temp", "key": "region", "value": "eu", "source": "producer" }))
         .await.unwrap();

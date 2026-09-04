@@ -27,22 +27,21 @@ use lb_tags::{entity_parts, TAGGED_TABLE};
 use serde_json::Value;
 
 use crate::schema::{ROLLUP_TABLE, SERIES_LATEST_TABLE, SERIES_META_TABLE};
-use crate::staging::{DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
+use crate::tables::{DEAD_LETTER_TABLE, SERIES_TABLE};
 
-/// Delete every trace of `series` in `ws`: committed samples, rollups, any still-staged samples, any
-/// dead-lettered ones, the registry row, and the series' tag edges. Idempotent — deleting an unknown
+/// Delete every trace of `series` in `ws`: committed samples, rollups, the newest-sample pointer,
+/// any dead-lettered ones, the registry row, and the series' tag edges. Idempotent — deleting an unknown
 /// series is a no-op (each `DELETE` simply matches nothing). Bind the name, never interpolate it.
 pub async fn delete_series(store: &Store, ws: &str, series: &str) -> Result<(), StoreError> {
     let entity = format!("series:{series}");
     let (etb, eid) = entity_parts(&entity);
-    // One multi-statement query: sample rows (raw + rollup + not-yet-committed staging), the registry
+    // One multi-statement query: sample rows (raw + rollup + the newest-sample pointer), the registry
     // row, then the tag edges pointing at the `series:<name>` entity. `sample.series`/`series` are the
     // denormalized name fields; the tag edge links via `in = type::record($etb, $eid)` (dotted-id safe).
     let sql = format!(
         "DELETE {SERIES_TABLE} WHERE series = $series;
          DELETE {ROLLUP_TABLE} WHERE series = $series;
          DELETE {SERIES_LATEST_TABLE} WHERE series = $series;
-         DELETE {STAGING_TABLE} WHERE sample.series = $series;
          DELETE {DEAD_LETTER_TABLE} WHERE sample.series = $series;
          DELETE {SERIES_META_TABLE} WHERE series = $series;
          DELETE {TAGGED_TABLE} WHERE in = type::record($etb, $eid);"

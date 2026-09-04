@@ -3,18 +3,11 @@
 //! `{principal}/{declared}` when it does — so the root is un-spoofable while one principal can still
 //! run many independent `seq` spaces (a caller can only ever carve up its own namespace). The
 //! durable exactly-once round-trip is proven end to end through `call_ingest_tool`. The
-//! `ingest.write` MCP verb drains staging → `series` synchronously (the gateway's `POST /ingest`
-//! route drains for the same reason), so a write is visible to the very next read over the same
-//! bridge — the round-trip the proof-panel page proves. A subsequent explicit `drain_workspace` is
-//! then a no-op (exactly-once per `(series, producer, seq)`), which this test asserts.
-//!
-//! That synchronous drain is now **bounded to the caller's own batch** and a background reactor
-//! (`spawn_ingest_reactors`) owns the backlog — so the round-trip below holds without a caller ever
-//! being billed for another producer's staged rows (drain-backpressure scope). The samples here fit
-//! one batch, so the write commits them inline exactly as before.
+//! `ingest.write` MCP verb COMMITS the batch, so a write is visible to the very next read over the
+//! same bridge — the round-trip the proof-panel page proves — with nothing to wait for in between.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_ingest_tool, drain_workspace};
+use lb_host::call_ingest_tool;
 use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::json;
@@ -52,7 +45,7 @@ fn sample_ns(series: &str, ns: &str, seq: u64, payload: serde_json::Value) -> se
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn write_drain_read_round_trip_via_mcp() {
+async fn write_read_round_trip_via_mcp() {
     let store = Store::memory().await.unwrap();
     let p = principal(
         "client:pi-7",
@@ -74,14 +67,6 @@ async fn write_drain_read_round_trip_via_mcp() {
     .await
     .unwrap();
     assert_eq!(out["accepted"], 2);
-
-    // `ingest.write` already drained staging → series synchronously, so a SECOND explicit drain finds
-    // nothing left to commit — exactly-once, never a double-commit.
-    let pass = drain_workspace(&store, "nube").await.unwrap();
-    assert_eq!(
-        pass.committed, 0,
-        "the write already committed; the drain is a no-op"
-    );
 
     let read = call_ingest_tool(
         &store,
