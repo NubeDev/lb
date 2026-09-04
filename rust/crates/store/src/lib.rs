@@ -14,6 +14,7 @@ mod compaction_record;
 mod conflict;
 mod create;
 mod delete;
+mod engine_open;
 mod graph;
 mod increment;
 mod last_pass;

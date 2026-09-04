@@ -3,7 +3,6 @@
 //! Split out of `bucket.rs` so that file stays about the query and the fold. These are the wire
 //! contract: change one and the SQL that fills it changes with it.
 
-use serde::Deserialize;
 use serde_json::Value;
 
 /// One `GROUP BY b` row of the numeric-aggregate query (Query N). Non-numeric payloads never reach
