@@ -222,7 +222,9 @@ impl Store {
     /// working node is not a safety net, so it was removed rather than repaired.
     pub async fn open_with(path: &str, opts: &OpenOptions) -> Result<Self, StoreError> {
         let _ = opts;
-        let db = open_engine_awaiting_lock(path).await?;
+        let db = open_engine_awaiting_lock(path)
+            .await
+            .map_err(|e| explain_old_format(path, e))?;
         Ok(Self {
             handle: Arc::new(RwLock::new(db)),
             path: Some(Arc::from(path)),
@@ -397,4 +399,25 @@ where
             Err(e) => return Err(e),
         }
     }
+}
+
+/// Turn "the engine would not open this directory" into something an operator can act on.
+///
+/// surrealkv 0.9 (SurrealDB 2) wrote a bitcask log into `clog/`; 0.21 is an LSM tree and writes
+/// `wal/`, `sstables/`, `vlog/` and `manifest/`. It cannot read the old layout, so an upgraded node
+/// fails to open its existing store — correctly, since serving an empty workspace would be worse.
+/// What it says on its own is `IO error: File exists`, which tells an operator nothing.
+///
+/// A `clog/` directory is an unambiguous marker: only the old engine ever created one.
+fn explain_old_format(path: &str, e: StoreError) -> StoreError {
+    if !std::path::Path::new(path).join("clog").is_dir() {
+        return e;
+    }
+    StoreError::Backend(format!(
+        "the store at {path} was written by surrealkv 0.9 (SurrealDB 2) — it has a `clog/` \
+         directory, which only that engine created. surrealkv 0.21 is a different on-disc format \
+         and cannot read it, so this node will NOT start against it. Nothing has been modified. \
+         Either point the node at a fresh directory, or move `clog/` aside once you have exported \
+         anything you still need from the old build. Underlying error: {e}"
+    ))
 }
