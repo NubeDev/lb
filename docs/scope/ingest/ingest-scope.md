@@ -1,5 +1,24 @@
 # Ingest scope — a generic buffered read/write surface for high-volume external data
 
+> ## ⚠️ THE STAGING BUFFER DESCRIBED BELOW WAS REMOVED
+>
+> This scope's §"why a buffer at all" argues that a staging append is cheap where a direct `series`
+> write is expensive, and builds a durable `ingest_staging` table plus a commit worker on that
+> premise. **The premise was wrong and the buffer is gone** —
+> [`remove-staging-scope.md`](remove-staging-scope.md) has the measurements (200k samples:
+> 115,398 ms through staging against 3,752 ms committed directly).
+>
+> In short: staging was a table in the same database, so it paid the same durable write it was
+> supposed to defer, plus a tombstone when it left; and the indexed write it deferred is, on an LSM
+> tree, about one extra append rather than a page rewrite. `ingest.write` now commits straight to
+> `series`.
+>
+> **What is still current in this doc:** the sample envelope, the `(series, producer, seq)` dedup
+> identity, the capability gate, the workspace wall, the series cardinality cap, dead-lettering,
+> and the read surface. **What is not:** every mention of `ingest_staging`, the drain, the commit
+> worker, the staging bound, and producer/cloud overflow policy.
+
+
 Status: scope (the ask). Promotes to `public/ingest/` once shipped. Target stage: **S8 — the data
 plane** (after the S7 registry + native tier; see STAGES.md). Depends on the
 `scope/store/persistent-backend-scope.md` enabling slice (slice 0) shipping first.
