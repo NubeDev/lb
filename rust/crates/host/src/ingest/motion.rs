@@ -4,7 +4,7 @@
 //! `ws/{id}/series/{series}` so a widget sees it advance **without polling**. Fire-and-forget,
 //! best-effort — a dropped live frame is fine; the durable copy is the committed series.
 //!
-//! `publish_sample` is called by the write path (the gateway's `POST /ingest` after staging+drain);
+//! `publish_sample` is called by the write path (the gateway's `POST /ingest`, after the commit);
 //! `subscribe_series` is the live read, gated by `mcp:series.read:call` (workspace-first), backing
 //! the gateway's `GET /series/{series}/stream` SSE route — the series analog of the channel stream.
 

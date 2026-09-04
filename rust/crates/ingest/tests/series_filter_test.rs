@@ -1,14 +1,14 @@
 //! The write-time normalize filters against the REAL store (no mocks, testing §0): what each
 //! predicate stores and discards, that the counters match exactly, that a non-numeric payload rides
 //! through untouched, that the anchor is PER-PRODUCER and survives a restart, and that a filtered
-//! batch still drains.
+//! batch is still fully accounted for.
 //!
 //! The pure predicate half is `filter_predicate_test.rs`; this file proves the store-backed
 //! behaviour the predicates alone cannot: persistence, per-producer isolation, and the interaction
 //! with commit's own dequeue.
 
 use lb_ingest::{
-    commit_batch, latest, read, set_policy, write, Deadband, Filter, Policy, Qos, Range, RangeMode,
+    commit_direct, latest, read, set_policy, Deadband, Filter, Policy, Qos, Range, RangeMode,
     Sample,
 };
 use lb_store::Store;
@@ -30,24 +30,9 @@ fn sample_at(series: &str, producer: &str, seq: u64, ts: u64, payload: Value) ->
     }
 }
 
-/// Stage `samples` and drain staging completely, returning the summed pass counts.
+/// Commit `samples` and return the pass counts. `commit_direct` already sums across its chunks.
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) -> lb_ingest::CommitPass {
-    write(store, ws, &samples, 0).await.unwrap();
-    let mut total = lb_ingest::CommitPass::default();
-    loop {
-        let pass = commit_batch(store, ws, 256).await.unwrap();
-        if pass.drained() == 0 {
-            break;
-        }
-        total.committed += pass.committed;
-        total.dead_lettered += pass.dead_lettered;
-        total.filtered.muted += pass.filtered.muted;
-        total.filtered.range += pass.filtered.range;
-        total.filtered.min_interval += pass.filtered.min_interval;
-        total.filtered.deadband += pass.filtered.deadband;
-        total.filtered.clamped += pass.filtered.clamped;
-    }
-    total
+    commit_direct(store, ws, &samples).await.unwrap()
 }
 
 async fn policy(store: &Store, ws: &str, prefix: &str, filter: Filter) {
@@ -221,7 +206,7 @@ async fn min_interval_thins_to_the_first_sample_of_each_window() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_muted_prefix_stores_nothing_registers_nothing_and_still_drains() {
+async fn a_muted_prefix_stores_nothing_registers_nothing_and_is_still_counted() {
     let store = Store::memory().await.unwrap();
     policy(
         &store,
@@ -234,7 +219,7 @@ async fn a_muted_prefix_stores_nothing_registers_nothing_and_still_drains() {
     )
     .await;
 
-    // More than one batch, so the drain loop must keep going on a pass that committed ZERO rows.
+    // More than one chunk, so the chunk loop must keep going on a pass that committed ZERO rows.
     let samples: Vec<Sample> = (1..=600u64)
         .map(|i| sample_at("quiet.v", "p", i, i * 1_000, json!(i as f64)))
         .collect();
@@ -243,7 +228,7 @@ async fn a_muted_prefix_stores_nothing_registers_nothing_and_still_drains() {
     assert_eq!(pass.committed, 0);
     assert_eq!(
         pass.filtered.muted, 600,
-        "the WHOLE backlog drained, not just the first batch"
+        "the WHOLE push was accounted for, not just the first chunk"
     );
     assert!(stored(&store, "nube", "quiet.v").await.is_empty());
     // Muted data must not consume the workspace's distinct-series budget either.

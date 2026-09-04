@@ -84,7 +84,7 @@ pub struct Policy {
     /// Same NONE-vs-absent hazard as `max_samples` above, for the same reason.
     #[serde(default, deserialize_with = "none_as_default")]
     pub tiers: Vec<Tier>,
-    /// Write-time predicates applied at COMMIT (never at staging append). `None` = store everything.
+    /// Write-time predicates applied at COMMIT. `None` = store everything.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<Filter>,
     /// PROVENANCE: the principal that last wrote this row, and when (epoch ms).

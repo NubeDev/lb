@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Delivery guarantee for a series. `MustDeliver` carries the "never lost until on disk" promise
-/// (producer keeps a durable staging copy, pruned only after a commit ack; overflow → dead-letter).
+/// (a producer keeps its own copy until the write is acked, and re-pushes what was not).
 /// `BestEffort` is lossy by design (high-rate telemetry): overflow → drop-oldest, no per-sample ack,
 /// and the "never lost" promise does NOT apply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

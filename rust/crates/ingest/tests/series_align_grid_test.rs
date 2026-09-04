@@ -13,8 +13,8 @@
 //! every assertion below — which is precisely the bug being guarded.
 
 use lb_ingest::{
-    bucket_start, commit_batch, read_buckets, read_buckets_fold, read_rollups, run_gc, set_policy,
-    write, Align, Bucket, BucketQuery, Policy, Qos, Sample, Tier,
+    bucket_start, commit_direct, read_buckets, read_buckets_fold, read_rollups, run_gc, set_policy,
+    Align, Bucket, BucketQuery, Policy, Qos, Sample, Tier,
 };
 use lb_store::Store;
 use serde_json::json;
@@ -38,13 +38,12 @@ fn sample(series: &str, seq: u64, ts: u64, v: f64) -> Sample {
     }
 }
 
-/// Seed through the REAL write path (staging → drained commit), never a direct row insert.
+/// Seed through the REAL write path (`commit_direct`), never a raw row insert.
 async fn seed(store: &Store, series: &str, count: u64, step_ms: u64) {
     let samples: Vec<Sample> = (0..count)
         .map(|i| sample(series, i + 1, DAY0 + i * step_ms, i as f64))
         .collect();
-    write(store, WS, &samples, 0).await.unwrap();
-    while commit_batch(store, WS, 256).await.unwrap().drained() != 0 {}
+    commit_direct(store, WS, &samples).await.unwrap();
 }
 
 async fn read_both(store: &Store, series: &str, q: &BucketQuery, width: u64) -> Vec<Bucket> {

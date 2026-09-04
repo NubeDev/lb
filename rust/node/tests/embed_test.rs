@@ -10,7 +10,7 @@
 //! asks for. That subset boot itself is the parity assertion: it completes and the node serves verbs.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_ingest_tool, drain_workspace};
+use lb_host::call_ingest_tool;
 use lb_mcp::ToolError;
 use lb_node::{boot_full, BootConfig};
 use serde_json::json;
@@ -101,7 +101,6 @@ async fn embedded_node_isolates_workspaces() {
     )
     .await
     .unwrap();
-    drain_workspace(store, "ws-a").await.unwrap();
 
     // A ws-B token reading B's own "secret" sees nothing of A's.
     let b = principal("client:a", "ws-b", ALL);

@@ -20,7 +20,7 @@ use lb_store::{Store, StoreError};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// One committed sample's identity within a series — the `(producer, seq)` half of the composite
 /// record id `[series, producer, seq]`.

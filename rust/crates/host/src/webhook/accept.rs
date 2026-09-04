@@ -65,19 +65,11 @@ pub async fn webhook_accept(
     };
 
     // Write through the existing `ingest_write` path. The principal's caps include
-    // `mcp:ingest.write:call`; the verb authorizes + stamps producer + durable-appends to staging.
+    // `mcp:ingest.write:call`; the verb authorizes, stamps the producer, and commits.
     // The route-constructed principal already carries the hook's series, so the verb re-stamps the
     // producer to `principal.sub()` — which IS `webhook:{id}` for signature mode and `key:webhook:
     // {id}` for bearer mode (both un-spoofable identities, both fine as the dedup-key second half).
     crate::ingest::ingest_write(store, principal, ws, vec![sample.clone()]).await?;
-
-    // Drain staging → committed series so a same-bridge `series.latest`/`read` sees the hit. The
-    // drain is exactly-once per `(series, producer, seq)`, so a write-then-read never double-commits.
-    // BOUNDED to this hit's own batch (drain-backpressure scope): an unbounded drain billed the
-    // CALLING webhook for the whole workspace's staged backlog, so a hook firing into a busy
-    // workspace blocked for tens of seconds (and a sender that timed out left the backlog intact for
-    // the next hit). One sample in, one batch out; the ingest reactor owns the remainder.
-    crate::ingest::drain_workspace_bounded(store, ws, crate::ingest::own_batches(1)).await?;
 
     // Publish the motion event (best-effort: state vs motion, rule 3). A live subscriber (a
     // dashboard widget, or the `GET /series/{s}/stream` SSE, or a flow with a trigger on this

@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use crate::sample::Sample;
 use crate::schema::SERIES_LATEST_TABLE;
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// The newest committed sample of `series` in `ws` (latest `ts`, tie-broken by highest `seq`), or
 /// `None` if the series has no committed samples in this workspace.

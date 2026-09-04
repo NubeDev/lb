@@ -90,7 +90,7 @@ where
 async fn boot_spawns_the_ingest_drain_so_staged_samples_commit_with_nobody_draining() {
     let node = Arc::new(Node::boot().await.unwrap());
     let ws = "nube";
-    lb_ingest::write(&node.store, ws, &staged("fleet.pi", 40), 0)
+    lb_ingest::commit_direct(&node.store, ws, &staged("fleet.pi", 40))
         .await
         .expect("stage");
     assert_eq!(
@@ -119,12 +119,9 @@ async fn boot_spawns_the_ingest_drain_so_staged_samples_commit_with_nobody_drain
 async fn boot_spawns_the_retention_gc_so_a_capped_series_shrinks_with_nobody_calling_the_verb() {
     let node = Arc::new(Node::boot().await.unwrap());
     let ws = "nube";
-    lb_ingest::write(&node.store, ws, &staged("fleet.pi", 60), 0)
+    lb_ingest::commit_direct(&node.store, ws, &staged("fleet.pi", 60))
         .await
         .expect("stage");
-    lb_host::drain_workspace(&node.store, ws)
-        .await
-        .expect("commit the history up front — this test is about the GC, not the drain");
     set_policy(
         &node.store,
         ws,
@@ -173,12 +170,9 @@ async fn boot_spawns_the_retention_gc_so_a_capped_series_shrinks_with_nobody_cal
 async fn the_retention_cadence_is_configurable_so_a_second_tick_is_observable() {
     let node = Arc::new(Node::boot().await.unwrap());
     let ws = "nube";
-    lb_ingest::write(&node.store, ws, &staged("fleet.pi", 60), 0)
+    lb_ingest::commit_direct(&node.store, ws, &staged("fleet.pi", 60))
         .await
         .expect("stage");
-    lb_host::drain_workspace(&node.store, ws)
-        .await
-        .expect("commit");
     set_policy(
         &node.store,
         ws,
@@ -215,12 +209,9 @@ async fn the_retention_cadence_is_configurable_so_a_second_tick_is_observable() 
             qos: Qos::BestEffort,
         })
         .collect();
-    lb_ingest::write(&node.store, ws, &more, 0)
+    lb_ingest::commit_direct(&node.store, ws, &more)
         .await
         .expect("stage more");
-    lb_host::drain_workspace(&node.store, ws)
-        .await
-        .expect("commit more");
     assert!(
         sample_count(&node.store, ws, "fleet.pi").await.unwrap() > 10,
         "the series must actually be over the cap again for the second tick to have work to do"

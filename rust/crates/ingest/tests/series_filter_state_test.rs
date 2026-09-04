@@ -8,8 +8,8 @@
 //! `series_filter_test.rs`. Real store, no mocks (testing §0).
 
 use lb_ingest::{
-    commit_batch, read, read_filter_state, set_policy, write, Deadband, Filter, LastCommitted,
-    Policy, Qos, Sample, Tier,
+    commit_direct, read, read_filter_state, set_policy, Deadband, Filter, LastCommitted, Policy,
+    Qos, Sample, Tier,
 };
 use lb_store::Store;
 use serde_json::{json, Value};
@@ -30,24 +30,9 @@ fn sample_at(series: &str, producer: &str, seq: u64, ts: u64, payload: Value) ->
     }
 }
 
-/// Stage `samples` and drain staging completely, returning the summed pass counts.
+/// Commit `samples` and return the pass counts. `commit_direct` already sums across its chunks.
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) -> lb_ingest::CommitPass {
-    write(store, ws, &samples, 0).await.unwrap();
-    let mut total = lb_ingest::CommitPass::default();
-    loop {
-        let pass = commit_batch(store, ws, 256).await.unwrap();
-        if pass.drained() == 0 {
-            break;
-        }
-        total.committed += pass.committed;
-        total.dead_lettered += pass.dead_lettered;
-        total.filtered.muted += pass.filtered.muted;
-        total.filtered.range += pass.filtered.range;
-        total.filtered.min_interval += pass.filtered.min_interval;
-        total.filtered.deadband += pass.filtered.deadband;
-        total.filtered.clamped += pass.filtered.clamped;
-    }
-    total
+    commit_direct(store, ws, &samples).await.unwrap()
 }
 
 async fn policy(store: &Store, ws: &str, prefix: &str, filter: Filter) {

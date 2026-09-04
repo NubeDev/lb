@@ -352,7 +352,7 @@ struct SeedSeries {
 }
 
 /// `POST /_seed/series` — seed ONE discoverable series through the REAL write paths (not a fake):
-///   1. `ingest_write` + `drain_workspace` commit the sample, so `series.latest` reads its value;
+///   1. `ingest_write` commits the sample, so `series.latest` reads its value;
 ///   2. `lb_tags::add` applies a `key:value` edge on the `series:<name>` entity, so `series.find`
 ///      (tag-graph intersection) discovers it.
 /// Step 2 is explicit because the ingest path does not convert a sample's `labels` into tag edges
@@ -382,10 +382,6 @@ async fn seed_series(
                 format!("ingest_write: {e:?}"),
             )
         })?;
-    lb_host::drain_workspace(&gw.node.store, ws)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("drain: {e:?}")))?;
-
     let tag = Tag::new(body.key, body.value);
     let prov = Provenance::new(body.seq, p.sub().to_string(), TagSource::Producer);
     lb_host::tags_add(

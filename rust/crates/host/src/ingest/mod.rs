@@ -3,14 +3,9 @@
 //! first, §3.5; isolation-first, §3.6) and stamps the authenticated producer onto every sample.
 //!
 //! The verbs (one per file, FILE-LAYOUT):
-//!   - `ingest.write` ([`ingest_write`]) — authorize, stamp producer, durable-append to staging.
+//!   - `ingest.write` ([`ingest_write`]) — authorize, stamp producer, commit the batch to `series`.
 //!   - `series.read` / `series.latest` ([`series_read_range`]/[`series_latest_value`]) — read the
 //!     committed series.
-//!   - the **commit worker** ([`drain_workspace`]) — drains staging → series in one tx per batch,
-//!     driven by [`spawn_ingest_reactors`] and mounted by the **ingest role** (config, not a code
-//!     branch). A CALLER never uses it: a request drains [`drain_workspace_bounded`] to its own
-//!     batch, so one producer's write latency cannot scale with another's backlog
-//!     (drain-backpressure scope).
 //!   - the MCP bridge ([`call_ingest_tool`]) — the one MCP contract over all of the above.
 //!
 //! NOT an IoT system: no device/sensor/firmware/MQTT concept anywhere here — a producer is a
@@ -18,9 +13,6 @@
 
 mod authorize;
 mod delete;
-mod drain;
-mod drain_lock;
-mod drain_reactor;
 mod error;
 mod find;
 mod list;
@@ -39,8 +31,6 @@ mod write;
 
 pub use authorize::authorize_ingest;
 pub use delete::series_delete;
-pub use drain::{drain_workspace, drain_workspace_bounded, own_batches, DrainPass, COMMIT_BATCH};
-pub use drain_reactor::spawn_ingest_reactors;
 pub use error::IngestError;
 pub use find::series_find;
 pub use list::{series_list, MAX_SERIES_LIST};
@@ -65,7 +55,7 @@ pub use samples_update::series_samples_update;
 pub use stats::series_stats_get;
 pub use tool::call_ingest_tool;
 pub(crate) use tool::ingest_error_to_tool;
-pub use write::{ingest_write, ingest_write_reporting, DEFAULT_STAGING_BOUND};
+pub use write::{ingest_write, ingest_write_reporting};
 
 // Re-export the wire envelope so host callers / tests use one `Sample`/`Qos` type.
 pub use lb_ingest::{Qos, Sample, SampleKey, SampleUpdate};
