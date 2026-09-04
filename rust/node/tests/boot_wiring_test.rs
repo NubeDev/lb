@@ -11,7 +11,11 @@
 //! to kill: the list would stay green while `reactors.rs` lost an entry.
 //!
 //! Each test then asserts the reactor's property holds with **nobody calling its verb** — a test
-//! asserting a PLAN never proves it EXECUTES (`docs/scope/ingest/drain-backpressure-scope.md`).
+//! asserting a PLAN never proves it EXECUTES.
+//!
+//! The ingest drain reactor used to be tested here too. It is gone: staging was removed and
+//! `ingest.write` commits inline, so there is no backlog for a reactor to own
+//! (`docs/scope/ingest/remove-staging-scope.md`).
 //!
 //! Real node boot (`mem://`), real ingest write path, real reactor cadences. No mocks (testing §0).
 
@@ -51,9 +55,9 @@ async fn boot_wiring_every(node: &Arc<Node>, ws: &str, retention_period: Option<
     .await;
 }
 
-/// `n` samples STAGED for `series` — written, deliberately not drained, so the only thing that can
-/// commit them is a background driver.
-fn staged(series: &str, n: u64) -> Vec<Sample> {
+/// `n` committed samples for `series` — the starting state each reactor's property is asserted
+/// against, written through the real path with no reactor involved.
+fn samples(series: &str, n: u64) -> Vec<Sample> {
     (0..n)
         .map(|i| Sample {
             series: series.into(),
@@ -84,34 +88,6 @@ where
     false
 }
 
-/// BOOT WIRING — the ingest drain. Staged samples become committed `series` rows with **nobody
-/// calling a drain**. Fails if `spawn_ingest_reactors` leaves `reactors.rs`.
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn boot_spawns_the_ingest_drain_so_staged_samples_commit_with_nobody_draining() {
-    let node = Arc::new(Node::boot().await.unwrap());
-    let ws = "nube";
-    lb_ingest::commit_direct(&node.store, ws, &staged("fleet.pi", 40))
-        .await
-        .expect("stage");
-    assert_eq!(
-        sample_count(&node.store, ws, "fleet.pi").await.unwrap(),
-        0,
-        "nothing is committed yet — the samples are staged only"
-    );
-
-    boot_wiring(&node, ws).await;
-
-    let committed =
-        eventually(|| async { sample_count(&node.store, ws, "fleet.pi").await.unwrap() == 40 })
-            .await;
-    assert!(
-        committed,
-        "boot must spawn the ingest drain: without it staged samples commit only when some caller \
-         pays for the whole backlog inside its own request, which is the bug the reactor exists to \
-         fix"
-    );
-}
-
 /// BOOT WIRING — the retention GC. A series over its `max_samples` cap shrinks to the bound with
 /// **nobody calling `series.retention.gc`**. Fails if `spawn_retention_reactors` leaves
 /// `reactors.rs`.
@@ -119,9 +95,9 @@ async fn boot_spawns_the_ingest_drain_so_staged_samples_commit_with_nobody_drain
 async fn boot_spawns_the_retention_gc_so_a_capped_series_shrinks_with_nobody_calling_the_verb() {
     let node = Arc::new(Node::boot().await.unwrap());
     let ws = "nube";
-    lb_ingest::commit_direct(&node.store, ws, &staged("fleet.pi", 60))
+    lb_ingest::commit_direct(&node.store, ws, &samples("fleet.pi", 60))
         .await
-        .expect("stage");
+        .expect("seed");
     set_policy(
         &node.store,
         ws,
@@ -170,9 +146,9 @@ async fn boot_spawns_the_retention_gc_so_a_capped_series_shrinks_with_nobody_cal
 async fn the_retention_cadence_is_configurable_so_a_second_tick_is_observable() {
     let node = Arc::new(Node::boot().await.unwrap());
     let ws = "nube";
-    lb_ingest::commit_direct(&node.store, ws, &staged("fleet.pi", 60))
+    lb_ingest::commit_direct(&node.store, ws, &samples("fleet.pi", 60))
         .await
-        .expect("stage");
+        .expect("seed");
     set_policy(
         &node.store,
         ws,
