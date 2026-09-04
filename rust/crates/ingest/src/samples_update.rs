@@ -16,7 +16,7 @@ use lb_store::{Store, StoreError};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// One in-place edit: the sample's `(producer, seq)` identity plus the fields to replace. At least
 /// one of `payload`/`ts` must be set (the host gate enforces it); `ts` is epoch milliseconds and

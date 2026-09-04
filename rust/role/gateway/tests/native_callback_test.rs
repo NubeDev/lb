@@ -90,9 +90,6 @@ async fn seed_series(node: &Node, key: &SigningKey, ws: &str, series: &str, flee
         .expect("write sample");
     assert_eq!(n, 1, "one sample staged");
     // `ingest_write` only STAGES; drain the workspace so the sample commits.
-    lb_host::drain_workspace(&node.store, ws)
-        .await
-        .expect("drain commits the staged sample");
     // Discovery via `series.find` is over the TAG graph (tags scope), not sample labels: assert a real
     // tag edge on the series entity so a matching facet finds it — the way a producer tags a series.
     tags_add(

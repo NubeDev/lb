@@ -91,7 +91,7 @@ pub struct RollupRow {
 /// same raw data lands identical rows (idempotent).
 pub async fn write_rollups(store: &Store, ws: &str, rows: &[RollupRow]) -> Result<(), StoreError> {
     for r in rows {
-        // Retry-on-conflict: a GC pass writing rollups races the inline drains committing to the
+        // Retry-on-conflict: a GC pass writing rollups races producers committing to the
         // series tables in the same namespace under SurrealDB's optimistic MVCC. The UPSERT id is
         // deterministic (`[series, width_ms, t]`), so a retried write lands the identical row —
         // idempotent, no double-count.
@@ -181,7 +181,7 @@ pub async fn evict_rollups(
     width_ms: u64,
     before_ts: u64,
 ) -> Result<usize, StoreError> {
-    // Retry-on-conflict: this eviction DELETE over the rollup table races concurrent GC/drain writes
+    // Retry-on-conflict: this eviction DELETE over the rollup table races concurrent GC/commit writes
     // in the same namespace under SurrealDB's optimistic MVCC. The count+delete is a single idempotent
     // pass, so a retried run evicts the same rows exactly once.
     let mut resp = store

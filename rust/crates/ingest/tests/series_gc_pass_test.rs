@@ -7,8 +7,8 @@
 //! `idle_pass_still_stamps_last_run_ms`.
 
 use lb_ingest::{
-    commit_batch, last_pass, record_pass, run_gc, set_policy, write, GcPass, GcPassRecord, Policy,
-    Qos, Sample, Tier, GC_PASS_TABLE, MAX_STORED_WARNINGS,
+    commit_direct, last_pass, record_pass, run_gc, set_policy, GcPass, GcPassRecord, Policy, Qos,
+    Sample, Tier, GC_PASS_TABLE, MAX_STORED_WARNINGS,
 };
 use lb_store::Store;
 use serde_json::json;
@@ -26,13 +26,7 @@ fn sample(series: &str, producer: &str, seq: u64, ts: u64, payload: serde_json::
 }
 
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
-    write(store, ws, &samples, 0).await.unwrap();
-    loop {
-        // `drained()`, not `committed` — see `series_retention_test.rs`.
-        if commit_batch(store, ws, 256).await.unwrap().drained() == 0 {
-            break;
-        }
-    }
+    commit_direct(store, ws, &samples).await.unwrap();
 }
 
 /// Seed 300 1s-cadence samples on `hist` under a policy that keeps 100s raw and rolls into 10s.

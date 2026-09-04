@@ -9,13 +9,9 @@
 //!
 //! The shape (one verb per file, FILE-LAYOUT):
 //!   - [`Sample`] — the canonical envelope; dedup identity is `(series, producer, seq)`.
-//!   - [`write`] — durable APPEND into staging (the cheap path; no indexes/edges on that write).
-//!   - [`commit_direct`] — commit a live batch straight to `series`, skipping the staging
-//!     round-trip (one log append per sample instead of three).
-//!   - [`commit_batch`] — drain a batch and commit it in ONE transaction, UPSERT on
-//!     `[series, producer, seq]` (atomic + exactly-once on re-drain).
+//!   - [`commit_direct`] — THE write path: commit a batch to `series` in ONE transaction, UPSERT on
+//!     `[series, producer, seq]` (atomic + exactly-once on a producer's re-push).
 //!   - [`read`] / [`latest`] — range query / newest value over the committed series.
-//!   - [`enforce_bound`] — the overflow policy (drop-oldest / dead-letter), bounded at both ends.
 //!
 //! Authorization is NOT here — these are raw verbs run after `caps::check` (the host ingest service
 //! is the capability chokepoint, capability-first §3.5). Engine is config (`Store::open` vs
@@ -28,6 +24,7 @@ mod bucket_rows;
 mod cap;
 mod clock_sanity;
 mod commit;
+mod commit_lock;
 mod cursor;
 mod dead_letter_gc;
 mod decode;
@@ -41,7 +38,6 @@ mod labels;
 mod latest;
 mod meta;
 mod method;
-mod overflow;
 mod page;
 mod pass_record;
 mod read;
@@ -54,9 +50,8 @@ mod sample;
 mod samples_delete;
 mod samples_update;
 mod schema;
-mod staging;
 mod stats;
-mod write;
+mod tables;
 
 pub use align::{bucket_start, Align};
 pub use bucket::{
@@ -67,7 +62,7 @@ pub use clock_sanity::{
     backwards_warning, clock_went_backwards, newest_sample_ms, skew, skew_warning,
     SKEW_TOLERANCE_MS,
 };
-pub use commit::{commit_batch, commit_batch_capped, commit_staged, CommitPass, Dequeue};
+pub use commit::{commit_samples, CommitPass};
 pub use cursor::Cursor;
 pub use dead_letter_gc::{prune_dead_letters, DEAD_LETTER_KEEP_MS};
 pub use decode::{
@@ -84,7 +79,6 @@ pub use gc::{run_gc, GcPass};
 pub use latest::{latest, latest_many};
 pub use meta::{series_names, DEFAULT_SERIES_CAP};
 pub use method::{apply_method, Method};
-pub use overflow::{enforce_bound, staged_count, OverflowPolicy};
 pub use page::{
     read_page, Direction, Page, PageError, PageQuery, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
@@ -105,9 +99,8 @@ pub use schema::{
     ensure_series_schema, series_time_index_enabled, set_series_time_index, ROLLUP_TABLE,
     SERIES_META_TABLE,
 };
-pub use staging::{DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
 pub use stats::{series_producers, series_stats, SeriesStats, TierRows};
-pub use write::write;
+pub use tables::{DEAD_LETTER_TABLE, SERIES_TABLE};
 
 // SurrealDB 3: these types are read back from queries and so need `SurrealValue`. Every one of them
 // carries serde semantics the derive cannot express — `#[serde(default)]`, `none_as_default`,

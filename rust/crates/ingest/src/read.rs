@@ -16,7 +16,7 @@ use lb_store::{Store, StoreError};
 use serde_json::Value;
 
 use crate::sample::Sample;
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// Return every committed sample of `series` in `ws` whose `seq` is in the (optionally open) range
 /// `[from_seq, to_seq]`, ordered by `seq` ascending. `None` bounds are open-ended. Spans all

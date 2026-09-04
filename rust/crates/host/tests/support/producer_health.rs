@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_tool, drain_workspace, Node, PRODUCER_HEALTH_TOOL};
+use lb_host::{call_tool, Node, PRODUCER_HEALTH_TOOL};
 use lb_ingest::{Qos, Sample};
 use lb_mcp::{ToolDescriptor, ToolError};
 use lb_runtime::{CallContext, LocalDispatch, RuntimeError};
@@ -125,8 +125,9 @@ pub async fn seed(node: &Node, ws: &str, producer: &str, seq: u64) {
         labels: json!({}),
         qos: Qos::BestEffort,
     };
-    lb_ingest::write(&node.store, ws, &[s], 0).await.unwrap();
-    drain_workspace(&node.store, ws).await.unwrap();
+    lb_ingest::commit_direct(&node.store, ws, &[s])
+        .await
+        .unwrap();
 }
 
 pub async fn health(node: &Arc<Node>, p: &Principal, ws: &str) -> Result<Value, ToolError> {

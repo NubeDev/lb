@@ -1,51 +1,55 @@
-//! `commit_direct` — commit a caller's live batch straight to the series plane, skipping staging.
+//! `commit_direct` — THE ingest write path: commit a caller's batch to the series plane.
 //!
-//! **Why this exists (compaction-write-availability scope, lever 1).** The engine under the store is
-//! append-only: every write, every superseded version and every tombstone stays in the commit log
-//! until a compaction pass rewrites it. On the staged path one committed sample costs **three** log
-//! appends — the staging UPSERT ([`crate::write`]), the `series` UPSERT at commit, and the staging
-//! DELETE tombstone in the same transaction. Measured on an armv7 edge node: ~500 MB of log growth
-//! per hour at a modest two-network modbus poll, which is also the node's RSS high-water mark
-//! (engine memory tracks the log at ~1.4× for key-dense samples) and which drove an hourly ~94 s
-//! stop-the-world compaction pass. Cutting three appends to one stretches every one of those
-//! consequences out by the same factor.
+//! ## What it replaced, and why
 //!
-//! **Why it is safe.** Staging buys two things: a cheap unindexed landing zone when a burst arrives
-//! faster than the indexed commit can absorb it, and durability for samples the caller's own request
-//! will not commit. A live producer whose caller-path drain commits its own batch within the same
-//! request gets neither — it stages, immediately drains what it just staged, and tombstones it. For
-//! that caller the round-trip is pure amplification.
+//! Until this, `ingest.write` appended each sample to a durable `ingest_staging` table and a
+//! background worker later moved it into `series`. Storing one sample therefore cost **three** writes
+//! to the same store: the staging UPSERT, the `series` UPSERT at commit, and the staging DELETE
+//! tombstone. That is now one.
 //!
-//! Acceptance is unchanged: `ingest.write` acks only after the store write returns, and here that
-//! write is the COMMIT of the very transaction that stores the sample — strictly stronger than
-//! "durably staged, commit pending". A crash before COMMIT rolls the whole batch back and the
-//! producer never saw an ack, so a must-deliver producer re-pushes and the `[series, producer, seq]`
-//! UPSERT absorbs it exactly once — the same contract, one hop shorter.
+//! Staging was justified as a "cheap unindexed landing zone" — a burst would land somewhere cheap
+//! and the expensive indexed `series` write would happen later, off the burst. Both halves of that
+//! were wrong:
 //!
-//! **When the staged path still runs** ([`crate::write`] decides): whenever staging is not already
-//! empty. A non-empty staging means either a backlog the reactor is still working through or a
-//! concurrent producer, and in both cases the batch must queue behind what is already there rather
-//! than commit past it. Crash recovery, bursts, and every offline/backlog case therefore keep
-//! staging exactly as before — this path only removes the round-trip that was provably a no-op.
+//! - **The landing zone was not cheap.** It was a table in the same database, so a staged sample paid
+//!   the same write-ahead-log append and the same memtable insert as a committed one, plus a
+//!   tombstone when it left. Staging did not defer work; it added work, and it added it to the same
+//!   store that was already loaded.
+//! - **The indexed write it deferred was not expensive.** The engine underneath is an LSM tree, where
+//!   a secondary index entry is just another key-value pair appended to the same memtable and log.
+//!   There is no index page to read, lock, or rewrite, so the "expensive" write staging saved us from
+//!   costs roughly one extra append.
+//!
+//! Measured on this store, 200,000 samples cost **115,398 ms and 11.87 MB** through staging against
+//! **3,752 ms and 4.02 MB** committed directly.
+//!
+//! Staging was also described as backpressure. It was not: when the store was too loaded to take the
+//! write, staging responded by writing to that same store two extra times. Real backpressure is a
+//! buffer somewhere the store is not — a producer's own memory, for instance — and that belongs to
+//! the producer, not here.
+//!
+//! ## What the caller gets
+//!
+//! `ingest.write` acks only after the store write returns, and here that write is the COMMIT of the
+//! very transaction that stores the sample — strictly stronger than the old "durably staged, commit
+//! pending". A crash before COMMIT rolls the whole batch back and the producer never saw an ack, so
+//! a must-deliver producer re-pushes and the `[series, producer, seq]` UPSERT absorbs it exactly
+//! once. A sample is visible to the caller's very next read the moment its write returns; under
+//! staging it was not visible until a drain ran.
 
 use lb_store::{Store, StoreError};
 
-use crate::commit::{commit_staged, CommitPass, Dequeue};
+use crate::commit::{commit_samples, CommitPass};
+use crate::commit_lock::ws_commit_lock;
 use crate::meta::DEFAULT_SERIES_CAP;
 use crate::sample::Sample;
-use crate::staging::Staged;
 
-/// How many samples one direct-commit transaction carries. Matches the staged drain's
-/// `COMMIT_BATCH` deliberately: it is the batch size the whole ingest plane is tuned around, and the
-/// two paths having different transaction shapes is exactly how their costs come to differ for no
-/// stated reason.
+/// How many samples one commit transaction carries.
 ///
-/// **This bound is load-bearing, not tidiness.** `commit_staged` builds one statement per sample
+/// **This bound is load-bearing, not tidiness.** [`commit_samples`] builds one statement per sample
 /// into a single `BEGIN…COMMIT`, so without a chunk the transaction grows with whatever a producer
 /// chose to push — an unbounded statement string, an unbounded write set, and an unbounded conflict
-/// window, all on a caller's request path. The staged drain has always refused that (`COMMIT_BATCH`,
-/// "kept modest so a single tx stays bounded"); a second path that did not would be the same hazard
-/// re-entered through a new door.
+/// window, all on a caller's request path.
 ///
 /// A measurement suggested the cost is not merely linear but superlinear in transaction size —
 /// 2400 samples in one transaction produced substantially more commit-log growth than the same
@@ -53,8 +57,8 @@ use crate::staging::Staged;
 /// cannot be metered reliably in-process (see `ingest_write_amplification_test`), so the number is
 /// indicative and the bound above stands on the argument, not on it.
 ///
-/// A large push is therefore several transactions rather than one, exactly as the staged drain
-/// already made it. Nothing weakens: exactly-once is keyed per sample on
+/// A large push is therefore several transactions rather than one. Nothing weakens: exactly-once is
+/// keyed per sample on
 /// `[series, producer, seq]`, so a failure part-way leaves the earlier chunks committed, the caller
 /// un-acked, and the producer's re-push idempotent on every one of them.
 pub const DIRECT_COMMIT_BATCH: usize = 256;
@@ -70,10 +74,6 @@ pub async fn commit_direct(
 }
 
 /// [`commit_direct`] with an explicit per-workspace cap on distinct series names (`0` = unbounded).
-///
-/// Runs the SAME transaction builder the staged drain runs ([`commit_staged`]) — same UPSERT key,
-/// same cardinality gate, same normalize filters, same forward-only `series_latest` pointer, same
-/// filter anchors in the same tx — differing only in that there is no staged row to delete.
 pub async fn commit_direct_capped(
     store: &Store,
     ws: &str,
@@ -81,11 +81,16 @@ pub async fn commit_direct_capped(
     series_cap: usize,
 ) -> Result<CommitPass, StoreError> {
     let mut out = CommitPass::default();
+    // Serialize each transaction against other writers in this workspace (`commit_lock`): every
+    // commit reads and conditionally advances the same `series_latest` rows, and concurrent writers
+    // to one series otherwise collide under optimistic MVCC until the retry budget is gone. Taken
+    // per CHUNK so a large push never blocks a small one for longer than one transaction.
+    let lock = ws_commit_lock(ws);
     for chunk in samples.chunks(DIRECT_COMMIT_BATCH) {
-        // `Staged` is the commit builder's input shape, not a claim that these rows were staged: it
-        // is the `Sample` and nothing else (`staging::Staged`), so this wrap is free of meaning.
-        let rows: Vec<Staged> = chunk.iter().map(|s| Staged { sample: s.clone() }).collect();
-        let pass = commit_staged(store, ws, &rows, series_cap, Dequeue::No).await?;
+        let pass = {
+            let _guard = lock.lock().await;
+            commit_samples(store, ws, chunk, series_cap).await?
+        };
         out.committed += pass.committed;
         out.dead_lettered += pass.dead_lettered;
         let f = &mut out.filtered;

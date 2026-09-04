@@ -39,7 +39,7 @@ use serde_json::Value;
 
 use crate::align::bucket_start;
 use crate::retention::{Policy, Tier};
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// How far `tier` may fold: `horizon` snapped down to that tier's own bucket boundary.
 ///

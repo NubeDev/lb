@@ -4,9 +4,7 @@
 //! **This is the driver retention shipped without.** `run_gc` was reachable only from tests and the
 //! on-demand `series.retention.gc` verb — so a correctly-configured time horizon evicted *nothing*
 //! on a real node unless an operator called the verb by hand. The mechanism shipped; its heartbeat
-//! didn't. That is the same missing-driver class as the ingest drain bug that preceded it
-//! ([`spawn_ingest_reactors`](super::spawn_ingest_reactors) — `drain_workspace` had no reactor
-//! either), which is why this slice treats "it runs" as part of the feature rather than a follow-up.
+//! didn't — which is why this slice treats "it runs" as part of the feature rather than a follow-up.
 //! Without this loop, `max_samples` would be decorative.
 //!
 //! One detached owner per node ticks each ws's GC on a SLOW cadence. Retention is not
@@ -14,12 +12,12 @@
 //! `count()` per series, serialized behind the store's global session mutex — up to 10k series per
 //! workspace). Minutes, not seconds. `debugging/agent/dev-node-cpu-job-scan.md` is the precedent for
 //! why a fast tick over a full table scan is a CPU bug waiting to happen. Ticks never overlap
-//! (`MissedTickBehavior::Skip`), so a long pass over a deep backlog cannot pile up.
+//! (`MissedTickBehavior::Skip`), so a long pass cannot pile up.
 //!
 //! Errors are logged, never fatal: one bad workspace must not stop the node's heartbeat.
 //!
 //! The reactor mints no principal and needs no capability — it executes durable policy an authorized
-//! admin already wrote through the capability-gated `series.retention.set`, exactly as the drain and
+//! admin already wrote through the capability-gated `series.retention.set`, exactly as the
 //! relay reactors execute their own durable state. Symmetric across edge/cloud (rule 1): which node
 //! runs it is config (`BootConfig::reactors`), never a code branch.
 

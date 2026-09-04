@@ -76,19 +76,11 @@ pub async fn federation_mirror<L: Launcher>(
     for (i, row) in rows.iter().enumerate().take(end).skip(start) {
         let sample = row_to_sample(target_series, row)?;
         // ingest_write stamps the producer (the caller) and dedups on (series, producer, seq) — a
-        // re-applied row upserts the same slot, so resume never double-writes.
+        // re-applied row upserts the same slot, so resume never double-writes. It COMMITS, so the
+        // row is durable before the checkpoint below advances the cursor over it.
         ingest_write(&node.store, caller, ws, vec![sample])
             .await
             .map_err(|_| FederationError::Denied)?;
-        // Commit this row before its checkpoint below, so the cursor only ever advances over rows
-        // that really landed. BOUNDED to this row's own batch (drain-backpressure scope): the
-        // unbounded drain that used to sit here re-drained the ENTIRE workspace backlog once PER
-        // MIRRORED ROW — quadratic in the backlog, the single worst instance of the coupling. One
-        // row in, one batch out; the ingest reactor owns the rest.
-        crate::ingest::drain_workspace_bounded(&node.store, ws, crate::ingest::own_batches(1))
-            .await
-            .map_err(|e| FederationError::Sidecar(e.to_string()))?;
-
         // CHECKPOINT after each committed row: advance the cursor and persist. A crash here resumes
         // from exactly this point (the row just committed is not re-mirrored beyond the dedup).
         job.cursor = (i + 1) as u32;

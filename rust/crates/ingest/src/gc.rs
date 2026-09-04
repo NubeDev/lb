@@ -35,7 +35,7 @@ use crate::retention::{list_policies, resolve_policy, Policy};
 use crate::rollup::{evict_rollups, read_rollups, rollup_widths, write_rollups, RollupRow};
 use crate::rollup_cap::cap_rollup_rows;
 use crate::rollup_window::{evict_cutoff, oldest_raw_ts, tier_cutoff};
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// Outcome of one GC pass over a workspace.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
@@ -424,8 +424,8 @@ async fn evict_raw(
     series: &str,
     cutoff: u64,
 ) -> Result<usize, StoreError> {
-    // Retry-on-conflict: this DELETE over `series` races the inline drains' `series` upserts under
-    // SurrealDB's optimistic MVCC (drain-vs-GC — the periodic collision surface WS-B's per-ws drain
+    // Retry-on-conflict: this DELETE over `series` races producers' `series` upserts under
+    // SurrealDB's optimistic MVCC (commit-vs-GC — the collision surface a per-workspace lock
     // lock does NOT cover). The count+delete is a single idempotent pass, so a retried run evicts the
     // same rows exactly once.
     let mut resp = store

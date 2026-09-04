@@ -1,5 +1,5 @@
 //! The dead-letter horizon — the retention pass for [`DEAD_LETTER_TABLE`] (disk-budget scope,
-//! decision 7). Must-deliver samples diverted by the staging bound ([`crate::enforce_bound`]) were
+//! decision 7). Samples the series cardinality cap diverted at commit were
 //! the one ingest table nothing ever pruned: bounded-by-default on the series plane is worth little
 //! if the overflow table beside it still grows forever.
 //!
@@ -20,7 +20,7 @@
 use lb_store::{Store, StoreError};
 use serde_json::Value;
 
-use crate::staging::DEAD_LETTER_TABLE;
+use crate::tables::DEAD_LETTER_TABLE;
 
 /// How long a dead-lettered sample is kept: 30 days.
 ///
@@ -48,7 +48,7 @@ pub async fn prune_dead_letters(
     }
     let cutoff = now_ms - keep_for_ms;
     // COUNT then DELETE over one predicate, the idiom `evict_raw` uses — and `query_ws_retrying` for
-    // the same reason: this races the inline drains that write into the same workspace under
+    // the same reason: this races the producers writing into the same workspace under
     // optimistic MVCC, and the pass is idempotent so a retried run evicts the same rows exactly once.
     let pred = "(dead_at IS NOT NONE AND dead_at < $cutoff) \
                 OR (dead_at IS NONE AND sample.ts < $cutoff)";
