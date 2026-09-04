@@ -1,8 +1,12 @@
 //! `store.query` — the read-only SurrealQL verb (widget-builder Slice A, the "direct SurrealDB"
-//! source). Authorize (gate 1+2), **parse-allowlist to a single read** (`parse.rs`, the load-bearing
-//! gate), then run inside the **caller's workspace namespace** (set host-side from the token — never a
-//! namespace named in the SQL) with a hard row cap + statement timeout, and shape the rows into
-//! `{ columns, rows }` the dashboard's views render unchanged.
+//! source). Authorize (gate 1+2), refuse any statement naming the secret plane (`secret_wall.rs`),
+//! then run inside the **caller's workspace namespace** on a session the engine will not let write
+//! (`lb_store::Store::query_ws_readonly`), with a hard row cap + statement timeout, and shape the
+//! rows into `{ columns, rows }` the dashboard's views render unchanged.
+//!
+//! The read-only property used to be a host-side parse-allowlist. SurrealDB 3 sealed the API that
+//! rested on, so it moved into the session itself — see `parse.rs` for the full account of what
+//! changed and which remaining checks are safety versus ergonomics.
 //!
 //! The bound (`MAX_QUERY_ROWS` / `QUERY_TIMEOUT_SECS`) is appended to the parsed-clean query as a
 //! `LIMIT … TIMEOUT …` wrapper so even a `SELECT` with no `LIMIT` cannot return more than the ceiling
@@ -30,11 +34,15 @@ pub async fn store_query_run(
 ) -> Result<QueryResult, StoreQueryError> {
     authorize_store_query(principal, ws, "store.query")?;
 
-    // The boundary: parse + allowlist by statement kind BEFORE the SQL ever reaches the store. A
-    // write/schema/namespace statement is refused here, structurally, not by a string match. We get
-    // back the (single) statement kind so we can bound a `SELECT` without breaking `INFO`/`SHOW`.
-    // `vars` are passed to the gate, not just to the store: the secret wall resolves a parameterised
-    // table position (`FROM type::table($tb)`) against these same bindings rather than refusing it.
+    // Two different boundaries, in order of who enforces them:
+    //
+    //   * the SECRET-PLANE wall, host-side and load-bearing — a `VIEWER` can read those tables, so
+    //     nothing below us will stop it (`secret_wall.rs`);
+    //   * the read-only property, which is NOT decided here any more. `query_ws_readonly` runs the
+    //     statement in a session the engine will not let write, and will not let reach another
+    //     workspace. This call additionally turns a write into a clear message rather than the
+    //     empty result the engine would return, and reports the shape so a `SELECT` can be bounded
+    //     without breaking `INFO`/`SHOW` (`parse.rs` says which part is safety and which is not).
     let kind = ensure_read_only_with_vars(sql, &vars)?;
 
     // A `SELECT` is wrapped in a bounded sub-select so the row cap + timeout apply regardless of the
@@ -48,7 +56,8 @@ pub async fn store_query_run(
         ReadKind::Introspection => sql.to_string(),
     };
 
-    let mut resp = store.query_ws(ws, &bounded, vars).await?;
+    // The read-only session — not `query_ws`. This is where the guarantee actually lives.
+    let mut resp = store.query_ws_readonly(ws, &bounded, vars).await?;
     let rows: Vec<Value> = resp
         .take(0)
         .map_err(|e| StoreQueryError::Store(lb_store::StoreError::Decode(e.to_string())))?;

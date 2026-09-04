@@ -41,7 +41,7 @@ use lb_host::{
     forget_remote_extension, register_remote_extension, serve_ext, Node, Role as NodeRole,
     ToolServer,
 };
-use lb_mcp::{call, call_on_node, ToolDescriptor, ToolError};
+use lb_mcp::{call, call_on_node, node_call_key, ToolDescriptor, ToolError};
 use lb_runtime::{CallContext, LocalDispatch, RuntimeError};
 use tokio::sync::Mutex;
 
@@ -208,33 +208,34 @@ fn free_port() -> u16 {
     }
 }
 
-/// Poll a TARGETED routed call until the addressed node's queryable is reachable, returning the
-/// label of whoever answered. Mirrors `cross_node_routing_test::route_until_reachable`'s rationale:
-/// a `get` issued before the queryable has propagated finds no responder, so we retry the REAL call
-/// until it converges (nothing mocked, no fixed sleep).
+/// Make ONE targeted routed call to `node`, returning the label of whoever answered.
 ///
-/// Note it retries `NodeUnreachable` — during convergence that is genuinely indistinguishable from
-/// "not yet propagated", which is the honest reading of the zero-queryable signal.
+/// **Why there is no retry loop here.** A queryable declared on one peer propagates to the caller
+/// asynchronously, so a `get` issued too early finds no responder. This used to be handled by
+/// retrying the real call against a 20-second wall-clock deadline — which does not test routing, it
+/// tests how loaded the machine is, and on CI it lost (`a_targeted_call_lands_on_the_named_node`
+/// failed exactly this way).
+///
+/// `await_queryable` **observes** the declaration instead of racing it, using Zenoh's
+/// `Querier::matching_status`/`matching_listener` on the caller's own session — the caller is the
+/// only side that can see whether the declaration has reached it. With the precondition established
+/// the call below is made once, and a failure now means routing is broken rather than slow.
+///
+/// The key is the exact one dispatch will query (`call/dispatch.rs`: `node_call_key(ext, node)`), so
+/// the barrier cannot pass while the thing the call needs is still unreachable.
 async fn ask_node(caller: &Node, p: &Principal, ws: &str, ext: &str, node: &NodeId) -> String {
+    assert!(
+        lb_bus::await_queryable(&caller.bus, ws, &node_call_key(ext, node))
+            .await
+            .expect("await queryable"),
+        "node {node} never declared a reachable queryable for {ext} in {ws}"
+    );
     let tool = format!("{ext}.whoami");
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
-    let mut last_err = None;
-    while std::time::Instant::now() < deadline {
-        match tokio::time::timeout(
-            Duration::from_millis(500),
-            call_on_node(&caller.registry, &caller.bus, p, ws, &tool, "{}", node),
-        )
+    let out = call_on_node(&caller.registry, &caller.bus, p, ws, &tool, "{}", node)
         .await
-        {
-            Ok(Ok(out)) => {
-                let v: serde_json::Value = serde_json::from_str(&out).expect("whoami json");
-                return v["node"].as_str().expect("node label").to_string();
-            }
-            Ok(Err(e)) => last_err = Some(format!("{e:?}")),
-            Err(_) => last_err = Some("attempt timed out (queryable not yet reachable)".into()),
-        }
-    }
-    panic!("targeted call to {node} never became reachable; last: {last_err:?}");
+        .unwrap_or_else(|e| panic!("targeted call to {node} failed: {e:?}"));
+    let v: serde_json::Value = serde_json::from_str(&out).expect("whoami json");
+    v["node"].as_str().expect("node label").to_string()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

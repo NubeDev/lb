@@ -10,6 +10,7 @@
 //! job (§6.10), not raw pub/sub — so S1 exposes only the peer lifecycle + key scoping; the
 //! pub/sub verbs land with the messaging slice (S2).
 
+mod await_queryable;
 mod await_subscriber;
 mod key;
 mod node_id;
@@ -20,6 +21,7 @@ mod query;
 mod stats;
 mod subscribe;
 
+pub use await_queryable::await_queryable;
 pub use await_subscriber::await_subscriber;
 pub use key::ws_key;
 pub use node_id::{NodeId, NodeIdError};

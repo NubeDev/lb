@@ -16,10 +16,7 @@
 //!
 //! One responsibility: name a clearable axis and render its clearing merge object.
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 /// A preference axis that a `clear` list may name. Closed set — the wire form is the snake_case
 /// column name, identical to the `Prefs` field it clears, so a caller never has to learn a second
@@ -67,9 +64,27 @@ impl PrefsAxis {
 /// Render `clear` as merge-object entries, each column mapped to JSON `null`. Applied on top of the
 /// patch object, so an axis named in BOTH is cleared (clear wins — the caller asked for the axis to
 /// inherit, and honouring the set would silently ignore half the request).
-pub(crate) fn clear_entries(clear: &[PrefsAxis]) -> BTreeMap<String, Value> {
-    clear
-        .iter()
-        .map(|axis| (axis.column().to_string(), Value::Null))
-        .collect()
+/// The `SET <col> = NONE, …` clause that clears `axes`, or `None` when there is nothing to clear.
+///
+/// Clearing used to ride in on the MERGE object as JSON `null`. SurrealDB separates **NULL** (a
+/// written empty) from **NONE** (no value), and the axis columns are declared `TYPE option<...>`,
+/// which admits NONE but not NULL. SurrealDB 3 enforces that on write: every clear failed with
+/// "Couldn't coerce value for field `ui_branding`: Expected `none | object` but found `NULL`".
+///
+/// JSON has no way to say NONE, so a clear cannot travel inside the merge object at all — it has to
+/// be SurrealQL. The column names come from [`PrefsAxis::column`], a closed enum returning
+/// `&'static str`, so nothing caller-supplied is ever spliced here.
+pub(crate) fn clear_set_clause(axes: &[PrefsAxis]) -> Option<String> {
+    if axes.is_empty() {
+        return None;
+    }
+    let mut cols: Vec<&'static str> = axes.iter().map(|a| a.column()).collect();
+    cols.sort_unstable();
+    cols.dedup();
+    Some(
+        cols.iter()
+            .map(|c| format!("{c} = NONE"))
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
 }

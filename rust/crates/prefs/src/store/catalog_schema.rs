@@ -24,7 +24,7 @@ pub async fn define_catalog_schema(store: &Store, ws: &str) -> Result<(), StoreE
         "DEFINE TABLE IF NOT EXISTS {CATALOG_TABLE} SCHEMAFULL;
          DEFINE FIELD IF NOT EXISTS ws ON {CATALOG_TABLE} TYPE string;
          DEFINE FIELD IF NOT EXISTS locale ON {CATALOG_TABLE} TYPE string;
-         DEFINE FIELD IF NOT EXISTS messages ON {CATALOG_TABLE} FLEXIBLE TYPE option<object>;"
+         DEFINE FIELD IF NOT EXISTS messages ON {CATALOG_TABLE} TYPE option<object> FLEXIBLE;"
     );
     store.query_ws(ws, &sql, vec![]).await?;
     Ok(())

@@ -24,7 +24,7 @@ pub async fn remove(
     // debugging/tags/relation-drops-key-value-fields.md). Entity link is two-arg (dotted ids —
     // debugging/tags/dotted-entity-id-needs-two-arg.md).
     let (etb, eid) = entity_parts(entity);
-    let mut where_clause = String::from("in = type::thing($etb, $eid) AND tkey = $key");
+    let mut where_clause = String::from("in = type::record($etb, $eid) AND tkey = $key");
     let mut bindings: Vec<(String, Value)> = vec![
         ("etb".into(), Value::String(etb.to_string())),
         ("eid".into(), Value::String(eid.to_string())),

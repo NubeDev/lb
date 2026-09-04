@@ -4,7 +4,7 @@
 //! (LWW). Namespace-scoped like every table (the workspace is the SurrealDB namespace; the id's
 //! `ws` element is denormalized for query convenience, the hard wall is the namespace).
 //!
-//! Fields are declared `FLEXIBLE TYPE option<...>` so a nullable axis is a first-class absence, and
+//! Fields are declared `TYPE option<...> FLEXIBLE` so a nullable axis is a first-class absence, and
 //! the axis values are validated by serde on the way in (the closed enums), not by SurrealDB asserts
 //! — keeping the schema in lock-step with the Rust enums in one place (the enums).
 
@@ -36,9 +36,9 @@ pub async fn define_prefs_schema(store: &Store, ws: &str) -> Result<(), StoreErr
          DEFINE FIELD IF NOT EXISTS first_day_of_week ON {USER_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS number_format ON {USER_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS unit_system ON {USER_PREFS_TABLE} TYPE option<string>;
-         DEFINE FIELD IF NOT EXISTS unit_overrides ON {USER_PREFS_TABLE} FLEXIBLE TYPE option<object>;
-         DEFINE FIELD IF NOT EXISTS ui_theme ON {USER_PREFS_TABLE} FLEXIBLE TYPE option<object>;
-         DEFINE FIELD IF NOT EXISTS ui_branding ON {USER_PREFS_TABLE} FLEXIBLE TYPE option<object>;
+         DEFINE FIELD IF NOT EXISTS unit_overrides ON {USER_PREFS_TABLE} TYPE option<object> FLEXIBLE;
+         DEFINE FIELD IF NOT EXISTS ui_theme ON {USER_PREFS_TABLE} TYPE option<object> FLEXIBLE;
+         DEFINE FIELD IF NOT EXISTS ui_branding ON {USER_PREFS_TABLE} TYPE option<object> FLEXIBLE;
          DEFINE FIELD IF NOT EXISTS insight_notifications ON {USER_PREFS_TABLE} TYPE option<bool>;
          DEFINE FIELD IF NOT EXISTS agent_persona ON {USER_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS push_muted ON {USER_PREFS_TABLE} TYPE option<bool>;
@@ -52,9 +52,9 @@ pub async fn define_prefs_schema(store: &Store, ws: &str) -> Result<(), StoreErr
          DEFINE FIELD IF NOT EXISTS first_day_of_week ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS number_format ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS unit_system ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;
-         DEFINE FIELD IF NOT EXISTS unit_overrides ON {WORKSPACE_PREFS_TABLE} FLEXIBLE TYPE option<object>;
-         DEFINE FIELD IF NOT EXISTS ui_theme ON {WORKSPACE_PREFS_TABLE} FLEXIBLE TYPE option<object>;
-         DEFINE FIELD IF NOT EXISTS ui_branding ON {WORKSPACE_PREFS_TABLE} FLEXIBLE TYPE option<object>;
+         DEFINE FIELD IF NOT EXISTS unit_overrides ON {WORKSPACE_PREFS_TABLE} TYPE option<object> FLEXIBLE;
+         DEFINE FIELD IF NOT EXISTS ui_theme ON {WORKSPACE_PREFS_TABLE} TYPE option<object> FLEXIBLE;
+         DEFINE FIELD IF NOT EXISTS ui_branding ON {WORKSPACE_PREFS_TABLE} TYPE option<object> FLEXIBLE;
          DEFINE FIELD IF NOT EXISTS insight_notifications ON {WORKSPACE_PREFS_TABLE} TYPE option<bool>;
          DEFINE FIELD IF NOT EXISTS agent_persona ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS push_muted ON {WORKSPACE_PREFS_TABLE} TYPE option<bool>;"

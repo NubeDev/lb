@@ -24,6 +24,7 @@
 mod align;
 mod bucket;
 mod bucket_acc;
+mod bucket_rows;
 mod cap;
 mod clock_sanity;
 mod commit;
@@ -100,7 +101,21 @@ pub use rollup_cap::{cap_rollup_rows, rollup_count};
 pub use sample::{Qos, Sample};
 pub use samples_delete::{delete_samples_by_keys, delete_samples_in_range, SampleKey};
 pub use samples_update::{update_samples, SampleUpdate};
-pub use schema::{ensure_series_schema, ROLLUP_TABLE, SERIES_META_TABLE};
+pub use schema::{
+    ensure_series_schema, series_time_index_enabled, set_series_time_index, ROLLUP_TABLE,
+    SERIES_META_TABLE,
+};
 pub use staging::{DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
 pub use stats::{series_producers, series_stats, SeriesStats, TierRows};
 pub use write::write;
+
+// SurrealDB 3: these types are read back from queries and so need `SurrealValue`. Every one of them
+// carries serde semantics the derive cannot express — `#[serde(default)]`, `none_as_default`,
+// `skip_serializing_if` — so they delegate to serde rather than re-deriving. See
+// `lb_store::surreal_value_via_serde!` for why a plain derive would be a silent regression.
+lb_store::surreal_value_via_serde!(
+    crate::Sample,
+    crate::retention::Policy,
+    crate::retention::Tier,
+    crate::pass_record::GcPassRecord,
+);

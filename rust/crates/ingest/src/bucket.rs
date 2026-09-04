@@ -3,11 +3,10 @@
 //! `{t, min, max, avg, last, count}` so spikes survive (`max`/`min` carry what a plain `avg` would
 //! smooth away) and a month-long window ships ~1000 bucket records, never millions of rows.
 //!
-//! Execution is a **pushed-down `GROUP BY`** — the decimation the decimation scope always intended.
-//! The raw window is aggregated **where the data lives** so a 10 k-sample window returns ≤ budget
-//! bucket rows, never 10 k raw rows crossing the store boundary. It is two reads of one committed
-//! snapshot ([`raw_bucket_query`]):
-//!   - a numeric aggregate (`math::min/max/sum`, `count()` over `type::is::number(payload)`) — the
+//! Execution is a **pushed-down `GROUP BY`**: the raw window is aggregated where the data lives, so
+//! a 10 k-sample window returns ≤ budget bucket rows rather than 10 k raw rows crossing the store
+//! boundary. Two reads of one committed snapshot ([`raw_bucket_query`]):
+//!   - a numeric aggregate (`math::min/max/sum`, `count()` over `type::is_number(payload)`) — the
 //!     `math::*` set skips non-numerics natively, so `avg = sum/num_count` is exact; and
 //!   - a total-count + ordered-`last` read (`array::last` over an `ORDER BY ts, seq` subquery) — the
 //!     ordered subquery makes `last` the chronologically last payload by `(ts, seq)`, non-numeric
@@ -32,6 +31,8 @@ use crate::page::{read_page, Direction, PageError, PageQuery};
 use crate::rollup::read_rollups;
 use crate::staging::SERIES_TABLE;
 use serde_json::Value;
+
+use crate::bucket_rows::{CountRow, NumRow};
 
 /// Hard ceiling on buckets per read — a width/window pair that would exceed it is rejected.
 pub const MAX_BUCKETS: usize = 2_000;
@@ -226,22 +227,28 @@ async fn raw_bucket_query(
     width_ms: u64,
 ) -> Result<BTreeMap<u64, Acc>, PageError> {
     // One statement, two result sets → one snapshot (a concurrent commit can't split N from L).
-    // Query N: numeric aggregates only (predicate makes `num_count` the numeric count → exact avg).
-    // Query L: total count + ordered `last` (subquery ORDER BY makes `array::last` chronological).
+    // N: numeric aggregates. L: total count + each bucket's first/last sample.
+    //
+    // Query L orders INSIDE the aggregate. Under SurrealDB 3 only functions the engine knows as
+    // aggregates see the group — everything else runs per row and is collected — so the old
+    // `array::last(p)` over an ORDER BY subquery returned an array of NONEs. `array::group` IS an
+    // aggregate, and arrays sort lexicographically, so sorting `[t, seq, payload]` triples sorts by
+    // `(ts, seq)`, the key the fold uses, with both ends one `array::first`/`array::last` away.
+    // Measured in `store/tests/group_collect_probe.rs`.
     let phase = phase_of(q.align, width_ms);
     let sql = format!(
         "SELECT math::floor((time::millis(ts) - $phase)/$width) AS b, count() AS num_count, \
            math::min(payload) AS min, math::max(payload) AS max, math::sum(payload) AS sum \
          FROM {SERIES_TABLE} \
-         WHERE series = $s AND type::is::number(payload) \
-           AND ts >= time::from::millis($from) AND ts < time::from::millis($to) GROUP BY b; \
-         SELECT b, count() AS count, array::last(p) AS last, array::last(t) AS last_ts, \
-           array::first(p) AS first, array::first(t) AS first_ts \
+         WHERE series = $s AND type::is_number(payload) \
+           AND ts >= time::from_millis($from) AND ts < time::from_millis($to) GROUP BY b; \
+         SELECT b, count() AS count, \
+           array::first(array::sort(array::group([t, seq, p]))) AS first_triple, \
+           array::last(array::sort(array::group([t, seq, p]))) AS last_triple \
          FROM (SELECT math::floor((time::millis(ts) - $phase)/$width) AS b, payload AS p, \
                  time::millis(ts) AS t, seq FROM {SERIES_TABLE} \
                WHERE series = $s \
-                 AND ts >= time::from::millis($from) AND ts < time::from::millis($to) \
-               ORDER BY t ASC, seq ASC) GROUP BY b"
+                 AND ts >= time::from_millis($from) AND ts < time::from_millis($to)) GROUP BY b"
     );
     let mut resp = store
         .query_ws(
@@ -285,64 +292,14 @@ async fn raw_bucket_query(
         // Assignment, not `+=`, mirrors `count` above: the pushdown populates each bucket once,
         // before `merge_rollups` runs, so every sample it reports is by definition raw.
         acc.raw_count = r.count;
-        acc.last = r.last;
-        acc.last_key = (r.last_ts, 0); // ts only; the ordered subquery already broke the seq tie
-                                       // Same ordered subquery, opposite end: `array::first` over `ORDER BY t, seq` is the
-                                       // chronologically first payload, exactly what the fold oracle's `(ts, seq)` minimum is.
-        acc.fold_first((r.first_ts, 0), &r.first);
+        // ts only for the key: the triple sort already broke the seq tie.
+        let (last_ts, last) = CountRow::split(&r.last_triple);
+        acc.last = last;
+        acc.last_key = (last_ts, 0);
+        let (first_ts, first) = CountRow::split(&r.first_triple);
+        acc.fold_first((first_ts, 0), &first);
     }
     Ok(accs)
-}
-
-/// One `GROUP BY b` row of the numeric-aggregate query (Query N). Non-numeric payloads never reach
-/// it (`type::is::number` predicate), so `num_count` is the numeric count and `avg = sum/num_count`.
-#[derive(serde::Deserialize)]
-struct NumRow {
-    /// SIGNED: a phase-shifted grid puts `ts < phase` in bucket `-1`. Unreachable for real data (the
-    /// whole of that bucket predates 2 January 1970) but `u64` would fail the DECODE rather than
-    /// clamp, taking the read down instead of returning a short first bucket.
-    b: i64,
-    num_count: u64,
-    /// Lenient like [`crate::rollup::RollupRow`]'s twins, and for a sharper reason: these are the
-    /// values SurrealDB's own `GROUP BY` aggregate produced. `math::sum` over integer-valued samples
-    /// returns an INTEGER, so a series of whole-numbered meter readings fails this decode and takes
-    /// the whole bucketed read — and therefore the entire retention GC fold — down with it.
-    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
-    min: Option<f64>,
-    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
-    max: Option<f64>,
-    #[serde(default, deserialize_with = "de_opt_lenient_f64")]
-    sum: Option<f64>,
-}
-
-/// Accept an integer OR a float for a persisted/aggregated `f64` — see [`crate::rollup`]'s twin.
-fn de_opt_lenient_f64<'de, D>(d: D) -> Result<Option<f64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::Deserialize;
-    match Option::<Value>::deserialize(d)? {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => v
-            .as_f64()
-            .map(Some)
-            .ok_or_else(|| serde::de::Error::custom(format!("expected a number, found {v}"))),
-    }
-}
-
-/// One `GROUP BY b` row of the count + ordered-last query (Query L). `count` is the TOTAL sample
-/// count (numeric + non-numeric); `last`/`last_ts` are the chronologically last `(ts, seq)` payload.
-#[derive(serde::Deserialize)]
-struct CountRow {
-    /// Signed for the same reason as [`NumRow::b`].
-    b: i64,
-    count: u64,
-    #[serde(default)]
-    last: Value,
-    last_ts: u64,
-    #[serde(default)]
-    first: Value,
-    first_ts: u64,
 }
 
 /// Merge the finest stored rollup tier into buckets raw didn't cover (post-GC history). Shared by

@@ -34,9 +34,9 @@ use crate::staging::SERIES_TABLE;
 pub async fn latest(store: &Store, ws: &str, series: &str) -> Result<Option<Sample>, StoreError> {
     // Fast path: the maintained pointer.
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
-            &format!("SELECT series, producer, seq, ts, payload FROM ONLY type::thing('{SERIES_LATEST_TABLE}', $series)"),
+            &format!("SELECT series, producer, seq, ts, payload FROM ONLY type::record('{SERIES_LATEST_TABLE}', $series)"),
             vec![("series".into(), Value::String(series.to_string()))],
         )
         .await?;
@@ -63,7 +63,7 @@ async fn latest_by_scan(
     series: &str,
 ) -> Result<Option<Sample>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT series, producer, seq, time::millis(ts) AS ts, payload FROM {SERIES_TABLE} \
@@ -82,9 +82,9 @@ async fn latest_by_scan(
 /// like the commit-path advance: only writes if no newer pointer landed concurrently.
 async fn backfill_pointer(store: &Store, ws: &str, s: &Sample) -> Result<(), StoreError> {
     let sql = format!(
-        "LET $cur = (SELECT ts, seq FROM ONLY type::thing('{SERIES_LATEST_TABLE}', $series))?.{{ ts: ts, seq: seq }} ?? {{ ts: -1, seq: -1 }};\
+        "LET $cur = (SELECT ts, seq FROM ONLY type::record('{SERIES_LATEST_TABLE}', $series)).{{ ts: ts, seq: seq }} ?? {{ ts: -1, seq: -1 }};\
          IF [$ts, $seq] > [$cur.ts, $cur.seq] {{ \
-           UPSERT type::thing('{SERIES_LATEST_TABLE}', $series) CONTENT {{ \
+           UPSERT type::record('{SERIES_LATEST_TABLE}', $series) CONTENT {{ \
              series: $series, producer: $producer, seq: $seq, ts: $ts, payload: $payload }}; }};"
     );
     store
@@ -133,7 +133,7 @@ pub async fn latest_many(
     // keyed by series name — the pointer holds exactly the newest per series, no ORDER BY, no
     // per-series 10k-row sort). A name with no pointer row simply doesn't come back here.
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT series, producer, seq, ts, payload FROM {SERIES_LATEST_TABLE} \

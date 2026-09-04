@@ -9,6 +9,7 @@ use lb_store::{Store, StoreError};
 use serde_json::Value;
 
 use crate::tag::TAG_TABLE;
+use lb_store::SurrealValue;
 
 /// Define the analyzer + BM25 full-text index on `tag.value` in `ws`. Idempotent (`IF NOT EXISTS`),
 /// so a node calls it once before the first `find_text`.
@@ -19,7 +20,7 @@ pub async fn define_text_index(store: &Store, ws: &str) -> Result<(), StoreError
             &format!(
                 "DEFINE ANALYZER IF NOT EXISTS tag_simple TOKENIZERS blank FILTERS lowercase;
                  DEFINE INDEX IF NOT EXISTS tag_value_text ON TABLE {TAG_TABLE} \
-                    FIELDS value SEARCH ANALYZER tag_simple BM25;"
+                    FIELDS value FULLTEXT ANALYZER tag_simple BM25;"
             ),
             vec![],
         )
@@ -35,7 +36,7 @@ pub async fn find_text(
     text: &str,
 ) -> Result<Vec<(String, Value)>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT key, value FROM {TAG_TABLE} WHERE value @@ $text"),
             vec![("text".into(), Value::String(text.to_string()))],
@@ -47,7 +48,8 @@ pub async fn find_text(
     Ok(rows.into_iter().map(|r| (r.key, r.value)).collect())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, SurrealValue)]
+#[surreal(crate = "lb_store::surreal_types")]
 struct TextRow {
     key: String,
     value: Value,

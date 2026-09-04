@@ -88,7 +88,7 @@ pub async fn read_version(
     id: &str,
     version_id: &str,
 ) -> Result<Option<EntityVersion>, StoreError> {
-    let sql = format!("SELECT {COLUMNS} FROM ONLY type::thing($tb, $id) LIMIT 1");
+    let sql = format!("SELECT {COLUMNS} FROM ONLY type::record($tb, $id) LIMIT 1");
     let mut resp = store
         .query_ws(
             ws,

@@ -17,9 +17,11 @@ pub async fn get_user_prefs(
     user: &str,
 ) -> Result<Option<Prefs>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
-            &format!("SELECT {PREFS_COLUMNS} FROM type::thing('{USER_PREFS_TABLE}', [$ws, $user])"),
+            &format!(
+                "SELECT {PREFS_COLUMNS} FROM type::record('{USER_PREFS_TABLE}', [$ws, $user])"
+            ),
             vec![
                 ("ws".into(), Value::String(ws.to_string())),
                 ("user".into(), Value::String(user.to_string())),

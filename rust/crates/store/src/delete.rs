@@ -18,7 +18,7 @@ pub async fn delete(store: &Store, ws: &str, table: &str, id: &str) -> Result<()
     store
         .query_ws(
             ws,
-            "DELETE type::thing($tb, $id) RETURN NONE",
+            "DELETE type::record($tb, $id) RETURN NONE",
             vec![
                 ("tb".into(), Value::String(table.to_string())),
                 ("id".into(), Value::String(id.to_string())),

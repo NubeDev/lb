@@ -53,7 +53,7 @@ pub async fn scan(
     let n = limit.clamp(1, MAX_SCAN_LIMIT);
 
     // Select id + the stored value, ordered by id so the cursor is total + stable. `type::table($tb)`
-    // binds the table name (never raw text); the cursor, when present, is `id > type::thing($tb,
+    // binds the table name (never raw text); the cursor, when present, is `id > type::record($tb,
     // $after)` so paging resumes strictly after the last seen id within THIS table.
     // Project the displayable id (`meta::id`), keep the real `id` under `_oid` to satisfy ORDER BY
     // (SurrealDB requires the order idiom in the selection — debugging/store/
@@ -81,7 +81,7 @@ pub async fn scan(
         ),
     };
 
-    let mut resp = store.query_ws(ws, &sql, bindings).await?;
+    let mut resp = store.query_ws_retrying(ws, &sql, bindings).await?;
     let raw: Vec<Value> = resp
         .take(0)
         .map_err(|e| StoreError::Decode(e.to_string()))?;

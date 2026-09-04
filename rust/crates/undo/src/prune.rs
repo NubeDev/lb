@@ -32,12 +32,25 @@ pub(crate) async fn save_stack_pruning(
     }
 
     let value = serde_json::to_value(stack).map_err(UndoError::codec)?;
-    let mut q = String::from(
+    // The two DELETEs below can target a table nothing has written yet: a stack can reach the depth
+    // cap without any of the pruned seqs having had a `undo_live` companion. SurrealDB 3 raises
+    // `NotFoundError::Table` for a DELETE against an undefined table, and inside a TRANSACTION that
+    // aborts everything after it -- the failure surfaces on the UPSERT as "The query was not
+    // executed due to a failed transaction", nowhere near the real cause.
+    //
+    // `lb_store` restores the "absent table reads as empty" contract for ordinary statements, but it
+    // cannot help here: by the time the error is visible the transaction is already dead, and the
+    // writes really did not happen. So declare the tables first, in the same transaction. Idempotent
+    // (`IF NOT EXISTS`), and it matches how every other table-owning crate in lb does it (prefs,
+    // agent config, agent memory, tags).
+    let mut q = format!(
         "BEGIN TRANSACTION;\n\
-         UPSERT type::thing($stb, $sid) CONTENT { \
+         DEFINE TABLE IF NOT EXISTS {ENTRY_TABLE};\n\
+         DEFINE TABLE IF NOT EXISTS {LIVE_TABLE};\n\
+         UPSERT type::record($stb, $sid) CONTENT {{ \
             data: $sdata, \
-            rev: (type::thing($stb, $sid).rev ?? 0) + 1 \
-         } RETURN NONE;\n",
+            rev: (type::record($stb, $sid).rev ?? 0) + 1 \
+         }} RETURN NONE;\n",
     );
     let mut binds: Vec<(String, Value)> = vec![
         ("stb".into(), Value::String(STACK_TABLE.into())),
@@ -53,7 +66,7 @@ pub(crate) async fn save_stack_pruning(
         let key = format!("p{i}");
         binds.push((key.clone(), Value::String(seq.to_string())));
         q.push_str(&format!(
-            "DELETE type::thing($etb, ${key});\nDELETE type::thing($ltb, ${key});\n"
+            "DELETE type::record($etb, ${key});\nDELETE type::record($ltb, ${key});\n"
         ));
     }
     q.push_str("COMMIT TRANSACTION;");

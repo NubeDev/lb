@@ -48,9 +48,9 @@ pub async fn check_cap(
 /// Does the `tag:[key,value]` node already exist in `ws`?
 async fn tag_exists(store: &Store, ws: &str, tag: &Tag) -> Result<bool, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
-            &format!("SELECT count() FROM type::thing('{TAG_TABLE}', [$key, $value]) GROUP ALL"),
+            &format!("SELECT count() FROM type::record('{TAG_TABLE}', [$key, $value]) GROUP ALL"),
             vec![
                 ("key".into(), serde_json::Value::String(tag.key.clone())),
                 ("value".into(), tag.value.clone()),
@@ -66,7 +66,7 @@ async fn tag_exists(store: &Store, ws: &str, tag: &Tag) -> Result<bool, StoreErr
 /// Count of distinct tag nodes in `ws` (workspace-partitioned — never another workspace's).
 async fn node_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT count() FROM {TAG_TABLE} GROUP ALL"),
             vec![],

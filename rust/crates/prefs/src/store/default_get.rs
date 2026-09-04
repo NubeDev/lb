@@ -11,9 +11,9 @@ use crate::prefs::Prefs;
 /// Load the workspace-default prefs for `ws`. `Ok(None)` when no default has been set.
 pub async fn get_workspace_prefs(store: &Store, ws: &str) -> Result<Option<Prefs>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
-            &format!("SELECT {PREFS_COLUMNS} FROM type::thing('{WORKSPACE_PREFS_TABLE}', [$ws])"),
+            &format!("SELECT {PREFS_COLUMNS} FROM type::record('{WORKSPACE_PREFS_TABLE}', [$ws])"),
             vec![("ws".into(), Value::String(ws.to_string()))],
         )
         .await?;

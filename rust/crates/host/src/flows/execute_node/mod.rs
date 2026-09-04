@@ -31,6 +31,7 @@ pub mod run_as_owner;
 mod sink;
 mod stateful;
 mod store_crud;
+mod store_read_sql;
 mod subflow;
 mod switch;
 

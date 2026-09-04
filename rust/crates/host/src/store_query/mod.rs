@@ -24,6 +24,7 @@ mod parse;
 mod run;
 mod schema;
 mod secret_wall;
+mod sql_scan;
 mod tool;
 
 pub use authorize::authorize_store_query;

@@ -28,7 +28,7 @@ pub async fn create(
     let result = store
         .query_ws(
             ws,
-            "CREATE type::thing($tb, $id) CONTENT { data: $data }",
+            "CREATE type::record($tb, $id) CONTENT { data: $data }",
             vec![
                 ("tb".into(), Value::String(table.to_string())),
                 ("id".into(), Value::String(id.to_string())),

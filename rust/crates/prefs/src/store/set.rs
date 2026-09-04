@@ -10,7 +10,7 @@
 use lb_store::{Store, StoreError};
 use serde_json::{json, Value};
 
-use crate::clear::{clear_entries, PrefsAxis};
+use crate::clear::{clear_set_clause, PrefsAxis};
 use crate::prefs::Prefs;
 
 use super::schema::{define_prefs_schema, USER_PREFS_TABLE};
@@ -36,14 +36,24 @@ pub async fn set_user_prefs(
     // `clear` entries ride in on (verified against a real store; the "MERGE can't write null" belief
     // this codebase carried was wrong).
     let mut merge = patch_object(patch)?;
-    merge.extend(clear_entries(clear));
     merge.insert("ws".into(), Value::String(ws.to_string()));
     merge.insert("user".into(), Value::String(user.to_string()));
 
     store
         .query_ws(
             ws,
-            &format!("UPSERT type::thing('{USER_PREFS_TABLE}', [$ws, $user]) MERGE $patch"),
+            &{
+                // A clear must be SurrealQL, not a JSON null in the merge -- see
+                // `clear::clear_set_clause`. MERGE first so the patch lands, then SET the cleared
+                // axes to NONE; both statements address the same record.
+                let upsert = format!("UPSERT type::record('{USER_PREFS_TABLE}', [$ws, $user]) MERGE $patch");
+                match clear_set_clause(clear) {
+                    None => upsert,
+                    Some(sets) => format!(
+                        "{upsert};\nUPDATE type::record('{USER_PREFS_TABLE}', [$ws, $user]) SET {sets}"
+                    ),
+                }
+            },
             vec![
                 ("ws".into(), Value::String(ws.to_string())),
                 ("user".into(), Value::String(user.to_string())),

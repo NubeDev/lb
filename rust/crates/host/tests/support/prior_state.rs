@@ -123,7 +123,7 @@ impl PriorRetention {
             store
                 .query_ws(
                     &self.ws,
-                    &format!("UPSERT type::thing('{RETENTION_TABLE}', $prefix) CONTENT $row"),
+                    &format!("UPSERT type::record('{RETENTION_TABLE}', $prefix) CONTENT $row"),
                     vec![
                         ("prefix".into(), Value::String(prefix.clone())),
                         ("row".into(), row.clone()),

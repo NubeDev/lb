@@ -20,8 +20,16 @@ pub struct Applied {
     pub by: String,
     pub source: Source,
     pub confidence: f64,
+    /// SurrealDB hands a NULL/NONE column to serde as a unit, which plain `Option<u64>` rejects.
+    #[serde(default, deserialize_with = "lb_store::null_as_none")]
     pub expires: Option<u64>,
 }
+
+// Delegated, NOT `#[derive(SurrealValue)]`. `tag.add` binds its columns as JSON, so an absent
+// `expires` is stored as SQL NULL -- and SurrealDB separates NULL from NONE, so the derive's
+// `Option<u64>` refused it ("Expected number, got null"). serde treats null as `None`, which is what
+// wrote the row in the first place.
+lb_store::surreal_value_via_serde!(Applied);
 
 /// Every tag applied to `entity` in `ws`, one row per `(tag, source)` edge.
 pub async fn of(store: &Store, ws: &str, entity: &str) -> Result<Vec<Applied>, StoreError> {
@@ -33,7 +41,7 @@ pub async fn of(store: &Store, ws: &str, entity: &str) -> Result<Vec<Applied>, S
             // The entity link is built two-arg (dotted ids — debugging/tags/dotted-entity-id-needs-two-arg.md).
             &format!(
                 "SELECT tkey AS key, tval AS value, at, by, source, confidence, expires \
-                 FROM {TAGGED_TABLE} WHERE in = type::thing($etb, $eid)"
+                 FROM {TAGGED_TABLE} WHERE in = type::record($etb, $eid)"
             ),
             {
                 let (etb, eid) = entity_parts(entity);

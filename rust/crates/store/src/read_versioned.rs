@@ -21,9 +21,9 @@ pub async fn read_versioned(
     id: &str,
 ) -> Result<Versioned, StoreError> {
     let mut response = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
-            "SELECT data, rev FROM ONLY type::thing($tb, $id)",
+            "SELECT data, rev FROM ONLY type::record($tb, $id)",
             vec![
                 ("tb".into(), Value::String(table.to_string())),
                 ("id".into(), Value::String(id.to_string())),

@@ -17,14 +17,8 @@ use crate::config::BootConfig;
 pub(crate) async fn open_store(cfg: &BootConfig) -> anyhow::Result<lb_store::Store> {
     let store = match cfg.store_path.as_deref() {
         Some(path) if !path.is_empty() => {
-            // The boot memory guard may REFUSE this open (`StoreError::WontFit`) when the commit
-            // log cannot fit in this machine's RAM. That error propagates out of boot and exits the
-            // binary nonzero with the diagnostic — it must NEVER fall back to `mem://`: a silently
-            // empty node serving a workspace that "lost" its data is strictly worse than a down
-            // node with a legible reason (boot-memory-guard scope, decision 3).
-            let opts = lb_store::OpenOptions::default()
-                .allow_unguarded(cfg.store_open_unguarded)
-                .with_available_ram(cfg.store_available_ram_bytes);
+            let opts =
+                lb_store::OpenOptions::default().with_available_ram(cfg.store_available_ram_bytes);
             lb_store::Store::open_with(path, &opts).await?
         }
         _ => lb_store::Store::memory().await?,
