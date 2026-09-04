@@ -9,7 +9,6 @@
 //! provider on the hub, and `hello` hosted + served on the hub. Multi-thread flavor + unique ids.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
@@ -116,43 +115,33 @@ async fn an_edge_invokes_the_hub_agent_over_the_routed_namespace() {
     let (edge, _hub) = hub_and_edge(vec![ECHO.into()]).await;
     let caller = principal(ws, &[INVOKE, ECHO]);
 
-    // Retry until the hub's queryable has PROPAGATED, rather than calling once and hoping. A routed
-    // call issued before propagation finds no responder and returns `NotFound` — indistinguishable
-    // from "not yet converged" — which is what made this test fail intermittently on CI. Same
-    // rationale and shape as `routed_ambiguity_test::ask_node` / `cross_node_routing_test::
-    // route_until_reachable`: retry the REAL call, no mock and no fixed sleep.
-    let mut last_err: Option<String> = None;
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
-    let answer = loop {
-        let attempt = tokio::time::timeout(
-            Duration::from_secs(5),
-            invoke_remote(
-                &edge.bus,
-                &caller,
-                ws,
-                "routed-sess",
-                "echo something",
-                None,
-                None,
-                None,
-                None,
-                &echo_tool(),
-                1,
-            ),
-        )
-        .await;
-        match attempt {
-            Ok(Ok(a)) => break a,
-            Ok(Err(e)) => last_err = Some(format!("{e:?}")),
-            // A timed-out attempt is the same signal as `NotFound` here: nobody answered yet.
-            Err(_) => last_err = Some("attempt timed out (queryable not yet reachable)".into()),
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the hub agent never answered the edge: {last_err:?}"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    };
+    // Observe the hub's queryable rather than racing it. A routed invocation issued before the
+    // declaration has propagated finds no responder and returns `NotFound` — indistinguishable from
+    // "not yet converged", which is what made this test fail intermittently on CI. Retrying the real
+    // call against a wall-clock deadline only moved the coin flip; `await_queryable` waits on Zenoh's
+    // own `matching_status`/`matching_listener` for the key the invocation actually queries, so the
+    // precondition is established and the call below happens exactly once.
+    assert!(
+        lb_bus::await_queryable(&edge.bus, "*", &lb_host::agent_call_key())
+            .await
+            .expect("await queryable"),
+        "the hub never declared a reachable agent queryable"
+    );
+    let answer = invoke_remote(
+        &edge.bus,
+        &caller,
+        ws,
+        "routed-sess",
+        "echo something",
+        None,
+        None,
+        None,
+        None,
+        &echo_tool(),
+        1,
+    )
+    .await
+    .expect("the hub agent answers the edge");
 
     assert_eq!(
         answer, "routed: done",
