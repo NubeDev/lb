@@ -1,5 +1,22 @@
 # Ingest scope — bounded drain: a write must not pay for the backlog
 
+> ## ⚠️ SUPERSEDED — the drain no longer exists
+>
+> **Staging was removed** (`scope/ingest/remove-staging-scope.md`). `ingest.write` commits straight
+> to the `series` tables, so there is no staging backlog for a caller to be billed for and no drain
+> to bound. `drain_workspace`, `drain_workspace_bounded`, `own_batches`, `spawn_ingest_reactors` and
+> `ws_drain_lock` are all deleted.
+>
+> **The property this scope won is kept, by construction.** "A producer's write latency must not
+> scale with another producer's backlog" is now true because there is no backlog: a caller commits
+> its own samples and nothing else. The one place the reasoning still binds is the per-workspace
+> commit lock, which is deliberately held per transaction rather than per push for exactly the
+> reason recorded here.
+>
+> Everything below is **the record of what shipped in July 2026 and why**, not a description of the
+> code today. Read it for the measurements and the reasoning; do not read it as guidance.
+
+
 Status: **SHIPPED 2026-07-15** (parts 1 + 2). See
 [`sessions/ingest/drain-backpressure-session.md`](../../sessions/ingest/drain-backpressure-session.md)
 and [`debugging/ingest/write-drains-whole-workspace-backlog.md`](../../debugging/ingest/write-drains-whole-workspace-backlog.md).

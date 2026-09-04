@@ -30,6 +30,45 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**On branch `feat/remove-ingest-staging` (unmerged) — INGEST STAGING IS GONE: ONE WRITE PER SAMPLE
+([`ingest/remove-staging-scope.md`](scope/ingest/remove-staging-scope.md)).** Ingest stored one
+sample by writing to the database three times — the staging `UPSERT`, the `series` `UPSERT` when the
+drain committed it, and the staging `DELETE` tombstone. The stated reason was that a staging append
+is cheap where an indexed `series` write is expensive. **Measured, that is backwards**: 200,000
+samples cost **115,398 ms and 11.87 MB** through staging against **3,752 ms and 4.02 MB** committed
+directly. Staging was a table in the same database, so it paid the same durable write it existed to
+defer, plus a tombstone on the way out; and on an LSM tree the indexed write it deferred is one more
+key-value append, not a page rewrite. It was not backpressure either — when the store was too loaded
+to take the write, staging wrote to that same store twice more.
+
+`ingest.write` now calls `commit_direct` and nothing else. Deleted: `ingest/write.rs`,
+`ingest/overflow.rs`, `ingest/staging.rs`, `host/ingest/{drain,drain_lock,drain_reactor}.rs`, the
+four inline caller-path drains (MCP verb, gateway route, webhook accept, federation mirror), and five
+staging-only test files. 91 files, +517 / −2364. Acceptance got **stronger**: the call now returns
+after the commit, so a sample is readable on the caller's very next read instead of waiting for a
+drain.
+
+**Two defects the removal exposed, both fixed.** (1) The series cardinality cap is now the only
+producer of dead letters and never stamped `dead_at`, so the retention pass fell back to the
+producer's own untrusted clock — a skewed producer could make its dead letters permanent in the one
+ingest table nothing else bounds. The commit transaction now stamps it. (2) Every commit reads and
+advances the same `series_latest` row, and the old drain lock had been serialising those commits;
+without it, six concurrent producers on one series spent all 16 retries and surfaced a whole batch as
+an error. Fixed with a **per-workspace commit lock** (`ingest/commit_lock.rs`, held per transaction
+so a large push never blocks a small one for longer than one chunk) and by teaching the retry matcher
+that SurrealDB 3 reports some conflict-aborted transactions only as "The query was not executed due
+to a failed transaction".
+
+**Upgrading:** a node still holding rows in `ingest_staging` loses them — there is no drain. The old
+reactor ran every two seconds, so leaving a node idle a moment before upgrading is enough. A one-shot
+boot drain was written and then deliberately removed: keeping the staging read path alive to serve an
+upgrade leaves the whole idea in the tree for the next reader to build on.
+
+**State:** `lb-ingest` suite green including the rewritten conflict-storm test; workspace compiles
+`--all-targets`; `fmt` clean; FILE-LAYOUT gate one violation *better* than the parent branch.
+`lb-host`, `lb-role-gateway` and `lb-node` suites are **not yet run** — the local disc filled during
+the link step, so they run in CI.
+
 **Just shipped 2026-08-26 (unreleased — needs the next `node-v*` tag) — EMAIL COMES *IN* NOW: A
 WATCHED MAILBOX BECOMES ASSETS, SERIES AND INBOX ITEMS
 ([`inbox-outbox/mail-source-scope.md`](scope/inbox-outbox/mail-source-scope.md),
@@ -145,11 +184,13 @@ append-only engine the log is also the node's RSS high-water mark (~1.4× log by
 
 **Lever 1 shipped.** `lb_ingest::commit_direct` commits a caller's live batch straight to the series
 plane, and the host caller path (`ingest/write.rs` `take_path`) takes it **iff staging is empty**:
-three record writes per sample become one. Everything staging exists for is untouched, because a
-burst, an offline re-append and a crash-recovery backlog all leave staging non-empty by definition.
-One commit engine serves both paths (`commit_staged` + a `Dequeue` flag), so exactly-once stays a
-single fact. The direct path **chunks** at `DIRECT_COMMIT_BATCH` (256, matching the drain) — an
-unchunked one would put an unbounded transaction on a request path.
+three record writes per sample become one. One commit engine serves both paths
+(`commit_staged` + a `Dequeue` flag), so exactly-once stays a single fact. The direct path
+**chunks** at `DIRECT_COMMIT_BATCH` (256, matching the drain) — an unchunked one would put an
+unbounded transaction on a request path.
+
+> **Superseded — staging is now gone entirely** (see the entry below). The `take_path` conditional,
+> the staged path it chose between, and `Dequeue` are all deleted; `commit_direct` is the only path.
 
 **Lever 2 — snapshot / segment-incremental compaction — was REJECTED, not deferred.** Reading the
 pinned surrealkv 0.9.3: the active segment is appended in place (a hard-linked snapshot keeps
