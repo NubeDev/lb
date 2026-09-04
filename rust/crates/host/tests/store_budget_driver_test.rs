@@ -418,13 +418,26 @@ async fn the_driver_writes_one_attributable_job_that_drains_normally() {
     cleanup(&path);
 }
 
-/// **The engine reclaims deleted rows on its own.** This asserted the opposite until surrealkv
-/// 0.21: an append-only log where only an explicit compaction freed bytes. The LSM engine reclaims
-/// superseded versions and tombstones in the background, so the budget driver's ordering rule
-/// ("evict, THEN compact, or the log only grows") no longer describes it. Written on real bytes, so
-/// the engine change could not pass quietly — and it did not.
+/// **Deleting rows does not free disc — it costs disc.** A delete in an LSM tree writes a
+/// tombstone: a record saying "this key is gone". The row and the tombstone both occupy space until
+/// a background compaction drops the pair, and compaction is entirely the engine's own business —
+/// surrealkv 0.21 exposes no pass to invoke, and lb reaches it only through SurrealDB, which exposes
+/// less. `store.compact` is therefore a no-op that reports itself as one.
+///
+/// This test previously claimed the opposite — that the engine reclaims deleted rows on its own —
+/// and it passed only because `log_bytes` was measuring `clog/*.clog`, a directory surrealkv 0.21
+/// never creates. Both sides of its comparison were the manifest size, so any claim would have
+/// passed. Measured on the real bytes: 300 rows written = 196,006 bytes; the same 300 deleted =
+/// 209,778 bytes, and ten seconds of background time reclaimed none of it. At 20,000 rows, deleting
+/// every one grew a 13.1 MB store to 14.1 MB.
+///
+/// **Why nothing reclaimed:** `max_memtable_size` defaults to 100 MB, so below that nothing has even
+/// flushed to an sstable and there is nothing for a compaction to compact. Whether reclaim happens
+/// at a scale past that flush point is **not asserted here** — it needs a store larger than this
+/// suite should build. What IS asserted is the property an operator has to plan around: running
+/// retention to free space makes the disc figure go up first.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn deleting_rows_is_reclaimed_by_the_engine_without_an_explicit_pass() {
+async fn deleting_rows_appends_tombstones_rather_than_freeing_disc() {
     let ws = "budget-tombstone";
     let path = temp_path("tombstone");
     cleanup(&path);
@@ -447,12 +460,13 @@ async fn deleting_rows_is_reclaimed_by_the_engine_without_an_explicit_pass() {
     for k in 0..300 {
         delete(&store, ws, "kv", &format!("k{k}")).await.unwrap();
     }
-    // The background flush is not synchronous with the delete.
+    // Give any background work a chance to run, so this measures a settled state rather than a race.
     tokio::time::sleep(std::time::Duration::from_millis(750)).await;
     let after_delete = status(&store).log_bytes;
     assert!(
-        after_delete <= before_delete,
-        "the engine reclaims deleted rows itself: {after_delete} must not exceed {before_delete}"
+        after_delete >= before_delete,
+        "a delete APPENDS a tombstone — bytes cannot fall here, and a fall would mean the \
+         measurement is reading the wrong place again: {before_delete} -> {after_delete}"
     );
 
     // The explicit pass still ANSWERS (the verb, the job and the driver depend on it) but reclaims
