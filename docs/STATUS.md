@@ -30,7 +30,50 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped 2026-08-26 (unreleased — needs the next `node-v*` tag) — EMAIL COMES *IN* NOW: A
+**Just shipped 2026-09-04 (unreleased — needs the next `node-v*` tag) — THE STORE ENGINE IS
+SURREALDB 3 ON SURREALKV 0.21, AND THE WHOLE COMPACTION APPARATUS IS GONE WITH IT.** SurrealKV 0.9
+was a bitcask commit log: nothing was ever reclaimed on its own, so the node carried a
+stop-the-world `store.compact` pass, a boot pass in front of every `Store::open`, and a boot memory
+guard to stop that pass OOM-killing small boxes. SurrealKV 0.21 is an **LSM tree** that compacts
+continuously in the background and opens from a manifest plus the WAL tail. Every one of those
+mechanisms lost its premise and was deleted rather than kept as dead weight.
+
+- **The on-disc format is a hard break.** 0.21 cannot read a 0.9 store. A node started against one
+  refuses to boot and names the cause (it detects the `clog/` directory only the old engine ever
+  created), modifies nothing, and points at the remedy. There is no migration path — data must be
+  exported from the old binary first. `store/tests/old_format_store_test.rs` pins the refusal.
+- **Open no longer costs history.** Same machine: a 92,657-byte store opened in **114 ms**, a
+  42,816,755-byte store — 462× the bytes — in **143 ms**.
+- **`store.compact` is a no-op**, kept only so callers and the budget driver compile. It records a
+  skip. The boot pass, the boot memory guard, `StoreError::WontFit` and `LB_STORE_OPEN_UNGUARDED`
+  are all removed. The guard was removed rather than repaired: it read `log_stats`, which measured
+  a directory the new engine never creates, so it could only ever refuse **zero** bytes — and
+  fixing that measurement while it stood would have made it refuse healthy large stores.
+- **`store.status` was blind, and that was the serious find.** It summed `clog/` and so reported
+  the size of `manifest` alone: measured **55 bytes against 133,159 actually on disc**, and 1,000
+  records moved it 55 → 55. The disc budget decides purely on `log_bytes`, so the one mechanism
+  standing between a node and a full disc was **silently inert**. Now fixed to sum `sstables/`,
+  `wal/`, `vlog/`, `versioned_index/`, `manifest` — and `clog/`, so an old engine's leftovers still
+  count. `store/tests/status_disc_bytes_test.rs` walks the whole directory as ground truth and
+  never names a directory itself.
+- **Deleting rows grows the store.** A delete appends a tombstone; the row leaves at a later
+  background merge. Measured: 20,000 rows deleted moved a store 13,110,037 → 14,083,889 bytes, and
+  it was 14,085,369 fifteen seconds later. `store_budget_driver_test.rs` now pins that direction.
+- **OPEN DECISION — the disc budget has no action left.** Its only lever was to enqueue
+  `store.compact`. It still reports `budget_bytes` / `headroom_bytes` / the advisory honestly, but
+  it cannot act, and there is now **no manual lever to reclaim disc at all**. Worse, past the hard
+  mark it is exempt from its one-hour interval and the no-op pass reports a *skip*, so the
+  "budget too small" latch never engages: a budgeted node above 95% enqueues a no-op job **every
+  30 s for ever**, each one a record written to the store. The docs currently tell operators to
+  leave `LB_STORE_MAX_BYTES` unset. Whether the driver is redesigned or removed is a design call,
+  not a bug fix.
+
+Docs rewritten to the current state, not bannered: `public/store/store.md`,
+`public/upgrading/upgrading.md` (the export-first checklist), `skills/store-compact/SKILL.md`.
+
+---
+
+**Previously (2026-08-26, also unreleased) — EMAIL COMES *IN* NOW: A
 WATCHED MAILBOX BECOMES ASSETS, SERIES AND INBOX ITEMS
 ([`inbox-outbox/mail-source-scope.md`](scope/inbox-outbox/mail-source-scope.md),
 [`ingest/file-decode-scope.md`](scope/ingest/file-decode-scope.md), session
@@ -243,8 +286,9 @@ existing verbs close it; no new host logic, capability, table, or MCP verb.
 
 ---
 
-**Just shipped 2026-08-01 (unreleased — needs the next `node-v*` tag) — BOOT IS MEMORY-AWARE: A NODE
-THAT CANNOT OPEN ITS STORE NOW ASKS FOR AN OPERATOR, NOT THE OOM KILLER
+**Removed 2026-09-04 by the SurrealKV 0.21 upgrade — kept here because the incident it answered is
+still worth knowing. BOOT WAS MEMORY-AWARE: A NODE THAT COULD NOT OPEN ITS STORE ASKED FOR AN
+OPERATOR, NOT THE OOM KILLER
 ([`store/boot-memory-guard-scope.md`](scope/store/boot-memory-guard-scope.md), session
 [`store/boot-memory-guard`](sessions/store/boot-memory-guard-session.md), issue
 [#128](https://github.com/NubeDev/lb/issues/128)).** `Store::open` ran a full compaction pass

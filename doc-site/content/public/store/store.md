@@ -1,146 +1,192 @@
-# Store — the commit log stays bounded (online compaction)
+# Store — how the node keeps its data on disc
 
-The embedded engine (SurrealDB on SurrealKV) is **append-only**: every write — each superseded
-version, every tombstone — stays in the commit log, and boot replays all of it. Two mechanisms
-bound it, and both now run without a restart in the loop:
+Every node embeds its own database. There is no separate database server to install or run. The
+engine is **SurrealDB 3** running on **SurrealKV 0.21**, and both are compiled into the node
+binary.
 
-- **Boot-time compaction** — `Store::open` rewrites the log down to the live set before the
-  engine opens it (measured incident: a 1.5 GB log over a ~23 MB live set booted in 13–14 s).
-- **Online compaction** (issue #67) — a long-running node no longer waits for a reboot: the
-  `store.compact` job rewrites the log while the node serves, and `store.status` makes growth
-  visible before it becomes a boot-time surprise.
+SurrealKV is an **LSM tree**. LSM stands for *log-structured merge tree*. It is worth
+understanding the shape, because almost every question an operator asks about disc space has its
+answer here.
+
+## How a write reaches the disc
+
+1. A write goes into a **memtable** — a sorted table held in memory — and, at the same moment,
+   into the **write-ahead log** (`wal/`). The write-ahead log is what makes the write survive a
+   power cut before the memtable has been saved.
+2. When the memtable reaches its size limit (**100 MB**, the engine default), the engine writes it
+   out as one **SSTable** file under `sstables/`. SSTable means *sorted string table*: a file of
+   key-value pairs, written once and never modified afterwards.
+3. Background tasks inside the engine **merge** SSTables together over time. This is called
+   compaction. During a merge, a key that has been overwritten several times keeps only its
+   newest value, and a deleted key is dropped for good.
+
+Step 3 is the important one. **Compaction is automatic and continuous.** The node does not
+schedule it, cannot trigger it, and never pauses writes for it.
+
+## What is on disc
+
+```
+<store path>/
+  sstables/          the data, in immutable .sst files
+  wal/               the write-ahead log
+  vlog/              the value log
+  versioned_index/   the index that supports versioned reads
+  manifest           which SSTable files are currently live
+```
+
+Every one of these counts towards the node's disc use, and `store.status` sums all of them.
 
 ## The verbs
 
-### `store.status` → snapshot (gated `store:status:read`, admin-tier MCP call)
+### `store.status` → snapshot
+
+Capability: `store:status:read`. Cheap by construction — it reads file sizes only. It never reads
+a record, so it needs no workspace principal.
 
 ```jsonc
 {
   "persistent": true,
-  "log_bytes": 48123904,     // what the next boot will replay
-  "segment_count": 3,
+  "log_bytes": 13110037,      // every byte the store occupies on disc
+  "segment_count": 6,         // number of .sst files
   "threshold_bytes": 268435456,
-  "advisory": null,          // the warning string once log_bytes crosses the threshold
-  "last_compaction": {       // boot or online, most recent in this process
-    "at_epoch_ms": 1752576000000,
-    "ok": true,
-    "before_bytes": 1500000000,
-    "after_bytes": 24000000,
-    "duration_ms": 8400,
-    "error": null,
-    "skipped": null          // set instead when boot DECLINED the pass — see the memory guard below
-  }
+  "advisory": null,           // a warning string once log_bytes crosses the threshold
+  "budget_bytes": null,       // LB_STORE_MAX_BYTES, echoed back
+  "headroom_bytes": null,     // budget - log_bytes, saturating at 0
+  "free_disk_bytes": null,    // filesystem free space; always null today
+  "last_compaction": null
 }
 ```
 
-Cheap by construction — file metadata only, below the namespace wall; it never reads a record.
+`log_bytes` is a historical name. Under the old engine the store really was one commit log. The
+field is kept because the disc budget and every existing reader already speak it, and renaming it
+would break them for no gain.
 
-### `store.compact` → `{ job_id }` (gated `store:compact:run`, admin-only)
+> **This measurement was blind until recently, and the consequence was severe.** It summed a
+> `clog/` directory that only the old engine ever created, so on SurrealKV 0.21 it reported the
+> size of `manifest` alone. Measured on a real store: **55 bytes reported against 133,159 bytes
+> actually on disc**, and writing 1,000 records moved the reported figure from 55 to 55. Because
+> the disc budget decides purely on `log_bytes`, the budget could never fire. It is fixed, and
+> `store/tests/status_disc_bytes_test.rs` pins it by walking the whole directory as ground truth.
 
-**Always a job, never inline**: a pass is whole-log I/O with no upper bound. The verb enqueues a
-durable `store-compact` job; the reactor drains it off the request path and records
-`{before_bytes, after_bytes, duration_ms}` on the job record. `store:compact:run` is a distinct
-`run` action — the broad author `store:*:write` wildcard can never trigger a node-pausing pass.
+### `store.compact` → `{ job_id }`
 
-## How the pass works (and why it is safe)
+Capability: `store:compact:run`, admin only. **This verb does nothing.**
 
-1. Writes quiesce behind the store's **global session mutex** (the same lock that makes the
-   workspace wall hold — here as an asset). Acquiring it means no operation is in flight.
-2. The live `Surreal<Db>` handle is swapped out and dropped; the pass waits for the old engine
-   to **provably quiesce**: full file release when possible (74–240 ms observed), else file
-   size/mtime stability across a 2 s window — needed because a `DEFINE INDEX` at the pinned
-   engine version leaks an inert engine reference forever
-   (`docs/debugging/store/define-index-leaks-engine-blocks-release.md`). On timeout it *skips*
-   the pass rather than ever compact under an engine that might still write.
-3. The boot-time `compact_log` runs (shared implementation), then the store reopens and the
-   handle swaps back in. Queued writers proceed — none lost, none duplicated (tested under
-   16-way concurrency).
-4. Crash-safe: a kill at any point leaves either the old or the new log, never a corrupt one;
-   the next open completes or discards the interrupted pass.
+It is kept so that existing callers and the disc budget keep working, but the pass behind it was
+removed with the SurrealKV 0.21 upgrade. It enqueues a job, the job runs, and the job records a
+skip:
 
-The driver is **threshold-driven, never compaction-on-a-tick**. Past the node's threshold it logs
-an advisory (same posture as the sample-cap warnings) and `store.status` carries the same string.
-What happens next depends on one piece of config:
-
-- **No `LB_STORE_MAX_BYTES`** (the default): threshold is a flat 256 MiB, and a pass runs **only**
-  when an authorized caller enqueues one. Advisory in, operator out — unchanged.
-- **A disk budget set**: the threshold becomes 80% of the allowance and the node enqueues **one**
-  `store.compact` job of its own when it is crossed (`requested_by: "system:store-budget"`), at most
-  once an hour, with the 95% hard mark exempt from that interval. If a pass stops reclaiming
-  (`after_bytes > 0.9 × before_bytes`) the node stops auto-compacting and says the budget is too
-  small for the workload rather than pausing writes for nothing.
-
-A pass on a 2.06 GiB log measured **771 ms** (reclaiming it to 16 MiB) — the number the automatic
-trigger was approved on. See [Upgrading](../upgrading/upgrading.md) and the disk-budget scope.
-
-## The boot memory guard — open without OOMing the box (issue #128)
-
-Compaction bounds bytes on **disk**. It says nothing about **RAM**, and boot is the one place the
-node predictably doubles its memory demand: the pass resolves every live value into memory, and the
-open then replays the log again to build the index. On a 959 MB edge box with a 617 MB live set that
-peaked at 879 MB RSS, and the kernel's **global** OOM killer took `sshd` down with the node —
-`Restart=on-failure` then re-ran the same spike every 5 s until someone drove to the site.
-
-Boot is now memory-aware. Three decisions, all arithmetic over this machine's own numbers
-(`MemAvailable` from `/proc/meminfo`) — identical code on a 64 GB cloud node and a 959 MB edge node:
-
-1. **The pass runs only if the machine can afford it.** `log_bytes > 0.5 × available RAM` ⇒ skipped.
-2. **…and only if it is expected to pay.** If the *persisted* last pass reclaimed essentially
-   nothing (`after > 0.9 × before`) and the log has not grown past `1.25 × after` since, the pass is
-   skipped: re-compacting a log that **is** the live set is the most expensive possible no-op.
-3. **A hopeless open is refused, not attempted.** `log_bytes > 1.0 × available RAM` ⇒ the node exits
-   nonzero with a diagnostic instead of allocating. A restart loop then costs a `stat`, not 90 s of
-   allocation — ssh stays usable, which is the difference between a remote fix and a site visit.
-
-A skip is **loud**: one WARN line with all three numbers, and `store.status` serves
-`last_compaction.skipped` with the reason, so "this node has stopped compacting at boot, and why"
-is one MCP call away. A skip never suspends the *online* `store.compact` path.
-
-A refusal looks like this on stderr / in `journalctl`:
-
-```
-store at /var/lib/lb/store will not fit in memory: the commit log is 943718400 bytes and only
-841154560 bytes of RAM are available, so replaying it would likely OOM this machine. Refusing to
-open (this is a heuristic guard). Remedies: add RAM or swap; compact the store on a larger machine;
-lower retention so the next compaction shrinks the live set; or, if you know it fits, set
-LB_STORE_OPEN_UNGUARDED=1 to force the open.
+```jsonc
+{
+  "ok": true,
+  "before_bytes": 0,
+  "after_bytes": 0,
+  "duration_ms": 0,
+  "skipped": "engine compacts automatically (surrealkv 0.21 LSM)"
+}
 ```
 
-The node **never** falls back to an empty `mem://` store on refusal: a node silently serving a
-workspace that "lost" its data is worse than a down node with a legible reason.
+There is nothing to invoke. The old implementation reached past SurrealDB with a second direct
+SurrealKV handle, quiesced every writer behind the global session lock, swapped the live handle
+out, rewrote the whole log, and reopened. That whole mechanism existed because SurrealKV 0.9 never
+reclaimed anything on its own. SurrealKV 0.21 does it in the background, so the mechanism was
+deleted rather than kept as dead weight.
 
-**Both guards fail open** where `/proc/meminfo` cannot be read (non-Linux, odd container mounts) —
-today's behaviour, byte for byte — and `LB_STORE_OPEN_UNGUARDED=1` disables the *open* guard for an
-operator who added swap or measured the headroom. (Nothing overrides the compaction skips: skipping
-a pass is always safe.) Embedders can supply a truer ceiling than the host figure — a cgroup limit —
-via `BootConfig::store_available_ram_bytes`.
+**The honest consequence: a node has no manual lever to reclaim disc space.** If a store is
+growing, the only things that change the outcome are tightening retention so fewer rows are kept,
+or giving the node a larger disc. Waiting for the background merge is the only reclamation path,
+and it runs on the engine's schedule, not yours.
 
-The outcome of every pass that actually ran is persisted next to the store as
-`<store dir>/../last-compaction.json` (atomic write, best-effort in both directions: a missing or
-corrupt file simply means "no information" and the node compacts as it always did). It is a sibling
-of the engine directory on purpose — `log_bytes` and the disk budget's marks never count it. That
-file is what lets a skip decision, and the disk budget's "compaction stopped paying here"
-suspension, survive the restart at which they matter.
+## Deleting rows makes the store bigger, not smaller
 
-The complementary layer belongs on the unit, not in the node: `MemoryMax` + `OOMPolicy=stop` +
-`RestartSec`/`StartLimitBurst` is what keeps *every* workload on the box from taking the machine
-down. The guard makes the node well-behaved even under a naked unit; deploy both.
+This surprises people, so it is stated plainly with numbers.
 
-## The engine bug this work found (P0, fixed)
+On an LSM tree a delete is a **tombstone** — a small record that says "this key is gone". It is
+appended like any other write. The row it hides is still in an SSTable file. Both the row and the
+tombstone disappear only when a background merge rewrites the SSTable that holds them.
 
-At the pinned `surrealkv 0.9.3`, `compact()` stages the live set in `.merge/` and the swap
-happens at the *next* open — which applied it **after** the append-log was already open, so
-that session's appends went into unlinked inodes and vanished at close. On the shipped boot
-path this meant: **every boot from the third onward silently destroyed all writes made since
-the previous boot.** `compact_log` now completes every merge with a throwaway, non-writing
-open before any writing session touches the directory. Full story:
-`docs/debugging/store/compaction-merge-eats-next-sessions-writes.md`.
+Measured on a real store:
+
+| Rows deleted | Bytes before | Bytes after | Bytes 10–15 s later |
+|---|---|---|---|
+| 300 | 196,006 | 209,778 | 210,582 |
+| 20,000 | 13,110,037 | 14,083,889 | 14,085,369 |
+
+Nothing was reclaimed in either case, and the store grew both times. The reason is step 2 above:
+the memtable limit is 100 MB, so at these sizes nothing had been flushed to an SSTable yet, and
+with no SSTables there was nothing for a merge to rewrite.
+
+The rule to carry away: **retention eviction costs disc space in the short term.** Plan for the
+store to grow first and shrink later, and do not read the first tick after a retention change as a
+failure.
+
+## Boot
+
+`Store::open` reads the manifest and the tail of the write-ahead log. It does not replay history.
+
+| Store size | Open time |
+|---|---|
+| 92,657 bytes | 114 ms |
+| 42,816,755 bytes | 143 ms |
+
+The second store holds 462 times the bytes of the first and opens 29 ms slower. Open cost is no
+longer a function of how much history a node has accumulated.
+
+Two guards used to stand in front of this call and are now **gone**:
+
+- **The boot compaction pass.** There is no pass to run.
+- **The boot memory guard**, including `LB_STORE_OPEN_UNGUARDED`. It refused to open when the
+  commit log was larger than available RAM, because the old engine replayed the whole log into
+  memory. That premise is false now. It was removed rather than repaired, because it read the same
+  broken measurement described above — it could only ever refuse zero bytes, and had the
+  measurement been corrected while the guard remained, the guard would have begun refusing to open
+  perfectly healthy large stores.
+
+## The disc budget
+
+Set `LB_STORE_MAX_BYTES` to a plain byte count and the node derives two marks from it: a **soft
+mark** at 80% and a **hard mark** at 95%. Leave it unset and the node has no marks at all, warns
+at a flat 256 MiB, and takes no action ever.
+
+What the budget still does honestly:
+
+- `store.status` reports `budget_bytes` and `headroom_bytes`, so an operator can watch the trend.
+- The node logs an advisory once the store passes the soft mark.
+
+What it can no longer do: **its only action is to enqueue `store.compact`, and that verb is a
+no-op.** The marks are now a reporting mechanism, not a control mechanism.
+
+> **Known defect, not yet fixed.** Past the hard mark the driver is exempt from its one-hour
+> minimum interval, and the no-op pass reports a skip rather than an unproductive result, so the
+> "budget too small for this workload" latch never engages. A budgeted node above 95% therefore
+> enqueues one no-op job **every 30 seconds, indefinitely**. Each job is a record written to the
+> store, so the behaviour adds a small amount of the very growth it is trying to prevent. Until it
+> is addressed, prefer leaving `LB_STORE_MAX_BYTES` unset and watching `log_bytes` yourself.
+
+`free_disk_bytes` is always `null`. Measuring it needs a `statvfs`-class system call and no
+filesystem-stat crate is a dependency of the workspace, so the field is honestly absent rather
+than guessed. Check real free space with `df`. Remember that the budget bounds the store directory
+only — extension artifacts, sidecar binaries and OS logs share the filesystem and sit outside it.
+
+## Upgrading from a SurrealDB 2 node
+
+**A store written by the old engine cannot be opened by this one.** SurrealKV 0.9 wrote a bitcask
+commit log into `clog/`; 0.21 is a different on-disc format entirely. The node refuses to start
+and says so:
+
+```text
+the store at /var/lib/lb/store was written by surrealkv 0.9 (SurrealDB 2) — it has a `clog/`
+directory, which only that engine created. surrealkv 0.21 is a different on-disc format and
+cannot read it, so this node will NOT start against it. Nothing has been modified. Either point
+the node at a fresh directory, or move `clog/` aside once you have exported anything you still
+need from the old build.
+```
+
+Nothing is modified and nothing is deleted. See [Upgrading](../upgrading/upgrading.md) for what to
+export before you cross this line.
 
 ## Related
 
-- Scope: `docs/scope/store/online-compaction-scope.md` · Session:
-  `docs/sessions/store/online-compaction-session.md` · Skill: `docs/skills/store-compact/SKILL.md`
-- The memory guard: `docs/scope/store/boot-memory-guard-scope.md` (issue #128) · Session:
-  `docs/sessions/store/boot-memory-guard-session.md` · Incident:
-  `docs/debugging/store/boot-compaction-oom-kills-the-box.md`
-- The session mutex this leans on: `docs/scope/store/session-concurrency-scope.md`
+- Skill: `docs/skills/store-compact/SKILL.md`
+- The session mutex the store leans on: `docs/scope/store/session-concurrency-scope.md`
+- The disc budget: `docs/scope/store/disk-budget-scope.md`
