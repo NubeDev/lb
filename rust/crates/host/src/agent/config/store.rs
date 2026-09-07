@@ -28,7 +28,7 @@ pub async fn define_agent_config_schema(store: &Store, ws: &str) -> Result<(), S
         "DEFINE TABLE IF NOT EXISTS {AGENT_CONFIG_TABLE} SCHEMAFULL;
          DEFINE FIELD IF NOT EXISTS ws ON {AGENT_CONFIG_TABLE} TYPE string;
          DEFINE FIELD IF NOT EXISTS default_runtime ON {AGENT_CONFIG_TABLE} TYPE option<string>;
-         DEFINE FIELD IF NOT EXISTS model_endpoint ON {AGENT_CONFIG_TABLE} TYPE option<object> FLEXIBLE;
+         DEFINE FIELD OVERWRITE model_endpoint ON {AGENT_CONFIG_TABLE} TYPE option<object> FLEXIBLE;
          DEFINE FIELD IF NOT EXISTS active_definition ON {AGENT_CONFIG_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS active_persona ON {AGENT_CONFIG_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS enabled_personas ON {AGENT_CONFIG_TABLE} TYPE option<array<string>>;
