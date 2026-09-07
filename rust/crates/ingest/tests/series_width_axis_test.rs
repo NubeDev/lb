@@ -21,8 +21,8 @@
 //! Real embedded store, real committed samples, real GC pass — no mocks (testing §0).
 
 use lb_ingest::{
-    apply_method, commit_batch, read_buckets, run_gc, set_policy, write, BucketQuery, Method,
-    Policy, Qos, Sample, Tier,
+    apply_method, commit_direct, read_buckets, run_gc, set_policy, BucketQuery, Method, Policy,
+    Qos, Sample, Tier,
 };
 use lb_store::Store;
 use serde_json::json;
@@ -59,8 +59,7 @@ async fn seeded_store(method: Option<Method>) -> Store {
     let samples: Vec<Sample> = (0..SAMPLES)
         .map(|i| sample("ax.v", i + 1, i * 1_000, json!(i as f64)))
         .collect();
-    write(&store, "nube", &samples, 0).await.unwrap();
-    while commit_batch(&store, "nube", 256).await.unwrap().drained() > 0 {}
+    commit_direct(&store, "nube", &samples).await.unwrap();
 
     set_policy(
         &store,

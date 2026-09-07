@@ -1,14 +1,10 @@
-//! The commit worker: drain one batch from staging and commit it to the `series` tables in **ONE
-//! SurrealDB transaction**. This is the load-bearing seam of the exactly-once guarantee (ingest
-//! scope):
+//! The commit engine: write a batch of samples to the `series` tables in **ONE SurrealDB
+//! transaction**. This is the load-bearing seam of the exactly-once guarantee (ingest scope):
 //!   - **one batch = one transaction** — a die-mid-batch rolls the whole batch back (atomic), never
 //!     a half-applied partial commit;
-//!   - **commit is an UPSERT keyed on `[series, producer, seq]`** — a re-drain after a restart
-//!     upserts each sample exactly once (idempotent), so "no double-commit on restart" is true, not
-//!     hoped;
-//!   - **the staged rows are deleted in the SAME transaction** as the series upsert — so a sample is
-//!     either (committed to series AND removed from staging) or (still staged), never both or
-//!     neither. A crash before COMMIT leaves the batch in staging for the next drain.
+//!   - **commit is an UPSERT keyed on `[series, producer, seq]`** — a producer that re-pushes after
+//!     a reconnect or a lost ack upserts each sample exactly once (idempotent), so "no double-write
+//!     on retry" is true, not hoped.
 //!
 //! `producer` is part of the key, so producer-A's seq=5 and producer-B's seq=5 on one series are
 //! TWO rows — both survive (the two-producer-collision guarantee). Keying on `(series, seq)` would
@@ -25,11 +21,9 @@
 //!
 //! Payload is stored **typed, not opaque** — SurrealDB's `CONTENT` preserves the JSON value's type.
 //!
-//! **One engine, two entry points.** [`commit_staged`] is the whole transaction builder;
-//! [`commit_batch_capped`] feeds it rows it drained out of staging (and has it delete them in the
-//! same tx), while [`commit_direct`](crate::commit_direct) feeds it the caller's own live batch,
-//! which was never staged. Keeping ONE builder is what makes "exactly-once is keyed on
-//! `[series, producer, seq]`" a single fact rather than two implementations that agree today.
+//! **One engine, one entry point.** [`commit_direct`](crate::commit_direct) chunks a caller's batch
+//! and feeds it to this builder. That is the whole write path — there is no second way in, so
+//! "exactly-once is keyed on `[series, producer, seq]`" is one fact in one place.
 
 use std::collections::HashSet;
 
@@ -40,9 +34,10 @@ use crate::filter::FilterCounts;
 use crate::filter_pass::{filter_batch, Verdict};
 use crate::filter_state::{write_filter_state_bindings, write_filter_state_sql};
 use crate::labels::apply_labels;
-use crate::meta::{is_registered, register, series_count, DEFAULT_SERIES_CAP};
+use crate::meta::{is_registered, register, series_count};
+use crate::sample::Sample;
 use crate::schema::{ensure_series_schema, SERIES_LATEST_TABLE};
-use crate::staging::{Staged, DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
+use crate::tables::{DEAD_LETTER_TABLE, SERIES_TABLE};
 
 /// Outcome of one commit pass: how many samples were committed exactly-once this batch, how many
 /// were diverted to the dead-letter table by the series cardinality cap, and what the write-time
@@ -57,63 +52,29 @@ pub struct CommitPass {
 }
 
 impl CommitPass {
-    /// How many staged rows this pass DEQUEUED — committed, dead-lettered, or filtered away.
+    /// How many samples this pass HANDLED — committed, dead-lettered, or filtered away.
     ///
-    /// This, never `committed`, is the "did the drain make progress?" signal. A muted or heavily
-    /// deadbanded prefix commits ZERO rows while consuming a full batch, so a loop that stops on
-    /// `committed == 0` mistakes a filtering pass for an empty staging and abandons the backlog —
-    /// the drain-backpressure failure mode, re-introduced through a new door
+    /// This, never `committed`, is the "did the pass do anything?" signal. A muted or heavily
+    /// deadbanded prefix commits ZERO rows while handling a full batch, so anything that reads
+    /// `committed == 0` as "nothing was there" is wrong
     /// (`debugging/ingest/filtered-batch-stops-the-drain-loop.md`).
-    pub fn drained(&self) -> usize {
+    pub fn handled(&self) -> usize {
         self.committed + self.dead_lettered + self.filtered.dropped()
     }
 }
 
-/// Drain up to `batch` staged samples from `ws` and commit them under the default series
-/// cardinality cap. Returns the counts (0/0 when staging is empty). Call repeatedly to drain.
-pub async fn commit_batch(store: &Store, ws: &str, batch: usize) -> Result<CommitPass, StoreError> {
-    commit_batch_capped(store, ws, batch, DEFAULT_SERIES_CAP).await
-}
-
-/// [`commit_batch`] with an explicit per-workspace cap on distinct series names (`0` = unbounded).
-pub async fn commit_batch_capped(
-    store: &Store,
-    ws: &str,
-    batch: usize,
-    series_cap: usize,
-) -> Result<CommitPass, StoreError> {
-    let staged = drain(store, ws, batch).await?;
-    commit_staged(store, ws, &staged, series_cap, Dequeue::Yes).await
-}
-
-/// Whether the commit transaction must also DELETE the staged row of every sample it handles.
-///
-/// The two callers differ ONLY here. [`commit_batch_capped`] drained its samples OUT of staging, so
-/// the delete is what makes commit+dequeue atomic. [`commit_direct`](crate::commit_direct) never
-/// staged them at all, so there is no row to delete — emitting the DELETE anyway would append a
-/// tombstone per sample to the append-only log for a row that never existed, which is precisely the
-/// write amplification the direct path exists to remove (compaction-write-availability scope).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Dequeue {
-    Yes,
-    No,
-}
-
 /// Commit an already-materialized batch of samples to the series plane in ONE transaction.
 ///
-/// The single commit engine, shared by the staged drain and the direct caller path — so the two can
-/// never drift in their exactly-once behaviour (the UPSERT key `[series, producer, seq]` is written
-/// in exactly one place). Everything the drain guarantees holds for both: one batch = one tx, the
-/// cardinality gate, the normalize filters, the forward-only `series_latest` pointer, and the filter
-/// anchors persisted in the same tx as the samples that moved them.
-pub async fn commit_staged(
+/// The single commit engine, and the only way a sample reaches the series plane. One batch = one tx,
+/// the cardinality gate, the normalize filters, the forward-only `series_latest` pointer, and the
+/// filter anchors persisted in the same tx as the samples that moved them.
+pub async fn commit_samples(
     store: &Store,
     ws: &str,
-    staged: &[Staged],
+    samples: &[Sample],
     series_cap: usize,
-    dequeue: Dequeue,
 ) -> Result<CommitPass, StoreError> {
-    if staged.is_empty() {
+    if samples.is_empty() {
         return Ok(CommitPass::default());
     }
     ensure_series_schema(store, ws).await?;
@@ -122,18 +83,18 @@ pub async fn commit_staged(
     // the operator's own policy discards must not mint a `series_meta` registry row on its way out:
     // a muted prefix would otherwise consume the workspace's distinct-series budget for data it
     // never stores. Filtering is also strictly cheaper than the gate's per-series registry probes.
-    let filtered = filter_batch(store, ws, staged).await?;
+    let filtered = filter_batch(store, ws, samples).await?;
 
     // Cardinality gate: decide, per distinct series name in this batch, whether it is admitted.
     // Existing series always pass; new names are admitted while the registry stays under the cap.
     let mut admitted_series: HashSet<String> = HashSet::new();
     let mut rejected_series: HashSet<String> = HashSet::new();
     let mut count = series_count(store, ws).await?;
-    for (i, s) in staged.iter().enumerate() {
+    for (i, s) in samples.iter().enumerate() {
         if filtered.verdicts[i] == Verdict::Dropped {
             continue;
         }
-        let name = &s.sample.series;
+        let name = &s.series;
         if admitted_series.contains(name) || rejected_series.contains(name) {
             continue;
         }
@@ -157,12 +118,12 @@ pub async fn commit_staged(
     // no `series.read` can find — the pointer's whole contract is that it mirrors a committed row.
     let mut batch_newest: std::collections::HashMap<&str, (&crate::sample::Sample, Value)> =
         std::collections::HashMap::new();
-    for (i, s) in staged.iter().enumerate() {
-        if !admitted_series.contains(&s.sample.series) || filtered.verdicts[i] == Verdict::Dropped {
+    for (i, s) in samples.iter().enumerate() {
+        if !admitted_series.contains(&s.series) || filtered.verdicts[i] == Verdict::Dropped {
             continue;
         }
-        let payload = stored_payload(&s.sample.payload, filtered.verdicts[i]);
-        let smp = &s.sample;
+        let payload = stored_payload(&s.payload, filtered.verdicts[i]);
+        let smp = s;
         batch_newest
             .entry(smp.series.as_str())
             .and_modify(|cur| {
@@ -174,13 +135,13 @@ pub async fn commit_staged(
     }
 
     // Build one BEGIN…COMMIT: admitted samples UPSERT into series; cap-rejected samples divert to
-    // the dead-letter table. Both delete their staged row in the SAME tx (atomic dequeue).
+    // the dead-letter table.
     // Declare every table this transaction touches, first, in the same transaction.
     //
     // SurrealDB 3 raises `NotFoundError::Table` for a SELECT/UPDATE/DELETE against a table nothing
     // has written, and inside a TRANSACTION that aborts everything after it — the caller then sees
     // only "The query was not executed due to a failed transaction", nowhere near the real cause. A
-    // first commit on a fresh node hits exactly that: `series_latest` and the staging table have no
+    // first commit on a fresh node hits exactly that: `series_latest` has no
     // rows yet. `lb_store` restores the "absent table reads as empty" contract for ordinary
     // statements but cannot help inside a transaction, where the writes genuinely did not happen.
     // Idempotent, and the same thing prefs / agent config / tags / undo do for their own tables.
@@ -188,14 +149,28 @@ pub async fn commit_staged(
         "BEGIN TRANSACTION;\n\
          DEFINE TABLE IF NOT EXISTS {SERIES_TABLE};\n\
          DEFINE TABLE IF NOT EXISTS {SERIES_LATEST_TABLE};\n\
-         DEFINE TABLE IF NOT EXISTS {STAGING_TABLE};\n\
          DEFINE TABLE IF NOT EXISTS {DEAD_LETTER_TABLE};\n"
     );
     let mut bindings: Vec<(String, Value)> = Vec::new();
+    // WHEN this node diverted a sample, stamped once for the whole transaction. `prune_dead_letters`
+    // ages a row on this, falling back to the sample's own `ts` when it is absent — and that fallback
+    // is the producer's UNTRUSTED clock, so a skewed producer could make its dead letters immortal
+    // and grow the one ingest table nothing else bounds. Stamping it here closes that: the cap
+    // divert is the only writer of dead letters, so no row reaches the table unstamped.
+    bindings.push((
+        "dead_at".into(),
+        Value::Number(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis().min(u64::MAX as u128) as u64)
+                .unwrap_or(0)
+                .into(),
+        ),
+    ));
     let mut committed = 0;
     let mut dead_lettered = 0;
 
-    for (i, s) in staged.iter().enumerate() {
+    for (i, s) in samples.iter().enumerate() {
         let (se, pr, sq, ts, pl) = (
             format!("se{i}"),
             format!("pr{i}"),
@@ -204,11 +179,11 @@ pub async fn commit_staged(
             format!("pl{i}"),
         );
         if filtered.verdicts[i] == Verdict::Dropped {
-            // Filtered by the operator's own policy: nothing is stored, but the staged row is still
-            // dequeued below — the sample was ACCEPTED and then filtered, not lost in transit. It is
-            // already tallied per-reason on the pass result, so the discard is observable.
-        } else if admitted_series.contains(&s.sample.series) {
-            // UPSERT keyed on the composite [series, producer, seq] → exactly-once on re-drain.
+            // Filtered by the operator's own policy: nothing is stored. The sample was ACCEPTED and
+            // then filtered, not lost in transit — it is tallied per-reason on the pass result, so
+            // the discard is observable to the writer.
+        } else if admitted_series.contains(&s.series) {
+            // UPSERT keyed on the composite [series, producer, seq] → exactly-once on a replay.
             // `ts` lands as a real datetime (wire ts is epoch ms).
             sql.push_str(&format!(
                 "UPSERT type::record('{SERIES_TABLE}', [${se}, ${pr}, ${sq}]) \
@@ -221,24 +196,17 @@ pub async fn commit_staged(
             sql.push_str(&format!(
                 "UPSERT type::record('{DEAD_LETTER_TABLE}', [${se}, ${pr}, ${sq}]) \
                  CONTENT {{ sample: {{ series: ${se}, producer: ${pr}, seq: ${sq}, ts: ${ts}, \
-                 payload: ${pl} }}, reason: 'series-cap' }};\n"
+                 payload: ${pl} }}, reason: 'series-cap', dead_at: $dead_at }};\n"
             ));
             dead_lettered += 1;
         }
-        // Delete the staged row in the SAME tx so commit + dequeue are atomic. Skipped on the direct
-        // path, where nothing was ever staged (see [`Dequeue`]).
-        if dequeue == Dequeue::Yes {
-            sql.push_str(&format!(
-                "DELETE type::record('{STAGING_TABLE}', [${se}, ${pr}, ${sq}]);\n"
-            ));
-        }
-        bindings.push((se, Value::String(s.sample.series.clone())));
-        bindings.push((pr, Value::String(s.sample.producer.clone())));
-        bindings.push((sq, Value::Number(s.sample.seq.into())));
-        bindings.push((ts, Value::Number(s.sample.ts.into())));
+        bindings.push((se, Value::String(s.series.clone())));
+        bindings.push((pr, Value::String(s.producer.clone())));
+        bindings.push((sq, Value::Number(s.seq.into())));
+        bindings.push((ts, Value::Number(s.ts.into())));
         // A clamped sample stores the BOUND, not the reading — that is the whole point of `clamp`
         // mode, and the anchor the next deadband compares against was advanced to the same value.
-        bindings.push((pl, stored_payload(&s.sample.payload, filtered.verdicts[i])));
+        bindings.push((pl, stored_payload(&s.payload, filtered.verdicts[i])));
     }
 
     // Advance the newest-sample pointer for each series touched this batch — in the SAME tx, so the
@@ -282,20 +250,19 @@ pub async fn commit_staged(
     sql.push_str("COMMIT TRANSACTION;");
 
     // Bounded retry-on-conflict (`store::query_ws_retrying`): with ≥2 producers pushing every couple
-    // of seconds, two inline drains grab the same head-of-queue staged rows and their `BEGIN…COMMIT`
-    // blocks race on the shared `series`/`series_latest` rows — SurrealDB's optimistic MVCC aborts one
-    // with `read or write conflict … can be retried`, and the GC pass evicting raw from `series` adds a
-    // second collision surface. Retrying the WHOLE transaction is safe: it is atomic (a conflict aborts
-    // and fully rolls back — never a partial commit to reconcile) and idempotent (the samples UPSERT is
-    // keyed on `[series, producer, seq]` and it deletes exactly the staged rows it read), so a retry
-    // re-applies the batch exactly once — the same guarantee the exactly-once drain already relies on.
+    // of seconds, two concurrent commits race on the shared `series`/`series_latest` rows —
+    // SurrealDB's optimistic MVCC aborts one with `read or write conflict … can be retried`, and the
+    // GC pass evicting raw from `series` adds a second collision surface. Retrying the WHOLE
+    // transaction is safe: it is atomic (a conflict aborts and fully rolls back — never a partial
+    // commit to reconcile) and idempotent (the samples UPSERT is keyed on `[series, producer, seq]`),
+    // so a retry re-applies the batch exactly once — the same guarantee exactly-once relies on.
     store.query_ws_retrying(ws, &sql, bindings).await?;
 
     // Label→tag conversion, once per series (post-tx: edges are derived truth, re-derivable).
     let mut labeled: HashSet<&str> = HashSet::new();
-    for s in staged {
-        if admitted_series.contains(&s.sample.series) && labeled.insert(s.sample.series.as_str()) {
-            apply_labels(store, ws, &s.sample).await?;
+    for s in samples {
+        if admitted_series.contains(&s.series) && labeled.insert(s.series.as_str()) {
+            apply_labels(store, ws, s).await?;
         }
     }
 
@@ -306,7 +273,7 @@ pub async fn commit_staged(
     })
 }
 
-/// The payload a verdict actually stores: the staged value, or the `range` bound a `clamp` chose.
+/// The payload a verdict actually stores: the sample's own value, or the `range` bound a `clamp` chose.
 ///
 /// A clamped value is indistinguishable from a real reading at the bound — which is exactly why the
 /// pass counts it (`filtered.clamped`) and why `drop` is the default mode.
@@ -316,31 +283,3 @@ fn stored_payload(payload: &Value, verdict: Verdict) -> Value {
         _ => payload.clone(),
     }
 }
-
-/// Read up to `batch` staged rows from `ws`, oldest-first (by seq then ts). The drain does NOT
-/// delete here — deletion happens inside the commit transaction so it is atomic with the series
-/// upsert. A crash between drain and commit simply re-reads the same rows next pass.
-async fn drain(store: &Store, ws: &str, batch: usize) -> Result<Vec<Staged>, StoreError> {
-    let mut resp = store
-        .query_ws(
-            ws,
-            // SurrealDB requires an ORDER BY idiom to appear in the projection — so we also select
-            // the order keys (debugging/store/order-by-needs-selected-idiom.md). We only consume
-            // `sample` (via `Staged`); the extra fields are projection-only.
-            &format!(
-                "SELECT sample, sample.seq AS _seq, sample.ts AS _ts FROM {STAGING_TABLE} \
-                 ORDER BY _seq ASC, _ts ASC LIMIT {batch}"
-            ),
-            vec![],
-        )
-        .await?;
-    let rows: Vec<Staged> = resp
-        .take(0)
-        .map_err(|e| StoreError::Decode(e.to_string()))?;
-    Ok(rows)
-}
-
-// SurrealDB 3 reads query rows through `SurrealValue`. These delegate to serde rather than
-// deriving, so `#[serde(default)]` and `deserialize_with = "de_opt_lenient_f64"` keep working
-// unchanged — the derive supports neither. See `lb_store::surreal_value_via_serde!`.
-lb_store::surreal_value_via_serde!(Staged);

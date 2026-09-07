@@ -13,7 +13,7 @@
 //!     the registry (one row per name) cannot. Real store, real commit path, no mocks (rule 9).
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_ingest_tool, drain_workspace};
+use lb_host::call_ingest_tool;
 use lb_store::Store;
 use serde_json::json;
 
@@ -50,7 +50,6 @@ async fn write_seqs(store: &Store, p: &Principal, ws: &str, series: &str, count:
     call_ingest_tool(store, p, ws, "ingest.write", &json!({ "samples": samples }))
         .await
         .unwrap();
-    drain_workspace(store, ws).await.unwrap();
 }
 
 /// `series.list(prefix)` → the returned names (prefix omitted = all).

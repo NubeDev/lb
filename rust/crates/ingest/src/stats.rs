@@ -24,7 +24,7 @@ use lb_store::{Store, StoreError};
 use serde_json::Value;
 
 use crate::schema::ROLLUP_TABLE;
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// One rollup tier's stored-row count for a series.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

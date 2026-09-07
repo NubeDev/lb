@@ -29,7 +29,7 @@ use crate::align::{bucket_start, phase_of, start_of_index, Align};
 use crate::bucket_acc::{finish, fold_rollup, Acc};
 use crate::page::{read_page, Direction, PageError, PageQuery};
 use crate::rollup::read_rollups;
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 use serde_json::Value;
 
 use crate::bucket_rows::{CountRow, NumRow};

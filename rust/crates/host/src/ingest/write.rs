@@ -1,8 +1,8 @@
-//! `ingest.write` — authorize, stamp the authenticated producer, then durably accept the batch:
-//! commit it straight to the series plane when staging is empty, else append it to staging.
+//! `ingest.write` — authorize, stamp the authenticated producer, then commit the batch to the series
+//! plane. One path, one transaction per chunk; the write is durable when this returns.
 //!
 //! **The producer is ROOTED at the authenticated calling principal**, and a caller MAY namespace its
-//! own streams beneath it: the staged producer is `principal.sub()` when the caller declares nothing,
+//! own streams beneath it: the stored producer is `principal.sub()` when the caller declares nothing,
 //! else `{principal.sub()}/{declared}`. The principal prefix is stamped by us and cannot be forged,
 //! so the dedup identity `(series, producer, seq)` still cannot be made to collide with or overwrite
 //! ANOTHER principal's stream (ingest scope) — a caller can only ever carve up its own namespace.
@@ -16,15 +16,11 @@
 //! producer-B's seq=5 on one series are two rows); only this stamp disagreed.
 
 use lb_auth::Principal;
-use lb_ingest::{write as stage_write, FilterCounts, Sample};
+use lb_ingest::{FilterCounts, Sample};
 use lb_store::Store;
 
 use super::authorize::authorize_ingest;
 use super::error::IngestError;
-
-/// The default staging bound (max staged rows per workspace) — bounded at the cloud end. A real
-/// node folds this into config; the slice fixes a sane default (rate-limiting is out of this slice).
-pub const DEFAULT_STAGING_BOUND: usize = 100_000;
 
 /// The separator between the authenticated principal root and a caller-declared sub-namespace.
 const NS_SEP: char = '/';
@@ -94,11 +90,8 @@ pub fn producer_ext_id(producer: &str) -> Option<&str> {
 /// the authenticated producer root onto every sample (preserving any caller-declared sub-namespace
 /// beneath it). Returns the count accepted.
 ///
-/// **Two paths, one decision — see [`take_path`].** With staging empty the batch is committed
-/// directly to the series plane; otherwise it is appended to staging and committed by the drain.
-/// Either way acceptance means the store write returned, and the caller's own bounded drain still
-/// runs afterwards (it finds an empty staging on the direct path — one cheap query — and still
-/// flushes anything a concurrent producer left behind).
+/// Acceptance means the COMMIT of the transaction that stores the samples returned, so they are
+/// readable the instant this does. There is nothing to drain afterwards.
 pub async fn ingest_write(
     store: &Store,
     principal: &Principal,
@@ -112,15 +105,9 @@ pub async fn ingest_write(
 
 /// [`ingest_write`], additionally reporting what this call's commit FILTERED.
 ///
-/// On the DIRECT path the batch is committed here, so the per-reason counts exist here and nowhere
-/// else: the caller's follow-up drain finds staging empty and reports zeroes. `ingest_write` dropped
-/// the `CommitPass` on the floor, which meant a producer on the fast path — the common one, since it
-/// is taken whenever staging is empty — saw `accepted: 4`, found 2 rows, and got nothing on the wire
-/// explaining the gap. That is exactly the hole the reply's `filtered` block exists to close, and it
-/// was open on every direct write while the staged path still reported correctly.
-///
-/// On the STAGE path nothing is committed yet, so the counts are zero here and arrive from the
-/// caller's bounded drain instead. Callers should merge the two.
+/// The batch is committed here, so the per-reason counts exist here and nowhere else. Without them a
+/// producer whose samples an operator's own policy discarded would see `accepted: 4`, find 2 rows,
+/// and get nothing on the wire explaining the gap.
 ///
 /// Additive: `ingest_write`'s signature is unchanged, so no embedder has to move.
 pub async fn ingest_write_reporting(
@@ -138,60 +125,10 @@ pub async fn ingest_write_reporting(
             s
         })
         .collect();
-    // ONE staging count decides the path — and it is the same count `stage_write` would have taken
-    // for its headroom estimate, so the staged path pays nothing for the choice.
-    let staged_now = lb_ingest::staged_count(store, ws).await?;
-    match take_path(staged_now) {
-        Path::Direct => {
-            let pass = lb_ingest::commit_direct(store, ws, &stamped).await?;
-            // `accepted` stays the batch size: acceptance is deliberately UNFILTERED (the filter is a
-            // commit-time decision), and the direct path has no staging row to count instead.
-            Ok((stamped.len(), pass.filtered))
-        }
-        Path::Stage => Ok((
-            stage_write(store, ws, &stamped, DEFAULT_STAGING_BOUND).await?,
-            FilterCounts::default(),
-        )),
-    }
-}
-
-/// Which path a batch takes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Path {
-    /// Commit straight to `series` in one transaction — one log append per sample.
-    Direct,
-    /// Append to staging; the drain commits it — three log appends per sample.
-    Stage,
-}
-
-/// The rule: **direct commit iff nothing is queued ahead of this batch.**
-///
-/// This is the caller-path lever of the compaction-write-availability scope. On the append-only
-/// engine a staged sample costs three log appends (staging UPSERT, series UPSERT, staging DELETE
-/// tombstone) where a directly-committed one costs one; the log is also the node's RSS high-water
-/// mark and what drives the stop-the-world compaction pass, so ~3× less log growth stretches the
-/// pass interval, the pass duration and the memory plateau by the same factor. A live producer
-/// pushing into a drained node stages, immediately drains what it just staged, and tombstones it —
-/// that round-trip is pure amplification and this removes it.
-///
-/// Why the emptiness test and not, say, a batch-size threshold: a NON-empty staging means a backlog
-/// the reactor is still working through or a concurrent producer's rows sitting ahead of this batch,
-/// and both must be committed in staging order rather than jumped. Emptiness is the exact and
-/// complete statement of "there is nothing to order against". It also keeps every relief staging
-/// exists for — bursts that outrun the indexed commit, offline re-appends, crash recovery — on the
-/// staged path untouched, because in all of those staging is by definition not empty.
-///
-/// A concurrent writer can stage a row between the count and the commit. That is the same benign
-/// race the headroom estimate already lives with: the two batches commit as two transactions on the
-/// shared `series`/`series_latest` rows, SurrealDB's optimistic MVCC aborts one, and the commit's
-/// bounded retry re-applies it idempotently on the same `[series, producer, seq]` key. The
-/// `series_latest` pointer is forward-only, so neither ordering of the two can regress it.
-fn take_path(staged_now: usize) -> Path {
-    if staged_now == 0 {
-        Path::Direct
-    } else {
-        Path::Stage
-    }
+    let pass = lb_ingest::commit_direct(store, ws, &stamped).await?;
+    // `accepted` is the batch size: acceptance is deliberately UNFILTERED — the filter is a
+    // commit-time decision an operator configured, and `filtered` reports it separately.
+    Ok((stamped.len(), pass.filtered))
 }
 
 #[cfg(test)]
@@ -282,17 +219,6 @@ mod tests {
         // A bare prefix names no extension.
         assert_eq!(producer_ext_id("ext:"), None);
         assert_eq!(producer_ext_id("ext:/leaf"), None);
-    }
-
-    /// The caller-path lever of the compaction-write-availability scope, stated as a rule: a batch
-    /// only jumps the staging queue when there IS no queue. Anything already staged is a backlog or
-    /// a concurrent producer and must commit first, in order.
-    #[test]
-    fn a_batch_commits_directly_only_when_nothing_is_queued_ahead_of_it() {
-        assert_eq!(take_path(0), Path::Direct);
-        for staged in [1, 2, 255, 256, 100_000] {
-            assert_eq!(take_path(staged), Path::Stage, "staged={staged}");
-        }
     }
 
     /// The regression this fixes: two epochs of ONE extension must be DIFFERENT producers, so a

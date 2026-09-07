@@ -1,5 +1,12 @@
 # Store scope — compaction write availability: shrink (then remove) the stop-the-world pause
 
+> **Lever 1 went further afterwards.** This scope halved the write amplification by taking a direct
+> commit *whenever staging was empty*, keeping the staged path for the cases staging was believed to
+> serve. Those cases were then measured and the belief did not survive: **staging is removed
+> entirely** and the direct commit is the only path
+> ([`../ingest/remove-staging-scope.md`](../ingest/remove-staging-scope.md)). Three writes per sample
+> become one unconditionally, not conditionally.
+
 Status: **BUILT (lever 1) / lever 2 REJECTED at the pinned engine** — 2026-08-09, NubeDev/lb#152.
 See "What actually landed" at the bottom: the direct-commit path shipped, and snapshot-compaction
 was disqualified by reading surrealkv 0.9.3 rather than left as an open question.

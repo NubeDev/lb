@@ -31,7 +31,7 @@ use std::sync::OnceLock;
 
 use lb_store::{Store, StoreError};
 
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// The rollup-tier table (retention GC writes, bucketed reads merge). Indexed here alongside the
 /// raw series indexes so every series-plane index lives in one place.

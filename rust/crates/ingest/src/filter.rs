@@ -2,13 +2,11 @@
 //! commits (series-normalize scope). This file is PURE: no store, no async, no I/O. It answers one
 //! question — given a filter, a payload, its `ts`, and the last **committed** sample of this
 //! `(series, producer)`, does this sample land? [`filter_pass`](crate::filter_pass) owns the batch
-//! walk and the state round-trip; [`commit_batch`](crate::commit_batch) owns the transaction.
+//! walk and the state round-trip; [`commit_samples`](crate::commit_samples) owns the transaction.
 //!
-//! **Why commit and not accept.** The staging append stays index-free and cheap (the
-//! drain-backpressure invariant): a deadband needs the last committed value, and reading it on the
-//! producer's own append re-couples producer rate to store queries — the exact coupling
-//! drain-backpressure removed. At commit the batch is already in hand and the state read is one
-//! query for the whole batch.
+//! **Why per batch and not per sample.** A deadband needs the last committed value of its
+//! `(series, producer)`. Reading that once per sample would be one store query per sample; at commit
+//! the whole batch is already in hand and the state read is ONE query for all of it.
 //!
 //! **Counted, never silent.** Every drop increments a per-reason counter that rides the
 //! [`CommitPass`](crate::CommitPass) out to the caller. An operator's own policy discarding a
@@ -226,7 +224,7 @@ pub fn decide(filter: &Filter, payload: &Value, ts: u64, last: Option<&LastCommi
     if filter.min_interval_ms > 0 {
         if let Some(anchor) = last {
             // Keep the FIRST sample of each interval: anything landing before the anchor's interval
-            // has elapsed is redundant. Deterministic under a re-drain — the first accepted commit
+            // has elapsed is redundant. Deterministic under a replay — the first accepted commit
             // wins, and a replay of the same batch reaches the same verdict against the same anchor
             // (a "keep last" rule would have to rewrite an already-committed row per interval).
             if ts < anchor.ts.saturating_add(filter.min_interval_ms) {

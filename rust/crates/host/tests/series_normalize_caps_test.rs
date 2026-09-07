@@ -7,7 +7,7 @@
 //! dispatch — no mocks (testing §0).
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_ingest_tool, drain_workspace, Node};
+use lb_host::{call_ingest_tool, Node};
 use lb_ingest::{Qos, Sample};
 use lb_mcp::ToolError;
 use serde_json::{json, Value};
@@ -55,10 +55,9 @@ async fn call(
 
 /// Commit `samples` through the real write → drain path.
 async fn seed(node: &Node, ws: &str, samples: Vec<Sample>) {
-    lb_ingest::write(&node.store, ws, &samples, 0)
+    lb_ingest::commit_direct(&node.store, ws, &samples)
         .await
         .unwrap();
-    drain_workspace(&node.store, ws).await.unwrap();
 }
 
 fn sample_at(series: &str, producer: &str, seq: u64, ts: u64, payload: Value) -> Sample {

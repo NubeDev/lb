@@ -17,7 +17,7 @@ use serde_json::Value;
 
 use crate::meta::is_registered;
 use crate::schema::{ROLLUP_TABLE, SERIES_LATEST_TABLE, SERIES_META_TABLE};
-use crate::staging::{SERIES_TABLE, STAGING_TABLE};
+use crate::tables::SERIES_TABLE;
 
 /// Why a rename was refused.
 #[derive(Debug, thiserror::Error)]
@@ -30,7 +30,7 @@ pub enum RenameError {
     Store(#[from] StoreError),
 }
 
-/// Rename `from` → `to` in `ws`, carrying its samples, rollups, staged rows, registry row, and tag
+/// Rename `from` → `to` in `ws`, carrying its samples, rollups, registry row, and tag
 /// edges. Fails with [`RenameError::TargetExists`] if `to` is already a series (never merges), and
 /// [`RenameError::Unchanged`] if `from == to`. Names are bound, never interpolated.
 pub async fn rename_series(
@@ -58,7 +58,6 @@ pub async fn rename_series(
     let sql = format!(
         "UPDATE {SERIES_TABLE} SET series = $to WHERE series = $from;
          UPDATE {ROLLUP_TABLE} SET series = $to WHERE series = $from;
-         UPDATE {STAGING_TABLE} SET sample.series = $to WHERE sample.series = $from;
          LET $meta = (SELECT labels_applied FROM type::record($meta_tb, $from))[0];
          DELETE type::record($meta_tb, $from);
          UPSERT type::record($meta_tb, $to) SET series = $to, \
