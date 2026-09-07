@@ -102,8 +102,8 @@ pub use sample::{Qos, Sample};
 pub use samples_delete::{delete_samples_by_keys, delete_samples_in_range, SampleKey};
 pub use samples_update::{update_samples, SampleUpdate};
 pub use schema::{
-    ensure_series_schema, series_time_index_enabled, set_series_time_index, ROLLUP_TABLE,
-    SERIES_META_TABLE,
+    ensure_series_schema, reset_schema_guard_for_test, series_time_index_enabled,
+    set_series_time_index, ROLLUP_TABLE, SERIES_META_TABLE,
 };
 pub use staging::{DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
 pub use stats::{series_producers, series_stats, SeriesStats, TierRows};

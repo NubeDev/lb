@@ -79,6 +79,15 @@ pub fn series_time_index_enabled() -> bool {
     TIME_INDEX.load(Ordering::Relaxed)
 }
 
+/// Forget which workspaces this process has already ensured, so the next call re-runs the pass.
+///
+/// The guard exists to skip a repeat migration scan inside ONE process. A node restart clears it
+/// by definition, and the restart is the case that broke, so a test has to be able to reach it.
+#[doc(hidden)]
+pub fn reset_schema_guard_for_test() {
+    ensured().lock().expect("schema guard").clear();
+}
+
 pub async fn ensure_series_schema(store: &Store, ws: &str) -> Result<(), StoreError> {
     if ensured().lock().expect("schema guard").contains(ws) {
         return Ok(());
@@ -86,7 +95,10 @@ pub async fn ensure_series_schema(store: &Store, ws: &str) -> Result<(), StoreEr
     // Migration FIRST (a numeric `ts` under a datetime-typed index definition would be rejected):
     // legacy rows committed `ts` as epoch milliseconds; convert in place. Type-guarded → idempotent.
     let sql = format!(
-        "UPDATE {SERIES_TABLE} SET ts = time::from_millis(ts) WHERE type::is_number(ts);
+        "IF (SELECT VALUE count() FROM {SERIES_TABLE} WHERE type::is_number(ts) GROUP ALL)[0] ?? 0 > 0 {{
+             UPDATE {SERIES_TABLE} SET ts =
+                 IF type::is_number(ts) {{ time::from_millis(ts) }} ELSE {{ ts }};
+         }};
          DEFINE FIELD IF NOT EXISTS ts ON {SERIES_TABLE} TYPE datetime;
          DEFINE INDEX IF NOT EXISTS series_seq_idx ON {SERIES_TABLE} FIELDS series, seq;
          {time_index}
