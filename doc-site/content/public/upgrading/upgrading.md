@@ -212,8 +212,9 @@ list is the exact set of series that just lost history.
 
 ### Dead letters now expire after 30 days
 
-`ingest_dead_letter` — must-deliver samples diverted by the staging bound — was the one ingest
-table nothing ever pruned. It now has a **30-day horizon** (`DEAD_LETTER_KEEP_MS`), enforced by the
+`ingest_dead_letter` — must-deliver samples the node could not store, diverted with
+`reason: 'series-cap'` when a workspace is already at its series cardinality limit — was the one
+ingest table nothing ever pruned. It now has a **30-day horizon** (`DEAD_LETTER_KEEP_MS`), enforced by the
 same per-workspace GC pass, reported as `GcPass::evicted_dead_letters`.
 
 The horizon is deliberately separate from `raw_for_ms` and is not a policy field: dead letters are

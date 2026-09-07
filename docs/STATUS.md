@@ -64,10 +64,14 @@ reactor ran every two seconds, so leaving a node idle a moment before upgrading 
 boot drain was written and then deliberately removed: keeping the staging read path alive to serve an
 upgrade leaves the whole idea in the tree for the next reader to build on.
 
-**State:** `lb-ingest` suite green including the rewritten conflict-storm test; workspace compiles
-`--all-targets`; `fmt` clean; FILE-LAYOUT gate one violation *better* than the parent branch.
-`lb-host`, `lb-role-gateway` and `lb-node` suites are **not yet run** — the local disc filled during
-the link step, so they run in CI.
+**Docs rewritten to the current state, not bannered:** `public/ingest/ingest.md` (the write-path
+guarantees, plus a short "why there is no staging table" section for operators who will notice the
+change), `skills/ingest-series/SKILL.md`, and the dead-letter note in `public/upgrading/upgrading.md`
+— dead letters now come only from the series cardinality cap.
+
+**State:** CI run 33862501263 is green on every test shard (`host`, `gateway`, `rest`), plus `fmt`,
+`packages` and `deploy-image`. `file-layout` fails on inherited violations, one fewer than the parent
+branch; this work added none.
 
 ---
 
