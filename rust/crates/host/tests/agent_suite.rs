@@ -34,6 +34,8 @@ mod agent_external_substrate_test;
 mod agent_hardening_error_test;
 #[path = "agent/agent_in_house_wiring_test.rs"]
 mod agent_in_house_wiring_test;
+#[path = "agent/agent_invoke_mcp_test.rs"]
+mod agent_invoke_mcp_test;
 #[path = "agent/agent_isolation_test.rs"]
 mod agent_isolation_test;
 #[path = "agent/agent_loop_detector_test.rs"]

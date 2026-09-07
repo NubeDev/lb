@@ -683,6 +683,17 @@ pub(crate) async fn run_host_verb(
         let id = input.get("id").and_then(Value::as_str);
         let result = crate::agent_def_test(node, principal, ws, id).await?;
         serde_json::to_value(result).map_err(|e| ToolError::Extension(e.to_string()))?
+    } else if qualified_tool == "agent.invoke" {
+        // The agent's MCP transport. Handled HERE (not in `call_agent_tool`) for the same reason
+        // `agent.def.test` is: it needs the `&Arc<Node>` this dispatcher holds — to assemble the
+        // caller's reachable tool menu and to drive `invoke_via_runtime`. Its own `mcp:agent.invoke:
+        // call` gate re-runs inside (defense in depth, and the gate the routed/HTTP doors share).
+        //
+        // This arm is what lets a NON-BROWSER caller reach the agent — above all a **reminder**
+        // (`action_kind: "mcp-tool"`), whose only route to a verb is this chokepoint. Without it the
+        // verb answered `403 "no such tool"` to a caller holding the grant: cap, catalog descriptor
+        // and routed path all existed, only the `match` arm was missing.
+        crate::call_agent_invoke_tool(node, principal, ws, &input, now_ts()).await?
     } else if qualified_tool.starts_with("agent.") {
         // agent-run scope Part 2: the policy/decision verbs (`agent.policy.set`, `agent.decide`).
         // One branch; `call_agent_tool` matches the verb and delegates. `agent.watch` (Part 3)

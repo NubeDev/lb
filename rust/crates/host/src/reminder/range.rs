@@ -10,10 +10,17 @@
 //! only drifts). Refusing beats ignoring: a silently-ignored `preset` leaves a reminder that LOOKS
 //! configured and mails the fallback window every night.
 //!
-//! Generic over the action (rule 10): this inspects the payload's `range`/`preset` KEYS, never the
-//! target/tool name — an `mcp-tool` action's `args` and an `outbox` action's JSON `payload` get
-//! the identical treatment, and a payload without the keys (or a non-JSON outbox payload) passes
-//! through untouched.
+//! It also resolves the **`{{fire_ts}}` placeholder** in any string value of the payload — the
+//! second, smaller fire-time substitution. A reminder's args are STATIC, so a verb that is
+//! idempotent on some caller-supplied id (`agent.invoke`'s `job_id`) would be handed the identical
+//! id on every tick and REPLAY its first result forever. Interpolating the fire clock is what makes
+//! a repeating schedule produce a distinct run, and it belongs here for the same reason `range`
+//! does: it is the one place the payload meets the fire clock.
+//!
+//! Generic over the action (rule 10): this inspects the payload's `range`/`preset` KEYS and its
+//! string VALUES, never the target/tool name — an `mcp-tool` action's `args` and an `outbox`
+//! action's JSON `payload` get the identical treatment, and a payload without the keys or the
+//! placeholder (or a non-JSON outbox payload) passes through untouched.
 
 use lb_reminders::{Action, ReminderError};
 use serde_json::Value;
@@ -52,6 +59,9 @@ pub(super) fn resolve_payload_window(
     now_secs: u64,
 ) -> Result<Value, ReminderError> {
     refuse_preset(payload)?;
+    // The `{{fire_ts}}` placeholder is independent of `range` — a payload may carry either, both, or
+    // neither, so it is substituted first and the `range` work below operates on the result.
+    let payload = &substitute_fire_ts(payload, now_secs);
     let Some(range) = payload.get("range").filter(|r| r.is_object()) else {
         return Ok(payload.clone());
     };
@@ -64,6 +74,34 @@ pub(super) fn resolve_payload_window(
         obj.insert("to".into(), Value::String(resolved.to_day));
     }
     Ok(out)
+}
+
+/// The fire-clock placeholder, substituted in every STRING value of the payload (recursively, into
+/// nested objects and arrays). Kept deliberately dumb: one token, plain textual replacement, no
+/// expression grammar — the caller composes it (`"job_id": "daily-review-{{fire_ts}}"`).
+const FIRE_TS: &str = "{{fire_ts}}";
+
+/// Replace [`FIRE_TS`] with the fire clock's epoch seconds throughout `payload`'s string values.
+/// A payload not containing the token is returned structurally unchanged.
+///
+/// Why epoch SECONDS and not a formatted date: it is monotonic per firing and needs no timezone to
+/// be meaningful, so two fires of the same schedule can never collide — which is the entire point.
+/// A caller wanting a human-readable id can still read the date off the run record.
+fn substitute_fire_ts(payload: &Value, now_secs: u64) -> Value {
+    match payload {
+        Value::String(s) if s.contains(FIRE_TS) => {
+            Value::String(s.replace(FIRE_TS, &now_secs.to_string()))
+        }
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), substitute_fire_ts(v, now_secs)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(
+            items.iter().map(|v| substitute_fire_ts(v, now_secs)).collect(),
+        ),
+        other => other.clone(),
+    }
 }
 
 /// Validate one payload object's `range` key — and refuse the removed `preset`.
@@ -213,5 +251,70 @@ mod tests {
         let later = resolve_payload_window(&p, JUL_29 + 31 * 86_400).unwrap();
         assert_eq!(later["from"], "2026-07-01");
         assert_eq!(later["to"], "2026-08-01");
+    }
+
+
+    // ── the `{{fire_ts}}` placeholder ────────────────────────────────────────────────────────────
+
+    /// **The replay trap this exists to close.** A reminder's args are static, and `agent.invoke` is
+    /// idempotent on `job_id` — so a daily review scheduled with a FIXED id would return the first
+    /// run's answer every day thereafter, never calling the model, looking exactly like a frozen
+    /// agent. Interpolating the fire clock makes each firing a distinct durable run.
+    #[test]
+    fn fire_ts_makes_each_firing_a_distinct_job_id() {
+        let args = json!({ "job_id": "daily-review-{{fire_ts}}", "goal": "review yesterday" });
+
+        let first = resolve_payload_window(&args, JUL_29).unwrap();
+        let next_day = resolve_payload_window(&args, JUL_29 + 86_400).unwrap();
+
+        assert_eq!(first["job_id"], format!("daily-review-{JUL_29}"));
+        assert_ne!(
+            first["job_id"], next_day["job_id"],
+            "two firings must not share a job_id, or the second replays the first"
+        );
+        // Only the placeholder moves; everything else is untouched.
+        assert_eq!(first["goal"], "review yesterday");
+    }
+
+    /// The substitution is generic over the payload shape (rule 10) — it reads string VALUES, not
+    /// tool names — so it reaches nested objects and arrays too.
+    #[test]
+    fn fire_ts_substitutes_anywhere_in_the_payload() {
+        let args = json!({
+            "job_id": "run-{{fire_ts}}",
+            "nested": { "tag": "t-{{fire_ts}}" },
+            "list": ["a-{{fire_ts}}", "plain"],
+            "count": 3
+        });
+        let out = resolve_payload_window(&args, JUL_29).unwrap();
+        assert_eq!(out["job_id"], format!("run-{JUL_29}"));
+        assert_eq!(out["nested"]["tag"], format!("t-{JUL_29}"));
+        assert_eq!(out["list"][0], format!("a-{JUL_29}"));
+        assert_eq!(out["list"][1], "plain", "untokenized strings are untouched");
+        assert_eq!(out["count"], 3, "non-string values are untouched");
+    }
+
+    /// A payload without the token is returned structurally unchanged — the placeholder is additive,
+    /// so every reminder that predates it keeps firing byte-identically.
+    #[test]
+    fn a_payload_without_the_token_is_unchanged() {
+        let p = json!({ "job_id": "fixed-id", "goal": "x" });
+        assert_eq!(resolve_payload_window(&p, JUL_29).unwrap(), p);
+    }
+
+    /// The two fire-time substitutions compose: a payload may carry both a `range` and the
+    /// placeholder, and each resolves without disturbing the other.
+    #[test]
+    fn fire_ts_and_range_resolve_together() {
+        let args = json!({
+            "job_id": "sweep-{{fire_ts}}",
+            "range": { "from": "last-7-days" }
+        });
+        let out = resolve_payload_window(&args, JUL_29).unwrap();
+        assert_eq!(out["job_id"], format!("sweep-{JUL_29}"));
+        assert!(
+            out.get("from").and_then(Value::as_str).is_some(),
+            "the range still resolved to concrete days alongside the placeholder"
+        );
     }
 }
