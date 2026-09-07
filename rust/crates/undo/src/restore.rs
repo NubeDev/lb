@@ -59,19 +59,19 @@ pub(crate) async fn restore_all(
         binds.push((ex.clone(), Value::from(r.expected_rev)));
         // Re-assert the predicate; THROW (and thus roll back) on mismatch.
         q.push_str(&format!(
-            "IF (type::thing(${tb}, ${id}).rev ?? 0) != ${ex} {{ THROW 'stale' }};\n"
+            "IF (type::record(${tb}, ${id}).rev ?? 0) != ${ex} {{ THROW 'stale' }};\n"
         ));
         match &r.target {
             Some(v) => {
                 let d = format!("d{i}");
                 binds.push((d.clone(), v.clone()));
                 q.push_str(&format!(
-                    "UPSERT type::thing(${tb}, ${id}) CONTENT {{ data: ${d}, \
-                     rev: (type::thing(${tb}, ${id}).rev ?? 0) + 1 }} RETURN NONE;\n"
+                    "UPSERT type::record(${tb}, ${id}) CONTENT {{ data: ${d}, \
+                     rev: (type::record(${tb}, ${id}).rev ?? 0) + 1 }} RETURN NONE;\n"
                 ));
             }
             None => {
-                q.push_str(&format!("DELETE type::thing(${tb}, ${id});\n"));
+                q.push_str(&format!("DELETE type::record(${tb}, ${id});\n"));
             }
         }
     }

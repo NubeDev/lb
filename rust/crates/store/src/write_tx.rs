@@ -38,13 +38,13 @@ pub async fn write_tx(
         .query_ws(
             ws,
             "BEGIN TRANSACTION;
-             UPSERT type::thing($ct, $cid) CONTENT { \
+             UPSERT type::record($ct, $cid) CONTENT { \
                 data: $cdata, \
-                rev: (type::thing($ct, $cid).rev ?? ($first - 1)) + 1 \
+                rev: (type::record($ct, $cid).rev ?? ($first - 1)) + 1 \
              } RETURN NONE;
-             UPSERT type::thing($et, $eid) CONTENT { \
+             UPSERT type::record($et, $eid) CONTENT { \
                 data: $edata, \
-                rev: (type::thing($et, $eid).rev ?? ($first - 1)) + 1 \
+                rev: (type::record($et, $eid).rev ?? ($first - 1)) + 1 \
              } RETURN NONE;
              COMMIT TRANSACTION;",
             vec![

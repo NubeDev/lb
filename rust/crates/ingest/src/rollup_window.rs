@@ -81,7 +81,7 @@ pub(crate) async fn oldest_raw_ts(
     series: &str,
 ) -> Result<Option<u64>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT time::millis(ts) AS ts FROM {SERIES_TABLE} \
@@ -96,7 +96,7 @@ pub(crate) async fn oldest_raw_ts(
     Ok(rows.first().map(|r| r.ts))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct TsRow {
     ts: u64,
 }
@@ -187,3 +187,8 @@ mod tests {
         assert_eq!(tier_cutoff(&tier(0, None), 999_999), 0);
     }
 }
+
+// SurrealDB 3 reads query rows through `SurrealValue`. These delegate to serde rather than
+// deriving, so `#[serde(default)]` and `deserialize_with = "de_opt_lenient_f64"` keep working
+// unchanged — the derive supports neither. See `lb_store::surreal_value_via_serde!`.
+lb_store::surreal_value_via_serde!(TsRow);

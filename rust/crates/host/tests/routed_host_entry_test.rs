@@ -23,7 +23,6 @@
 //! flavor) is inherited from `routed_ambiguity_test.rs`; see its header for the why.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_bus::{Bus, NodeId};
@@ -31,7 +30,7 @@ use lb_host::{
     call_tool, call_tool_on_node, register_remote_extension, serve_ext, Node, Role as NodeRole,
     ToolServer,
 };
-use lb_mcp::{ToolDescriptor, ToolError};
+use lb_mcp::{node_call_key, ToolDescriptor, ToolError};
 use lb_runtime::{CallContext, LocalDispatch, RuntimeError};
 use tokio::sync::Mutex;
 
@@ -158,25 +157,21 @@ async fn ask_node_via_host(
     ext: &str,
     node: &NodeId,
 ) -> String {
+    // Observe the queryable rather than racing it: a `get` issued before the declaration has
+    // propagated finds no responder, and retrying the real call against a wall-clock deadline tests
+    // machine load, not routing. The key is the exact one dispatch queries.
+    assert!(
+        lb_bus::await_queryable(&caller.bus, ws, &node_call_key(ext, node))
+            .await
+            .expect("await queryable"),
+        "node {node} never declared a reachable queryable for {ext} in {ws}"
+    );
     let tool = format!("{ext}.whoami");
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
-    let mut last_err = None;
-    while std::time::Instant::now() < deadline {
-        match tokio::time::timeout(
-            Duration::from_millis(500),
-            call_tool_on_node(caller, p, ws, &tool, "{}", Some(node)),
-        )
+    let out = call_tool_on_node(caller, p, ws, &tool, "{}", Some(node))
         .await
-        {
-            Ok(Ok(out)) => {
-                let v: serde_json::Value = serde_json::from_str(&out).expect("whoami json");
-                return v["node"].as_str().expect("node label").to_string();
-            }
-            Ok(Err(e)) => last_err = Some(format!("{e:?}")),
-            Err(_) => last_err = Some("attempt timed out (queryable not yet reachable)".into()),
-        }
-    }
-    panic!("targeted call to {node} never converged; last error: {last_err:?}");
+        .unwrap_or_else(|e| panic!("targeted call to {node} failed: {e:?}"));
+    let v: serde_json::Value = serde_json::from_str(&out).expect("whoami json");
+    v["node"].as_str().expect("node label").to_string()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

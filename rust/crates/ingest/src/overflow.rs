@@ -60,7 +60,7 @@ pub async fn enforce_bound(
 /// direct commit ([`commit_direct`](crate::commit_direct)) safe to take.
 pub async fn staged_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
             vec![],
@@ -107,7 +107,7 @@ async fn dead_letter(store: &Store, ws: &str, sample: &Sample) -> Result<(), Sto
         .query_ws(
             ws,
             &format!(
-                "UPSERT type::thing('{DEAD_LETTER_TABLE}', [$series, $producer, $seq]) CONTENT $row"
+                "UPSERT type::record('{DEAD_LETTER_TABLE}', [$series, $producer, $seq]) CONTENT $row"
             ),
             vec![
                 ("series".into(), Value::String(sample.series.clone())),

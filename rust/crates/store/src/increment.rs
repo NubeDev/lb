@@ -66,12 +66,12 @@ pub async fn increment(
         let res = store
             .query_ws(
                 ws,
-                "UPSERT type::thing($tb, $id) CONTENT { \
+                "UPSERT type::record($tb, $id) CONTENT { \
                     data: { \
-                        count: (IF $reset THEN 0 ELSE (type::thing($tb, $id).data.count ?? 0) END) + $by, \
+                        count: (IF $reset THEN 0 ELSE (type::record($tb, $id).data.count ?? 0) END) + $by, \
                         ts: $ts \
                     }, \
-                    rev: (type::thing($tb, $id).rev ?? ($first - 1)) + 1 \
+                    rev: (type::record($tb, $id).rev ?? ($first - 1)) + 1 \
                  } RETURN VALUE data.count",
                 vec![
                     ("tb".into(), serde_json::Value::String(table.to_string())),

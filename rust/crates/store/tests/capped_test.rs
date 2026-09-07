@@ -224,7 +224,7 @@ async fn stores_body_with_injected_cap_key() {
     let mut resp = store
         .query_ws(
             "ws",
-            "SELECT * OMIT id FROM type::thing($tb, $id)",
+            "SELECT * OMIT id FROM type::record($tb, $id)",
             vec![("tb".into(), json!("ring")), ("id".into(), json!("id-1"))],
         )
         .await

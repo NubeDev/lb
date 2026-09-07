@@ -138,7 +138,7 @@ async fn a_pass_row_predating_capped_rollup_still_reads_and_gc_still_runs() {
     store
         .query_ws(
             "nube",
-            "UPSERT type::thing('series_gc_pass', 'last') CONTENT {
+            "UPSERT type::record('series_gc_pass', 'last') CONTENT {
                last_run_ms: 1000, duration_ms: 5, evicted_raw: 0, capped_raw: 0,
                rollup_rows: 0, evicted_rollup: 0, warnings: [], warnings_total: 0
              }",

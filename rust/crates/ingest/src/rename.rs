@@ -59,16 +59,16 @@ pub async fn rename_series(
         "UPDATE {SERIES_TABLE} SET series = $to WHERE series = $from;
          UPDATE {ROLLUP_TABLE} SET series = $to WHERE series = $from;
          UPDATE {STAGING_TABLE} SET sample.series = $to WHERE sample.series = $from;
-         LET $meta = (SELECT labels_applied FROM type::thing($meta_tb, $from))[0];
-         DELETE type::thing($meta_tb, $from);
-         UPSERT type::thing($meta_tb, $to) SET series = $to, \
+         LET $meta = (SELECT labels_applied FROM type::record($meta_tb, $from))[0];
+         DELETE type::record($meta_tb, $from);
+         UPSERT type::record($meta_tb, $to) SET series = $to, \
              labels_applied = ($meta.labels_applied OR false);
-         LET $ptr = (SELECT producer, seq, ts, payload FROM ONLY type::thing($latest_tb, $from));
-         DELETE type::thing($latest_tb, $from);
-         IF $ptr != NONE {{ UPSERT type::thing($latest_tb, $to) CONTENT {{ \
+         LET $ptr = (SELECT producer, seq, ts, payload FROM ONLY type::record($latest_tb, $from));
+         DELETE type::record($latest_tb, $from);
+         IF $ptr != NONE {{ UPSERT type::record($latest_tb, $to) CONTENT {{ \
              series: $to, producer: $ptr.producer, seq: $ptr.seq, ts: $ptr.ts, payload: $ptr.payload }}; }};
-         UPDATE {TAGGED_TABLE} SET in = type::thing($to_tb, $to_id), ent = $to_entity \
-             WHERE in = type::thing($from_tb, $from_id);"
+         UPDATE {TAGGED_TABLE} SET in = type::record($to_tb, $to_id), ent = $to_entity \
+             WHERE in = type::record($from_tb, $from_id);"
     );
     store
         .query_ws(
@@ -96,7 +96,7 @@ pub async fn rename_series(
 /// Does `series` have any committed sample rows in `ws`? (The row-level half of the merge guard.)
 async fn has_rows(store: &Store, ws: &str, series: &str) -> Result<bool, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT series FROM {SERIES_TABLE} WHERE series = $series LIMIT 1"),
             vec![("series".into(), Value::String(series.to_string()))],

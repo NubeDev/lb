@@ -49,7 +49,7 @@ pub async fn delete_samples_by_keys(
     for (i, k) in keys.iter().enumerate() {
         let (pr, sq) = (format!("pr{i}"), format!("sq{i}"));
         things.push(format!(
-            "type::thing('{SERIES_TABLE}', [$series, ${pr}, ${sq}])"
+            "type::record('{SERIES_TABLE}', [$series, ${pr}, ${sq}])"
         ));
         bindings.push((pr, Value::String(k.producer.clone())));
         bindings.push((sq, Value::Number(k.seq.into())));

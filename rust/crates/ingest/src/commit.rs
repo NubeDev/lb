@@ -16,7 +16,7 @@
 //!
 //! Since the series schema slice, commit also:
 //!   - ensures the series-plane schema/indexes and stores `ts` as a real `datetime`
-//!     (`time::from::millis` — the wire `ts` is epoch ms);
+//!     (`time::from_millis` — the wire `ts` is epoch ms);
 //!   - enforces the **series cardinality cap**: a sample naming a NEW series past the per-workspace
 //!     cap is diverted to the dead-letter table (in the same tx), never silently dropped and never
 //!     an unbounded index;
@@ -175,7 +175,22 @@ pub async fn commit_staged(
 
     // Build one BEGIN…COMMIT: admitted samples UPSERT into series; cap-rejected samples divert to
     // the dead-letter table. Both delete their staged row in the SAME tx (atomic dequeue).
-    let mut sql = String::from("BEGIN TRANSACTION;\n");
+    // Declare every table this transaction touches, first, in the same transaction.
+    //
+    // SurrealDB 3 raises `NotFoundError::Table` for a SELECT/UPDATE/DELETE against a table nothing
+    // has written, and inside a TRANSACTION that aborts everything after it — the caller then sees
+    // only "The query was not executed due to a failed transaction", nowhere near the real cause. A
+    // first commit on a fresh node hits exactly that: `series_latest` and the staging table have no
+    // rows yet. `lb_store` restores the "absent table reads as empty" contract for ordinary
+    // statements but cannot help inside a transaction, where the writes genuinely did not happen.
+    // Idempotent, and the same thing prefs / agent config / tags / undo do for their own tables.
+    let mut sql = format!(
+        "BEGIN TRANSACTION;\n\
+         DEFINE TABLE IF NOT EXISTS {SERIES_TABLE};\n\
+         DEFINE TABLE IF NOT EXISTS {SERIES_LATEST_TABLE};\n\
+         DEFINE TABLE IF NOT EXISTS {STAGING_TABLE};\n\
+         DEFINE TABLE IF NOT EXISTS {DEAD_LETTER_TABLE};\n"
+    );
     let mut bindings: Vec<(String, Value)> = Vec::new();
     let mut committed = 0;
     let mut dead_lettered = 0;
@@ -196,15 +211,15 @@ pub async fn commit_staged(
             // UPSERT keyed on the composite [series, producer, seq] → exactly-once on re-drain.
             // `ts` lands as a real datetime (wire ts is epoch ms).
             sql.push_str(&format!(
-                "UPSERT type::thing('{SERIES_TABLE}', [${se}, ${pr}, ${sq}]) \
+                "UPSERT type::record('{SERIES_TABLE}', [${se}, ${pr}, ${sq}]) \
                  CONTENT {{ series: ${se}, producer: ${pr}, seq: ${sq}, \
-                 ts: time::from::millis(${ts}), payload: ${pl} }};\n"
+                 ts: time::from_millis(${ts}), payload: ${pl} }};\n"
             ));
             committed += 1;
         } else {
             // Over the series cap: dead-letter, never a silent drop (and never a new index entry).
             sql.push_str(&format!(
-                "UPSERT type::thing('{DEAD_LETTER_TABLE}', [${se}, ${pr}, ${sq}]) \
+                "UPSERT type::record('{DEAD_LETTER_TABLE}', [${se}, ${pr}, ${sq}]) \
                  CONTENT {{ sample: {{ series: ${se}, producer: ${pr}, seq: ${sq}, ts: ${ts}, \
                  payload: ${pl} }}, reason: 'series-cap' }};\n"
             ));
@@ -214,7 +229,7 @@ pub async fn commit_staged(
         // path, where nothing was ever staged (see [`Dequeue`]).
         if dequeue == Dequeue::Yes {
             sql.push_str(&format!(
-                "DELETE type::thing('{STAGING_TABLE}', [${se}, ${pr}, ${sq}]);\n"
+                "DELETE type::record('{STAGING_TABLE}', [${se}, ${pr}, ${sq}]);\n"
             ));
         }
         bindings.push((se, Value::String(s.sample.series.clone())));
@@ -242,9 +257,9 @@ pub async fn commit_staged(
         // Read the current pointer's (ts, seq); UPSERT only if this batch's newest strictly beats it
         // (or none exists). `??` defaults an absent pointer to below any real sample.
         sql.push_str(&format!(
-            "LET $cur{j} = (SELECT ts, seq FROM ONLY type::thing('{SERIES_LATEST_TABLE}', ${lse}))?.{{ ts: ts, seq: seq }} ?? {{ ts: -1, seq: -1 }};\n\
+            "LET $cur{j} = (SELECT ts, seq FROM ONLY type::record('{SERIES_LATEST_TABLE}', ${lse})).{{ ts: ts, seq: seq }} ?? {{ ts: -1, seq: -1 }};\n\
              IF [${lts}, ${lsq}] > [$cur{j}.ts, $cur{j}.seq] {{ \
-               UPSERT type::thing('{SERIES_LATEST_TABLE}', ${lse}) CONTENT {{ \
+               UPSERT type::record('{SERIES_LATEST_TABLE}', ${lse}) CONTENT {{ \
                  series: ${lse}, producer: ${lpr}, seq: ${lsq}, ts: ${lts}, payload: ${lpl} }}; \
              }};\n"
         ));
@@ -324,3 +339,8 @@ async fn drain(store: &Store, ws: &str, batch: usize) -> Result<Vec<Staged>, Sto
         .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(rows)
 }
+
+// SurrealDB 3 reads query rows through `SurrealValue`. These delegate to serde rather than
+// deriving, so `#[serde(default)]` and `deserialize_with = "de_opt_lenient_f64"` keep working
+// unchanged — the derive supports neither. See `lb_store::surreal_value_via_serde!`.
+lb_store::surreal_value_via_serde!(Staged);

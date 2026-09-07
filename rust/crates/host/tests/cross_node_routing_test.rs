@@ -16,14 +16,12 @@
 //! peers-share-the-keyspace.md), so a shared id would let concurrent tests cross-talk. Multi-thread
 //! flavor is required (boots a Zenoh peer; debugging/bus/zenoh-needs-multi-thread-runtime.md).
 
-use std::time::Duration;
-
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_bus::Bus;
 use lb_host::{
     load_extension, register_remote_extension, serve_ext, Node, Role as NodeRole, ToolServer,
 };
-use lb_mcp::{call, ToolError};
+use lb_mcp::{call, node_call_key, ToolError};
 
 const MANIFEST: &str = include_str!("../../../extensions/hello/extension.toml");
 
@@ -127,53 +125,43 @@ async fn edge_and_hub() -> (Node, Node, ToolServer) {
 /// discovery is **asynchronous AND best-effort** — when the edge issues `query` (a Zenoh `get`)
 /// before its peer has learned of the hub's queryable, the query reaches no responder and the reply
 /// channel blocks until Zenoh's default ~10s query timeout; a late-joining queryable does not
-/// retroactively answer an in-flight `get`. Under a full parallel `cargo test --workspace` (hundreds
-/// of peers in one scout domain) that discovery could stall past *any* fixed timeout, so the old
-/// single-call-in-a-5s-`timeout` test hit `Elapsed`. That was a real discovery race, not a tight
-/// number — bumping the timeout did not fix it (verified: a 30s retry loop still failed in the
-/// workspace storm because the two peers never discovered each other at all).
+/// retroactively answer an in-flight `get`.
 ///
 /// PRIMARY FIX (`edge_and_hub`): link the pair over an explicit loopback TCP endpoint, so discovery
 /// is deterministic and independent of the scout noise — the link forms in milliseconds.
 ///
-/// This barrier is the SECONDARY belt-and-suspenders: even with a deterministic link, the
-/// queryable *declaration* still propagates to the edge a beat after the link forms. Retrying the
-/// real call until the first `Ok` converges on actual reachability (nothing mocked) instead of
-/// hoping a fixed sleep was long enough. With the TCP link it returns in well under a second.
-async fn route_until_reachable(edge: &Node, p: &Principal, ws: &str, input_json: &str) -> String {
-    // With the deterministic loopback link this converges in <1s; the deadline only guards against a
-    // genuinely-broken routing path (then it fails loudly), not slow ambient mesh convergence. The
-    // headroom (20s) is free — the loop returns the instant a call succeeds — and covers a CPU-
-    // starved box where even the direct link + queryable propagation is briefly slow to schedule.
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
-    let mut last_err = None;
-    while std::time::Instant::now() < deadline {
-        // Bound each individual attempt so a `get` that blocks on the (not-yet-discovered)
-        // queryable's full query timeout doesn't eat the whole budget — we retry instead.
-        match tokio::time::timeout(
-            Duration::from_millis(500),
-            call(&edge.registry, &edge.bus, p, ws, "hello.echo", input_json),
-        )
+/// SECONDARY FIX, and the reason this helper is now three lines: even with a deterministic link the
+/// queryable *declaration* propagates a beat after the link forms. That used to be handled by
+/// retrying the real call against a 20-second wall-clock deadline, which is not a test of routing —
+/// it is a test of how loaded the machine is, and on CI it lost. `await_queryable` **observes** the
+/// declaration instead of racing it (Zenoh's `Querier::matching_status`/`matching_listener`), so the
+/// precondition is established rather than hoped for and the call below is made exactly once. If it
+/// fails now, routing is broken — not slow.
+async fn route_once(edge: &Node, hub: &Node, p: &Principal, ws: &str, input_json: &str) -> String {
+    // The EXACT key dispatch will query (`call/dispatch.rs`: `node_call_key(ext, node)`), observed
+    // from the CALLER's session — the caller is the only side that can see whether the declaration
+    // has reached it.
+    assert!(
+        lb_bus::await_queryable(&edge.bus, ws, &node_call_key("hello", &hub.node_id()))
+            .await
+            .expect("await queryable"),
+        "the hub never declared a reachable queryable for hello in {ws} — routing cannot work"
+    );
+    call(&edge.registry, &edge.bus, p, ws, "hello.echo", input_json)
         .await
-        {
-            Ok(Ok(out)) => return out,
-            Ok(Err(e)) => last_err = Some(format!("{e:?}")), // reachable but errored: surface it
-            Err(_) => last_err = Some("attempt timed out (queryable not yet reachable)".into()),
-        }
-    }
-    panic!("routed call never became reachable within the deadline; last: {last_err:?}");
+        .expect("routed call")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_call_on_the_edge_routes_to_the_extension_on_the_hub() {
     let ws = "xnode-routes";
-    let (edge, _hub, _server) = edge_and_hub().await;
+    let (edge, hub, _server) = edge_and_hub().await;
     let p = principal(ws, &["mcp:hello.echo:call"]);
 
     // The call site is IDENTICAL to a local call — the edge has no local hello, so dispatch routes
-    // over the bus to the hub. We poll until the hub's queryable is reachable (the readiness
-    // barrier above) rather than wrapping one call in a fixed timeout and hoping the mesh converged.
-    let out = route_until_reachable(&edge, &p, ws, r#"{"msg":"routed"}"#).await;
+    // over the bus to the hub. The readiness barrier above makes this ONE call, after the hub's
+    // queryable is provably reachable.
+    let out = route_once(&edge, &hub, &p, ws, r#"{"msg":"routed"}"#).await;
 
     let value: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(

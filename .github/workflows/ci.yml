@@ -85,9 +85,16 @@ jobs:
       # Only test binaries are bounded (the script ignores anything outside `target/**/deps/`),
       # so `cargo run` is untouched. Set to 0 to disable.
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "${{ github.workspace }}/rust/scripts/test-timeout-runner.sh"
-      # Tighter than the 900s local default: the whole sharded run is ~25 min, so a binary still
-      # alive after 10 is already pathological here.
-      LB_TEST_TIMEOUT_SECS: "600"
+      # Was 600. `series_default_cap_test` seeds 100,005 samples TWICE, concurrently, through the
+      # real staging→commit path, and measured 502.9s on master — 84% of a 600s budget, with 97
+      # seconds of headroom. Under SurrealDB 3 it crossed the line and was killed, twice in a row,
+      # so the shard reported a failure with 1,775 tests passing and none failed.
+      #
+      # 1200 buys that test room to finish AND REPORT ITS TIME, which is the number that says how
+      # much slower the 3.x write path actually is — a killed binary reports nothing. Compare it to
+      # master's 502.9s; if the gap is large, the fix is the ingest path or the test's size, not a
+      # bigger number here. A test at 84% of its own timeout was always going to fire eventually.
+      LB_TEST_TIMEOUT_SECS: "1200"
     steps:
       - uses: actions/checkout@v4
       # Reclaim ~22 GB of preinstalled toolchains this job never touches. Necessary but not
@@ -100,6 +107,16 @@ jobs:
                       /usr/local/share/powershell /usr/share/swift || true
           sudo docker image prune -af || true
           df -h /
+      # `test-timeout-runner.sh` dumps gdb/eu-stack backtraces when a test binary wedges, and
+      # degrades to WCHAN + cpu/elapsed when neither is present. It degraded: `flows_data_nodes_test`
+      # was killed at its full budget reporting `cpu/elapsed 00:00:01 / 20:02` — one second of CPU
+      # against twenty minutes, which is the runner's own signature for a parked lock — and then
+      # said "no gdb/eu-stack on this host — install one for full backtraces".
+      #
+      # So install one. A hang we cannot read is a hang we cannot fix, and this class (issues/109)
+      # has now cost two CI cycles guessing. ~30s of apt for a real stack trace next time.
+      - name: Install gdb (backtraces when a test binary wedges)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gdb
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2

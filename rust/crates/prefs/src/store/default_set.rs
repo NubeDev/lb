@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::schema::{define_prefs_schema, WORKSPACE_PREFS_TABLE};
 use super::set::patch_object;
-use crate::clear::{clear_entries, PrefsAxis};
+use crate::clear::{clear_set_clause, PrefsAxis};
 use crate::prefs::Prefs;
 
 /// Apply `patch` to the workspace-default record for `ws`, creating it if absent. Axes named in
@@ -21,13 +21,23 @@ pub async fn set_workspace_prefs(
 ) -> Result<(), StoreError> {
     define_prefs_schema(store, ws).await?;
     let mut merge = patch_object(patch)?;
-    merge.extend(clear_entries(clear));
     merge.insert("ws".into(), Value::String(ws.to_string()));
 
     store
         .query_ws(
             ws,
-            &format!("UPSERT type::thing('{WORKSPACE_PREFS_TABLE}', [$ws]) MERGE $patch"),
+            &{
+                // A clear must be SurrealQL, not a JSON null in the merge -- see
+                // `clear::clear_set_clause`. MERGE first so the patch lands, then SET the cleared
+                // axes to NONE; both statements address the same record.
+                let upsert = format!("UPSERT type::record('{WORKSPACE_PREFS_TABLE}', [$ws]) MERGE $patch");
+                match clear_set_clause(clear) {
+                    None => upsert,
+                    Some(sets) => format!(
+                        "{upsert};\nUPDATE type::record('{WORKSPACE_PREFS_TABLE}', [$ws]) SET {sets}"
+                    ),
+                }
+            },
             vec![
                 ("ws".into(), Value::String(ws.to_string())),
                 ("patch".into(), Value::Object(merge)),

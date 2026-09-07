@@ -78,7 +78,7 @@ async fn append_one(store: &Store, ws: &str, sample: &Sample) -> Result<(), Stor
         .query_ws(
             ws,
             &format!(
-                "UPSERT type::thing('{STAGING_TABLE}', [$series, $producer, $seq]) CONTENT $row"
+                "UPSERT type::record('{STAGING_TABLE}', [$series, $producer, $seq]) CONTENT $row"
             ),
             vec![
                 ("series".into(), Value::String(sample.series.clone())),
