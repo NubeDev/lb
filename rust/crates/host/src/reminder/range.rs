@@ -98,7 +98,10 @@ fn substitute_fire_ts(payload: &Value, now_secs: u64) -> Value {
                 .collect(),
         ),
         Value::Array(items) => Value::Array(
-            items.iter().map(|v| substitute_fire_ts(v, now_secs)).collect(),
+            items
+                .iter()
+                .map(|v| substitute_fire_ts(v, now_secs))
+                .collect(),
         ),
         other => other.clone(),
     }
@@ -252,7 +255,6 @@ mod tests {
         assert_eq!(later["from"], "2026-07-01");
         assert_eq!(later["to"], "2026-08-01");
     }
-
 
     // ── the `{{fire_ts}}` placeholder ────────────────────────────────────────────────────────────
 

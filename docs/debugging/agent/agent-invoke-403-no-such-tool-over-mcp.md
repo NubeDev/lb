@@ -83,6 +83,29 @@ structurally unchanged (the placeholder is additive; existing reminders fire byt
 
 Usage: `"job_id": "daily-review-{{fire_ts}}"`.
 
+## The third gap the same work exposed — a pack could not declare a schedule
+
+With both fixes in, a scheduled agent run works — but only if somebody creates the reminder by hand.
+`pack.yaml` had `rules:`, `channels:`, `agent:` and `retention:` and no `reminders:`, so a pack that
+ships seven FDD rules shipped a product that detects nothing until an operator wires the cron
+off-manifest: undocumented, outside the receipt, and not reproducible on a fresh box. Every other
+pack section seeds a thing that sits inert until something drives it; the schedule IS the driver, and
+it was the one part that could not be declared.
+
+Added as an inline section on the `retention:` model — `lb_packs::manifest_reminder` (a
+dependency-free mirror of the `reminder.create` args, because `lb-reminders` depends on `lb-store`
+and `lb-packs` is the pure half), `lb_packs::validate_reminder` (the lint the mirror makes necessary),
+and `pack/reminder_action.rs` + a `Kind::Reminder` arm driving the same `reminder_create` the public
+verb calls. **It adds no authority:** the reminder is stored with the applying principal, and every
+firing re-resolves that principal's caps at the `call_tool` chokepoint — a pack-seeded schedule
+carries nothing its admin lacks, and `pack.apply` without `mcp:reminder.create:call` gets `denied` on
+the reminder objects and an honest partial receipt.
+
+The lint is where the mirror pays for itself: an unknown `action_kind`, a kind missing the fields it
+needs, a 6-field quartz cron — and, as a *warning*, the static-`job_id` trap from the section above.
+A warning rather than an error because the manifest cannot know which verbs are idempotent on which
+field; `job_id` without `{{fire_ts}}` is the one shape where the intent is unmistakable.
+
 ## Tests
 
 - `crates/host/tests/agent/agent_invoke_mcp_test.rs` — the arm exists and the loop really runs (a
@@ -92,6 +115,15 @@ Usage: `"job_id": "daily-review-{{fire_ts}}"`.
 - `crates/host/src/reminder/range.rs` unit tests — two firings produce distinct job ids; the token is
   substituted through nested objects and arrays; a payload without it is unchanged; `{{fire_ts}}` and
   `range` resolve together.
+- `crates/host/tests/pack_reminders_test.rs` — a pack seeds a schedule that will really fire (the
+  row is listable AND has a `nextAttemptTs` past the apply clock, so the reactor picks it up, and
+  `{{fire_ts}}` is stored UNSUBSTITUTED — baking the apply clock in would freeze every firing);
+  the per-object caps wall (no `mcp:reminder.create:call` → `denied`, the channel in the same pack
+  still applies, nothing scheduled); LWW on re-apply (an edited cron moves the schedule, never forks
+  it); and both lints, including that a warning does not gate the apply.
+- `crates/packs/src/validate_reminder.rs` + `manifest.rs` unit tests — the closed action-kind set,
+  the per-kind required fields, the cron field count, the replay warning, and `deny_unknown_fields`
+  on a typo'd reminder key.
 
 RED-then-green verified: disabling the dispatch arm fails 3 of the 6 tests with the intended message.
 
