@@ -6,7 +6,7 @@
 //!     an admin bypass.
 //!   - **workspace isolation**: two sessions ws-A / ws-B, ws-A with a real installed `[[widget]]`
 //!     extension. ws-A's catalog lists its tile; ws-B's does not. The built-in view set is identical.
-//!   - **save-validation (the core)**: a valid built-in view persists; an unknown view (`"heatmap"`
+//!   - **save-validation (the core)**: a valid built-in view persists; an unknown view (`"sunburst"`
 //!     typo) is `BadInput` with nothing persisted; a well-formed `ext:<id>/<widget>` key persists
 //!     (structural, not install-resolved); a malformed `ext:` key is `BadInput`; a genui cell still
 //!     routes through the existing check. The rejection is IDENTICAL over the shell path (direct
@@ -266,9 +266,10 @@ async fn valid_builtin_view_persists() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn unknown_view_rejected_both_paths_and_nothing_persisted() {
     let node = Arc::new(Node::boot().await.unwrap());
-    // "heatmap" — in the OLD TS union but with no renderer case + no catalog entry (the G4 symptom).
-    let c = cell("a", "heatmap", json!({}));
-    assert_rejected_both_paths(&node, "wc-bad-view", c, "unknown view 'heatmap'").await;
+    // A view id that is in NO catalog entry — the G4 symptom (a hallucinated or mistyped view).
+    // NB: this used to be "heatmap", which the catalog now carries as a real (non-buildable) view.
+    let c = cell("a", "sunburst", json!({}));
+    assert_rejected_both_paths(&node, "wc-bad-view", c, "unknown view 'sunburst'").await;
     // The error names the palette verb so the fix is one edit away.
     let test = principal("user:test", "wc-bad-view2", &[SAVE]);
     let err = dashboard_save(
@@ -277,7 +278,7 @@ async fn unknown_view_rejected_both_paths_and_nothing_persisted() {
         "wc-bad-view2",
         "d",
         "D",
-        vec![cell("a", "heatmap", json!({}))],
+        vec![cell("a", "sunburst", json!({}))],
         vec![],
         10,
     )
@@ -413,4 +414,100 @@ async fn round_trip_a_cell_authored_from_catalog_ids() {
         got.cells[0].field_config["defaults"]["unit"],
         json!("celsius")
     );
+}
+
+/// **The wire-alias retirement.** These view ids all render in the shell but had no catalog entry,
+/// so `dashboard.save` rejected them outright — which is the ONLY reason the downstream client keeps
+/// a 31-entry `WIRE_ALIASES` table that persists a `geomap` as `view:"table"` discriminated by an
+/// `options.geomap` block. That workaround makes ~20% of a real corpus store a view that LIES: a
+/// client trusting `cell.view` renders those cells as tables, silently and plausibly.
+///
+/// The catalog now carries each id, so the honest view saves and reads back as itself. Every id here
+/// was measured from a real bench corpus (44 dashboards / 269 cells).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_previously_aliased_views_save_and_round_trip_honestly() {
+    let ws = "wc-aliases";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let test = principal("user:test", ws, &[SAVE, GET]);
+
+    // Every render id the client used to hide behind `table` / `insights` / `button`.
+    let views = [
+        "geomap",
+        "heatmap",
+        "boxplot",
+        "histogram",
+        "scatter",
+        "sankey",
+        "calendar",
+        "waterfall",
+        "state-timeline",
+        "radar",
+        "treemap",
+        "funnel",
+        "gantt",
+        "pareto",
+        "ridgeline",
+        "parallel",
+        "correlation",
+        "cusum",
+        "duration-curve",
+        "profile-band",
+        "area-trend",
+        "metric-tiles",
+        "load-card",
+        "share-rows",
+        "status-roster",
+        "insight-trend",
+        "fdd-matrix",
+        "fdd-board",
+        "fdd-tiles",
+        "fdd-timeline",
+        "design",
+        "way",
+        "report-launcher",
+    ];
+    let cells: Vec<Cell> = views
+        .iter()
+        .enumerate()
+        .map(|(n, v)| cell(&format!("c{n}"), v, json!({})))
+        .collect();
+
+    dashboard_save(&node.store, &test, ws, "d", "D", cells, vec![], 10)
+        .await
+        .expect("every previously-aliased view saves under its OWN id");
+
+    let got = dashboard_get(&node.store, &test, ws, "d").await.unwrap();
+    let stored: Vec<&str> = got.cells.iter().map(|c| c.view.as_str()).collect();
+    assert_eq!(
+        stored, views,
+        "each cell reads back as the view it was authored as — no alias to undo"
+    );
+}
+
+/// The catalog must SERVE what the validator accepts — they read the same file, and this pins that
+/// the newly-added ids are discoverable rather than merely tolerated. A client builds its render
+/// vocabulary from this list, so an id that saves but is never advertised is still a client-side
+/// hardcode waiting to happen.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_catalog_advertises_every_view_it_accepts() {
+    let ws = "wc-advertise";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let test = principal("user:test", ws, &[CATALOG, EXT_LIST]);
+
+    let out = call(&node, &test, ws, "dashboard.catalog", json!({}))
+        .await
+        .expect("catalog reads");
+    let served: Vec<&str> = out["views"]
+        .as_array()
+        .expect("views array")
+        .iter()
+        .filter_map(|v| v["id"].as_str())
+        .collect();
+
+    for v in ["geomap", "heatmap", "fdd-matrix", "way", "report-launcher"] {
+        assert!(
+            served.contains(&v),
+            "catalog must advertise '{v}': {served:?}"
+        );
+    }
 }

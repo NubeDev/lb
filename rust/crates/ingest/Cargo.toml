@@ -8,6 +8,9 @@ rust-version.workspace = true
 [dependencies]
 lb-store.workspace = true
 lb-tags.workspace = true
+# The closed unit vocabulary — a `unit` label is validated against `lb_prefs::axis::Unit` at
+# registration so the registry can only ever hold a unit the converter can actually use.
+lb-prefs.workspace = true
 base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true

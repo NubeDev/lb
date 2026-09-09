@@ -43,6 +43,7 @@ use crate::labels::apply_labels;
 use crate::meta::{is_registered, register, series_count, DEFAULT_SERIES_CAP};
 use crate::schema::{ensure_series_schema, SERIES_LATEST_TABLE};
 use crate::staging::{Staged, DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
+use crate::unit_label::apply_unit;
 
 /// Outcome of one commit pass: how many samples were committed exactly-once this batch, how many
 /// were diverted to the dead-letter table by the series cardinality cap, and what the write-time
@@ -277,10 +278,16 @@ pub async fn commit_staged(
     store.query_ws_retrying(ws, &sql, bindings).await?;
 
     // Label→tag conversion, once per series (post-tx: edges are derived truth, re-derivable).
+    // Source-unit provenance rides the same once-per-series walk: `unit` is a label too, but it
+    // lands in the `series_meta` registry rather than the tag graph (it is a property of the series,
+    // not a dimension to discover by) and it carries no once-applied latch, so a rescaled sensor's
+    // new declaration wins. Post-tx and best-effort for the same reason labels are: it is derived
+    // truth, re-derivable from the next sample, and must never fail a commit that already succeeded.
     let mut labeled: HashSet<&str> = HashSet::new();
     for s in staged {
         if admitted_series.contains(&s.sample.series) && labeled.insert(s.sample.series.as_str()) {
             apply_labels(store, ws, &s.sample).await?;
+            apply_unit(store, ws, &s.sample).await?;
         }
     }
 

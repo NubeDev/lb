@@ -2,11 +2,26 @@
 //! expression to a concrete window, so flows, rules, agents and extensions get the SAME arithmetic
 //! the dashboard save/validation path uses without a private copy (relative-time-range scope,
 //! Goal 3). Host-native under the one MCP contract; gated by `mcp:time.range.resolve:call` through
-//! the shared `authorize_tool` chokepoint (workspace-first, then capability). Pure compute — no
-//! store read, no write, no motion.
+//! the shared `authorize_tool` chokepoint (workspace-first, then capability).
+//!
+//! # The timezone default
+//!
+//! The resolution itself is pure arithmetic. The one store touch is the **default** for an omitted
+//! `tz`: it now falls back to the caller's resolved `prefs.timezone` instead of silently to UTC.
+//!
+//! This is the cheapest correct fix for a real gap. `resolve_range` already does DST-correct
+//! calendar snapping and already takes a `tz` — it just never learned who was asking, so "today"
+//! meant "today in Greenwich" for every caller on the planet. A site in Australia/Sydney asking for
+//! `today` got a window starting at 10am local, which is not a bug anyone sees until a daily total
+//! is wrong. Meanwhile `prefs.timezone` was resolved by the node and read in exactly ONE place
+//! (`format.datetime`) — a display hint that no data verb consulted.
+//!
+//! An explicit `tz` argument still wins (a caller that names a zone means it), and a caller with no
+//! timezone preference still gets UTC, so nothing that passes a `tz` today changes at all.
 
 use lb_auth::Principal;
 use lb_mcp::{authorize_tool, ToolDescriptor, ToolError};
+use lb_store::Store;
 use serde_json::{json, Value};
 
 use super::resolve::resolve_range;
@@ -24,7 +39,7 @@ pub fn resolve_descriptor() -> ToolDescriptor {
             "properties": {
                 "from": { "type": "string", "x-lb": { "label": "From", "description": "A range token (today, yesterday, this-month, last-3-months, …) or an endpoint (now-4h, now-1d/d, an ISO day/instant, a 13-digit epoch ms)" } },
                 "to": { "type": "string", "x-lb": { "label": "To", "description": "Optional endpoint (exclusive). Omit with a range token (the token IS both ends) or to end at now" } },
-                "tz": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional IANA timezone the window is computed in (e.g. Australia/Sydney); empty = UTC" } },
+                "tz": { "type": "string", "x-lb": { "label": "Timezone", "description": "Optional IANA timezone the window is computed in (e.g. Australia/Sydney); omit to use your own resolved prefs timezone, which itself defaults to UTC" } },
                 "now": { "type": "integer", "x-lb": { "label": "Now (ms)", "description": "Optional clock override — unix epoch MILLISECONDS; omit for the host clock" } }
             },
             "required": ["from"]
@@ -36,6 +51,7 @@ pub fn resolve_descriptor() -> ToolDescriptor {
 /// Dispatch a `time.<verb>` MCP call. The gate runs first (opaque `Denied`); the resolution itself
 /// is pure arithmetic over the caller's `(from, to?, tz?, now?)`.
 pub async fn call_timerange_tool(
+    store: &Store,
     principal: &Principal,
     ws: &str,
     qualified_tool: &str,
@@ -49,7 +65,19 @@ pub async fn call_timerange_tool(
                 .get("to")
                 .and_then(Value::as_str)
                 .filter(|s| !s.trim().is_empty());
-            let tz = input.get("tz").and_then(Value::as_str).unwrap_or("");
+            // An explicit `tz` wins; otherwise fall back to the caller's own resolved timezone
+            // (see the module header). A prefs read that fails degrades to UTC — today's behaviour —
+            // because a range verb must not fail over a display preference.
+            let explicit = input
+                .get("tz")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let from_prefs = match explicit {
+                Some(_) => String::new(),
+                None => caller_timezone(store, principal, ws).await,
+            };
+            let tz = explicit.unwrap_or(&from_prefs);
             // The clock is caller-injectable (determinism §3, and what makes the verb testable);
             // absent → wall-clock, the same posture as `series.retention.set`'s `now_ms`.
             let now_ms = opt_i64(input, "now").unwrap_or_else(now_wall_ms);
@@ -63,6 +91,16 @@ pub async fn call_timerange_tool(
             }))
         }
         _ => Err(ToolError::NotFound),
+    }
+}
+
+/// The caller's resolved `prefs.timezone`, or an empty string (= UTC) when they have none or the
+/// prefs chain cannot be read. Never an error: a window must still resolve for a caller whose prefs
+/// are unreadable, and UTC is exactly what this verb did for everyone before.
+async fn caller_timezone(store: &Store, principal: &Principal, ws: &str) -> String {
+    match lb_prefs::resolve_chain(store, ws, principal.sub(), None).await {
+        Ok(resolved) => resolved.timezone,
+        Err(_) => String::new(),
     }
 }
 

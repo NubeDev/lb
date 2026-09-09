@@ -842,9 +842,12 @@ pub(crate) async fn run_host_verb(
             .map_err(crate::ingest::ingest_error_to_tool)?;
         serde_json::to_value(health).map_err(|e| ToolError::Extension(e.to_string()))?
     } else if qualified_tool.starts_with("time.") {
-        // relative-time-range scope: pure compute (no store, no node state) — the verb re-runs its
-        // own `mcp:time.range.resolve:call` gate inside (defense in depth, like every family here).
-        crate::timerange::call_timerange_tool(principal, ws, qualified_tool, &input).await?
+        // relative-time-range scope: the resolution is pure arithmetic; the store is reached only to
+        // DEFAULT an omitted `tz` from the caller's resolved prefs (see `timerange::tool`). The verb
+        // re-runs its own `mcp:time.range.resolve:call` gate inside (defense in depth, like every
+        // family here).
+        crate::timerange::call_timerange_tool(&node.store, principal, ws, qualified_tool, &input)
+            .await?
     } else if qualified_tool.starts_with("cache.") {
         // response-cache scope: the `cache.stats` / `cache.purge` admin verbs, reached over the
         // one MCP bridge like every host-native verb. The outer gate ran `mcp:cache.<verb>:call`;

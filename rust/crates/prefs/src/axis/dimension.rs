@@ -23,6 +23,19 @@ pub enum Dimension {
     Data,
     Percent,
     Time,
+    // BAS (building automation) dimensions — the vocabulary a building speaks. Added because 59% of
+    // the unit-bearing panels on a real bench declared a unit this enum could not convert (V, mA, W,
+    // kW, kWh, ppm, lux, kL); see `docs/scope/dashboards/api-gaps-review.md` in the rubix-ai tree.
+    Energy,
+    Power,
+    ElectricPotential,
+    ElectricCurrent,
+    ApparentPower,
+    Volume,
+    VolumeFlow,
+    Illuminance,
+    Concentration,
+    Frequency,
 }
 
 impl Dimension {
@@ -37,6 +50,16 @@ impl Dimension {
             Dimension::Data => "data",
             Dimension::Percent => "percent",
             Dimension::Time => "time",
+            Dimension::Energy => "energy",
+            Dimension::Power => "power",
+            Dimension::ElectricPotential => "electric_potential",
+            Dimension::ElectricCurrent => "electric_current",
+            Dimension::ApparentPower => "apparent_power",
+            Dimension::Volume => "volume",
+            Dimension::VolumeFlow => "volume_flow",
+            Dimension::Illuminance => "illuminance",
+            Dimension::Concentration => "concentration",
+            Dimension::Frequency => "frequency",
         }
     }
 
@@ -55,12 +78,22 @@ impl Dimension {
             Dimension::Data => Unit::Byte,
             Dimension::Percent => Unit::Ratio,
             Dimension::Time => Unit::Second,
+            Dimension::Energy => Unit::Joule,
+            Dimension::Power => Unit::Watt,
+            Dimension::ElectricPotential => Unit::Volt,
+            Dimension::ElectricCurrent => Unit::Ampere,
+            Dimension::ApparentPower => Unit::VoltAmpere,
+            Dimension::Volume => Unit::CubicMeter,
+            Dimension::VolumeFlow => Unit::CubicMeterPerSecond,
+            Dimension::Illuminance => Unit::Lux,
+            Dimension::Concentration => Unit::PartsPerMillion,
+            Dimension::Frequency => Unit::Hertz,
         }
     }
 
     /// Every dimension, in declaration order — drives the generated client constants and exhaustive
     /// tests. Keep in sync with the enum (a test asserts the count).
-    pub const ALL: [Dimension; 8] = [
+    pub const ALL: [Dimension; 18] = [
         Dimension::Temperature,
         Dimension::Speed,
         Dimension::Distance,
@@ -69,5 +102,15 @@ impl Dimension {
         Dimension::Data,
         Dimension::Percent,
         Dimension::Time,
+        Dimension::Energy,
+        Dimension::Power,
+        Dimension::ElectricPotential,
+        Dimension::ElectricCurrent,
+        Dimension::ApparentPower,
+        Dimension::Volume,
+        Dimension::VolumeFlow,
+        Dimension::Illuminance,
+        Dimension::Concentration,
+        Dimension::Frequency,
     ];
 }

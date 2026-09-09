@@ -8,9 +8,13 @@
 //!   - MALFORMED INPUT: a bad token / a range token with `to` / an empty `from` / a bad tz are
 //!     loud `BadInput`s NAMING the offender — nothing defaults silently.
 //!
+//!   - THE TIMEZONE DEFAULT: an omitted `tz` follows the CALLER's resolved `prefs.timezone` rather
+//!     than silently meaning UTC; an explicit `tz` still wins; a caller with no preference still
+//!     gets UTC.
+//!
 //! Workspace isolation for the FIELD this verb serves (`Dashboard.time`) lives in
-//! `dashboard_test.rs::workspace_isolation` — the verb itself is pure compute over the caller's
-//! own expression and reads no per-workspace state.
+//! `dashboard_test.rs::workspace_isolation`. The resolution is pure compute over the caller's own
+//! expression; the ONE per-caller read is the prefs chain that defaults an omitted `tz`.
 
 use std::sync::Arc;
 
@@ -147,4 +151,88 @@ async fn malformed_input_is_refused_naming_the_bad_token() {
     .await
     .unwrap_err();
     assert!(matches!(err, ToolError::BadInput(ref m) if m.contains("Mars/Olympus")));
+}
+
+/// **The timezone default.** `resolve_range` has always done DST-correct calendar snapping and has
+/// always taken a `tz` — it just never learned who was asking, so "today" meant "today in
+/// Greenwich" for everyone. Meanwhile `prefs.timezone` was resolved by the node and read in exactly
+/// ONE place (`format.datetime`). This wires the two together.
+///
+/// The instant chosen is 2026-07-30T00:30:00Z — half past midnight UTC, which is already 10:30am on
+/// the 30th in Sydney. UTC and Sydney therefore disagree about what "today" is at that moment,
+/// which is what makes the assertion meaningful rather than a coincidence.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn an_omitted_tz_follows_the_callers_prefs() {
+    let ws = "ws-tz-default";
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    const AT: i64 = 1_785_371_400_000; // 2026-07-30T00:30:00Z == 2026-07-30T10:30+10:00
+
+    let caps = &[
+        "mcp:time.range.resolve:call",
+        "mcp:prefs.set:call",
+        "mcp:prefs.resolve:call",
+    ];
+    let sydney = principal("user:sydney", ws, caps);
+
+    // Before declaring a preference: UTC, exactly as this verb has always behaved.
+    let out = resolve(&node, &sydney, ws, json!({ "from": "today", "now": AT }))
+        .await
+        .expect("resolves with no tz");
+    assert_eq!(
+        out["fromIso"], "2026-07-30",
+        "no preference ⇒ UTC (today's behaviour, unchanged)"
+    );
+
+    // Declare a timezone preference, then ask the same question the same way.
+    call_tool(
+        &node,
+        &sydney,
+        ws,
+        "prefs.set",
+        &json!({ "patch": { "timezone": "Australia/Sydney" } }).to_string(),
+    )
+    .await
+    .expect("prefs.set");
+
+    let out = resolve(&node, &sydney, ws, json!({ "from": "today", "now": AT }))
+        .await
+        .expect("resolves with no tz");
+    assert_eq!(
+        out["fromIso"], "2026-07-30",
+        "Sydney's day, snapped in Sydney"
+    );
+    assert_eq!(out["toIso"], "2026-07-31", "exclusive end, Sydney's day");
+    // The window must START at Sydney midnight (14:00 UTC the previous day), NOT UTC midnight.
+    assert_eq!(
+        out["fromMs"].as_i64().unwrap(),
+        1_785_333_600_000,
+        "2026-07-29T14:00:00Z is 2026-07-30T00:00+10:00 — the caller's midnight, not Greenwich's"
+    );
+
+    // An EXPLICIT tz still wins over the preference — a caller that names a zone means it.
+    let out = resolve(
+        &node,
+        &sydney,
+        ws,
+        json!({ "from": "today", "tz": "UTC", "now": AT }),
+    )
+    .await
+    .expect("explicit tz resolves");
+    assert_eq!(
+        out["fromMs"].as_i64().unwrap(),
+        1_785_369_600_000,
+        "explicit UTC overrides the Sydney preference"
+    );
+
+    // A DIFFERENT caller in the same workspace is unaffected — the default is per-CALLER, not
+    // per-workspace, so one person's preference cannot move another person's window.
+    let other = principal("user:other", ws, caps);
+    let out = resolve(&node, &other, ws, json!({ "from": "today", "now": AT }))
+        .await
+        .expect("resolves for a second caller");
+    assert_eq!(
+        out["fromMs"].as_i64().unwrap(),
+        1_785_369_600_000,
+        "a colleague's timezone preference must not move my window"
+    );
 }

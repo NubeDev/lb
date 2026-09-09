@@ -55,6 +55,7 @@ mod samples_update;
 mod schema;
 mod staging;
 mod stats;
+mod unit_label;
 mod write;
 
 pub use align::{bucket_start, Align};
@@ -81,7 +82,7 @@ pub use filter::{
 pub use filter_state::{read_filter_state, ProducerState, FILTER_STATE_FIELD};
 pub use gc::{run_gc, GcPass};
 pub use latest::{latest, latest_many};
-pub use meta::{series_names, DEFAULT_SERIES_CAP};
+pub use meta::{series_names, series_units, set_unit, unit, DEFAULT_SERIES_CAP};
 pub use method::{apply_method, Method};
 pub use overflow::{enforce_bound, staged_count, OverflowPolicy};
 pub use page::{
@@ -103,4 +104,5 @@ pub use samples_update::{update_samples, SampleUpdate};
 pub use schema::{ensure_series_schema, ROLLUP_TABLE, SERIES_META_TABLE};
 pub use staging::{DEAD_LETTER_TABLE, SERIES_TABLE, STAGING_TABLE};
 pub use stats::{series_producers, series_stats, SeriesStats, TierRows};
+pub use unit_label::{apply_unit, declared_unit, UNIT_LABEL};
 pub use write::write;

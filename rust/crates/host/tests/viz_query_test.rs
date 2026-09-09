@@ -627,15 +627,21 @@ async fn federation_bound_target_resolves_through_federation_query() {
 
 /// Panel time override end to end (grafana-parity-backend P1): `queryOptions.timeFrom` REPLACES the
 /// target's range with `[now - timeFrom, now]`, and `timeShift` moves a caller-supplied range
-/// earlier — proven against the REAL `series.read` dispatch over really-seeded samples (ts 1..4),
-/// not a unit stub. The semantics pin lives in `viz/time_override.rs` + the P1 session doc.
+/// earlier — proven against the REAL `series.read` dispatch over really-seeded samples, not a unit
+/// stub. The semantics pin lives in `viz/time_override.rs` + the P1 session doc.
+///
+/// Every number here is **epoch milliseconds**, which is what `series.read` has always demanded and
+/// what the override now speaks. (This test previously used a seconds-scale clock, matching
+/// `time_override`'s own mistaken header; a `"1m"` shift moved a window by 60 rather than 60_000.)
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn panel_time_override_applies_to_target_dispatch() {
     const READ: &str = "mcp:series.read:call";
     let ws = "viz-timeover";
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal("user:test", ws, &[VIZ, READ, WRITE]);
-    seed_series(&node, &p, ws, "cpu", &[10.0, 20.0, 30.0, 40.0]).await; // ts = 1..4
+    seed_series(&node, &p, ws, "cpu", &[10.0, 20.0, 30.0, 40.0]).await; // ts = 1..4 (epoch ms)
+    // A clock far enough from the epoch that a minute-scale override cannot saturate at 0.
+    const NOW_MS: u64 = 1_751_414_400_000;
 
     let series_panel = |query_options: Value, args: Value| {
         json!({
@@ -652,7 +658,7 @@ async fn panel_time_override_applies_to_target_dispatch() {
                 &p,
                 ws,
                 "viz.query",
-                &json!({ "panel": panel, "now": 100 }).to_string(),
+                &json!({ "panel": panel, "now": NOW_MS }).to_string(),
             )
             .await
             .expect("viz.query runs");
@@ -674,22 +680,25 @@ async fn panel_time_override_applies_to_target_dispatch() {
     .await;
     assert_eq!(n, 4, "baseline reads every seeded row");
 
-    // timeFrom "50s" at now=100 → range [50, 100]; the seeded ts 1..4 fall OUTSIDE → 0 rows. The
-    // override REPLACES even a caller-supplied range (that is what a Grafana panel override does).
+    // timeFrom "50s" at NOW_MS → range [NOW_MS - 50_000, NOW_MS]; the seeded ts 1..4 (a few ms past
+    // the epoch) fall far OUTSIDE → 0 rows. The override REPLACES even a caller-supplied range that
+    // WOULD have matched — that is what a Grafana panel override does.
     let n = run(series_panel(
         json!({ "timeFrom": "50s" }),
         json!({ "series": "cpu", "mode": "rows", "from": 0, "to": 10 }),
     ))
     .await;
-    assert_eq!(n, 0, "timeFrom replaced the range with [50,100]");
+    assert_eq!(n, 0, "timeFrom replaced the range with [now-50s, now]");
 
-    // timeShift "1m" over a caller range [61, 100] → [1, 40]; the seeded rows come back into view.
+    // timeShift "1m" over a caller range [60_001, 60_040] → [1, 40]: exactly 60_000 ms earlier, and
+    // the seeded rows come back into view. This is the assertion that pins the UNIT — under the old
+    // seconds arithmetic the shift would be 60, landing on [59_941, 59_980] and finding nothing.
     let n = run(series_panel(
         json!({ "timeShift": "1m" }),
-        json!({ "series": "cpu", "mode": "rows", "from": 61, "to": 100 }),
+        json!({ "series": "cpu", "mode": "rows", "from": 60_001, "to": 60_040 }),
     ))
     .await;
-    assert_eq!(n, 4, "timeShift moved the window back onto the seeded rows");
+    assert_eq!(n, 4, "timeShift moved the window back by a minute of MILLISECONDS");
 }
 
 /// Tranche 2a end to end (grafana-parity-backend P2): a `renameByRegex` + `p90` reduce pipeline —
