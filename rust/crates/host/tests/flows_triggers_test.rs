@@ -816,3 +816,78 @@ async fn reconciler_disarms_a_disabled_flow() {
         .unwrap();
     assert_eq!(st["armed"], false);
 }
+
+/// **Regression: a retained inject must never poison the `flow_input` table.**
+///
+/// `flows.node_state` folds the retained inputs in by draining the WHOLE `flow_input` table
+/// (`scan_all`), so ONE undeserializable row aborts the read for **every flow in the workspace** —
+/// not just the flow that was written. Bare `lb_store::write` let two writers on the same
+/// `flow_input` row interleave their rev bump, and the half-applied `rev` read back as
+/// `Invalid revision '…' for type 'Value'`; observed live as "the slider writes once and every flow
+/// read is dead from then on, across restarts" (`write_locked`'s module docs describe the same race
+/// on the run-store). The inject path missed the `write_locked` hardening its siblings already had.
+///
+/// Pins the INVARIANT rather than the race: concurrent retained injects all land, and a subsequent
+/// `node_state` read of a DIFFERENT, never-injected flow still succeeds and still sees every value.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_retained_injects_never_poison_the_node_state_read() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+
+    // The flow under write, plus a BYSTANDER flow that is never injected into — it shares the one
+    // `flow_input` table per ws, so it is what proves the blast radius is contained.
+    let n = Node {
+        id: "setpoint".into(),
+        node_type: "trigger".into(),
+        needs: vec![],
+        with: Default::default(),
+        config: json!({"mode":"inject","inject_mode":"retain"}),
+        inputs: Vec::new(),
+        position: None,
+    };
+    let mut f = rhai_flow("ctrl");
+    f.nodes = vec![n];
+    save(&node, &p, "ws", &f).await;
+    save(&node, &p, "ws", &rhai_flow("bystander")).await;
+
+    // Hammer the SAME record: 16 concurrent retained injects, the shape that raced.
+    let mut handles = Vec::new();
+    for i in 0..16 {
+        let (node, p) = (node.clone(), p.clone());
+        handles.push(tokio::spawn(async move {
+            let req = json!({ "id": "ctrl", "node": "setpoint", "value": i, "ts": 1 }).to_string();
+            call_tool(&node, &p, "ws", "flows.inject", &req)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }));
+    }
+    for h in handles {
+        h.await
+            .expect("task joined")
+            .expect("a retained inject must not error under a same-record race");
+    }
+
+    // THE ASSERT: the read still works. On the bug this is where `Invalid revision` surfaced.
+    let out = call_tool(&node, &p, "ws", "flows.node_state", r#"{"id":"ctrl"}"#)
+        .await
+        .expect("node_state must still deserialize after concurrent retained injects");
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let sp = v["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["node"] == json!("setpoint"))
+        .expect("the setpoint node is present");
+    // Some writer won; the point is the value is READABLE, not which one landed last.
+    assert!(
+        sp["input"].is_number(),
+        "the retained input must read back as a value, got {:?}",
+        sp["input"]
+    );
+
+    // And the bystander — never injected into — is not collateral damage.
+    call_tool(&node, &p, "ws", "flows.node_state", r#"{"id":"bystander"}"#)
+        .await
+        .expect("one flow's retained input must never break another flow's node_state read");
+}

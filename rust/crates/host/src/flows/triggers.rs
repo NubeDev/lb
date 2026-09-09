@@ -84,7 +84,11 @@ pub async fn flows_inject(
                 serde_json::json!({ "flow": flow_id, "node": node_id, "value": value }),
             ),
         };
-        lb_store::write(&node.store, ws, FLOW_INPUT_TABLE, &record_id, &rec)
+        // `write_locked`, not `write`: a retained inject races the run-store's own readers/writers on
+        // the same `flow_input` row, and a half-applied `rev` makes every later `scan_all` of this
+        // table fail to deserialize (`Invalid revision`) — which takes out `flows.node_state` for the
+        // WHOLE workspace, not just this record. Same hardening the run-store already carries.
+        lb_store::write_locked(&node.store, ws, FLOW_INPUT_TABLE, &record_id, &rec)
             .await
             .map_err(|e| FlowsError::Internal(e.to_string()))?;
     }
