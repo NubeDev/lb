@@ -22,6 +22,9 @@ use crate::mail::EmailTransport;
 /// warn-only, exactly as it shipped.
 /// `retention_period` is [`BootConfig::retention_period`] — the retention-GC cadence. `None` (the
 /// default, and what `LB_RETENTION_PERIOD_SECS` unset means) ⇒ [`lb_host::RETENTION_PERIOD`], 300 s.
+/// `public_base_url` is [`BootConfig::public_base_url`] — the origin an emailed link is built on.
+/// `None` ⇒ links render relative, which is what they did before the field existed.
+#[allow(clippy::too_many_arguments)]
 pub async fn spawn(
     node: &Arc<Node>,
     ws: &str,
@@ -30,6 +33,7 @@ pub async fn spawn(
     store_budget_bytes: Option<u64>,
     profile: Option<crate::config::ProfileConfig>,
     retention_period: Option<Duration>,
+    public_base_url: Option<&str>,
 ) {
     // FLOW REACTOR TICK: drive cron/reconcile scans so a `mode:"cron"` trigger actually fires. A
     // few-second period catches a minute-granularity cron promptly; each tick is a cheap ws scan.
@@ -78,7 +82,8 @@ pub async fn spawn(
     let mut router = lb_host::RouterTarget::new()
         .route(
             lb_host::EMAIL_TARGET,
-            lb_host::EmailTarget::new(email_provider, node.store.clone()),
+            lb_host::EmailTarget::new(email_provider, node.store.clone())
+                .with_base_url(public_base_url),
         )
         .route(
             lb_host::PUSH_TARGET,

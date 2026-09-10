@@ -136,11 +136,42 @@ pub struct EmailTarget {
     /// store handle for the same reason `PushTarget` does — the dedup marker is durable state, and
     /// losing it means re-sending.
     store: Store,
+    /// The node's public origin (`https://host`), for links in mail bodies. `None` on a node that has
+    /// not been told what it is publicly called, and then a link key renders **relative** — which is
+    /// what every emailed link did before this field existed.
+    ///
+    /// It lives on the TARGET rather than in the effect payload deliberately: it is a property of the
+    /// deployment, not of the ask. A producer that had to pass it would be a producer that could pass
+    /// the wrong one, and the token in that link is a credential.
+    base_url: Option<String>,
 }
 
 impl EmailTarget {
     pub fn new(provider: Box<dyn EmailProvider>, store: Store) -> Self {
-        Self { provider, store }
+        Self {
+            provider,
+            store,
+            base_url: None,
+        }
+    }
+
+    /// Tell the target the node's public origin, so links in mail bodies are absolute.
+    ///
+    /// A builder rather than a fourth `new` argument so every existing caller — and every test that
+    /// does not care about links — keeps compiling and keeps the old relative behaviour.
+    ///
+    /// The value is normalised by trimming trailing `/`, because the catalog copy supplies the
+    /// leading one (`{base_url}/r/{token}`) and `https://host//r/…` is a different URL to some
+    /// proxies. An empty or whitespace-only origin is treated as absent rather than producing
+    /// `//r/token`, which a browser reads as a protocol-relative URL to the host `r`.
+    #[must_use]
+    pub fn with_base_url(mut self, base_url: Option<&str>) -> Self {
+        self.base_url = base_url
+            .map(str::trim)
+            .filter(|b| !b.is_empty())
+            .map(|b| b.trim_end_matches('/').to_string())
+            .filter(|b| !b.is_empty());
+        self
     }
 }
 
@@ -156,6 +187,7 @@ impl Target for EmailTarget {
         let effect_ts = effect.ts;
         let provider = &self.provider;
         let store = self.store.clone();
+        let base_url = self.base_url.clone();
         async move {
             let (payload, json) = EmailPayload::parse(&raw)?;
 
@@ -166,7 +198,7 @@ impl Target for EmailTarget {
                 idempotency_key
             };
 
-            let content = content_for(&action, &payload);
+            let content = content_for(&action, &payload, base_url.as_deref());
             // Resolved ONCE for the whole fan-out: an effect with five recipients reads the PDF once,
             // not five times. It is resolved before any send so a missing asset fails the effect
             // rather than mailing the first recipient an empty report and then giving up.

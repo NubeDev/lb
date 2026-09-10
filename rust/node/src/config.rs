@@ -161,6 +161,19 @@ pub struct BootConfig {
     /// re-load, reactors, and default-skill grants all scope to this workspace.
     pub workspace: String,
 
+    /// The node's PUBLIC origin (`https://insights.example.com`) — what a person outside the network
+    /// types to reach it. Used to make links in outgoing mail absolute.
+    ///
+    /// It is not the bind address: a node bound on `127.0.0.1:8099` behind a proxy is publicly
+    /// something else entirely, and only the embedder knows which. So this is config, never derived
+    /// from `gateway_addr`.
+    ///
+    /// `None` (the default) keeps the shipped behaviour — every emailed link renders relative, which
+    /// no mail client can resolve. That is a real limitation, not a preference: a contractor sent a
+    /// `case.request` link on a node with no public origin cannot open it. Set this on any node that
+    /// mails a stranger a link.
+    pub public_base_url: Option<String>,
+
     /// The dev identity to seed as a `workspace-admin` member of `workspace` (today's `LB_SEED_USER`,
     /// default `user:test`). `None` skips the seed entirely (an embedder that provisions its own
     /// identities). Idempotent when present.
@@ -524,6 +537,7 @@ impl Default for BootConfig {
             signing_key: SigningKey::generate(),
             secret_key: None,
             workspace: "nube".into(),
+            public_base_url: None,
             seed_user: Some("user:test".into()),
             gateway: GatewayMode::Off,
             reactors: true,
@@ -622,6 +636,10 @@ impl BootConfig {
             // scalar `LB_*` knob, so there is nothing at the binary boundary to read it from.
             retention_seed: Vec::new(),
             workspace: std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "nube".into()),
+            // The public origin a mailed link is built on. Unset ⇒ links stay relative.
+            public_base_url: std::env::var("LB_PUBLIC_BASE_URL")
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
             seed_user: Some(std::env::var("LB_SEED_USER").unwrap_or_else(|_| "user:test".into())),
             gateway,
             reactors: true,

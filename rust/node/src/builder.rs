@@ -298,6 +298,7 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             cfg.store_budget_bytes,
             cfg.profile,
             cfg.retention_period,
+            cfg.public_base_url.as_deref(),
         )
         .await;
     }
