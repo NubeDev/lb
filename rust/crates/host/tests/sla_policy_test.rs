@@ -468,3 +468,30 @@ async fn neither_cap_is_in_the_member_or_viewer_bundle() {
         }
     }
 }
+
+/// **Dispatchable but invisible is its own kind of broken.** The console and the agent's menu are
+/// both built from `tools.catalog`, so a verb missing from the host catalog can be called only by
+/// someone who already knows its name — which is how whole families (`datasource.`, `viz.`,
+/// `flows.`) once went missing. An admin must SEE both verbs.
+///
+/// The catalog is gated by the same `gate_tool_for` the dispatcher uses, so this also re-proves the
+/// cardinal rule from the other side: advertise a tool only if the call would allow it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn an_admin_sees_both_verbs_in_the_tools_catalog() {
+    let node = Node::boot().await.expect("node boots");
+    let mut caps: Vec<String> = workspace_admin_role_caps();
+    caps.push("mcp:tools.catalog:call".into());
+    let refs: Vec<&str> = caps.iter().map(String::as_str).collect();
+    let admin = principal("user:admin", "nube", &refs);
+
+    let catalog = lb_host::tools_catalog(&node, &admin, "nube")
+        .await
+        .expect("catalog");
+    for verb in ["policy.sla.set", "policy.sla.list"] {
+        assert!(
+            catalog.tools.iter().any(|d| d.name == verb),
+            "{verb} is dispatchable but absent from tools.catalog — invisible to the console \
+             and the agent menu"
+        );
+    }
+}
