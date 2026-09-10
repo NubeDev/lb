@@ -187,6 +187,14 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:insight.sub.delete:call",
     "mcp:insight.sub.mute:call",
     "mcp:insight.policy.get:call",
+    // Case plane (case-plane-scope.md) READS. A case is a piece of work that cites insights, and it
+    // is the surface a viewer actually looks at — the queue, the drawer, the history — so the two
+    // read caps sit exactly where `insight.get`/`insight.list` do. `case.members` and `case.events`
+    // are deliberately absent: they ALIAS to `case.get` in `tool_gate.rs` (a case's members and
+    // history are its detail, not a second privilege), and minting caps for them would create two
+    // grants no bundle carries.
+    "mcp:case.get:call",
+    "mcp:case.list:call",
     // workspace directory LIST (a viewer sees the switcher). create/delete/purge are admin.
     "mcp:workspace.list:call",
     // host fs browse (read-only metadata) — the datasource DB-file picker; harmless read.
@@ -398,6 +406,22 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:outbox.enqueue:call",
     // insight producer raise (a viewer only reads/acts on insights).
     "mcp:insight.raise:call",
+    // Case plane WRITES (case-plane-scope.md). Two caps, not seven: `case.open` covers creating a
+    // grouping and correcting one (`case.merge`/`case.split` alias to it), and `case.workflow`
+    // covers the triage write path (`case.assign`/`case.snooze`/`case.comment` alias to it).
+    //
+    // They are AUTHOR rather than viewer because a case is shared, durable, client-visible work:
+    // grouping detections into a job, moving it to `resolved`, or parking it changes what the whole
+    // workspace — and in wave 2 an external contractor — sees. A bare viewer reads the queue; a
+    // member moves it.
+    //
+    // They are two NARROW caps rather than one `case.update` for the same reason the triage plane
+    // split `insight.assign`/`insight.comment` off: the grouping REACTORS run with `case.open` and
+    // must never be able to close a customer's job. That deny is only expressible while the two are
+    // separate — see `reactor_caps()` in `flows/reactor_loop.rs`, which grants the first and not
+    // the second.
+    "mcp:case.open:call",
+    "mcp:case.workflow:call",
     // insight DESTROY — delete an insight (cascades its ring) or one occurrence row. Erasing shared
     // content + evidence is an authoring reach a bare viewer must NOT have (only reads/acks/resolves).
     "mcp:insight.delete:call",
@@ -760,6 +784,13 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:prefs.set_default:call",
     "mcp:message.set_catalog:call",
     "mcp:insight.policy.set:call",
+    // SLA service policies (case-plane scope). BOTH halves are admin, and the read deliberately so:
+    // a policy row states the commercial contract — response and resolution hours per site — which
+    // is not every member's to read. A viewer sees the CONSEQUENCE (their case's `due_at`), never
+    // the terms. The write is admin for the usual reason a workspace-default write is: moving a
+    // deadline reorders every case in the queue at once.
+    "mcp:policy.sla.set:call",
+    "mcp:policy.sla.list:call",
     "mcp:agent.policy.set:call",
     "mcp:agent.config.set:call",
     // agent definition / persona CRUD (custom defs/personas; built-ins are read-only regardless).

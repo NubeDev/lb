@@ -35,6 +35,7 @@ mod media;
 mod nav;
 mod notify;
 mod panel;
+mod policy;
 mod prefs;
 mod reminder;
 mod report;
@@ -89,6 +90,7 @@ const FAMILIES: &[&[HostTool]] = &[
     nav::NAV,
     notify::NOTIFY,
     panel::PANEL,
+    policy::POLICY,
     prefs::PREFS,
     reminder::REMINDER,
     report::REPORT,

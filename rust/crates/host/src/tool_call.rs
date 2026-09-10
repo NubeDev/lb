@@ -59,6 +59,11 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "outbox.",
     "inbox.",
     "insight.",
+    // case-plane scope: the CASE plane — a case is a piece of work that cites insights. A prefix
+    // like `insight.` (eleven verbs, one owner) rather than an exact list; the `policy.sla.*` pair
+    // below is exact for the opposite reason — `policy` is a plausible extension id, `case` is this
+    // host service's own plane.
+    "case.",
     "authz.",
     // authz admin verbs (authz-verbs-mcp-dispatch scope): `call_authz_tool` already implements
     // every `grants.*`/`roles.*`/`teams.*` verb; these prefixes route them through the one MCP
@@ -172,6 +177,12 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     "update.credential.status",
     "update.credential.set",
     "update.credential.claim",
+    // case-plane scope: the ADMIN SLA policy pair. EXACT names, not a `policy.` PREFIX — reserving
+    // a whole namespace against a hypothetical extension whose id is `policy` is the mistake this
+    // list already avoids for `ext.` and `update.`. Both gate on their own name (no `tool_gate.rs`
+    // alias needed) and re-check it inside `call_case_tool`.
+    "policy.sla.set",
+    "policy.sla.list",
 ];
 
 pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
@@ -582,6 +593,19 @@ pub(crate) async fn run_host_verb(
         // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
         // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
         crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("case.") {
+        // case-plane scope: the case + members + events + the triage write path. The outer gate ran
+        // the ALIASED capability (`case.members`/`case.events` → `case.get`, `case.merge`/
+        // `case.split` → `case.open`, `case.assign`/`case.snooze`/`case.comment` → `case.workflow`
+        // — see `tool_gate.rs`); each verb re-runs it inside (defense in depth). Takes the full
+        // `&Node`: `case.open`/`case.merge`/`case.split`/`case.assign` write the `case_id` and owner
+        // echoes back onto the insights the case cites.
+        crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "policy.sla.set" || qualified_tool == "policy.sla.list" {
+        // case-plane scope: the SLA service-policy pair. Owned by the case service because a policy
+        // only means anything as a case's deadline. ADMIN — the power to move a deadline is the
+        // power to reorder every case in the workspace.
+        crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("authz.")
         || qualified_tool.starts_with("grants.")
         || qualified_tool.starts_with("roles.")

@@ -17,15 +17,34 @@ use crate::policy::{ServicePolicy, POLICY_TABLE};
 /// uses, so the list is a faithful picture of the ladder.
 ///
 /// A row that fails to decode is **skipped**, not fatal: one malformed row must not blank the whole
-/// settings page and, with it, the admin's only way to fix it.
+/// settings page and, with it, the admin's only way to fix it. That tolerance is why
+/// `a_policy_round_trips_through_a_real_store` exists — a skip is silent by construction, so the
+/// only thing standing between it and "the list is mysteriously always empty" is a test that writes
+/// through the real store and reads back. (It caught exactly that: the envelope below.)
 pub async fn policy_list(store: &Store, ws: &str) -> Result<Vec<ServicePolicy>, CasesError> {
     let rows = scan_all(store, ws, POLICY_TABLE).await?;
     let mut policies: Vec<ServicePolicy> = rows
         .into_iter()
-        .filter_map(|row| serde_json::from_value(row.data).ok())
+        .filter_map(|row| unwrap_policy(row.data))
         .collect();
     sort_by_specificity(&mut policies);
     Ok(policies)
+}
+
+/// Unwrap the `{ data, rev }` write envelope `scan` returns, then decode.
+///
+/// `lb_store::scan` selects the WHOLE record, so a `write`-based row arrives wrapped; `read` and
+/// `list` hand back the inner value already unwrapped. Decoding the wrapper directly yields no
+/// fields and — because the miss is a `None` we deliberately skip — an empty list rather than an
+/// error. Same unwrap the case lane does.
+fn unwrap_policy(row: serde_json::Value) -> Option<ServicePolicy> {
+    let inner = match row {
+        serde_json::Value::Object(mut obj) => {
+            obj.remove("data").unwrap_or(serde_json::Value::Object(obj))
+        }
+        other => other,
+    };
+    serde_json::from_value(inner).ok()
 }
 
 /// Order most-specific-first, ties by `id` ascending. Shared with the resolution ladder so the two
