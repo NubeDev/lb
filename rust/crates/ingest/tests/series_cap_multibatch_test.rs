@@ -12,7 +12,7 @@
 //! (testing §0).
 
 use lb_ingest::{
-    cap_series, commit_batch, run_gc, sample_count, set_policy, write, Policy, Qos, Sample,
+    cap_series, commit_direct, run_gc, sample_count, set_policy, Policy, Qos, Sample,
     CAP_EVICT_BATCH,
 };
 use lb_store::Store;
@@ -30,12 +30,10 @@ fn sample(series: &str, seq: u64) -> Sample {
     }
 }
 
-/// Commit `n` samples through the real staging→commit path, looping the commit worker exactly as
-/// the drain does (terminating on what was DEQUEUED, never on what was committed).
+/// Commit `n` samples through the real write path, which chunks them into several transactions.
 async fn seed(store: &Store, ws: &str, series: &str, n: u64) {
     let samples: Vec<Sample> = (1..=n).map(|i| sample(series, i)).collect();
-    write(store, ws, &samples, 0).await.unwrap();
-    while commit_batch(store, ws, 256).await.unwrap().drained() > 0 {}
+    commit_direct(store, ws, &samples).await.unwrap();
     assert_eq!(sample_count(store, ws, series).await.unwrap(), n);
 }
 

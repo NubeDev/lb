@@ -6,7 +6,7 @@
 //! series — gate 1 (workspace) fires before the capability (§3.6). Real store, no mocks (rule 9).
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_ingest_tool, drain_workspace};
+use lb_host::call_ingest_tool;
 use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::json;
@@ -57,7 +57,6 @@ async fn write(store: &Store, p: &Principal, ws: &str, sample: serde_json::Value
     )
     .await
     .unwrap();
-    drain_workspace(store, ws).await.unwrap();
 }
 
 async fn find_by_host(store: &Store, p: &Principal, ws: &str, host: &str) -> Vec<String> {

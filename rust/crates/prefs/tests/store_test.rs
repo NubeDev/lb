@@ -76,7 +76,7 @@ async fn no_formatted_string_is_persisted() {
             "nube",
             &format!(
                 "SELECT language, timezone, date_style, unit_overrides FROM \
-                 type::thing('{USER_PREFS_TABLE}', [$ws, $user])"
+                 type::record('{USER_PREFS_TABLE}', [$ws, $user])"
             ),
             vec![
                 ("ws".into(), "nube".into()),

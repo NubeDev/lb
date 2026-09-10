@@ -5,6 +5,111 @@ crossing **before** you upgrade the binary — some of these delete rows on the 
 
 ---
 
+## SurrealDB 3 / SurrealKV 0.21 — your existing store cannot be opened
+
+> **Stop. This one destroys nothing, but it strands everything.**
+> A node running this release **will not start** against a store directory written by any earlier
+> release. There is no migration, no conversion tool, and no in-place upgrade. Export what you
+> need **before** you replace the binary; afterwards the old node is the only thing that can read
+> it.
+
+### What changed
+
+The embedded engine moved from **SurrealDB 2 on SurrealKV 0.9** to **SurrealDB 3 on SurrealKV
+0.21**. SurrealKV 0.9 was a bitcask commit log: one append-only file per store, in a `clog/`
+directory. SurrealKV 0.21 is an LSM tree and writes `sstables/`, `wal/`, `vlog/`,
+`versioned_index/` and a `manifest` instead. The two formats have nothing in common, and 0.21
+cannot read 0.9.
+
+The node detects the old layout by the presence of `clog/` — only the old engine ever created one
+— and refuses to start with a message that names the cause:
+
+```text
+the store at /var/lib/lb/store was written by surrealkv 0.9 (SurrealDB 2) — it has a `clog/`
+directory, which only that engine created. surrealkv 0.21 is a different on-disc format and
+cannot read it, so this node will NOT start against it. Nothing has been modified. Either point
+the node at a fresh directory, or move `clog/` aside once you have exported anything you still
+need from the old build.
+```
+
+**Nothing on disc is modified or deleted.** The refusal is deliberate: a node that silently served
+an empty workspace where your data used to be would be far worse than a node that will not start
+and says why.
+
+### Pre-upgrade checklist
+
+Do all of this while the **old** binary is still installed and running.
+
+1. **Export every series you need to keep.** Use the ingest read verbs against the running old
+   node — `series.list` to enumerate, then read the samples out per series. There is no bulk dump
+   verb; write what you export somewhere off the node.
+2. **Export the dead-letter table** if it is evidence in an open investigation.
+3. **Export your configuration records** — retention policies (`series.retention.list`), workspace
+   membership, roles and installed extension manifests. These are records in the store like any
+   other, so they are stranded with it.
+4. **Stop the node. Move the store directory aside** rather than deleting it, so you can go back
+   to the old binary if an export turns out to be incomplete:
+   ```bash
+   systemctl stop rubix-ai
+   mv /var/lib/lb/store /var/lib/lb/store.surrealdb2
+   ```
+5. **Start the new binary** against a fresh, empty directory. It will create the new layout.
+6. **Re-apply the configuration you exported in step 3**, then re-import data if you are importing
+   any.
+
+Keep `store.surrealdb2` until you are satisfied. It is the only copy of that data in a form
+anything can read.
+
+### Compaction is gone — and so is every guard around it
+
+The old engine never reclaimed anything on its own, so the node carried a whole apparatus to do it
+by hand. SurrealKV 0.21 compacts continuously in the background, and all of that apparatus was
+removed rather than left as dead weight:
+
+| Removed | Was |
+|---|---|
+| The `store.compact` **pass** | A stop-the-world rewrite of the whole log, pausing every writer |
+| The **boot** compaction pass | Ran on every `Store::open` |
+| The boot **memory guard** | Refused to open when the log exceeded available RAM |
+| `LB_STORE_OPEN_UNGUARDED` | The override for that refusal. **This variable no longer does anything** — remove it from your unit files |
+
+The `store.compact` **verb** still exists, and still needs `store:compact:run`, so nothing that
+calls it breaks. It now records a skip and returns without doing any work.
+
+Boot no longer replays history, so a large store is no longer a slow or dangerous start. Measured
+on the same machine: a 92,657-byte store opened in 114 ms, and a 42,816,755-byte store — 462 times
+the bytes — in 143 ms.
+
+### If you set `LB_STORE_MAX_BYTES`, unset it for now
+
+The disc budget still reports `budget_bytes` and `headroom_bytes` honestly, and still logs an
+advisory past the soft mark. But its only action was to enqueue a `store.compact` pass, and that
+pass is now a no-op.
+
+There is a known defect on top of that: past the 95% hard mark the driver is exempt from its
+one-hour interval, and the no-op pass reports a *skip* rather than an unproductive result, so the
+"budget too small" latch never engages. A budgeted node above 95% enqueues a no-op job **every 30
+seconds, indefinitely**, and each job is a record written to the store. Until it is fixed, leave
+the variable unset and watch `store.status` yourself.
+
+### There is no longer a manual way to reclaim disc space
+
+This is the real operational change, and it deserves to be said in one sentence: **if a store is
+too large, the only levers are tighter retention, moving data off the node, or a bigger disc.**
+Background merges reclaim space on the engine's schedule, not on yours.
+
+Note also that **deleting rows makes the store bigger before it makes it smaller**. On an LSM tree
+a delete appends a tombstone, and both the row and the tombstone leave the disc only at a later
+merge. Measured: deleting 20,000 rows moved a store from 13,110,037 to 14,083,889 bytes, and it
+was still 14,085,369 bytes fifteen seconds later.
+
+### Related
+
+- [Store](../store/store.md) — how the LSM engine lays data out, and what `store.status` measures.
+- Skill: `docs/skills/store-compact/SKILL.md`
+
+---
+
 ## Bounded defaults — unpoliced series are now evicted (issue [#122](https://github.com/NubeDev/lb/issues/122))
 
 > **Do this first, on every node, before you upgrade.**
@@ -86,9 +191,9 @@ Run this against each workspace on each node, **before** replacing the binary.
    Without a tier — including under the default cap — eviction is unrecoverable.
 5. **Apply the records, then verify.** Re-run step 2 and confirm every series you care about is now
    covered. Only then upgrade.
-6. **Plan for the bytes** (see "Eviction does not free space" below): make sure a
-   `store.compact` pass can run after the upgrade, or set `LB_STORE_MAX_BYTES` and let the budget
-   driver trigger one.
+6. **Expect the store to grow first** (see "Eviction does not free space" below). Make sure the
+   disc has headroom for that before you upgrade; there is no pass you can run to get it back
+   sooner.
 
 If you upgrade first and set policies after, the first tick has already run. `max_samples: 0`
 applied afterwards keeps what is left; it does not bring anything back.
@@ -107,8 +212,9 @@ list is the exact set of series that just lost history.
 
 ### Dead letters now expire after 30 days
 
-`ingest_dead_letter` — must-deliver samples diverted by the staging bound — was the one ingest
-table nothing ever pruned. It now has a **30-day horizon** (`DEAD_LETTER_KEEP_MS`), enforced by the
+`ingest_dead_letter` — must-deliver samples the node could not store, diverted with
+`reason: 'series-cap'` when a workspace is already at its series cardinality limit — was the one
+ingest table nothing ever pruned. It now has a **30-day horizon** (`DEAD_LETTER_KEEP_MS`), enforced by the
 same per-workspace GC pass, reported as `GcPass::evicted_dead_letters`.
 
 The horizon is deliberately separate from `raw_for_ms` and is not a policy field: dead letters are
@@ -135,14 +241,18 @@ need the new field.
 
 ### Eviction does not free space — it costs space
 
-On SurrealKV a delete is a **tombstone appended to the commit log**. The first post-upgrade tick
-deletes rows and therefore makes `log_bytes` go **up**, not down. The space comes back only at the
-next **compaction**.
+On SurrealKV a delete is a **tombstone**: a small record saying "this key is gone", appended like
+any other write. The row it hides is still in an SSTable file on disc. The first post-upgrade tick
+deletes rows and therefore makes `log_bytes` go **up**, not down.
 
-Do not read the first tick's disk number as a failure of this change; it is the engine working as
-designed. Plan a `store.compact` pass after the upgrade, or set `LB_STORE_MAX_BYTES` so the budget
-driver enqueues one for you at the soft mark. This is the same release that shipped the disk
-budget, precisely because bounding rows without reclaiming bytes is half a mechanism.
+Measured on a real store: deleting 20,000 rows moved it from 13,110,037 to 14,083,889 bytes, and
+it was still 14,085,369 bytes fifteen seconds later.
+
+The space comes back when a **background merge** rewrites the SSTables holding those rows. That
+runs on the engine's schedule. **There is nothing you can trigger to make it happen sooner** —
+`store.compact` is a no-op on this engine. Do not read the first tick's disc number as a failure
+of this change; it is the engine working as designed. Make sure the disc has room for the growth
+before you upgrade.
 
 ### Related
 
@@ -151,4 +261,4 @@ budget, precisely because bounding rows without reclaiming bytes is half a mecha
 - `docs/scope/ingest/series-sample-cap-scope.md` — the count bound and why it exists alongside a
   time horizon. `docs/scope/ingest/series-retention-scope.md` — rollup-then-evict.
 - [Ingest](../ingest/ingest.md) — retention policies, tiers and filters.
-  [Store](../store/store.md) — compaction and `store.status`.
+  [Store](../store/store.md) — how the engine lays data out, and what `store.status` measures.

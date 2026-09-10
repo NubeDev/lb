@@ -60,7 +60,14 @@ async fn online_pass_succeeds_after_a_define_index() {
         .await
         .expect("the pass must succeed despite the index-builder engine leak (quiesce fallback)");
     assert!(rec.ok);
-    assert!(rec.after_bytes < rec.before_bytes, "churn compacts away");
+    // NOT a shrink. The pass is a reported no-op under surrealkv 0.21 (the LSM engine compacts
+    // itself), so it reclaims nothing and says why. What this test is actually for still holds and
+    // is asserted below: the pass SUCCEEDS with an index defined — the old engine leaked an
+    // index-builder handle that made it fail — and the live handle serves intact data afterwards.
+    assert!(
+        rec.skipped.is_some(),
+        "a no-op pass must say why it did nothing: {rec:?}"
+    );
 
     // The live handle serves intact data after the swap.
     for k in 0..20 {

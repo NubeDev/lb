@@ -47,7 +47,7 @@ pub async fn set_catalog_override(
     store
         .query_ws(
             ws,
-            &format!("UPSERT type::thing('{CATALOG_TABLE}', [$ws, $locale]) MERGE $patch"),
+            &format!("UPSERT type::record('{CATALOG_TABLE}', [$ws, $locale]) MERGE $patch"),
             vec![
                 ("ws".into(), Value::String(ws.to_string())),
                 ("locale".into(), Value::String(locale.to_string())),

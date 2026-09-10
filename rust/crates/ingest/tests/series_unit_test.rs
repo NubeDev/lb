@@ -6,7 +6,7 @@
 //! correctly; it had no `from_unit` to convert FROM, because the registry carried two columns and
 //! `series.list` returned bare strings. These tests pin the column that closes that gap.
 
-use lb_ingest::{commit_batch, series_units, set_unit, unit, write, Qos, Sample};
+use lb_ingest::{commit_direct, series_units, set_unit, unit, Qos, Sample};
 use lb_prefs::axis::Unit;
 use lb_store::Store;
 use serde_json::json;
@@ -23,9 +23,11 @@ fn sample(series: &str, seq: u64, labels: serde_json::Value) -> Sample {
     }
 }
 
+// `commit_direct` is the whole write path since the staging removal (#197): one write per sample,
+// no stage-then-drain. The provenance walk it drives (`apply_unit`, post-tx beside `apply_labels`)
+// is unchanged — only the door in front of it is.
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
-    write(store, ws, &samples, 0).await.unwrap();
-    while commit_batch(store, ws, 256).await.unwrap().drained() != 0 {}
+    commit_direct(store, ws, &samples).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

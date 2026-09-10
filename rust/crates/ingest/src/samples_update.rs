@@ -1,5 +1,5 @@
 //! `series.samples.update` — edit **committed raw** samples of one series in place (payload and/or
-//! `ts`). Strict UPDATE semantics, never UPSERT: `UPDATE type::thing(...)` on a missing record is a
+//! `ts`). Strict UPDATE semantics, never UPSERT: `UPDATE type::record(...)` on a missing record is a
 //! no-op in the engine, so an update naming a non-existent sample is **skipped** — it can never
 //! create a row, and in particular can never plant a row under a foreign producer identity (the
 //! `(series, producer, seq)` dedup identity stays owned by whoever committed it).
@@ -16,7 +16,7 @@ use lb_store::{Store, StoreError};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// One in-place edit: the sample's `(producer, seq)` identity plus the fields to replace. At least
 /// one of `payload`/`ts` must be set (the host gate enforces it); `ts` is epoch milliseconds and
@@ -64,11 +64,11 @@ pub async fn update_samples(
         }
         if let Some(ts) = u.ts {
             let key = format!("ts{i}");
-            sets.push(format!("ts = time::from::millis(${key})"));
+            sets.push(format!("ts = time::from_millis(${key})"));
             bindings.push((key, Value::Number(ts.into())));
         }
         sql.push_str(&format!(
-            "LET $hit{i} = (UPDATE type::thing('{SERIES_TABLE}', [$series, ${pr}, ${sq}]) SET {});
+            "LET $hit{i} = (UPDATE type::record('{SERIES_TABLE}', [$series, ${pr}, ${sq}]) SET {});
              RETURN count($hit{i});\n",
             sets.join(", ")
         ));

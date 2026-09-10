@@ -1,7 +1,7 @@
 //! `series.rename` — the host's capability chokepoint for renaming a series (data-console scope:
 //! series lifecycle). Gates first (`mcp:series.rename:call`, workspace-first §3.6 then capability
 //! §3.5), then calls the raw `lb_ingest::rename_series`, which carries the series' samples, rollups,
-//! staged rows, registry row, and tag edges from the old name to the new one in `ws`.
+//! registry row, and tag edges from the old name to the new one in `ws`.
 //!
 //! A rename into an already-used name is refused (no silent merge) — surfaced as `BadInput`, not a
 //! denial (it is a client error about the target, not an authorization failure). A denial stays

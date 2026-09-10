@@ -53,10 +53,9 @@ async fn commit_samples(store: &Store, ws: &str, series: &str, n: u64) {
             qos: Qos::BestEffort,
         })
         .collect();
-    lb_ingest::write(store, ws, &samples, 0)
+    lb_ingest::commit_direct(store, ws, &samples)
         .await
         .expect("stage");
-    lb_host::drain_workspace(store, ws).await.expect("drain");
 }
 
 /// THE HEADLINE — the driver actually runs. Boot a node, exceed a cap, and assert the series shrinks

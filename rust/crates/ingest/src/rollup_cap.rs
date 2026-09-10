@@ -34,7 +34,7 @@ pub async fn rollup_count(
     width_ms: u64,
 ) -> Result<u64, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT count() FROM {ROLLUP_TABLE} \
@@ -65,7 +65,7 @@ async fn keep_cutoff_t(
     keep: u64,
 ) -> Result<Option<u64>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT t FROM {ROLLUP_TABLE} WHERE series = $series AND width_ms = $width \

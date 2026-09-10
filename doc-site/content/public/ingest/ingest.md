@@ -44,12 +44,12 @@ Predicates run **when a batch commits**, in a fixed cheap-to-stateful order: `dr
 - **State is per `(series, producer)`** — the last *committed* value and timestamp — and it is
   durable, so a node restart does not re-open a deadband. Two producers on one series filter
   independently.
-- **`min_interval_ms` keeps the FIRST sample of each interval.** Deterministic under a re-drain.
+- **`min_interval_ms` keeps the FIRST sample of each interval.** Deterministic under a re-push.
 - **`range` defaults to `drop`.** `clamp` is available, but a −9999 sensor error clamped to −40 is
   indistinguishable from a real reading at the bound — dropped-and-counted is the honest default.
 - **Nothing is discarded silently.** Every drop is counted per reason (`muted`, `range`,
   `min_interval`, `deadband`) plus `clamped` for samples stored at a bound. The counts ride back on
-  `ingest.write` (when non-zero) and on each drain/GC pass.
+  `ingest.write` (when non-zero) and on each GC pass.
 
 > **Delivered-then-filtered, not lost.** Acceptance is deliberately unfiltered — a `must-deliver`
 > sample is durably accepted, and only then may the *operator's own policy* decline to store it.
@@ -99,27 +99,43 @@ anything is written at all.
 Retention runs on a **background reactor** (~5 minutes); nobody has to call a verb for a policy to
 take effect.
 
-## What `ingest.write` guarantees about latency
+## What `ingest.write` guarantees
 
-Shipped 2026-07-15 — the one part of this surface that is settled and worth stating early, because
-producers depend on it.
+**One sample costs one write.** `ingest.write` commits your samples straight into the indexed
+`series` tables and returns. There is no landing table, no background worker, and no queue between
+the call and the store.
 
-**Your write is never billed for anyone else's backlog.** A sample you push is durably appended to
-staging, and the call commits **at most your own batch** (`ceil(your_samples / 256)`) before
-returning. Whatever else is queued in the workspace — another producer's burst, a webhook flood, a
-federation mirror — is committed by a **background worker**, not inside your call. One producer's
-write latency cannot scale with another producer's staging depth.
+**Your write is never billed for anyone else's backlog**, because there is no backlog to be billed
+for. The call does exactly your own work: your samples, in batches of at most **256**, each batch
+one transaction.
 
-**Your write is still readable immediately.** The bounded drain preserves the round-trip: a sample
-written over a bridge is visible to the very next `series.latest` / `series.read` over that same
-bridge, with no explicit drain. That property is deliberate and tested.
+**Your write is readable the moment it returns.** The ack comes after the transaction commits, so
+the sample is visible to your very next `series.latest` / `series.read`.
 
-**The bound, stated honestly:** if you write more than 256 samples in one call, that call commits
-its own work in batches; if a large backlog sits ahead of you, some of your batch budget may commit
-those older rows first (staging drains oldest-first). Either way the cost is bounded, and the
-background worker commits the remainder within seconds — nothing is stranded, and exactly-once per
-`(series, producer, seq)` holds throughout.
+**Exactly-once still holds.** A crash before the commit rolls the whole batch back, and the
+producer never saw an ack. A `must-deliver` producer re-pushes, and the UPSERT keyed on
+`[series, producer, seq]` absorbs the repeat exactly once.
 
-Before this shipped, `ingest.write` drained the entire workspace backlog inside the caller's call: a
-single sample behind a 4,671-row backlog took 18.5 seconds, and a producer that timed out left the
-backlog in place for the next push to hit again.
+### Why there is no staging table any more
+
+Earlier releases appended each sample to a durable `ingest_staging` table and had a background
+worker move it into `series` later. Storing one sample therefore cost **three** writes to the same
+database: the staging insert, the `series` insert at commit, and the staging delete tombstone.
+
+The justification was that staging was a cheap unindexed landing zone, so a burst would land
+somewhere cheap and the expensive indexed write would happen off the burst. Both halves were wrong:
+
+- **The landing zone was not cheap.** It was a table in the same database, so a staged sample paid
+  the same write-ahead-log append and the same memtable insert as a committed one, plus a tombstone
+  when it left. Staging did not defer work. It added work, to the store that was already loaded.
+- **The write it deferred was not expensive.** The engine underneath is an LSM tree, where a
+  secondary index entry is just another key-value pair appended to the same memtable and log. There
+  is no index page to read, lock or rewrite.
+
+Measured on a real store, 200,000 samples cost **115,398 ms and 11.87 MB** through staging, against
+**3,752 ms and 4.02 MB** committed directly. That is 31 times faster for a third of the bytes.
+
+Staging was also described as backpressure. It was not. When the store was too loaded to take a
+write, staging responded by writing to that same store two extra times. Real backpressure is a
+buffer somewhere the store is not — a producer's own memory, for instance — and that belongs to the
+producer, not to the node.

@@ -13,7 +13,7 @@ async fn rev(store: &Store, ws: &str, table: &str, id: &str) -> Option<i64> {
     let mut resp = store
         .query_ws(
             ws,
-            "SELECT VALUE rev FROM ONLY type::thing($tb, $id)",
+            "SELECT VALUE rev FROM ONLY type::record($tb, $id)",
             vec![("tb".into(), json!(table)), ("id".into(), json!(id))],
         )
         .await

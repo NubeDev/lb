@@ -21,7 +21,7 @@ use lb_auth::SigningKey;
 use lb_role_gateway::Authenticity;
 
 use crate::store_env::{
-    retention_period_from_env, store_budget_bytes_from_env, store_open_unguarded_from_env,
+    retention_period_from_env, series_time_index_from_env, store_budget_bytes_from_env,
 };
 
 /// The default `POST /extensions` upload ceiling (extension-upload-limit fix): 384 MiB. Sized to the
@@ -340,6 +340,17 @@ pub struct BootConfig {
     /// `LB_STORE_MAX_BYTES` at the binary boundary — the one place `LB_*` is read.
     pub store_budget_bytes: Option<u64>,
 
+    /// Define the `(series, ts)` index on the series table. **Default `false`, deliberately.**
+    ///
+    /// SurrealDB 3.2.4 answers a datetime range over an indexed field wrongly — out-of-range rows,
+    /// and the `ORDER BY` dropped (measured: `store/tests/index_range_scan_probe.rs`). A paged read
+    /// returned a sample 500 ms below its own window. Off, the same query is correct.
+    ///
+    /// Config, never a code branch (rule 1). `from_env` reads `LB_SERIES_TIME_INDEX=1` at the binary
+    /// boundary. Turn it on only if you accept wrong rows for scan speed, or once the engine is
+    /// fixed; with it off the index is REMOVED from stores that already carry one.
+    pub series_time_index: bool,
+
     /// How often the **retention GC reactor** ticks. `None` (the default) ⇒
     /// [`lb_host::RETENTION_PERIOD`] — 300 s, unchanged.
     ///
@@ -372,12 +383,6 @@ pub struct BootConfig {
     /// embedder's. `from_env` does not read it — a policy is structured data, not a scalar knob, so
     /// the standalone binary seeds none.
     pub retention_seed: Vec<lb_ingest::Policy>,
-
-    /// Force the store open past the **boot memory guard** (`LB_STORE_OPEN_UNGUARDED=1`, parsed in
-    /// [`crate::store_env`]): `false` (default) ⇒ a log larger than available RAM is refused with
-    /// `StoreError::WontFit` and the binary exits nonzero rather than risking a machine-wide OOM
-    /// (#128). The *open* guard only — the compaction preconditions are not overridable.
-    pub store_open_unguarded: bool,
 
     /// What that guard should treat as this machine's available RAM. `None` (default, and what the
     /// binary always fills) ⇒ read `/proc/meminfo`. An embedder sets it when it knows a truer
@@ -512,7 +517,6 @@ impl Default for BootConfig {
             // The boot memory guard is ON by default for every embedder: it only ever fires on a
             // store this machine provably cannot replay, and the failure it replaces is a
             // machine-wide OOM (boot-memory-guard scope, issue #128).
-            store_open_unguarded: false,
             store_available_ram_bytes: None,
             // Seed nothing by default: the embedder declares its own bounds, and an empty vec makes
             // boot byte-identical to before the field existed.
@@ -567,6 +571,7 @@ impl Default for BootConfig {
             // 256 MiB advisory and no marks, forever. No auto-derivation from filesystem size — a
             // node must not silently acquire a new behaviour on upgrade.
             store_budget_bytes: None,
+            series_time_index: false,
             // The stock 300 s retention cadence (disk-budget/series-retention): slow on purpose —
             // a GC pass is a full table scan and nothing waits on an eviction. Configurable so the
             // cadence can be TESTED, not so it can be run fast.
@@ -678,13 +683,11 @@ impl BootConfig {
             // The node's store disk budget from `LB_STORE_MAX_BYTES` (bytes); unset/empty/
             // unparseable ⇒ `None` ⇒ today's flat 256 MiB advisory and no marks. Read only here.
             store_budget_bytes: store_budget_bytes_from_env(),
+            // The `(series, ts)` index is opt-in; see the field.
+            series_time_index: series_time_index_from_env(),
             // The retention-GC cadence from `LB_RETENTION_PERIOD_SECS` (whole seconds);
             // unset/empty/unparseable/`0` ⇒ `None` ⇒ the 300 s default. Read only here.
             retention_period: retention_period_from_env(),
-            // The boot memory-guard override from `LB_STORE_OPEN_UNGUARDED` (exactly `1`);
-            // anything else warns and leaves the guard on. Read only here, at the binary boundary —
-            // the store crate reads no env and takes this as a parameter.
-            store_open_unguarded: store_open_unguarded_from_env(),
             // The binary measures the machine (`/proc/meminfo`); only an embedder overrides it.
             store_available_ram_bytes: None,
             // LAN discovery from `LB_DISCOVERY_*` — OFF unless `LB_DISCOVERY=1`, so the standalone
