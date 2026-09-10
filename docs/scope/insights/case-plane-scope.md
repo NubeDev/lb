@@ -152,6 +152,18 @@ namesake cap actually exists in a bundle.
 | reactor | on | does |
 |---|---|---|
 | **case-group** | insight raise / reopen (inline in `insight_raise`, effect 6) + a reconcile loop | find or open the case: `body.explains[]` (verdict) → else `single`. Every open insight ends in exactly one open case. **Never moves a member a human placed** (`human_placed`). |
+
+**The verdict seam, precisely.** A *citing* record is any insight whose `body.explains` is a
+non-empty array; `body.root_cause` names the upstream finding. Both are **generic body keys** — the
+reactor reads those two and nothing else out of `body`, so it names no rule, no pack, no equipment
+key and no issue value (rule 10). Entries in `explains[]` are **`dedup_key` strings** as the shipped
+producer writes them, resolved through `dedup_lookup` with a get-by-id fallback; an entry that
+resolves to nothing is skipped with a warning, never an error, because a citing record can arrive
+before or after the records it cites. `primary_insight` is the resolved `root_cause` (falling back
+to the citing record when absent) — the **upstream fault**, not the record that names it. Arriving
+verdict-last **merges** the members' existing `single` cases into the verdict case; arriving
+verdict-first opens over whatever resolves and the reconcile loop folds the stragglers in. A member
+with `human_placed: true` is never moved in either direction.
 | **hold-down** | insight reopen | if the member's case closed as `fixed` within `hold_down_days`: reopen it, `reopened` event *repair did not hold*, `reopened_count += 1`; any other resolution → a new case |
 | **sla-clock** | case open · severity escalation | resolve the policy, compute `respond_by`/`due_at` in business hours, schedule the breach reminder; recompute on escalation; **never pause** |
 
