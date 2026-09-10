@@ -23,6 +23,7 @@ use super::error::CaseSvcError;
 use super::{
     case_assign, case_comment, case_events, case_get, case_list, case_members, case_merge,
     case_open, case_policy_sla_list, case_policy_sla_set, case_snooze, case_split, case_workflow,
+    rule_scorecard,
 };
 use crate::boot::Node;
 
@@ -55,6 +56,28 @@ pub async fn call_case_tool(
                 .await
                 .map_err(svc_to_tool)?;
             Ok(serde_json::to_value(policies).unwrap_or(Value::Null))
+        }
+        // case-plane scope §7: the detector feedback loop. VIEWER, read-only, and dispatched by
+        // EXACT name — see `HOST_NATIVE_EXACT`. It gates on its OWN name, so no `tool_gate.rs` arm.
+        "rule.scorecard" => {
+            let rows = rule_scorecard(
+                store,
+                principal,
+                ws,
+                input.get("rule_ref").and_then(Value::as_str),
+                input.get("site").and_then(Value::as_str),
+                input
+                    .get("since")
+                    .and_then(Value::as_u64)
+                    .map(super::clock::normalize_ts),
+                input
+                    .get("until")
+                    .and_then(Value::as_u64)
+                    .map(super::clock::normalize_ts),
+            )
+            .await
+            .map_err(svc_to_tool)?;
+            Ok(json!({ "rows": rows }))
         }
         "case.get" => {
             let case = case_get(store, principal, ws, str_arg(input, "id")?)

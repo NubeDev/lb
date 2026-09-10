@@ -195,6 +195,15 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     // alias needed) and re-check it inside `call_case_tool`.
     "policy.sla.set",
     "policy.sla.list",
+    // case-plane scope §7: the detector feedback loop — precision per `origin.ref` per site, over
+    // the resolved cases. EXACT name, and the name matters: the host already owns the `rules.`
+    // (PLURAL) prefix for the rules engine, and the SINGULAR `rule.` is a different family. It is
+    // listed here rather than added as a `rule.` prefix precisely so the host does NOT reserve a
+    // second, one-letter-different namespace — an extension whose id is `rule` stays reachable, and
+    // no `rules.*` verb is affected (`"rule.scorecard".starts_with("rules.")` is false, so the two
+    // families cannot shadow each other in either direction). Gates on its OWN name, and re-checks
+    // it inside `call_case_tool`.
+    "rule.scorecard",
 ];
 
 pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
@@ -618,6 +627,11 @@ pub(crate) async fn run_host_verb(
         // — see `tool_gate.rs`); each verb re-runs it inside (defense in depth). Takes the full
         // `&Node`: `case.open`/`case.merge`/`case.split`/`case.assign` write the `case_id` and owner
         // echoes back onto the insights the case cites.
+        crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "rule.scorecard" {
+        // case-plane scope §7: the detector scorecard. Owned by the case service because the number
+        // is a fold over case RESOLUTIONS — `origin.ref` only becomes a score once a human has
+        // finished the work. VIEWER and read-only; it writes nothing and changes no detector.
         crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool == "policy.sla.set" || qualified_tool == "policy.sla.list" {
         // case-plane scope: the SLA service-policy pair. Owned by the case service because a policy

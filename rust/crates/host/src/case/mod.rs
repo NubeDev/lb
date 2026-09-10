@@ -17,6 +17,7 @@
 //! | `case.workflow`, `case.assign`, `case.snooze`, `case.comment` | `case.workflow` (member) |
 //! | `policy.sla.set` | `policy.sla.set` (**admin**) |
 //! | `policy.sla.list` | `policy.sla.list` (**admin**) |
+//! | `rule.scorecard` | `rule.scorecard` (viewer) |
 //!
 //! The two reactors:
 //!   - **case-group** ([`group_insight`]) — runs INLINE at the end of `insight_raise` and from the
@@ -47,6 +48,7 @@ mod policy_list;
 mod policy_set;
 mod reactor;
 mod reconcile;
+mod scorecard;
 mod snooze;
 mod split;
 mod tool;
@@ -68,6 +70,7 @@ pub use merge::case_merge;
 pub use open::case_open;
 pub use policy_list::case_policy_sla_list;
 pub use policy_set::case_policy_sla_set;
+pub use scorecard::{rule_scorecard, UNKNOWN_RULE_REF};
 pub use snooze::case_snooze;
 pub use split::case_split;
 pub use tool::call_case_tool;

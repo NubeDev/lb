@@ -49,7 +49,9 @@ mod policy;
 mod policy_list;
 mod policy_match;
 mod policy_set;
+mod resolved;
 mod save;
+mod scorecard;
 mod snooze;
 mod split;
 mod workflow;
@@ -84,6 +86,8 @@ pub use policy::{
 pub use policy_list::{policy_list, sort_by_specificity};
 pub use policy_match::{best_match, match_policy};
 pub use policy_set::policy_set;
+pub use resolved::{resolved_cases, ResolvedFilter};
+pub use scorecard::{scorecard, ResolvedCase, ScorecardRow};
 pub use snooze::{puncture_snooze, snooze};
 pub use split::split;
 pub use workflow::workflow;

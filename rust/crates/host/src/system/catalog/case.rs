@@ -58,6 +58,13 @@ pub(super) const CASE: &[HostTool] = &[
         group: "case",
         description: "park a case until a stated time for a stated reason (until <= now un-snoozes)",
     },
+    // case-plane scope §7: the detector feedback loop. SINGULAR `rule.` — a different family from
+    // the `rules.` engine beside it, and read-only.
+    HostTool {
+        tool: "rule.scorecard",
+        group: "case",
+        description: "detector precision per origin.ref per site over resolved cases: fixed / (fixed + false_positive + self_cleared), plus the median time to fix",
+    },
     HostTool {
         tool: "case.comment",
         group: "case",

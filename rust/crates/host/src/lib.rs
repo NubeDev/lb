@@ -281,7 +281,8 @@ pub use identity_credential::{
 pub use case::{
     call_case_tool, case_assign, case_comment, case_events, case_get, case_list, case_members,
     case_merge, case_open, case_snooze, case_split, case_workflow, group_insight, reconcile_cases,
-    reopen_if_held, spawn_case_reactors, CaseSvcError, GROUP_ACTOR,
+    reopen_if_held, rule_scorecard, spawn_case_reactors, CaseSvcError, GROUP_ACTOR,
+    UNKNOWN_RULE_REF,
 };
 pub use inbox::{list_inbox, record_inbox, record_inbox_with_meta, resolve_inbox, InboxError};
 pub use ingest::{

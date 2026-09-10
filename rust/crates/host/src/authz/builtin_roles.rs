@@ -195,6 +195,12 @@ const VIEWER_CAPS: &[&str] = &[
     // grants no bundle carries.
     "mcp:case.get:call",
     "mcp:case.list:call",
+    // Case plane §7, the detector feedback loop: `rule.scorecard` is an AGGREGATE of outcomes a
+    // viewer can already read one at a time through `case.get`/`case.list` — no new disclosure, and
+    // the people who most need to know a detector is crying wolf are exactly the ones who hold only
+    // read caps. It writes nothing and demotes nothing (the `rule_policy` half of §7 is a separate,
+    // ADMIN, fast-follow), so reading it can cost nobody anything.
+    "mcp:rule.scorecard:call",
     // workspace directory LIST (a viewer sees the switcher). create/delete/purge are admin.
     "mcp:workspace.list:call",
     // host fs browse (read-only metadata) — the datasource DB-file picker; harmless read.

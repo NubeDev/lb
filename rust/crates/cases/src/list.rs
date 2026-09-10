@@ -160,7 +160,7 @@ pub async fn list(
 
 /// Unwrap the `{ data, rev }` write envelope `scan` returns and decode the case. A row that will
 /// not decode is skipped rather than failing the lane — one bad record must not take the queue down.
-fn unwrap_case(row: serde_json::Value) -> Option<Case> {
+pub(crate) fn unwrap_case(row: serde_json::Value) -> Option<Case> {
     let inner = match row {
         serde_json::Value::Object(mut obj) => {
             obj.remove("data").unwrap_or(serde_json::Value::Object(obj))
