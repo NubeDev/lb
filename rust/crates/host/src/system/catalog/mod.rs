@@ -20,6 +20,7 @@ mod authz;
 mod bus;
 mod cache;
 mod case;
+mod tags;
 mod channel;
 mod dashboard;
 mod datasource;
@@ -85,6 +86,7 @@ const FAMILIES: &[&[HostTool]] = &[
     host::HOST,
     identity::IDENTITY,
     case::CASE,
+    tags::TAGS,
     insight::INSIGHT,
     layout::LAYOUT,
     mail::MAIL,
