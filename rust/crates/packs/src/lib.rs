@@ -7,6 +7,7 @@
 //!   - [`manifest`] — the `pack.yaml` shape (`deny_unknown_fields`, line-numbered errors)
 //!   - [`manifest_refs`] — its entity `refs:` block, the declared twin in a federation datasource
 //!   - [`manifest_retention`] — its `retention:` block, mirroring the `series.retention.set` args
+//!   - [`manifest_reminder`] — its `reminders:` block, mirroring the `reminder.create` args
 //!   - [`bundle`]   — a pack over the wire, resolved to a [`bundle::Pack`] (no filesystem)
 //!   - [`plan`]     — the ordered object plan + the checksums drift is measured by
 //!   - [`validate`] — the dry-run linter (errors gate, dialect warnings don't)
@@ -22,11 +23,13 @@ pub mod bundle;
 pub mod decision;
 pub mod manifest;
 pub mod manifest_refs;
+pub mod manifest_reminder;
 pub mod manifest_retention;
 pub mod plan;
 pub mod receipt;
 pub mod validate;
 pub mod validate_refs;
+pub mod validate_reminder;
 pub mod validate_retention;
 // The zip transport envelope — one archive in, the SAME `Bundle` the JSON verb path takes out.
 pub mod zip;
@@ -34,8 +37,8 @@ pub mod zip;
 pub use bundle::{Bundle, LoadedDashboard, LoadedRule, Pack, MAX_BUNDLE_BYTES};
 pub use decision::{decide, Decision};
 pub use manifest::{
-    EntityRef, Manifest, RetentionAlign, RetentionDeadband, RetentionFilter, RetentionPolicy,
-    RetentionRange, RetentionTier,
+    EntityRef, Manifest, PackReminder, RetentionAlign, RetentionDeadband, RetentionFilter,
+    RetentionPolicy, RetentionRange, RetentionTier,
 };
 pub use plan::{checksum, content_checksum, plan, Kind, PlannedObject};
 pub use receipt::{ObjectReceipt, Receipt};

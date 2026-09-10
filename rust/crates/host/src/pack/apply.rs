@@ -153,6 +153,7 @@ async fn apply_object(
         Kind::Agent => apply_agent(node, principal, ws, pack, ts).await,
         Kind::Sidebar => apply_sidebar(node, principal, ws, pack, ts).await,
         Kind::Retention => apply_retention(node, principal, ws, pack, &obj.id, ts).await,
+        Kind::Reminder => apply_reminder(node, principal, ws, pack, &obj.id, ts).await,
     }
 }
 
@@ -492,6 +493,43 @@ async fn apply_retention(
     {
         Ok(_) => APPLIED.to_string(),
         Err(crate::ingest::IngestError::Denied) => DENIED.to_string(),
+        Err(_) => FAILED.to_string(),
+    }
+}
+
+/// Seed one pack-declared reminder via the SAME `reminder.create` the public verb dispatches to —
+/// which re-checks `mcp:reminder.create:call` under the caller's principal (pack-core §Caps: no
+/// privileged path through a pack). Pure LWW upsert keyed by `id`, so it applies on every run; no
+/// run-once gate, and an edited schedule lands on the next apply rather than forking a second row.
+///
+/// The reminder is stored with the APPLYING principal as its creator, and every firing re-resolves
+/// that principal's caps from the grant store — so a pack cannot seed a schedule with more authority
+/// than the admin who applied it, and revoking that admin's grant stops the schedule.
+async fn apply_reminder(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    pack: &Pack,
+    id: &str,
+    ts: u64,
+) -> String {
+    let Some(r) = pack.manifest.reminders.iter().find(|r| r.id == id) else {
+        return FAILED.to_string();
+    };
+    match crate::reminder::reminder_create(
+        &node.store,
+        principal,
+        ws,
+        &r.id,
+        &r.schedule,
+        r.max_runs,
+        super::reminder_action::to_action(r),
+        ts,
+    )
+    .await
+    {
+        Ok(_) => APPLIED.to_string(),
+        Err(e) if is_denied(&format!("{e:?}")) => DENIED.to_string(),
         Err(_) => FAILED.to_string(),
     }
 }

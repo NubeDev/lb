@@ -44,6 +44,16 @@ impl FieldType {
 
 /// One columnar field — a named, typed column of canonical values. `labels` carry Grafana series
 /// labels (e.g. `{host:"a"}`) for multi-series frames; empty for a plain column.
+///
+/// `unit` is the column's **source unit**: the provenance a client needs to convert the values into
+/// whatever unit a viewer's prefs ask for. The module header has always said values are "SI/base
+/// units" while giving no way to declare WHICH — this field is that declaration. It is:
+///   - **optional**, because most columns have no known unit and must keep working (absent means
+///     "unknown": render the canonical value, convert nothing — today's behaviour exactly);
+///   - a **token string**, not a typed `lb_prefs::axis::Unit`, because `lb-viz` is deliberately
+///     dependency-free (see the crate header) and a frame is a wire shape. The token is one from
+///     the closed prefs vocabulary (`"celsius"`, `"kilowatt_hour"`); whoever SETS it validates it,
+///     and a consumer parses it with `Unit::parse` and treats an unrecognized token as absent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Field {
     pub name: String,
@@ -52,6 +62,8 @@ pub struct Field {
     pub values: Vec<Value>,
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub labels: Map<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
 }
 
 impl Field {
@@ -63,6 +75,7 @@ impl Field {
             ty,
             values,
             labels: Map::new(),
+            unit: None,
         }
     }
 
@@ -73,7 +86,16 @@ impl Field {
             ty,
             values,
             labels: Map::new(),
+            unit: None,
         }
+    }
+
+    /// Declare this field's source unit (builder style). `unit` is a token from the closed prefs
+    /// vocabulary; the caller is responsible for it being one, since `lb-viz` cannot parse it
+    /// without taking the dependency it deliberately does not have.
+    pub fn with_unit(mut self, unit: impl Into<String>) -> Self {
+        self.unit = Some(unit.into());
+        self
     }
 
     /// This field's value at `row`, or `Null` past the end (a ragged frame reads as null, never panics).

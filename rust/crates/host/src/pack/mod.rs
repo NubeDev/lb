@@ -32,6 +32,7 @@ mod authorize;
 mod error;
 mod page_meta;
 mod read;
+mod reminder_action;
 mod retention_policy;
 mod run;
 mod sqlite;

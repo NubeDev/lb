@@ -496,13 +496,13 @@ async fn shell_path_and_headless_mcp_call_produce_the_same_cell() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_hallucinated_view_in_the_envelope_is_rejected_through_pin() {
-    // The pin reuses `check_view_cells` (Slice A) — an envelope with `view:"heatmap"` (the G4 typo) is
-    // rejected loudly HERE, too, for the shell path AND a headless writer. Nothing persists.
+    // The pin reuses `check_view_cells` (Slice A) — an envelope with a hallucinated `view` (the G4
+    // typo) is rejected loudly HERE, too, for the shell path AND a headless writer. Nothing persists.
     let ws = "wp-reject";
     let node = Arc::new(Node::boot().await.unwrap());
     let test = principal("user:test", ws, &[PIN, GET]);
 
-    let env = json!({ "view": "heatmap", "source": { "tool": "x" } });
+    let env = json!({ "view": "sunburst", "source": { "tool": "x" } });
     let err = call(
         &node,
         &test,
@@ -514,7 +514,7 @@ async fn a_hallucinated_view_in_the_envelope_is_rejected_through_pin() {
     .expect_err("hallucinated view rejected through pin");
     match err {
         ToolError::BadInput(m) => assert!(
-            m.contains("unknown view 'heatmap'"),
+            m.contains("unknown view 'sunburst'"),
             "the Slice A validator fires through the pin path: {m}"
         ),
         other => panic!("expected BadInput over MCP, got {other:?}"),

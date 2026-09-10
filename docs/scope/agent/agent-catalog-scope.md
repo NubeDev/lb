@@ -43,13 +43,13 @@ setup and a node upgrade re-seeds cleanly.
 - **No secret values.** `api_key_env` is an env-var **NAME**; the key stays in the node env /
   `lb-secrets`, never in a definition record (mirrors `profiles.rs`' `ModelEndpoint` and the shipped
   `agent.config`).
-- **Not per-run model consumption of a per-workspace endpoint.** Actually routing the in-house loop to
-  a *per-workspace* model endpoint at invoke time is gated on the **ai-gateway provider adapter** (the
-  same dependency default-agent-wiring names: the in-house model is node-level `LB_AGENT_MODEL_*`
-  today). This scope ships the catalog + seed + selection (which the invoke path already reads for the
-  **runtime**); consuming the selected definition's **endpoint** per-workspace lands when a real
-  `Provider` adapter + a per-run model override exist (named follow-up). Stated plainly so the UI
-  doesn't over-promise.
+- ~~**Not per-run model consumption of a per-workspace endpoint.**~~ **SHIPPED** — no longer a
+  non-goal. `resolve_workspace_model` consumes the active definition's endpoint per-workspace at
+  invoke time, and `adapter_for` (`rust/node/src/agent.rs`) builds the real `OpenAiCompat` adapter
+  from it. Proven live 2026-09-07 against a local ollama endpoint (`provider = openai-compat`,
+  `base_url = http://127.0.0.1:11434/v1`) — see rubix-ai
+  `docs/scope/bms-agent/local-model-bench-2026-09-07.md`.
+  Still genuinely open: a **per-run** model override (this is per-workspace).
 - **Not per-user.** A definition and the active selection are **workspace** settings (like
   `workspace_prefs` / `agent.config`), never per-member.
 - **No live feed / no batch / no job.** The catalog is a small config set read on demand; there is no
@@ -204,11 +204,11 @@ gateway / boot seed; no fake — a definition is names-only config, no external 
 - **Model ids drift.** `glm-5.1` / `glm-5.2` are the provider's ids as the user named them; if Z.AI
   publishes different ids the manifest is a one-line TOML edit + re-seed (no code change). Keep the
   model id **data in the TOML**, never hard-coded in a verb.
-- **The endpoint isn't consumed per-workspace yet.** Picking a definition sets `agent.config`, and the
-  invoke path honors the **runtime** today — but the in-house **model** is still node-level
-  (`LB_AGENT_MODEL_*`) until the ai-gateway provider adapter lands. The UI must not imply "this key/model
-  is live per workspace" beyond what's wired. Copy this honestly (a small "applies to routing once a
-  provider adapter is configured" note), mirroring default-agent-wiring's honesty.
+- ~~**The endpoint isn't consumed per-workspace yet.**~~ **STALE — the adapter landed.** Picking a
+  definition sets `agent.config`, and the invoke path now honors both the **runtime** and the
+  **model endpoint**: `resolve_workspace_model` overlays the pick and `adapter_for` builds the real
+  provider. The UI may state the picked key/model IS live per workspace. Verified end-to-end on a
+  local ollama endpoint 2026-09-07 (rubix-ai `docs/scope/bms-agent/local-model-bench-2026-09-07.md`).
 - **Built-in vs custom id collisions.** A custom id must not shadow a `builtin.*` id — reserve the
   `builtin.` prefix (reject it in `create`, like `core.` for skills) so the two tiers can't collide.
 - **Node-upgrade re-seed semantics.** New built-ins on upgrade must add without clobbering a workspace's

@@ -185,17 +185,43 @@ impl Grid {
         self.wrap(format!("SELECT * FROM {} LIMIT {n}", self.subquery()))
     }
 
+    /// Row count of the grid — **dialect-dispatched**, because the two seams genuinely disagree and
+    /// no single spelling works on both (verified live, both directions):
+    ///
+    /// - **Platform** (SurrealDB): `count()` takes no argument and needs `GROUP ALL` to fold the rows
+    ///   into one. `COUNT(*)` is a parse error ("Unexpected token `*`").
+    /// - **Federation** (DataFusion over sqlite/postgres): `COUNT(*)`, and `GROUP ALL` is a parse
+    ///   error ("Expected: end of statement, found: GROUP").
+    ///
+    /// This shipped as the SurrealQL form only, so `.size()` — and with it `ai.classify`, whose
+    /// over-large-grid guard calls `size()` before charging the meter — was a hard parse error on
+    /// EVERY federation source, i.e. on all time-series data. The error names a column position past
+    /// the end of the author's own SQL, so it reads as a bug in their query.
+    /// See `docs/debugging/rules/grid-size-surrealql-on-federation.md`.
+    ///
+    /// `SourceKind` is right here on the grid ("the grid carries its `SourceKind` so a…", module doc)
+    /// — the dispatch was simply never made.
     pub fn size(&self) -> Result<i64, Box<EvalAltResult>> {
-        let g = self.wrap(format!(
-            "SELECT count() AS v FROM {} GROUP ALL",
-            self.subquery()
-        ));
+        let sql = match self.kind {
+            SourceKind::Platform => {
+                format!("SELECT count() AS v FROM {} GROUP ALL", self.subquery())
+            }
+            SourceKind::Federation => format!("SELECT COUNT(*) AS v FROM {}", self.subquery()),
+        };
+        let g = self.wrap(sql);
         let grid = g.collect_json()?;
+        // …and read the count out of BOTH row shapes. `r.get("v")` alone is the platform shape only:
+        // the federation seam returns column-aligned ARRAYS (`[3]`, not `{"v":3}`), so an object-only
+        // read silently returned 0 — a WRONG ANSWER rather than an error, which for `ai.classify`'s
+        // over-large-grid guard means "0 rows, always safe" and defeats the cap. `records()` documents
+        // this two-shape contract twenty lines below and normalizes via `row_to_map`; `size()` did not.
         Ok(grid
             .rows
             .first()
-            .and_then(|r| r.get("v"))
-            .and_then(|v| v.as_i64())
+            .and_then(|r| match r {
+                Value::Array(cells) => cells.first().and_then(|v| v.as_i64()),
+                _ => r.get("v").and_then(|v| v.as_i64()),
+            })
             .unwrap_or(0))
     }
 

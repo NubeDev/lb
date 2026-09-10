@@ -28,6 +28,7 @@ use super::macros::substitute_macros;
 use super::reach::{apply_entity_reach, EntityReach};
 use super::resolution::{attach_resolution, maybe_inject_buckets, resolution_for};
 use super::time_override::apply_time_override;
+use super::unit_attach::attach_unit;
 use crate::boot::Node;
 use crate::dashboard::QueryOptions;
 use crate::tool_call::call_tool_at_depth;
@@ -113,6 +114,9 @@ pub async fn viz_query(
         // the empty pipeline returns frames unchanged, so `status` survives to the client verbatim.
         let mut frame = Frame::from_rows(&t.ref_id, &rows, time.as_deref());
         frame.status = Some(status.clone());
+        // Source-unit provenance: stamp the value columns with the series' registered unit so the
+        // frame is self-describing (see `unit_attach`). Never converts, never fails the panel.
+        attach_unit(&node.store, ws, &t.args, &mut frame).await;
         frames.push(frame);
 
         // Collect per-target timing for the umbrella event.

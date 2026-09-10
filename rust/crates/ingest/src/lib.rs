@@ -52,6 +52,7 @@ mod samples_update;
 mod schema;
 mod stats;
 mod tables;
+mod unit_label;
 
 pub use align::{bucket_start, Align};
 pub use bucket::{
@@ -77,7 +78,7 @@ pub use filter::{
 pub use filter_state::{read_filter_state, ProducerState, FILTER_STATE_FIELD};
 pub use gc::{run_gc, GcPass};
 pub use latest::{latest, latest_many};
-pub use meta::{series_names, DEFAULT_SERIES_CAP};
+pub use meta::{series_names, series_units, set_unit, unit, DEFAULT_SERIES_CAP};
 pub use method::{apply_method, Method};
 pub use page::{
     read_page, Direction, Page, PageError, PageQuery, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
@@ -101,6 +102,7 @@ pub use schema::{
 };
 pub use stats::{series_producers, series_stats, SeriesStats, TierRows};
 pub use tables::{DEAD_LETTER_TABLE, SERIES_TABLE};
+pub use unit_label::{apply_unit, declared_unit, UNIT_LABEL};
 
 // SurrealDB 3: these types are read back from queries and so need `SurrealValue`. Every one of them
 // carries serde semantics the derive cannot express — `#[serde(default)]`, `none_as_default`,

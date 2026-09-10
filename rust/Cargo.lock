@@ -5819,6 +5819,7 @@ name = "lb-ingest"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "lb-prefs",
  "lb-store",
  "lb-tags",
  "serde",

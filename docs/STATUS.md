@@ -4108,6 +4108,81 @@ today's behaviour byte-for-byte**, so the upgrade is inert for anyone who does n
 
 ---
 
+## 2026-09-09 — units, the view catalog, a tz default, and a 1000× epoch bug (BUILT, unreleased)
+
+> **MERGED WITH master 2026-09-10** (SurrealDB 3 #195 + the staging removal #197), which this
+> branch had been blocked on as a non-fast-forward. Three conflicts, two real, both in `ingest`:
+> master's `staged`→`samples` / `staging.rs`→`tables.rs` rename composes with this branch's
+> `apply_unit` walk. Two breaks surfaced only when the TEST targets were built — neither visible to
+> `cargo check --workspace`, which does not build them:
+>
+> 1. `tests/series_unit_test.rs` seeded through `write` + a `commit_batch` drain loop, the staging
+>    API master deleted. Ported to `commit_direct`.
+> 2. **`meta.rs` used `type::thing`, renamed to `type::record` in SurrealDB 3.** All 7
+>    unit-provenance tests failed at RUNTIME on a green build — queries are strings. Only the two
+>    new `unit`/`set_unit` statements were stale; master had already migrated the older four in the
+>    same file.
+>
+> `generated/surrealql_corpus.rs` is regenerated so the `surrealql_parses` guard — which exists for
+> exactly this rename — now covers all 9 of `meta.rs`'s statements. Verified red-then-green.
+> **Lesson: use `--all-targets`; a SurrealQL rename is invisible to a type checker.**
+>
+> Proven on the merged tree: **`cargo test -p lb-ingest` is 186 passed / 0 failed across all 26
+> test files**, and `cargo check --workspace --all-targets` is clean apart from two pre-existing
+> `lb-cli` failures (`sign_test`, `ext_publish_test`) that read a gitignored `hello_v2_ext.wasm`
+> absent from any fresh checkout — environmental, identical on plain master.
+> Still unreleased and still owed a tag — rubix-ai pins `node-v0.26.0`, which carries none of this.
+
+Driven by a downstream measurement: rubix-ai's
+`app/docs/scope/dashboards/api-gaps-review.md`, written against a live node and **all 44
+dashboards / 269 cells** on that bench, asking what a Flutter client would need to render dashboards
+and honour timezone/unit preferences. Five findings, all landing here. No release yet — rubix-ai
+still pins `node-v0.26.0`.
+
+- **A series now carries its unit.** `series_meta` gains a `unit` column and the viz `Field` gains an
+  optional `unit`, stamped onto a frame's numeric columns by `host/viz/unit_attach.rs`. This was the
+  missing link that made a *correct* converter unreachable: `format.quantity` needs a `from_unit`,
+  and nothing on the data path had one (`series_meta` had two columns, `series.list` returns bare
+  strings, `Field` had none — while its own header promised "SI/base units"). A producer declares it
+  as a `unit` **label**, validated against the closed enum: `"degrees celsius"` is REFUSED, not
+  recorded, because a unit that looks like provenance but converts to nothing is worse than absent.
+  Absent stays legal and means unknown. **The frame never converts** — that would bake one viewer's
+  prefs into shared, cacheable data.
+- **The unit vocabulary learned what a building speaks.** 8 dimensions/29 units → **18/58**: energy,
+  power, electric potential/current, apparent power, volume, volume flow, illuminance,
+  concentration, frequency (+ `kPa`, missing from the pressure dimension all along). The measurement
+  that forced it: **85 of 143 unit-bearing panels (59%) declared a unit lb could not convert** — V,
+  mA, W, kW, kWh, ppm, lux, kL. **VA is its own dimension, not power**, and **energy is not power**:
+  uom cannot tell VA from W, so `VA → W` and `kWh → kW` are structural `CrossDimension` refusals
+  rather than plausible wrong numbers (the corpus contains a `custom:kW/kWh` unit).
+- **The widget catalog carries 55 views, was 22.** The downstream shell kept a 31-entry
+  `WIRE_ALIASES` table persisting a `geomap` as `view:"table"` — so **45 of 269 cells stored a view
+  that lied**, and any client trusting `cell.view` drew ~20% of the corpus as a table, silently.
+  That table is not Grafana compatibility; it is a workaround for **this catalog rejecting the ids on
+  `dashboard.save`**, and nearly every entry says "retire once the lb catalog carries the id". So the
+  ids landed here rather than adding a `view_resolved` field to undo the lie downstream.
+- **`time.range.resolve` defaults `tz` from the caller's prefs.** DST-correct calendar snapping
+  already existed and already took a `tz`; it just never learned who was asking, so "today" meant
+  "today in Greenwich" for everyone, while `prefs.timezone` was read in exactly ONE place
+  (`format.datetime`). An explicit `tz` still wins; no preference still means UTC. The verb is no
+  longer purely store-free — that one prefs read is the only touch.
+- **A latent 1000× window bug, fixed.** `viz/time_override.rs` claimed epoch **seconds** twice in its
+  own header and subtracted a seconds-valued duration from an **ms** clock, so a panel setting
+  `timeFrom: "6h"` asked for a **21.6-second** window: silently empty, never an error. Every
+  downstream consumer (`series.read` buckets, `viz::resolution`, `$__timeFrom`) is ms, and the client
+  demonstrably sends ms. It survived because no cell in the measured corpus had ever set `timeFrom`.
+
+- **Deliberately NOT built: `Align` gaining a `tz`.** The review filed it as small and additive; it
+  is not. `align.rs` is an `origin + k*width` fixed-phase grid, and a real IANA zone makes the grid
+  **variable-width** (a DST day is 23 or 25 hours) — a different model, plus a timezone database in a
+  crate that is dependency-light on purpose. That is what the module's own "DST is deliberately NOT
+  here" section already argues. Needs its own scope; `$__timeGroup` with a tz follows from it.
+- **Still open:** `prefs.catalog` returns i18n message strings, not the axis vocabulary, so a client
+  cannot discover that `unit_system` is `metric|imperial` and every one hardcodes it. The
+  `gen-prefs-ts` generator serves Rust→TS consumers only.
+
+---
+
 ## How to keep this current
 
 Every session that changes state updates the relevant cell here as its **last step**

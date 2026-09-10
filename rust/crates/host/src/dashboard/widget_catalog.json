@@ -10,16 +10,81 @@
       "data": true,
       "action": false,
       "options": [
-        { "id": "displayName", "label": "Display name", "scope": "fieldConfig", "path": "displayName", "control": "text" },
-        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
-        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
-        { "id": "min", "label": "Min", "scope": "fieldConfig", "path": "min", "control": "number" },
-        { "id": "max", "label": "Max", "scope": "fieldConfig", "path": "max", "control": "number" },
-        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
-        { "id": "custom.lineWidth", "label": "Line width", "scope": "fieldConfig", "path": "custom.lineWidth", "control": "number" },
-        { "id": "custom.fillOpacity", "label": "Fill opacity", "scope": "fieldConfig", "path": "custom.fillOpacity", "control": "number" },
-        { "id": "custom.showPoints", "label": "Show points", "scope": "fieldConfig", "path": "custom.showPoints", "control": "select", "choices": ["auto", "never", "always"] },
-        { "id": "legend.showLegend", "label": "Legend", "scope": "options", "path": "legend.showLegend", "control": "toggle" }
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "min",
+          "label": "Min",
+          "scope": "fieldConfig",
+          "path": "min",
+          "control": "number"
+        },
+        {
+          "id": "max",
+          "label": "Max",
+          "scope": "fieldConfig",
+          "path": "max",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        },
+        {
+          "id": "custom.lineWidth",
+          "label": "Line width",
+          "scope": "fieldConfig",
+          "path": "custom.lineWidth",
+          "control": "number"
+        },
+        {
+          "id": "custom.fillOpacity",
+          "label": "Fill opacity",
+          "scope": "fieldConfig",
+          "path": "custom.fillOpacity",
+          "control": "number"
+        },
+        {
+          "id": "custom.showPoints",
+          "label": "Show points",
+          "scope": "fieldConfig",
+          "path": "custom.showPoints",
+          "control": "select",
+          "choices": [
+            "auto",
+            "never",
+            "always"
+          ]
+        },
+        {
+          "id": "legend.showLegend",
+          "label": "Legend",
+          "scope": "options",
+          "path": "legend.showLegend",
+          "control": "toggle"
+        }
       ]
     },
     {
@@ -31,8 +96,20 @@
       "data": true,
       "action": false,
       "options": [
-        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
-        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" }
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        }
       ]
     },
     {
@@ -44,15 +121,99 @@
       "data": true,
       "action": false,
       "options": [
-        { "id": "displayName", "label": "Display name", "scope": "fieldConfig", "path": "displayName", "control": "text" },
-        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
-        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
-        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
-        { "id": "colorMode", "label": "Color mode", "scope": "options", "path": "colorMode", "control": "select", "choices": ["value", "background", "none"] },
-        { "id": "graphMode", "label": "Graph mode", "scope": "options", "path": "graphMode", "control": "select", "choices": ["none", "area"] },
-        { "id": "textMode", "label": "Text mode", "scope": "options", "path": "textMode", "control": "select", "choices": ["auto", "value", "value_and_name", "name", "none"] },
-        { "id": "reduceOptions.calcs", "label": "Calculation", "scope": "options", "path": "reduceOptions.calcs", "control": "select", "choices": ["lastNotNull", "last", "mean", "min", "max", "sum", "count"] },
-        { "id": "orientation", "label": "Orientation", "scope": "options", "path": "orientation", "control": "select", "choices": ["auto", "horizontal", "vertical"] }
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        },
+        {
+          "id": "colorMode",
+          "label": "Color mode",
+          "scope": "options",
+          "path": "colorMode",
+          "control": "select",
+          "choices": [
+            "value",
+            "background",
+            "none"
+          ]
+        },
+        {
+          "id": "graphMode",
+          "label": "Graph mode",
+          "scope": "options",
+          "path": "graphMode",
+          "control": "select",
+          "choices": [
+            "none",
+            "area"
+          ]
+        },
+        {
+          "id": "textMode",
+          "label": "Text mode",
+          "scope": "options",
+          "path": "textMode",
+          "control": "select",
+          "choices": [
+            "auto",
+            "value",
+            "value_and_name",
+            "name",
+            "none"
+          ]
+        },
+        {
+          "id": "reduceOptions.calcs",
+          "label": "Calculation",
+          "scope": "options",
+          "path": "reduceOptions.calcs",
+          "control": "select",
+          "choices": [
+            "lastNotNull",
+            "last",
+            "mean",
+            "min",
+            "max",
+            "sum",
+            "count"
+          ]
+        },
+        {
+          "id": "orientation",
+          "label": "Orientation",
+          "scope": "options",
+          "path": "orientation",
+          "control": "select",
+          "choices": [
+            "auto",
+            "horizontal",
+            "vertical"
+          ]
+        }
       ]
     },
     {
@@ -64,14 +225,69 @@
       "data": true,
       "action": false,
       "options": [
-        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
-        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
-        { "id": "min", "label": "Min", "scope": "fieldConfig", "path": "min", "control": "number" },
-        { "id": "max", "label": "Max", "scope": "fieldConfig", "path": "max", "control": "number" },
-        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
-        { "id": "showThresholdLabels", "label": "Threshold labels", "scope": "options", "path": "showThresholdLabels", "control": "toggle" },
-        { "id": "showThresholdMarkers", "label": "Threshold markers", "scope": "options", "path": "showThresholdMarkers", "control": "toggle" },
-        { "id": "reduceOptions.calcs", "label": "Calculation", "scope": "options", "path": "reduceOptions.calcs", "control": "select", "choices": ["lastNotNull", "last", "mean", "min", "max"] }
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "min",
+          "label": "Min",
+          "scope": "fieldConfig",
+          "path": "min",
+          "control": "number"
+        },
+        {
+          "id": "max",
+          "label": "Max",
+          "scope": "fieldConfig",
+          "path": "max",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        },
+        {
+          "id": "showThresholdLabels",
+          "label": "Threshold labels",
+          "scope": "options",
+          "path": "showThresholdLabels",
+          "control": "toggle"
+        },
+        {
+          "id": "showThresholdMarkers",
+          "label": "Threshold markers",
+          "scope": "options",
+          "path": "showThresholdMarkers",
+          "control": "toggle"
+        },
+        {
+          "id": "reduceOptions.calcs",
+          "label": "Calculation",
+          "scope": "options",
+          "path": "reduceOptions.calcs",
+          "control": "select",
+          "choices": [
+            "lastNotNull",
+            "last",
+            "mean",
+            "min",
+            "max"
+          ]
+        }
       ]
     },
     {
@@ -83,12 +299,58 @@
       "data": true,
       "action": false,
       "options": [
-        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
-        { "id": "min", "label": "Min", "scope": "fieldConfig", "path": "min", "control": "number" },
-        { "id": "max", "label": "Max", "scope": "fieldConfig", "path": "max", "control": "number" },
-        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
-        { "id": "orientation", "label": "Orientation", "scope": "options", "path": "orientation", "control": "select", "choices": ["auto", "horizontal", "vertical"] },
-        { "id": "displayMode", "label": "Display mode", "scope": "options", "path": "displayMode", "control": "select", "choices": ["gradient", "lcd", "basic"] }
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "min",
+          "label": "Min",
+          "scope": "fieldConfig",
+          "path": "min",
+          "control": "number"
+        },
+        {
+          "id": "max",
+          "label": "Max",
+          "scope": "fieldConfig",
+          "path": "max",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        },
+        {
+          "id": "orientation",
+          "label": "Orientation",
+          "scope": "options",
+          "path": "orientation",
+          "control": "select",
+          "choices": [
+            "auto",
+            "horizontal",
+            "vertical"
+          ]
+        },
+        {
+          "id": "displayMode",
+          "label": "Display mode",
+          "scope": "options",
+          "path": "displayMode",
+          "control": "select",
+          "choices": [
+            "gradient",
+            "lcd",
+            "basic"
+          ]
+        }
       ]
     },
     {
@@ -100,11 +362,46 @@
       "data": true,
       "action": false,
       "options": [
-        { "id": "displayName", "label": "Display name", "scope": "fieldConfig", "path": "displayName", "control": "text" },
-        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
-        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
-        { "id": "cellHeight", "label": "Cell height", "scope": "options", "path": "cellHeight", "control": "select", "choices": ["sm", "md", "lg"] },
-        { "id": "showHeader", "label": "Show header", "scope": "options", "path": "showHeader", "control": "toggle" }
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "cellHeight",
+          "label": "Cell height",
+          "scope": "options",
+          "path": "cellHeight",
+          "control": "select",
+          "choices": [
+            "sm",
+            "md",
+            "lg"
+          ]
+        },
+        {
+          "id": "showHeader",
+          "label": "Show header",
+          "scope": "options",
+          "path": "showHeader",
+          "control": "toggle"
+        }
       ]
     },
     {
@@ -116,12 +413,63 @@
       "data": true,
       "action": false,
       "options": [
-        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
-        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
-        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
-        { "id": "orientation", "label": "Orientation", "scope": "options", "path": "orientation", "control": "select", "choices": ["auto", "horizontal", "vertical"] },
-        { "id": "stacking", "label": "Stacking", "scope": "options", "path": "stacking", "control": "select", "choices": ["none", "normal", "percent"] },
-        { "id": "showValue", "label": "Show value", "scope": "options", "path": "showValue", "control": "select", "choices": ["auto", "always", "never"] }
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        },
+        {
+          "id": "orientation",
+          "label": "Orientation",
+          "scope": "options",
+          "path": "orientation",
+          "control": "select",
+          "choices": [
+            "auto",
+            "horizontal",
+            "vertical"
+          ]
+        },
+        {
+          "id": "stacking",
+          "label": "Stacking",
+          "scope": "options",
+          "path": "stacking",
+          "control": "select",
+          "choices": [
+            "none",
+            "normal",
+            "percent"
+          ]
+        },
+        {
+          "id": "showValue",
+          "label": "Show value",
+          "scope": "options",
+          "path": "showValue",
+          "control": "select",
+          "choices": [
+            "auto",
+            "always",
+            "never"
+          ]
+        }
       ]
     },
     {
@@ -133,10 +481,38 @@
       "data": true,
       "action": false,
       "options": [
-        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
-        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
-        { "id": "pieType", "label": "Pie type", "scope": "options", "path": "pieType", "control": "select", "choices": ["pie", "donut"] },
-        { "id": "legend.showLegend", "label": "Legend", "scope": "options", "path": "legend.showLegend", "control": "toggle" }
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "pieType",
+          "label": "Pie type",
+          "scope": "options",
+          "path": "pieType",
+          "control": "select",
+          "choices": [
+            "pie",
+            "donut"
+          ]
+        },
+        {
+          "id": "legend.showLegend",
+          "label": "Legend",
+          "scope": "options",
+          "path": "legend.showLegend",
+          "control": "toggle"
+        }
       ]
     },
     {
@@ -188,9 +564,27 @@
       "data": false,
       "action": true,
       "options": [
-        { "id": "min", "label": "Min", "scope": "options", "path": "min", "control": "number" },
-        { "id": "max", "label": "Max", "scope": "options", "path": "max", "control": "number" },
-        { "id": "step", "label": "Step", "scope": "options", "path": "step", "control": "number" }
+        {
+          "id": "min",
+          "label": "Min",
+          "scope": "options",
+          "path": "min",
+          "control": "number"
+        },
+        {
+          "id": "max",
+          "label": "Max",
+          "scope": "options",
+          "path": "max",
+          "control": "number"
+        },
+        {
+          "id": "step",
+          "label": "Step",
+          "scope": "options",
+          "path": "step",
+          "control": "number"
+        }
       ]
     },
     {
@@ -242,11 +636,53 @@
       "data": false,
       "action": true,
       "options": [
-        { "id": "insights.readOnly", "label": "Read only", "scope": "options", "path": "insights.readOnly", "control": "toggle" },
-        { "id": "insights.status", "label": "Status", "scope": "options", "path": "insights.status", "control": "select", "choices": ["all", "open", "acked", "resolved"] },
-        { "id": "insights.severity", "label": "Severity", "scope": "options", "path": "insights.severity", "control": "select", "choices": ["all", "info", "warning", "critical"] },
-        { "id": "insights.limit", "label": "Max items", "scope": "options", "path": "insights.limit", "control": "number" },
-        { "id": "insights.showRefresh", "label": "Show refresh", "scope": "options", "path": "insights.showRefresh", "control": "toggle" }
+        {
+          "id": "insights.readOnly",
+          "label": "Read only",
+          "scope": "options",
+          "path": "insights.readOnly",
+          "control": "toggle"
+        },
+        {
+          "id": "insights.status",
+          "label": "Status",
+          "scope": "options",
+          "path": "insights.status",
+          "control": "select",
+          "choices": [
+            "all",
+            "open",
+            "acked",
+            "resolved"
+          ]
+        },
+        {
+          "id": "insights.severity",
+          "label": "Severity",
+          "scope": "options",
+          "path": "insights.severity",
+          "control": "select",
+          "choices": [
+            "all",
+            "info",
+            "warning",
+            "critical"
+          ]
+        },
+        {
+          "id": "insights.limit",
+          "label": "Max items",
+          "scope": "options",
+          "path": "insights.limit",
+          "control": "number"
+        },
+        {
+          "id": "insights.showRefresh",
+          "label": "Show refresh",
+          "scope": "options",
+          "path": "insights.showRefresh",
+          "control": "toggle"
+        }
       ]
     },
     {
@@ -258,8 +694,25 @@
       "data": false,
       "action": false,
       "options": [
-        { "id": "mode", "label": "Mode", "scope": "options", "path": "mode", "control": "select", "choices": ["markdown", "html", "code"] },
-        { "id": "content", "label": "Content", "scope": "options", "path": "content", "control": "text" }
+        {
+          "id": "mode",
+          "label": "Mode",
+          "scope": "options",
+          "path": "mode",
+          "control": "select",
+          "choices": [
+            "markdown",
+            "html",
+            "code"
+          ]
+        },
+        {
+          "id": "content",
+          "label": "Content",
+          "scope": "options",
+          "path": "content",
+          "control": "text"
+        }
       ]
     },
     {
@@ -271,10 +724,38 @@
       "data": false,
       "action": false,
       "options": [
-        { "id": "scheduleId", "label": "Schedule", "scope": "options", "path": "schedule.scheduleId", "control": "text" },
-        { "id": "mode", "label": "Mode", "scope": "options", "path": "schedule.mode", "control": "select", "choices": ["status", "week"] },
-        { "id": "refreshSecs", "label": "Refresh (seconds)", "scope": "options", "path": "schedule.refreshSecs", "control": "number" },
-        { "id": "allowToggle", "label": "Allow enable/disable", "scope": "options", "path": "schedule.allowToggle", "control": "toggle" }
+        {
+          "id": "scheduleId",
+          "label": "Schedule",
+          "scope": "options",
+          "path": "schedule.scheduleId",
+          "control": "text"
+        },
+        {
+          "id": "mode",
+          "label": "Mode",
+          "scope": "options",
+          "path": "schedule.mode",
+          "control": "select",
+          "choices": [
+            "status",
+            "week"
+          ]
+        },
+        {
+          "id": "refreshSecs",
+          "label": "Refresh (seconds)",
+          "scope": "options",
+          "path": "schedule.refreshSecs",
+          "control": "number"
+        },
+        {
+          "id": "allowToggle",
+          "label": "Allow enable/disable",
+          "scope": "options",
+          "path": "schedule.allowToggle",
+          "control": "toggle"
+        }
       ]
     },
     {
@@ -286,9 +767,27 @@
       "data": false,
       "action": false,
       "options": [
-        { "id": "showCount", "label": "Show panel count", "scope": "options", "path": "showCount", "control": "toggle" },
-        { "id": "showLine", "label": "Show divider line", "scope": "options", "path": "showLine", "control": "toggle" },
-        { "id": "collapsed", "label": "Collapsed by default", "scope": "options", "path": "collapsed", "control": "toggle" }
+        {
+          "id": "showCount",
+          "label": "Show panel count",
+          "scope": "options",
+          "path": "showCount",
+          "control": "toggle"
+        },
+        {
+          "id": "showLine",
+          "label": "Show divider line",
+          "scope": "options",
+          "path": "showLine",
+          "control": "toggle"
+        },
+        {
+          "id": "collapsed",
+          "label": "Collapsed by default",
+          "scope": "options",
+          "path": "collapsed",
+          "control": "toggle"
+        }
       ]
     },
     {
@@ -297,6 +796,1264 @@
       "kind": "container",
       "version": 1,
       "buildable": true,
+      "data": false,
+      "action": true,
+      "options": []
+    },
+    {
+      "id": "heatmap",
+      "label": "Heatmap",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "scatter",
+      "label": "Scatter",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "histogram",
+      "label": "Histogram",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "sankey",
+      "label": "Sankey",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "boxplot",
+      "label": "Box plot",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "calendar",
+      "label": "Calendar",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "waterfall",
+      "label": "Waterfall",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "state-timeline",
+      "label": "State timeline",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "radar",
+      "label": "Radar",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "treemap",
+      "label": "Treemap",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "funnel",
+      "label": "Funnel",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "gantt",
+      "label": "Gantt",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "pareto",
+      "label": "Pareto",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "ridgeline",
+      "label": "Ridgeline",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "parallel",
+      "label": "Parallel coordinates",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "correlation",
+      "label": "Correlation",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "cusum",
+      "label": "CUSUM",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "duration-curve",
+      "label": "Duration curve",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "profile-band",
+      "label": "Profile band",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "area-trend",
+      "label": "Area trend",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "metric-tiles",
+      "label": "Metric tiles",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "load-card",
+      "label": "Load card",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "share-rows",
+      "label": "Share rows",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "status-roster",
+      "label": "Status roster",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "geomap",
+      "label": "Geomap",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "insight-trend",
+      "label": "Insight trend",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "fdd-matrix",
+      "label": "FDD matrix",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "fdd-board",
+      "label": "FDD board",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "fdd-tiles",
+      "label": "FDD tiles",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "fdd-timeline",
+      "label": "FDD timeline",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "design",
+      "label": "Design",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "way",
+      "label": "Way",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        {
+          "id": "displayName",
+          "label": "Display name",
+          "scope": "fieldConfig",
+          "path": "displayName",
+          "control": "text"
+        },
+        {
+          "id": "unit",
+          "label": "Unit",
+          "scope": "fieldConfig",
+          "path": "unit",
+          "control": "unit"
+        },
+        {
+          "id": "decimals",
+          "label": "Decimals",
+          "scope": "fieldConfig",
+          "path": "decimals",
+          "control": "number"
+        },
+        {
+          "id": "thresholds",
+          "label": "Thresholds",
+          "scope": "fieldConfig",
+          "path": "thresholds",
+          "control": "thresholds"
+        }
+      ]
+    },
+    {
+      "id": "report-launcher",
+      "label": "Report launcher",
+      "kind": "control",
+      "version": 1,
+      "buildable": false,
       "data": false,
       "action": true,
       "options": []

@@ -37,6 +37,7 @@ pub enum Unit {
     // pressure
     Pascal,
     Hectopascal,
+    Kilopascal,
     Bar,
     Psi,
     // data
@@ -52,6 +53,46 @@ pub enum Unit {
     Minute,
     Hour,
     Day,
+    // energy
+    Joule,
+    Kilojoule,
+    Megajoule,
+    WattHour,
+    KilowattHour,
+    MegawattHour,
+    // power (real)
+    Watt,
+    Kilowatt,
+    Megawatt,
+    // electric potential
+    Volt,
+    Millivolt,
+    Kilovolt,
+    // electric current
+    Ampere,
+    Milliampere,
+    // apparent power (deliberately its OWN dimension, not power: VA and W are not interconvertible
+    // without a power factor, and silently treating them as one would be a wrong number, not a
+    // rounding error)
+    VoltAmpere,
+    KilovoltAmpere,
+    // volume
+    CubicMeter,
+    Liter,
+    Kiloliter,
+    // volume flow
+    CubicMeterPerSecond,
+    CubicMeterPerHour,
+    LiterPerSecond,
+    LiterPerMinute,
+    // illuminance
+    Lux,
+    // concentration (dimensionless ratio by mole/volume fraction; ppm/ppb only)
+    PartsPerMillion,
+    PartsPerBillion,
+    // frequency
+    Hertz,
+    Kilohertz,
 }
 
 impl Unit {
@@ -64,10 +105,24 @@ impl Unit {
             MeterPerSecond | KilometerPerHour | MilePerHour | Knot => Dimension::Speed,
             Meter | Kilometer | Foot | Mile => Dimension::Distance,
             Kilogram | Gram | Pound | Ounce => Dimension::Mass,
-            Pascal | Hectopascal | Bar | Psi => Dimension::Pressure,
+            Pascal | Hectopascal | Kilopascal | Bar | Psi => Dimension::Pressure,
             Byte | Kilobyte | Megabyte | Gigabyte => Dimension::Data,
             Ratio | Percent => Dimension::Percent,
             Second | Minute | Hour | Day => Dimension::Time,
+            Joule | Kilojoule | Megajoule | WattHour | KilowattHour | MegawattHour => {
+                Dimension::Energy
+            }
+            Watt | Kilowatt | Megawatt => Dimension::Power,
+            Volt | Millivolt | Kilovolt => Dimension::ElectricPotential,
+            Ampere | Milliampere => Dimension::ElectricCurrent,
+            VoltAmpere | KilovoltAmpere => Dimension::ApparentPower,
+            CubicMeter | Liter | Kiloliter => Dimension::Volume,
+            CubicMeterPerSecond | CubicMeterPerHour | LiterPerSecond | LiterPerMinute => {
+                Dimension::VolumeFlow
+            }
+            Lux => Dimension::Illuminance,
+            PartsPerMillion | PartsPerBillion => Dimension::Concentration,
+            Hertz | Kilohertz => Dimension::Frequency,
         }
     }
 
@@ -92,6 +147,7 @@ impl Unit {
             Ounce => "ounce",
             Pascal => "pascal",
             Hectopascal => "hectopascal",
+            Kilopascal => "kilopascal",
             Bar => "bar",
             Psi => "psi",
             Byte => "byte",
@@ -104,6 +160,34 @@ impl Unit {
             Minute => "minute",
             Hour => "hour",
             Day => "day",
+            Joule => "joule",
+            Kilojoule => "kilojoule",
+            Megajoule => "megajoule",
+            WattHour => "watt_hour",
+            KilowattHour => "kilowatt_hour",
+            MegawattHour => "megawatt_hour",
+            Watt => "watt",
+            Kilowatt => "kilowatt",
+            Megawatt => "megawatt",
+            Volt => "volt",
+            Millivolt => "millivolt",
+            Kilovolt => "kilovolt",
+            Ampere => "ampere",
+            Milliampere => "milliampere",
+            VoltAmpere => "volt_ampere",
+            KilovoltAmpere => "kilovolt_ampere",
+            CubicMeter => "cubic_meter",
+            Liter => "liter",
+            Kiloliter => "kiloliter",
+            CubicMeterPerSecond => "cubic_meter_per_second",
+            CubicMeterPerHour => "cubic_meter_per_hour",
+            LiterPerSecond => "liter_per_second",
+            LiterPerMinute => "liter_per_minute",
+            Lux => "lux",
+            PartsPerMillion => "parts_per_million",
+            PartsPerBillion => "parts_per_billion",
+            Hertz => "hertz",
+            Kilohertz => "kilohertz",
         }
     }
 
@@ -130,6 +214,7 @@ impl Unit {
             Ounce => "oz",
             Pascal => "Pa",
             Hectopascal => "hPa",
+            Kilopascal => "kPa",
             Bar => "bar",
             Psi => "psi",
             Byte => "B",
@@ -142,6 +227,34 @@ impl Unit {
             Minute => "min",
             Hour => "h",
             Day => "d",
+            Joule => "J",
+            Kilojoule => "kJ",
+            Megajoule => "MJ",
+            WattHour => "Wh",
+            KilowattHour => "kWh",
+            MegawattHour => "MWh",
+            Watt => "W",
+            Kilowatt => "kW",
+            Megawatt => "MW",
+            Volt => "V",
+            Millivolt => "mV",
+            Kilovolt => "kV",
+            Ampere => "A",
+            Milliampere => "mA",
+            VoltAmpere => "VA",
+            KilovoltAmpere => "kVA",
+            CubicMeter => "m³",
+            Liter => "L",
+            Kiloliter => "kL",
+            CubicMeterPerSecond => "m³/s",
+            CubicMeterPerHour => "m³/h",
+            LiterPerSecond => "L/s",
+            LiterPerMinute => "L/min",
+            Lux => "lx",
+            PartsPerMillion => "ppm",
+            PartsPerBillion => "ppb",
+            Hertz => "Hz",
+            Kilohertz => "kHz",
         }
     }
 
@@ -153,7 +266,7 @@ impl Unit {
 
     /// Every unit, in declaration order — drives the generated client constants and exhaustive
     /// round-trip tests.
-    pub const ALL: [Unit; 29] = [
+    pub const ALL: [Unit; 58] = [
         Unit::Celsius,
         Unit::Fahrenheit,
         Unit::Kelvin,
@@ -171,6 +284,7 @@ impl Unit {
         Unit::Ounce,
         Unit::Pascal,
         Unit::Hectopascal,
+        Unit::Kilopascal,
         Unit::Bar,
         Unit::Psi,
         Unit::Byte,
@@ -183,5 +297,33 @@ impl Unit {
         Unit::Minute,
         Unit::Hour,
         Unit::Day,
+        Unit::Joule,
+        Unit::Kilojoule,
+        Unit::Megajoule,
+        Unit::WattHour,
+        Unit::KilowattHour,
+        Unit::MegawattHour,
+        Unit::Watt,
+        Unit::Kilowatt,
+        Unit::Megawatt,
+        Unit::Volt,
+        Unit::Millivolt,
+        Unit::Kilovolt,
+        Unit::Ampere,
+        Unit::Milliampere,
+        Unit::VoltAmpere,
+        Unit::KilovoltAmpere,
+        Unit::CubicMeter,
+        Unit::Liter,
+        Unit::Kiloliter,
+        Unit::CubicMeterPerSecond,
+        Unit::CubicMeterPerHour,
+        Unit::LiterPerSecond,
+        Unit::LiterPerMinute,
+        Unit::Lux,
+        Unit::PartsPerMillion,
+        Unit::PartsPerBillion,
+        Unit::Hertz,
+        Unit::Kilohertz,
     ];
 }

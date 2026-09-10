@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub use crate::manifest_refs::EntityRef;
+pub use crate::manifest_reminder::PackReminder;
 pub use crate::manifest_retention::{
     RetentionAlign, RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange,
     RetentionTier,
@@ -103,6 +104,16 @@ pub struct Manifest {
     /// NOT file refs — a policy is a small structured record. One receipt object per `prefix`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub retention: Vec<RetentionPolicy>,
+
+    /// Reminders to seed (`pack-core-scope`, the `reminders:` block). Each is applied via
+    /// `reminder.create` (LWW upsert keyed by `id`), so a pack ships the SCHEDULE that drives its
+    /// own rules rather than leaving every deployment to wire the cron by hand, off-manifest. Inline
+    /// objects (the `channels:`/`retention:` model), NOT file refs. One receipt object per `id`.
+    ///
+    /// The reminder fires under the APPLYING principal, and every firing re-checks that principal's
+    /// caps at the `call_tool` chokepoint — a pack-seeded schedule is not a privileged one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reminders: Vec<PackReminder>,
 
     /// Required extension ids — CHECKED against the installed set, never installed (installing is
     /// the admin's act; the pack only declares needs). An absent requirement warns, never blocks.
@@ -735,6 +746,47 @@ entities:
         assert_eq!(bare.retention[0].prefix, "m.");
         assert_eq!(bare.retention[0].raw_for_ms, 0);
         assert!(bare.retention[0].tiers.is_empty());
+    }
+
+    #[test]
+    fn parses_a_reminders_block() {
+        let m = Manifest::parse(concat!(
+            "pack: bas\ntitle: T\nversion: 1\n",
+            "reminders:\n",
+            "  - id: duty-fast-flatline\n",
+            "    schedule: \"*/15 * * * *\"\n",
+            "    action_kind: mcp-tool\n",
+            "    tool: rules.run\n",
+            "    args: { rule_id: fdd-sensor-flatline }\n",
+        ))
+        .expect("parses");
+        assert_eq!(m.reminders.len(), 1);
+        let r = &m.reminders[0];
+        assert_eq!(r.id, "duty-fast-flatline");
+        assert_eq!(r.action_kind, "mcp-tool");
+        assert_eq!(r.tool.as_deref(), Some("rules.run"));
+        assert_eq!(r.args.as_ref().unwrap()["rule_id"], "fdd-sensor-flatline");
+        // The per-kind fields of the OTHER kinds stay absent — they are not defaulted to empty
+        // strings, which is what lets `validate_reminder` tell "missing" from "empty".
+        assert!(r.channel.is_none() && r.target.is_none());
+    }
+
+    /// An absent block and an empty one both mean "this pack seeds no schedule" — a pack.yaml
+    /// written before `reminders:` existed parses byte-identically.
+    #[test]
+    fn reminders_default_to_empty() {
+        let none = Manifest::parse("pack: bas\ntitle: T\nversion: 1\n").unwrap();
+        assert!(none.reminders.is_empty());
+    }
+
+    #[test]
+    fn a_typod_key_inside_a_reminder_is_a_loud_error() {
+        // `deny_unknown_fields` on `PackReminder` — `scheduel:` must not silently drop.
+        let err = Manifest::parse(concat!(
+            "pack: bas\ntitle: T\nversion: 1\n",
+            "reminders:\n  - id: r1\n    scheduel: \"* * * * *\"\n    action_kind: mcp-tool\n",
+        ));
+        assert!(err.is_err(), "a typo'd reminder key must be a parse error");
     }
 
     #[test]
