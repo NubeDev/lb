@@ -182,13 +182,37 @@ backfill. Both call the same `group_insight` function.
 
 ## Gateway — the token principal
 
-`GET /r/{token}` → hash the token (SHA-256, constant-time compare on the stored hash) →
-`case_request` → mint `Principal::routed("party:{id}", ws, ["mcp:case.request.view:call",
+**The path split — corrected during the build.** `GET /r/{token}` is a **page** URL: a human opens
+it in a browser and the existing SPA fallback must serve HTML there, so it is NOT a data route. The
+scope originally conflated the page and the endpoint; one path cannot return HTML to a browser and
+JSON to that page's own fetch. The data surface is three **public** gateway routes, registered
+beside `/public/invite/accept`:
+
+| route | does |
+|---|---|
+| `GET /public/case/request?token=…` | the view payload |
+| `POST /public/case/request/reply` | the reply (token in the body) |
+| `POST /public/case/request/attachment?token=…` | multipart upload → `{ id, name, size }` |
+
+The attachment route is a **gateway route, not a third MCP verb** — the token principal's surface
+stays exactly two caps; the upload mints the same principal, checks the request id, and writes the
+asset under the host's own authority.
+
+The **view payload carries the plotted rows itself**
+(`evidence { series: [ { name, points } ], threshold, unit }`). That is load-bearing rather than
+convenient: a principal holding two caps is `Denied` on every query-plane verb, so the page
+physically cannot fetch a chart. Shipping the rows in the response keeps the page's entire surface
+equal to one verb's response — which is exactly what the risk note asks for.
+
+Each route hashes the presented token (SHA-256, constant-time compare on the stored hash) →
+`case_request` → mints `Principal::routed("party:{id}", ws, ["mcp:case.request.view:call",
 "mcp:case.request.reply:call"])` **plus a `constraint` naming the one request id**. It is a
 **narrowing** of the caps wall, not a bypass: workspace isolation, the deny path and audit all
 apply. No account, no password, no session beyond the token. Withdrawn / expired / replied-past-the
-window → **410** with a plain page, never a login prompt. IP rate-limited by the same fixed-window
-limiter `/public/invite/accept` uses — the route is a token oracle.
+window → **410** with a plain page, never a login prompt — and the body states the possibilities as
+a **disjunction** ("may have been completed, withdrawn, or simply timed out"), never committing to
+which. "This token expired" tells a prober the string was real. IP rate-limited by the same
+fixed-window limiter `/public/invite/accept` uses — the route is a token oracle.
 
 ---
 
