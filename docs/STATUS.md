@@ -4126,6 +4126,11 @@ today's behaviour byte-for-byte**, so the upgrade is inert for anyone who does n
 > `generated/surrealql_corpus.rs` is regenerated so the `surrealql_parses` guard — which exists for
 > exactly this rename — now covers all 9 of `meta.rs`'s statements. Verified red-then-green.
 > **Lesson: use `--all-targets`; a SurrealQL rename is invisible to a type checker.**
+>
+> Proven on the merged tree: **`cargo test -p lb-ingest` is 186 passed / 0 failed across all 26
+> test files**, and `cargo check --workspace --all-targets` is clean apart from two pre-existing
+> `lb-cli` failures (`sign_test`, `ext_publish_test`) that read a gitignored `hello_v2_ext.wasm`
+> absent from any fresh checkout — environmental, identical on plain master.
 > Still unreleased and still owed a tag — rubix-ai pins `node-v0.26.0`, which carries none of this.
 
 Driven by a downstream measurement: rubix-ai's
