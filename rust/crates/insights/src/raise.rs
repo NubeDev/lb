@@ -17,6 +17,7 @@
 use lb_store::{new_ulid, write, Store};
 
 use crate::analysis::{validate_analysis, Analysis};
+use crate::caveat::caveats_for;
 use crate::error::InsightsError;
 use crate::evidence::{validate_evidence_size, Evidence};
 use crate::insight::{Insight, OCC_TABLE};
@@ -25,8 +26,10 @@ use crate::intent::IntentKind;
 use crate::occ_append::{append_occurrence, validate_occurrence_size};
 use crate::occurrence::Occurrence;
 use crate::origin::Origin;
+use crate::pattern::{bump_month, derive_pattern, empty_month_hist, Pattern};
 use crate::severity::Severity;
 use crate::status::Status;
+use crate::vocab::{check_value, read_vocab, TagVocab, CATEGORY_KEY};
 
 /// The optional per-firing occurrence delta (occurrences scope). Whether or not this is present,
 /// every raise appends one occurrence row — `data`/`severity` here just shape it.
@@ -103,6 +106,15 @@ pub struct RaiseOutcome {
     /// when this firing's severity is strictly higher than the prior, else `Raise`. Drives the
     /// ladder's breakthrough rules (notify scope). Host-facing only; the UI ignores it.
     pub kind: IntentKind,
+    /// True if this firing landed with a non-empty [`crate::Insight::caveats`] — an open
+    /// data-quality finding on the same subjects undermines it (`caveat.rs`).
+    ///
+    /// Echoed on the outcome, not left for the host to re-read, because the host's very next step
+    /// is to build the matcher's `InsightView` and **a caveated finding must never break through**
+    /// (`ladder.rs`). Serde-defaults to `false` so an outcome decoded from an older node is
+    /// un-caveated rather than undeliverable.
+    #[serde(default)]
+    pub caveated: bool,
 }
 
 /// Raise an insight in workspace `ws`. Idempotent on `(ws, dedup_key)`. See [`RaiseInput`] for
@@ -139,8 +151,21 @@ pub async fn raise(
         validate_analysis(an)?;
     }
 
+    // The workspace's own declared `category` vocabulary — read ONCE, used twice: to validate a
+    // declared category (below) and to learn which values GATE other findings (the caveat stamp
+    // further down). `None` ⇒ the workspace declared none, and both uses are no-ops. **lb ships no
+    // default value list** (rule 10 — `vocab.rs`), so an unseeded workspace behaves exactly as it
+    // did before this existed.
+    // SCOPE: docs/scope/insights/case-plane-scope.md §"Vocabulary"
+    let vocab: Option<TagVocab> = read_vocab(store, ws, CATEGORY_KEY).await?;
+    if let Some(declared) = input.tags.get(CATEGORY_KEY) {
+        // Validated BEFORE any write, like the three size guards above: a bad category rejects the
+        // whole raise rather than landing a record with a value nothing can group by.
+        check_value(vocab.as_ref(), declared)?;
+    }
+
     let existing = dedup_lookup(store, ws, &input.dedup_key).await?;
-    let (insight, created, kind) = match existing {
+    let (mut insight, created, kind) = match existing {
         Some(mut prior) => {
             let prev_severity = prior.severity;
             // Bump the lifetime accounting on every raise.
@@ -224,10 +249,63 @@ pub async fn raise(
                 // layer writes it via `set_tags_echo` immediately after this call; on a dedup arm
                 // the prior echo is carried through by the `prior` clone above.
                 tags: std::collections::BTreeMap::new(),
+                // Host-computed / derived below, uniformly for both arms — see the block after
+                // this match. A caller cannot reach any of the four (no field on `RaiseInput`).
+                caveats: Vec::new(),
+                // The case back-ref is the GROUPING pass's to write, never raise's
+                // (case-plane-scope.md resolved decision 4). A brand-new finding has no case yet.
+                case_id: None,
+                month_hist: empty_month_hist(),
+                pattern: Pattern::New,
             };
             (insight, true, IntentKind::Raise)
         }
     };
+
+    // --- Derived, every raise, both arms -------------------------------------------------------
+    // The month counters and the pattern are computed from what is already on the record, so they
+    // are identical for a create and a re-raise and there is no arm to get out of step. Bump FIRST,
+    // then classify, so this firing counts toward its own classification.
+    // SCOPE: docs/scope/insights/case-plane-scope.md §"Data model" (`month_hist`, `pattern`)
+    bump_month(&mut insight.month_hist, input.ts);
+    insight.pattern = derive_pattern(
+        &insight.month_hist,
+        insight.count,
+        insight.first_ts,
+        insight.last_ts,
+    );
+
+    // --- The caveat stamp ----------------------------------------------------------------------
+    // Which open findings undermine this one? Only meaningful when (a) the workspace declared a
+    // gating category and (b) this finding states the subjects it rests on. Both absent is the
+    // common case today and costs one map lookup.
+    //
+    // A finding IN a gating category is never caveated by another one: a data-quality finding is
+    // not softened by a second data-quality finding, and mutual caveating between two of them would
+    // silence both. The check reads THIS raise's declared category (the echo is the host's to
+    // materialize, after this call).
+    // SCOPE: docs/scope/insights/case-plane-scope.md §"Data model" (`caveats`) + §"Testing plan"
+    let gating = vocab.as_ref().map(TagVocab::gating_values).unwrap_or_default();
+    let own_category = input.tags.get(CATEGORY_KEY).map(String::as_str);
+    let self_gates = own_category.is_some_and(|c| gating.iter().any(|g| g == c));
+    let subjects = insight
+        .evidence
+        .as_ref()
+        .map(|e| e.subjects.clone())
+        .unwrap_or_default();
+    let mut caveats: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if !self_gates && !subjects.is_empty() {
+        for category in &gating {
+            for id in caveats_for(store, ws, &subjects, &insight.id, category).await? {
+                caveats.insert(id);
+            }
+        }
+    }
+    // REFRESHED on every raise (not merged): the caveat is a statement about the world RIGHT NOW,
+    // so resolving the gating finding must clear it on the dependent finding's next firing. A merge
+    // would make a caveat permanent, which is the failure mode that teaches operators to ignore it.
+    insight.caveats = caveats.into_iter().collect();
+    let caveated = !insight.caveats.is_empty();
 
     // Persist the parent (upsert by id).
     let value = serde_json::to_value(&insight)
@@ -251,6 +329,7 @@ pub async fn raise(
         dedup_key: insight.dedup_key,
         severity: insight.severity,
         kind,
+        caveated,
     })
 }
 

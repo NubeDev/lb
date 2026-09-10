@@ -24,6 +24,8 @@
 mod ack;
 mod analysis;
 mod assign;
+mod case_ref;
+mod caveat;
 mod comment;
 mod comment_append;
 mod comments;
@@ -43,6 +45,7 @@ mod occ_delete;
 mod occurrence;
 mod occurrences;
 mod origin;
+mod pattern;
 mod policy;
 mod policy_get;
 mod policy_set;
@@ -58,6 +61,7 @@ mod sub_mute;
 mod subscription;
 mod table_scan;
 mod tags_echo;
+mod vocab;
 mod watch;
 
 mod digest;
@@ -67,6 +71,8 @@ mod insight_id;
 pub use ack::ack;
 pub use analysis::{validate_analysis, Analysis, Quantity, MAX_ANALYSIS_BYTES};
 pub use assign::{assign, AssignOutcome};
+pub use case_ref::set_case_id;
+pub use caveat::caveats_for;
 pub use comment::{
     validate_comment, Comment, MAX_COMMENTS_PER_INSIGHT, MAX_COMMENT_BYTES, TABLE as COMMENT_TABLE,
 };
@@ -93,6 +99,11 @@ pub use occ_delete::delete_occurrence;
 pub use occurrence::Occurrence;
 pub use occurrences::{occurrences, OccCursor, OccurrencePage};
 pub use origin::{Origin, OriginKind};
+pub use pattern::{
+    bump_month, derive_pattern, empty_month_hist, is_empty_month_hist, month_of_ts, Pattern,
+    DAY_MS as PATTERN_DAY_MS, FLAP_PER_DAY, NEW_MIN_COUNT, NEW_MIN_SPAN_DAYS, SEASONAL_MASS,
+    SEASONAL_MAX_MONTHS, SEASONAL_MIN_SPAN_DAYS,
+};
 pub use policy::{defaults as policy_defaults, Policy, ThrottleOverride};
 pub use policy_get::policy_get;
 pub use policy_set::policy_set;
@@ -109,6 +120,10 @@ pub use subscription::{
     DormantReason, SubFilter, SubSink, SubSinkKind, Subscription, ASSIGNEE_ME as SUB_ASSIGNEE_ME,
 };
 pub use tags_echo::{set_tags_echo, validate_tags_echo_size, MAX_TAG_ECHO_BYTES};
+pub use vocab::{
+    check_value as check_category_value, read_vocab, validate_category, TagVocab,
+    CATEGORY_KEY as VOCAB_CATEGORY_KEY, TABLE as VOCAB_TABLE,
+};
 pub use watch::{event_subject, EventKind, RaiseEvent};
 
 // Re-exports of the record shapes + table-const helpers (the host service + tests reach them
