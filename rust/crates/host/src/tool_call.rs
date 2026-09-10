@@ -177,6 +177,18 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     "update.credential.status",
     "update.credential.set",
     "update.credential.claim",
+    // tags scope + case-plane scope: the tag graph's four caller-facing verbs. They have had a full
+    // host service (`call_tags_tool`) and per-verb caps since the tags scope and NO entry here, so
+    // nothing could reach any of them over MCP — which made the whole `Human > Producer` precedence
+    // rule unreachable in production: there was no wire door to write a Human-sourced edge at all,
+    // so the corrected classification the fold exists to protect could never be authored.
+    // EXACT names, not a `tags.` PREFIX, for the same reason `ext.list` is exact: reserving a whole
+    // namespace against a hypothetical extension whose id is `tags` is the mistake this list already
+    // avoids (rule 10). `tags.of` rides `mcp:tags.find:call` via `gate_tool_for`.
+    "tags.add",
+    "tags.remove",
+    "tags.of",
+    "tags.find",
     // case-plane scope: the ADMIN SLA policy pair. EXACT names, not a `policy.` PREFIX — reserving
     // a whole namespace against a hypothetical extension whose id is `policy` is the mistake this
     // list already avoids for `ext.` and `update.`. Both gate on their own name (no `tool_gate.rs`
@@ -586,6 +598,12 @@ pub(crate) async fn run_host_verb(
 ) -> Result<Value, ToolError> {
     let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
         call_inbox_outbox_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("tags.") {
+        // tags scope: the typed annotation graph's MCP surface. `is_host_native` admits ONLY the
+        // four EXACT verbs listed above, so this branch never sees an extension's own
+        // `tags.<tool>`; `call_tags_tool` re-checks each verb's own cap inside and answers
+        // NotFound for anything else. Store-only — no `&Node` needed.
+        crate::call_tags_tool(&node.store, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("insight.") {
         // insights scope: the durable insight + occurrences + subscriptions + policy surface.
         // The outer gate ran `mcp:insight.<verb>:call`; the verb re-runs it inside (defense in

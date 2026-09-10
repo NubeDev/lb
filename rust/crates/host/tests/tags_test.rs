@@ -74,22 +74,29 @@ async fn add_of_find_round_trip_via_mcp() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn denies_each_verb_without_its_grant() {
     let store = Store::memory().await.unwrap();
-    // Holds only tags.of — every OTHER verb is denied.
-    let p = principal("user:test", "nube", &["mcp:tags.of:call"]);
+    // Holds only the tag-graph READ cap — every WRITE verb is denied.
+    //
+    // CHANGED with the case-plane tags door: this used to grant `mcp:tags.of:call` and assert that
+    // `tags.of` succeeded under it. That encoded a contract no real caller could ever hold —
+    // `mcp:tags.of:call` appears in NO role bundle, so the only principal that could satisfy the
+    // old assertion was one a test hand-built. `tags.of` is `tags.find` narrowed to a single
+    // entity, so both gates (the `tool_gate.rs` alias and `tags/authorize.rs`) now ask for
+    // `mcp:tags.find:call`, which every viewer actually holds. The read/write split this test
+    // exists to prove is unchanged and now proven against a cap that ships.
+    let p = principal("user:test", "nube", &["mcp:tags.find:call"]);
     for (verb, input) in [
         (
             "tags.add",
             json!({ "entity": "series:x", "key": "k", "value": "v" }),
         ),
         ("tags.remove", json!({ "entity": "series:x", "key": "k" })),
-        ("tags.find", json!({ "facets": [{"key": "k"}] })),
     ] {
         let err = call_tags_tool(&store, &p, "nube", verb, &input)
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::Denied), "{verb} must be denied");
     }
-    // The held verb is allowed (reads empty).
+    // The held READ cap allows the read verbs: `tags.of` (aliased onto this same cap) reads empty.
     call_tags_tool(
         &store,
         &p,

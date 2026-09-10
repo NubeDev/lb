@@ -21,6 +21,7 @@ mod bus;
 /// `CacheConfig`; the live tier is feature-gated behind `page-cache` (zero-cost when off).
 pub mod cache;
 mod callback;
+mod case;
 mod channel;
 mod channel_registry;
 mod credential;
@@ -272,6 +273,16 @@ pub use identity_credential::{
 };
 // The email-fold (trim + lower-case) used at the login front door — re-exported so the gateway can
 // key its rate limiter + email lookup on the SAME canonical form the store index uses.
+/// The **case** service — the capability-gated surface over `lb_cases` (case-plane scope). A case
+/// is a piece of work that cites insights; the MCP bridge `call_case_tool` is the one contract every
+/// host-native `case.*` verb routes through, and each verb re-checks its own (sometimes aliased)
+/// capability inside. `group_insight` is the inline case-group reactor `insight_raise` calls;
+/// `reconcile_cases`/`spawn_case_reactors` are the restart-safe backstop and its loop driver.
+pub use case::{
+    call_case_tool, case_assign, case_comment, case_events, case_get, case_list, case_members,
+    case_merge, case_open, case_snooze, case_split, case_workflow, group_insight, reconcile_cases,
+    reopen_if_held, spawn_case_reactors, CaseSvcError, GROUP_ACTOR,
+};
 pub use inbox::{list_inbox, record_inbox, record_inbox_with_meta, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, effective_width, ingest_write, ingest_write_reporting,
@@ -288,12 +299,12 @@ pub use ingest::{
 /// the one contract every host-native `insight.*` verb routes through; each verb re-checks its
 /// own `mcp:insight.<verb>:call` gate inside.
 pub use insight::{
-    call_insight_tool, heal_insight_timestamps, insight_ack, insight_assign, insight_comment,
-    insight_comments, insight_delete, insight_get, insight_list, insight_occurrence_delete,
-    insight_occurrences, insight_policy_get, insight_policy_set, insight_raise, insight_resolve,
-    insight_sub_create, insight_sub_delete, insight_sub_get, insight_sub_list, insight_sub_mute,
-    react_to_insight_digests, spawn_insight_digest_reactors, subscribe_insight_events,
-    AssignResult, InsightSvcError, InsightWatch, MAX_BULK_ASSIGN,
+    backfill_insight_facets, call_insight_tool, heal_insight_timestamps, insight_ack,
+    insight_assign, insight_comment, insight_comments, insight_delete, insight_get, insight_list,
+    insight_occurrence_delete, insight_occurrences, insight_policy_get, insight_policy_set,
+    insight_raise, insight_resolve, insight_sub_create, insight_sub_delete, insight_sub_get,
+    insight_sub_list, insight_sub_mute, react_to_insight_digests, spawn_insight_digest_reactors,
+    subscribe_insight_events, AssignResult, InsightSvcError, InsightWatch, MAX_BULK_ASSIGN,
 };
 pub use install::install_extension;
 pub use installed::installed;

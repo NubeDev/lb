@@ -49,7 +49,13 @@ pub async fn tags_of(
     ws: &str,
     entity: &str,
 ) -> Result<Vec<Applied>, TagsError> {
-    authorize_tags(principal, ws, "tags.of")?;
+    // Gated on `tags.find`, NOT on a namesake `tags.of` cap — reading ONE entity's tags is
+    // `tags.find` narrowed to a single entity, not a second privilege. `mcp:tags.of:call` exists in
+    // NO role bundle, so checking the namesake here denied every caller including admins the moment
+    // the dispatcher door opened. `tool_gate.rs` aliases the OUTER gate the same way, and the two
+    // must ask the same question or the strictest wins and the alias is decorative — the exact
+    // shape `media.list` (gated on `media.get`) already records.
+    authorize_tags(principal, ws, "tags.find")?;
     Ok(tag_of(store, ws, entity).await?)
 }
 

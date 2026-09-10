@@ -484,6 +484,10 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:proof-panel.proof.simulate:call",
     // tag graph WRITE — a member tags their own series.
     "mcp:tags.add:call",
+    // ...and REMOVE the tag you added. It exists in no bundle before the case plane, so the
+    // `tags.remove` verb was Denied for every caller including admins the moment the dispatcher
+    // door opened — an author who can assert a classification must be able to retract one.
+    "mcp:tags.remove:call",
     // widget-builder direct-SurrealDB read: parse-allowlisted, bounded, ws-walled SELECT + schema.
     // Author-tier: it is the authoring read behind the widget builder, not a viewer's tile render.
     "mcp:store.query:call",
