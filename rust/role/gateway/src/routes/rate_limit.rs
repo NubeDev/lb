@@ -1,7 +1,10 @@
-//! Per-IP rate limiting for the pre-auth invite accept route (invites scope: "the public route
+//! Per-IP rate limiting for the gateway's **pre-auth** routes (invites scope: "the public route
 //! ships rate-limited from day one"). `POST /public/invite/accept` is both an invite-token oracle
 //! and — via `current_secret` — a password oracle, so it gets a hard request ceiling per client
-//! before any handler logic runs.
+//! before any handler logic runs; `GET /public/branding` is neither, but it is still an
+//! unauthenticated store read behind a deliberate wall break, so it carries its own (roomier)
+//! ceiling. One limiter per route — never a shared budget, so one public surface cannot exhaust
+//! another's.
 //!
 //! One responsibility (FILE-LAYOUT): a small in-memory **fixed-window** limiter + the axum
 //! middleware that applies it. In-process state is correct here — the gateway is the node's one
@@ -108,15 +111,15 @@ fn client_key(req: &Request) -> String {
         .unwrap_or_else(|| "direct".to_string())
 }
 
-/// Axum middleware for `POST /public/invite/accept`: 429 the client once it exceeds
-/// [`MAX_PER_WINDOW`] hits in a [`WINDOW_SECS`] window. Applied to the public invite route ONLY
-/// (session-authed routes are gated by caps, not this).
-pub async fn invite_accept_rate_limit(req: Request, next: Next) -> Response {
+/// Count this request against `limiter` and 429 it if the client is over the ceiling — the body
+/// every per-IP middleware in this file shares, so a new public route adds a limiter + a two-line
+/// wrapper, not another copy of the clock/key/429 dance.
+async fn limit(limiter: &'static FixedWindowLimiter, req: Request, next: Next) -> Response {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    if !invite_limiter().allow(&client_key(&req), now) {
+    if !limiter.allow(&client_key(&req), now) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             "rate limit exceeded — retry later",
@@ -124,6 +127,44 @@ pub async fn invite_accept_rate_limit(req: Request, next: Next) -> Response {
             .into_response();
     }
     next.run(req).await
+}
+
+/// Axum middleware for `POST /public/invite/accept`: 429 the client once it exceeds
+/// [`MAX_PER_WINDOW`] hits in a [`WINDOW_SECS`] window. Applied to the public invite route ONLY
+/// (session-authed routes are gated by caps, not this).
+pub async fn invite_accept_rate_limit(req: Request, next: Next) -> Response {
+    limit(invite_limiter(), req, next).await
+}
+
+// ---------------------------------------------------------------------------------------------
+// The `GET /public/branding` per-IP limiter (workspace-branding scope: the public read seam ships
+// rate-limited from day one, same posture as the invite route). The brand read is neither a token
+// nor a password oracle — it answers identically for every workspace, known or not — so the ceiling
+// is not a brute-force ceiling; it is a cheap bound on scripted hammering of an unauthenticated
+// store read. Hence a much roomier window than the invite route's 10/min: a sign-in paints the brand
+// a handful of times, so 60/min is invisible to a human and still caps the traffic a script can pull
+// through the wall break. Same `x-forwarded-for` keying, same "direct" shared bucket when unproxied.
+
+/// Max `GET /public/branding` reads per client key per window.
+pub const PUBLIC_BRANDING_MAX_PER_WINDOW: u32 = 60;
+
+/// The `GET /public/branding` window, seconds.
+pub const PUBLIC_BRANDING_WINDOW_SECS: u64 = 60;
+
+/// The one process-wide limiter for the public branding route. Separate from the invite limiter on
+/// purpose: a visitor repainting a login page must never spend the budget that protects the invite
+/// token/password oracle, and vice versa.
+fn public_branding_limiter() -> &'static FixedWindowLimiter {
+    static LIMITER: OnceLock<FixedWindowLimiter> = OnceLock::new();
+    LIMITER.get_or_init(|| {
+        FixedWindowLimiter::new(PUBLIC_BRANDING_MAX_PER_WINDOW, PUBLIC_BRANDING_WINDOW_SECS)
+    })
+}
+
+/// Axum middleware for `GET /public/branding`: 429 the client once it exceeds
+/// [`PUBLIC_BRANDING_MAX_PER_WINDOW`] reads in a [`PUBLIC_BRANDING_WINDOW_SECS`] window.
+pub async fn public_branding_rate_limit(req: Request, next: Next) -> Response {
+    limit(public_branding_limiter(), req, next).await
 }
 
 // ---------------------------------------------------------------------------------------------
