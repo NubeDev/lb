@@ -280,6 +280,10 @@ mod tests {
 
         h[6] = u32::MAX;
         bump_month(&mut h, 1_721_001_600_000);
-        assert_eq!(h[6], u32::MAX, "saturating — never wraps to a brand-new finding");
+        assert_eq!(
+            h[6],
+            u32::MAX,
+            "saturating — never wraps to a brand-new finding"
+        );
     }
 }

@@ -98,14 +98,18 @@ mod tests {
         let ws = "nube";
         let id = seed(&store, ws, "k1", 1_721_001_600_000).await;
 
-        set_case_id(&store, ws, &id, Some("case:abc")).await.unwrap();
+        set_case_id(&store, ws, &id, Some("case:abc"))
+            .await
+            .unwrap();
         let got = crate::get::get(&store, ws, &id).await.unwrap().unwrap();
         assert_eq!(got.case_id.as_deref(), Some("case:abc"));
 
         // `rev` is the store's own revision counter; a skipped write leaves it untouched.
         let rev_of = |v: &serde_json::Value| v.get("rev").cloned();
         let before = read(&store, ws, TABLE, &id).await.unwrap();
-        set_case_id(&store, ws, &id, Some("case:abc")).await.unwrap();
+        set_case_id(&store, ws, &id, Some("case:abc"))
+            .await
+            .unwrap();
         let after = read(&store, ws, TABLE, &id).await.unwrap();
         assert_eq!(
             before.as_ref().and_then(rev_of),

@@ -285,7 +285,10 @@ pub async fn raise(
     // silence both. The check reads THIS raise's declared category (the echo is the host's to
     // materialize, after this call).
     // SCOPE: docs/scope/insights/case-plane-scope.md §"Data model" (`caveats`) + §"Testing plan"
-    let gating = vocab.as_ref().map(TagVocab::gating_values).unwrap_or_default();
+    let gating = vocab
+        .as_ref()
+        .map(TagVocab::gating_values)
+        .unwrap_or_default();
     let own_category = input.tags.get(CATEGORY_KEY).map(String::as_str);
     let self_gates = own_category.is_some_and(|c| gating.iter().any(|g| g == c));
     let subjects = insight

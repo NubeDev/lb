@@ -151,7 +151,10 @@ mod tests {
         let first = fold_facets(edges.clone());
         let second = fold_facets(edges);
         assert_eq!(first, second);
-        assert_eq!(first.get("classification").map(String::as_str), Some("mechanical"));
+        assert_eq!(
+            first.get("classification").map(String::as_str),
+            Some("mechanical")
+        );
     }
 
     /// **Case 3 — determinism.** The identical edges in the reverse order give the identical map.

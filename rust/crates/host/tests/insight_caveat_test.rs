@@ -54,9 +54,7 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 }
 
 fn caps() -> Vec<&'static str> {
-    vec![
-        RAISE, GET, LIST, RESOLVE, SUB_CREATE, CHAN_PUB, INBOX_LIST,
-    ]
+    vec![RAISE, GET, LIST, RESOLVE, SUB_CREATE, CHAN_PUB, INBOX_LIST]
 }
 
 async fn call(
@@ -85,7 +83,13 @@ async fn seed_vocab(node: &Arc<Node>, ws: &str) {
 }
 
 /// A raise carrying an optional category and optional evidence subjects.
-fn raise_input(dedup_key: &str, severity: &str, ts: u64, category: Option<&str>, subjects: &[&str]) -> Value {
+fn raise_input(
+    dedup_key: &str,
+    severity: &str,
+    ts: u64,
+    category: Option<&str>,
+    subjects: &[&str],
+) -> Value {
     let mut input = json!({
         "dedup_key": dedup_key,
         "severity": severity,
@@ -102,7 +106,12 @@ fn raise_input(dedup_key: &str, severity: &str, ts: u64, category: Option<&str>,
     input
 }
 
-async fn raise(node: &Arc<Node>, p: &Principal, ws: &str, input: Value) -> Result<Value, ToolError> {
+async fn raise(
+    node: &Arc<Node>,
+    p: &Principal,
+    ws: &str,
+    input: Value,
+) -> Result<Value, ToolError> {
     call(node, p, ws, "insight.raise", input).await
 }
 
@@ -137,13 +146,21 @@ async fn a_seeded_workspace_rejects_an_undeclared_value_and_names_the_set() {
     seed_vocab(&node, ws).await;
     let p = principal("user:test", ws, &caps());
 
-    let err = raise(&node, &p, ws, raise_input("k1", "warning", 1, Some("nonsense"), &[]))
-        .await
-        .expect_err("outside the declared set");
+    let err = raise(
+        &node,
+        &p,
+        ws,
+        raise_input("k1", "warning", 1, Some("nonsense"), &[]),
+    )
+    .await
+    .expect_err("outside the declared set");
     let msg = format!("{err:?}");
     assert!(msg.contains("nonsense"), "names the offending value: {msg}");
     for v in VALUES {
-        assert!(msg.contains(v), "names the declared set ({v} missing): {msg}");
+        assert!(
+            msg.contains(v),
+            "names the declared set ({v} missing): {msg}"
+        );
     }
 
     // Nothing was written — the guard runs before any store write.
@@ -156,9 +173,14 @@ async fn a_seeded_workspace_rejects_an_undeclared_value_and_names_the_set() {
     );
 
     // A declared value goes straight through.
-    assert!(raise(&node, &p, ws, raise_input("k1", "warning", 1, Some(VALUES[1]), &[]))
-        .await
-        .is_ok());
+    assert!(raise(
+        &node,
+        &p,
+        ws,
+        raise_input("k1", "warning", 1, Some(VALUES[1]), &[])
+    )
+    .await
+    .is_ok());
 }
 
 // --- (e) the caveat stamp ------------------------------------------------------------------------
@@ -189,7 +211,13 @@ async fn an_open_gating_finding_caveats_a_finding_on_the_same_subjects() {
         &node,
         &p,
         ws,
-        raise_input("intensity-high", "critical", 2, Some(VALUES[2]), &["point:X"]),
+        raise_input(
+            "intensity-high",
+            "critical",
+            2,
+            Some(VALUES[2]),
+            &["point:X"],
+        ),
     )
     .await
     .expect("finding raise");
@@ -218,7 +246,10 @@ async fn an_open_gating_finding_caveats_a_finding_on_the_same_subjects() {
         .await
         .expect("get dq");
     assert!(
-        dq_row["caveats"].as_array().map(|a| a.is_empty()).unwrap_or(true),
+        dq_row["caveats"]
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(true),
         "the gating finding stays uncaveated: {dq_row}"
     );
 }
@@ -232,9 +263,14 @@ async fn a_finding_on_different_subjects_is_not_caveated() {
     seed_vocab(&node, ws).await;
     let p = principal("user:test", ws, &caps());
 
-    raise(&node, &p, ws, raise_input("sensor-stuck", "warning", 1, Some(GATE), &["point:X"]))
-        .await
-        .expect("dq raise");
+    raise(
+        &node,
+        &p,
+        ws,
+        raise_input("sensor-stuck", "warning", 1, Some(GATE), &["point:X"]),
+    )
+    .await
+    .expect("dq raise");
     let out = raise(
         &node,
         &p,
@@ -256,32 +292,56 @@ async fn resolving_the_gating_finding_clears_the_caveat_on_the_next_raise() {
     seed_vocab(&node, ws).await;
     let p = principal("user:test", ws, &caps());
 
-    let dq = raise(&node, &p, ws, raise_input("sensor-stuck", "warning", 1, Some(GATE), &["point:X"]))
-        .await
-        .expect("dq raise")["id"]
+    let dq = raise(
+        &node,
+        &p,
+        ws,
+        raise_input("sensor-stuck", "warning", 1, Some(GATE), &["point:X"]),
+    )
+    .await
+    .expect("dq raise")["id"]
         .as_str()
         .unwrap()
         .to_string();
-    let id = raise(&node, &p, ws, raise_input("dependent", "critical", 2, Some(VALUES[2]), &["point:X"]))
-        .await
-        .expect("raise")["id"]
+    let id = raise(
+        &node,
+        &p,
+        ws,
+        raise_input("dependent", "critical", 2, Some(VALUES[2]), &["point:X"]),
+    )
+    .await
+    .expect("raise")["id"]
         .as_str()
         .unwrap()
         .to_string();
 
-    call(&node, &p, ws, "insight.resolve", json!({ "id": &dq, "ts": 3 }))
-        .await
-        .expect("resolved");
+    call(
+        &node,
+        &p,
+        ws,
+        "insight.resolve",
+        json!({ "id": &dq, "ts": 3 }),
+    )
+    .await
+    .expect("resolved");
 
-    let out = raise(&node, &p, ws, raise_input("dependent", "critical", 4, Some(VALUES[2]), &["point:X"]))
-        .await
-        .expect("re-raise");
+    let out = raise(
+        &node,
+        &p,
+        ws,
+        raise_input("dependent", "critical", 4, Some(VALUES[2]), &["point:X"]),
+    )
+    .await
+    .expect("re-raise");
     assert_eq!(out["caveated"], false, "the caveat cleared: {out}");
     let got = call(&node, &p, ws, "insight.get", json!({ "id": &id }))
         .await
         .expect("get ok");
     assert!(
-        got["caveats"].as_array().map(|a| a.is_empty()).unwrap_or(true),
+        got["caveats"]
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(true),
         "the stored list was REFRESHED, not merged: {got}"
     );
 }
@@ -308,18 +368,39 @@ async fn a_caveated_critical_raise_delivers_nothing_while_an_uncaveated_one_does
     .await
     .expect("sub created");
 
-    raise(&node, &p, ws, raise_input("sensor-stuck", "warning", 10, Some(GATE), &["point:X"]))
-        .await
-        .expect("dq raise");
+    raise(
+        &node,
+        &p,
+        ws,
+        raise_input("sensor-stuck", "warning", 10, Some(GATE), &["point:X"]),
+    )
+    .await
+    .expect("dq raise");
 
     // Caveated (subjects overlap the open gating finding) …
-    raise(&node, &p, ws, raise_input("caveated-key", "critical", 20, Some(VALUES[2]), &["point:X"]))
-        .await
-        .expect("caveated raise");
+    raise(
+        &node,
+        &p,
+        ws,
+        raise_input(
+            "caveated-key",
+            "critical",
+            20,
+            Some(VALUES[2]),
+            &["point:X"],
+        ),
+    )
+    .await
+    .expect("caveated raise");
     // … and the control, identical but for its subjects.
-    raise(&node, &p, ws, raise_input("clean-key", "critical", 30, Some(VALUES[2]), &["point:Y"]))
-        .await
-        .expect("clean raise");
+    raise(
+        &node,
+        &p,
+        ws,
+        raise_input("clean-key", "critical", 30, Some(VALUES[2]), &["point:Y"]),
+    )
+    .await
+    .expect("clean raise");
 
     let items = lb_host::list_inbox(&node.store, &p, ws, "ops")
         .await
@@ -353,9 +434,14 @@ async fn a_gating_finding_does_not_caveat_across_workspaces() {
     let a = principal("user:test", "ws-a", &caps());
     let b = principal("user:test", "ws-b", &caps());
 
-    raise(&node, &a, "ws-a", raise_input("sensor-stuck", "warning", 1, Some(GATE), &["point:X"]))
-        .await
-        .expect("dq raise in ws-a");
+    raise(
+        &node,
+        &a,
+        "ws-a",
+        raise_input("sensor-stuck", "warning", 1, Some(GATE), &["point:X"]),
+    )
+    .await
+    .expect("dq raise in ws-a");
 
     let out = raise(
         &node,

@@ -122,7 +122,14 @@ async fn tags_of_rides_the_find_read_cap() {
     let ws = "nube";
     let reader = principal("user:viewer", ws, &[FIND]);
 
-    let out = call(&node, &reader, ws, "tags.of", json!({ "entity": "insight:abc" })).await;
+    let out = call(
+        &node,
+        &reader,
+        ws,
+        "tags.of",
+        json!({ "entity": "insight:abc" }),
+    )
+    .await;
     assert!(
         out.is_ok(),
         "tags.of must gate on mcp:tags.find:call (it is tags.find narrowed to one entity): {out:?}"
@@ -142,10 +149,16 @@ async fn the_read_cap_does_not_carry_the_writes() {
             "tags.add",
             json!({ "entity": "insight:abc", "key": "k", "value": "v" }),
         ),
-        ("tags.remove", json!({ "entity": "insight:abc", "key": "k" })),
+        (
+            "tags.remove",
+            json!({ "entity": "insight:abc", "key": "k" }),
+        ),
     ] {
         assert!(
-            matches!(call(&node, &reader, ws, tool, input).await, Err(ToolError::Denied)),
+            matches!(
+                call(&node, &reader, ws, tool, input).await,
+                Err(ToolError::Denied)
+            ),
             "{tool} must be Denied for a read-only caller"
         );
     }

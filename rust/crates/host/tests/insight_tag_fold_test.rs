@@ -115,19 +115,36 @@ async fn a_human_correction_survives_the_next_producer_raise() {
         &node,
         &p,
         ws,
-        raise_input("ahu-2:classify", 1_000, json!({ "classification": "plumbing" })),
+        raise_input(
+            "ahu-2:classify",
+            1_000,
+            json!({ "classification": "plumbing" }),
+        ),
     )
     .await;
 
     // 2. An operator disagrees and corrects it — an out-of-band Human edge on the same key.
-    edge(&node, ws, &id, "classification", "mechanical", Source::Human, 10).await;
+    edge(
+        &node,
+        ws,
+        &id,
+        "classification",
+        "mechanical",
+        Source::Human,
+        10,
+    )
+    .await;
 
     // 3. Tonight's firing re-asserts the producer value, at a strictly NEWER provenance ts.
     let same = raise_id(
         &node,
         &p,
         ws,
-        raise_input("ahu-2:classify", 2_000, json!({ "classification": "plumbing" })),
+        raise_input(
+            "ahu-2:classify",
+            2_000,
+            json!({ "classification": "plumbing" }),
+        ),
     )
     .await;
     assert_eq!(same, id, "dedup key holds — this is the same finding");
@@ -159,12 +176,48 @@ async fn insertion_order_cannot_change_the_echo() {
     let p_b = principal("user:test", "ws-b", &[RAISE, GET]);
 
     let a = raise_id(&node, &p_a, "ws-a", raise_input("k", 1, json!({}))).await;
-    edge(&node, "ws-a", &a, "classification", "plumbing", Source::Producer, 20).await;
-    edge(&node, "ws-a", &a, "classification", "mechanical", Source::Human, 10).await;
+    edge(
+        &node,
+        "ws-a",
+        &a,
+        "classification",
+        "plumbing",
+        Source::Producer,
+        20,
+    )
+    .await;
+    edge(
+        &node,
+        "ws-a",
+        &a,
+        "classification",
+        "mechanical",
+        Source::Human,
+        10,
+    )
+    .await;
 
     let b = raise_id(&node, &p_b, "ws-b", raise_input("k", 1, json!({}))).await;
-    edge(&node, "ws-b", &b, "classification", "mechanical", Source::Human, 10).await;
-    edge(&node, "ws-b", &b, "classification", "plumbing", Source::Producer, 20).await;
+    edge(
+        &node,
+        "ws-b",
+        &b,
+        "classification",
+        "mechanical",
+        Source::Human,
+        10,
+    )
+    .await;
+    edge(
+        &node,
+        "ws-b",
+        &b,
+        "classification",
+        "plumbing",
+        Source::Producer,
+        20,
+    )
+    .await;
 
     // Re-raise both so the echo is re-materialized from the graph in each workspace.
     raise_id(&node, &p_a, "ws-a", raise_input("k", 2, json!({}))).await;
@@ -201,7 +254,9 @@ async fn within_one_source_the_newest_edge_wins() {
         .await
         .expect("get ok");
     assert_eq!(
-        got["priority"].as_str().or(got["tags"]["priority"].as_str()),
+        got["priority"]
+            .as_str()
+            .or(got["tags"]["priority"].as_str()),
         Some("high"),
         "newest provenance within one source: {}",
         got["tags"]
@@ -224,7 +279,16 @@ async fn the_fold_does_not_bleed_across_workspaces() {
         raise_input("shared-key", 1, json!({ "classification": "plumbing" })),
     )
     .await;
-    edge(&node, "ws-a", &a, "classification", "mechanical", Source::Human, 10).await;
+    edge(
+        &node,
+        "ws-a",
+        &a,
+        "classification",
+        "mechanical",
+        Source::Human,
+        10,
+    )
+    .await;
     raise_id(&node, &p_a, "ws-a", raise_input("shared-key", 2, json!({}))).await;
 
     let b = raise_id(
@@ -246,7 +310,9 @@ async fn the_fold_does_not_bleed_across_workspaces() {
     // And ws-b cannot even see ws-a's record.
     let cross = call(&node, &p_b, "ws-b", "insight.get", json!({ "id": &a })).await;
     assert!(
-        cross.map(|v| v.is_null() || v.get("id").is_none()).unwrap_or(true),
+        cross
+            .map(|v| v.is_null() || v.get("id").is_none())
+            .unwrap_or(true),
         "ws-b must not read ws-a's finding"
     );
 }

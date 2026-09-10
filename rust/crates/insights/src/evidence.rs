@@ -194,7 +194,9 @@ mod tests {
         assert!(validate_evidence_size(&ok).is_ok());
 
         let inventory = Evidence {
-            subjects: (0..400).map(|i| format!("point:site-a/meter-{i:04}/energy")).collect(),
+            subjects: (0..400)
+                .map(|i| format!("point:site-a/meter-{i:04}/energy"))
+                .collect(),
             ..base()
         };
         let err = validate_evidence_size(&inventory).expect_err("over the cap");

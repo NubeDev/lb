@@ -159,8 +159,26 @@ mod tests {
 
         // Two coexisting edges for one key — the exact shape the graph's `(entity, tag, source)`
         // identity allows, and the one a flat echo has to pick from.
-        tag(&store, ws, &entity, "classification", "plumbing", Source::Producer, 20).await;
-        tag(&store, ws, &entity, "classification", "mechanical", Source::Human, 10).await;
+        tag(
+            &store,
+            ws,
+            &entity,
+            "classification",
+            "plumbing",
+            Source::Producer,
+            20,
+        )
+        .await;
+        tag(
+            &store,
+            ws,
+            &entity,
+            "classification",
+            "mechanical",
+            Source::Human,
+            10,
+        )
+        .await;
 
         // Force the record into the stale state a pre-fold node would have left it in.
         let mut stale = BTreeMap::new();
@@ -194,10 +212,15 @@ mod tests {
 
         let mut echo = BTreeMap::new();
         echo.insert("building".to_string(), "north".to_string());
-        lb_insights::set_tags_echo(&store, ws, &id, &echo).await.unwrap();
+        lb_insights::set_tags_echo(&store, ws, &id, &echo)
+            .await
+            .unwrap();
 
         assert_eq!(backfill_insight_facets(&store, ws).await.unwrap(), 0);
         let after = lb_insights::get(&store, ws, &id).await.unwrap().unwrap();
-        assert_eq!(after.tags, echo, "an empty graph read never blanks a populated echo");
+        assert_eq!(
+            after.tags, echo,
+            "an empty graph read never blanks a populated echo"
+        );
     }
 }

@@ -326,7 +326,10 @@ fn a_caveated_critical_raise_delivers_nothing_while_an_uncaveated_one_delivers()
     );
     // …but it is NOT dropped. The accounting ran and the pending accumulator holds it, so the
     // digest still carries it — suppressed, not silenced.
-    assert_eq!(state.pending.count, 1, "the firing still accumulates for the digest");
+    assert_eq!(
+        state.pending.count, 1,
+        "the firing still accumulates for the digest"
+    );
     assert_eq!(state.window_hits, 1);
     assert_eq!(state.last_sent_ts, None, "nothing was sent");
 }
@@ -390,5 +393,9 @@ fn clearing_the_caveat_restores_delivery_on_the_next_firing() {
         false,
         true,
     );
-    assert_eq!(deliveries.len(), 1, "delivery resumes once the caveat clears");
+    assert_eq!(
+        deliveries.len(),
+        1,
+        "delivery resumes once the caveat clears"
+    );
 }
