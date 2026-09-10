@@ -32,6 +32,26 @@ use crate::outbox::Target;
 /// The outbox target string for email delivery.
 pub const EMAIL_TARGET: &str = "email";
 
+/// What an email provider's acknowledgement means. Recorded on the delivered-ledger row so a
+/// producer can tell "we mailed them" from "we logged it and dropped it" long after the relay pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Disposition {
+    /// Handed to a transport.
+    Sent,
+    /// Written to the log and dropped (a node with no mailer configured).
+    Logged,
+}
+
+impl Disposition {
+    /// The value stored on the ledger row.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Disposition::Sent => "sent",
+            Disposition::Logged => "logged",
+        }
+    }
+}
+
 /// One outbound message, as the target hands it to a provider.
 ///
 /// The HTML half is why this is a struct rather than the four loose `&str`s it used to be: an HTML mail
@@ -59,6 +79,22 @@ pub struct EmailMessage {
 /// boot seam; the shipped impls are SMTP and Postmark, and the test impl records sends.
 #[async_trait]
 pub trait EmailProvider: Send + Sync {
+    /// What an `Ok(())` from this provider actually MEANS: [`Disposition::Sent`] — it was handed to
+    /// a transport — or [`Disposition::Logged`] — it was written to the node's log and dropped.
+    ///
+    /// It exists because an ack is not a delivery. `LoggingEmailProvider` acknowledges every mail it
+    /// drops, so the outbox row reads `delivered` for a message nobody will ever receive
+    /// (`outbox-delivered-is-not-email-sent.md`, issue #118). A producer that has to tell a user
+    /// whether their counterparty was actually emailed cannot get that from the effect status alone
+    /// — so the provider states it, once, here.
+    ///
+    /// The default is `Sent`, because every impl that talks to a wire is one: a provider added later
+    /// that does NOT deliver must say so explicitly, which is the failure mode worth defaulting
+    /// against.
+    fn disposition(&self) -> Disposition {
+        Disposition::Sent
+    }
+
     /// Send `message`. `meta` carries the workspace + action (opaque to the provider — it may log the
     /// workspace, never a credential or a token).
     ///
@@ -84,6 +120,11 @@ pub struct EmailMeta {
 impl<P: EmailProvider + ?Sized> EmailProvider for std::sync::Arc<P> {
     async fn send(&self, message: &EmailMessage, meta: &EmailMeta) -> Result<(), DeliveryError> {
         (**self).send(message, meta).await
+    }
+
+    /// Forwarded, not defaulted: a shared `Arc<LoggingEmailProvider>` must still say `logged`.
+    fn disposition(&self) -> Disposition {
+        (**self).disposition()
     }
 }
 
@@ -169,6 +210,7 @@ impl Target for EmailTarget {
                     EMAIL_TARGET,
                     &dedup_key,
                     to,
+                    provider.disposition().as_str(),
                     effect_ts,
                 )
                 .await

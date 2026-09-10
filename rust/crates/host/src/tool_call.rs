@@ -195,6 +195,12 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     // alias needed) and re-check it inside `call_case_tool`.
     "policy.sla.set",
     "policy.sla.list",
+    // case-plane scope wave 2: the ADMIN party roster. EXACT names for the third time and the same
+    // reason — `party` is a perfectly plausible extension id, and the host reserves the two verbs it
+    // owns rather than the namespace. Both gate on their own name and re-check it inside
+    // `call_case_tool`. A party is DATA: nothing here, or anywhere below, names one (rule 10).
+    "party.upsert",
+    "party.list",
     // case-plane scope §7: the detector feedback loop — precision per `origin.ref` per site, over
     // the resolved cases. EXACT name, and the name matters: the host already owns the `rules.`
     // (PLURAL) prefix for the rules engine, and the SINGULAR `rule.` is a different family. It is
@@ -632,6 +638,11 @@ pub(crate) async fn run_host_verb(
         // case-plane scope §7: the detector scorecard. Owned by the case service because the number
         // is a fold over case RESOLUTIONS — `origin.ref` only becomes a score once a human has
         // finished the work. VIEWER and read-only; it writes nothing and changes no detector.
+        crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "party.upsert" || qualified_tool == "party.list" {
+        // case-plane scope wave 2: the party roster — who the platform may email on the workspace's
+        // behalf. Owned by the case service because a party only means anything as the recipient of
+        // a case's ask. ADMIN, and re-checked inside.
         crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool == "policy.sla.set" || qualified_tool == "policy.sla.list" {
         // case-plane scope: the SLA service-policy pair. Owned by the case service because a policy

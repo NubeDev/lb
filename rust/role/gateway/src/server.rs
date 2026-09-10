@@ -137,6 +137,43 @@ pub fn router(gw: Gateway) -> Router {
                 crate::routes::invite_accept_rate_limit,
             )),
         )
+        // The contractor round trip's three PUBLIC routes (case-plane scope wave 2). Registered
+        // here, beside the other unauthenticated ones and OUTSIDE the session layer, because their
+        // caller has no session and never will: a contractor presents a request token from an email
+        // and nothing else. The token resolves to a principal holding exactly two caps, constrained
+        // to one request id (`lb_host::case_request_authenticate`), and the first two routes then go
+        // through the ordinary `call_tool` gate with it — a narrowing of the caps wall, never a
+        // bypass.
+        //
+        // `GET /r/{token}` is deliberately NOT a route: it is the page URL a human opens, and the
+        // static/SPA fallback serves the app there. A path cannot answer HTML to a browser and JSON
+        // to that page's fetch.
+        //
+        // All three share one per-IP fixed-window limiter (its own bucket, `routes/rate_limit.rs`):
+        // they hash a presented secret and answer differently per outcome, which is the same
+        // token-oracle posture that put a limiter on `/public/invite/accept` from day one.
+        .route(
+            "/public/case/request",
+            get(crate::routes::get_case_request).layer(axum::middleware::from_fn(
+                crate::routes::case_request_rate_limit,
+            )),
+        )
+        .route(
+            "/public/case/request/reply",
+            post(crate::routes::post_case_request_reply).layer(axum::middleware::from_fn(
+                crate::routes::case_request_rate_limit,
+            )),
+        )
+        .route(
+            "/public/case/request/attachment",
+            post(crate::routes::post_case_request_attachment)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    crate::routes::MAX_ATTACHMENT_BYTES + 64 * 1024,
+                ))
+                .layer(axum::middleware::from_fn(
+                    crate::routes::case_request_rate_limit,
+                )),
+        )
         .route("/workspaces", get(list_workspaces).post(create_workspace))
         .route("/workspaces/{ws}/provision", post(provision_workspace))
         .route("/workspaces/{ws}/reconcile", post(reconcile_workspace))

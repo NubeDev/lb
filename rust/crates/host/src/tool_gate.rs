@@ -110,6 +110,24 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // (resolved decision 5) but keep their OWN caps — a delegation must not become a second
         // capability wall. Each re-checks inside.
         "case.workflow"
+    } else if qualified_tool == "case.request.withdraw" || qualified_tool == "case.request.nudge" {
+        // case-plane scope wave 2: taking an ask back, and chasing one, are the SAME authority as
+        // making it — nobody grants "may ask a contractor to quote but may never withdraw it", and
+        // the nudge is fired by a reminder under the sender's own principal. Neither
+        // `mcp:case.request.withdraw:call` nor `mcp:case.request.nudge:call` exists in any role
+        // bundle, so without this arm both would be `Denied` for every caller including admins.
+        // Both re-check inside.
+        "case.request.send"
+    } else if qualified_tool == "case.request.list" {
+        // The asks raised on a case ARE the case's detail, exactly like its members and its history
+        // — so the drawer's third list rides `case.get` beside the other two. No
+        // `mcp:case.request.list:call` exists in any bundle.
+        //
+        // `case.request.view` and `case.request.reply` are deliberately NOT here: they gate on their
+        // OWN caps, which exist in no bundle either — but that is the point. They are minted
+        // directly onto a token principal (`case/request_scope.rs`) and must be unreachable for
+        // every logged-in caller, so aliasing them onto a grantable cap would be the bug.
+        "case.get"
     } else if qualified_tool == "outbox.enqueue_held" {
         // rules-approvals scope: staging a GATED effect is the same authority as enqueuing an
         // ordinary one — the hold is a delivery decision, not a second privilege — so it rides

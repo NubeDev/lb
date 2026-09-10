@@ -70,4 +70,41 @@ pub(super) const CASE: &[HostTool] = &[
         group: "case",
         description: "append a note to a case's history",
     },
+    // The external-party round trip (wave 2). Every one of these is dispatched, so every one needs
+    // a row: `host_catalog_covers_dispatch_prefixes` asserts the inventory covers the dispatcher's
+    // own list, and a dispatched verb missing from here is reachable but INVISIBLE — nobody can
+    // find it to call it. The catalog is gated by `gate_tool_for`, so a viewer sees only `list`.
+    HostTool {
+        tool: "case.request.send",
+        group: "case",
+        description: "ask an external party to quote, attend, confirm or inform: mints the link, \
+                      emails it, schedules the nudges and sets waiting_on",
+    },
+    HostTool {
+        tool: "case.request.withdraw",
+        group: "case",
+        description: "take an ask back — kills the link, cancels the nudges",
+    },
+    HostTool {
+        tool: "case.request.nudge",
+        group: "case",
+        description: "fire one rung of an ask's nudge ladder (50 % / 80 % chase, breach escalation)",
+    },
+    HostTool {
+        tool: "case.request.list",
+        group: "case",
+        description: "the asks raised on a case, with delivery reconciled against the outbox",
+    },
+    // The two token verbs. Listed because they are dispatched, and invisible in practice to every
+    // logged-in caller: the catalog gate asks for their caps, which exist in no role bundle.
+    HostTool {
+        tool: "case.request.view",
+        group: "case",
+        description: "what a request link shows the party it was sent to (token principal only)",
+    },
+    HostTool {
+        tool: "case.request.reply",
+        group: "case",
+        description: "the party's answer to one request (token principal only)",
+    },
 ];

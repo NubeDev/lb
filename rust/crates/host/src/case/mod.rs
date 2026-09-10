@@ -17,6 +17,12 @@
 //! | `case.workflow`, `case.assign`, `case.snooze`, `case.comment` | `case.workflow` (member) |
 //! | `policy.sla.set` | `policy.sla.set` (**admin**) |
 //! | `policy.sla.list` | `policy.sla.list` (**admin**) |
+//! | `case.request.send` | `case.request.send` (member) |
+//! | `case.request.withdraw`, `case.request.nudge` | `case.request.send` (member) |
+//! | `case.request.list` | `case.get` (viewer) |
+//! | `case.request.view`, `case.request.reply` | **their own caps, in NO bundle** — token-only |
+//! | `party.upsert` | `party.upsert` (**admin**) |
+//! | `party.list` | `party.list` (**admin**) |
 //! | `case.breach` | `case.breach` (**no role bundle** — see [`breach`]) |
 //! | `rule.scorecard` | `rule.scorecard` (viewer) |
 //!
@@ -51,10 +57,26 @@ mod list;
 mod members;
 mod merge;
 mod open;
+mod party_list;
+mod party_upsert;
 mod policy_list;
 mod policy_set;
 mod reactor;
 mod reconcile;
+mod request_attach;
+mod request_authenticate;
+mod request_delivery;
+mod request_link;
+mod request_list;
+mod request_nudge;
+mod request_nudge_schedule;
+mod request_reply_verb;
+mod request_scope;
+mod request_send;
+mod request_token;
+mod request_view;
+mod request_window;
+mod request_withdraw;
 mod scorecard;
 mod sla_clock;
 mod snooze;
@@ -76,13 +98,33 @@ pub use list::case_list;
 pub use members::case_members;
 pub use merge::case_merge;
 pub use open::case_open;
+pub use party_list::case_party_list;
+pub use party_upsert::{case_party_upsert, PartyInput};
 pub use policy_list::case_policy_sla_list;
 pub use policy_set::case_policy_sla_set;
 pub use scorecard::{rule_scorecard, UNKNOWN_RULE_REF};
+// The external-party round trip (wave 2). `send`/`withdraw`/`nudge` are AUTHOR verbs; `view` and
+// `reply` are the ONLY two a token principal may call, and both re-check that the token is scoped
+// to the one request id (`request_scope.rs` — `Principal::constraint` is a cap set and cannot
+// narrow to a record, so the narrowing lives inside the verbs).
+pub use request_attach::{case_request_attach, AttachmentReceipt};
+pub use request_authenticate::{case_request_authenticate, RequestTokenError};
+pub use request_list::case_request_list;
+pub use request_nudge::case_request_nudge;
+pub use request_reply_verb::{case_request_reply, ReplyReceipt};
+pub use request_scope::{PARTY_SUB_PREFIX, REPLY_CAP, VIEW_CAP};
+pub use request_send::case_request_send;
+pub use request_token::{hash_request_token, workspace_of_token};
+pub use request_view::{case_request_view, RequestView};
+pub use request_withdraw::case_request_withdraw;
 pub use snooze::case_snooze;
 pub use split::case_split;
 pub use tool::call_case_tool;
 pub use workflow::case_workflow;
+
+/// The MCP tool a nudge reminder fires. Named here, once, because the scheduler writes it into a
+/// durable reminder row and the dispatcher must answer to the same string years later.
+pub(crate) const NUDGE_TOOL: &str = "case.request.nudge";
 
 pub use group::{group_insight, GROUP_ACTOR};
 pub use hold_down::reopen_if_held;

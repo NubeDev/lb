@@ -278,11 +278,18 @@ pub use identity_credential::{
 /// host-native `case.*` verb routes through, and each verb re-checks its own (sometimes aliased)
 /// capability inside. `group_insight` is the inline case-group reactor `insight_raise` calls;
 /// `reconcile_cases`/`spawn_case_reactors` are the restart-safe backstop and its loop driver.
+/// The wave-2 half — the external-party round trip — reaches the gateway through
+/// `case_request_authenticate` (a presented token → a two-cap principal scoped to ONE request) and
+/// `case_request_attach` (the upload behind the public route, which mints no third capability).
 pub use case::{
     call_case_tool, case_assign, case_comment, case_events, case_get, case_list, case_members,
-    case_merge, case_open, case_snooze, case_split, case_workflow, group_insight, reconcile_cases,
-    reopen_if_held, rule_scorecard, spawn_case_reactors, CaseSvcError, GROUP_ACTOR,
-    UNKNOWN_RULE_REF,
+    case_merge, case_open, case_party_list, case_party_upsert, case_request_attach,
+    case_request_authenticate, case_request_list, case_request_nudge, case_request_reply,
+    case_request_send, case_request_view, case_request_withdraw, case_snooze, case_split,
+    case_workflow, group_insight, hash_request_token, reconcile_cases, reopen_if_held,
+    rule_scorecard, spawn_case_reactors, workspace_of_token, AttachmentReceipt, CaseSvcError,
+    ReplyReceipt, RequestTokenError, RequestView, GROUP_ACTOR, PARTY_SUB_PREFIX, REPLY_CAP,
+    UNKNOWN_RULE_REF, VIEW_CAP,
 };
 pub use inbox::{list_inbox, record_inbox, record_inbox_with_meta, resolve_inbox, InboxError};
 pub use ingest::{
@@ -384,13 +391,14 @@ pub use report::{
 pub use lb_store::{new_ulid, Store};
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
-    delivery_check, delivery_mark, enqueue_held_outbox, enqueue_outbox, outbox_due,
-    outbox_mark_delivered, outbox_mark_failed, outbox_status, relay_outbox, spawn_relay_reactors,
-    AuthMechanism as MailAuthMechanism, DeliveryError, DynTarget, Effect as OutboxEffect,
-    EmailAttachment, EmailMessage, EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider,
-    OutboxError, OutboxStatus, PostmarkConfig, PostmarkEmailProvider, RecordedEmail,
-    RecordingEmailProvider, RelayPass, RouterTarget, SmtpEmailProvider, SmtpOauthConfig,
-    SmtpTransportConfig, Target, TlsMode, DEFAULT_SEND_TIMEOUT_SECS, OUTBOX_DELIVERED_TABLE,
+    delivery_check, delivery_disposition, delivery_mark, enqueue_held_outbox, enqueue_outbox,
+    outbox_due, outbox_mark_delivered, outbox_mark_failed, outbox_status, relay_outbox,
+    spawn_relay_reactors, AuthMechanism as MailAuthMechanism, DeliveryError, Disposition,
+    DynTarget, Effect as OutboxEffect, EmailAttachment, EmailMessage, EmailMeta, EmailProvider,
+    EmailTarget, LoggingEmailProvider, OutboxError, OutboxStatus, PostmarkConfig,
+    PostmarkEmailProvider, RecordedEmail, RecordingEmailProvider, RelayPass, RouterTarget,
+    SmtpEmailProvider, SmtpOauthConfig, SmtpTransportConfig, Target, TlsMode,
+    DEFAULT_SEND_TIMEOUT_SECS, OUTBOX_DELIVERED_TABLE,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,

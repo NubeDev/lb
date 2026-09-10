@@ -428,6 +428,20 @@ const AUTHOR_CAPS: &[&str] = &[
     // the second.
     "mcp:case.open:call",
     "mcp:case.workflow:call",
+    // Asking an external party (case-plane scope wave 2). Its OWN cap, not a ride on
+    // `case.workflow`, because it is the one verb on this plane that makes the platform send mail
+    // to a company outside the workspace under the customer's name — "may move a case" and "may
+    // email the outside world" are grants an admin will want to give different people.
+    // `case.request.withdraw` and `case.request.nudge` alias onto it (`tool_gate.rs`); the nudge
+    // reminder fires under the sender's principal and re-resolves this cap at fire time, so
+    // revoking it stops the ladder.
+    //
+    // `mcp:case.request.view:call` / `mcp:case.request.reply:call` are deliberately in NO bundle,
+    // here or anywhere: they are minted directly onto the token principal a presented request link
+    // resolves to (`case/request_scope.rs`), and a role that carried them would be a logged-in user
+    // holding a contractor's two verbs. Their absence from every bundle is the design, not an
+    // oversight — do not "fix" it.
+    "mcp:case.request.send:call",
     // insight DESTROY — delete an insight (cascades its ring) or one occurrence row. Erasing shared
     // content + evidence is an authoring reach a bare viewer must NOT have (only reads/acks/resolves).
     "mcp:insight.delete:call",
@@ -801,6 +815,13 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // deadline reorders every case in the queue at once.
     "mcp:policy.sla.set:call",
     "mcp:policy.sla.list:call",
+    // The party roster (case-plane scope wave 2). Admin for the same reason, and the read
+    // deliberately so: the roster is a list of external companies' email addresses and phone
+    // numbers, and "anyone who can read the queue can read every contractor's contact details" is
+    // not a trade this plane makes. A member does not need it to work — `case.request.send`
+    // resolves the party by id.
+    "mcp:party.upsert:call",
+    "mcp:party.list:call",
     "mcp:agent.policy.set:call",
     "mcp:agent.config.set:call",
     // agent definition / persona CRUD (custom defs/personas; built-ins are read-only regardless).

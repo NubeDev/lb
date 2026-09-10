@@ -42,6 +42,11 @@ pub enum EventKind {
     Sla,
     RequestSent,
     RequestOpened,
+    /// We took an ask back. NOT in the case-plane scope's original list, and added deliberately:
+    /// a withdrawal is a thing that happened to a party, and a history that showed `request_sent`
+    /// with no counterpart would read as "we asked them and they ignored us" for ever. Additive, so
+    /// a row written before it existed decodes unchanged.
+    RequestWithdrawn,
     Reply,
     Nudge,
     Breach,

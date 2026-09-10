@@ -6132,6 +6132,7 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
+ "tracing",
  "zip",
 ]
 

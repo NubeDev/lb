@@ -23,7 +23,9 @@ use super::breach::case_breach;
 use super::error::CaseSvcError;
 use super::{
     case_assign, case_comment, case_events, case_get, case_list, case_members, case_merge,
-    case_open, case_policy_sla_list, case_policy_sla_set, case_snooze, case_split, case_workflow,
+    case_open, case_party_list, case_party_upsert, case_policy_sla_list, case_policy_sla_set,
+    case_request_list, case_request_nudge, case_request_reply, case_request_send,
+    case_request_view, case_request_withdraw, case_snooze, case_split, case_workflow,
     rule_scorecard,
 };
 use crate::boot::Node;
@@ -79,6 +81,103 @@ pub async fn call_case_tool(
             .await
             .map_err(svc_to_tool)?;
             Ok(json!({ "rows": rows }))
+        }
+        // The party roster (case-plane scope, wave 2). ADMIN, dispatched by EXACT name from
+        // `HOST_NATIVE_EXACT` — `party` is a plausible extension id, so the host reserves the two
+        // verbs it owns and not the namespace (the `policy.sla.*` reasoning, unchanged).
+        "party.upsert" => {
+            // Decoded through `PartyInput`, which DENIES unknown fields: a misplaced key (a
+            // top-level `email` that belongs under `contact`) is a loud refusal here rather than a
+            // successful write of a party nobody can reach. The stored record stays permissive —
+            // see `party_upsert.rs`.
+            let input: super::PartyInput = serde_json::from_value(input.clone())
+                .map_err(|e| ToolError::BadInput(format!("party.upsert: {e}")))?;
+            let party: lb_cases::Party = input.into();
+            case_party_upsert(store, principal, ws, &party)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(json!({ "id": party.id }))
+        }
+        "party.list" => {
+            let kind = opt_enum_arg(input, "kind")?;
+            let parties = case_party_list(
+                store,
+                principal,
+                ws,
+                kind,
+                input.get("site").and_then(Value::as_str),
+            )
+            .await
+            .map_err(svc_to_tool)?;
+            Ok(serde_json::to_value(parties).unwrap_or(Value::Null))
+        }
+        // The external-party round trip. `send`/`withdraw`/`nudge` ride `mcp:case.request.send:call`
+        // (the last two through `tool_gate.rs` aliases); `list` rides `case.get`; `view`/`reply` are
+        // the token principal's two verbs and gate on their own caps, which exist in no bundle.
+        "case.request.send" => {
+            let brief = match input.get("brief") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(
+                    serde_json::from_value(v.clone())
+                        .map_err(|e| ToolError::BadInput(format!("arg `brief`: {e}")))?,
+                ),
+            };
+            let request = case_request_send(
+                node,
+                principal,
+                ws,
+                str_arg(input, "case_id")?,
+                str_arg(input, "party_id")?,
+                enum_arg(input, "ask")?,
+                brief,
+                ts,
+            )
+            .await
+            .map_err(svc_to_tool)?;
+            // The raw token is deliberately absent from this reply: it belongs in the mail, and a
+            // verb that returned it would put a working link in every caller's response log.
+            Ok(serde_json::to_value(request).unwrap_or(Value::Null))
+        }
+        "case.request.withdraw" => {
+            let request = case_request_withdraw(store, principal, ws, str_arg(input, "id")?, ts)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(serde_json::to_value(request).unwrap_or(Value::Null))
+        }
+        "case.request.nudge" => {
+            let fired = case_request_nudge(
+                store,
+                principal,
+                ws,
+                str_arg(input, "id")?,
+                str_arg(input, "stage")?,
+                ts,
+            )
+            .await
+            .map_err(svc_to_tool)?;
+            Ok(json!({ "fired": fired }))
+        }
+        "case.request.list" => {
+            let requests = case_request_list(store, principal, ws, str_arg(input, "case_id")?)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(Value::Array(requests))
+        }
+        "case.request.view" => {
+            let view = case_request_view(store, principal, ws, str_arg(input, "id")?, ts)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(serde_json::to_value(view).unwrap_or(Value::Null))
+        }
+        "case.request.reply" => {
+            let reply: lb_cases::Reply =
+                serde_json::from_value(input.get("reply").cloned().unwrap_or(Value::Null))
+                    .map_err(|e| ToolError::BadInput(format!("arg `reply`: {e}")))?;
+            let receipt =
+                case_request_reply(store, principal, ws, str_arg(input, "id")?, reply, ts)
+                    .await
+                    .map_err(svc_to_tool)?;
+            Ok(serde_json::to_value(receipt).unwrap_or(Value::Null))
         }
         "case.get" => {
             let case = case_get(store, principal, ws, str_arg(input, "id")?)
