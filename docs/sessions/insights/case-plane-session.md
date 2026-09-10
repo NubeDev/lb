@@ -17,12 +17,56 @@ the changes the insight raise hot path takes (the `tags.*` dispatcher door, the 
 fold, `evidence.subjects[]`, the data-quality caveat stamp, `category` validation, `month_hist` +
 `pattern`, the `case_id` echo).
 
-## Baseline
+## Baseline — captured, and GREEN
 
 lb master is red on some jobs and some tests race under parallelism, so a failure that is not ours
-is only provable against a baseline captured on the untouched branch. `cargo test -p lb-insights -p
-lb-host --no-fail-fast` was run on `origin/master` (`f8633b6d`) at the start of the session; the
-output is compared against every later run before any failure is treated as a regression.
+is only provable against a baseline on the untouched branch. Captured on `origin/master`
+(**`f8633b6d`**), in the primary `~/code/rust/lb` checkout (clean, at exactly that commit) rather
+than a fresh worktree — see the disk incident below.
+
+```
+cargo test -p lb-insights --no-fail-fast
+test result: ok. 3 passed; 0 failed …
+test result: ok. 10 passed; 0 failed …
+EXIT=0
+```
+
+```
+cargo test -p lb-host --no-fail-fast \
+  --test insights_test --test insight_triage_test --test insight_tag_echo_test \
+  --test insight_evidence_test --test insight_analysis_test --test insight_assignee_notify_test \
+  --test tags_test --test tags_isolation_test --test outbox_relay_ops_test \
+  --test reminders_mcp_test --test reminders_reactor_test
+
+insight_analysis_test          ok. 16 passed; 0 failed
+insight_assignee_notify_test   ok. 16 passed; 0 failed
+insight_evidence_test          ok. 10 passed; 0 failed
+insight_tag_echo_test          ok. 11 passed; 0 failed
+insight_triage_test            ok. 17 passed; 0 failed
+insights_test                  ok. 22 passed; 0 failed
+outbox_relay_ops_test          ok.  5 passed; 0 failed
+reminders_mcp_test             ok.  6 passed; 0 failed
+reminders_reactor_test         ok.  9 passed; 0 failed
+tags_isolation_test            ok.  1 passed; 0 failed
+tags_test                      ok.  3 passed; 0 failed
+EXIT=0
+```
+
+**Every suite this session touches is green at the baseline**, so any failure from here is ours and
+none of the "lb master is red" / "it races under parallelism" excuses apply to these eleven. What is
+NOT baselined is the rest of `lb-host` (~100 test binaries) and the gateway — building all of them
+a second time is what filled the disk (below), so the final report says plainly which suites were
+compared and which were not, rather than implying a comparison that was never run.
+
+### The disk incident (2026-09-10)
+
+The first baseline attempt ran in a dedicated worktree with its own `target/`. Between the agents'
+shared 213 GB target dir and that second 43 GB one, the box hit **100 % of 916 GB** and builds began
+failing as `zigcc failed: signal: 6 (SIGABRT)` — a linker abort on one crate, with the honest
+`No space left on device` landing on a *different* crate three lines later. All three agents were
+messaged at once so none of them debugged a phantom compile error, the second target dir was
+deleted (44 GB recovered), and the baseline was re-run in the primary checkout instead.
+Written up in rubix-ai `docs/debugging/insights/second-target-dir-filled-the-disk.md`.
 
 ## Waves
 
