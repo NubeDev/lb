@@ -90,7 +90,9 @@ case**), `role ∈ {primary, explained, child, storm, duplicate}`, `added_by` (`
 subject), `human_placed: bool`, `ts`. A separate table, not an array: a storm can be hundreds of
 rows and the case must stay small enough to list.
 
-**`case_event`** — `case_id, seq, ts, kind, actor, data ≤ 4 KB`. Append-only, never evicts.
+**`case_event`** — `case_id, eseq, ts, kind, actor, data ≤ 4 KB`. Append-only, never evicts.
+(The field is **`eseq`** on the wire — a consumer that reads `seq` gets nothing. Corrected here
+against the built record after the UI mirrored the prose and had to be fixed.)
 `kind ∈ {opened, merged, split, workflow, assigned, snoozed, request_sent, request_opened, reply,
 nudge, breach, fms_ticket, reopened, resolved, verified, saving_accepted, comment}`. `actor` is
 `user: | team: | party: | system:` — a contractor reply is attributed to the **party**, not a login.
@@ -218,6 +220,21 @@ recording `Target` the outbox tests already use (the one permitted external — 
   removed (`green-while-broken-reactor-tests.md`), then green with it.
 
 ---
+
+## Contract corrections found by building it
+
+The scope was written before the records existed; three prose details did not survive contact with
+the built code. Recorded here rather than silently edited, because a downstream consumer that
+mirrored the prose is exactly how these bite:
+
+| the scope said | the record does | how it was found |
+|---|---|---|
+| `case_event.seq` | **`eseq`** (a `#[serde(rename)]`) | the UI mirrored the prose; a reader of `seq` gets nothing |
+| `case_request` list returns `{ case, member_count }` | `CaseRow` is `Case` **flattened** plus `member_count` | same |
+| `external_ref: { system, id, url }` | a plain opaque **string** | same |
+
+The lesson for the next slice: **mirror the Rust, not the scope.** A scope is the ask; the record is
+the contract. Where they disagree after the code lands, the record wins and this file is corrected.
 
 ## Resolved decisions
 
