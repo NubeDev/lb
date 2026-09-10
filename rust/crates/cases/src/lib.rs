@@ -34,6 +34,7 @@ mod case;
 mod case_event;
 mod case_member;
 mod case_request;
+mod caveat_refresh;
 mod comment;
 mod deadline;
 mod deadline_set;
@@ -88,6 +89,7 @@ pub use case_request::{
     ReplyKind, RequestStatus, MAX_REPLY_ATTACHMENTS, MAX_REPLY_TEXT_BYTES,
     TABLE as CASE_REQUEST_TABLE,
 };
+pub use caveat_refresh::refresh_caveat;
 pub use comment::comment;
 pub use deadline::{add_business_hours, due_at, respond_by, MAX_DAYS_SCANNED, NEVER};
 pub use deadline_set::{set_deadlines, Deadlines};

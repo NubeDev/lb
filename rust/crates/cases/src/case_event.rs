@@ -40,6 +40,11 @@ pub enum EventKind {
     /// rejected — a deadline is not a state transition, and mixing them corrupts the one stream a
     /// reader scans to answer "what happened to this case".
     Sla,
+    /// The primary insight's caveat state CHANGED — the data underneath this case became untrusted,
+    /// or became trustworthy again. Additive, and separate from `workflow` for the same reason
+    /// `Sla` is: it is a fact about the evidence, not a transition of the work. An operator asking
+    /// "why did the contractor button switch off?" has no other place to find the answer.
+    Caveat,
     RequestSent,
     RequestOpened,
     /// We took an ask back. NOT in the case-plane scope's original list, and added deliberately:

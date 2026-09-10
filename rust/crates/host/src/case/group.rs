@@ -81,6 +81,20 @@ async fn decide(
     //    parked that has since become critical is not still parked.
     if let Some((case, _)) = lb_cases::find_open_case_for_insight(store, ws, insight_id).await? {
         lb_cases::puncture_snooze(store, ws, &case.id, &severity, GROUP_ACTOR, now).await?;
+        // The caveat echo is LIVE, not a snapshot taken when the case opened. `lb_insights::raise`
+        // recomputes `Insight.caveats` on every firing on purpose — a caveat describes the world
+        // right now — so a case whose echo is frozen at open drifts away from its own evidence in
+        // whichever direction hurts: it hides the soft-block on a case whose sensor broke after it
+        // opened (a contractor dispatched against a number nobody trusts, the exact outcome the
+        // caveat exists to prevent), and it keeps the badge on a case whose sensor has since been
+        // fixed (the permanent caveat the insight layer refuses to create).
+        //
+        // Only the PRIMARY decides: `Case.caveated` echoes the primary insight's state, so a
+        // caveated member must not switch the whole case's contractor button off.
+        if case.primary_insight == insight_id {
+            let caveated = super::facets::facets_of(&insight).caveated;
+            lb_cases::refresh_caveat(store, ws, &case.id, caveated, GROUP_ACTOR, now).await?;
+        }
         super::echo::write_case_echo(store, ws, insight_id, &case.id).await;
         return Ok(case.id);
     }
