@@ -12,6 +12,7 @@ lb-render.workspace = true
 lb-auth.workspace = true
 lb-authz.workspace = true
 lb-caps.workspace = true
+lb-cases.workspace = true
 lb-devkit = { workspace = true, features = ["devkit-full"] }
 lb-store.workspace = true
 lb-bus.workspace = true

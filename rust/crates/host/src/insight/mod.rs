@@ -60,8 +60,8 @@ pub use ack::insight_ack;
 // from `pub(super)` so the CASE lanes resolve `Lane::Mine` through the same function the
 // subscription matcher and the insight roster already use; a second definition is how "my work"
 // silently stops showing team-owned jobs (case-plane scope, `case.list`).
-pub use assignee::{me_subjects, validate_assignee};
 pub use assign::{insight_assign, AssignResult, MAX_BULK_ASSIGN};
+pub use assignee::{me_subjects, validate_assignee};
 pub use backfill::backfill_insight_facets;
 pub use comment::insight_comment;
 pub use comments::insight_comments;

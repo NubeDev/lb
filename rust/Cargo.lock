@@ -5615,6 +5615,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-cases"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "lb-cli"
 version = "0.1.0"
 dependencies = [
@@ -5756,6 +5769,7 @@ dependencies = [
  "lb-authz",
  "lb-bus",
  "lb-caps",
+ "lb-cases",
  "lb-devkit",
  "lb-ext-loader",
  "lb-extract",

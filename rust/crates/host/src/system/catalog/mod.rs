@@ -19,6 +19,7 @@ mod assets;
 mod authz;
 mod bus;
 mod cache;
+mod case;
 mod channel;
 mod dashboard;
 mod datasource;
@@ -83,6 +84,7 @@ const FAMILIES: &[&[HostTool]] = &[
     forms::FORMS,
     host::HOST,
     identity::IDENTITY,
+    case::CASE,
     insight::INSIGHT,
     layout::LAYOUT,
     mail::MAIL,
