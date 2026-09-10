@@ -104,6 +104,57 @@ Recorded as they are made — each with the alternative rejected and why. See al
    *Rejected: a scan-only reactor* (eventual consistency on a completeness invariant) and *a
    synchronous verb the UI calls* (two writers for one fact).
 
+### Wave 2 (2026-09-10)
+
+4. **The breach alarm assigns itself one cap, in one workspace.** `fire_reminder` re-resolves the
+   stored `principal_sub`'s caps from the **durable grant store**, and a system actor holds none —
+   so the alarm would have been a permanent, silent `denied=1`. It therefore does
+   `grant_assign(Subject::User("system:sla-clock"), "mcp:case.breach:call")`: an ordinary grant row,
+   visible in `authz.resolve`, revocable by an admin. Since `mcp:case.breach:call` is in **no role
+   bundle**, that single grant is the only thing in the workspace holding it. *Rejected: widening
+   `flows/reactor_loop.rs::reactor_caps()`* — that list mints a principal for the **flow** loop and
+   the reminder fire path never reads it, so the change would have looked like a fix and done
+   nothing. This is the [[green-while-broken-reactor-tests]] shape caught before it shipped: the
+   RED half revokes the grant, drives the real reactor, and asserts `(fired, denied) == (0, 1)`.
+5. **The breach reminder is constructed directly, not via `reminder_create`.** `reminder_create`
+   derives `next_attempt_ts` from cron, which resolves only to the **minute**; `due_at` is an exact
+   millisecond out of business-hours arithmetic. Rounding fires the alarm up to **59s early**, and
+   declaring a breach before the deadline has passed is worse than being a minute late. So
+   `next_attempt_ts = due_at.div_ceil(1000)` with `max_runs: Some(1)`. The `schedule` still carries
+   a real 5-field cron naming that minute — **load-bearing, not decorative**: a denied firing takes
+   `react.rs::reschedule` → `next_after(&schedule, now)`, and a `BadCron` there propagates out of
+   `react_to_reminders` and aborts the **whole workspace's** reminder pass.
+6. **`breached_ts` is `due_at`, never the firing instant.** A reactor that ticks late must not make
+   a case look less late than it was. Set-once, and the `closed` check sits **after** the set-once
+   guard so a case that breached and was later resolved keeps its breach.
+7. **`EventKind::Sla` is a new kind, not folded into `workflow`.** A deadline is not a state
+   transition, and `workflow` is the one stream a reader scans to reconstruct state. This is the
+   only wave-1 record touched beyond registration. An **unmatched** case still writes one `sla`
+   event stating the absence — found as a real bug, because an unmatched case is byte-identical
+   before and after (all `None`), so the idempotence shortcut swallowed the statement and a reader
+   could not tell "no contract governs this" from "the clock never ran".
+8. **The scorecard reads unpaged, not through `lb_cases::list`.** `list` pages at
+   `MAX_CASE_PAGE = 200`; a precision computed over the first 200 rows and rendered as *the rule's
+   precision* is exactly the lie this slice exists to remove.
+9. **A deleted primary insight is counted under `unknown`, never dropped.** Dropping it shrinks a
+   denominator, so every surviving precision silently becomes a claim about a smaller population
+   than the reader thinks they are seeing. *Rejected: skip with a `warn!`* — a log line nobody reads
+   is not a disclosure. *Rejected: fail the verb* — one deleted insight must not take the scorecard
+   down.
+10. **`rule.scorecard` is registered by EXACT name, never as a `rule.` prefix.** `rules.` (the rules
+    engine) is already a prefix; the two cannot shadow each other. Adding a `rule.` prefix would
+    reserve a second, one-letter-different namespace against a hypothetical extension called
+    `rule` — the mistake `ext.list`, `update.*`, `tags.*` and `policy.sla.*` all already avoid.
+    *Rejected: renaming to `rules.scorecard`* — it would file a case-plane verb under the rules
+    engine's owner and make the catalog read as if the engine computed it.
+
+**A known N+1, stated rather than hidden.** `rule.scorecard` does one scan of `case` plus one point
+read of the primary insight **per resolved case** (memoized per insight id). Acceptable for a rules
+page, not for a hot path. The fix is an `origin_ref` echo written onto the case at open — the same
+host-computed, self-healing discipline `case_id`, the owner echo and the tag echo already use —
+which collapses it to one scan with zero reads. That is a wave-1 *record* change and wave 1 was
+already committed, so it is named here and in the module docs rather than done.
+
 ## Test evidence
 
 Pasted below as each wave lands.
