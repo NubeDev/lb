@@ -32,6 +32,7 @@ mod exfil;
 mod in_house;
 mod invoke;
 mod invoke_remote;
+mod invoke_tool;
 mod loop_detector;
 mod memory;
 mod menu;
@@ -86,6 +87,7 @@ pub use exfil::EXFIL_DENIED;
 pub use in_house::{InHouseRuntime, DEFAULT_RUNTIME};
 pub use invoke::{invoke, resume, Invocation};
 pub use invoke_remote::invoke_remote;
+pub use invoke_tool::call_agent_invoke_tool;
 pub use loop_detector::{DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING};
 pub use memory::{
     call_agent_memory_tool, memory_delete, memory_get, memory_index_for_injection, memory_list,

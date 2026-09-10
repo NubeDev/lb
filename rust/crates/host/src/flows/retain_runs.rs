@@ -83,9 +83,13 @@ pub async fn retain_runs(store: &Store, ws: &str, cap: usize) -> Result<usize, S
     ];
     let mut resp = store.query_ws(ws, &sql, bindings).await?;
 
-    let counts: Vec<Value> = resp
-        .take(0)
-        .map_err(|e| StoreError::Decode(e.to_string()))?;
-    let deleted = counts.first().and_then(|c| c.as_u64()).unwrap_or(0) as usize;
+    // Same shape change as `lb_jobs::retain`: SurrealDB 3 gives a transaction one result slot per
+    // statement, so index 0 is `BEGIN` (Null), not the trailing `RETURN`. With `unwrap_or(0)` that
+    // reported "purged 0" while the DELETE really ran — a retention verb quietly under-reporting.
+    let counts: Vec<Value> = resp.take_transaction_return()?;
+    let deleted =
+        counts.first().and_then(|c| c.as_u64()).ok_or_else(|| {
+            StoreError::Decode(format!("retain_runs: no count in RETURN: {counts:?}"))
+        })? as usize;
     Ok(deleted)
 }

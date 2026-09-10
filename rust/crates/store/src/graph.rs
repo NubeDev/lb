@@ -20,6 +20,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::open::{Store, StoreError};
+use surrealdb::types::SurrealValue;
 
 /// Hard cap on seed nodes pulled from a table (the first cut is depth-1, click-to-expand — we never
 /// auto-lay-out a whole tenant).
@@ -72,7 +73,7 @@ pub async fn graph(
         (_, Some(rid)) => vec![rid.to_string()],
         (Some(tb), None) => {
             let mut resp = store
-                .query_ws(
+                .query_ws_retrying(
                     ws,
                     &format!(
                         "SELECT meta::id(id) AS rid, id AS _oid FROM type::table($tb) \
@@ -105,14 +106,14 @@ pub async fn graph(
         // 2. Walk each relation table for the seed's outgoing edges. A relation edge carries the
         //    source as `in` (a Thing) — but its string form is backtick-escaped (`` series:`x` ``),
         //    which won't equal a clean `table:id` seed, and a seed may be a composite record id
-        //    (`series` is keyed on `[series, producer, seq]`) a `type::thing` reconstruction can't
+        //    (`series` is keyed on `[series, producer, seq]`) a `type::record` reconstruction can't
         //    rebuild. So we match on the edge's **denormalized entity string** `ent` — the exact
         //    `table:id` reference the relation was created against — which round-trips cleanly. `out`
         //    is read as table + id strings so a heterogeneous neighbour set deserializes. Bounded by
         //    MAX_FANOUT. (`ent` is the lb-tags edge convention; the host supplies these edge tables.)
         for et in edge_tables {
             let mut resp = store
-                .query_ws(
+                .query_ws_retrying(
                     ws,
                     &format!(
                         "SELECT meta::tb(out) AS otb, meta::id(out) AS oid FROM type::table($et) \
@@ -166,12 +167,12 @@ fn table_of(record: &str) -> String {
         .unwrap_or_else(|| record.to_string())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, SurrealValue)]
 struct SeedRow {
     rid: serde_json::Value,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, SurrealValue)]
 struct RelRow {
     otb: String,
     oid: serde_json::Value,

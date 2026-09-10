@@ -36,6 +36,16 @@ pub struct DeleteBatch<'a> {
     pub id: &'a str,
 }
 
+/// `[A-Za-z_][A-Za-z0-9_]*` — the only shape allowed to be interpolated into the query text (see
+/// the `DEFINE TABLE` note in [`write_batch`]). Deliberately narrower than SurrealDB's own quoted
+/// identifiers: everything lb writes is a bare identifier, so a name that is not one is a caller
+/// bug, and refusing it keeps the "no caller string in the query text" rule true in spirit.
+fn is_bare_ident(s: &str) -> bool {
+    let mut c = s.chars();
+    matches!(c.next(), Some(f) if f.is_ascii_alphabetic() || f == '_')
+        && c.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
 /// Atomically upsert `upserts` and delete `deletes` in workspace `ws`, in one transaction. Either
 /// every change commits or none does (SurrealDB rolls the transaction back as a unit on any error).
 /// `StoreError::Decode` (mis)used for an over-limit or empty batch (a no-op batch is a caller bug).
@@ -58,16 +68,49 @@ pub async fn write_batch(
     // Build one BEGIN/COMMIT with the upserts then the deletes. Each upsert bumps its record's
     // `rev` server-side (same expression `write` uses); deletes carry no rev. All params are bound
     // by position; the query text is assembled from caller-controlled `table`/`id` only via
-    // `type::thing($tbN, $idN)` binding, so no caller string reaches the query text.
+    // `type::record($tbN, $idN)` binding, so no caller string reaches the query text — with the one
+    // exception below, which is why that exception is charset-checked first.
     let mut sql = String::from("BEGIN TRANSACTION;");
+
+    // SurrealDB 3 raises `NotFoundError::Table` for a DELETE against a table that was never
+    // written; SurrealDB 2 answered with no rows. `query_ws`'s shim drops that error for a bare
+    // statement, but it cannot help INSIDE a transaction: the failed statement aborts the whole
+    // transaction, and the COMMIT then fails with a different error ("Cannot COMMIT: the
+    // transaction was aborted due to a prior error") that names no table at all.
+    //
+    // So the delete targets are defined first, idempotently — the same thing ingest, prefs, agent
+    // config, tags and undo do for their own tables. Deleting from a table that now exists and
+    // holds nothing is a clean no-op, which is exactly what the caller means. Without this, a
+    // cascade that legitimately finds nothing to delete (a `roles.delete` for a role that lives in
+    // ANOTHER workspace) failed the whole request instead of reporting `affected: 0`.
+    //
+    // `DEFINE TABLE` takes a literal name, not a `$param`, so these table names are interpolated.
+    // That is the one place a caller string reaches the query text, so the charset is checked shut
+    // first: a name that is not a bare identifier is refused rather than quoted-and-hoped.
+    let mut defined: Vec<&str> = Vec::new();
+    for d in deletes {
+        if defined.contains(&d.table) {
+            continue;
+        }
+        if !is_bare_ident(d.table) {
+            return Err(StoreError::Decode(format!(
+                "write_batch: {:?} is not a legal table identifier",
+                d.table
+            )));
+        }
+        sql.push_str(&format!(" DEFINE TABLE IF NOT EXISTS {};", d.table));
+        defined.push(d.table);
+    }
     for i in 0..upserts.len() {
         sql.push_str(&format!(
-            " UPSERT type::thing($ut{i}, $ui{i}) CONTENT {{ data: $ud{i}, \
-             rev: (type::thing($ut{i}, $ui{i}).rev ?? ($first - 1)) + 1 }} RETURN NONE;"
+            " UPSERT type::record($ut{i}, $ui{i}) CONTENT {{ data: $ud{i}, \
+             rev: (type::record($ut{i}, $ui{i}).rev ?? ($first - 1)) + 1 }} RETURN NONE;"
         ));
     }
     for j in 0..deletes.len() {
-        sql.push_str(&format!(" DELETE type::thing($dt{j}, $dj{j}) RETURN NONE;"));
+        sql.push_str(&format!(
+            " DELETE type::record($dt{j}, $dj{j}) RETURN NONE;"
+        ));
     }
     sql.push_str(" COMMIT TRANSACTION;");
 

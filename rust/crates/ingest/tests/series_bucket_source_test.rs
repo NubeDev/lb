@@ -10,8 +10,8 @@
 //! pass while the rollup half of the feature was entirely absent.
 
 use lb_ingest::{
-    commit_batch, read_buckets, read_buckets_fold, read_rollups, run_gc, sample_count, set_policy,
-    write, Bucket, BucketQuery, Policy, Qos, Sample, Source, Tier,
+    commit_direct, read_buckets, read_buckets_fold, read_rollups, run_gc, sample_count, set_policy,
+    Bucket, BucketQuery, Policy, Qos, Sample, Source, Tier,
 };
 use lb_store::Store;
 use serde_json::{json, Value};
@@ -29,8 +29,7 @@ fn sample_at(series: &str, seq: u64, ts: u64, payload: Value) -> Sample {
 }
 
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
-    write(store, ws, &samples, 0).await.unwrap();
-    while commit_batch(store, ws, 256).await.unwrap().drained() != 0 {}
+    commit_direct(store, ws, &samples).await.unwrap();
 }
 
 /// A policy with one tier at `width`, keeping raw for `raw_for_ms` and rollups forever.

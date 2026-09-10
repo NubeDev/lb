@@ -130,7 +130,7 @@ pub fn backwards_warning(now_ms: u64, last_run_ms: Option<u64>) -> Option<String
 /// never over-reports, which is the correct direction for something that raises an alarm.
 pub async fn newest_sample_ms(store: &Store, ws: &str) -> Result<Option<u64>, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT math::max(ts) AS ts FROM {SERIES_LATEST_TABLE} GROUP ALL"),
             vec![],
@@ -144,7 +144,7 @@ pub async fn newest_sample_ms(store: &Store, ws: &str) -> Result<Option<u64>, St
 
 /// The pointer table stores `ts` as epoch ms (the same wire form `latest` projects), so the max
 /// comes back as a number. `Option` because `math::max` over an empty group is NONE.
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct MaxTsRow {
     ts: Option<u64>,
 }
@@ -323,3 +323,8 @@ mod tests {
         assert_eq!(skew_warning(0, Some(0)), None);
     }
 }
+
+// SurrealDB 3 reads query rows through `SurrealValue`. These delegate to serde rather than
+// deriving, so `#[serde(default)]` and `deserialize_with = "de_opt_lenient_f64"` keep working
+// unchanged — the derive supports neither. See `lb_store::surreal_value_via_serde!`.
+lb_store::surreal_value_via_serde!(MaxTsRow);

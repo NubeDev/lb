@@ -1,6 +1,6 @@
 //! The per-series FIFO sample cap — the COUNT bound on the committed plane (series-sample-cap
 //! scope, issue #65). "Keep at most N samples for this series; when N is exceeded, evict the oldest
-//! first." The committed-plane twin of [`drop_oldest`](crate::overflow) at the staging bound.
+//! first."
 //!
 //! **Why a count bound exists at all.** Retention's time horizon (`raw_for_ms`) answers "how old is
 //! too old", which does not bound bytes — **rate** does, and rate is the producer's choice, not the
@@ -20,7 +20,7 @@
 use lb_store::{Store, StoreError};
 use serde_json::Value;
 
-use crate::staging::SERIES_TABLE;
+use crate::tables::SERIES_TABLE;
 
 /// The per-series sample cap applied to any series **no policy record covers** (~70MB at the
 /// measured ~700 bytes/sample).
@@ -49,7 +49,7 @@ pub const CAP_EVICT_BATCH: usize = 5_000;
 /// Count of committed raw samples for `series` in `ws`.
 pub async fn sample_count(store: &Store, ws: &str, series: &str) -> Result<u64, StoreError> {
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT count() FROM {SERIES_TABLE} WHERE series = $series GROUP ALL"),
             vec![("series".into(), Value::String(series.to_string()))],
@@ -80,11 +80,11 @@ pub(crate) async fn keep_cutoff_ts(
     // pass rather than evict a row that shares its ts with a keeper (never evict a row we can't
     // prove is older).
     // The order keys MUST appear in the projection — `ORDER BY` only sees selected idioms
-    // (debugging/store/order-by-needs-selected-idiom.md; the same idiom the drain and `drop_oldest`
+    // (debugging/store/order-by-needs-selected-idiom.md; the same idiom the rollup eviction
     // use). Projecting `time::millis(ts)` alone and ordering by bare `ts` is a PARSE error, not a
     // silent mis-sort — the one mercy here.
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!(
                 "SELECT ts, seq, time::millis(ts) AS ts_ms FROM {SERIES_TABLE} \
@@ -160,7 +160,7 @@ pub async fn cap_series(
 /// number deleted.
 ///
 /// `DELETE … ORDER BY … LIMIT` is not supported by the engine, so we DELETE the rows returned by a
-/// subquery that picks them — with the order keys in the projection (the idiom the drain and
+/// subquery that picks them — with the order keys in the projection (the idiom the rollup eviction and
 /// `drop_oldest` use, `debugging/store/order-by-needs-selected-idiom.md`).
 async fn evict_older_than(
     store: &Store,
@@ -174,7 +174,7 @@ async fn evict_older_than(
             ws,
             &format!(
                 "LET $doomed = (SELECT id, ts AS _ts, seq AS _seq FROM {SERIES_TABLE} \
-                 WHERE series = $series AND ts < time::from::millis($cutoff) \
+                 WHERE series = $series AND ts < time::from_millis($cutoff) \
                  ORDER BY _ts ASC, _seq ASC LIMIT $limit);
                  DELETE $doomed;
                  RETURN count($doomed);"

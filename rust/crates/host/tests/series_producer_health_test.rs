@@ -7,7 +7,7 @@
 //! `series_normalize_test.rs` / `series_normalize_caps_test.rs`.
 //!
 //! Everything is real (testing §0): a real `Node::boot()`, a real store, real samples through
-//! `lb_ingest::write` + `drain_workspace`, the real registry, and the real `call_tool` dispatch
+//! `lb_ingest::commit_direct`, the real registry, and the real `call_tool` dispatch
 //! chokepoint — so the new arm in `tool_call.rs`, the capability gates and the re-entrant extension
 //! call are all the production path.
 //!

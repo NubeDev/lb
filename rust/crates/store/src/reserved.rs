@@ -116,6 +116,8 @@ pub const RESERVED_TABLES: &[&str] = &[
     // The last retention GC pass, one row per workspace — host bookkeeping written by `run_gc`
     // alone, read by `series.retention.status` (series-observability scope).
     "series_gc_pass",
+    // Retired: ingest no longer stages, but an upgraded node can still carry rows under this name,
+    // so the name stays walled off rather than becoming claimable user data.
     "ingest_staging",
     "ingest_dead_letter",
     // -- durable motion (inbox/outbox/jobs) + reminders --

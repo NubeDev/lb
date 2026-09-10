@@ -179,7 +179,7 @@ async fn heal_rewrites_seconds_band_ts_to_millis_and_is_idempotent() {
     node.store
         .query_ws(
             "nube",
-            "UPDATE type::thing('insight', $rid) SET data.first_ts = $s, data.last_ts = $s; \
+            "UPDATE type::record('insight', $rid) SET data.first_ts = $s, data.last_ts = $s; \
              UPDATE type::table('insight_occ') SET ts = $s WHERE insight_id = $rid",
             vec![
                 ("s".into(), serde_json::json!(secs)),

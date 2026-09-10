@@ -24,6 +24,7 @@ pub enum Kind {
     Agent,
     Sidebar,
     Retention,
+    Reminder,
 }
 
 impl Kind {
@@ -36,6 +37,7 @@ impl Kind {
             Kind::Agent => "agent",
             Kind::Sidebar => "sidebar",
             Kind::Retention => "retention",
+            Kind::Reminder => "reminder",
         }
     }
 }
@@ -135,6 +137,25 @@ pub fn plan(pack: &Pack) -> Vec<PlannedObject> {
         out.push(PlannedObject {
             kind: Kind::Retention,
             id: p.prefix.clone(),
+            checksum: checksum(&body),
+        });
+    }
+
+    for r in &pack.manifest.reminders {
+        // One object per reminder, keyed by its ID (the reminder row is one-per-id, LWW). The
+        // checksum folds the schedule AND the whole action, so an edited cron or a changed tool arg
+        // is drift and re-applies, even at the same pack version. Reminders come LAST: a schedule
+        // that fires `rules.run` is only meaningful once the rule it names exists.
+        let body = format!(
+            "{}|{}|{}|{}",
+            r.id,
+            r.schedule,
+            r.action_kind,
+            serde_json::to_string(r).unwrap_or_default()
+        );
+        out.push(PlannedObject {
+            kind: Kind::Reminder,
+            id: r.id.clone(),
             checksum: checksum(&body),
         });
     }

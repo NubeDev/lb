@@ -4,7 +4,7 @@
 //! producer-B both writing seq=5 to ONE series — BOTH survive (the (series, producer, seq) key).
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{call_ingest_tool, drain_workspace};
+use lb_host::call_ingest_tool;
 use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::json;
@@ -49,7 +49,6 @@ async fn ws_b_cannot_read_ws_a_series() {
     )
     .await
     .unwrap();
-    drain_workspace(&store, "ws-a").await.unwrap();
 
     // A ws-B token (same identity-shaped sub) reading B's own "secret" series sees nothing of A's.
     let b = principal("client:a", "ws-b", ALL);
@@ -98,7 +97,6 @@ async fn ws_b_cannot_write_ws_a_series() {
 
     // Nothing landed in ws-A: an admin in A reads an empty series.
     let admin_a = principal("admin", "ws-a", ALL);
-    drain_workspace(&store, "ws-a").await.unwrap();
     let read = call_ingest_tool(
         &store,
         &admin_a,
@@ -136,7 +134,6 @@ async fn two_producers_same_seq_both_survive_via_host() {
     )
     .await
     .unwrap();
-    drain_workspace(&store, "nube").await.unwrap();
 
     let read = call_ingest_tool(
         &store,

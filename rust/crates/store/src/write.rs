@@ -30,9 +30,9 @@ pub async fn write(
     store
         .query_ws(
             ws,
-            "UPSERT type::thing($tb, $id) CONTENT { \
+            "UPSERT type::record($tb, $id) CONTENT { \
                 data: $data, \
-                rev: (type::thing($tb, $id).rev ?? ($first - 1)) + 1 \
+                rev: (type::record($tb, $id).rev ?? ($first - 1)) + 1 \
              } RETURN NONE",
             vec![
                 ("tb".into(), Value::String(table.to_string())),

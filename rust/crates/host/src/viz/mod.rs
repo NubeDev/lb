@@ -31,6 +31,7 @@ mod reach;
 mod resolution;
 mod time_override;
 mod tool;
+mod unit_attach;
 
 pub use batch_stream::{viz_query_batch_stream, BatchItem};
 pub use error::VizError;

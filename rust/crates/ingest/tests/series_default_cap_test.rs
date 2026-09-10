@@ -12,12 +12,12 @@
 //! `an_unpoliced_series_is_bounded_by_the_default_cap` (the series stays at 100_005).
 
 use lb_ingest::{
-    commit_batch, run_gc, sample_count, set_policy, write, Policy, Qos, Sample, DEFAULT_MAX_SAMPLES,
+    commit_direct, run_gc, sample_count, set_policy, Policy, Qos, Sample, DEFAULT_MAX_SAMPLES,
 };
 use lb_store::Store;
 use serde_json::json;
 
-/// Seed `n` samples for `series` through the real staging→commit path, in chunks so no single
+/// Seed `n` samples for `series` through the real write path, in chunks so no single
 /// transaction is absurd. Timestamps are `i * 1000` (1 s cadence), which is also the eviction axis.
 async fn seed_n(store: &Store, ws: &str, series: &str, n: u64) {
     for chunk in (1..=n).collect::<Vec<_>>().chunks(2_000) {
@@ -33,8 +33,7 @@ async fn seed_n(store: &Store, ws: &str, series: &str, n: u64) {
                 qos: Qos::BestEffort,
             })
             .collect();
-        write(store, ws, &samples, 0).await.unwrap();
-        while commit_batch(store, ws, 2_000).await.unwrap().drained() > 0 {}
+        commit_direct(store, ws, &samples).await.unwrap();
     }
     assert_eq!(sample_count(store, ws, series).await.unwrap(), n, "seeded");
 }
@@ -75,15 +74,18 @@ async fn an_unpoliced_series_is_bounded_by_the_default_cap() {
         .query_ws(
             "nube",
             "SELECT count() FROM series WHERE series = 'unpoliced' \
-             AND ts < time::from::millis(6000) GROUP ALL",
+             AND ts < time::from_millis(6000) GROUP ALL",
             vec![],
         )
         .await
         .unwrap();
     let oldest: Option<i64> = resp.take("count").unwrap();
-    assert_eq!(
-        oldest, None,
-        "the five OLDEST samples are the ones that went (FIFO by ts)"
+    // Zero old samples remain — asserted on the NUMBER, not on how the engine spells "none".
+    // SurrealDB 2 returned no row at all for a `GROUP ALL` whose filter matched nothing; 3 returns
+    // one row holding `0`. Both mean the same thing, and the thing under test is the FIFO order.
+    assert!(
+        matches!(oldest, None | Some(0)),
+        "the five OLDEST samples are the ones that went (FIFO by ts), got {oldest:?}"
     );
 
     // Idempotent: a second pass at the bound evicts nothing and says nothing.

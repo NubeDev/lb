@@ -39,7 +39,7 @@ pub async fn list(
     }
     let query = format!("SELECT data FROM type::table($tb) WHERE data.{field} = $value");
     let mut response = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &query,
             vec![

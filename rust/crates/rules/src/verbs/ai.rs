@@ -130,14 +130,23 @@ impl AiHandle {
             .map_err(rhai_err)?;
         let parsed: Vec<String> = serde_json::from_str(completion.text.trim()).unwrap_or_default();
         // Build the labelled rows as a rhai array of maps.
+        //
+        // NORMALIZE FIRST (`row_to_map`), because the two seams hand back different row shapes: the
+        // platform path returns JSON objects, the FEDERATION path column-aligned ARRAYS. The previous
+        // `obj.as_object_mut()` silently returned `None` on an array row, so the label was dropped and
+        // `ai.classify` handed back the unlabelled rows — a WRONG ANSWER, not an error, on every
+        // time-series source. `row_to_map` is the same normalizer `records()` uses and it zips the
+        // columns in, so both shapes arrive here as maps and the label always lands.
         let mut out = Array::new();
         for (i, row) in grid.rows.iter().enumerate() {
-            let mut obj = row.clone();
-            if let Some(map) = obj.as_object_mut() {
-                let label = parsed.get(i).cloned().unwrap_or_default();
-                map.insert("label".to_string(), serde_json::Value::String(label));
-            }
-            out.push(crate::grid::json_to_dynamic(&obj));
+            let mut map = match crate::grid::row_to_map(row, &grid.columns).try_cast::<rhai::Map>()
+            {
+                Some(m) => m,
+                None => continue,
+            };
+            let label = parsed.get(i).cloned().unwrap_or_default();
+            map.insert("label".into(), Dynamic::from(label));
+            out.push(Dynamic::from_map(map));
         }
         Ok(out)
     }

@@ -1,13 +1,13 @@
-//! Apply the policies' write-time filters to one drained batch — the bridge between the pure
+//! Apply the policies' write-time filters to one batch — the bridge between the pure
 //! predicates ([`crate::filter`]), the durable anchors ([`crate::filter_state`]), and the commit
 //! transaction ([`crate::commit`]).
 //!
-//! One responsibility: turn `[Staged]` into a per-sample verdict plus the anchor updates to persist.
+//! One responsibility: turn `[Sample]` into a per-sample verdict plus the anchor updates to persist.
 //! It reads; it never writes — the caller folds the state into its own transaction so an anchor is
 //! exactly as durable as the sample that moved it.
 //!
-//! **Evaluation order within the batch is `(ts, seq)` per `(series, producer)`, never drain order.**
-//! The drain returns rows ordered by `seq` across every producer, and `seq` is monotonic per
+//! **Evaluation order within the batch is `(ts, seq)` per `(series, producer)`, never arrival order.**
+//! A caller may push rows in any order, and `seq` is monotonic per
 //! `(series, producer)` ONLY — ordering a series by raw `seq` across producers is the bug in
 //! `debugging/ingest/latest-pinned-to-pre-restart-sample.md`. A min-interval or deadband walked in
 //! the wrong order would keep the wrong sample, so this pass sorts its own view first.
@@ -19,22 +19,22 @@ use lb_store::{Store, StoreError};
 use crate::filter::{decide, Decision, FilterCounts, LastCommitted};
 use crate::filter_state::{read_filter_state, ProducerState};
 use crate::retention::{list_policies, resolve_policy};
-use crate::staging::Staged;
+use crate::sample::Sample;
 
-/// What happens to one staged sample.
+/// What happens to one sample.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Verdict {
-    /// Commit the payload as staged.
+    /// Commit the payload as written.
     Store,
     /// Commit, with the numeric payload replaced by this in-range bound.
     StoreClamped(f64),
-    /// Do not commit. The staged row is still dequeued — the sample was accepted, then filtered.
+    /// Do not commit — the sample was accepted, then filtered. Counted, never silent.
     Dropped,
 }
 
 /// The batch's verdicts, tallies, and the anchors to persist.
 pub struct FilterOutcome {
-    /// Index-aligned with the `staged` slice handed in.
+    /// Index-aligned with the `samples` slice handed in.
     pub verdicts: Vec<Verdict>,
     pub counts: FilterCounts,
     /// Only the series whose anchors actually moved — nothing else is rewritten.
@@ -59,27 +59,25 @@ impl FilterOutcome {
 pub async fn filter_batch(
     store: &Store,
     ws: &str,
-    staged: &[Staged],
+    samples: &[Sample],
 ) -> Result<FilterOutcome, StoreError> {
     let policies = list_policies(store, ws).await?;
     if !policies
         .iter()
         .any(|p| p.filter.is_some_and(|f| !f.is_inert()))
     {
-        return Ok(FilterOutcome::pass_through(staged.len()));
+        return Ok(FilterOutcome::pass_through(samples.len()));
     }
 
     // Resolve each distinct series to its governing filter ONCE (longest-prefix-wins), so the
     // per-sample loop is a map lookup rather than a scan of every policy.
     let mut governing: HashMap<&str, Option<crate::filter::Filter>> = HashMap::new();
-    for s in staged {
-        governing
-            .entry(s.sample.series.as_str())
-            .or_insert_with(|| {
-                resolve_policy(&policies, &s.sample.series)
-                    .and_then(|p| p.filter)
-                    .filter(|f| !f.is_inert())
-            });
+    for s in samples {
+        governing.entry(s.series.as_str()).or_insert_with(|| {
+            resolve_policy(&policies, &s.series)
+                .and_then(|p| p.filter)
+                .filter(|f| !f.is_inert())
+        });
     }
 
     // Only series under a STATEFUL filter need their anchors read.
@@ -90,21 +88,21 @@ pub async fn filter_batch(
         .collect();
     let mut anchors = read_filter_state(store, ws, &stateful).await?;
 
-    // Walk in (series, producer, ts, seq) order — see the module note on why drain order is wrong.
-    let mut order: Vec<usize> = (0..staged.len()).collect();
+    // Walk in (series, producer, ts, seq) order — see the module note on why arrival order is wrong.
+    let mut order: Vec<usize> = (0..samples.len()).collect();
     order.sort_by(|&a, &b| {
-        let (x, y) = (&staged[a].sample, &staged[b].sample);
+        let (x, y) = (&samples[a], &samples[b]);
         (&x.series, &x.producer, x.ts, x.seq).cmp(&(&y.series, &y.producer, y.ts, y.seq))
     });
 
-    let mut verdicts = vec![Verdict::Store; staged.len()];
+    let mut verdicts = vec![Verdict::Store; samples.len()];
     let mut counts = FilterCounts::default();
     let mut moved: BTreeMap<String, ProducerState> = BTreeMap::new();
 
     for i in order {
-        let smp = &staged[i].sample;
+        let smp = &samples[i];
         let Some(filter) = governing.get(smp.series.as_str()).copied().flatten() else {
-            continue; // no filter governs this series — stores as staged
+            continue; // no filter governs this series — stores as written
         };
         let anchor = moved
             .get(&smp.series)

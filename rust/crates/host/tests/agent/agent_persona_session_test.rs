@@ -553,7 +553,7 @@ async fn plant_legacy(node: &Arc<Node>, ws: &str, id: &str) {
     node.store
         .query_ws(
             ws,
-            "UPSERT type::thing('workspace_agent_config', [$ws]) MERGE { ws: $ws, active_persona: $id }",
+            "UPSERT type::record('workspace_agent_config', [$ws]) MERGE { ws: $ws, active_persona: $id }",
             vec![
                 ("ws".into(), Value::String(ws.into())),
                 ("id".into(), Value::String(id.into())),

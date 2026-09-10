@@ -1,20 +1,19 @@
-//! The write-conflict storm regression (ingest-conflict-storm scope, WS-A + WS-B). Reproduces the
-//! live failure on the REAL store (SurrealDB `kv-mem`, the same optimistic MVCC that aborts one side
-//! with `read or write conflict … can be retried`; Rule 9 — no fake store):
+//! The write-conflict storm regression (ingest-conflict-storm scope). Reproduces the live failure on
+//! the REAL store (SurrealDB `kv-mem`, the same optimistic MVCC that aborts one side with `read or
+//! write conflict … can be retried`; Rule 9 — no fake store):
 //!
-//!   * **drain-vs-drain** — ≥2 producers push the same workspace, so inline drains grab the same
-//!     head-of-queue staged rows and race to commit `series`/`series_latest`. WS-B serializes drains
-//!     per workspace so only one runs at a time (mirrored here by a shared async lock, since the real
-//!     `ws_drain_lock` lives in `lb_host` and cannot be imported into this crate); WS-A's bounded
-//!     retry is the backstop.
-//!   * **drain-vs-GC** — a retention pass rolls up and EVICTS raw from `series` while drains commit
-//!     new rows to it. WS-B does NOT cover this (GC is not a drain); WS-A's `query_ws_retrying` is
-//!     what must absorb it.
+//!   * **commit-vs-commit** — several producers push the same workspace at once, so their
+//!     transactions race on the shared `series`/`series_latest` rows.
+//!   * **commit-vs-GC** — a retention pass rolls up and EVICTS raw from `series` while producers
+//!     commit new rows to it.
 //!
-//! Before the fix these concurrent `commit_batch`/`run_gc` calls surfaced the abort as an error and
-//! dropped a whole batch — a permanent gap in the raw series. After it every call succeeds and the
-//! stored data is exactly-once: the commit UPSERT is keyed on `[series, producer, seq]`, so a retried
-//! transaction re-applies the batch exactly once.
+//! In both cases `query_ws_retrying` is the whole defence: there is no lock serializing writers, and
+//! there should not be — the store's own optimistic MVCC decides, and the loser retries.
+//!
+//! Before the fix these concurrent calls surfaced the abort as an error and dropped a whole batch —
+//! a permanent gap in the raw series. After it every call succeeds and the stored data is
+//! exactly-once: the commit UPSERT is keyed on `[series, producer, seq]`, so a retried transaction
+//! re-applies the batch exactly once.
 //!
 //! Several worker threads so commits run genuinely in parallel — a single-worker runtime interleaves
 //! at await points but rarely forces the true two-transactions-one-snapshot collision this guards.
@@ -22,17 +21,16 @@
 use std::sync::Arc;
 
 use lb_ingest::{
-    commit_batch, latest, read, read_buckets, run_gc, set_policy, write, BucketQuery, Policy, Qos,
+    commit_direct, latest, read, read_buckets, run_gc, set_policy, BucketQuery, Policy, Qos,
     Sample, Tier,
 };
 use lb_store::Store;
 use serde_json::json;
-use tokio::sync::Mutex;
 
 const WS: &str = "nube";
 const SERIES: &str = "cpu";
 const PRODUCERS: u64 = 6;
-const PER_PRODUCER: u64 = 350; // > COMMIT_BATCH (256) so every drain loop must iterate
+const PER_PRODUCER: u64 = 350; // > DIRECT_COMMIT_BATCH (256) so every commit spans several tx
 const TS_STEP: u64 = 1_000; // 1s cadence — a realistic ts shape the rollup/bucket read handles
 
 fn sample(producer: &str, seq: u64, ts: u64) -> Sample {
@@ -47,64 +45,54 @@ fn sample(producer: &str, seq: u64, ts: u64) -> Sample {
     }
 }
 
-/// Stage one block: every producer writes `seq_base+1 ..= seq_base+PER_PRODUCER` at 1s cadence,
-/// with `ts = ts_base + i*TS_STEP`. Distinct `ts_base` blocks occupy disjoint stretches of the time
-/// axis, so a GC cutoff can sit between them and evict one without ever touching the other.
-async fn stage_block(store: &Store, seq_base: u64, ts_base: u64) {
+/// One producer's block: `seq_base+1 ..= seq_base+PER_PRODUCER` at 1s cadence, with
+/// `ts = ts_base + i*TS_STEP`. Distinct `ts_base` blocks occupy disjoint stretches of the time axis,
+/// so a GC cutoff can sit between them and evict one without ever touching the other.
+fn block(producer: &str, seq_base: u64, ts_base: u64) -> Vec<Sample> {
+    (1..=PER_PRODUCER)
+        .map(|i| sample(producer, seq_base + i, ts_base + i * TS_STEP))
+        .collect()
+}
+
+/// Commit every producer's block one after another — the settled seed, with no race in it.
+async fn commit_block(store: &Store, seq_base: u64, ts_base: u64) {
     for p in 0..PRODUCERS {
         let producer = format!("p{p}");
-        let samples: Vec<Sample> = (1..=PER_PRODUCER)
-            .map(|i| sample(&producer, seq_base + i, ts_base + i * TS_STEP))
-            .collect();
-        write(store, WS, &samples, 0).await.unwrap();
-    }
-}
-
-/// A caller's inline drain loop, verbatim — commit `COMMIT_BATCH` at a time until staging empties,
-/// terminating on what was DEQUEUED (`drained`), not what committed. Returns the first store error
-/// verbatim (the pre-fix failure path).
-async fn drain_all(store: &Store) -> Result<usize, String> {
-    let mut total = 0;
-    loop {
-        let pass = commit_batch(store, WS, 256)
+        commit_direct(store, WS, &block(&producer, seq_base, ts_base))
             .await
-            .map_err(|e| e.to_string())?;
-        if pass.drained() == 0 {
-            break;
-        }
-        total += pass.committed;
+            .unwrap();
     }
-    Ok(total)
 }
 
-/// Run `PRODUCERS` drain tasks, each serialized behind `lock` (the WS-B stand-in). Panics with the
-/// verbatim conflict string if any drain surfaces one.
-async fn serialized_drain_storm(store: &Store, lock: &Arc<Mutex<()>>) {
+/// Commit every producer's block CONCURRENTLY — `PRODUCERS` tasks racing on the same `series` and
+/// `series_latest` rows, with nothing serializing them. Panics with the verbatim conflict string if
+/// any commit surfaces one.
+async fn commit_storm(store: &Store, seq_base: u64, ts_base: u64) {
     let mut handles = Vec::new();
-    for _ in 0..PRODUCERS {
+    for p in 0..PRODUCERS {
         let s = store.clone();
-        let lock = lock.clone();
+        let producer = format!("p{p}");
         handles.push(tokio::spawn(async move {
-            let _g = lock.lock().await;
-            drain_all(&s).await
+            commit_direct(&s, WS, &block(&producer, seq_base, ts_base))
+                .await
+                .map_err(|e| e.to_string())
         }));
     }
     for h in handles {
         h.await
-            .expect("drain task panicked")
-            .expect("drain surfaced a retryable conflict — retry/serialization regressed");
+            .expect("commit task panicked")
+            .expect("a commit surfaced a retryable conflict — the bounded retry regressed");
     }
 }
 
-/// **Drain-vs-drain.** N drains race one staged block, serialized per-ws (WS-B) with WS-A retry
+/// **Commit-vs-commit.** N producers commit their own block at once, with only the bounded retry
 /// underneath. Asserts no conflict error AND the committed series is exactly-once: every producer's
 /// full seq range, no gap (a dropped batch), no duplicate (a double-commit).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn serialized_drains_are_exactly_once() {
+async fn concurrent_commits_are_exactly_once() {
     let store = Store::memory().await.unwrap();
-    stage_block(&store, 0, 0).await;
 
-    serialized_drain_storm(&store, &Arc::new(Mutex::new(()))).await;
+    commit_storm(&store, 0, 0).await;
 
     let rows = read(&store, WS, SERIES, None, None).await.unwrap();
     let expected = (PRODUCERS * PER_PRODUCER) as usize;
@@ -131,14 +119,14 @@ async fn serialized_drains_are_exactly_once() {
     assert_eq!(last.seq, PER_PRODUCER, "latest pointer at the newest seq");
 }
 
-/// **Drain-vs-GC.** A settled historical block (A) is evicted-and-rolled-up by a GC looper while N
-/// serialized drains concurrently commit a NEW block (B) to the same `series` table. The two blocks
+/// **Commit-vs-GC.** A settled historical block (A) is evicted-and-rolled-up by a GC looper while N
+/// producers concurrently commit a NEW block (B) to the same `series` table. The two blocks
 /// occupy disjoint stretches of the time axis, so GC only ever evicts settled data (as in
 /// production — GC trims the old tail, writes hit the head); the contention is purely on the shared
 /// `series` table under MVCC. Asserts no conflict error from EITHER side, and that no sample is lost:
 /// B survives as raw exactly-once, and all of A is preserved in the rollup tier.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn serialized_drains_vs_gc_lose_no_samples() {
+async fn concurrent_commits_vs_gc_lose_no_samples() {
     let store = Store::memory().await.unwrap();
 
     // Keep the newest 100s of raw; fold the rest into 10s buckets kept forever.
@@ -163,11 +151,7 @@ async fn serialized_drains_vs_gc_lose_no_samples() {
     .unwrap();
 
     // Block A: ts 1_000..=350_000, fully committed BEFORE any GC runs — a settled tail.
-    stage_block(&store, 0, 0).await;
-    drain_all(&store).await.expect("seed drain of block A");
-
-    // Block B: ts 1_001_000..=1_350_000 (seq 351..=700) — the live head, disjoint from A.
-    stage_block(&store, PER_PRODUCER, 1_000_000).await;
+    commit_block(&store, 0, 0).await;
 
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     // GC looper: real rollup-then-evict passes. `now = 600_000` ⇒ cutoff 500_000, between A
@@ -185,13 +169,14 @@ async fn serialized_drains_vs_gc_lose_no_samples() {
         })
     };
 
-    // Concurrently drain block B (serialized per-ws, WS-B) — racing GC's eviction of A on `series`.
-    serialized_drain_storm(&store, &Arc::new(Mutex::new(()))).await;
+    // Block B: ts 1_001_000..=1_350_000 (seq 351..=700) — the live head, disjoint from A, committed
+    // concurrently and racing GC's eviction of A on `series`.
+    commit_storm(&store, PER_PRODUCER, 1_000_000).await;
 
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     gc.await
         .expect("gc task panicked")
-        .expect("gc surfaced a retryable conflict under concurrent drains");
+        .expect("gc surfaced a retryable conflict under concurrent commits");
 
     // Settle: one last GC pass rolls up and evicts whatever A raw the race timing left.
     run_gc(&store, WS, 600_000).await.unwrap();
@@ -203,7 +188,7 @@ async fn serialized_drains_vs_gc_lose_no_samples() {
     assert_eq!(
         b_rows.len(),
         (PRODUCERS * PER_PRODUCER) as usize,
-        "every block-B sample survives the drain-vs-GC race"
+        "every block-B sample survives the commit-vs-GC race"
     );
 
     // Block A is fully preserved in the rollup tier — the bucketed read over A's window sums to

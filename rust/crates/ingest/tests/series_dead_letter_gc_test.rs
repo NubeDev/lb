@@ -3,11 +3,12 @@
 //! `run_gc` pass — separate from `raw_for_ms` on purpose, so tightening series retention never
 //! destroys the evidence of why records were dead-lettered.
 //!
-//! Rows are produced through the REAL overflow path (`write` with a staging bound + `MustDeliver`),
-//! never hand-inserted: the thing under test is what the shipped divert writes, `dead_at` included.
+//! Rows are produced through the REAL divert path (a commit over the series cardinality cap), never
+//! hand-inserted: the thing under test is what the shipped divert writes, `dead_at` included.
 
 use lb_ingest::{
-    prune_dead_letters, run_gc, write, Qos, Sample, DEAD_LETTER_KEEP_MS, DEAD_LETTER_TABLE,
+    commit_direct_capped, prune_dead_letters, run_gc, Qos, Sample, DEAD_LETTER_KEEP_MS,
+    DEAD_LETTER_TABLE,
 };
 use lb_store::Store;
 use serde_json::{json, Value};
@@ -26,19 +27,20 @@ fn must_deliver(series: &str, seq: u64) -> Sample {
     }
 }
 
-/// Overflow exactly `n` must-deliver samples into the dead-letter table through the real
-/// `enforce_bound` path: staging is bound at 1 and primed full by a best-effort sample first (which
-/// drop-oldests rather than dead-letters, so priming twice in one workspace stays at one row), so
-/// every must-deliver write after it is diverted.
+/// Divert exactly `n` samples into the dead-letter table through the real commit path: the
+/// workspace's series cardinality cap is 1, so a `primer` series claims the single slot and every
+/// later series name is over the cap and diverted. Priming twice in one workspace re-upserts the
+/// same registry row, so the cap stays at one either way.
 async fn dead_letter_n(store: &Store, ws: &str, series: &str, n: u64) {
-    let mut primer = must_deliver("primer", 1);
-    primer.qos = Qos::BestEffort;
-    write(store, ws, &[primer], 1).await.unwrap();
-    for seq in 1..=n {
-        write(store, ws, &[must_deliver(series, seq)], 1)
-            .await
-            .unwrap();
-    }
+    commit_direct_capped(store, ws, &[must_deliver("primer", 1)], 1)
+        .await
+        .unwrap();
+    let samples: Vec<Sample> = (1..=n).map(|seq| must_deliver(series, seq)).collect();
+    let pass = commit_direct_capped(store, ws, &samples, 1).await.unwrap();
+    assert_eq!(
+        pass.dead_lettered, n as usize,
+        "the cap diverted every sample"
+    );
 }
 
 async fn dead_letter_count(store: &Store, ws: &str) -> i64 {
@@ -122,7 +124,8 @@ async fn the_gc_pass_prunes_dead_letters_and_reports_it() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_row_with_no_dead_at_falls_back_to_the_samples_own_ts() {
     // Rows written before `dead_at` existed. The upgrade must not pin the whole table to "never
-    // expires" — an unbounded table is exactly what this horizon is for.
+    // expires" — an unbounded table is exactly what this horizon is for. The shipped divert always
+    // stamps `dead_at` now, so this strips it to reproduce what an older node left behind.
     let store = Store::memory().await.unwrap();
     let now = 400 * DAY_MS;
     dead_letter_n(&store, "nube", "legacy", 1).await;

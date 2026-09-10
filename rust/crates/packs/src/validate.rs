@@ -133,6 +133,9 @@ pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
     // every finding it makes is an error of the dangling-parent class. It deliberately does NOT check
     // that a ref's `source` is registered — that is a workspace fact resolved late, never a pack fact.
     out.extend(crate::validate_refs::lint(&pack.manifest.entities));
+    // …and the reminder lint (`validate_reminder`): the action kind, its required fields, the cron
+    // shape, and the static-`job_id` replay trap.
+    out.extend(crate::validate_reminder::lint(&pack.manifest.reminders));
 
     // ERROR — a duplicate (kind, id) means two objects would write the same target, and the receipt
     // could not tell them apart.

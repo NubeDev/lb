@@ -1,121 +1,247 @@
-//! The **load-bearing** read-only gate of `store.query` (widget-builder Slice A): PARSE the SQL with
-//! SurrealDB's own parser and allowlist by **statement kind** — never a substring/regex check (a
-//! `LIKE '%delete%'` test is explicitly not acceptable; it both over- and under-matches). The query
-//! must be exactly **one** statement, and that statement must be a read: `SELECT`, or an
-//! introspection `INFO`/`SHOW`. Everything else is refused:
+//! What `store.query` checks before it runs — and, more importantly, what it no longer has to.
 //!
-//!   - mutations: `CREATE`, `UPDATE`, `UPSERT`, `DELETE`, `INSERT`, `RELATE`;
-//!   - schema: `DEFINE`, `REMOVE`, `ALTER`, `REBUILD`;
-//!   - control / transactions: `BEGIN`/`COMMIT`/`CANCEL`, `IF`, `FOR`, `LET`, `RETURN`, `THROW`,
-//!     `SLEEP`, `KILL`, `LIVE`, `OPTION`, a bare value;
-//!   - **namespace/database naming**: `USE` is refused outright — the workspace namespace is set
-//!     host-side from the token (`query_ws`), never from the SQL, so a query can never escape its
-//!     workspace (the wall, README §7). A `DEFINE NAMESPACE`/`DEFINE DATABASE` would already be
-//!     refused as a `Define`.
+//! # The change
 //!
-//! Mutation goes through the real typed write tools (`ingest.write`, `template.save`, …), never this
-//! verb. This is the boundary; the visual builder (Slice C) is only convenience above it.
-
-use surrealdb::sql::Statement;
+//! Under SurrealDB 2 this file WAS the read-only gate: parse the caller's SQL with SurrealDB's own
+//! parser and allow only a single `SELECT`/`INFO`/`SHOW`. SurrealDB 3 sealed the judgement that gate
+//! read. Checked exhaustively against `surrealdb-core` 3.2.4:
+//!
+//!   * `syn::parse(&str) -> Ast` is public, but `Ast`'s entire public API is `num_statements`,
+//!     `is_value_expression`, `get_let_statements`, `add_param`. Its `expressions` field is
+//!     `pub(crate)` (`sql/ast.rs:40`).
+//!   * `impl From<Ast> for expr::LogicalPlan` is public (`sql/ast.rs:144`), but `LogicalPlan` and
+//!     `TopLevelExpr` are `pub(crate)` (`expr/mod.rs:100`), so the impl cannot be named.
+//!   * `read_only()` is `pub(crate)` at all three levels: `TopLevelExpr` (`expr/plan.rs:27`),
+//!     `Expr` (`expr/expression.rs:103`), `Block` (`expr/block.rs:70`).
+//!
+//! So the read-only property is no longer decided here. It is decided by the ENGINE: the statement
+//! runs in a session authenticated as a `VIEWER` on the caller's own workspace database, which
+//! cannot write and cannot reach another workspace (`lb_store`'s `reader.rs`, and the measurements
+//! in `store/tests/viewer_session_probe.rs` and `viewer_namespace_probe.rs`).
+//!
+//! That is **stronger** than the allowlist it replaces. The allowlist had to be updated by hand
+//! whenever SurrealDB added a statement kind, so it could silently drift from the grammar that
+//! actually executes. A session that lacks the privilege cannot drift.
+//!
+//! # What is left in this file, and what each part is for
+//!
+//! Two things, and it matters which is which:
+//!
+//!   1. [`ReadKind`] — **bounding, not safety.** `run.rs` wraps a `SELECT` in a bounded sub-select
+//!      to apply the row cap and timeout; `INFO`/`SHOW` cannot be subqueried and are inherently one
+//!      row. Classifying by leading keyword is fine for that: a misclassification costs a query that
+//!      fails to parse when wrapped, never an unsafe execution.
+//!   2. [`write_advisory`] — **ergonomics, not safety.** A write refused by the engine comes back as
+//!      `Ok([])`, an empty result rather than an error (measured). A caller who sent an `UPDATE`
+//!      deserves to be told, not left reading zero rows and guessing. If this misses a write kind
+//!      the engine still refuses it, so the failure mode is a worse message, never a mutation.
+//!
+//! The one genuinely load-bearing check that remains here is the secret-plane wall, and it lives in
+//! `secret_wall.rs` because it is a different responsibility with a different argument for why a
+//! token scan is sound. Read that file before changing it: a `VIEWER` **can** read the secret
+//! tables, so the engine does not cover this one.
 
 use super::error::StoreQueryError;
-use super::secret_wall::ensure_no_secret_read;
+use super::secret_wall::{ensure_no_secret_tables, Vars};
 
-/// Which kind of read a validated statement is — the runner bounds a `SELECT` with a `LIMIT`/`TIMEOUT`
-/// wrapper but runs `INFO`/`SHOW` (inherently single-row introspection) as-is.
+/// Which shape a statement has, for **bounding** purposes only (see the module note).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadKind {
+    /// Wrapped by `run.rs` in a bounded sub-select to apply the row cap and timeout.
     Select,
+    /// `INFO` / `SHOW` — one structured row, cannot be subqueried, runs as written.
     Introspection,
 }
 
-/// Parse + allowlist `sql`. On success returns the single read statement's [`ReadKind`] (safe to run
-/// inside the caller's workspace namespace). On failure a [`StoreQueryError::Rejected`] (a disallowed
-/// kind / multi-statement) or [`StoreQueryError::Parse`] (invalid SurrealQL) — both safe to surface to
-/// the SQL editor (they are author feedback, not an authorization signal).
-/// It also carries the **secret-plane wall** ([`ensure_no_secret_read`]) on the same parsed statement
-/// ([`StoreQueryError::SecretTable`]), so no caller can hold one gate and skip the other.
+/// Statement keywords that mutate data or schema. Used only to produce a clear message; the engine
+/// is what actually refuses them.
+const WRITE_KEYWORDS: &[&str] = &[
+    "create", "update", "upsert", "delete", "remove", "insert", "relate", "define", "alter",
+    "rebuild", "begin", "commit", "cancel", "use", "let", "sleep", "kill", "live",
+];
+
+/// Check a caller-supplied statement and report its shape.
+///
+/// Refuses only two things: a statement that names the secret plane, and one whose leading keyword
+/// is a write. Everything else is allowed through to a session that cannot do damage.
 pub fn ensure_read_only(sql: &str) -> Result<ReadKind, StoreQueryError> {
     ensure_read_only_with_vars(sql, &[])
 }
 
-/// [`ensure_read_only`] with the request's own `vars` in hand, so the secret wall can *resolve* a
-/// parameterised table position (`FROM type::table($tb)`) instead of refusing it as unprovable. The
-/// var-less form above delegates here with an empty slice: passing no bindings can only refuse more,
-/// never less, so an existing caller stays safe — it just cannot use the parameterised form.
-pub fn ensure_read_only_with_vars(
-    sql: &str,
-    vars: &[(String, serde_json::Value)],
-) -> Result<ReadKind, StoreQueryError> {
-    let query = surrealdb::syn::parse(sql).map_err(|e| StoreQueryError::Parse(e.to_string()))?;
-    let statements = &query.0 .0;
+/// [`ensure_read_only`] with the caller's bindings, which the secret wall also inspects.
+pub fn ensure_read_only_with_vars(sql: &str, vars: Vars<'_>) -> Result<ReadKind, StoreQueryError> {
+    if sql.trim().is_empty() {
+        return Err(StoreQueryError::Rejected("empty statement".into()));
+    }
+    // The load-bearing check. Runs FIRST: a statement naming the secret plane is refused whatever
+    // else it is.
+    ensure_no_secret_tables(sql, vars)?;
+    if let Some(kw) = write_advisory(sql) {
+        return Err(StoreQueryError::Rejected(format!(
+            "`{kw}` writes, and store.query runs on a read-only session. Use the typed verbs \
+             (ingest.write, template.save, …) to change data."
+        )));
+    }
+    Ok(kind_of(sql))
+}
 
-    match statements.len() {
-        0 => return Err(StoreQueryError::Rejected("empty query".into())),
-        1 => {}
-        n => {
-            return Err(StoreQueryError::Rejected(format!(
-                "only a single statement is allowed (got {n})"
-            )))
+/// The first write keyword among ALL the statements in `sql`, for the caller-facing message.
+///
+/// Every statement is checked, not just the first: `SELECT 1; DELETE person` opens with a read, and
+/// a caller who wrote that deserves the same message as one who wrote the `DELETE` alone. The engine
+/// refuses the write either way — this only decides what the author is told.
+fn write_advisory(sql: &str) -> Option<&'static str> {
+    statements(sql).into_iter().find_map(|st| {
+        let kw = leading_keyword(&st)?;
+        WRITE_KEYWORDS.iter().find(|k| **k == kw.as_str()).copied()
+    })
+}
+
+/// Split on top-level `;`, ignoring semicolons inside quoted strings.
+fn statements(sql: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut chars = sql.chars().peekable();
+    while let Some(c) = chars.next() {
+        match quote {
+            Some(q) => {
+                cur.push(c);
+                if c == '\\' {
+                    if let Some(n) = chars.next() {
+                        cur.push(n);
+                    }
+                } else if c == q {
+                    quote = None;
+                }
+            }
+            None if c == '\'' || c == '"' => {
+                quote = Some(c);
+                cur.push(c);
+            }
+            None if c == ';' => out.push(std::mem::take(&mut cur)),
+            None => cur.push(c),
+        }
+    }
+    out.push(cur);
+    out.into_iter().filter(|s| !s.trim().is_empty()).collect()
+}
+
+/// `SELECT` unless the statement opens with `INFO` or `SHOW`.
+fn kind_of(sql: &str) -> ReadKind {
+    match leading_keyword(sql).as_deref() {
+        Some("info") | Some("show") => ReadKind::Introspection,
+        _ => ReadKind::Select,
+    }
+}
+
+/// The first word of the statement, lowercased, skipping leading whitespace, `(`, and comments.
+fn leading_keyword(sql: &str) -> Option<String> {
+    let mut rest = sql.trim_start();
+    loop {
+        if let Some(r) = rest.strip_prefix("--").or_else(|| rest.strip_prefix('#')) {
+            rest = r.split_once('\n').map_or("", |(_, t)| t).trim_start();
+            continue;
+        }
+        if let Some(r) = rest.strip_prefix("/*") {
+            rest = r.split_once("*/").map_or("", |(_, t)| t).trim_start();
+            continue;
+        }
+        if let Some(r) = rest.strip_prefix('(') {
+            rest = r.trim_start();
+            continue;
+        }
+        break;
+    }
+    let word: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    (!word.is_empty()).then(|| word.to_ascii_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_select_is_allowed_and_classified_for_bounding() {
+        assert_eq!(
+            ensure_read_only("SELECT * FROM series").unwrap(),
+            ReadKind::Select
+        );
+        assert_eq!(
+            ensure_read_only("  (SELECT * FROM series)").unwrap(),
+            ReadKind::Select
+        );
+    }
+
+    #[test]
+    fn introspection_is_classified_so_it_is_not_wrapped() {
+        for sql in [
+            "INFO FOR DB",
+            "info for db",
+            "SHOW CHANGES FOR TABLE series SINCE 0",
+        ] {
+            assert_eq!(
+                ensure_read_only(sql).unwrap(),
+                ReadKind::Introspection,
+                "{sql}"
+            );
         }
     }
 
-    let stmt = &statements[0];
-
-    let kind = match stmt {
-        // Reads — allowed. A `SELECT` is the workhorse; `INFO`/`SHOW` are introspection a schema/
-        // discovery view may need. None of these can mutate or name a namespace.
-        Statement::Select(_) => ReadKind::Select,
-        Statement::Info(_) | Statement::Show(_) => ReadKind::Introspection,
-
-        // `USE` names a namespace/database — refused outright (the workspace wall is host-side).
-        Statement::Use(_) => {
-            return Err(StoreQueryError::Rejected(
-                "USE (namespace/database selection) is not allowed — the workspace is fixed".into(),
-            ))
+    #[test]
+    fn a_write_gets_a_clear_message_rather_than_an_empty_result() {
+        for sql in [
+            "CREATE person SET a = 1",
+            "DELETE person",
+            "USE NS other DB main",
+        ] {
+            let err = ensure_read_only(sql).unwrap_err();
+            assert!(
+                matches!(err, StoreQueryError::Rejected(_)),
+                "{sql} -> {err:?}"
+            );
         }
+    }
 
-        // Everything else is a write, a schema change, control flow, a transaction boundary, or a
-        // bare value — refused by kind. The message names the kind so the editor can explain it.
-        other => {
-            return Err(StoreQueryError::Rejected(format!(
-                "only a single read (SELECT / INFO / SHOW) is allowed; '{}' is rejected",
-                statement_kind(other)
-            )))
-        }
-    };
+    #[test]
+    fn the_secret_wall_runs_before_anything_else() {
+        let err = ensure_read_only("SELECT * FROM secret").unwrap_err();
+        assert!(
+            matches!(err, StoreQueryError::SecretTable("secret")),
+            "{err:?}"
+        );
+        // …including when the statement is also a write: the secret refusal is the one reported.
+        let err = ensure_read_only("DELETE secret").unwrap_err();
+        assert!(
+            matches!(err, StoreQueryError::SecretTable("secret")),
+            "{err:?}"
+        );
+    }
 
-    // The second, independent wall: a read of the right KIND may still touch the secret plane. It is
-    // checked on the same parsed statement — see `secret_wall.rs` for what it can and cannot prove.
-    ensure_no_secret_read(stmt, vars)?;
+    /// A write hidden behind a leading read still gets the message.
+    #[test]
+    fn a_write_after_a_read_is_still_advised() {
+        assert!(ensure_read_only("SELECT * FROM series; DELETE series").is_err());
+        assert!(ensure_read_only("SELECT 1; USE NS other DB main").is_err());
+        // …and a semicolon inside a string is not a statement break.
+        assert_eq!(
+            ensure_read_only("SELECT * FROM series WHERE name = 'a; DELETE b'").unwrap(),
+            ReadKind::Select
+        );
+    }
 
-    Ok(kind)
-}
+    #[test]
+    fn an_empty_statement_is_refused() {
+        assert!(ensure_read_only("   ").is_err());
+    }
 
-/// A short human label for a rejected statement kind (for the editor's error line).
-fn statement_kind(s: &Statement) -> &'static str {
-    match s {
-        Statement::Create(_) => "CREATE",
-        Statement::Update(_) => "UPDATE",
-        Statement::Upsert(_) => "UPSERT",
-        Statement::Delete(_) => "DELETE",
-        Statement::Insert(_) => "INSERT",
-        Statement::Relate(_) => "RELATE",
-        Statement::Define(_) => "DEFINE",
-        Statement::Remove(_) => "REMOVE",
-        Statement::Alter(_) => "ALTER",
-        Statement::Rebuild(_) => "REBUILD",
-        Statement::Begin(_) | Statement::Commit(_) | Statement::Cancel(_) => "transaction control",
-        Statement::Ifelse(_) | Statement::Foreach(_) => "control flow",
-        Statement::Set(_) => "LET",
-        Statement::Output(_) => "RETURN",
-        Statement::Throw(_) => "THROW",
-        Statement::Sleep(_) => "SLEEP",
-        Statement::Kill(_) => "KILL",
-        Statement::Live(_) => "LIVE",
-        Statement::Option(_) => "OPTION",
-        Statement::Use(_) => "USE",
-        Statement::Value(_) => "a bare value",
-        _ => "this statement",
+    /// A comment before the keyword must not hide it.
+    #[test]
+    fn a_leading_comment_does_not_hide_the_keyword() {
+        assert!(ensure_read_only("-- harmless\nDELETE person").is_err());
+        assert!(ensure_read_only("/* x */ CREATE person SET a = 1").is_err());
     }
 }

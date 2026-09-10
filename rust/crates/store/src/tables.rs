@@ -12,9 +12,10 @@
 //! exact count is the honest answer for "how many rows", and the admin-only gate bounds who pays it.
 //! A cheaper estimate is a documented follow-up, not a v1 need.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::open::{Store, StoreError};
+use surrealdb::types::SurrealValue;
 
 /// One table and its row count in a workspace.
 #[derive(Debug, Clone, serde::Serialize, Deserialize, PartialEq)]
@@ -28,7 +29,7 @@ pub struct TableCount {
 pub async fn tables(store: &Store, ws: &str) -> Result<Vec<TableCount>, StoreError> {
     // `INFO FOR DB` returns a structured object; its `tables` field is a map of table-name → DEFINE
     // statement. We only need the keys (the table names).
-    let mut resp = store.query_ws(ws, "INFO FOR DB", vec![]).await?;
+    let mut resp = store.query_ws_retrying(ws, "INFO FOR DB", vec![]).await?;
     let info: Option<DbInfo> = resp
         .take(0)
         .map_err(|e| StoreError::Decode(e.to_string()))?;
@@ -45,7 +46,7 @@ pub async fn tables(store: &Store, ws: &str) -> Result<Vec<TableCount>, StoreErr
         // `count()` over the whole table, grouped to a single row (`GROUP ALL`). Bound the table
         // name through `type::table` so the identifier never reaches the query text as raw input.
         let mut cresp = store
-            .query_ws(
+            .query_ws_retrying(
                 ws,
                 "SELECT count() AS c FROM type::table($tb) GROUP ALL",
                 vec![("tb".into(), serde_json::Value::String(table.clone()))],
@@ -62,13 +63,18 @@ pub async fn tables(store: &Store, ws: &str) -> Result<Vec<TableCount>, StoreErr
 
 /// The slice of `INFO FOR DB` we read — the `tables` map (table-name → DEFINE text). We ignore every
 /// other field (analyzers, functions, params, …).
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct DbInfo {
     #[serde(default)]
     tables: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, SurrealValue)]
 struct CountRow {
     c: u64,
 }
+
+// `DbInfo` is delegated rather than derived: its `#[serde(default)]` is invisible to the
+// SurrealValue derive, so a database with no tables would fail to decode instead of reading empty.
+// `CountRow` has no serde attributes, so the plain derive is faithful for it.
+crate::surreal_value_via_serde!(DbInfo);

@@ -27,8 +27,8 @@
 use ed25519_dalek::{Signer, SigningKey as PublisherSigningKey};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    call_tool, drain_workspace, ext_list, ext_publish, ingest_write, install_extension, installed,
-    load_extension, Node, Qos, Sample,
+    call_tool, ext_list, ext_publish, ingest_write, install_extension, installed, load_extension,
+    Node, Qos, Sample,
 };
 use lb_inbox::{record, Item};
 use lb_mcp::ToolError;
@@ -146,9 +146,6 @@ async fn seed_series(node: &Node, ws: &str, series: &str, seq: u64, payload: f64
     ingest_write(&node.store, &p, ws, vec![sample])
         .await
         .expect("stage sample");
-    drain_workspace(&node.store, ws)
-        .await
-        .expect("commit drain");
 
     // The discoverability edge: tag the `series:<name>` entity with `kind:temperature` (the real tag
     // write path). `series.find` keeps only `series:`-prefixed entities, so this is exactly what makes
@@ -335,10 +332,7 @@ async fn ingest_write_then_latest_round_trips_through_the_bridge() {
     .await
     .expect("ingest.write is granted");
     let wv: serde_json::Value = serde_json::from_str(&n).unwrap();
-    assert_eq!(wv["accepted"], 1, "one sample staged, got {wv}");
-
-    // The commit worker drains staging → the `series` row (the node does this in production).
-    drain_workspace(&node.store, ws).await.expect("drain");
+    assert_eq!(wv["accepted"], 1, "one sample accepted, got {wv}");
 
     let out = call_tool(
         &node,

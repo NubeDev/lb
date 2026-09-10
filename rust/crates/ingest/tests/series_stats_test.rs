@@ -2,14 +2,14 @@
 //! holds — raw count, wall-clock extent, the producers writing to it, and the per-tier rollup
 //! breakdown after a real GC pass.
 //!
-//! Every assertion here goes through the REAL write path (`write` + `commit_batch`) and the REAL
+//! Every assertion here goes through the REAL write path (`commit_direct`) and the REAL
 //! `run_gc`, then reads the REAL stored rows back. No fixtures, no fakes.
 //!
 //! **Load-bearing:** a series with no rows is a valid measurement, not an error — an operator
 //! looking at a never-written series must see zeroes, not a failure, and never `first_ts: Some(0)`
 //! (which renders as 1970).
 
-use lb_ingest::{commit_batch, run_gc, series_stats, set_policy, write, Policy, Qos, Sample, Tier};
+use lb_ingest::{commit_direct, run_gc, series_stats, set_policy, Policy, Qos, Sample, Tier};
 use lb_store::Store;
 use serde_json::json;
 
@@ -26,13 +26,7 @@ fn sample(series: &str, producer: &str, seq: u64, ts: u64, payload: serde_json::
 }
 
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
-    write(store, ws, &samples, 0).await.unwrap();
-    loop {
-        // `drained()`, not `committed` — see `series_retention_test.rs`.
-        if commit_batch(store, ws, 256).await.unwrap().drained() == 0 {
-            break;
-        }
-    }
+    commit_direct(store, ws, &samples).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -113,7 +107,7 @@ async fn a_never_written_series_is_zeroes_not_an_error() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn rollup_rows_break_down_per_tier_after_a_real_gc() {
     let store = Store::memory().await.unwrap();
-    // 700 samples at 1s cadence — three `commit_batch(…, 256)` rounds, so the drain loop iterates.
+    // 700 samples at 1s cadence — three DIRECT_COMMIT_BATCH chunks, so the chunk loop iterates.
     seed(
         &store,
         "nube",

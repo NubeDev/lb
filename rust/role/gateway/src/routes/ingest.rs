@@ -5,16 +5,15 @@
 //! then `mcp:<verb>:call`). The workspace + producer come from the **token**, never the body (§7) — so
 //! a written sample's producer is the authenticated principal, un-spoofable.
 //!
-//! **Write-then-read visibility:** `ingest.write` durable-appends to staging (the cheap path); the
-//! committed `series` table is what `series.read`/`latest`/`list` read. So the write route **drains
-//! this workspace** after staging — the gateway node carries the ingest path, so the manual sample is
-//! committed and visible on the very next read (the UI refresh shows it). The drain is idempotent
-//! (exactly-once per `(series, producer, seq)`), so this never double-commits.
+//! **Write-then-read visibility:** `ingest.write` COMMITS the batch to the `series` table, which is
+//! what `series.read`/`latest`/`list` read. So a manual sample is visible on the very next read (the
+//! UI refresh shows it) with nothing to wait for in between. The commit is idempotent (exactly-once
+//! per `(series, producer, seq)`), so a retried push never double-writes.
 
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use lb_host::{own_batches, IngestError, Sample};
+use lb_host::{IngestError, Sample};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -28,8 +27,8 @@ pub struct WriteSamples {
     pub samples: Vec<Sample>,
 }
 
-/// `POST /ingest` — stage `samples` as the token's principal, then drain this workspace so the
-/// sample is committed and immediately visible to the reads. Returns `{ accepted, committed }`.
+/// `POST /ingest` — commit `samples` as the token's principal, immediately visible to the reads.
+/// Returns `{ accepted, committed }`.
 pub async fn write_samples(
     State(gw): State<Gateway>,
     headers: HeaderMap,
@@ -53,25 +52,15 @@ pub async fn write_samples(
     let accepted = lb_host::ingest_write(&gw.node.store, &p, p.ws(), body.samples)
         .await
         .map_err(ingest_status)?;
-    // Commit staging so the just-written sample is visible to the next read (the UI refresh). The
-    // gateway node carries the ingest path; the drain is exactly-once.
-    //
-    // BOUNDED to this request's own work (drain-backpressure scope): an unbounded drain here billed
-    // the POSTing producer for the whole workspace's staged backlog — O(backlog) on a request, which
-    // measured 18.5s for a single sample behind a 4,671-row backlog. The ingest reactor owns the
-    // remainder. `committed` therefore reports what THIS request committed, not the workspace total.
-    let pass = lb_host::drain_workspace_bounded(&gw.node.store, p.ws(), own_batches(accepted))
-        .await
-        .map_err(ingest_status)?;
     // Publish each committed sample onto its series motion subject so a live dashboard widget sees
     // it advance without polling (state vs motion, rule 3). Best-effort — a publish failure never
     // fails the durable write the read path already reflects.
     for s in &live {
         let _ = lb_host::publish_sample(&gw.node.bus, p.ws(), s).await;
     }
-    Ok(Json(
-        json!({ "accepted": accepted, "committed": pass.committed }),
-    ))
+    // `committed` is retained in the reply for wire compatibility. It equals `accepted` now: the
+    // write IS the commit, so a caller can no longer observe the two differ.
+    Ok(Json(json!({ "accepted": accepted, "committed": accepted })))
 }
 
 /// `GET /series?prefix=` query — list series names by prefix (the discovery list).
@@ -313,7 +302,7 @@ pub async fn update_series_samples_route(
     Ok(Json(json!({ "updated": updated })))
 }
 
-/// `DELETE /series/{series}` — remove the series and its whole footprint (samples, rollups, staged
+/// `DELETE /series/{series}` — remove the series and its whole footprint (samples, rollups, dead-lettered
 /// rows, registry row, tag edges). Gated `series.delete`. Idempotent — deleting an unknown series
 /// succeeds. The workspace comes from the token (the hard wall), never the path.
 pub async fn delete_series_route(
