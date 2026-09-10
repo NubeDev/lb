@@ -17,6 +17,7 @@
 //! | `case.workflow`, `case.assign`, `case.snooze`, `case.comment` | `case.workflow` (member) |
 //! | `policy.sla.set` | `policy.sla.set` (**admin**) |
 //! | `policy.sla.list` | `policy.sla.list` (**admin**) |
+//! | `case.breach` | `case.breach` (**no role bundle** — see [`breach`]) |
 //! | `rule.scorecard` | `rule.scorecard` (viewer) |
 //!
 //! The two reactors:
@@ -25,11 +26,17 @@
 //!     rather than eventually.
 //!   - **hold-down** ([`hold_down::reopen_if_held`]) — reached through `group_insight`, so the raise
 //!     path has one call site and not two.
+//!   - **sla-clock** ([`apply_sla`]) — runs on the tail of `group_insight` and after `case_open`,
+//!     so one code path resolves the contract at open AND on a severity escalation. It arms a
+//!     durable one-shot reminder that fires [`case_breach`] at `due_at`; nothing pauses that clock.
 //!
 //! [`reconcile_cases`] is the restart-safe backstop and the triage backfill;
 //! [`spawn_case_reactors`] is its loop driver.
 
 mod assign;
+mod breach;
+mod breach_notify;
+mod breach_reminder;
 mod cites;
 mod clock;
 mod comment;
@@ -49,6 +56,7 @@ mod policy_set;
 mod reactor;
 mod reconcile;
 mod scorecard;
+mod sla_clock;
 mod snooze;
 mod split;
 mod tool;

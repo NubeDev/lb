@@ -33,6 +33,13 @@ pub enum EventKind {
     Workflow,
     Assigned,
     Snoozed,
+    /// A deadline was SET (or recomputed) and which `service_policy` clause produced it. Not in the
+    /// scope's original list because that list was written before the sla-clock had to be
+    /// defensible: a `due_at` a client can be held to must be traceable to a contract, and the only
+    /// place that trace can live is the append-only history. Folding it into `workflow` was
+    /// rejected — a deadline is not a state transition, and mixing them corrupts the one stream a
+    /// reader scans to answer "what happened to this case".
+    Sla,
     RequestSent,
     RequestOpened,
     Reply,

@@ -28,12 +28,14 @@
 //!      [`merge`] / [`split`] are the verbs that legitimately move members).
 
 mod assign;
+mod breach_mark;
 mod calendar;
 mod case;
 mod case_event;
 mod case_member;
 mod comment;
 mod deadline;
+mod deadline_set;
 mod error;
 mod event_append;
 mod events;
@@ -57,6 +59,7 @@ mod split;
 mod workflow;
 
 pub use assign::{assign, AssignOutcome};
+pub use breach_mark::mark_breached;
 pub use calendar::{Calendar, CalendarError, DayHours, MINUTES_PER_DAY};
 pub use case::{
     severity_rank, Case, Grouping, ImpactTier, Resolution, WaitingOn, Workflow, TABLE as CASE_TABLE,
@@ -67,6 +70,7 @@ pub use case_event::{
 pub use case_member::{member_id, CaseMember, MemberRole, TABLE as CASE_MEMBER_TABLE};
 pub use comment::comment;
 pub use deadline::{add_business_hours, due_at, respond_by, MAX_DAYS_SCANNED, NEVER};
+pub use deadline_set::{set_deadlines, Deadlines};
 pub use error::CasesError;
 pub use event_append::append_event;
 pub use events::{events, EventPage, MAX_EVENT_PAGE};

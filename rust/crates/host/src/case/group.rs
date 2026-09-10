@@ -37,9 +37,33 @@ use crate::boot::Node;
 /// not one in the case history.
 pub const GROUP_ACTOR: &str = "system:case-group";
 
-/// Find or open the case for `insight_id` and return its id. See the module doc for the order.
-// SCOPE: docs/scope/insights/case-plane-scope.md §"Reactors" (case-group)
+/// Find or open the case for `insight_id`, run the SLA clock over it, and return its id.
+///
+/// The clock runs HERE, on the tail, rather than at each of [`decide`]'s five exits — and it runs
+/// on every pass, not only when a case is opened. Both halves are deliberate:
+///   * one call site means the open path and the **severity-escalation** path (exit 1, which
+///     punctures a snooze and writes the higher severity) cannot drift apart. Severity is a
+///     policy-match axis, so a case that got worse must be re-measured against whatever clause
+///     covers the worse thing;
+///   * running it unconditionally is free, because the deadlines are a pure function of
+///     `(policy, opened_ts)` and `lb_cases::set_deadlines` writes nothing when the answer is
+///     unchanged. That is also what makes "a snooze never moves the clock" structural rather than a
+///     rule somebody has to remember (see [`super::sla_clock`]).
+// SCOPE: docs/scope/insights/case-plane-scope.md §"Reactors" (case-group, sla-clock)
 pub async fn group_insight(
+    node: &Arc<Node>,
+    ws: &str,
+    insight_id: &str,
+    now: u64,
+) -> Result<String, CaseSvcError> {
+    let case_id = decide(node, ws, insight_id, now).await?;
+    super::sla_clock::apply_sla(node, ws, &case_id, now).await?;
+    Ok(case_id)
+}
+
+/// The grouping decision itself — the five-way ladder in the module doc. Split out so the SLA clock
+/// above has exactly one place to hang rather than five returns to remember.
+async fn decide(
     node: &Arc<Node>,
     ws: &str,
     insight_id: &str,

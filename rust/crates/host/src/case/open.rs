@@ -94,5 +94,11 @@ pub async fn case_open(
     for id in also {
         super::echo::write_case_echo(store, ws, id, &case.id).await;
     }
-    Ok(case)
+
+    // The SLA clock. A human-opened case gets its deadline from the same one code path a
+    // reactor-opened one does (`super::sla_clock`), so the two can never disagree about which
+    // clause governs the work. Re-read so the caller is handed the case WITH its deadlines rather
+    // than the pre-clock record.
+    super::sla_clock::apply_sla(node, ws, &case.id, ts).await?;
+    Ok(lb_cases::get(store, ws, &case.id).await?.unwrap_or(case))
 }

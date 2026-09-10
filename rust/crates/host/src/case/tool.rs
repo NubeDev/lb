@@ -19,6 +19,7 @@ use lb_auth::Principal;
 use lb_mcp::ToolError;
 use serde_json::{json, Value};
 
+use super::breach::case_breach;
 use super::error::CaseSvcError;
 use super::{
     case_assign, case_comment, case_events, case_get, case_list, case_members, case_merge,
@@ -226,6 +227,15 @@ pub async fn call_case_tool(
             .await
             .map_err(svc_to_tool)?;
             Ok(json!({ "seq": seq }))
+        }
+        // The breach alarm's own door (case-plane scope, sla-clock). Gates on its OWN name, so it
+        // needs no `tool_gate.rs` arm; the cap is in no role bundle and is held only by the SLA
+        // clock's subject (`super::breach_reminder`). A person does not declare a breach.
+        "case.breach" => {
+            let case = case_breach(node, principal, ws, str_arg(input, "case_id")?, ts)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(json!({ "breached": case.is_some(), "case": case }))
         }
         _ => Err(ToolError::NotFound),
     }
