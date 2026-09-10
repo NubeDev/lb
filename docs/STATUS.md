@@ -4110,6 +4110,24 @@ today's behaviour byte-for-byte**, so the upgrade is inert for anyone who does n
 
 ## 2026-09-09 — units, the view catalog, a tz default, and a 1000× epoch bug (BUILT, unreleased)
 
+> **MERGED WITH master 2026-09-10** (SurrealDB 3 #195 + the staging removal #197), which this
+> branch had been blocked on as a non-fast-forward. Three conflicts, two real, both in `ingest`:
+> master's `staged`→`samples` / `staging.rs`→`tables.rs` rename composes with this branch's
+> `apply_unit` walk. Two breaks surfaced only when the TEST targets were built — neither visible to
+> `cargo check --workspace`, which does not build them:
+>
+> 1. `tests/series_unit_test.rs` seeded through `write` + a `commit_batch` drain loop, the staging
+>    API master deleted. Ported to `commit_direct`.
+> 2. **`meta.rs` used `type::thing`, renamed to `type::record` in SurrealDB 3.** All 7
+>    unit-provenance tests failed at RUNTIME on a green build — queries are strings. Only the two
+>    new `unit`/`set_unit` statements were stale; master had already migrated the older four in the
+>    same file.
+>
+> `generated/surrealql_corpus.rs` is regenerated so the `surrealql_parses` guard — which exists for
+> exactly this rename — now covers all 9 of `meta.rs`'s statements. Verified red-then-green.
+> **Lesson: use `--all-targets`; a SurrealQL rename is invisible to a type checker.**
+> Still unreleased and still owed a tag — rubix-ai pins `node-v0.26.0`, which carries none of this.
+
 Driven by a downstream measurement: rubix-ai's
 `app/docs/scope/dashboards/api-gaps-review.md`, written against a live node and **all 44
 dashboards / 269 cells** on that bench, asking what a Flutter client would need to render dashboards
