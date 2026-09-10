@@ -51,6 +51,9 @@ async fn boot_wiring_every(node: &Arc<Node>, ws: &str, retention_period: Option<
         None,
         None,
         retention_period,
+        // No public origin: this harness asserts reactor WIRING, not mail copy. `None` is also the
+        // shipped default, so the boot it exercises is the boot an embedder gets.
+        None,
     )
     .await;
 }

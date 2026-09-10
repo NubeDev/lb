@@ -35,6 +35,10 @@ pub struct AttachmentReceipt {
 ///
 /// `principal` is checked for scope only; the write runs under a host principal minted for this one
 /// asset id. `name` and `mime` are caller-supplied data and are never used to address anything.
+// Every argument is a distinct fact about the attachment and none of them group into a struct that
+// would mean anything on its own — a bag named `Args` is the same arity with one more
+// indirection between a caller and a mistake.
+#[allow(clippy::too_many_arguments)]
 pub async fn case_request_attach(
     store: &Store,
     principal: &Principal,

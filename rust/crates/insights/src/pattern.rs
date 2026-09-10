@@ -171,7 +171,7 @@ fn concentrated(month_hist: &[u32; 12]) -> bool {
     for (i, &n) in counts.iter().enumerate() {
         acc += n as u64;
         if acc >= need {
-            return i + 1 <= SEASONAL_MAX_MONTHS;
+            return i < SEASONAL_MAX_MONTHS;
         }
     }
     false

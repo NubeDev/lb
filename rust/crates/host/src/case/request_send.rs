@@ -41,6 +41,10 @@ use crate::boot::Node;
 ///
 /// The raw token is **not** returned: it belongs in the mail and nowhere else, and a verb that
 /// handed it back would put a working link into every caller's response log.
+// Every argument is a distinct fact about the ask and none of them group into a struct that
+// would mean anything on its own — a bag named `Args` is the same arity with one more
+// indirection between a caller and a mistake.
+#[allow(clippy::too_many_arguments)]
 pub async fn case_request_send(
     node: &Arc<Node>,
     principal: &Principal,
