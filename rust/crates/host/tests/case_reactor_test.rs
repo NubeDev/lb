@@ -2,12 +2,20 @@
 //! (`docs/scope/insights/case-plane-scope.md` §"Reactors"). Real store, real bus, real caps, the
 //! real `call_tool` MCP bridge. NO mocks.
 //!
-//! **Every reactor case asserts RED first.** Grouping is an inline effect of `insight.raise`, so the
-//! capability that gates it is `mcp:insight.raise:call` — the reactor principal's own grant. Each
-//! test therefore runs the identical call with that cap REMOVED, asserts the refusal AND that no
-//! case was created, then runs it with the cap and asserts the case appears. A reactor test that
-//! only ever ran green proves nothing (`green-while-broken-reactor-tests.md`): without the RED half
-//! a grouping function that returned a hard-coded id, or one that never ran at all, would pass.
+//! **Every grouping case asserts RED first.** Grouping is an inline effect of `insight.raise`, so
+//! the capability that gates it is `mcp:insight.raise:call` — the reactor principal's own grant.
+//! Each grouping test therefore runs its identical FIRST raise with that cap REMOVED, asserts the
+//! refusal AND that no case was created, then runs it with the cap and asserts the case appears. A
+//! reactor test that only ever ran green proves nothing (`green-while-broken-reactor-tests.md`):
+//! without the RED half a grouping function that returned a hard-coded id, or one that never ran at
+//! all, would pass.
+//!
+//! **The two `reconcile_*` cases are the exception, and deliberately so.** `reconcile_cases` is a
+//! node-level backfill invoked as a Rust function, not a verb behind the caps wall, so there is no
+//! cap to remove — a "RED half" there would be theatre. Their equivalent is a **pre-pass
+//! assertion**: the legacy fixture is written straight through the `lb_insights` writers and the
+//! workspace is asserted to hold ZERO cases *before* the pass runs, which is what makes "the pass
+//! created it" a claim the test can actually make rather than assume.
 //!
 //! The two orderings a scheduled rule really produces — **verdict-first** (the citing record beats
 //! the findings it cites) and **verdict-last** (the findings already sit in `single` cases) — each
@@ -426,6 +434,25 @@ async fn the_reactor_never_moves_a_human_placed_member() {
     seed_roster(&node, "nube").await;
     let p = principal("user:test", "nube", ALL);
 
+    // RED — the same first raise with the reactor's grant removed: refused, and nothing grouped.
+    // Without this half the assertions below would still pass if grouping never ran at all.
+    let no_raise = principal("node:reactor", "nube", NO_RAISE);
+    let err = call(
+        &node,
+        &no_raise,
+        "nube",
+        "insight.raise",
+        raise_input("hp-root", 1),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, ToolError::Denied), "expected Denied: {err:?}");
+    assert_eq!(
+        open_case_count(&node, &no_raise, "nube").await,
+        0,
+        "a denied raise must group nothing"
+    );
+
     let root = call(
         &node,
         &p,
@@ -601,6 +628,25 @@ async fn a_re_fire_after_a_false_positive_opens_a_new_case() {
     let p = principal("user:test", "nube", ALL);
     let day: u64 = 24 * 60 * 60 * 1000;
 
+    // RED — the same first raise with the reactor's grant removed: refused, and nothing grouped.
+    // Without this half the assertions below would still pass if grouping never ran at all.
+    let no_raise = principal("node:reactor", "nube", NO_RAISE);
+    let err = call(
+        &node,
+        &no_raise,
+        "nube",
+        "insight.raise",
+        raise_input("hd-2", day),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, ToolError::Denied), "expected Denied: {err:?}");
+    assert_eq!(
+        open_case_count(&node, &no_raise, "nube").await,
+        0,
+        "a denied raise must group nothing"
+    );
+
     let id = call(&node, &p, "nube", "insight.raise", raise_input("hd-2", day))
         .await
         .expect("ok")["id"]
@@ -648,6 +694,25 @@ async fn a_re_fire_long_after_a_fix_opens_a_new_case() {
     seed_roster(&node, "nube").await;
     let p = principal("user:test", "nube", ALL);
     let day: u64 = 24 * 60 * 60 * 1000;
+
+    // RED — the same first raise with the reactor's grant removed: refused, and nothing grouped.
+    // Without this half the assertions below would still pass if grouping never ran at all.
+    let no_raise = principal("node:reactor", "nube", NO_RAISE);
+    let err = call(
+        &node,
+        &no_raise,
+        "nube",
+        "insight.raise",
+        raise_input("hd-3", day),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, ToolError::Denied), "expected Denied: {err:?}");
+    assert_eq!(
+        open_case_count(&node, &no_raise, "nube").await,
+        0,
+        "a denied raise must group nothing"
+    );
 
     let id = call(&node, &p, "nube", "insight.raise", raise_input("hd-3", day))
         .await
