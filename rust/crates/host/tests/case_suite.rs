@@ -93,6 +93,9 @@ mod plane_invariants;
 #[path = "case/plane_lanes.rs"]
 mod plane_lanes;
 
+#[path = "case/plane_members.rs"]
+mod plane_members;
+
 #[path = "case/plane_snooze.rs"]
 mod plane_snooze;
 

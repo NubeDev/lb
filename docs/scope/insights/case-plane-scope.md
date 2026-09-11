@@ -127,7 +127,7 @@ not violated by lb knowing the five.
 |---|---|---|---|
 | `tags.add` / `tags.remove` / `tags.of` / `tags.find` | `tags.add` / `tags.remove` / `tags.find` / `tags.find` | `tags.of → tags.find` | the dispatcher door; `tags.add` with `source: "human"` is the human-correction write |
 | `case.get` / `case.list` | `case.get` / `case.list` | — | `list` takes `lane ∈ {mine, waiting, watching}`, filters, sorts `due_at` asc then severity desc, returns member **count** |
-| `case.members` / `case.events` | `case.get` | both → `case.get` | the drawer's two lists, paged |
+| `case.members` / `case.events` | `case.get` | both → `case.get` | the drawer's two lists, paged. `members` **echoes** each cited insight's `title` + `severity` — see below |
 | `case.open` | `case.open` | — | human-opened over ≥1 insight; the reactor's internal call |
 | `case.merge` / `case.split` | `case.open` | both → `case.open` | move members; the losing case closes as `duplicate` |
 | `case.workflow` | `case.workflow` | — | transition + `waiting_on`; `resolved` requires `resolution` |
@@ -137,6 +137,21 @@ not violated by lb knowing the five.
 | `party.upsert` / `party.list` | `party.upsert` / `party.list` | — | admin |
 | `policy.sla.set` / `policy.sla.list` | `policy.sla.set` / `policy.sla.list` | — | admin |
 | `rule.scorecard` | `rule.scorecard` | — | viewer; per `origin.ref` × site |
+
+**`case.members` echoes the cited insight's `title` and `severity`.** A membership row holds an id,
+so a drawer rendering the page unaided draws a column of ULIDs while an *unauthenticated* contractor
+sees a headline. The echo is resolved at READ time by the host — never stored, because a copy of a
+title goes stale the moment the insight is retitled and nothing would ever repair it — in ONE query,
+through the `insight.case_id` back-reference the grouping pass already writes for exactly this
+purpose. The two rejected alternatives: a `get` per member is 200 reads a page; pushing it to the
+client is the same N+1 over the wire AND demands `insight.get` caps of a reader who may hold
+`case.get` and not (the two planes are two gates — see the rubix-ai scope's Resolved decision #6).
+Both fields are optional and omitted when absent, so the change is additive on the wire and a member
+whose insight is gone keeps its row with no title rather than failing the page.
+
+`members_all` is the un-paged, un-echoed read beside it, for callers that want the MEMBERSHIP and
+not the drawer's page (merge, split, the host's echo walks). The distinction is not tidiness: the
+paged read costs a second query to resolve titles those paths never look at.
 
 **Cap tiers.** VIEWER gains `case.get`, `case.list`, `rule.scorecard`, `tags.of`. AUTHOR (member)
 gains `case.open`, `case.workflow`, `case.request.send`, `tags.remove`. ADMIN gains `party.upsert`,

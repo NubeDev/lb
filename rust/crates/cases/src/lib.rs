@@ -103,7 +103,7 @@ pub use get::get;
 pub use list::{CaseRow, Lane, ListFilter, ListPage, ListQuery, MAX_CASE_PAGE};
 pub use member_add::member_add;
 pub use member_remove::member_remove;
-pub use members::{member_count, members, MemberPage, MAX_MEMBER_PAGE};
+pub use members::{member_count, members, members_all, MemberPage, MemberRow, MAX_MEMBER_PAGE};
 pub use merge::merge;
 pub use open::{open, OpenInput};
 // The party roster (wave 2). A party is DATA: nothing here names one (rule 10), and the scorecard
