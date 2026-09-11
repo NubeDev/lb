@@ -177,14 +177,13 @@ cargo clippy --all-targets                 0 errors
 | `lb-cases` lib | 34 |
 | `lb-cases` `deadline_test` | 17 |
 | `lb-cases` `policy_store_test` | 7 |
-| `case_plane_test` | 15 |
-| `case_reactor_test` | 9 |
-| `case_delegation_test` | 6 |
-| `sla_policy_test` | 11 |
-| `sla_clock_test` | 9 |
-| `scorecard_test` | 10 |
-| `case_request_test` | 18 |
-| `insight_caveat_test` | 8 |
+| `case_suite` (all eight case-plane suites, one binary) | **86** |
+
+`case_suite` is the aggregate of what were eight top-level test files — plane 15, request 18,
+reactor 9, sla_clock 9, sla_policy 11, scorecard 10, caveat 8, delegation 6 — now split by concern
+under `crates/host/tests/case/` and declared as modules of ONE harness, the way `agent_suite.rs`
+already does for the 29 agent files. Cargo links the whole dependency graph into every top-level
+`tests/*.rs`, so this is also ~7 GB less `target/`.
 
 **The surfaces the branch touches — all green:** `lb-host --lib` **582**; `tags_test` 3,
 `tags_door_test` 5, `tags_isolation_test` 1; `insights_test` 22, `insight_tag_echo_test` 11,
@@ -193,7 +192,7 @@ cargo clippy --all-targets                 0 errors
 `reminders_reactor_test` 9, `reminder_fire_test` 8, `pack_reminders_test` 5;
 `email_transport_test` 6, `invite_email_relay_test` 1, `mail_suite` 11.
 
-**The whole gateway role: 62 suites, 388 tests, 0 failures.** Two need fixtures built once or they
+**The whole gateway role: 64 suites, 393 tests, 0 failures.** Two need fixtures built once or they
 read as failures rather than as a missing build:
 
 ```bash
@@ -224,6 +223,45 @@ node; and the entire flow driven by hand with output pasted in
 **`invite.email.*` still ships a relative link, and was deliberately left alone.** It has the same
 bug, and fixing it here would have bundled an unrelated surface into a PR whose reviewable claim is
 the case plane. It is worth its own change.
+
+### FILE-LAYOUT: the nine oversized test files, split
+
+`check-file-size.sh` is a RATCHET, and read per-file it showed this branch adding sixteen violations
+to a backlog the script exists to shrink. Two were source files it had pushed over on its own
+(`email_target.rs` 389→463, `ladder_test.rs` 278→401) and are fixed in their own commit. The other
+nine were new TEST files, 404 to 1286 lines.
+
+All nine are now split by concern, following the repo's OWN two precedents rather than inventing a
+third:
+
+* **`crates/host/tests/`** — `agent_suite.rs` already declares 29 files in `tests/agent/` as modules
+  of one harness, because Cargo links the whole dependency graph (SurrealDB, Zenoh, wasmtime) into
+  every top-level `tests/*.rs` at ~1 GB each. The eight case suites follow it: `case_suite.rs`
+  aggregates 30 files under `tests/case/`, each a `*_support.rs` fixture module plus the focused
+  files that use it. Eight binaries became one.
+* **`role/gateway/tests/`** — `common/` is the established idiom there, and its own header says it
+  exists "to stay under the FILE-LAYOUT 400-line limit". `case_token_test.rs` split into
+  `case_token_test.rs` (the happy path) + `case_token_denied_test.rs` (the refusals) over a new
+  `common/case_request.rs`.
+
+Test count is identical either side: **86** in `case_suite` (15+18+9+9+11+10+8+6) and **5** across
+the two gateway files. The largest new file is 307 lines.
+
+*Rejected: one shared `case/support.rs` for all eight suites.* Tempting — `principal()` is
+byte-identical in all eight — but everything else is not: `call`, `seed_roster`, `raise_input`,
+`case_of` and `seed_insight` each have a different variant per suite (different caps, different
+seeds, different signatures). Merging them would have been a behaviour-carrying rewrite of eight
+green suites to satisfy a line count. Each suite keeps its own fixtures, moved verbatim.
+
+*Rejected: re-baselining with `--update`.* The script says the list "may only SHRINK", and adding
+nine entries to the backlog to make a job green is exactly the move that made it red on master in the
+first place.
+
+**Still outstanding, and stated in the PR:** six baseline files grew — `tool_call.rs` +86,
+`config.rs` +59, `server.rs` +58, `builder.rs` +24, `lib.rs` +20, `builtin_roles.rs` +8. Growth is
+structural in all six: a new verb IS a dispatch arm, a new `BootConfig` field IS a line in
+`config.rs`, a new route IS a registration in `server.rs`. Splitting them is a core refactor with a
+blast radius far wider than this branch.
 
 ## What is not done
 
