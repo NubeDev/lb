@@ -14,7 +14,6 @@
 //!   4. **Notify** — run each intent through the ladder (`apply_intents`) + post immediate
 //!      deliveries (L0/breakthroughs) under each sub's stored principal (fire-time re-checked).
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use lb_auth::Principal;
@@ -24,6 +23,7 @@ use lb_insights::{
 use lb_mcp::authorize_tool;
 
 use super::error::InsightSvcError;
+use super::facets::materialize_facets;
 use super::notify::{deliver_to_sub, kill_off_owners, load_subs};
 use crate::boot::Node;
 
@@ -107,7 +107,10 @@ pub async fn insight_raise(
     //    every workspace that notifies nobody. The cost is one `tags.of` per raise, and the read is
     //    reused below for both the matcher's facets and the record's `origin_ref` — so the raise
     //    path gains one indexed graph read and one conditional write, not a second record read.
-    let facets = materialize_facets(node, ws, &entity, &tags).await;
+    //    The facets are FOLDED by source precedence (`facets.rs`) — `Human > Producer > Inferred >
+    //    System`, newest within a source — so an operator's correction is not silently reverted by
+    //    tonight's producer re-assertion (`insight-tag-precedence-scope.md`).
+    let facets = materialize_facets(&node.store, ws, &entity, &tags).await;
     let stored = match lb_insights::set_tags_echo(&node.store, ws, &outcome.id, &facets).await {
         Ok(stored) => stored,
         Err(e) => {
@@ -138,6 +141,11 @@ pub async fn insight_raise(
             // record, not the raise input — `assigned_to` is a human fact the producer cannot set.
             assigned_to: assigned_to.as_deref(),
             kind: outcome.kind,
+            // A caveated finding still MATCHES every sub it would otherwise match — it just never
+            // breaks through and never posts immediately (`ladder.rs`). Read from the raise
+            // OUTCOME, which is the crate's own answer for the record it just wrote; re-deriving it
+            // here would be a second opinion about the same fact.
+            caveated: outcome.caveated,
         };
         // Resolve `assignee: "me"` per sub owner. Costs nothing when no sub uses it.
         let owner_subjects = super::assignee::owner_subjects_for(&node.store, ws, &subs).await;
@@ -165,6 +173,24 @@ pub async fn insight_raise(
                 }
             }
         }
+    }
+
+    // 6. Grouping — find or open the CASE this finding belongs to (case-plane scope).
+    //    INLINE, not only on the reconcile loop: the invariant is "every open insight is in exactly
+    //    one open case", and a scan-only reactor makes that merely EVENTUALLY true — so a UI that
+    //    raises then lists would see a case-less row for one tick. This is also where the hold-down
+    //    reactor is reached (a re-fire inside the window reopens the case that fixed it) and where a
+    //    severity escalation punctures a snooze.
+    //
+    //    Called RAW, like the tag graph above and for the same reason: grouping is a declared effect
+    //    of THIS verb on a record it just wrote, so `mcp:insight.raise:call` is the authority. Gating
+    //    it on `mcp:case.open:call` would mean every rule that raises silently stops being grouped
+    //    the moment it lacks a case grant — the failure mode hardest to see.
+    //
+    //    Best-effort: the durable insight already landed, so an ungrouped finding is a state the
+    //    reconcile loop repairs on its next pass — never a failed raise.
+    if let Err(e) = crate::case::group_insight(node, ws, &outcome.id, now).await {
+        tracing::warn!(ws, id = %outcome.id, error = %e, "insight not grouped into a case; the reconcile loop will retry");
     }
 
     Ok(outcome)
@@ -200,38 +226,6 @@ pub(super) fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
-}
-
-/// Materialize the insight's tag facets as `{ k: v }` — the matcher's subset check AND the record's
-/// tag echo (`insight-tag-echo-scope.md`). Reads the tag graph (`tags.of`, stringifying each value);
-/// on any error falls back to this raise's declared tags so a tag-graph hiccup can't silently drop a
-/// match or blank a dimension column.
-///
-/// Reads the graph RAW (`lb_tags::of`, not the `mcp:tags.of:call`-gated host verb) for the same
-/// reason `insight_list` resolves its facet filter raw: `mcp:insight.raise:call` already authorized
-/// this workspace's insight write, and reading back the tags of the entity this very call just
-/// created is not a second privilege. Gating it on `tags.of` would mean a producer without tag caps
-/// silently gets an echo built from its own declaration instead of the union — the exact bug the
-/// scope exists to prevent, in the failure mode hardest to see.
-async fn materialize_facets(
-    node: &Arc<Node>,
-    ws: &str,
-    entity: &str,
-    fallback: &BTreeMap<String, String>,
-) -> BTreeMap<String, String> {
-    match lb_tags::of(&node.store, ws, entity).await {
-        Ok(applied) if !applied.is_empty() => applied
-            .into_iter()
-            .map(|a| {
-                let v = match a.value {
-                    serde_json::Value::String(s) => s,
-                    other => other.to_string(),
-                };
-                (a.key, v)
-            })
-            .collect(),
-        _ => fallback.clone(),
-    }
 }
 
 /// The one-line body for an immediate (L0 / breakthrough) delivery — mechanical v1 text + the key

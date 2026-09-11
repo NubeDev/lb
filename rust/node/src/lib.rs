@@ -96,6 +96,16 @@ pub use lb_auth::Principal;
 /// spell it in its own function signatures rather than only pass it through.
 pub use lb_host::Store;
 
+/// Implement SurrealDB's `SurrealValue` for a plain serde type, so an embedder's own row structs
+/// can be read out of [`Store`] with `.take()`.
+///
+/// SurrealDB 3 requires every result type to implement `SurrealValue`; serde alone is no longer
+/// enough. The macro routes through serde rather than the derive, which is what keeps
+/// `#[serde(default)]`, enums stored as bare strings, and SQL NULL reading as `None` — three things
+/// the derive silently gets wrong. Re-exported here because an embedder that reads its own rows
+/// needs it and cannot reach `lb-store` through this seam.
+pub use lb_store::surreal_value_via_serde;
+
 /// Stage an effect on the outbox — what a target calls to enqueue the RESULT of its own work.
 pub use lb_host::enqueue_outbox;
 /// The workspace asset store — where a host puts bytes it produced (a rendered PDF) so an outbox row

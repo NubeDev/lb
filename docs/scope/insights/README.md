@@ -61,3 +61,13 @@ rules/flows/attention planes. Start with the umbrella; the rest compose onto it.
   handle over the existing `insight.raise`/`ack`/`resolve` verbs — no new verb, no new cap.
   Decides the `route:false` (read-only panel run) suppression and the emit/alert boundary.
 </content>
+- [`case-plane-scope.md`](case-plane-scope.md) — **the other half of the insight**: an insight is a
+  DETECTION, a **case** is a piece of WORK, and they are different records (work is many-to-one with
+  detections — one gateway drop is 400 findings and one job). The new `lb-cases` crate (`case`,
+  `case_member`, `case_event`, `case_request`, `party`, `service_policy`), the `case.*` verb surface,
+  the case-group / hold-down / sla-clock reactors, the `GET /r/{token}` contractor token principal,
+  and the changes the raise hot path takes: the `tags.*` dispatcher door + the `Human > Producer`
+  fold `insight-tag-precedence-scope.md` decided but could not reach, `evidence.subjects[]`, the
+  data-quality `caveats[]` stamp (demote, never suppress), `category` validated against a
+  workspace-declared vocabulary, and `month_hist[12]` + `pattern`. The **product** half — personas,
+  the money tiers, the four surfaces — stays in `NubeIO/rubix-ai`.

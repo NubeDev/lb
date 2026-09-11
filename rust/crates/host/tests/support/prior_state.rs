@@ -7,7 +7,7 @@
 //!
 //! **Seeds, not mocks (rule 9).** Every builder writes REAL rows into a real embedded store
 //! (`mem://`) through the same path the previous build used — `lb_ingest::set_policy` /
-//! `write` + `drain_workspace` for anything today's types can still express, and a raw `UPSERT`
+//! `commit_direct` for anything today's types can still express, and a raw `UPSERT`
 //! (byte-for-byte what `set_policy` issues) for a row shape today's `Policy` struct can no longer
 //! produce. A seed FEEDS the real path; it never replaces it.
 //!
@@ -123,7 +123,7 @@ impl PriorRetention {
             store
                 .query_ws(
                     &self.ws,
-                    &format!("UPSERT type::thing('{RETENTION_TABLE}', $prefix) CONTENT $row"),
+                    &format!("UPSERT type::record('{RETENTION_TABLE}', $prefix) CONTENT $row"),
                     vec![
                         ("prefix".into(), Value::String(prefix.clone())),
                         ("row".into(), row.clone()),
@@ -184,12 +184,9 @@ impl PriorSeries {
                     qos: Qos::BestEffort,
                 })
                 .collect();
-            lb_ingest::write(store, &self.ws, &samples, 0)
+            lb_ingest::commit_direct(store, &self.ws, &samples)
                 .await
                 .expect("stage prior history");
         }
-        lb_host::drain_workspace(store, &self.ws)
-            .await
-            .expect("commit prior history");
     }
 }

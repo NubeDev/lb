@@ -231,7 +231,19 @@ fn intent_step(
         .last_severity
         .map(|prev| intent.severity.rank() > prev.rank())
         .unwrap_or(false);
-    let breakthrough_reason = if first_key {
+    let breakthrough_reason = if intent.caveated {
+        // **A caveated finding is never a breakthrough** (case-plane-scope.md §"Data model").
+        // An open data-quality finding on the same subjects says the number this finding rests on
+        // is not trustworthy — so the one thing we must not do is page someone about it at 2am. It
+        // is not dropped: the accounting above already ran, so it accumulates and rides the digest,
+        // where it is read beside its caveat instead of alone at the top of a phone.
+        //
+        // Checked BEFORE first-key/reopen/escalation deliberately: those three are exactly the
+        // "genuinely new fact" cases, and a fact derived from data under question is precisely the
+        // one that is not new information. Suppressing only the ordinary path would leave the loud
+        // paths — the ones that wake people — untouched, which is the whole failure this prevents.
+        None
+    } else if first_key {
         Some(DeliveryReason::FirstKey)
     } else if intent.kind == IntentKind::Reopen {
         Some(DeliveryReason::Reopen)
@@ -272,7 +284,11 @@ fn intent_step(
 
     // --- Deliver choice ------------------------------------------------------------------------
     let mut deliveries = Vec::new();
-    if st.level == 0 {
+    // A caveated finding also skips the L0 immediate post — suppressing only the breakthrough would
+    // leave the first raise of a caveated key delivering anyway (L0 with no `last_sent_ts` always
+    // posts), so "never breaks through" would be true and "nobody gets paged" would be false. The
+    // pending accumulator is deliberately NOT consumed here, so the digest still carries it.
+    if st.level == 0 && !intent.caveated {
         // L0: one immediate post per cooldown per key; extra raises within the cooldown accumulate
         // into pending for the next post.
         let cooled = match st.last_sent_ts {

@@ -6,7 +6,7 @@
 //! The methods' values are `series_method_test.rs`. Real store, no mocks (testing §0).
 
 use lb_ingest::{
-    apply_method, commit_batch, read_buckets, run_gc, sample_count, set_policy, write, Bucket,
+    apply_method, commit_direct, read_buckets, run_gc, sample_count, set_policy, Bucket,
     BucketQuery, Method, Policy, Qos, Sample, Tier,
 };
 use lb_store::Store;
@@ -25,8 +25,7 @@ fn sample_at(series: &str, producer: &str, seq: u64, ts: u64, payload: Value) ->
 }
 
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
-    write(store, ws, &samples, 0).await.unwrap();
-    while commit_batch(store, ws, 256).await.unwrap().drained() != 0 {}
+    commit_direct(store, ws, &samples).await.unwrap();
 }
 
 /// A policy with one tier at `width`, keeping raw for `raw_for_ms`.

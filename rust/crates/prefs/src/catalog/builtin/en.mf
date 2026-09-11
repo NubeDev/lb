@@ -16,3 +16,19 @@ invite.email.body = You have been invited to workspace {workspace}. Click the li
 # halves). The transport pairs it with the text key above as multipart/alternative; when this key is
 # absent the message goes out text-only and the text part is generated from the HTML.
 invite.email.body_html = <p>You have been invited to workspace <strong>{workspace}</strong>.</p><p><a href="/accept?token={token}">Accept the invitation</a></p>
+
+# The contractor round trip (case-plane scope, wave 2). `case.request.send` emails a party a link
+# to a tokenised page; the ladder then nudges them at 50 %/80 % of their window. Both actions get
+# their copy from the ACTION NAME (`request_link` / `request_nudge` → `{action}.email.*`), which is
+# why adding an emailed action is a catalog change and never a new match arm in `email_content.rs`.
+# `{token}` is the raw link token — it exists only here and in the mail; nothing stores it.
+request_link.email.subject = A job needs your response
+request_link.email.body = You have been asked to respond about a job. Open the link to see the detail and reply: {base_url}/r/{token}
+request_link.email.body_html = <p>You have been asked to respond about a job.</p><p><a href="{base_url}/r/{token}">Open the request and reply</a></p>
+# The nudge carries NO link, deliberately. The raw token exists exactly once (in the original
+# mail) and is unrecoverable from the stored hash; minting a second one would kill the link already
+# in the recipient's inbox and put two live tokens on one ask. So the reminder points back at the
+# mail they already have.
+request_nudge.email.subject = Reminder: a job is waiting on your response
+request_nudge.email.body = A job is still waiting on your response. Please open the request link we sent you earlier and reply.
+request_nudge.email.body_html = <p>A job is still waiting on your response.</p><p>Please open the request link we sent you earlier and reply.</p>

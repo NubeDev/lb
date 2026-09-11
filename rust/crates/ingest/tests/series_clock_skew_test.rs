@@ -14,8 +14,7 @@
 //! would leave the box exactly as blind as it was.
 
 use lb_ingest::{
-    commit_batch, last_pass, run_gc, set_policy, write, Policy, Qos, Sample, Tier,
-    SKEW_TOLERANCE_MS,
+    commit_direct, last_pass, run_gc, set_policy, Policy, Qos, Sample, Tier, SKEW_TOLERANCE_MS,
 };
 use lb_store::Store;
 use serde_json::json;
@@ -35,8 +34,7 @@ fn sample(series: &str, seq: u64, ts: u64) -> Sample {
 }
 
 async fn seed(store: &Store, ws: &str, samples: Vec<Sample>) {
-    write(store, ws, &samples, 0).await.unwrap();
-    while commit_batch(store, ws, 256).await.unwrap().drained() != 0 {}
+    commit_direct(store, ws, &samples).await.unwrap();
 }
 
 /// The shipped modbus 0.1.13 shape, which is what #84 soaks: 30-minute raw window, 15-minute

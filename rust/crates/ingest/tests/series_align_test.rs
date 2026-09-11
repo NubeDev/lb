@@ -75,7 +75,7 @@ async fn a_policy_written_before_alignment_reads_back_unaligned() {
         .query_ws(
             "nube",
             &format!(
-                "UPSERT type::thing('{RETENTION_TABLE}', 'legacy.') CONTENT {{ \
+                "UPSERT type::record('{RETENTION_TABLE}', 'legacy.') CONTENT {{ \
                    prefix: 'legacy.', raw_for_ms: 3600000, max_samples: 0, \
                    tiers: [{{ width_ms: 900000, keep_for_ms: 604800000, method: 'avg' }}] }}"
             ),

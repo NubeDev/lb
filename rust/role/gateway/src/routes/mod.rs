@@ -21,6 +21,7 @@ mod auth_select;
 mod auth_switch;
 mod brand;
 mod bus;
+mod case_request;
 mod catalog;
 mod channel_registry;
 mod dashboard;
@@ -58,6 +59,9 @@ mod panel;
 mod post;
 mod prefs;
 mod product;
+// workspace-branding scope: the pre-auth `GET /public/branding` read — the ONE unauthenticated
+// route that serves workspace-scoped data, bounded to the brand + theme blobs (see the module docs).
+mod public_branding;
 mod rate_limit;
 mod report;
 mod rules;
@@ -112,6 +116,11 @@ pub use auth_select::auth_select;
 pub use auth_switch::auth_switch;
 pub use brand::{delete_brand, get_brand, list_brands, save_brand};
 pub use bus::{bus_stream, publish_message};
+// The contractor's three public routes (case-plane scope wave 2). `GET /r/{token}` is NOT one of
+// them — it is a page URL served by the SPA fallback.
+pub use case_request::{
+    get_case_request, post_case_request_attachment, post_case_request_reply, MAX_ATTACHMENT_BYTES,
+};
 pub use catalog::{get_catalog, render_message as render_catalog_message, set_catalog};
 pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{
@@ -178,9 +187,11 @@ pub use prefs::{
     set_default_prefs, set_prefs,
 };
 pub use product::ProductBody;
+pub use public_branding::{public_branding, BRANDING_MAX_AGE_SECS};
 pub use rate_limit::{
-    invite_accept_rate_limit, MAX_PER_WINDOW as INVITE_ACCEPT_MAX_PER_WINDOW,
-    WINDOW_SECS as INVITE_ACCEPT_WINDOW_SECS,
+    case_request_rate_limit, invite_accept_rate_limit, public_branding_rate_limit,
+    MAX_PER_WINDOW as INVITE_ACCEPT_MAX_PER_WINDOW, PUBLIC_BRANDING_MAX_PER_WINDOW,
+    PUBLIC_BRANDING_WINDOW_SECS, WINDOW_SECS as INVITE_ACCEPT_WINDOW_SECS,
 };
 pub use report::{
     delete_report, export_report, get_report, list_reports, save_report, share_report,

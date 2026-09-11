@@ -571,7 +571,6 @@ async fn seed_hit(
     }]})
     .to_string();
     call_tool(node, p, ws, "ingest.write", &req).await.unwrap();
-    lb_host::drain_workspace(&node.store, ws).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

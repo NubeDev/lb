@@ -14,10 +14,7 @@ use lb_store::Store;
 use lb_tags::Facet;
 use serde_json::{json, Value};
 
-use super::{
-    drain_workspace_bounded, ingest_write_reporting, own_batches, series_latest_many,
-    series_latest_value, IngestError,
-};
+use super::{ingest_write_reporting, series_latest_many, series_latest_value, IngestError};
 
 /// Dispatch an ingest/series MCP call. `input` is the verb's JSON arguments; the return is the
 /// verb's JSON result. Each verb authorizes first; denials are opaque (`ToolError::Denied`).
@@ -32,44 +29,17 @@ pub async fn call_ingest_tool(
         "ingest.write" => {
             let samples: Vec<Sample> = serde_json::from_value(arg(input, "samples")?.clone())
                 .map_err(|e| ToolError::BadInput(format!("samples: {e}")))?;
-            // Take the DIRECT path's filter counts with the acceptance: that path commits here, so
-            // its counts exist nowhere else — the bounded drain below finds staging empty and
-            // reports zeroes. On the stage path these are zero and the drain supplies them.
-            let (n, direct_filtered) = ingest_write_reporting(store, principal, ws, samples)
+            // The commit happens inside `ingest_write_reporting`, so the sample is readable over
+            // this same bridge the moment it returns — no drain, nothing to wait for.
+            //
+            // `accepted` counts what was ACCEPTED, which is deliberately unfiltered: the operator's
+            // own normalize policy decides at commit what is stored. Without the per-reason counts a
+            // producer would see `accepted: 4`, find two rows, and have nothing on the wire
+            // explaining the gap. They ride back only when something WAS filtered, so every existing
+            // caller's reply shape is byte-for-byte unchanged.
+            let (n, filtered) = ingest_write_reporting(store, principal, ws, samples)
                 .await
                 .map_err(ingest_error_to_tool)?;
-            // Drain staging → the committed `series` table so the just-written sample is visible to
-            // the very next `series.latest`/`read` over THIS same bridge — the round-trip the
-            // proof-panel page proves; the gateway's own `POST /ingest` route drains for the same
-            // reason. The drain is exactly-once per `(series, producer, seq)`, so a write-then-read
-            // never double-commits.
-            //
-            // BOUNDED to the caller's own work (drain-backpressure scope): this used to drain until
-            // staging was EMPTY, which billed the caller for every OTHER producer's staged rows —
-            // one sample against a 4,671-row backlog measured 18.5s vs 21ms at backlog 0, and a
-            // caller that timed out abandoned only the wait, so the backlog never drained and every
-            // subsequent push blocked again. The bound is the caller's own sample count: enough to
-            // commit what it just wrote (preserving the round-trip), never the workspace's backlog.
-            // The background ingest reactor drains the remainder off every caller's path.
-            let pass = drain_workspace_bounded(store, ws, own_batches(n))
-                .await
-                .map_err(ingest_error_to_tool)?;
-            // `accepted` counts what reached STAGING — acceptance is deliberately unfiltered (the
-            // filter is a commit-time decision, drain-backpressure scope). So a producer whose
-            // samples the operator's own policy discards would otherwise see `accepted: 4` and find
-            // two rows, with nothing on the wire explaining the gap. The per-reason counts of the
-            // drain this call performed ride back with it — present only when something WAS
-            // filtered, so every existing caller's reply shape is byte-for-byte unchanged.
-            //
-            // Bounded honesty: this drain commits oldest-first across the workspace, so on a node
-            // with a backlog the counts may include other producers' rows. That is the same bound
-            // `accepted` already lives under, and it is still the only view a writer gets.
-            let mut filtered = direct_filtered;
-            filtered.muted += pass.filtered.muted;
-            filtered.range += pass.filtered.range;
-            filtered.min_interval += pass.filtered.min_interval;
-            filtered.deadband += pass.filtered.deadband;
-            filtered.clamped += pass.filtered.clamped;
             let mut out = json!({ "accepted": n });
             if !filtered.is_zero() {
                 out["filtered"] = json!(filtered);

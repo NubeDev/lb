@@ -33,7 +33,8 @@ use lb_mail::{send_smtp, AuthMechanism, MailError, MailMessage, SmtpEndpoint};
 use lb_store::Store;
 
 use super::delivery_error::DeliveryError;
-use super::email_target::{EmailMessage, EmailMeta, EmailProvider};
+use super::email_message::{EmailMessage, EmailMeta};
+use super::email_target::EmailProvider;
 use super::smtp_transport_config::SmtpTransportConfig;
 
 /// The SMTP provider. One per node; holds the config (names only), an HTTP client for token refresh,

@@ -34,6 +34,11 @@ fn default_rev() -> u64 {
     FIRST_REV
 }
 
+// Delegated, NOT `#[derive(SurrealValue)]`: the derive does not read serde attributes, so it would
+// drop `#[serde(default = "default_rev")]` above and every pre-`rev` row would fail to decode with
+// "Expected number, got none" instead of reading as `rev = 1`.
+crate::surreal_value_via_serde!(Record);
+
 /// A record read together with its `rev` — the unit the conditional-restore predicate works on.
 /// `value: None` means the record is absent in this namespace, in which case `rev` is
 /// [`Versioned::ABSENT_REV`] (0). Absence is a first-class state: a *create* undo must be able to

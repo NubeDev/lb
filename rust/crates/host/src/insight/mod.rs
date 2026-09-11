@@ -29,10 +29,12 @@ mod ack;
 mod assign;
 mod assign_notify;
 mod assignee;
+mod backfill;
 mod comment;
 mod comments;
 mod delete;
 mod error;
+mod facets;
 mod get;
 mod heal_ts;
 mod list;
@@ -54,7 +56,13 @@ mod triage_event;
 mod watch;
 
 pub use ack::insight_ack;
+// The ONE definition of "who am I" — the caller's own subject plus every team they are on. Widened
+// from `pub(super)` so the CASE lanes resolve `Lane::Mine` through the same function the
+// subscription matcher and the insight roster already use; a second definition is how "my work"
+// silently stops showing team-owned jobs (case-plane scope, `case.list`).
 pub use assign::{insight_assign, AssignResult, MAX_BULK_ASSIGN};
+pub use assignee::{me_subjects, validate_assignee};
+pub use backfill::backfill_insight_facets;
 pub use comment::insight_comment;
 pub use comments::insight_comments;
 pub use delete::insight_delete;

@@ -157,9 +157,16 @@ async fn compact_job_enqueues_drains_and_records_outcome() {
     assert_eq!(payload["requested_by"], json!("user:test"));
     let outcome = &payload["outcome"];
     assert_eq!(outcome["ok"], json!(true));
+    // The pass reports a no-op, and says WHY. surrealkv 0.21 is an LSM tree that compacts itself
+    // in the background, so there is no stop-the-world pass left to run: the honest outcome is
+    // `ok` with a `skipped` reason, not a shrink invented to satisfy a caller.
+    assert_eq!(
+        outcome["before_bytes"], outcome["after_bytes"],
+        "a no-op pass reclaims nothing: {outcome}"
+    );
     assert!(
-        outcome["after_bytes"].as_u64().unwrap() < outcome["before_bytes"].as_u64().unwrap(),
-        "outcome records a real shrink: {outcome}"
+        outcome["skipped"].as_str().is_some_and(|s| !s.is_empty()),
+        "the outcome must say why it did nothing: {outcome}"
     );
 
     eprintln!(

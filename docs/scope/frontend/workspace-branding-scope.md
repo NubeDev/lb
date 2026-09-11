@@ -1,7 +1,25 @@
 # Frontend scope — workspace branding
 
-Status: scope (the ask). Sibling of `theme-customizer-scope.md`. Promotes to
+Status: scope (the ask), **partly shipped**. Sibling of `theme-customizer-scope.md`. Promotes to
 `public/frontend/frontend.md` and `public/workspace/workspace.md` once shipped.
+
+> **Shipped 2026-09-03 — the pre-auth read seam.** `GET /public/branding?ws=<ws>` is live in the
+> gateway (`role/gateway/src/routes/public_branding.rs`), serving the workspace-default `ui_branding`
+> + `ui_theme` blobs with no token. It closes the last gap this scope named: a browser that has never
+> signed in painted the compiled product default, because the login-branding slice could only repaint
+> a brand some earlier authenticated visit had cached in `localStorage`
+> ([`sessions/frontend/login-branding-session.md`](../../sessions/frontend/login-branding-session.md)),
+> and nothing seeds that cache on a new device, a new browser, or a cleared profile. Downstream report:
+> [NubeIO/rubix-ai#306](https://github.com/NubeIO/rubix-ai/issues/306). Session:
+> [`sessions/frontend/public-branding-route-session.md`](../../sessions/frontend/public-branding-route-session.md).
+> Route shape as built, differing from the sketch below in three ways settled during the build:
+> **(1)** `?ws=` query, not `/{ws}` path — a path segment makes a missing workspace a router `404`,
+> which is a different answer from an unknown one, i.e. an oracle. **(2)** The whitelist is the two
+> **opaque prefs blobs** (`ui_branding`, `ui_theme`), not four flattened string fields — branding
+> landed as one admin-owned JSON blob on the prefs record, and the theme rides beside it because a
+> deployment's login layout (`split`, the ESR case) is chosen by the theme, not the brand. **(3)** `ws`
+> is **required**; there is no "this node's own workspace" fallback, because finding one means
+> enumerating workspaces pre-auth — the exact thing the route must not do.
 
 Let a workspace admin brand the shell as their own: a **logo**, a **favicon**, and the **site name /
 login heading** ("My Company") that show in the app chrome and — the hard part — on the **login page,
@@ -67,11 +85,17 @@ workspace's prefs/assets. The resolution:
    `nube.lazybones.app` → `nube`), else from the workspace the visitor enters/selects on the login form
    (fetch-on-blur), else fall back to instance-default branding.
 2. **Serve branding through a narrow public read seam** — a dedicated unauthenticated gateway route
-   `GET /public/branding/{workspace}` that returns **only** `{ site_name, login_heading, logo_url,
-   favicon_url }` for that workspace and nothing else. This is a conscious, opt-in, read-only break in
-   the workspace wall, following the exact precedent of the document-store's public published-doc serving
+   `GET /public/branding?ws=<workspace>` (**shipped**) that returns **only** `{ ui_branding, ui_theme }`
+   for that workspace and nothing else. This is a conscious, opt-in, read-only break in the workspace
+   wall, following the exact precedent of the document-store's public published-doc serving
    (README §6.12) — whitelisted fields, read-only, no capability because there is no principal yet, and
-   the handler physically cannot reach any non-branding data.
+   the handler physically cannot reach any non-branding data. As built, the whitelist is enforced **by
+   construction, not by filtering**: the handler destructures the loaded `Prefs` into two named fields
+   and builds the body from those, so a future prefs axis cannot leak by merely existing — it would have
+   to be hand-added to that file. Every miss (unknown workspace, unbranded workspace, malformed slug,
+   absent `ws`, store error) returns the identical `200 {"ui_branding":null,"ui_theme":null}`, so the
+   route is not a workspace-existence oracle, and it carries its own per-IP ceiling (60/min) beside the
+   invite routes' limiter.
 
 **Rejected alternative — put branding in a per-member pref like the theme.** Branding is workspace
 identity, not personal taste; a member-writable brand would let anyone repaint the company logo, and
@@ -120,8 +144,8 @@ route, which by definition can't be an authed MCP verb.
   - *CRUD (write):* `prefs.set_default` for `ui.branding.{site_name,login_heading}` (admin);
     `assets.put_doc` for `branding:{logo,favicon}` (admin). Delete/reset = write empty → falls back to
     instance default, client- or handler-resolved. No per-item batch — a handful of fields, always fast.
-  - *Get / list:* authed members read via `prefs.resolve` + `assets.get_doc`. **New:** the unauthenticated
-    `GET /public/branding/{workspace}` read (whitelist only) for the login page.
+  - *Get / list:* authed members read via `prefs.resolve` + `assets.get_doc`. **New (shipped):** the
+    unauthenticated `GET /public/branding?ws=<workspace>` read (whitelist only) for the login page.
   - *Live feed:* **N/A** — branding rarely changes and login/boot re-reads suffice.
   - *Batch:* **N/A** — bounded, always-fast single writes.
 - **Durability:** N/A — brand writes have no cross-node must-deliver effect; plain workspace-scoped
@@ -142,8 +166,10 @@ route, which by definition can't be an authed MCP verb.
 3. A **member** loads the app. The shell reads branding (member reads `prefs.resolve` + `assets.get_doc`),
    sets `document.title` to "My Company", swaps the favicon, and renders the logo + name in the nav header.
 4. A **new visitor** hits `nube.lazybones.app/login` (or types `nube` into the login form). The login page
-   calls `GET /public/branding/nube`, gets `{ site_name, login_heading, logo_url, favicon_url }`, and
-   renders "Sign in to My Company" with the logo and the branded favicon — **before** any authentication.
+   calls `GET /public/branding?ws=nube`, gets `{ ui_branding, ui_theme }`, and renders "Sign in to My
+   Company" with the logo, the branded favicon and the workspace's login layout — **before** any
+   authentication. A shell that already has a cached brand paints it first and lets this response
+   correct it, so the fetch never costs a blank frame.
 5. The visitor authenticates; the authed shell re-reads branding through the normal walled path and the
    brand carries seamlessly from login into the app.
 6. A workspace that has set no branding renders the **instance-default** Lazybones mark/name at every step.
@@ -162,11 +188,16 @@ a new public route).
 - **Capability deny (mandatory):** a **non-admin** member is denied on `prefs.set_default` and on
   `assets.put_doc` for `branding:*` (opaque deny) — assert the honest deny, controls hidden.
 - **Workspace isolation (mandatory):** workspace A's branding is not readable/writable as workspace B via
-  the authed path; **and** `GET /public/branding/A` returns A's branding only — never B's, and never any
-  non-branding field. Seed two real workspaces and assert both.
-- **Pre-auth public read (real gateway):** `GET /public/branding/{ws}` returns the branding whitelist with
-  **no token**, returns instance-default for an unbranded/unknown workspace, and a fuzz/field-audit test
-  confirms the response body contains *only* the four whitelisted keys (the wall-break guard).
+  the authed path; **and** `GET /public/branding?ws=A` returns A's branding only — never B's, and never any
+  non-branding field. Seed two real workspaces and assert both. **(Shipped:**
+  `role/gateway/tests/public_branding_route_test.rs::serves_only_the_named_workspaces_brand`.**)**
+- **Pre-auth public read (real gateway):** `GET /public/branding?ws=<ws>` returns the brand whitelist with
+  **no token**, returns the neutral empty brand for an unbranded/unknown workspace, and a field-audit test
+  confirms the response body contains *only* the whitelisted keys (the wall-break guard). **(Shipped:**
+  the same test file — `serves_the_workspace_brand_with_no_token`,
+  `body_carries_the_brand_axes_and_nothing_else` (every other prefs axis is set on the record and each is
+  asserted absent from the raw body), `every_miss_answers_identically` (the oracle guard), and
+  `is_rate_limited_per_client`.**)**
 - **Build/lint:** `pnpm build`, `pnpm lint`, `cd rust && cargo test --workspace` green.
 
 ## Risks & hard problems
@@ -185,14 +216,19 @@ a new public route).
   and cap dimensions, or a huge logo bloats every read. Large assets are deferred to the bucket backend.
 - **Instance default vs. empty workspace.** "Unbranded" must render a clean neutral default, not a broken
   empty header — define the instance-default mark/name once.
-- **Caching & staleness.** The public branding response should be cacheable (login is hot) but invalidate
-  when an admin changes the brand — pick a modest TTL/etag so a rebrand shows up promptly without
-  hammering the node on every login paint.
+- **Caching & staleness.** ~~The public branding response should be cacheable~~ **Settled:** the shipped
+  route sends `Cache-Control: public, max-age=60` — short enough that a rebrand shows up on the next
+  sign-in rather than being pinned for a session, long enough that repainting a login page is free. No
+  etag: the body is two small blobs, so a conditional round-trip would cost more than it saves.
 
 ## Open questions
 
-- **Pre-auth workspace source:** subdomain/host map, entered-workspace fetch-on-blur, or both? (Leaning
-  both, subdomain-first with entered-value fallback — confirm with the routing/nav owner.)
+- ~~**Pre-auth workspace source:**~~ **Settled for the backend half:** the route takes an explicit `ws`
+  and never guesses — no subdomain map, no "sole workspace on this node" fallback, because either would
+  have the gateway enumerate or infer workspaces for an anonymous caller. Picking the hint stays the
+  shell's job (deep-link `#/t/<ws>`, the typed email's last workspace, the sole cached brand — the order
+  `resolveBootBrand` already uses downstream). A subdomain→workspace map, if it ever lands, resolves to a
+  `ws` in front of this route rather than inside it.
 - **Reserved key/id names:** `ui.branding.site_name` / `ui.branding.login_heading` and
   `branding:logo` / `branding:favicon` — confirm against the prefs value-shape rules and the assets id
   conventions.

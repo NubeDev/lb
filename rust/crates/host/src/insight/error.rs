@@ -27,6 +27,19 @@ impl From<lb_insights::InsightsError> for InsightSvcError {
     }
 }
 
+/// The case plane's error, mapped in. `insight.assign` / `insight.comment` delegate to the case
+/// that owns the work (case-plane scope, resolved decision 5), so a case-layer refusal — "no such
+/// case", an oversize note — has to surface through THIS service's shape without inventing a new
+/// variant. The mapping is exact: bad input stays bad input, a store failure stays a store failure.
+impl From<lb_cases::CasesError> for InsightSvcError {
+    fn from(e: lb_cases::CasesError) -> Self {
+        match e {
+            lb_cases::CasesError::BadInput(m) => InsightSvcError::BadInput(m),
+            lb_cases::CasesError::Store(s) => InsightSvcError::Store(s.to_string()),
+        }
+    }
+}
+
 impl From<lb_store::StoreError> for InsightSvcError {
     fn from(e: lb_store::StoreError) -> Self {
         InsightSvcError::Store(e.to_string())

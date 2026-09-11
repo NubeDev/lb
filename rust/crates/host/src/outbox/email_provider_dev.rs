@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use std::sync::Mutex;
 
 use super::delivery_error::DeliveryError;
-use super::email_target::{EmailMessage, EmailMeta, EmailProvider};
+use super::email_message::{Disposition, EmailMessage, EmailMeta};
+use super::email_target::EmailProvider;
 
 /// The **default boot provider** when no real one is configured: logs the send and acks it, so a node
 /// without email config boots and drains its outbox instead of crashing or dead-lettering every effect.
@@ -22,6 +23,12 @@ pub struct LoggingEmailProvider;
 
 #[async_trait]
 impl EmailProvider for LoggingEmailProvider {
+    /// The whole reason [`Disposition`] exists: this provider acks every mail it DROPS, so anything
+    /// downstream that reads the outbox row alone concludes the message was sent.
+    fn disposition(&self) -> Disposition {
+        Disposition::Logged
+    }
+
     async fn send(&self, message: &EmailMessage, meta: &EmailMeta) -> Result<(), DeliveryError> {
         tracing::warn!(
             to = %message.to, subject = %message.subject, ws = %meta.workspace,

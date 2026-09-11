@@ -17,6 +17,7 @@ fn intent(kind: IntentKind, severity: Severity, _ts: u64) -> Intent {
         dedup_key: "key-1".into(),
         severity,
         kind,
+        caveated: false,
     }
 }
 

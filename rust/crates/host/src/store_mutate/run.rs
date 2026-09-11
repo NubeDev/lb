@@ -62,7 +62,7 @@ fn reject_reserved(table: &str) -> Result<(), StoreMutateError> {
     Ok(())
 }
 
-/// Reject an empty `table` or `id`. Both are bound as `type::thing` params by the store (never string
+/// Reject an empty `table` or `id`. Both are bound as `type::record` params by the store (never string
 /// interpolation), so there is no injection surface — this is a shape check for a clean `BadInput`
 /// rather than a `Denied` (an empty table would gate on `store::write`, an odd signal).
 fn validate_key(table: &str, id: &str) -> Result<(), StoreMutateError> {

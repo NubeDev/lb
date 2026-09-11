@@ -21,7 +21,7 @@ use lb_auth::SigningKey;
 use lb_role_gateway::Authenticity;
 
 use crate::store_env::{
-    retention_period_from_env, store_budget_bytes_from_env, store_open_unguarded_from_env,
+    retention_period_from_env, series_time_index_from_env, store_budget_bytes_from_env,
 };
 
 /// The default `POST /extensions` upload ceiling (extension-upload-limit fix): 384 MiB. Sized to the
@@ -160,6 +160,19 @@ pub struct BootConfig {
     /// The boot workspace (today's `LB_WORKSPACE`, default `nube`). The dev-identity seed, extension
     /// re-load, reactors, and default-skill grants all scope to this workspace.
     pub workspace: String,
+
+    /// The node's PUBLIC origin (`https://insights.example.com`) — what a person outside the network
+    /// types to reach it. Used to make links in outgoing mail absolute.
+    ///
+    /// It is not the bind address: a node bound on `127.0.0.1:8099` behind a proxy is publicly
+    /// something else entirely, and only the embedder knows which. So this is config, never derived
+    /// from `gateway_addr`.
+    ///
+    /// `None` (the default) keeps the shipped behaviour — every emailed link renders relative, which
+    /// no mail client can resolve. That is a real limitation, not a preference: a contractor sent a
+    /// `case.request` link on a node with no public origin cannot open it. Set this on any node that
+    /// mails a stranger a link.
+    pub public_base_url: Option<String>,
 
     /// The dev identity to seed as a `workspace-admin` member of `workspace` (today's `LB_SEED_USER`,
     /// default `user:test`). `None` skips the seed entirely (an embedder that provisions its own
@@ -340,6 +353,17 @@ pub struct BootConfig {
     /// `LB_STORE_MAX_BYTES` at the binary boundary — the one place `LB_*` is read.
     pub store_budget_bytes: Option<u64>,
 
+    /// Define the `(series, ts)` index on the series table. **Default `false`, deliberately.**
+    ///
+    /// SurrealDB 3.2.4 answers a datetime range over an indexed field wrongly — out-of-range rows,
+    /// and the `ORDER BY` dropped (measured: `store/tests/index_range_scan_probe.rs`). A paged read
+    /// returned a sample 500 ms below its own window. Off, the same query is correct.
+    ///
+    /// Config, never a code branch (rule 1). `from_env` reads `LB_SERIES_TIME_INDEX=1` at the binary
+    /// boundary. Turn it on only if you accept wrong rows for scan speed, or once the engine is
+    /// fixed; with it off the index is REMOVED from stores that already carry one.
+    pub series_time_index: bool,
+
     /// How often the **retention GC reactor** ticks. `None` (the default) ⇒
     /// [`lb_host::RETENTION_PERIOD`] — 300 s, unchanged.
     ///
@@ -372,12 +396,6 @@ pub struct BootConfig {
     /// embedder's. `from_env` does not read it — a policy is structured data, not a scalar knob, so
     /// the standalone binary seeds none.
     pub retention_seed: Vec<lb_ingest::Policy>,
-
-    /// Force the store open past the **boot memory guard** (`LB_STORE_OPEN_UNGUARDED=1`, parsed in
-    /// [`crate::store_env`]): `false` (default) ⇒ a log larger than available RAM is refused with
-    /// `StoreError::WontFit` and the binary exits nonzero rather than risking a machine-wide OOM
-    /// (#128). The *open* guard only — the compaction preconditions are not overridable.
-    pub store_open_unguarded: bool,
 
     /// What that guard should treat as this machine's available RAM. `None` (default, and what the
     /// binary always fills) ⇒ read `/proc/meminfo`. An embedder sets it when it knows a truer
@@ -512,7 +530,6 @@ impl Default for BootConfig {
             // The boot memory guard is ON by default for every embedder: it only ever fires on a
             // store this machine provably cannot replay, and the failure it replaces is a
             // machine-wide OOM (boot-memory-guard scope, issue #128).
-            store_open_unguarded: false,
             store_available_ram_bytes: None,
             // Seed nothing by default: the embedder declares its own bounds, and an empty vec makes
             // boot byte-identical to before the field existed.
@@ -520,6 +537,7 @@ impl Default for BootConfig {
             signing_key: SigningKey::generate(),
             secret_key: None,
             workspace: "nube".into(),
+            public_base_url: None,
             seed_user: Some("user:test".into()),
             gateway: GatewayMode::Off,
             reactors: true,
@@ -567,6 +585,7 @@ impl Default for BootConfig {
             // 256 MiB advisory and no marks, forever. No auto-derivation from filesystem size — a
             // node must not silently acquire a new behaviour on upgrade.
             store_budget_bytes: None,
+            series_time_index: false,
             // The stock 300 s retention cadence (disk-budget/series-retention): slow on purpose —
             // a GC pass is a full table scan and nothing waits on an eviction. Configurable so the
             // cadence can be TESTED, not so it can be run fast.
@@ -617,6 +636,10 @@ impl BootConfig {
             // scalar `LB_*` knob, so there is nothing at the binary boundary to read it from.
             retention_seed: Vec::new(),
             workspace: std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "nube".into()),
+            // The public origin a mailed link is built on. Unset ⇒ links stay relative.
+            public_base_url: std::env::var("LB_PUBLIC_BASE_URL")
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
             seed_user: Some(std::env::var("LB_SEED_USER").unwrap_or_else(|_| "user:test".into())),
             gateway,
             reactors: true,
@@ -678,13 +701,11 @@ impl BootConfig {
             // The node's store disk budget from `LB_STORE_MAX_BYTES` (bytes); unset/empty/
             // unparseable ⇒ `None` ⇒ today's flat 256 MiB advisory and no marks. Read only here.
             store_budget_bytes: store_budget_bytes_from_env(),
+            // The `(series, ts)` index is opt-in; see the field.
+            series_time_index: series_time_index_from_env(),
             // The retention-GC cadence from `LB_RETENTION_PERIOD_SECS` (whole seconds);
             // unset/empty/unparseable/`0` ⇒ `None` ⇒ the 300 s default. Read only here.
             retention_period: retention_period_from_env(),
-            // The boot memory-guard override from `LB_STORE_OPEN_UNGUARDED` (exactly `1`);
-            // anything else warns and leaves the guard on. Read only here, at the binary boundary —
-            // the store crate reads no env and takes this as a parameter.
-            store_open_unguarded: store_open_unguarded_from_env(),
             // The binary measures the machine (`/proc/meminfo`); only an embedder overrides it.
             store_available_ram_bytes: None,
             // LAN discovery from `LB_DISCOVERY_*` — OFF unless `LB_DISCOVERY=1`, so the standalone

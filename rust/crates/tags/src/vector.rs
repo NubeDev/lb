@@ -8,6 +8,7 @@
 //! dimension is declared per vector-tag `key` (the resolved lean) so different embedding spaces don't
 //! collide. Namespace-scoped. Raw verbs — run after `caps::check`.
 
+use lb_store::SurrealValue;
 use lb_store::{Store, StoreError};
 use serde_json::{json, Value};
 
@@ -58,7 +59,7 @@ pub async fn put_vector(
         .query_ws(
             ws,
             &format!(
-                "UPSERT type::thing('{VECTOR_TABLE}', [$key, $id]) \
+                "UPSERT type::record('{VECTOR_TABLE}', [$key, $id]) \
                  SET key = $key, vid = $id, embedding = $emb"
             ),
             vec![
@@ -83,7 +84,7 @@ pub async fn find_similar(
     // ordered by ascending distance, so no ORDER BY is needed. We return the caller's logical `vid`.
     let ef = (k * 4).max(40);
     let mut resp = store
-        .query_ws(
+        .query_ws_retrying(
             ws,
             &format!("SELECT vid FROM {VECTOR_TABLE} WHERE embedding <|{k},{ef}|> $q"),
             vec![("q".into(), json!(query))],
@@ -95,7 +96,8 @@ pub async fn find_similar(
     Ok(rows.into_iter().map(|r| r.vid).collect())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, SurrealValue)]
+#[surreal(crate = "lb_store::surreal_types")]
 struct IdRow {
     vid: String,
 }

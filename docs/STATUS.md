@@ -30,7 +30,136 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-09-03 (unreleased — needs the next `node-v*` tag) — THE SIGN-IN SCREEN CAN BE
+BRANDED BEFORE ANYONE HAS EVER SIGNED IN
+([`frontend/workspace-branding-scope.md`](scope/frontend/workspace-branding-scope.md), session
+[`frontend/public-branding-route-session.md`](sessions/frontend/public-branding-route-session.md),
+downstream report [NubeIO/rubix-ai#306](https://github.com/NubeIO/rubix-ai/issues/306)).**
+On a browser that had never signed in to a deployment, the login screen was **unbranded** — neutral
+card, product favicon, product default theme — and only became branded after the first successful
+sign-in. Not a shell bug: every `prefs.*` verb takes its workspace from the bearer, so pre-auth the
+shell could only repaint a brand that some *earlier authenticated* visit had left in `localStorage`,
+and nothing seeds that cache on a new device, a new browser or a cleared profile. The fix is the read
+this scope always named and deferred: **`GET /public/branding?ws=<ws>`**, unauthenticated, returning
+the workspace-default **`ui_branding` + `ui_theme`** blobs and nothing else
+(`role/gateway/src/routes/public_branding.rs`). It is the fifth pre-auth route, and a deliberate
+read-only break in the workspace wall (§7), so the load-bearing decisions are all about keeping it
+hairline. **(1) The whitelist is construction, not filtering** — the handler destructures the loaded
+`Prefs` into two named fields and builds the body from them, never `to_value(prefs)`, so a future
+prefs axis cannot leak by merely existing; the test sets *every other axis* on the record and asserts
+each is absent from the raw body. **(2) It is not a workspace-existence oracle** — unknown workspace,
+unbranded workspace, store-rejected slug, and absent `ws` all return the byte-identical
+`200 {"ui_branding":null,"ui_theme":null}` (asserted as equal bodies, not merely equal statuses).
+**(3) `ws` is required and never inferred** — the tempting "a single-workspace node answers for its
+own workspace" convenience would have the gateway enumerate workspaces for an anonymous caller, which
+is the exact thing the route must not do; the shell already knows which workspace it is signing into.
+**(4) A `?ws=` query, not a `/{ws}` path** — a path segment turns a missing workspace into a router
+`404`, a *different* answer from an unknown one, i.e. an oracle by routing table. Ships rate-limited
+per client key from day one (60/min, its own budget beside the invite limiter's 10/min — the shared
+`limit()` body in `routes/rate_limit.rs` is now the one place that dance lives) and
+`Cache-Control: public, max-age=60`. Tests (real gateway, real store, no bearer anywhere):
+`role/gateway/tests/public_branding_route_test.rs` **5/5** — brand served with no token · **workspace
+isolation** (A's brand for A, and A's body carries no byte of B) · the field-whitelist audit · the
+five-way identical-miss oracle guard · the per-IP ceiling with a second client proving it is per-key.
+`cargo fmt --check` clean. **Unverified:** the whole-crate `cargo test -p lb-role-gateway` sweep —
+two attempts were killed by the OOM killer (`rust-lld invoked oom-killer`; ~60 debug test binaries
+linked concurrently on a 14 GB box), so the shared `limit()` extraction in `routes/rate_limit.rs` is
+unproven against `invite_rate_limit_test`. Run that one binary under `-j 2` before tagging.
+**Downstream half (rubix-ai, not this repo):** `LoginView` fetches this keyed on the same hints `resolveBootBrand` uses, with the
+`localStorage` cache as the instant first paint and the fetch as the correction.
+
+---
+
 **Just shipped 2026-08-26 (unreleased — needs the next `node-v*` tag) — EMAIL COMES *IN* NOW: A
+**On branch `feat/remove-ingest-staging` (unmerged) — INGEST STAGING IS GONE: ONE WRITE PER SAMPLE
+([`ingest/remove-staging-scope.md`](scope/ingest/remove-staging-scope.md)).** Ingest stored one
+sample by writing to the database three times — the staging `UPSERT`, the `series` `UPSERT` when the
+drain committed it, and the staging `DELETE` tombstone. The stated reason was that a staging append
+is cheap where an indexed `series` write is expensive. **Measured, that is backwards**: 200,000
+samples cost **115,398 ms and 11.87 MB** through staging against **3,752 ms and 4.02 MB** committed
+directly. Staging was a table in the same database, so it paid the same durable write it existed to
+defer, plus a tombstone on the way out; and on an LSM tree the indexed write it deferred is one more
+key-value append, not a page rewrite. It was not backpressure either — when the store was too loaded
+to take the write, staging wrote to that same store twice more.
+
+`ingest.write` now calls `commit_direct` and nothing else. Deleted: `ingest/write.rs`,
+`ingest/overflow.rs`, `ingest/staging.rs`, `host/ingest/{drain,drain_lock,drain_reactor}.rs`, the
+four inline caller-path drains (MCP verb, gateway route, webhook accept, federation mirror), and five
+staging-only test files. 91 files, +517 / −2364. Acceptance got **stronger**: the call now returns
+after the commit, so a sample is readable on the caller's very next read instead of waiting for a
+drain.
+
+**Two defects the removal exposed, both fixed.** (1) The series cardinality cap is now the only
+producer of dead letters and never stamped `dead_at`, so the retention pass fell back to the
+producer's own untrusted clock — a skewed producer could make its dead letters permanent in the one
+ingest table nothing else bounds. The commit transaction now stamps it. (2) Every commit reads and
+advances the same `series_latest` row, and the old drain lock had been serialising those commits;
+without it, six concurrent producers on one series spent all 16 retries and surfaced a whole batch as
+an error. Fixed with a **per-workspace commit lock** (`ingest/commit_lock.rs`, held per transaction
+so a large push never blocks a small one for longer than one chunk) and by teaching the retry matcher
+that SurrealDB 3 reports some conflict-aborted transactions only as "The query was not executed due
+to a failed transaction".
+
+**Upgrading:** a node still holding rows in `ingest_staging` loses them — there is no drain. The old
+reactor ran every two seconds, so leaving a node idle a moment before upgrading is enough. A one-shot
+boot drain was written and then deliberately removed: keeping the staging read path alive to serve an
+upgrade leaves the whole idea in the tree for the next reader to build on.
+
+**Docs rewritten to the current state, not bannered:** `public/ingest/ingest.md` (the write-path
+guarantees, plus a short "why there is no staging table" section for operators who will notice the
+change), `skills/ingest-series/SKILL.md`, and the dead-letter note in `public/upgrading/upgrading.md`
+— dead letters now come only from the series cardinality cap.
+
+**State:** CI run 33862501263 is green on every test shard (`host`, `gateway`, `rest`), plus `fmt`,
+`packages` and `deploy-image`. `file-layout` fails on inherited violations, one fewer than the parent
+branch; this work added none.
+
+---
+
+**Underneath it, on the base branch `feat/surrealdb-3-upgrade` (unmerged) — THE STORE ENGINE IS
+SURREALDB 3 ON SURREALKV 0.21, AND THE WHOLE COMPACTION APPARATUS IS GONE WITH IT.** SurrealKV 0.9
+was a bitcask commit log: nothing was ever reclaimed on its own, so the node carried a
+stop-the-world `store.compact` pass, a boot pass in front of every `Store::open`, and a boot memory
+guard to stop that pass OOM-killing small boxes. SurrealKV 0.21 is an **LSM tree** that compacts
+continuously in the background and opens from a manifest plus the WAL tail. Every one of those
+mechanisms lost its premise and was deleted rather than kept as dead weight.
+
+- **The on-disc format is a hard break.** 0.21 cannot read a 0.9 store. A node started against one
+  refuses to boot and names the cause (it detects the `clog/` directory only the old engine ever
+  created), modifies nothing, and points at the remedy. There is no migration path — data must be
+  exported from the old binary first. `store/tests/old_format_store_test.rs` pins the refusal.
+- **Open no longer costs history.** Same machine: a 92,657-byte store opened in **114 ms**, a
+  42,816,755-byte store — 462× the bytes — in **143 ms**.
+- **`store.compact` is a no-op**, kept only so callers and the budget driver compile. It records a
+  skip. The boot pass, the boot memory guard, `StoreError::WontFit` and `LB_STORE_OPEN_UNGUARDED`
+  are all removed. The guard was removed rather than repaired: it read `log_stats`, which measured
+  a directory the new engine never creates, so it could only ever refuse **zero** bytes — and
+  fixing that measurement while it stood would have made it refuse healthy large stores.
+- **`store.status` was blind, and that was the serious find.** It summed `clog/` and so reported
+  the size of `manifest` alone: measured **55 bytes against 133,159 actually on disc**, and 1,000
+  records moved it 55 → 55. The disc budget decides purely on `log_bytes`, so the one mechanism
+  standing between a node and a full disc was **silently inert**. Now fixed to sum `sstables/`,
+  `wal/`, `vlog/`, `versioned_index/`, `manifest` — and `clog/`, so an old engine's leftovers still
+  count. `store/tests/status_disc_bytes_test.rs` walks the whole directory as ground truth and
+  never names a directory itself.
+- **Deleting rows grows the store.** A delete appends a tombstone; the row leaves at a later
+  background merge. Measured: 20,000 rows deleted moved a store 13,110,037 → 14,083,889 bytes, and
+  it was 14,085,369 fifteen seconds later. `store_budget_driver_test.rs` now pins that direction.
+- **OPEN DECISION — the disc budget has no action left.** Its only lever was to enqueue
+  `store.compact`. It still reports `budget_bytes` / `headroom_bytes` / the advisory honestly, but
+  it cannot act, and there is now **no manual lever to reclaim disc at all**. Worse, past the hard
+  mark it is exempt from its one-hour interval and the no-op pass reports a *skip*, so the
+  "budget too small" latch never engages: a budgeted node above 95% enqueues a no-op job **every
+  30 s for ever**, each one a record written to the store. The docs currently tell operators to
+  leave `LB_STORE_MAX_BYTES` unset. Whether the driver is redesigned or removed is a design call,
+  not a bug fix.
+
+Docs rewritten to the current state, not bannered: `public/store/store.md`,
+`public/upgrading/upgrading.md` (the export-first checklist), `skills/store-compact/SKILL.md`.
+
+---
+
+**Previously (2026-08-26, also unreleased) — EMAIL COMES *IN* NOW: A
 WATCHED MAILBOX BECOMES ASSETS, SERIES AND INBOX ITEMS
 ([`inbox-outbox/mail-source-scope.md`](scope/inbox-outbox/mail-source-scope.md),
 [`ingest/file-decode-scope.md`](scope/ingest/file-decode-scope.md), session
@@ -145,11 +274,13 @@ append-only engine the log is also the node's RSS high-water mark (~1.4× log by
 
 **Lever 1 shipped.** `lb_ingest::commit_direct` commits a caller's live batch straight to the series
 plane, and the host caller path (`ingest/write.rs` `take_path`) takes it **iff staging is empty**:
-three record writes per sample become one. Everything staging exists for is untouched, because a
-burst, an offline re-append and a crash-recovery backlog all leave staging non-empty by definition.
-One commit engine serves both paths (`commit_staged` + a `Dequeue` flag), so exactly-once stays a
-single fact. The direct path **chunks** at `DIRECT_COMMIT_BATCH` (256, matching the drain) — an
-unchunked one would put an unbounded transaction on a request path.
+three record writes per sample become one. One commit engine serves both paths
+(`commit_staged` + a `Dequeue` flag), so exactly-once stays a single fact. The direct path
+**chunks** at `DIRECT_COMMIT_BATCH` (256, matching the drain) — an unchunked one would put an
+unbounded transaction on a request path.
+
+> **Superseded — staging is now gone entirely** (see the entry below). The `take_path` conditional,
+> the staged path it chose between, and `Dequeue` are all deleted; `commit_direct` is the only path.
 
 **Lever 2 — snapshot / segment-incremental compaction — was REJECTED, not deferred.** Reading the
 pinned surrealkv 0.9.3: the active segment is appended in place (a hard-linked snapshot keeps
@@ -243,8 +374,9 @@ existing verbs close it; no new host logic, capability, table, or MCP verb.
 
 ---
 
-**Just shipped 2026-08-01 (unreleased — needs the next `node-v*` tag) — BOOT IS MEMORY-AWARE: A NODE
-THAT CANNOT OPEN ITS STORE NOW ASKS FOR AN OPERATOR, NOT THE OOM KILLER
+**Removed 2026-09-04 by the SurrealKV 0.21 upgrade — kept here because the incident it answered is
+still worth knowing. BOOT WAS MEMORY-AWARE: A NODE THAT COULD NOT OPEN ITS STORE ASKED FOR AN
+OPERATOR, NOT THE OOM KILLER
 ([`store/boot-memory-guard-scope.md`](scope/store/boot-memory-guard-scope.md), session
 [`store/boot-memory-guard`](sessions/store/boot-memory-guard-session.md), issue
 [#128](https://github.com/NubeDev/lb/issues/128)).** `Store::open` ran a full compaction pass
@@ -4018,6 +4150,29 @@ today's behaviour byte-for-byte**, so the upgrade is inert for anyone who does n
 ---
 
 ## 2026-09-09 — units, the view catalog, a tz default, and a 1000× epoch bug (BUILT, unreleased)
+
+> **MERGED WITH master 2026-09-10** (SurrealDB 3 #195 + the staging removal #197), which this
+> branch had been blocked on as a non-fast-forward. Three conflicts, two real, both in `ingest`:
+> master's `staged`→`samples` / `staging.rs`→`tables.rs` rename composes with this branch's
+> `apply_unit` walk. Two breaks surfaced only when the TEST targets were built — neither visible to
+> `cargo check --workspace`, which does not build them:
+>
+> 1. `tests/series_unit_test.rs` seeded through `write` + a `commit_batch` drain loop, the staging
+>    API master deleted. Ported to `commit_direct`.
+> 2. **`meta.rs` used `type::thing`, renamed to `type::record` in SurrealDB 3.** All 7
+>    unit-provenance tests failed at RUNTIME on a green build — queries are strings. Only the two
+>    new `unit`/`set_unit` statements were stale; master had already migrated the older four in the
+>    same file.
+>
+> `generated/surrealql_corpus.rs` is regenerated so the `surrealql_parses` guard — which exists for
+> exactly this rename — now covers all 9 of `meta.rs`'s statements. Verified red-then-green.
+> **Lesson: use `--all-targets`; a SurrealQL rename is invisible to a type checker.**
+>
+> Proven on the merged tree: **`cargo test -p lb-ingest` is 186 passed / 0 failed across all 26
+> test files**, and `cargo check --workspace --all-targets` is clean apart from two pre-existing
+> `lb-cli` failures (`sign_test`, `ext_publish_test`) that read a gitignored `hello_v2_ext.wasm`
+> absent from any fresh checkout — environmental, identical on plain master.
+> Still unreleased and still owed a tag — rubix-ai pins `node-v0.26.0`, which carries none of this.
 
 Driven by a downstream measurement: rubix-ai's
 `app/docs/scope/dashboards/api-gaps-review.md`, written against a live node and **all 44

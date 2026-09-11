@@ -1,0 +1,28 @@
+[package]
+name = "lb-cases"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "lb_cases"
+path = "src/lib.rs"
+
+[dependencies]
+# The business-hours calendar resolves IANA zone names (`Australia/Sydney`) so SLA deadlines stay
+# right across a daylight-saving transition. Both crates are already first-class workspace deps
+# (lb-schedules, lb-prefs, lb-host) — no new dependency enters the tree. See src/calendar.rs.
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+lb-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# tests/deadline_test.rs writes its cases in LOCAL wall time (the language an SLA contract is
+# written in) and converts, so it needs the same two crates the calendar does.
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+tokio.workspace = true

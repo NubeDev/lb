@@ -87,11 +87,14 @@ pub async fn retain_terminal(store: &Store, ws: &str, cap: usize) -> Result<usiz
     ];
     let mut resp = store.query_ws(ws, &sql, bindings).await?;
 
-    // A transaction whose body ends in `RETURN` collapses to a SINGLE result set at index 0 (the
-    // RETURN value), not one-per-statement — so the scalar `count($doomed)` is at index 0.
-    let counts: Vec<Value> = resp
-        .take(0)
-        .map_err(|e| StoreError::Decode(e.to_string()))?;
-    let deleted = counts.first().and_then(|c| c.as_u64()).unwrap_or(0) as usize;
+    // SurrealDB 3 gives a transaction one result slot PER STATEMENT; SurrealDB 2 collapsed it to a
+    // single slot, which is why this used to read index 0. Under 3, index 0 is `BEGIN` and holds
+    // Null — and with the old `unwrap_or(0)` this verb deleted 45 rows and returned 0. Take the
+    // `RETURN` slot explicitly, and let a shape change be an error rather than a quiet zero.
+    let counts: Vec<Value> = resp.take_transaction_return()?;
+    let deleted =
+        counts.first().and_then(|c| c.as_u64()).ok_or_else(|| {
+            StoreError::Decode(format!("retain: no count in RETURN slot: {counts:?}"))
+        })? as usize;
     Ok(deleted)
 }

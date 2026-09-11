@@ -87,6 +87,47 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // (see the `outbox.enqueue_held` and `media.upload_*` notes below). The host fn re-checks the
         // `store:rule:write` surface inside.
         "rules.save"
+    } else if qualified_tool == "case.members" || qualified_tool == "case.events" {
+        // case-plane scope: a case's members and its history ARE the case's detail — a reader who
+        // may `case.get` may see which detections it covers and what happened to it. No
+        // `mcp:case.members:call` / `mcp:case.events:call` exists in any role bundle, so without
+        // these arms the drawer's two lists would be `Denied` for every caller including admins —
+        // the shipped-but-unusable state this table exists to prevent. Both re-check inside.
+        "case.get"
+    } else if qualified_tool == "case.merge" || qualified_tool == "case.split" {
+        // case-plane scope: merging and splitting MOVE citations between cases, which is exactly
+        // the authority `case.open` grants (opening a case is creating a grouping). Two more caps
+        // would express a distinction nobody grants — "may open a case but may not correct one" —
+        // and neither exists in a bundle. Both re-check inside.
+        "case.open"
+    } else if qualified_tool == "case.assign"
+        || qualified_tool == "case.snooze"
+        || qualified_tool == "case.comment"
+    {
+        // case-plane scope: the three triage WRITES ride the workflow grant. Nobody grants "may
+        // comment but may not assign", and three separate caps carried in no bundle would make the
+        // whole triage surface unreachable. `insight.assign` / `insight.comment` delegate to these
+        // (resolved decision 5) but keep their OWN caps — a delegation must not become a second
+        // capability wall. Each re-checks inside.
+        "case.workflow"
+    } else if qualified_tool == "case.request.withdraw" || qualified_tool == "case.request.nudge" {
+        // case-plane scope wave 2: taking an ask back, and chasing one, are the SAME authority as
+        // making it — nobody grants "may ask a contractor to quote but may never withdraw it", and
+        // the nudge is fired by a reminder under the sender's own principal. Neither
+        // `mcp:case.request.withdraw:call` nor `mcp:case.request.nudge:call` exists in any role
+        // bundle, so without this arm both would be `Denied` for every caller including admins.
+        // Both re-check inside.
+        "case.request.send"
+    } else if qualified_tool == "case.request.list" {
+        // The asks raised on a case ARE the case's detail, exactly like its members and its history
+        // — so the drawer's third list rides `case.get` beside the other two. No
+        // `mcp:case.request.list:call` exists in any bundle.
+        //
+        // `case.request.view` and `case.request.reply` are deliberately NOT here: they gate on their
+        // OWN caps, which exist in no bundle either — but that is the point. They are minted
+        // directly onto a token principal (`case/request_scope.rs`) and must be unreachable for
+        // every logged-in caller, so aliasing them onto a grantable cap would be the bug.
+        "case.get"
     } else if qualified_tool == "outbox.enqueue_held" {
         // rules-approvals scope: staging a GATED effect is the same authority as enqueuing an
         // ordinary one — the hold is a delivery decision, not a second privilege — so it rides
@@ -219,6 +260,14 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // authz-verbs-mcp-dispatch scope: listing scoped grants is the SAME read privilege as
         // `grants.list` — the inner gate checks `mcp:grants.list:call`; no per-verb cap exists.
         "grants.list"
+    } else if qualified_tool == "tags.of" {
+        // tags scope: reading ONE entity's tags is `tags.find` narrowed to a single entity, not a
+        // second privilege — so it rides `mcp:tags.find:call`, which every viewer already holds,
+        // and which `tags_of` re-checks inside itself (`tags/authorize.rs`). No `mcp:tags.of:call`
+        // exists in ANY role bundle, so deriving one by convention would make the verb Denied for
+        // every caller including admins — the shipped-but-unusable trap this table exists to stop,
+        // and the same shape as the media/retention arms above.
+        "tags.find"
     } else if qualified_tool == "teams.create" {
         // authz-verbs-mcp-dispatch scope: the inner gate + admin role bundle use
         // `mcp:teams.manage:call` (there is no `mcp:teams.create:call`); align the outer gate.

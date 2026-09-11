@@ -84,7 +84,7 @@ pub struct Policy {
     /// Same NONE-vs-absent hazard as `max_samples` above, for the same reason.
     #[serde(default, deserialize_with = "none_as_default")]
     pub tiers: Vec<Tier>,
-    /// Write-time predicates applied at COMMIT (never at staging append). `None` = store everything.
+    /// Write-time predicates applied at COMMIT. `None` = store everything.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<Filter>,
     /// PROVENANCE: the principal that last wrote this row, and when (epoch ms).
@@ -192,7 +192,7 @@ pub async fn set_policy(store: &Store, ws: &str, policy: &Policy) -> Result<(), 
     store
         .query_ws(
             ws,
-            &format!("UPSERT type::thing('{RETENTION_TABLE}', $prefix) CONTENT $row"),
+            &format!("UPSERT type::record('{RETENTION_TABLE}', $prefix) CONTENT $row"),
             vec![
                 ("prefix".into(), Value::String(policy.prefix.clone())),
                 ("row".into(), json!(policy)),
@@ -231,7 +231,7 @@ pub async fn delete_policy(store: &Store, ws: &str, prefix: &str) -> Result<(), 
     store
         .query_ws(
             ws,
-            &format!("DELETE type::thing('{RETENTION_TABLE}', $prefix)"),
+            &format!("DELETE type::record('{RETENTION_TABLE}', $prefix)"),
             vec![("prefix".into(), Value::String(prefix.to_string()))],
         )
         .await?;

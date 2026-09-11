@@ -640,6 +640,7 @@ async fn panel_time_override_applies_to_target_dispatch() {
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal("user:test", ws, &[VIZ, READ, WRITE]);
     seed_series(&node, &p, ws, "cpu", &[10.0, 20.0, 30.0, 40.0]).await; // ts = 1..4 (epoch ms)
+
     // A clock far enough from the epoch that a minute-scale override cannot saturate at 0.
     const NOW_MS: u64 = 1_751_414_400_000;
 
@@ -698,7 +699,10 @@ async fn panel_time_override_applies_to_target_dispatch() {
         json!({ "series": "cpu", "mode": "rows", "from": 60_001, "to": 60_040 }),
     ))
     .await;
-    assert_eq!(n, 4, "timeShift moved the window back by a minute of MILLISECONDS");
+    assert_eq!(
+        n, 4,
+        "timeShift moved the window back by a minute of MILLISECONDS"
+    );
 }
 
 /// Tranche 2a end to end (grafana-parity-backend P2): a `renameByRegex` + `p90` reduce pipeline —

@@ -115,7 +115,7 @@ pub async fn record_pass(store: &Store, ws: &str, rec: &GcPassRecord) -> Result<
     store
         .query_ws_retrying(
             ws,
-            &format!("UPSERT type::thing('{GC_PASS_TABLE}', $id) CONTENT $row"),
+            &format!("UPSERT type::record('{GC_PASS_TABLE}', $id) CONTENT $row"),
             vec![
                 ("id".into(), Value::String(GC_PASS_ID.to_string())),
                 ("row".into(), json!(rec)),
@@ -138,7 +138,7 @@ pub async fn last_pass(store: &Store, ws: &str) -> Result<Option<GcPassRecord>, 
                 // deserializes to `None` correctly — no `none_as_default` dance needed here.
                 "SELECT last_run_ms, duration_ms, evicted_raw, capped_raw, rollup_rows, \
                  evicted_rollup, capped_rollup, warnings, warnings_total, clock_skew_ms \
-                 FROM ONLY type::thing('{GC_PASS_TABLE}', $id)"
+                 FROM ONLY type::record('{GC_PASS_TABLE}', $id)"
             ),
             vec![("id".into(), Value::String(GC_PASS_ID.to_string()))],
         )

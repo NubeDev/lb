@@ -188,7 +188,6 @@ fn every_known_host_table_const_is_reserved() {
         lb_ingest::SERIES_META_TABLE,
         lb_ingest::ROLLUP_TABLE,
         lb_ingest::RETENTION_TABLE,
-        lb_ingest::STAGING_TABLE,
         lb_ingest::DEAD_LETTER_TABLE,
         // insights.
         lb_insights::INSIGHT_TABLE,

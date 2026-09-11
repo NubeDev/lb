@@ -30,6 +30,11 @@ pub struct InsightView<'a> {
     pub assigned_to: Option<&'a str>,
     /// What kind of raise — passed through to the intent (drives the breakthrough check).
     pub kind: IntentKind,
+    /// Is the finding caveated (`Insight::caveats` non-empty)? Passed through to the intent, where
+    /// it suppresses breakthrough + immediate delivery (`ladder.rs`). **Not a match axis** — a
+    /// caveated finding still MATCHES every sub it would otherwise match, and still accumulates
+    /// into their digests. The question this answers is "deliver now?", not "is this yours?".
+    pub caveated: bool,
 }
 
 /// Per-sub-owner subject expansion: for each subscription owner, the set of subjects they count as —
@@ -65,6 +70,7 @@ pub fn match_subs<'a>(
             dedup_key: view.dedup_key.to_string(),
             severity: view.severity,
             kind: view.kind,
+            caveated: view.caveated,
         })
         .collect()
 }

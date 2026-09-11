@@ -36,12 +36,12 @@ use crate::routes::{
     list_tables, list_team_members, list_teams, list_webhooks, list_workspaces, load_skill,
     mcp_call, mcp_catalog, native_call, node_identity, panel_usage, patch_flow_run, pin_dashboards,
     post_message, post_redo, post_undo, post_version_restore, post_webhook, provision_workspace,
-    publish_extension, publish_message, purge_workspace, put_asset_bin, put_doc, put_media_chunk,
-    put_skill, put_versions_config, read_graph, read_samples, read_schema, reconcile_workspace,
-    refresh_run_token, remove_datasource, remove_member, remove_team_member, rename_series_route,
-    rename_team, rename_workspace, render_catalog_message, resend_invite, reset_extension,
-    resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey,
-    revoke_grant, revoke_invite, revoke_tokens_route, revoke_webhook, rotate_apikey,
+    public_branding, publish_extension, publish_message, purge_workspace, put_asset_bin, put_doc,
+    put_media_chunk, put_skill, put_versions_config, read_graph, read_samples, read_schema,
+    reconcile_workspace, refresh_run_token, remove_datasource, remove_member, remove_team_member,
+    rename_series_route, rename_team, rename_workspace, render_catalog_message, resend_invite,
+    reset_extension, resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs,
+    revoke_apikey, revoke_grant, revoke_invite, revoke_tokens_route, revoke_webhook, rotate_apikey,
     rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream, save_brand,
     save_dashboard, save_flow, save_nav, save_panel, save_report, save_rule, scan_table,
     series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
@@ -136,6 +136,59 @@ pub fn router(gw: Gateway) -> Router {
             get(crate::routes::verify_invite).layer(axum::middleware::from_fn(
                 crate::routes::invite_accept_rate_limit,
             )),
+        )
+        // The pre-auth BRAND read (workspace-branding scope) — `GET /public/branding?ws=<ws>`. The
+        // sign-in screen has no token, so it cannot call `prefs.resolve` (every `prefs.*` verb takes
+        // its workspace from the bearer); without this route a browser that has never signed in
+        // paints the compiled product default instead of the deployment's brand. A deliberate,
+        // read-only break in the workspace wall, bounded to the `ui_branding` + `ui_theme` blobs and
+        // built field-by-field so a future prefs axis cannot leak by existing. `ws` is REQUIRED —
+        // there is no "this node's workspace" fallback, because finding one means enumerating
+        // workspaces pre-auth. Unknown/unbranded/absent `ws` all answer identically, so the route is
+        // not a workspace-existence oracle. Rate-limited per client like the invite routes, with its
+        // own budget. Full rationale + the four invariants: `routes/public_branding.rs`.
+        .route(
+            "/public/branding",
+            get(public_branding).layer(axum::middleware::from_fn(
+                crate::routes::public_branding_rate_limit,
+            )),
+        )
+        // The contractor round trip's three PUBLIC routes (case-plane scope wave 2). Registered
+        // here, beside the other unauthenticated ones and OUTSIDE the session layer, because their
+        // caller has no session and never will: a contractor presents a request token from an email
+        // and nothing else. The token resolves to a principal holding exactly two caps, constrained
+        // to one request id (`lb_host::case_request_authenticate`), and the first two routes then go
+        // through the ordinary `call_tool` gate with it — a narrowing of the caps wall, never a
+        // bypass.
+        //
+        // `GET /r/{token}` is deliberately NOT a route: it is the page URL a human opens, and the
+        // static/SPA fallback serves the app there. A path cannot answer HTML to a browser and JSON
+        // to that page's fetch.
+        //
+        // All three share one per-IP fixed-window limiter (its own bucket, `routes/rate_limit.rs`):
+        // they hash a presented secret and answer differently per outcome, which is the same
+        // token-oracle posture that put a limiter on `/public/invite/accept` from day one.
+        .route(
+            "/public/case/request",
+            get(crate::routes::get_case_request).layer(axum::middleware::from_fn(
+                crate::routes::case_request_rate_limit,
+            )),
+        )
+        .route(
+            "/public/case/request/reply",
+            post(crate::routes::post_case_request_reply).layer(axum::middleware::from_fn(
+                crate::routes::case_request_rate_limit,
+            )),
+        )
+        .route(
+            "/public/case/request/attachment",
+            post(crate::routes::post_case_request_attachment)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    crate::routes::MAX_ATTACHMENT_BYTES + 64 * 1024,
+                ))
+                .layer(axum::middleware::from_fn(
+                    crate::routes::case_request_rate_limit,
+                )),
         )
         .route("/workspaces", get(list_workspaces).post(create_workspace))
         .route("/workspaces/{ws}/provision", post(provision_workspace))

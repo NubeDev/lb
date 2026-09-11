@@ -14,9 +14,10 @@ description: >-
 # Ingesting & reading time-series (`ingest.*` / `series.*`)
 
 Lazybones absorbs high-volume external data through a **generic `series`** surface — the read-side
-analog of the outbox. A producer normalizes to a canonical `Sample` envelope and appends a batch;
-the host stages it durably (a cheap append), then **commits batches** to the indexed `series` tables
-(idempotent on `(series, producer, seq)`). Reads run over the committed series. There is **no
+analog of the outbox. A producer normalizes to a canonical `Sample` envelope and pushes a batch;
+the host **commits it straight into** the indexed `series` tables, in batches of at most 256 samples
+(idempotent on `(series, producer, seq)`). There is no staging table and no background worker
+between the call and the store. Reads run over the committed series. There is **no
 device/sensor/IoT concept** in the core — a "device" is a principal, its "config" is a series it
 reads.
 
@@ -53,9 +54,9 @@ cannot forge.
 | Live stream (SSE) | `GET /series/{series}/stream?token=<jwt>` | — | — |
 
 `from_seq`/`to_seq` bound the range by the monotonic `seq`; **omit for open bounds** (never a
-`u64::MAX` sentinel). `series.list` `prefix` is optional (absent → every series). `ingest.write` over
-the bridge **drains staging immediately**, so a write-then-`series.latest`/`read` round-trips on the
-same call.
+`u64::MAX` sentinel). `series.list` `prefix` is optional (absent → every series). `ingest.write` acks only
+**after the transaction commits**, so a write-then-`series.latest`/`read` round-trips on the same
+call.
 
 ## 3. The `Sample` envelope
 
@@ -114,7 +115,7 @@ curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN"
 ## Gotchas
 
 - **`producer` is host-forced** — whatever you put on the wire is overwritten with the authenticated
-  principal before staging; you can't spoof another producer into the dedup key.
+  principal before the commit; you can't spoof another producer into the dedup key.
 - **Order and dedup on `seq`, not `ts`** — `ts` is untrusted data (external clocks skew); `seq` is the
   monotonic-per-`(series,producer)` ordering + dedup key.
 - **Re-delivery is safe** — commit UPSERTs on `[series, producer, seq]`; a replayed batch never
@@ -125,8 +126,8 @@ curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN"
   also store labels. Query dimensions via `series.find`, not by scanning payloads.
 - **Denials are opaque** — a missing cap, a prefix-scoped grant reading outside its prefix, and a
   missing series all look the same; no existence signal leaks.
-- **Workspace wall** — a ws-B producer can't write or even enumerate a ws-A series; staging is
-  workspace-partitioned.
+- **Workspace wall** — a ws-B producer can't write or even enumerate a ws-A series; the series
+  tables are workspace-partitioned.
 - **No device/IoT nouns** — if you're reaching for "device"/"sensor"/"MQTT", that's a protocol-bridge
   *extension* (the `github-bridge` pattern) that normalizes raw bytes → `Sample[]`, never a core concept.
 

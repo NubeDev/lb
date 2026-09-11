@@ -8,6 +8,11 @@
 /// operator bootstrap that replaced the deleted `POST /login` empty-workspace self-promotion.
 pub mod bootstrap;
 
+/// The contractor public-route fixtures — the rig that boots a node, raises an ask and reads the
+/// token back out of the mail that was actually sent. Its own sub-module for the same reason
+/// `invites` is: specific to one surface, not general gateway plumbing.
+pub mod case_request;
+
 /// The `/admin/invites*` fixtures — one sub-module rather than more entries here, because they are
 /// specific to that surface (mint/roster/hash) and not general gateway plumbing.
 pub mod invites;
