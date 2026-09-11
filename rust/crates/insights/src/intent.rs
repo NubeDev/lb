@@ -37,4 +37,16 @@ pub struct Intent {
     pub severity: Severity,
     /// What kind of raise — drives the breakthrough check.
     pub kind: IntentKind,
+    /// **The finding is caveated** — an open data-quality finding on the same subjects undermines
+    /// it (`caveat.rs`). A caveated intent NEVER breaks through and never posts immediately
+    /// (`ladder.rs`); it still accumulates and still rides the digest.
+    ///
+    /// Carried on the intent rather than looked up in the ladder because the ladder is pure — and
+    /// because the honest place for "is this fact trustworthy" is beside "how new is this fact",
+    /// which is what `kind` already is.
+    ///
+    /// Serde-defaults to `false`, so an intent decoded from a node that predates the field is
+    /// deliverable rather than silently muted.
+    #[serde(default)]
+    pub caveated: bool,
 }

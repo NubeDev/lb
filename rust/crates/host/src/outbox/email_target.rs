@@ -11,7 +11,8 @@
 //!   re-send to whoever already got it,
 //! - hand the provider a stable `Message-ID` so the *receiving* side can collapse a duplicate too.
 //!
-//! Its three collaborators each own one thing: `email_payload.rs` types the opaque payload string,
+//! Its collaborators each own one thing: `email_message.rs` holds the shapes ([`EmailMessage`],
+//! [`EmailMeta`], [`Disposition`]), `email_payload.rs` types the opaque payload string,
 //! `email_content.rs` decides the words, `email_attachment.rs` turns an asset reference into bytes.
 //!
 //! It owns no transport: no socket, no credential, no provider name (rule 10 — the effect's `target`
@@ -20,45 +21,38 @@
 use async_trait::async_trait;
 use lb_outbox::Effect;
 use lb_store::Store;
-use serde::Deserialize;
 
 use super::delivered::{delivery_check, delivery_mark};
 use super::delivery_error::DeliveryError;
-use super::email_attachment::{resolve_attachments, EmailAttachment};
+use super::email_attachment::resolve_attachments;
 use super::email_content::content_for;
+use super::email_message::{sanitize_message_id, Disposition, EmailMessage, EmailMeta};
 use super::email_payload::EmailPayload;
 use crate::outbox::Target;
 
 /// The outbox target string for email delivery.
 pub const EMAIL_TARGET: &str = "email";
 
-/// One outbound message, as the target hands it to a provider.
-///
-/// The HTML half is why this is a struct rather than the four loose `&str`s it used to be: an HTML mail
-/// without a plain-text alternative scores badly with every spam filter and is unreadable in a text
-/// client, so the pair travels together and the transport builds `multipart/alternative` from it.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct EmailMessage {
-    /// The recipient address. Exactly one — an effect naming several is fanned out into several
-    /// messages, so each has its own delivery outcome and its own ledger row.
-    pub to: String,
-    pub subject: String,
-    /// The plain-text body. Always populated.
-    pub text: String,
-    /// The optional HTML body (from the catalog's `*_html` key, or authored in the payload).
-    pub html: Option<String>,
-    /// Files to hang off the message — a scheduled report's PDF, resolved from the asset it names.
-    pub attachments: Vec<EmailAttachment>,
-    /// A stable `Message-ID` for this effect (WITHOUT angle brackets) — identical across retries, so a
-    /// receiving MTA can collapse a duplicate the outbox could not know it sent. A mitigation, not a
-    /// guarantee: an MTA may ignore it (see `delivered.rs` for the window that remains).
-    pub message_id: Option<String>,
-}
-
 /// The email provider — the one sanctioned external. A product host may wire its own impl through the
 /// boot seam; the shipped impls are SMTP and Postmark, and the test impl records sends.
 #[async_trait]
 pub trait EmailProvider: Send + Sync {
+    /// What an `Ok(())` from this provider actually MEANS: [`Disposition::Sent`] — it was handed to
+    /// a transport — or [`Disposition::Logged`] — it was written to the node's log and dropped.
+    ///
+    /// It exists because an ack is not a delivery. `LoggingEmailProvider` acknowledges every mail it
+    /// drops, so the outbox row reads `delivered` for a message nobody will ever receive
+    /// (`outbox-delivered-is-not-email-sent.md`, issue #118). A producer that has to tell a user
+    /// whether their counterparty was actually emailed cannot get that from the effect status alone
+    /// — so the provider states it, once, here.
+    ///
+    /// The default is `Sent`, because every impl that talks to a wire is one: a provider added later
+    /// that does NOT deliver must say so explicitly, which is the failure mode worth defaulting
+    /// against.
+    fn disposition(&self) -> Disposition {
+        Disposition::Sent
+    }
+
     /// Send `message`. `meta` carries the workspace + action (opaque to the provider — it may log the
     /// workspace, never a credential or a token).
     ///
@@ -69,14 +63,6 @@ pub trait EmailProvider: Send + Sync {
     async fn send(&self, message: &EmailMessage, meta: &EmailMeta) -> Result<(), DeliveryError>;
 }
 
-/// Metadata passed to the email provider alongside the message.
-#[derive(Debug, Clone, Deserialize)]
-pub struct EmailMeta {
-    pub workspace: String,
-    #[serde(default)]
-    pub action: String,
-}
-
 /// A shared provider delivers like its inner provider — lets a test hold an
 /// `Arc<RecordingEmailProvider>` for assertions while the `EmailTarget` (and the relay reactor
 /// that owns it) holds a clone. Delivery to a real relay is otherwise unobservable.
@@ -84,6 +70,11 @@ pub struct EmailMeta {
 impl<P: EmailProvider + ?Sized> EmailProvider for std::sync::Arc<P> {
     async fn send(&self, message: &EmailMessage, meta: &EmailMeta) -> Result<(), DeliveryError> {
         (**self).send(message, meta).await
+    }
+
+    /// Forwarded, not defaulted: a shared `Arc<LoggingEmailProvider>` must still say `logged`.
+    fn disposition(&self) -> Disposition {
+        (**self).disposition()
     }
 }
 
@@ -95,11 +86,42 @@ pub struct EmailTarget {
     /// store handle for the same reason `PushTarget` does — the dedup marker is durable state, and
     /// losing it means re-sending.
     store: Store,
+    /// The node's public origin (`https://host`), for links in mail bodies. `None` on a node that has
+    /// not been told what it is publicly called, and then a link key renders **relative** — which is
+    /// what every emailed link did before this field existed.
+    ///
+    /// It lives on the TARGET rather than in the effect payload deliberately: it is a property of the
+    /// deployment, not of the ask. A producer that had to pass it would be a producer that could pass
+    /// the wrong one, and the token in that link is a credential.
+    base_url: Option<String>,
 }
 
 impl EmailTarget {
     pub fn new(provider: Box<dyn EmailProvider>, store: Store) -> Self {
-        Self { provider, store }
+        Self {
+            provider,
+            store,
+            base_url: None,
+        }
+    }
+
+    /// Tell the target the node's public origin, so links in mail bodies are absolute.
+    ///
+    /// A builder rather than a fourth `new` argument so every existing caller — and every test that
+    /// does not care about links — keeps compiling and keeps the old relative behaviour.
+    ///
+    /// The value is normalised by trimming trailing `/`, because the catalog copy supplies the
+    /// leading one (`{base_url}/r/{token}`) and `https://host//r/…` is a different URL to some
+    /// proxies. An empty or whitespace-only origin is treated as absent rather than producing
+    /// `//r/token`, which a browser reads as a protocol-relative URL to the host `r`.
+    #[must_use]
+    pub fn with_base_url(mut self, base_url: Option<&str>) -> Self {
+        self.base_url = base_url
+            .map(str::trim)
+            .filter(|b| !b.is_empty())
+            .map(|b| b.trim_end_matches('/').to_string())
+            .filter(|b| !b.is_empty());
+        self
     }
 }
 
@@ -115,6 +137,7 @@ impl Target for EmailTarget {
         let effect_ts = effect.ts;
         let provider = &self.provider;
         let store = self.store.clone();
+        let base_url = self.base_url.clone();
         async move {
             let (payload, json) = EmailPayload::parse(&raw)?;
 
@@ -125,7 +148,7 @@ impl Target for EmailTarget {
                 idempotency_key
             };
 
-            let content = content_for(&action, &payload);
+            let content = content_for(&action, &payload, base_url.as_deref());
             // Resolved ONCE for the whole fan-out: an effect with five recipients reads the PDF once,
             // not five times. It is resolved before any send so a missing asset fails the effect
             // rather than mailing the first recipient an empty report and then giving up.
@@ -169,6 +192,7 @@ impl Target for EmailTarget {
                     EMAIL_TARGET,
                     &dedup_key,
                     to,
+                    provider.disposition().as_str(),
                     effect_ts,
                 )
                 .await
@@ -179,22 +203,6 @@ impl Target for EmailTarget {
             Ok(())
         }
     }
-}
-
-/// Keep a `Message-ID` local part legal: the dedup key is an effect id like `invite:hash1`, and a raw
-/// `:` or space in a `Message-ID` makes the header unparseable for the recipient that is supposed to be
-/// deduping on it.
-fn sanitize_message_id(dedup_key: &str) -> String {
-    dedup_key
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect()
 }
 
 #[cfg(test)]

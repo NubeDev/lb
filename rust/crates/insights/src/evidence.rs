@@ -123,6 +123,24 @@ pub struct Evidence {
     /// not locked out; absent ⇒ [`DEFAULT_TOOL`]. Never a consumer id (rule 10).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
+    /// The **point references** this finding was derived from — opaque strings to lb, minted and
+    /// interpreted by the producer (the case plane's caveat stamp reads them).
+    ///
+    /// lb never resolves, validates, or dereferences one. What it DOES with them is set-intersect:
+    /// two findings that name a subject in common are findings about the same physical thing, which
+    /// is what lets an open data-quality finding caveat everything derived from the same points
+    /// (`caveat.rs`), and what lets a later grouping pass fold by topology. That is the whole
+    /// contract — a subject is an equality token, so a producer must only be *consistent*, never
+    /// canonical, and lb learns nothing about what a point is (rule 10).
+    ///
+    /// A LIST because a finding routinely rests on several points (a cooling failure judges supply
+    /// AND return), and because intersection is the operation.
+    ///
+    /// Additive: absent on every record written before the field landed and on every producer that
+    /// states none. Counted by [`validate_evidence_size`] like every other field on the object —
+    /// the cap is on the whole descriptor, so a producer cannot smuggle a point inventory in here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subjects: Vec<String>,
 }
 
 impl Evidence {
@@ -145,4 +163,57 @@ pub fn validate_evidence_size(evidence: &Evidence) -> Result<(), InsightsError> 
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base() -> Evidence {
+        Evidence {
+            source: "demo".into(),
+            series: vec![EvidenceSeries::new("SELECT t, v FROM s")],
+            query: None,
+            window: None,
+            threshold: None,
+            tool: None,
+            subjects: Vec::new(),
+        }
+    }
+
+    /// **The guard that would go red without the fix**: `subjects` is serialized as part of the
+    /// object, so the 4 KB cap must count it. Written as "a descriptor with a plausible handful of
+    /// subjects passes; one carrying a point INVENTORY is rejected whole" — the abuse the cap
+    /// exists for, now reachable through a new field.
+    #[test]
+    fn the_size_guard_counts_subjects() {
+        let ok = Evidence {
+            subjects: (0..8).map(|i| format!("point:ahu-2/sat-{i}")).collect(),
+            ..base()
+        };
+        assert!(validate_evidence_size(&ok).is_ok());
+
+        let inventory = Evidence {
+            subjects: (0..400)
+                .map(|i| format!("point:site-a/meter-{i:04}/energy"))
+                .collect(),
+            ..base()
+        };
+        let err = validate_evidence_size(&inventory).expect_err("over the cap");
+        assert!(
+            err.to_string().contains("evidence"),
+            "the error names the field: {err}"
+        );
+    }
+
+    /// Additive decode: a stored descriptor written BEFORE `subjects` existed still decodes, and
+    /// an absent list serializes away entirely (no new key on any existing record).
+    #[test]
+    fn a_pre_existing_descriptor_decodes_and_round_trips_without_the_key() {
+        let old = serde_json::json!({ "source": "demo", "series": ["SELECT t, v FROM s"] });
+        let ev: Evidence = serde_json::from_value(old).expect("pre-existing shape decodes");
+        assert!(ev.subjects.is_empty());
+        let back = serde_json::to_value(&ev).unwrap();
+        assert!(back.get("subjects").is_none(), "empty ⇒ no key: {back}");
+    }
 }

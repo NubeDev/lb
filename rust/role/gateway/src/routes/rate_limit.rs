@@ -1,7 +1,8 @@
 //! Per-IP rate limiting for the gateway's **pre-auth** routes (invites scope: "the public route
 //! ships rate-limited from day one"). `POST /public/invite/accept` is both an invite-token oracle
 //! and — via `current_secret` — a password oracle, so it gets a hard request ceiling per client
-//! before any handler logic runs; `GET /public/branding` is neither, but it is still an
+//! before any handler logic runs; the three `/public/case/request*` routes are a token oracle for
+//! the same reason and carry the same ceiling; `GET /public/branding` is neither, but it is still an
 //! unauthenticated store read behind a deliberate wall break, so it carries its own (roomier)
 //! ceiling. One limiter per route — never a shared budget, so one public surface cannot exhaust
 //! another's.
@@ -134,6 +135,30 @@ async fn limit(limiter: &'static FixedWindowLimiter, req: Request, next: Next) -
 /// (session-authed routes are gated by caps, not this).
 pub async fn invite_accept_rate_limit(req: Request, next: Next) -> Response {
     limit(invite_limiter(), req, next).await
+}
+
+// ---------------------------------------------------------------------------------------------
+// The `/public/case/request*` per-IP limiter (case-plane scope wave 2). A SEPARATE bucket from the
+// invite limiter, on purpose: a contractor loading their page, uploading a photo and replying spends
+// several requests in a minute, and sharing one counter would let ordinary use of either route lock
+// the other out. Same ceiling and window as the invite route — the token route is a token oracle for
+// exactly the reason the invite route is.
+
+/// The one process-wide limiter for the public case-request routes.
+fn case_request_limiter() -> &'static FixedWindowLimiter {
+    static LIMITER: OnceLock<FixedWindowLimiter> = OnceLock::new();
+    LIMITER.get_or_init(|| FixedWindowLimiter::new(MAX_PER_WINDOW, WINDOW_SECS))
+}
+
+/// Axum middleware for the three `/public/case/request*` routes: 429 the client once it exceeds
+/// [`MAX_PER_WINDOW`] hits in a [`WINDOW_SECS`] window.
+///
+/// The routes hash a presented token and answer differently for "no such request" and "a request
+/// that is no longer open", which makes them an oracle over the token space. The token is 256 bits,
+/// so guessing is hopeless with or without this — the limiter is what stops someone SPENDING a
+/// node's store on the attempt.
+pub async fn case_request_rate_limit(req: Request, next: Next) -> Response {
+    limit(case_request_limiter(), req, next).await
 }
 
 // ---------------------------------------------------------------------------------------------

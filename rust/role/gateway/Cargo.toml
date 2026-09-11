@@ -46,6 +46,9 @@ lb-flows = { workspace = true, optional = true }
 # writes so the console reads real rows over `telemetry.query`/`tail`). Optional, test-only.
 lb-telemetry = { workspace = true, optional = true }
 axum = { workspace = true, features = ["multipart"] }
+# The public case-request routes log every token view: a tokenised page is the one surface with no
+# login behind it, so the access log IS its audit trail (case-plane scope wave 2).
+tracing = { workspace = true }
 # The pack zip transport envelope: `/packs/upload` inflates an archive into the ordinary `Bundle`
 # before dispatching to the pack verbs. The route needs the reader + the engine's byte cap it
 # derives its own body limit from — no other pack internals.

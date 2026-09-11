@@ -59,6 +59,11 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "outbox.",
     "inbox.",
     "insight.",
+    // case-plane scope: the CASE plane — a case is a piece of work that cites insights. A prefix
+    // like `insight.` (eleven verbs, one owner) rather than an exact list; the `policy.sla.*` pair
+    // below is exact for the opposite reason — `policy` is a plausible extension id, `case` is this
+    // host service's own plane.
+    "case.",
     "authz.",
     // authz admin verbs (authz-verbs-mcp-dispatch scope): `call_authz_tool` already implements
     // every `grants.*`/`roles.*`/`teams.*` verb; these prefixes route them through the one MCP
@@ -172,6 +177,39 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     "update.credential.status",
     "update.credential.set",
     "update.credential.claim",
+    // tags scope + case-plane scope: the tag graph's four caller-facing verbs. They have had a full
+    // host service (`call_tags_tool`) and per-verb caps since the tags scope and NO entry here, so
+    // nothing could reach any of them over MCP — which made the whole `Human > Producer` precedence
+    // rule unreachable in production: there was no wire door to write a Human-sourced edge at all,
+    // so the corrected classification the fold exists to protect could never be authored.
+    // EXACT names, not a `tags.` PREFIX, for the same reason `ext.list` is exact: reserving a whole
+    // namespace against a hypothetical extension whose id is `tags` is the mistake this list already
+    // avoids (rule 10). `tags.of` rides `mcp:tags.find:call` via `gate_tool_for`.
+    "tags.add",
+    "tags.remove",
+    "tags.of",
+    "tags.find",
+    // case-plane scope: the ADMIN SLA policy pair. EXACT names, not a `policy.` PREFIX — reserving
+    // a whole namespace against a hypothetical extension whose id is `policy` is the mistake this
+    // list already avoids for `ext.` and `update.`. Both gate on their own name (no `tool_gate.rs`
+    // alias needed) and re-check it inside `call_case_tool`.
+    "policy.sla.set",
+    "policy.sla.list",
+    // case-plane scope wave 2: the ADMIN party roster. EXACT names for the third time and the same
+    // reason — `party` is a perfectly plausible extension id, and the host reserves the two verbs it
+    // owns rather than the namespace. Both gate on their own name and re-check it inside
+    // `call_case_tool`. A party is DATA: nothing here, or anywhere below, names one (rule 10).
+    "party.upsert",
+    "party.list",
+    // case-plane scope §7: the detector feedback loop — precision per `origin.ref` per site, over
+    // the resolved cases. EXACT name, and the name matters: the host already owns the `rules.`
+    // (PLURAL) prefix for the rules engine, and the SINGULAR `rule.` is a different family. It is
+    // listed here rather than added as a `rule.` prefix precisely so the host does NOT reserve a
+    // second, one-letter-different namespace — an extension whose id is `rule` stays reachable, and
+    // no `rules.*` verb is affected (`"rule.scorecard".starts_with("rules.")` is false, so the two
+    // families cannot shadow each other in either direction). Gates on its OWN name, and re-checks
+    // it inside `call_case_tool`.
+    "rule.scorecard",
 ];
 
 pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
@@ -575,6 +613,12 @@ pub(crate) async fn run_host_verb(
 ) -> Result<Value, ToolError> {
     let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
         call_inbox_outbox_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("tags.") {
+        // tags scope: the typed annotation graph's MCP surface. `is_host_native` admits ONLY the
+        // four EXACT verbs listed above, so this branch never sees an extension's own
+        // `tags.<tool>`; `call_tags_tool` re-checks each verb's own cap inside and answers
+        // NotFound for anything else. Store-only — no `&Node` needed.
+        crate::call_tags_tool(&node.store, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("insight.") {
         // insights scope: the durable insight + occurrences + subscriptions + policy surface.
         // The outer gate ran `mcp:insight.<verb>:call`; the verb re-runs it inside (defense in
@@ -582,6 +626,29 @@ pub(crate) async fn run_host_verb(
         // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
         // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
         crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("case.") {
+        // case-plane scope: the case + members + events + the triage write path. The outer gate ran
+        // the ALIASED capability (`case.members`/`case.events` → `case.get`, `case.merge`/
+        // `case.split` → `case.open`, `case.assign`/`case.snooze`/`case.comment` → `case.workflow`
+        // — see `tool_gate.rs`); each verb re-runs it inside (defense in depth). Takes the full
+        // `&Node`: `case.open`/`case.merge`/`case.split`/`case.assign` write the `case_id` and owner
+        // echoes back onto the insights the case cites.
+        crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "rule.scorecard" {
+        // case-plane scope §7: the detector scorecard. Owned by the case service because the number
+        // is a fold over case RESOLUTIONS — `origin.ref` only becomes a score once a human has
+        // finished the work. VIEWER and read-only; it writes nothing and changes no detector.
+        crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "party.upsert" || qualified_tool == "party.list" {
+        // case-plane scope wave 2: the party roster — who the platform may email on the workspace's
+        // behalf. Owned by the case service because a party only means anything as the recipient of
+        // a case's ask. ADMIN, and re-checked inside.
+        crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool == "policy.sla.set" || qualified_tool == "policy.sla.list" {
+        // case-plane scope: the SLA service-policy pair. Owned by the case service because a policy
+        // only means anything as a case's deadline. ADMIN — the power to move a deadline is the
+        // power to reorder every case in the workspace.
+        crate::case::call_case_tool(node, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("authz.")
         || qualified_tool.starts_with("grants.")
         || qualified_tool.starts_with("roles.")

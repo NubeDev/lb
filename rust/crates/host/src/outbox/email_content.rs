@@ -31,7 +31,17 @@ pub(super) struct EmailContent {
 }
 
 /// Render the content for `action` from `payload` and the catalog.
-pub(super) fn content_for(action: &str, payload: &EmailPayload) -> EmailContent {
+///
+/// `base_url` is the node's public origin, supplied by the target from deployment config. It becomes
+/// the catalog's `{base_url}` argument, so a copy key writes `{base_url}/r/{token}` and gets an
+/// ABSOLUTE link. When the node has not been told its public origin the argument renders empty and
+/// the link stays relative — the behaviour every emailed link had before, and still legible to a
+/// human reading the mail even though a client cannot resolve it.
+pub(super) fn content_for(
+    action: &str,
+    payload: &EmailPayload,
+    base_url: Option<&str>,
+) -> EmailContent {
     let resolved = lb_prefs::resolve(&[lb_prefs::Prefs {
         language: Some(payload.locale.clone()),
         ..Default::default()
@@ -39,6 +49,7 @@ pub(super) fn content_for(action: &str, payload: &EmailPayload) -> EmailContent 
     let args = serde_json::json!({
         "workspace": payload.workspace,
         "token": payload.token,
+        "base_url": base_url.unwrap_or_default(),
     });
     let empty = BTreeMap::new();
     let prefix = catalog_prefix(action);
@@ -110,7 +121,7 @@ mod tests {
 
     #[test]
     fn the_invite_action_still_renders_from_the_shipped_catalog_keys() {
-        let c = content_for("send_invite", &payload(None, None));
+        let c = content_for("send_invite", &payload(None, None), None);
         assert!(c.text.contains("lbi_abc123"), "{}", c.text);
         assert!(!c.subject.is_empty());
         assert_ne!(
@@ -123,14 +134,18 @@ mod tests {
 
     #[test]
     fn authored_words_win_over_the_catalog() {
-        let c = content_for("send_invite", &payload(Some("Join us"), Some("hello")));
+        let c = content_for(
+            "send_invite",
+            &payload(Some("Join us"), Some("hello")),
+            None,
+        );
         assert_eq!(c.subject, "Join us");
         assert_eq!(c.text, "hello");
     }
 
     #[test]
     fn an_action_with_no_copy_gets_a_traceable_subject_not_a_blank_one() {
-        let c = content_for("report", &payload(None, None));
+        let c = content_for("report", &payload(None, None), None);
         assert_eq!(c.subject, "Report");
         assert_eq!(c.text, "");
         assert_eq!(c.html, None);
@@ -141,8 +156,55 @@ mod tests {
         let c = content_for(
             "report",
             &payload(Some("energy — week 33"), Some("Attached.")),
+            None,
         );
         assert_eq!(c.subject, "energy — week 33");
         assert_eq!(c.text, "Attached.");
+    }
+
+    #[test]
+    fn a_public_origin_makes_the_request_link_absolute() {
+        // The whole point of the field: a contractor gets this in a mail client, which has no origin
+        // to resolve a relative path against.
+        let mut p = payload(None, None);
+        p.token = "lbr_nube.SECRET".into();
+        let c = content_for("request_link", &p, Some("https://insights.example.com"));
+        assert!(
+            c.text
+                .contains("https://insights.example.com/r/lbr_nube.SECRET"),
+            "text body must carry an absolute link: {}",
+            c.text
+        );
+        let html = c.html.expect("the catalog ships an HTML alternative");
+        assert!(
+            html.contains("href=\"https://insights.example.com/r/lbr_nube.SECRET\""),
+            "html href must be absolute: {html}"
+        );
+    }
+
+    #[test]
+    fn without_a_public_origin_the_link_stays_relative_and_still_carries_the_token() {
+        // The RED half of the case above, and the documented pre-existing behaviour: a node that was
+        // never told its public name renders `{base_url}` empty rather than the literal `{base_url}`.
+        // The link is unusable in a mail client — that is the limitation, honestly rendered — but the
+        // token is still legible to a human reading the mail.
+        let mut p = payload(None, None);
+        p.token = "lbr_nube.SECRET".into();
+        let c = content_for("request_link", &p, None);
+        assert!(
+            c.text.contains("/r/lbr_nube.SECRET"),
+            "the token must survive: {}",
+            c.text
+        );
+        assert!(
+            !c.text.contains("{base_url}"),
+            "an unset origin must render EMPTY, never the placeholder literal: {}",
+            c.text
+        );
+        assert!(
+            !c.text.contains("//r/"),
+            "an empty origin must not produce a protocol-relative `//r/`: {}",
+            c.text
+        );
     }
 }

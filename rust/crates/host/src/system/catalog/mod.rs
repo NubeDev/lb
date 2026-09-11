@@ -19,6 +19,7 @@ mod assets;
 mod authz;
 mod bus;
 mod cache;
+mod case;
 mod channel;
 mod dashboard;
 mod datasource;
@@ -35,6 +36,8 @@ mod media;
 mod nav;
 mod notify;
 mod panel;
+mod party;
+mod policy;
 mod prefs;
 mod reminder;
 mod report;
@@ -44,6 +47,7 @@ mod secret;
 mod series;
 mod store;
 mod system;
+mod tags;
 mod telemetry;
 mod template;
 mod timerange;
@@ -82,6 +86,8 @@ const FAMILIES: &[&[HostTool]] = &[
     forms::FORMS,
     host::HOST,
     identity::IDENTITY,
+    case::CASE,
+    tags::TAGS,
     insight::INSIGHT,
     layout::LAYOUT,
     mail::MAIL,
@@ -89,6 +95,8 @@ const FAMILIES: &[&[HostTool]] = &[
     nav::NAV,
     notify::NOTIFY,
     panel::PANEL,
+    party::PARTY,
+    policy::POLICY,
     prefs::PREFS,
     reminder::REMINDER,
     report::REPORT,

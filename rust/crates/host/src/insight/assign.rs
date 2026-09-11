@@ -1,10 +1,27 @@
 //! `insight_assign` — set / re-assign / un-assign an insight's owner, over its OWN capability
-//! (insight-triage-scope.md).
+//! (insight-triage-scope.md), **delegating to the case that owns the work** (case-plane scope,
+//! resolved decision 5).
 //!
 //! Gated on `mcp:insight.assign:call`, deliberately NOT on a generic `insight.update`: one cap for
 //! "change any field" would hand every producer holding `mcp:insight.raise:call` the power to
-//! rewrite human triage state, and the deny path would stop being expressible. A producer grant buys
-//! **zero** triage write power — that separation is the reason this verb exists as its own verb.
+//! rewrite human triage state, and the deny path would stop being expressible. A producer grant
+//! buys **zero** triage write power — that separation is the reason this verb exists as its own
+//! verb, and delegating does not change it. The cap, the verb name, the bulk semantics and the
+//! return shapes are all exactly what they were.
+//!
+//! **What DID change is where the fact lives.** An insight is a detection; a case is the work. "Who
+//! is doing this" is a fact about work, so the case is now the writer and `insight.assigned_to` is
+//! an **echo** of it. This verb resolves each insight's case (grouping it if it has none — the same
+//! call the raise path makes) and assigns THERE; the echo back onto the insight is what keeps every
+//! existing reader working unchanged: the roster's owner column, the subscription matcher's
+//! `assignee` filter, and `insight.list`'s `assigned_to` axis all still read the insight.
+//!
+//! *Rejected: read-through* (leave the write on the insight and have the case read it) — two
+//! writers for one fact, and every consumer then has to know which one is live.
+//!
+//! One visible consequence, and it is intended: assigning ONE detection of a fault assigns **every
+//! detection the case cites**. That is the point of the case owning the fact — three symptoms of
+//! one chiller fault are one job with one owner, not three people's work.
 //!
 //! The assignee is necessarily caller-supplied (you assign to someone else), so it is **validated,
 //! not trusted** — unlike the comment `author`, which is host-stamped. See `assignee.rs` for the
@@ -42,7 +59,7 @@ pub struct AssignResult {
 /// membership per item would be 100 identical store reads for one answer. An invalid assignee
 /// therefore fails the whole call (nothing is written), which is right: it is a caller error about
 /// the request, not a per-item outcome. Per-item results carry only per-item failures (a missing
-/// insight, a store error).
+/// insight, an ungroupable one, a store error).
 pub async fn insight_assign(
     node: &Arc<Node>,
     principal: &Principal,
@@ -74,8 +91,8 @@ pub async fn insight_assign(
     // bulk call into ONE delivery per subscription and count against each sub's full filter.
     let mut assigned = Vec::new();
     for id in ids {
-        match lb_insights::assign(&node.store, ws, id, assignee).await {
-            Ok(outcome) => {
+        match assign_one(node, principal, ws, id, assignee, ts).await {
+            Ok(changed) => {
                 results.push(AssignResult {
                     id: id.clone(),
                     ok: true,
@@ -84,7 +101,7 @@ pub async fn insight_assign(
                 // Only a real CHANGE of owner is notification-worthy. An idempotent re-assign to the
                 // current owner (a double-click, a retried bulk call) wrote nothing and must not
                 // announce anything — a retry that pages a queue twice is a duplicate, not an event.
-                if outcome.changed {
+                if changed {
                     if let Ok(Some(insight)) = lb_insights::read_insight(&node.store, ws, id).await
                     {
                         assigned.push(insight);
@@ -109,4 +126,48 @@ pub async fn insight_assign(
     super::assign_notify::notify_assignment(node, principal, ws, assignee, &assigned, ts).await;
 
     Ok(results)
+}
+
+/// Assign ONE insight by assigning its case, then echoing the owner back onto every insight the
+/// case cites. Returns whether the owner actually changed.
+///
+/// The case's own pure verb is called directly rather than the gated `case_assign`: the caller
+/// already passed `mcp:insight.assign:call`, and additionally demanding `mcp:case.workflow:call`
+/// would silently break every existing grant the moment this shipped. A delegation must not become
+/// a second capability wall. The assignee was already validated once, above.
+async fn assign_one(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    id: &str,
+    assignee: Option<&str>,
+    ts: u64,
+) -> Result<bool, InsightSvcError> {
+    // Establish the insight exists first, so "no such insight" reads identically to `ack`'s.
+    if lb_insights::get(&node.store, ws, id).await?.is_none() {
+        return Err(InsightSvcError::BadInput(format!("no such insight: {id}")));
+    }
+    // The case is the authority. An insight with no case yet gets one here — the same grouping call
+    // the raise path makes, so touching an un-backfilled finding heals it.
+    let case_id = crate::case::group_insight(node, ws, id, ts)
+        .await
+        .map_err(case_err)?;
+    let outcome = lb_cases::assign(&node.store, ws, &case_id, assignee, principal.sub(), ts)
+        .await
+        .map_err(InsightSvcError::from)?;
+    if outcome.changed {
+        crate::case::echo_case_owner(node, ws, &case_id, assignee).await;
+    }
+    Ok(outcome.changed)
+}
+
+/// Map a case-service error into this service's error. The case layer's `Denied` cannot reach here
+/// (nothing above calls a gated case verb), but it is mapped rather than swallowed so a future
+/// caller cannot turn a denial into a bad-input by accident.
+fn case_err(e: crate::case::CaseSvcError) -> InsightSvcError {
+    match e {
+        crate::case::CaseSvcError::Denied => InsightSvcError::Denied,
+        crate::case::CaseSvcError::BadInput(m) => InsightSvcError::BadInput(m),
+        crate::case::CaseSvcError::Store(s) => InsightSvcError::Store(s),
+    }
 }

@@ -26,7 +26,8 @@ use lb_store::Store;
 use serde::Deserialize;
 
 use super::delivery_error::DeliveryError;
-use super::email_target::{EmailMessage, EmailMeta, EmailProvider};
+use super::email_message::{EmailMessage, EmailMeta};
+use super::email_target::EmailProvider;
 
 /// Postmark's send endpoint. Overridable only so the tests can point at a real local HTTP server.
 pub const POSTMARK_DEFAULT_ENDPOINT: &str = "https://api.postmarkapp.com/email";

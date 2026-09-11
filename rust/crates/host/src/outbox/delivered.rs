@@ -46,12 +46,19 @@ pub async fn delivery_check(
 }
 
 /// Record a successful send for this `(target, effect, recipient)` triple. Idempotent upsert.
+///
+/// `disposition` is what the ack MEANT (`"sent"` | `"logged"` for email — see
+/// [`Disposition`](super::Disposition)). It is stored because the effect row cannot carry it: the
+/// outbox says `delivered` for a mail a logging provider dropped, and a producer that has to tell a
+/// user whether their counterparty was really emailed needs the answer after the relay pass is over
+/// (`outbox-delivered-is-not-email-sent.md`).
 pub async fn delivery_mark(
     store: &Store,
     ws: &str,
     target: &str,
     dedup_key: &str,
     recipient: &str,
+    disposition: &str,
     ts: u64,
 ) -> Result<(), StoreError> {
     let value = serde_json::json!({
@@ -59,6 +66,7 @@ pub async fn delivery_mark(
         "target": target,
         "dedup_key": dedup_key,
         "recipient": recipient,
+        "disposition": disposition,
         "ts": ts,
     });
     write(
@@ -69,4 +77,30 @@ pub async fn delivery_mark(
         &value,
     )
     .await
+}
+
+/// What the provider's ack meant for this `(target, effect, recipient)` triple, or `None` when
+/// nothing was delivered to that recipient. A row written before the field existed reads as `None`
+/// rather than guessing — "we do not know" is the honest answer and the caller can render it.
+pub async fn delivery_disposition(
+    store: &Store,
+    ws: &str,
+    target: &str,
+    dedup_key: &str,
+    recipient: &str,
+) -> Result<Option<String>, StoreError> {
+    let Some(row) = read(
+        store,
+        ws,
+        OUTBOX_DELIVERED_TABLE,
+        &marker_id(target, dedup_key, recipient),
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    Ok(row
+        .get("disposition")
+        .and_then(|v| v.as_str())
+        .map(str::to_string))
 }

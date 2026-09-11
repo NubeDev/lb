@@ -22,6 +22,9 @@ use crate::mail::EmailTransport;
 /// warn-only, exactly as it shipped.
 /// `retention_period` is [`BootConfig::retention_period`] — the retention-GC cadence. `None` (the
 /// default, and what `LB_RETENTION_PERIOD_SECS` unset means) ⇒ [`lb_host::RETENTION_PERIOD`], 300 s.
+/// `public_base_url` is [`BootConfig::public_base_url`] — the origin an emailed link is built on.
+/// `None` ⇒ links render relative, which is what they did before the field existed.
+#[allow(clippy::too_many_arguments)]
 pub async fn spawn(
     node: &Arc<Node>,
     ws: &str,
@@ -30,6 +33,7 @@ pub async fn spawn(
     store_budget_bytes: Option<u64>,
     profile: Option<crate::config::ProfileConfig>,
     retention_period: Option<Duration>,
+    public_base_url: Option<&str>,
 ) {
     // FLOW REACTOR TICK: drive cron/reconcile scans so a `mode:"cron"` trigger actually fires. A
     // few-second period catches a minute-granularity cron promptly; each tick is a cheap ws scan.
@@ -53,6 +57,14 @@ pub async fn spawn(
     // seconds-band `[1e9, 1e12)` ×1000. A no-op once healed, so safe every boot.
     let _ = lb_host::heal_insight_timestamps(&node.store, ws).await;
 
+    // INSIGHT ECHO BACKFILL (one-shot, idempotent): re-fold every insight's tag echo under
+    // `Human > Producer` precedence. The fold self-heals on the next FIRING, so this exists for the
+    // finding that never fires again — where an operator's correction would otherwise stay silently
+    // reverted for ever, which is precisely the bug the precedence rule was written to fix. Returns
+    // 0 on a second run, so it is safe on every boot. An empty graph read is SKIPPED, never written,
+    // so a boot job can never blank the corrections it exists to protect.
+    let _ = lb_host::backfill_insight_facets(&node.store, ws).await;
+
     // OUTBOX RELAY REACTOR TICK (release scope, gap 1 — previously never booted): drain staged
     // outbox effects through the registered delivery adapters. The RouterTarget dispatches on the
     // effect's opaque `target` string (rule 10): `email` → EmailTarget, `push` → PushTarget. A
@@ -70,7 +82,8 @@ pub async fn spawn(
     let mut router = lb_host::RouterTarget::new()
         .route(
             lb_host::EMAIL_TARGET,
-            lb_host::EmailTarget::new(email_provider, node.store.clone()),
+            lb_host::EmailTarget::new(email_provider, node.store.clone())
+                .with_base_url(public_base_url),
         )
         .route(
             lb_host::PUSH_TARGET,
@@ -149,6 +162,16 @@ pub async fn spawn(
         vec![ws.to_string()],
         Duration::from_secs(30),
     );
+
+    // CASE RECONCILE REACTOR TICK (case-plane scope): the restart-safe backstop AND the triage
+    // backfill — every OPEN insight with no open case gets one, its assignee and comment thread
+    // carried across. Grouping runs INLINE at raise, so this loop is not the primary path; it is
+    // what closes the window where a node died between the insight write and the grouping call, and
+    // what folds a straggler into a verdict case that cited it before it existed.
+    //
+    // 60s: the pass is idempotent and returns 0 in the steady state, so a slower cadence than the
+    // digest tick costs nothing and a faster one would scan the insight table for no reason.
+    lb_host::spawn_case_reactors(node.clone(), vec![ws.to_string()], Duration::from_secs(60));
 
     // DATASOURCE PROFILE REACTOR TICK (datasource-profile scope): keep each source's discovery
     // profile younger than `refresh_after_secs` by enqueueing + draining bounded profiling passes.

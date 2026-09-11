@@ -128,4 +128,57 @@ pub struct Insight {
     /// unaffected.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub tags: std::collections::BTreeMap<String, String>,
+    /// **Open findings that undermine this one** — the ids of the workspace's open data-quality
+    /// findings whose `evidence.subjects` intersect this finding's (`caveat.rs`,
+    /// `case-plane-scope.md`). Stamped by `raise` and refreshed on every raise, so it self-heals:
+    /// the moment the gating finding is resolved, the next firing comes back uncaveated.
+    ///
+    /// The load-bearing consequence is in the notify path, not the UI: **a caveated finding never
+    /// breaks through** (`ladder.rs`). Nobody is paged about a number produced by a sensor we
+    /// already know is broken; the finding still accumulates and still rides the digest.
+    ///
+    /// Host-computed, never caller-supplied — there is no `caveats` on `RaiseInput`. Empty on every
+    /// record written before the field landed, and empty in every workspace that has declared no
+    /// gating category (`vocab.rs`) — the correct inert state, not a degraded one.
+    ///
+    /// Echoed by **both** `insight.get` and `insight.list` — the tag-echo boundary, not the
+    /// `evidence` one: a roster must be able to grey a soft row, and a list of ids is a few bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caveats: Vec<String>,
+    /// The **case** that owns this finding, echoed (`case-plane-scope.md` resolved decision 4).
+    ///
+    /// An insight is a detection; a case is a piece of work, and the membership fact lives in the
+    /// case plane. This is a projection of it so a 200-row roster renders each case chip without
+    /// 200 extra reads — written by the grouping pass through [`set_case_id`](crate::set_case_id),
+    /// never by a caller and never by `raise`.
+    ///
+    /// Echoed by both `get` and `list` (it exists to be a column). `None` on every record written
+    /// before the field landed and on every finding no grouping pass has reached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub case_id: Option<String>,
+    /// **Non-evicting** per-calendar-month firing counters, indexed 0 = January (UTC), bumped on
+    /// every raise (`pattern.rs`).
+    ///
+    /// Non-evicting is the whole point: seasonality is only visible across years, so a history that
+    /// forgets a year cannot see it — and the occurrence ring, which is the *recent evidence*
+    /// window, evicts by design. Twelve `u32`s is ~60 bytes and it is the only firing history that
+    /// outlives the ring.
+    ///
+    /// All-zero on every record written before the field landed (and skipped entirely when zero, so
+    /// such a record round-trips byte-identically); it starts filling on the next firing.
+    #[serde(
+        default = "crate::pattern::empty_month_hist",
+        skip_serializing_if = "crate::pattern::is_empty_month_hist"
+    )]
+    pub month_hist: [u32; 12],
+    /// The finding's **shape over time** — derived on every raise by
+    /// [`derive_pattern`](crate::derive_pattern) from `month_hist`/`count`/`first_ts`/`last_ts`.
+    ///
+    /// A sensor firing 400 times in a day and one firing every July for three years are different
+    /// pieces of work; a queue that shows both as "47 occurrences" makes the operator re-derive the
+    /// difference by eye on every row. Derived, never caller-supplied. Serde-defaults to
+    /// [`Pattern::New`](crate::Pattern), so a pre-existing record reads as unclassified rather than
+    /// claiming a shape nobody derived — and gets its real shape on the next firing.
+    #[serde(default)]
+    pub pattern: crate::pattern::Pattern,
 }
