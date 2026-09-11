@@ -192,13 +192,26 @@ already does for the 29 agent files. Cargo links the whole dependency graph into
 `reminders_reactor_test` 9, `reminder_fire_test` 8, `pack_reminders_test` 5;
 `email_transport_test` 6, `invite_email_relay_test` 1, `mail_suite` 11.
 
-**The whole gateway role: 64 suites, 393 tests, 0 failures.** Two need fixtures built once or they
-read as failures rather than as a missing build:
+**The whole gateway role: 64 suites, 393 tests, 0 failures.**
+
+**The `rest` shard** — `cargo test --workspace --exclude lb-host --exclude lb-role-gateway
+--no-fail-fast`, which is what CI runs — 315 suites. It is in this list because it caught a real bug
+this branch's per-crate verification could not: the Spanish builtin catalog was missing the six
+`request_link.*` / `request_nudge.*` keys the English one gained (see the commit; a Spanish workspace
+would have emailed a contractor a bare key). Fixed, and the shard is the verification now.
+
+Three fixtures must be built once or their suites read as failures rather than as a missing build —
+two of them say so in the panic message:
 
 ```bash
 cargo build -p echo-sidecar
 cd extensions/hello-v2 && cargo build --release --target wasm32-wasip2
+cd extensions/hello   && cargo build --release --target wasm32-wasip2   # lb-role-acp + lb-role-registry-host
 ```
+
+And `federation --test result_cache_test` is TTL-timing sensitive: it fails under the default
+parallelism ("inside the TTL this must still hit") and passes 50/50 with `--test-threads=1`. Neither
+is a code fault, and CI hits neither — worth knowing before either sends somebody after a bug.
 
 One `cargo test -p lb-role-gateway` run died with `error: linking with \`cc\` failed` and passed
 completely on an immediate re-run with nothing changed — contention with another cargo process in the
