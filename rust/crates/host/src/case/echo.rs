@@ -29,15 +29,16 @@ pub(super) async fn echo_members_of(
     ws: &str,
     case_id: &str,
 ) {
-    let page =
-        match lb_cases::members(&node.store, ws, case_id, lb_cases::MAX_MEMBER_PAGE, None).await {
-            Ok(page) => page,
-            Err(e) => {
-                tracing::warn!(ws, case_id, error = %e, "case echo skipped: members unreadable");
-                return;
-            }
-        };
-    for member in page.items {
+    // `members_all`, not the paged `members`: this walk wants the membership, and the paged read
+    // resolves each insight's title for a drawer nobody is looking at here.
+    let members = match lb_cases::members_all(&node.store, ws, case_id).await {
+        Ok(members) => members,
+        Err(e) => {
+            tracing::warn!(ws, case_id, error = %e, "case echo skipped: members unreadable");
+            return;
+        }
+    };
+    for member in members {
         write_case_echo(&node.store, ws, &member.insight_id, case_id).await;
     }
 }
