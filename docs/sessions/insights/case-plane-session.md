@@ -157,8 +157,87 @@ already committed, so it is named here and in the module docs rather than done.
 
 ## Test evidence
 
-Pasted below as each wave lands.
+Full re-verification of the branch at its tip (2026-09-11), in this worktree, against
+`origin/master` base `f8633b6d`.
+
+```
+cargo fmt --all --check                    clean
+cargo clippy --all-targets                 0 errors
+```
+
+15 files carry a clippy **warning**; none of them is one of the branch's 146 changed `.rs` files
+(set-intersected, not eyeballed). Every warning is pre-existing on master: `ext-loader/manifest.rs`,
+`host/src/{ext/versions,federation/update,nav/reach,outbox/relay_ops,report/compose}.rs`,
+`ingest/src/decode/nem12.rs`, `mcp/src/call/dispatch.rs`, and seven test files.
+
+**The case plane's own suites — all green:**
+
+| suite | tests |
+|---|---|
+| `lb-cases` lib | 34 |
+| `lb-cases` `deadline_test` | 17 |
+| `lb-cases` `policy_store_test` | 7 |
+| `case_plane_test` | 15 |
+| `case_reactor_test` | 9 |
+| `case_delegation_test` | 6 |
+| `sla_policy_test` | 11 |
+| `sla_clock_test` | 9 |
+| `scorecard_test` | 10 |
+| `case_request_test` | 18 |
+| `insight_caveat_test` | 8 |
+
+**The surfaces the branch touches — all green:** `lb-host --lib` **582**; `tags_test` 3,
+`tags_door_test` 5, `tags_isolation_test` 1; `insights_test` 22, `insight_tag_echo_test` 11,
+`insight_tag_fold_test` 4, `insight_evidence_test` 10, `insight_triage_test` 17,
+`insight_analysis_test` 16, `insight_assignee_notify_test` 16; `reminders_mcp_test` 6,
+`reminders_reactor_test` 9, `reminder_fire_test` 8, `pack_reminders_test` 5;
+`email_transport_test` 6, `invite_email_relay_test` 1, `mail_suite` 11.
+
+**The whole gateway role: 62 suites, 388 tests, 0 failures.** Two need fixtures built once or they
+read as failures rather than as a missing build:
+
+```bash
+cargo build -p echo-sidecar
+cd extensions/hello-v2 && cargo build --release --target wasm32-wasip2
+```
+
+One `cargo test -p lb-role-gateway` run died with `error: linking with \`cc\` failed` and passed
+completely on an immediate re-run with nothing changed — contention with another cargo process in the
+same target dir, not a code fault. Worth knowing before it sends somebody after a linker.
+
+**Downstream, in `rubix-ai` under a local `[patch]`:** `cargo build` green; UI vitest 8284 passed /
+21 failed (all 21 fail on `main` too); `ui/e2e/cases.spec.ts` 3/3 green and repeatable against a live
+node; and the entire flow driven by hand with output pasted in
+`rubix-ai: docs/testing/insights/cases.md`.
+
+### The two behaviour changes on shipped surfaces
+
+1. **`tags.of` → `tags.find` gate alias.** `tags_of`'s inner gate asked for `mcp:tags.of:call`, a cap
+   that exists in **no role bundle**, so the verb was unreachable by every real caller. A shipped test
+   encoded that state as correct. The test was changed, deliberately: it pinned a contract no caller
+   could satisfy. See `rubix-ai: docs/debugging/insights/gate-alias-was-decorative.md` — and note that
+   a missing alias refuses with `Denied`, not `NotFound`, so only a POSITIVE test catches one.
+2. **`BootConfig.public_base_url`** — new, `Option<String>`, defaulting to `None`. With `None` the
+   existing relative-link behaviour is byte-for-byte unchanged, so **no embedder changes behaviour by
+   upgrading**; an embedder that sets it gets absolute links in the mail it sends.
+
+**`invite.email.*` still ships a relative link, and was deliberately left alone.** It has the same
+bug, and fixing it here would have bundled an unrelated surface into a PR whose reviewable claim is
+the case plane. It is worth its own change.
 
 ## What is not done
 
-Filled in at the end, explicitly.
+- **Not merged, not tagged.** The PR is open for review only. rubix-ai's `feat/case-plane` depends on
+  this branch and carries a local `[patch]`; its pin bump waits on a `node-v*` tag cut from this.
+- **The `rule.scorecard` N+1 is still there** — one point read of the primary insight per resolved
+  case, memoized per insight id. The fix is an `origin_ref` echo written onto the case at open, which
+  collapses it to a single scan with zero reads. It is a wave-1 *record* change and wave 1 was
+  already committed, so it is named in the module docs rather than done.
+- **Storm folding is unbuilt.** `packs/bas` seeds the shape (12 flatlines from one producer, at one
+  site, in one sweep) so the fold has something to fold; today they are 12 separate cases and the
+  queue shows the burst unfolded. Nothing in the pack changes when the fold lands.
+- **Unstarted fast-follows named in the scope:** the `month_hist` seasonal ladder, a verify reactor +
+  `case.accept_saving`, the owner report dashboard, and `rule_policy` demotion.
+- **`case.request.withdraw` and `case.request.nudge` have no UI caller.** Both are implemented and
+  unit-tested; neither is driven end to end, so neither is proven on the wire the way `send`, `view`
+  and `reply` now are.
