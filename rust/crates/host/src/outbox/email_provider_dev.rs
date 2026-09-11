@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use std::sync::Mutex;
 
 use super::delivery_error::DeliveryError;
-use super::email_target::{Disposition, EmailMessage, EmailMeta, EmailProvider};
+use super::email_message::{Disposition, EmailMessage, EmailMeta};
+use super::email_target::EmailProvider;
 
 /// The **default boot provider** when no real one is configured: logs the send and acks it, so a node
 /// without email config boots and drains its outbox instead of crashing or dead-lettering every effect.
