@@ -12,3 +12,17 @@ report.reading = Lectura: {value, quantity, temperature} registrada el {ts, date
 invite.email.subject = Te han invitado a unirte a {workspace}
 invite.email.body = Has sido invitado al espacio de trabajo {workspace}. Haz clic en el enlace para aceptar: /accept?token={token}
 invite.email.body_html = <p>Has sido invitado al espacio de trabajo <strong>{workspace}</strong>.</p><p><a href="/accept?token={token}">Aceptar la invitación</a></p>
+
+# El circuito con el contratista (case-plane scope, wave 2). `case.request.send` envía a una parte un
+# enlace a una página con token; después la escalera la avisa al 50 %/80 % de su ventana. Ambas
+# acciones toman su texto del NOMBRE DE LA ACCIÓN (`request_link` / `request_nudge` →
+# `{action}.email.*`). `{token}` es el token del enlace en crudo: existe solo aquí y en el correo.
+request_link.email.subject = Un trabajo necesita tu respuesta
+request_link.email.body = Se te ha pedido que respondas sobre un trabajo. Abre el enlace para ver el detalle y responder: {base_url}/r/{token}
+request_link.email.body_html = <p>Se te ha pedido que respondas sobre un trabajo.</p><p><a href="{base_url}/r/{token}">Abrir la solicitud y responder</a></p>
+# El aviso NO lleva enlace, deliberadamente: el token en crudo existe una sola vez (en el correo
+# original) y no se puede recuperar del hash almacenado, así que el recordatorio remite al correo que
+# ya tienen.
+request_nudge.email.subject = Recordatorio: un trabajo espera tu respuesta
+request_nudge.email.body = Un trabajo sigue esperando tu respuesta. Abre el enlace de la solicitud que te enviamos antes y responde.
+request_nudge.email.body_html = <p>Un trabajo sigue esperando tu respuesta.</p><p>Abre el enlace de la solicitud que te enviamos antes y responde.</p>
