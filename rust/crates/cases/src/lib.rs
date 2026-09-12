@@ -50,9 +50,11 @@ mod members;
 mod merge;
 mod open;
 mod party;
+mod party_delete;
 mod party_list;
 mod party_upsert;
 mod policy;
+mod policy_delete;
 mod policy_list;
 mod policy_match;
 mod policy_set;
@@ -111,11 +113,13 @@ pub use open::{open, OpenInput};
 pub use party::{
     validate_party, Contact, Party, PartyKind, MAX_PARTY_NAME_BYTES, TABLE as PARTY_TABLE,
 };
+pub use party_delete::party_delete;
 pub use party_list::{party_get, party_list};
 pub use party_upsert::party_upsert;
 pub use policy::{
     PolicyMatch, ServicePolicy, DEFAULT_HOLD_DOWN_DAYS, DEFAULT_PARTY_WINDOW_H, POLICY_TABLE,
 };
+pub use policy_delete::policy_delete;
 pub use policy_list::{policy_list, sort_by_specificity};
 pub use policy_match::{best_match, match_policy};
 pub use policy_set::policy_set;

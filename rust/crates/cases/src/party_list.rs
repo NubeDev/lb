@@ -17,6 +17,12 @@ use crate::party::{Party, PartyKind, TABLE};
 
 /// Read every party in `ws`, optionally narrowed to one `kind` and/or one `site`.
 ///
+/// **Retired parties are excluded unless `include_disabled`.** The default serves the caller that
+/// is choosing a recipient — a picker offering a company you have stopped using is offering a
+/// mistake — while the settings surface passes `true`, because an admin cannot re-enable a row they
+/// cannot see. [`party_get`] is deliberately NOT filtered: a request already sent to a retired
+/// party must still resolve its name for the history and the nudge ladder.
+///
 /// A row that fails to decode is **skipped**, not fatal — one malformed row must not blank the
 /// roster page and with it the admin's only way to fix it (the `policy_list` precedent).
 pub async fn party_list(
@@ -24,11 +30,13 @@ pub async fn party_list(
     ws: &str,
     kind: Option<PartyKind>,
     site: Option<&str>,
+    include_disabled: bool,
 ) -> Result<Vec<Party>, CasesError> {
     let rows = scan_all(store, ws, TABLE).await?;
     let mut parties: Vec<Party> = rows
         .into_iter()
         .filter_map(|row| unwrap_party(row.data))
+        .filter(|p| include_disabled || p.active)
         .filter(|p| kind.is_none_or(|k| p.kind == k))
         .filter(|p| site.is_none_or(|s| p.sites.iter().any(|own| own == s)))
         .collect();
