@@ -39,6 +39,9 @@ mod caveat_stamp;
 #[path = "case/caveat_vocab.rs"]
 mod caveat_vocab;
 
+#[path = "case/caveat_vocab_door.rs"]
+mod caveat_vocab_door;
+
 #[path = "case/scorecard_support.rs"]
 mod scorecard_support;
 
@@ -92,6 +95,9 @@ mod plane_invariants;
 
 #[path = "case/plane_lanes.rs"]
 mod plane_lanes;
+
+#[path = "case/plane_members.rs"]
+mod plane_members;
 
 #[path = "case/plane_snooze.rs"]
 mod plane_snooze;
