@@ -39,6 +39,9 @@ mod caveat_stamp;
 #[path = "case/caveat_vocab.rs"]
 mod caveat_vocab;
 
+#[path = "case/caveat_vocab_door.rs"]
+mod caveat_vocab_door;
+
 #[path = "case/scorecard_support.rs"]
 mod scorecard_support;
 

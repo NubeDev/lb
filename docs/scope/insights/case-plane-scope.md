@@ -136,7 +136,25 @@ not violated by lb knowing the five.
 | `case.request.view` / `case.request.reply` | **token-only**, scoped to one request | — | the only two verbs a token principal may call |
 | `party.upsert` / `party.list` | `party.upsert` / `party.list` | — | admin |
 | `policy.sla.set` / `policy.sla.list` | `policy.sla.set` / `policy.sla.list` | — | admin |
+| `insight.vocab.list` / `insight.vocab.set` | same names, one per verb | — | read and author a tag key's closed value set + its gating values; **admin**, both halves |
 | `rule.scorecard` | `rule.scorecard` | — | viewer; per `origin.ref` × site |
+
+**The vocabulary needs a WRITE DOOR, for the same reason `tags.*` did.** `tag_vocab` is an
+engine-owned record — `raise` refuses a category outside `values`, the caveat stamp reads `gates`,
+and the case plane keys its SLA matrix on the same set — and until `insight.vocab.set` there was no
+verb to author one. A workspace could only write it through the generic `store.write`, which is a UI
+writing a record the engine then has to trust. That is not hypothetical: the generic entity grid
+types every column as text and writes `["a"]` as the STRING `"[\"a\"]"`, which decodes to nothing
+and silently disarms the validation. `validate_vocab` is the door that cannot be got round: a key
+that is one record-id segment, non-blank values, no duplicates, and **`gates ⊆ values`** — a gating
+value nothing can be raised as arms a caveat that never fires, which is indistinguishable from a
+workspace with nothing to caveat.
+
+Declaring an EMPTY `values` list re-opens the key, so there is deliberately no delete verb: lb's own
+rule is that an undeclared vocabulary validates nothing, and "no row" and "a row declaring nothing"
+are the same statement. Both halves are **admin**, the read deliberately — a vocabulary reorders
+everything built on it, so it is a settings read, not a queue read; `insight.list` and the case row
+already echo each record's own category for everyone else.
 
 **`case.members` echoes the cited insight's `title` and `severity`.** A membership row holds an id,
 so a drawer rendering the page unaided draws a column of ULIDs while an *unauthenticated* contractor
