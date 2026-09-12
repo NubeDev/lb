@@ -121,8 +121,9 @@ pub use subscription::{
 };
 pub use tags_echo::{set_tags_echo, validate_tags_echo_size, MAX_TAG_ECHO_BYTES};
 pub use vocab::{
-    check_value as check_category_value, read_vocab, validate_category, TagVocab,
-    CATEGORY_KEY as VOCAB_CATEGORY_KEY, TABLE as VOCAB_TABLE,
+    check_value as check_category_value, list_vocab, read_vocab, validate_category, validate_vocab,
+    write_vocab, TagVocab, CATEGORY_KEY as VOCAB_CATEGORY_KEY, MAX_VOCAB_VALUES,
+    TABLE as VOCAB_TABLE,
 };
 pub use watch::{event_subject, EventKind, RaiseEvent};
 

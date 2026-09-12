@@ -140,6 +140,7 @@ mod tests {
             id: "p".into(),
             name: "p".into(),
             r#match: PolicyMatch::default(),
+            active: true,
             respond_h,
             resolve_h,
             calendar: Calendar::Business {

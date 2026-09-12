@@ -334,6 +334,7 @@ fn respond_by_and_due_at_read_their_own_fields() {
         id: "contract-a".into(),
         name: "Contract A".into(),
         r#match: Default::default(),
+        active: true,
         respond_h: 2,
         resolve_h: 20,
         calendar: office(BRISBANE, &[]),

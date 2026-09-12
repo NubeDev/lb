@@ -22,6 +22,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::calendar::Calendar;
 
+/// The default for [`ServicePolicy::active`] — see its doc for why this cannot be `Default::default`.
+fn yes() -> bool {
+    true
+}
+
 /// The store table service policies live in. Workspace-scoped like every other row.
 pub const POLICY_TABLE: &str = "service_policy";
 
@@ -100,6 +105,18 @@ pub struct ServicePolicy {
     /// How long a party has to answer a request, in hours.
     #[serde(default = "default_party_window_h")]
     pub party_window_h: u32,
+    /// **Is this policy in force?** `false` retires it without erasing it: [`crate::policy_match`]
+    /// skips it, so it governs no new case, while cases it already clocked keep the `respond_by` /
+    /// `due_at` it gave them — those are stamped on the case, not re-derived.
+    ///
+    /// Worth having beside [`crate::policy_delete`] because a contract that lapses is not a contract
+    /// that never existed: a seasonal or superseded policy is evidence of what was promised when a
+    /// breach happened, and deleting it makes that argument unanswerable.
+    ///
+    /// `#[serde(default = "yes")]` for the reason [`crate::Party::active`] gives: a bare bool
+    /// default is `false`, which would read every existing row as retired and un-clock the workspace.
+    #[serde(default = "yes")]
+    pub active: bool,
     /// How long after a `fixed` resolution a re-fire reopens the case instead of opening a new one.
     #[serde(default = "default_hold_down_days")]
     pub hold_down_days: u32,
@@ -152,6 +169,7 @@ mod tests {
             id: "p".into(),
             name: "n".into(),
             r#match: m,
+            active: true,
             respond_h: 1,
             resolve_h: 2,
             calendar: Calendar::Always,

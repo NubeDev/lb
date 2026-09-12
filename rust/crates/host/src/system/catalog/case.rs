@@ -21,7 +21,7 @@ pub(super) const CASE: &[HostTool] = &[
     HostTool {
         tool: "case.members",
         group: "case",
-        description: "the insights a case cites, paged",
+        description: "the insights a case cites, paged, each with its title and severity",
     },
     HostTool {
         tool: "case.events",

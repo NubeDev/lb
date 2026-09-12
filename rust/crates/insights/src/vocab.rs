@@ -12,7 +12,16 @@
 //! closed set), not a value — the same altitude as `Insight::severity` naming a field. The values
 //! that grammar admits are the workspace's business.
 //!
-//! One responsibility: the vocabulary record + the two questions the raise path asks it.
+//! One responsibility: the vocabulary record + the questions the raise path asks it, and the
+//! validated write an admin surface needs to author one.
+//!
+//! **Why the write is a verb and not a raw store row.** The vocabulary is an ENGINE-OWNED record:
+//! `raise` refuses a category outside `values`, the caveat stamp reads `gates`, and the case plane
+//! keys its SLA matrix on the same set. A UI writing it through the generic `store.write` door can
+//! produce a row this file then has to trust — and the generic entity grid demonstrably does exactly
+//! that for JSON-shaped columns, writing `["a"]` as the STRING `"[\"a\"]"`, which decodes to
+//! nothing and silently disarms the validation. [`validate_vocab`] + [`write_vocab`] are the door
+//! that cannot be got round.
 
 use lb_store::{read, Store};
 use serde::{Deserialize, Serialize};
@@ -76,6 +85,112 @@ pub async fn read_vocab(
         return Ok(None);
     };
     Ok(serde_json::from_value::<TagVocab>(value).ok())
+}
+
+/// The most values one vocabulary may declare. A bound, not a policy: a closed set with a thousand
+/// members is not a closed set, and every roster that groups by this key would become unreadable.
+pub const MAX_VOCAB_VALUES: usize = 64;
+
+/// Validate a vocabulary BEFORE any write, so a rejected set leaves the declared one exactly as it
+/// was.
+///
+/// Deliberately thin, and it judges SHAPE, never meaning: a key, non-blank values, no duplicates,
+/// and a `gates` list drawn from the values it gates. Nothing here decides what a category IS —
+/// that is the workspace's business and the whole reason this record exists (rule 10).
+///
+/// The `gates ⊆ values` rule is the one with teeth: a gating value that is not a declarable value
+/// can never be raised, so the caveat mechanism it arms would be silently dead. That is exactly the
+/// failure this plane cannot afford, because a caveat that never fires looks identical to a
+/// workspace with nothing to caveat.
+// SCOPE: docs/scope/insights/case-plane-scope.md §"Vocabulary"
+pub fn validate_vocab(vocab: &TagVocab) -> Result<(), InsightsError> {
+    if vocab.key.trim().is_empty() {
+        return Err(InsightsError::BadInput("a vocabulary needs a key".into()));
+    }
+    if vocab.key.contains(':') {
+        // The key IS the store record id (`tag_vocab:{key}`); a `:` would split the record key.
+        return Err(InsightsError::BadInput(
+            "a vocabulary key may not contain `:` — it is a single record-id segment".into(),
+        ));
+    }
+    if vocab.values.len() > MAX_VOCAB_VALUES {
+        return Err(InsightsError::BadInput(format!(
+            "a vocabulary may declare at most {MAX_VOCAB_VALUES} values, got {}",
+            vocab.values.len()
+        )));
+    }
+    for value in &vocab.values {
+        if value.trim().is_empty() {
+            return Err(InsightsError::BadInput(
+                "a vocabulary value may not be blank".into(),
+            ));
+        }
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for value in &vocab.values {
+        if !seen.insert(value.as_str()) {
+            return Err(InsightsError::BadInput(format!(
+                "duplicate vocabulary value {value:?}"
+            )));
+        }
+    }
+    for gate in &vocab.gates {
+        if !vocab.values.iter().any(|v| v == gate) {
+            return Err(InsightsError::BadInput(format!(
+                "gating value {gate:?} is not one of the declared values — a gate nothing can be \
+                 raised as arms a caveat that never fires"
+            )));
+        }
+    }
+    if let Some(explicit) = &vocab.data_quality_category {
+        if !vocab.values.iter().any(|v| v == explicit) {
+            return Err(InsightsError::BadInput(format!(
+                "data_quality_category {explicit:?} is not one of the declared values"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Write `vocab` as this workspace's declaration for `vocab.key`, after [`validate_vocab`].
+///
+/// An EMPTY `values` list is legal and meaningful: it re-opens the key (lb's own rule — an
+/// undeclared vocabulary validates nothing). Deleting the row and declaring nothing are the same
+/// statement, so there is no separate delete verb to disagree with this one.
+// SCOPE: docs/scope/insights/case-plane-scope.md §"Vocabulary"
+pub async fn write_vocab(store: &Store, ws: &str, vocab: &TagVocab) -> Result<(), InsightsError> {
+    validate_vocab(vocab)?;
+    let value = serde_json::to_value(vocab)
+        .map_err(|e| InsightsError::Store(lb_store::StoreError::Decode(e.to_string())))?;
+    lb_store::write(store, ws, TABLE, &vocab.key, &value).await?;
+    Ok(())
+}
+
+/// Every vocabulary this workspace declares, ordered by key — the admin surface's roster read.
+pub async fn list_vocab(store: &Store, ws: &str) -> Result<Vec<TagVocab>, InsightsError> {
+    let rows = lb_store::scan_all(store, ws, TABLE).await?;
+    let mut out: Vec<TagVocab> = rows
+        .into_iter()
+        // Unwrap the `{ data, rev }` write envelope the store scan returns — the flat fields live
+        // under `data`. Every field on `TagVocab` is `#[serde(default)]`, so a row read WITHOUT
+        // this unwrap decodes silently into an all-default vocabulary (key `""`, no values) rather
+        // than failing: the roster would come back the right length and say nothing.
+        .filter_map(|row| unwrap_vocab(row.data))
+        .collect();
+    out.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(out)
+}
+
+/// Unwrap the store's `{ data, rev }` envelope and decode. A row that will not decode is skipped
+/// rather than failing the roster — one malformed declaration must not hide the others.
+fn unwrap_vocab(row: serde_json::Value) -> Option<TagVocab> {
+    let inner = match row {
+        serde_json::Value::Object(mut obj) => {
+            obj.remove("data").unwrap_or(serde_json::Value::Object(obj))
+        }
+        other => other,
+    };
+    serde_json::from_value(inner).ok()
 }
 
 /// Validate a `category` value against the workspace's declared set.

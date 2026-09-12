@@ -19,6 +19,7 @@ fn policy(id: &str, m: PolicyMatch) -> ServicePolicy {
         id: id.into(),
         name: format!("{id} contract"),
         r#match: m,
+        active: true,
         respond_h: 4,
         resolve_h: 24,
         calendar: Calendar::Always,
@@ -49,7 +50,7 @@ async fn a_policy_round_trips_through_a_real_store() {
     };
     policy_set(&store, "nube", &p).await.expect("set");
 
-    let got = policy_list(&store, "nube").await.expect("list");
+    let got = policy_list(&store, "nube", false).await.expect("list");
     assert_eq!(
         got.len(),
         1,
@@ -70,7 +71,7 @@ async fn set_upserts_by_id() {
     edited.name = "renegotiated".into();
     policy_set(&store, "nube", &edited).await.unwrap();
 
-    let got = policy_list(&store, "nube").await.unwrap();
+    let got = policy_list(&store, "nube", false).await.unwrap();
     assert_eq!(got.len(), 1, "one row, not two");
     assert_eq!(got[0].respond_h, 1);
     assert_eq!(got[0].name, "renegotiated");
@@ -98,7 +99,7 @@ async fn a_workspace_sees_only_its_own_policies() {
     b.respond_h = 1;
     policy_set(&store, "ws-b", &b).await.unwrap();
 
-    let a_rows = policy_list(&store, "ws-a").await.unwrap();
+    let a_rows = policy_list(&store, "ws-a", false).await.unwrap();
     assert_eq!(
         a_rows.len(),
         2,
@@ -107,7 +108,7 @@ async fn a_workspace_sees_only_its_own_policies() {
     let a_default = a_rows.iter().find(|p| p.id == "default").unwrap();
     assert_eq!(a_default.respond_h, 4, "ws-B's write did not reach ws-A");
 
-    let b_rows = policy_list(&store, "ws-b").await.unwrap();
+    let b_rows = policy_list(&store, "ws-b", false).await.unwrap();
     assert_eq!(b_rows.len(), 1);
     assert_eq!(b_rows[0].respond_h, 1);
 }
@@ -168,7 +169,7 @@ async fn match_policy_resolves_the_ladder_against_the_store() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn an_empty_workspace_resolves_to_none() {
     let store = Store::memory().await.unwrap();
-    assert!(policy_list(&store, "nube").await.unwrap().is_empty());
+    assert!(policy_list(&store, "nube", false).await.unwrap().is_empty());
     assert!(match_policy(&store, "nube", Some("s1"), None, None)
         .await
         .unwrap()
@@ -207,7 +208,7 @@ async fn a_rejected_policy_writes_nothing() {
     assert!(policy_set(&store, "nube", &blank_id).await.is_err());
 
     assert!(
-        policy_list(&store, "nube").await.unwrap().is_empty(),
+        policy_list(&store, "nube", false).await.unwrap().is_empty(),
         "not one reject was stored"
     );
 }
@@ -225,7 +226,7 @@ async fn the_list_is_ordered_most_specific_first() {
     ] {
         policy_set(&store, "nube", &p).await.unwrap();
     }
-    let ids: Vec<String> = policy_list(&store, "nube")
+    let ids: Vec<String> = policy_list(&store, "nube", false)
         .await
         .unwrap()
         .into_iter()

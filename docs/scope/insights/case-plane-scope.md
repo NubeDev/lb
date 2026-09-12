@@ -127,7 +127,7 @@ not violated by lb knowing the five.
 |---|---|---|---|
 | `tags.add` / `tags.remove` / `tags.of` / `tags.find` | `tags.add` / `tags.remove` / `tags.find` / `tags.find` | `tags.of → tags.find` | the dispatcher door; `tags.add` with `source: "human"` is the human-correction write |
 | `case.get` / `case.list` | `case.get` / `case.list` | — | `list` takes `lane ∈ {mine, waiting, watching}`, filters, sorts `due_at` asc then severity desc, returns member **count** |
-| `case.members` / `case.events` | `case.get` | both → `case.get` | the drawer's two lists, paged |
+| `case.members` / `case.events` | `case.get` | both → `case.get` | the drawer's two lists, paged. `members` **echoes** each cited insight's `title` + `severity` — see below |
 | `case.open` | `case.open` | — | human-opened over ≥1 insight; the reactor's internal call |
 | `case.merge` / `case.split` | `case.open` | both → `case.open` | move members; the losing case closes as `duplicate` |
 | `case.workflow` | `case.workflow` | — | transition + `waiting_on`; `resolved` requires `resolution` |
@@ -136,7 +136,66 @@ not violated by lb knowing the five.
 | `case.request.view` / `case.request.reply` | **token-only**, scoped to one request | — | the only two verbs a token principal may call |
 | `party.upsert` / `party.list` | `party.upsert` / `party.list` | — | admin |
 | `policy.sla.set` / `policy.sla.list` | `policy.sla.set` / `policy.sla.list` | — | admin |
+| `insight.vocab.list` / `insight.vocab.set` | same names, one per verb | — | read and author a tag key's closed value set + its gating values; **admin**, both halves |
+| `party.delete` / `policy.sla.delete` | same names | — | erase a row; **admin**. `party.delete` is REFUSED when any request points at the party — see below |
 | `rule.scorecard` | `rule.scorecard` | — | viewer; per `origin.ref` × site |
+
+**The vocabulary needs a WRITE DOOR, for the same reason `tags.*` did.** `tag_vocab` is an
+engine-owned record — `raise` refuses a category outside `values`, the caveat stamp reads `gates`,
+and the case plane keys its SLA matrix on the same set — and until `insight.vocab.set` there was no
+verb to author one. A workspace could only write it through the generic `store.write`, which is a UI
+writing a record the engine then has to trust. That is not hypothetical: the generic entity grid
+types every column as text and writes `["a"]` as the STRING `"[\"a\"]"`, which decodes to nothing
+and silently disarms the validation. `validate_vocab` is the door that cannot be got round: a key
+that is one record-id segment, non-blank values, no duplicates, and **`gates ⊆ values`** — a gating
+value nothing can be raised as arms a caveat that never fires, which is indistinguishable from a
+workspace with nothing to caveat.
+
+Declaring an EMPTY `values` list re-opens the key, so there is deliberately no delete verb: lb's own
+rule is that an undeclared vocabulary validates nothing, and "no row" and "a row declaring nothing"
+are the same statement. Both halves are **admin**, the read deliberately — a vocabulary reorders
+everything built on it, so it is a settings read, not a queue read; `insight.list` and the case row
+already echo each record's own category for everyone else.
+
+**Retiring and deleting are different answers.** Both records carry `active: bool` (defaulting
+TRUE — a bare `bool` default is `false`, which would read every pre-existing row as retired and empty
+every workspace's roster on upgrade), and both have a delete verb, because the two gestures mean
+different things:
+
+- **`active: false` retires a row that has been USED.** A retired party leaves `party.list`'s
+  default read and `case.request.send` refuses it, while `party_get` still resolves it — so every
+  request already sent still renders their name for the history and the nudge ladder. A retired
+  policy is skipped by `policy_match`, so it governs no new case, while the cases it already clocked
+  keep the `respond_by` / `due_at` stamped on them. Both surfaces pass `include_disabled: true`,
+  because an admin cannot re-enable a row they cannot see.
+- **`party.delete` erases a row with nothing to preserve** — a typo, a duplicate — and is **REFUSED
+  when any `case_request` points at it**, naming the count and pointing at retirement. The
+  alternative is a request whose `party_id` resolves to nothing, which turns "who did we send this
+  to?" — the question the request plane exists to answer — into a dangling id.
+- **`policy.sla.delete` is unconditional**, and the asymmetry is deliberate: a case carries the
+  deadlines it was stamped with rather than re-deriving them, so deleting a policy orphans nothing.
+  `active: false` exists beside it for the row worth keeping as evidence — a lapsed contract is the
+  argument for what was promised when a breach happened.
+
+Both deletes take their OWN cap rather than aliasing the writer's. They are the destructive half,
+and "may author the roster, may not erase from it" is a distinction a workspace could reasonably
+want — unlike `case.merge`/`case.split`, where the alias exists because the distinction would be
+meaningless.
+
+**`case.members` echoes the cited insight's `title` and `severity`.** A membership row holds an id,
+so a drawer rendering the page unaided draws a column of ULIDs while an *unauthenticated* contractor
+sees a headline. The echo is resolved at READ time by the host — never stored, because a copy of a
+title goes stale the moment the insight is retitled and nothing would ever repair it — in ONE query,
+through the `insight.case_id` back-reference the grouping pass already writes for exactly this
+purpose. The two rejected alternatives: a `get` per member is 200 reads a page; pushing it to the
+client is the same N+1 over the wire AND demands `insight.get` caps of a reader who may hold
+`case.get` and not (the two planes are two gates — see the rubix-ai scope's Resolved decision #6).
+Both fields are optional and omitted when absent, so the change is additive on the wire and a member
+whose insight is gone keeps its row with no title rather than failing the page.
+
+`members_all` is the un-paged, un-echoed read beside it, for callers that want the MEMBERSHIP and
+not the drawer's page (merge, split, the host's echo walks). The distinction is not tidiness: the
+paged read costs a second query to resolve titles those paths never look at.
 
 **Cap tiers.** VIEWER gains `case.get`, `case.list`, `rule.scorecard`, `tags.of`. AUTHOR (member)
 gains `case.open`, `case.workflow`, `case.request.send`, `tags.remove`. ADMIN gains `party.upsert`,

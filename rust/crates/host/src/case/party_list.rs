@@ -22,7 +22,8 @@ pub async fn case_party_list(
     ws: &str,
     kind: Option<PartyKind>,
     site: Option<&str>,
+    include_disabled: bool,
 ) -> Result<Vec<Party>, CaseSvcError> {
     authorize_tool(principal, ws, "party.list").map_err(|_| CaseSvcError::Denied)?;
-    Ok(lb_cases::party_list(store, ws, kind, site).await?)
+    Ok(lb_cases::party_list(store, ws, kind, site, include_disabled).await?)
 }

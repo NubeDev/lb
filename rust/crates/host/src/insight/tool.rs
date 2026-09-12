@@ -24,7 +24,7 @@ use super::{
     insight_ack, insight_assign, insight_comment, insight_comments, insight_delete, insight_get,
     insight_list, insight_occurrence_delete, insight_occurrences, insight_policy_get,
     insight_policy_set, insight_raise, insight_resolve, insight_sub_create, insight_sub_delete,
-    insight_sub_get, insight_sub_list, insight_sub_mute,
+    insight_sub_get, insight_sub_list, insight_sub_mute, insight_vocab_list, insight_vocab_set,
 };
 use crate::boot::Node;
 
@@ -240,6 +240,23 @@ pub async fn call_insight_tool(
                 .await
                 .map_err(svc_to_tool)?;
             Ok(serde_json::to_value(policy).unwrap_or(Value::Null))
+        }
+        "insight.vocab.list" => {
+            let vocabs = insight_vocab_list(store, principal, ws)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(json!({ "vocabs": vocabs }))
+        }
+        "insight.vocab.set" => {
+            // Decoded through the record itself, which is `#[serde(default)]` throughout — a caller
+            // that sends only `{key, values}` (the common case) gets an empty `gates`, which is the
+            // honest reading of "declare these values and gate nothing".
+            let vocab: lb_insights::TagVocab = serde_json::from_value(input.clone())
+                .map_err(|e| ToolError::BadInput(format!("insight.vocab.set input: {e}")))?;
+            insight_vocab_set(store, principal, ws, &vocab)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(json!({ "ok": true, "key": vocab.key }))
         }
         "insight.policy.set" => {
             let policy: lb_insights::Policy = serde_json::from_value(input.clone())

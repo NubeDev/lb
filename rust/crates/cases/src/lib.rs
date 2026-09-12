@@ -50,9 +50,11 @@ mod members;
 mod merge;
 mod open;
 mod party;
+mod party_delete;
 mod party_list;
 mod party_upsert;
 mod policy;
+mod policy_delete;
 mod policy_list;
 mod policy_match;
 mod policy_set;
@@ -103,7 +105,7 @@ pub use get::get;
 pub use list::{CaseRow, Lane, ListFilter, ListPage, ListQuery, MAX_CASE_PAGE};
 pub use member_add::member_add;
 pub use member_remove::member_remove;
-pub use members::{member_count, members, MemberPage, MAX_MEMBER_PAGE};
+pub use members::{member_count, members, members_all, MemberPage, MemberRow, MAX_MEMBER_PAGE};
 pub use merge::merge;
 pub use open::{open, OpenInput};
 // The party roster (wave 2). A party is DATA: nothing here names one (rule 10), and the scorecard
@@ -111,11 +113,13 @@ pub use open::{open, OpenInput};
 pub use party::{
     validate_party, Contact, Party, PartyKind, MAX_PARTY_NAME_BYTES, TABLE as PARTY_TABLE,
 };
+pub use party_delete::party_delete;
 pub use party_list::{party_get, party_list};
 pub use party_upsert::party_upsert;
 pub use policy::{
     PolicyMatch, ServicePolicy, DEFAULT_HOLD_DOWN_DAYS, DEFAULT_PARTY_WINDOW_H, POLICY_TABLE,
 };
+pub use policy_delete::policy_delete;
 pub use policy_list::{policy_list, sort_by_specificity};
 pub use policy_match::{best_match, match_policy};
 pub use policy_set::policy_set;
