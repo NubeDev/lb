@@ -265,6 +265,10 @@ pub(super) async fn open_for(
     now: u64,
 ) -> Result<Case, CaseSvcError> {
     let facets = facets_of(insight);
+    // The money echo, beside the facet echo and for the same reason: it is a property of the
+    // detection, so a second writer is a second thing that can disagree. `caveated` is passed in
+    // rather than recomputed so the two echoes read one answer (`super::impact`).
+    let impact = super::impact::impact_of(insight, facets.caveated);
     Ok(lb_cases::open(
         store,
         ws,
@@ -279,6 +283,8 @@ pub(super) async fn open_for(
             // The triage backfill: a finding a person already owns opens a case they already own.
             assigned_to: insight.assigned_to.clone(),
             caveated: facets.caveated,
+            impact_rate: impact.rate,
+            impact_tier: impact.tier,
             // A reactor opened this. Nothing here is human-placed.
             human_placed: false,
         },

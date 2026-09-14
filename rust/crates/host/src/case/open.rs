@@ -48,6 +48,7 @@ pub async fn case_open(
         )));
     };
     let facets = facets_of(&insight);
+    let impact = super::impact::impact_of(&insight, facets.caveated);
 
     let case = lb_cases::open(
         store,
@@ -62,6 +63,11 @@ pub async fn case_open(
             scope: facets.scope,
             assigned_to: insight.assigned_to.clone(),
             caveated: facets.caveated,
+            // A person opening a case gets the same money echo a reactor would. The rate is a
+            // property of the finding, not of who filed the work — and a case whose figure depended
+            // on which door opened it would be the second writer the echo exists to avoid.
+            impact_rate: impact.rate,
+            impact_tier: impact.tier,
             human_placed: true,
         },
         principal.sub(),

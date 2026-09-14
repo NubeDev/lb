@@ -113,3 +113,26 @@ pub async fn seed_roster(node: &Arc<Node>, ws: &str) {
         .await
         .expect("priya joins the crew");
 }
+
+/// The workspace category vocabulary, with one value declared as GATING — a pack's job, seeded here
+/// as workspace data. A finding in a gating category caveats every open finding whose
+/// `evidence.subjects` overlap its own.
+///
+/// The value is `dq` rather than anything product-shaped so no reader mistakes it for a vocabulary
+/// lb knows (rule 10: lb ships no default list, which is why an unseeded workspace validates
+/// nothing and this fixture has to exist at all).
+pub const GATING_CATEGORY: &str = "dq";
+
+/// Seed [`GATING_CATEGORY`] as the workspace's gating category. Written straight to the store
+/// because a vocabulary is workspace CONFIG, not something the insight surface mints.
+pub async fn seed_gating_vocab(node: &Arc<Node>, ws: &str) {
+    lb_store::write(
+        &node.store,
+        ws,
+        "tag_vocab",
+        "category",
+        &json!({ "key": "category", "values": [GATING_CATEGORY, "other"], "gates": [GATING_CATEGORY] }),
+    )
+    .await
+    .expect("vocab seeded");
+}
