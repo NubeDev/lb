@@ -123,6 +123,9 @@ mod request_nudge;
 #[path = "case/request_roster.rs"]
 mod request_roster;
 
+#[path = "case/request_roster_lifecycle.rs"]
+mod request_roster_lifecycle;
+
 #[path = "case/request_send.rs"]
 mod request_send;
 

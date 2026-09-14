@@ -64,6 +64,17 @@ pub async fn case_request_send(
     let Some(party) = lb_cases::party_get(store, ws, party_id).await? else {
         return Err(CaseSvcError::BadInput(format!("no such party: {party_id}")));
     };
+    // A RETIRED party takes no new work. `party_get` deliberately still resolves one — every
+    // request already sent to them must keep rendering their name for the history and the nudge
+    // ladder — so the refusal belongs here, on the one path that creates a NEW obligation. Without
+    // it `active: false` would be a label the roster read honours and the ask plane ignores, which
+    // is worse than not having the flag.
+    if !party.active {
+        return Err(CaseSvcError::BadInput(format!(
+            "party {party_id} is retired and takes no new asks — re-enable it (`active: true`) or \
+             choose another party"
+        )));
+    }
     let Some(email) = party.contact.email.clone() else {
         return Err(CaseSvcError::BadInput(format!(
             "party {party_id} has no email address — there is nowhere to send the ask"

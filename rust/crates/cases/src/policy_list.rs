@@ -21,11 +21,16 @@ use crate::policy::{ServicePolicy, POLICY_TABLE};
 /// `a_policy_round_trips_through_a_real_store` exists — a skip is silent by construction, so the
 /// only thing standing between it and "the list is mysteriously always empty" is a test that writes
 /// through the real store and reads back. (It caught exactly that: the envelope below.)
-pub async fn policy_list(store: &Store, ws: &str) -> Result<Vec<ServicePolicy>, CasesError> {
+pub async fn policy_list(
+    store: &Store,
+    ws: &str,
+    include_disabled: bool,
+) -> Result<Vec<ServicePolicy>, CasesError> {
     let rows = scan_all(store, ws, POLICY_TABLE).await?;
     let mut policies: Vec<ServicePolicy> = rows
         .into_iter()
         .filter_map(|row| unwrap_policy(row.data))
+        .filter(|p| include_disabled || p.active)
         .collect();
     sort_by_specificity(&mut policies);
     Ok(policies)
@@ -69,6 +74,7 @@ mod tests {
             id: id.into(),
             name: id.into(),
             r#match: m,
+            active: true,
             respond_h: 4,
             resolve_h: 24,
             calendar: Calendar::Always,
