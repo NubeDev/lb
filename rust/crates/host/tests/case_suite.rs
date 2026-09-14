@@ -99,6 +99,9 @@ mod plane_lanes;
 #[path = "case/plane_members.rs"]
 mod plane_members;
 
+#[path = "case/plane_money.rs"]
+mod plane_money;
+
 #[path = "case/plane_snooze.rs"]
 mod plane_snooze;
 

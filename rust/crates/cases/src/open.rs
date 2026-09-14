@@ -8,10 +8,16 @@
 //! A case opens in [`Workflow::ToAction`] with no resolution and `closed: false`. Everything the
 //! sla-clock reactor owns (`policy_id`, `respond_by`, `due_at`) is absent here and stamped by that
 //! reactor — this verb does no deadline arithmetic.
+//!
+//! It does no money arithmetic either. `impact_rate`/`impact_tier` are echoed from the primary
+//! insight and arrive on [`OpenInput`] already decided — including whether the primary's stated
+//! impact was in a unit that is money at all, which is the caller's check and not this file's
+//! (`case-money-producer-scope.md`). `cost_to_fix` and `verified_saving` are still owned by the
+//! quote reply and the verify reactor respectively, and are absent here.
 
 use lb_store::{new_ulid, write, Store};
 
-use crate::case::{Case, Grouping, Workflow, TABLE};
+use crate::case::{Case, Grouping, ImpactTier, Workflow, TABLE};
 use crate::case_event::EventKind;
 use crate::case_member::MemberRole;
 use crate::error::CasesError;
@@ -39,6 +45,15 @@ pub struct OpenInput {
     pub assigned_to: Option<String>,
     /// True when the primary insight carried open data-quality caveats.
     pub caveated: bool,
+    /// The money bleeding per day, echoed from the primary insight's `analysis.estimated_impact`
+    /// — and only when that quantity's unit said it was money per day. The caller owns that check
+    /// (it is the one thing standing between a `sigma` deviation and a dollar figure); this verb
+    /// stores whatever it is handed.
+    pub impact_rate: Option<f64>,
+    /// How much to trust [`Self::impact_rate`]. Set together with it or not at all: a tier with no
+    /// rate describes nothing, and a rate with no tier is a number presented as more solid than it
+    /// is.
+    pub impact_tier: Option<ImpactTier>,
     /// True when a PERSON opened this case (the `case.open` verb), false for the reactors. It is
     /// stamped onto the primary membership, where it stops a reactor moving the member later.
     pub human_placed: bool,
@@ -87,8 +102,8 @@ pub async fn open(
         due_at: None,
         breached_ts: None,
         breach_waiting_on: None,
-        impact_rate: None,
-        impact_tier: None,
+        impact_rate: input.impact_rate,
+        impact_tier: input.impact_tier,
         cost_to_fix: None,
         verified_saving: None,
         saving_accepted_by: None,

@@ -80,6 +80,15 @@ pub async fn split(
             scope: from.scope.clone(),
             assigned_to: from.assigned_to.clone(),
             caveated: from.caveated,
+            // NO money, deliberately. The other facets above are inherited from the source case
+            // because they describe where the work sits (same site, same category) and that is
+            // still true after a split. A rate does not: it was echoed from the SOURCE case's
+            // primary insight, and the case being minted here is about a DIFFERENT primary. Copying
+            // it would double-count the same money across two open cases and attribute it to a
+            // finding that never claimed it. The split-off case is untiered until something prices
+            // its own primary, which is the honest state.
+            impact_rate: None,
+            impact_tier: None,
             // A person split this out. No reactor may fold it back.
             human_placed: true,
         },
