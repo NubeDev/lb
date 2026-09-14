@@ -77,6 +77,13 @@ pub async fn call_dashboard_tool(
                     vars_display: opt_str_arg(input, "varsDisplay"),
                     kind: opt_str_arg(input, "kind"),
                     report_ids: opt_str_vec_arg(input, "reportIds"),
+                    // Preserve-on-omit, like every field above: absent leaves the stored block
+                    // alone, an empty object clears it. Read as opaque JSON — the host neither runs
+                    // these nor inspects `tool` (rule 10).
+                    queries: input
+                        .get("queries")
+                        .and_then(Value::as_object)
+                        .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
                     export_profiles: opt_profiles_arg(input),
                 },
                 cells,

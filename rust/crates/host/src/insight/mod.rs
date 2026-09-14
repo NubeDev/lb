@@ -46,6 +46,7 @@ mod policy_set;
 mod raise;
 mod reactor;
 mod resolve;
+mod resolve_filter;
 mod sub_create;
 mod sub_delete;
 mod sub_get;

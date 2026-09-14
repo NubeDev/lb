@@ -6,7 +6,7 @@
 //! built from this inventory, so a verb absent from it is dispatchable but **invisible** — nobody
 //! can find it to call it.
 //!
-//! Both verbs are admin. The catalog is gated by `gate_tool_for`, so a member simply does not see
+//! All three verbs are admin. The catalog is gated by `gate_tool_for`, so a member simply does not see
 //! these rows — the cardinal rule holds ("advertise a tool only if the call would allow it").
 
 use super::HostTool;
@@ -24,5 +24,11 @@ pub(super) const POLICY: &[HostTool] = &[
         group: "policy",
         description: "list SLA service policies, most-specific match first — the order the \
                       resolver applies them in; admin",
+    },
+    HostTool {
+        tool: "policy.sla.delete",
+        group: "policy",
+        description: "delete one SLA service policy by id; `removed` is false when no policy \
+                      carried that id; admin",
     },
 ];

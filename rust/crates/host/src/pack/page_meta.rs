@@ -40,6 +40,13 @@ pub(super) fn page_meta_of(json: &Value) -> PageMeta {
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
         }),
+        // Same keys, same preserve-on-omit: a pack page may ship the NAMED QUERIES its panels share
+        // (shared-queries scope), so a packaged board arrives with one call per query rather than one
+        // per panel.
+        queries: json
+            .get("queries")
+            .and_then(Value::as_object)
+            .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
         // Same keys, same preserve-on-omit: a pack page may ship the export profiles its
         // report dialog offers.
         export_profiles: json

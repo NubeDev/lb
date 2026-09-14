@@ -127,6 +127,17 @@ pub async fn raise(
     input: RaiseInput,
     ring_cap: usize,
 ) -> Result<RaiseOutcome, InsightsError> {
+    // The indexes exist from the first raise onward. Idempotent, and on the WRITE path for the
+    // reason `ensure_series_schema` is: nothing at boot knows which workspaces exist.
+    //
+    // NOT fatal, deliberately. An index is an optimisation; a raise is the record that something is
+    // wrong. If the DDL ever fails — a permission, a version skew, a half-applied migration — the
+    // fault must still be written, slowly, rather than lost. The crate has no logger (no `log` or
+    // `tracing` dependency), so the failure is swallowed here rather than reported: the observable
+    // symptom is that `dedup_lookup` stays a table scan and search returns nothing, which
+    // `schema_index_test` asserts against.
+    let _ = crate::schema::ensure_insight_schema(store, ws).await;
+
     // Validate the occurrence size UP FRONT — an oversize payload rejects the whole raise and
     // leaves no parent row (occurrences scope: never a partial write, never silent truncation).
     let occ = input.occurrence.clone().unwrap_or(RaiseOccurrence {

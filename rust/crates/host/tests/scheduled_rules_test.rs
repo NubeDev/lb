@@ -838,6 +838,8 @@ async fn count_insights(node: &Arc<HostNode>, p: &Principal, ws: &str) -> usize 
             filter: Default::default(),
             cursor: None,
             limit: 1000,
+            offset: 0,
+            counts: false,
         },
     )
     .await

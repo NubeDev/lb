@@ -613,6 +613,8 @@ async fn count_insights(node: &Arc<Node>, p: &Principal, ws: &str) -> usize {
             filter: Default::default(),
             cursor: None,
             limit: 1000,
+            offset: 0,
+            counts: false,
         },
     )
     .await
@@ -630,6 +632,8 @@ async fn first_insight_id(node: &Arc<Node>, p: &Principal, ws: &str) -> String {
             filter: Default::default(),
             cursor: None,
             limit: 10,
+            offset: 0,
+            counts: false,
         },
     )
     .await

@@ -5,7 +5,7 @@
 //! reason every family is: the console and the agent's `tools.catalog`-derived menu are built from
 //! this inventory, and a dispatched verb absent from it is reachable but invisible.
 //!
-//! Both verbs are admin, so the `gate_tool_for`-gated catalog simply does not show these rows to a
+//! All three verbs are admin, so the `gate_tool_for`-gated catalog simply does not show these rows to a
 //! member. **Rule 10**: nothing here names a party — these are the two verbs that read and write
 //! whatever the workspace puts in its own roster.
 
@@ -23,5 +23,12 @@ pub(super) const PARTY: &[HostTool] = &[
         tool: "party.list",
         group: "party",
         description: "the party roster, by name, optionally narrowed to a kind or a site; admin",
+    },
+    HostTool {
+        tool: "party.delete",
+        group: "party",
+        description:
+            "delete one party from the workspace roster by id; `removed` is false when no \
+                      party carried that id; admin",
     },
 ];
