@@ -29,6 +29,10 @@ pub const RAISE: &str = "mcp:insight.raise:call";
 pub const I_GET: &str = "mcp:insight.get:call";
 pub const I_ASSIGN: &str = "mcp:insight.assign:call";
 pub const I_COMMENT: &str = "mcp:insight.comment:call";
+/// The detection plane's own destructive cap. NOT in [`ALL`] — `insight.delete` gates on itself
+/// precisely so the read/act caps do not imply it, and a suite fixture that handed it out would
+/// erase that distinction for every test here.
+pub const I_DELETE: &str = "mcp:insight.delete:call";
 pub const GET: &str = "mcp:case.get:call";
 pub const LIST: &str = "mcp:case.list:call";
 pub const OPEN: &str = "mcp:case.open:call";

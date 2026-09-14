@@ -56,10 +56,10 @@ pub async fn echo_owner_to_members(
     case_id: &str,
     assignee: Option<&str>,
 ) {
-    let members = match lb_cases::members(&node.store, ws, case_id, lb_cases::MAX_MEMBER_PAGE, None)
-        .await
-    {
-        Ok(page) => page.items,
+    // `members_all`, not the paged `members`: the echo wants the membership, and the paged read
+    // resolves titles for a drawer that is not on screen here.
+    let members = match lb_cases::members_all(&node.store, ws, case_id).await {
+        Ok(members) => members,
         Err(e) => {
             tracing::warn!(ws, case_id, error = %e, "case owner echo skipped: members unreadable");
             return;

@@ -36,9 +36,7 @@ pub(super) async fn find_citing_case(
     insight_id: &str,
 ) -> Result<Option<Case>, CaseSvcError> {
     for case in open_verdict_cases(store, ws).await? {
-        let members = lb_cases::members(store, ws, &case.id, lb_cases::MAX_MEMBER_PAGE, None)
-            .await?
-            .items;
+        let members = lb_cases::members_all(store, ws, &case.id).await?;
         for member in members {
             let Some(insight) = lb_insights::get(store, ws, &member.insight_id).await? else {
                 continue;
