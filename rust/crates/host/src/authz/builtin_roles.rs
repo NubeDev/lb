@@ -808,6 +808,12 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:prefs.set_default:call",
     "mcp:message.set_catalog:call",
     "mcp:insight.policy.set:call",
+    // The workspace's tag VOCABULARY (case-plane scope §"Vocabulary"). A cap per verb, beside
+    // `policy.sla.*` — the read is admin deliberately: a vocabulary is a workspace declaration that
+    // reorders everything built on it (what may be raised, and which category ARMS the caveat
+    // mechanism), so it is a settings read, not a queue read. A member needs none of it.
+    "mcp:insight.vocab.list:call",
+    "mcp:insight.vocab.set:call",
     // SLA service policies (case-plane scope). BOTH halves are admin, and the read deliberately so:
     // a policy row states the commercial contract — response and resolution hours per site — which
     // is not every member's to read. A viewer sees the CONSEQUENCE (their case's `due_at`), never
@@ -815,6 +821,12 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // deadline reorders every case in the queue at once.
     "mcp:policy.sla.set:call",
     "mcp:policy.sla.list:call",
+    // Withdrawing a policy is its own cap rather than an alias of the write. It is the DESTRUCTIVE
+    // half, and "may author the contract, may not erase one" is a distinction a workspace could
+    // reasonably want — unlike `case.merge`/`case.split`, where the alias exists because the
+    // distinction would be meaningless. It also keeps `tool_gate.rs` (already at 399 of its
+    // 400-line limit) out of this change entirely.
+    "mcp:policy.sla.delete:call",
     // The party roster (case-plane scope wave 2). Admin for the same reason, and the read
     // deliberately so: the roster is a list of external companies' email addresses and phone
     // numbers, and "anyone who can read the queue can read every contractor's contact details" is
@@ -822,6 +834,11 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // resolves the party by id.
     "mcp:party.upsert:call",
     "mcp:party.list:call",
+    // The destructive half of the roster, its own cap for the reason above. Note that deleting is
+    // the RARE gesture here: a party with history cannot be deleted at all (it would orphan the
+    // requests sent to it) — retiring it with `active: false` is the everyday answer, and that
+    // rides `party.upsert`.
+    "mcp:party.delete:call",
     "mcp:agent.policy.set:call",
     "mcp:agent.config.set:call",
     // agent definition / persona CRUD (custom defs/personas; built-ins are read-only regardless).

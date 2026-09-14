@@ -41,6 +41,56 @@ pub const P_LIST: &str = "mcp:party.list:call";
 /// A fully-empowered operator: every cap this suite needs to SEED with.
 pub const ALL: &[&str] = &[RAISE, I_GET, GET, OPEN, WORKFLOW, SEND, P_UPSERT, P_LIST];
 
+/// The SLA policy caps, and the two DESTRUCTIVE ones (case-plane scope §Wave 5). Deliberately NOT
+/// in [`ALL`]: `request_roster_lifecycle.rs` asserts that the authoring caps buy neither delete, so
+/// a fixture that handed them out would erase the distinction for every test in the suite.
+pub const POL_SET: &str = "mcp:policy.sla.set:call";
+pub const POL_LIST: &str = "mcp:policy.sla.list:call";
+pub const P_DELETE: &str = "mcp:party.delete:call";
+pub const POL_DELETE: &str = "mcp:policy.sla.delete:call";
+
+/// Everything an admin authoring the plane's configuration holds, INCLUDING the destructive pair.
+pub fn admin_caps() -> Vec<&'static str> {
+    let mut c = ALL.to_vec();
+    c.extend([POL_SET, POL_LIST, P_DELETE, POL_DELETE]);
+    c
+}
+
+/// The same, WITHOUT the two delete caps — the "may author, may not erase" session.
+pub fn author_caps() -> Vec<&'static str> {
+    let mut c = ALL.to_vec();
+    c.extend([POL_SET, POL_LIST]);
+    c
+}
+
+/// The `party.upsert` argument, with `active` explicit — the flag is the point of these fixtures.
+pub fn party_input(id: &str, active: bool) -> Value {
+    json!({
+        "id": id,
+        "kind": "contractor",
+        "name": format!("{id} services"),
+        "contact": { "email": format!("{id}@example.com") },
+        "sites": ["site-a"],
+        "trades": ["mechanical"],
+        "default_ask_window_h": 0,
+        "active": active,
+    })
+}
+
+/// The `policy.sla.set` argument, with `active` explicit.
+pub fn policy_input(id: &str, active: bool) -> Value {
+    json!({
+        "id": id,
+        "name": format!("policy {id}"),
+        "match": {},
+        "respond_h": 4,
+        "resolve_h": 24,
+        "party_window_h": 48,
+        "hold_down_days": 14,
+        "active": active,
+    })
+}
+
 /// One hour in the epoch-ms the case plane stores.
 pub const HOUR_MS: u64 = 60 * 60 * 1000;
 

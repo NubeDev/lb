@@ -82,6 +82,25 @@ pub struct Party {
     /// numbers that makes the nudge ladder either useful or noise.
     #[serde(default)]
     pub default_ask_window_h: u32,
+    /// **Is this party still taking work?** `false` retires the row without erasing it: it leaves
+    /// the roster's default read and `case.request.send` refuses it, while every request already
+    /// sent to them still resolves their name and contact for the history and the nudge ladder.
+    ///
+    /// That asymmetry is the whole feature. A contractor you stop using does not stop having been
+    /// the contractor on forty closed cases, and [`crate::party_delete`] — which erases the row —
+    /// cannot be the answer for one that has history, because the answer to "who did we send this
+    /// to?" would become nothing.
+    ///
+    /// `#[serde(default = "yes")]`, NOT `#[serde(default)]`: a bool defaults to `false`, so the
+    /// plain attribute would read every row written before this field existed as DISABLED and empty
+    /// the roster of every workspace on upgrade.
+    #[serde(default = "yes")]
+    pub active: bool,
+}
+
+/// The default for [`Party::active`] — see its doc for why this cannot be `Default::default`.
+fn yes() -> bool {
+    true
 }
 
 /// The largest a party's name may be — a bound, not a policy. Long enough for any real company

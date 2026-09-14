@@ -23,8 +23,7 @@ use super::breach::case_breach;
 use super::error::CaseSvcError;
 use super::{
     case_assign, case_comment, case_events, case_get, case_list, case_members, case_merge,
-    case_open, case_party_list, case_party_upsert, case_policy_sla_list, case_policy_sla_set,
-    case_request_list, case_request_nudge, case_request_reply, case_request_send,
+    case_open, case_request_list, case_request_nudge, case_request_reply, case_request_send,
     case_request_view, case_request_withdraw, case_snooze, case_split, case_workflow,
     rule_scorecard,
 };
@@ -41,25 +40,17 @@ pub async fn call_case_tool(
 ) -> Result<Value, ToolError> {
     let store = &node.store;
     let ts = super::clock::normalize_ts(input.get("ts").and_then(Value::as_u64).unwrap_or(0));
+
+    // The plane's CONFIGURATION verbs (the party roster, the SLA policies) live in
+    // `tool_config.rs` — admin settings about the plane rather than work done on a case. It answers
+    // `None` for everything else, so this stays one dispatcher with two files behind it.
+    if let Some(out) =
+        super::tool_config::call_case_config_tool(node, principal, ws, qualified_tool, input).await
+    {
+        return out;
+    }
+
     match qualified_tool {
-        // The SLA policy plane (case-plane scope). ADMIN, and dispatched by EXACT name from
-        // `HOST_NATIVE_EXACT` — the host does not reserve the whole `policy.` namespace against a
-        // hypothetical extension whose id is `policy`, the same reasoning `ext.list` and `update.*`
-        // already carry. Both verbs gate on their OWN name, so neither needs a `tool_gate.rs` arm.
-        "policy.sla.set" => {
-            let policy: lb_cases::ServicePolicy = serde_json::from_value(input.clone())
-                .map_err(|e| ToolError::BadInput(format!("policy.sla.set: {e}")))?;
-            case_policy_sla_set(store, principal, ws, &policy)
-                .await
-                .map_err(svc_to_tool)?;
-            Ok(json!({ "id": policy.id }))
-        }
-        "policy.sla.list" => {
-            let policies = case_policy_sla_list(store, principal, ws)
-                .await
-                .map_err(svc_to_tool)?;
-            Ok(serde_json::to_value(policies).unwrap_or(Value::Null))
-        }
         // case-plane scope §7: the detector feedback loop. VIEWER, read-only, and dispatched by
         // EXACT name — see `HOST_NATIVE_EXACT`. It gates on its OWN name, so no `tool_gate.rs` arm.
         "rule.scorecard" => {
@@ -81,35 +72,6 @@ pub async fn call_case_tool(
             .await
             .map_err(svc_to_tool)?;
             Ok(json!({ "rows": rows }))
-        }
-        // The party roster (case-plane scope, wave 2). ADMIN, dispatched by EXACT name from
-        // `HOST_NATIVE_EXACT` — `party` is a plausible extension id, so the host reserves the two
-        // verbs it owns and not the namespace (the `policy.sla.*` reasoning, unchanged).
-        "party.upsert" => {
-            // Decoded through `PartyInput`, which DENIES unknown fields: a misplaced key (a
-            // top-level `email` that belongs under `contact`) is a loud refusal here rather than a
-            // successful write of a party nobody can reach. The stored record stays permissive —
-            // see `party_upsert.rs`.
-            let input: super::PartyInput = serde_json::from_value(input.clone())
-                .map_err(|e| ToolError::BadInput(format!("party.upsert: {e}")))?;
-            let party: lb_cases::Party = input.into();
-            case_party_upsert(store, principal, ws, &party)
-                .await
-                .map_err(svc_to_tool)?;
-            Ok(json!({ "id": party.id }))
-        }
-        "party.list" => {
-            let kind = opt_enum_arg(input, "kind")?;
-            let parties = case_party_list(
-                store,
-                principal,
-                ws,
-                kind,
-                input.get("site").and_then(Value::as_str),
-            )
-            .await
-            .map_err(svc_to_tool)?;
-            Ok(serde_json::to_value(parties).unwrap_or(Value::Null))
         }
         // The external-party round trip. `send`/`withdraw`/`nudge` ride `mcp:case.request.send:call`
         // (the last two through `tool_gate.rs` aliases); `list` rides `case.get`; `view`/`reply` are
@@ -341,7 +303,7 @@ pub async fn call_case_tool(
 }
 
 /// Map the service error onto the MCP tool error (denials opaque).
-fn svc_to_tool(e: CaseSvcError) -> ToolError {
+pub(super) fn svc_to_tool(e: CaseSvcError) -> ToolError {
     match e {
         CaseSvcError::Denied => ToolError::Denied,
         CaseSvcError::BadInput(m) => ToolError::BadInput(m),
@@ -349,7 +311,13 @@ fn svc_to_tool(e: CaseSvcError) -> ToolError {
     }
 }
 
-fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
+/// An optional boolean argument, absent ⇒ `false`. A non-boolean value is also `false` rather than
+/// a refusal: these flags only ever WIDEN a read, so the worst a garbled one can do is show less.
+pub(super) fn flag(input: &Value, key: &str) -> bool {
+    input.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+pub(super) fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
     input
         .get(key)
         .and_then(Value::as_str)
@@ -381,7 +349,7 @@ fn enum_arg<T: serde::de::DeserializeOwned>(input: &Value, key: &str) -> Result<
         .map_err(|e| ToolError::BadInput(format!("arg `{key}`: {e}")))
 }
 
-fn opt_enum_arg<T: serde::de::DeserializeOwned>(
+pub(super) fn opt_enum_arg<T: serde::de::DeserializeOwned>(
     input: &Value,
     key: &str,
 ) -> Result<Option<T>, ToolError> {

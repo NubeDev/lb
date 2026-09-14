@@ -22,8 +22,8 @@ pub async fn case_policy_sla_list(
     store: &Store,
     principal: &Principal,
     ws: &str,
+    include_disabled: bool,
 ) -> Result<Vec<ServicePolicy>, CaseSvcError> {
     authorize_tool(principal, ws, "policy.sla.list").map_err(|_| CaseSvcError::Denied)?;
-    let policies = lb_cases::policy_list(store, ws).await?;
-    Ok(policies)
+    Ok(lb_cases::policy_list(store, ws, include_disabled).await?)
 }

@@ -52,9 +52,20 @@ pub struct PartyInput {
     pub trades: Vec<String>,
     #[serde(default)]
     pub default_ask_window_h: u32,
+    /// Is this party still taking work? Absent ⇒ **active** — an upsert that says nothing about
+    /// retirement is not a retirement, and the settings form that omits the field must not silently
+    /// disable the row it is editing.
+    #[serde(default = "yes")]
+    pub active: bool,
     /// Accepted and ignored — see the module note.
     #[serde(default)]
     pub ts: Option<u64>,
+}
+
+/// The default for [`PartyInput::active`]. A bare bool default is `false`, which would retire every
+/// party any caller edited without naming the field.
+fn yes() -> bool {
+    true
 }
 
 impl From<PartyInput> for Party {
@@ -67,6 +78,7 @@ impl From<PartyInput> for Party {
             sites: input.sites,
             trades: input.trades,
             default_ask_window_h: input.default_ask_window_h,
+            active: input.active,
         }
     }
 }

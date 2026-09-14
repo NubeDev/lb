@@ -63,6 +63,20 @@ pub fn caps() -> Vec<&'static str> {
     vec![RAISE, GET, LIST, RESOLVE, SUB_CREATE, CHAN_PUB, INBOX_LIST]
 }
 
+/// The vocabulary door's two caps — one per verb, as `policy.sla.*` is. ADMIN, and deliberately
+/// NOT in [`caps`]: the whole point of `caveat_vocab_door.rs`'s first test is that the queue caps
+/// buy neither half.
+pub const VOCAB_LIST: &str = "mcp:insight.vocab.list:call";
+pub const VOCAB_SET: &str = "mcp:insight.vocab.set:call";
+
+/// The caps an admin authoring the vocabulary holds: the queue's, plus both halves of the door.
+pub fn admin_caps() -> Vec<&'static str> {
+    let mut c = caps();
+    c.push(VOCAB_LIST);
+    c.push(VOCAB_SET);
+    c
+}
+
 pub async fn call(
     node: &Arc<Node>,
     p: &Principal,

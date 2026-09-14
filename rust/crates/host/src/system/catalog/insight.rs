@@ -98,4 +98,14 @@ pub(super) const INSIGHT: &[HostTool] = &[
         group: "insight",
         description: "write the workspace notify policy (admin-only; ring-cap bounded)",
     },
+    HostTool {
+        tool: "insight.vocab.list",
+        group: "insight",
+        description: "the workspace's declared tag vocabularies (category, scope), admin",
+    },
+    HostTool {
+        tool: "insight.vocab.set",
+        group: "insight",
+        description: "declare a tag key's closed value set and which values gate others, admin",
+    },
 ];

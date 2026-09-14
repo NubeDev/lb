@@ -36,7 +36,10 @@ pub async fn match_policy(
     category: Option<&str>,
     severity: Option<&str>,
 ) -> Result<Option<ServicePolicy>, CasesError> {
-    let policies = policy_list(store, ws).await?;
+    // `false` — a RETIRED policy governs no new case. That is the whole meaning of the flag, and it
+    // has to be enforced here rather than only in the settings list: the ladder is what decides a
+    // deadline, so a disabled row that still matched would be disabled in name only.
+    let policies = policy_list(store, ws, false).await?;
     Ok(best_match(&policies, site, category, severity).cloned())
 }
 
@@ -113,6 +116,7 @@ mod tests {
                 category: category.map(str::to_string),
                 severity: severity.map(str::to_string),
             },
+            active: true,
             respond_h: 4,
             resolve_h: 24,
             calendar: Calendar::Always,

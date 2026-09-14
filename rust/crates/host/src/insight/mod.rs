@@ -53,6 +53,7 @@ mod sub_list;
 mod sub_mute;
 mod tool;
 mod triage_event;
+mod vocab;
 mod watch;
 
 pub use ack::insight_ack;
@@ -82,6 +83,7 @@ pub use sub_get::insight_sub_get;
 pub use sub_list::insight_sub_list;
 pub use sub_mute::insight_sub_mute;
 pub use tool::call_insight_tool;
+pub use vocab::{insight_vocab_list, insight_vocab_set};
 
 pub use reactor::{react_to_insight_digests, spawn_insight_digest_reactors};
 pub use watch::{subscribe_insight_events, InsightWatch};
