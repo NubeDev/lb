@@ -116,6 +116,10 @@ pub struct PageMeta {
     pub vars_display: Option<String>,
     pub kind: Option<String>,
     pub report_ids: Option<Vec<String>>,
+    /// The board's named queries (shared-queries scope). `None` preserves the stored block, `Some`
+    /// sets it, and an EMPTY map clears — the `reportIds` precedent: an author must be able to remove
+    /// the last one, and "omit means preserve" would make that impossible.
+    pub queries: Option<std::collections::BTreeMap<String, serde_json::Value>>,
     /// The board's saved export profiles. `None` preserves the stored list, `Some` sets it, and
     /// `Some(vec![])` CLEARS — the `reportIds` empty-array precedent, and the reason an admin can
     /// delete their last profile and get back to the shipped default.
@@ -308,6 +312,7 @@ pub async fn dashboard_save_meta(
         // must never silently turn a report back into a dashboard.
         kind: meta.kind.unwrap_or(prev.kind),
         report_ids: meta.report_ids.unwrap_or(prev.report_ids),
+        queries: meta.queries.unwrap_or(prev.queries),
         // Preserve-on-omit / empty-is-clear, the identical path `report_ids` rides: a layout save
         // carries `None` and keeps the author's profiles; an explicit `[]` is how the last one is
         // deleted.

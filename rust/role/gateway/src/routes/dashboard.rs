@@ -112,6 +112,12 @@ pub struct SaveDashboard {
     /// preserve-on-omit; an EMPTY array is an explicit clear (how the last profile is deleted).
     #[serde(default, rename = "exportProfiles")]
     pub export_profiles: Option<Vec<lb_host::ExportProfile>>,
+    /// The board's NAMED QUERIES (shared-queries scope) — `{ name: { tool, args } }`, shared by the
+    /// panels that bind to them. Additive & OPTIONAL, preserve-on-omit; an EMPTY object is an
+    /// explicit clear (how the last named query is removed). Carried as opaque JSON: the gateway
+    /// neither runs these nor inspects `tool` (rule 10).
+    #[serde(default)]
+    pub queries: Option<serde_json::Map<String, Value>>,
     #[serde(default)]
     pub cells: Vec<Cell>,
     /// Variable definitions (widget-config-vars Slice 2) — additive; a pre-variables client omits it.
@@ -197,6 +203,9 @@ pub async fn save_dashboard(
             "exportProfiles".into(),
             serde_json::to_value(v).unwrap_or(json!([])),
         );
+    }
+    if let Some(v) = &body.queries {
+        args.insert("queries".into(), Value::Object(v.clone()));
     }
     if let Some(v) = &body.toolbar {
         args.insert(

@@ -1181,6 +1181,8 @@ async fn the_demo_oracle_blank_node_one_apply_raises_a_real_insight() {
             filter: Default::default(),
             cursor: None,
             limit: 1000,
+            offset: 0,
+            counts: false,
         },
     )
     .await

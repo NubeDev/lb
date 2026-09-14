@@ -5,18 +5,19 @@
 //! page-cursor contract (`scope/datasources/page-cursor-scope.md`). Authorization is the host's
 //! job; the workspace wall is structural (the store scan is ws-scoped, README §7).
 //!
-//! **STUB**: the filter composition + keyset paging body is deferred — the signature, the filter
-//! shape, and the page-cursor contract are stable so the host + UI can wire against them. See the
-//! scaffold-session punch-list.
+//! Every path here costs exactly ONE database query. `limit == 0` asks the database to count and
+//! never reads a row; a page without counts pushes the whole filter into SQL; a page WITH counts
+//! reads the matching set once and tallies it in memory, because the rows and the tally answer the
+//! same question and asking twice is the N+1 in disguise.
 
 use lb_store::Store;
 use std::collections::{BTreeMap, HashSet};
 
+use crate::count::StatusCounts;
 use crate::error::InsightsError;
-use crate::insight::{Insight, OCC_TABLE};
+use crate::insight::Insight;
 use crate::severity::Severity;
 use crate::status::Status;
-use crate::table_scan::scan_all;
 
 /// The AND filter. Every provided field must match; all absent = "all insights in this ws".
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -35,6 +36,16 @@ pub struct ListFilter {
     /// `[from, to]` logical-ts window (inclusive on both ends).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<(u64, u64)>,
+    /// Free-text over the insight's NAME (`title`) — the roster's search box, resolved by the
+    /// `insight_name` BM25 index rather than by filtering rows in the browser.
+    ///
+    /// NAME ONLY, by decision. The box used to match the tag-derived columns (site, asset, data
+    /// type) as well, but it did so over the rows the browser happened to hold, so it searched a
+    /// window and reported its size as a total. Searching the name server-side searches every row;
+    /// widening it to the tag columns would mean indexing several more fields for a box people type
+    /// a fault name into.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search: Option<String>,
     /// Filter by OWNER — the triage roster's primary axis (insight-triage-scope.md). The raw wire
     /// value, one of:
     ///   - a subject (`user:priya` / `team:mechanical`) — only that subject's insights;
@@ -97,8 +108,36 @@ pub struct ListQuery {
     pub filter: ListFilter,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<PageCursor>,
+    /// Rows to SKIP before the page — random access, for a pager offering "page N of M", first and
+    /// last. The keyset [`cursor`](Self::cursor) cannot serve those: it only walks forward one page
+    /// at a time, so it has no notion of page 7 or of the last page.
+    ///
+    /// Normally offset is the worse tool, because skipping N rows costs more the deeper it goes. Not
+    /// on this engine: `ORDER BY` sorts the matched set on every request regardless, so offset
+    /// merely discards from an already-sorted set. Measured at 20,000 rows — page 1 at 97.71 ms and
+    /// the LAST page at 101.76 ms, flat — while the cursor swings from 1.77 ms to 166.85 ms
+    /// depending on how many rows sit below it.
+    ///
+    /// Setting both this and `cursor` is contradictory; the cursor wins, because it is the precise
+    /// one (an offset can skip or repeat rows when the set changes between pages).
+    #[serde(default)]
+    pub offset: usize,
     #[serde(default = "default_limit")]
     pub limit: usize,
+    /// Rows per page, capped at 500. **`0` means "no rows"** — pair it with `counts` for a counter
+    /// tile, and the read skips the row scan entirely rather than fetching records to discard.
+    ///
+    /// Also return the per-status tally for this filter (`counts` on the reply).
+    ///
+    /// Off by default, because most reads do not need it: paging to the second page of a roster
+    /// re-counts nothing that changed. A UI showing a roster BESIDE its stat tiles sets it once and
+    /// gets both from one call instead of two — which is the shape that motivated the flag.
+    ///
+    /// The tally ignores `filter.status`: it IS the per-status breakdown, so a status-filtered page
+    /// still reports all four numbers. That asymmetry is deliberate and shared with
+    /// [`crate::count`], which computes it.
+    #[serde(default)]
+    pub counts: bool,
 }
 
 fn default_limit() -> usize {
@@ -113,6 +152,10 @@ pub struct ListPage {
     pub items: Vec<Insight>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next: Option<PageCursor>,
+    /// Present iff the query asked for it ([`ListQuery::counts`]). Absent — not zero — when it did
+    /// not, so a reader can tell "not requested" from "genuinely none".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<StatusCounts>,
 }
 
 /// List insights in workspace `ws` matching `query`, newest-first, keyset-paged.
@@ -135,33 +178,119 @@ pub async fn list(
     tag_allow: Option<&HashSet<String>>,
     assignee: Option<&AssigneeFilter>,
 ) -> Result<ListPage, InsightsError> {
-    let f = &query.filter;
-    let rows = scan_all(store, ws, OCC_TABLE).await?;
-    let mut items: Vec<Insight> = rows
+    // A search term needs the BM25 index to EXIST — `@@` errors without one. Raise defines it, but a
+    // workspace can be searched before anything was ever raised there, so ensure it here too. The
+    // statement is `IF NOT EXISTS`, so this costs nothing once it is in place.
+    if query.filter.search.is_some() {
+        crate::schema::ensure_insight_schema(store, ws).await?;
+    }
+
+    let f = &query.filter.clone();
+
+    // `limit: 0` means "no rows, just the tally" — the counter-panel case. Skipping the scan is the
+    // whole point: a tile showing one integer has no business transferring 200 records to compute
+    // it, and the aggregate is answered by the engine either way. Anything else pages as before.
+    if query.limit == 0 {
+        let counts = if query.counts {
+            Some(crate::count::count(store, ws, f, tag_allow, assignee).await?)
+        } else {
+            None
+        };
+        return Ok(ListPage {
+            items: Vec::new(),
+            next: None,
+            counts,
+        });
+    }
+
+    // NO TALLY ⇒ let the engine do the work. The filters, the (last_ts, id) order, the keyset and
+    // the limit all push down, so a 50-row page reads 50 rows instead of the whole table. The scan
+    // path below stays for the tally case, where the counts cover the WHOLE matching set and every
+    // matching row must therefore be seen.
+    if !query.counts {
+        let limit = query.limit.min(500);
+        let page = crate::list_page::read(
+            store,
+            ws,
+            f,
+            tag_allow,
+            assignee,
+            query.cursor.as_ref(),
+            limit,
+            query.offset,
+        )
+        .await?;
+        let mut items = page.items;
+        let next = if page.has_more {
+            items.last().map(|i| PageCursor {
+                ts: i.last_ts,
+                id: i.id.clone(),
+            })
+        } else {
+            None
+        };
+        // Same boundary as the scan path: `evidence`/`analysis` are `get`-only.
+        for i in &mut items {
+            i.evidence = None;
+            i.analysis = None;
+        }
+        return Ok(ListPage {
+            items,
+            next,
+            counts: None,
+        });
+    }
+
+    // ONE query. Every axis EXCEPT status — the tally is the per-status breakdown, so narrowing by
+    // status first would zero three of its four numbers. It comes back already ordered, so the page
+    // below is a slice rather than a second sort.
+    let matched: Vec<Insight> = crate::list_page::read_all_matching(
+        store,
+        ws,
+        f,
+        tag_allow,
+        assignee,
+        crate::table_scan::MAX_ROWS,
+    )
+    .await?
+    .into_iter()
+    .filter(|i| f.severity.map(|s| i.severity.at_least(s)).unwrap_or(true))
+    .filter(|i| {
+        f.origin_ref
+            .as_ref()
+            .map(|r| &i.origin.reference == r)
+            .unwrap_or(true)
+    })
+    .filter(|i| {
+        f.range
+            .map(|(from, to)| i.last_ts >= from && i.last_ts <= to)
+            .unwrap_or(true)
+    })
+    .filter(|i| tag_allow.map(|set| set.contains(&i.id)).unwrap_or(true))
+    // The owner axis composes with every other filter by plain AND, and with keyset paging
+    // below — it is applied BEFORE the sort/cursor/truncate, so a filtered roster pages
+    // correctly instead of returning short pages of a pre-filtered window.
+    .filter(|i| {
+        assignee
+            .map(|a| a.matches(i.assigned_to.as_ref()))
+            .unwrap_or(true)
+    })
+    .collect();
+
+    // The tally, when asked for — counted from the rows ALREADY IN HAND. `list` has just scanned and
+    // filtered the table, so this is one more pass over memory; asking the database to re-derive it
+    // would be a second scan for an answer we are holding. (`limit: 0` never reaches here — that
+    // path skips the scan entirely and uses the SQL aggregate, which is the right tool when there
+    // are no rows to count.)
+    let counts = if query.counts {
+        Some(crate::count::tally(&matched))
+    } else {
+        None
+    };
+
+    let mut items: Vec<Insight> = matched
         .into_iter()
-        .filter_map(|v| serde_json::from_value::<Insight>(v).ok())
         .filter(|i| f.status.map(|s| i.status == s).unwrap_or(true))
-        .filter(|i| f.severity.map(|s| i.severity.at_least(s)).unwrap_or(true))
-        .filter(|i| {
-            f.origin_ref
-                .as_ref()
-                .map(|r| &i.origin.reference == r)
-                .unwrap_or(true)
-        })
-        .filter(|i| {
-            f.range
-                .map(|(from, to)| i.last_ts >= from && i.last_ts <= to)
-                .unwrap_or(true)
-        })
-        .filter(|i| tag_allow.map(|set| set.contains(&i.id)).unwrap_or(true))
-        // The owner axis composes with every other filter by plain AND, and with keyset paging
-        // below — it is applied BEFORE the sort/cursor/truncate, so a filtered roster pages
-        // correctly instead of returning short pages of a pre-filtered window.
-        .filter(|i| {
-            assignee
-                .map(|a| a.matches(i.assigned_to.as_ref()))
-                .unwrap_or(true)
-        })
         .collect();
 
     // Newest-first by (last_ts, id) — id is the ULID tiebreaker for same-ts rows.
@@ -172,7 +301,20 @@ pub async fn list(
         items.retain(|i| (i.last_ts, i.id.as_str()) < (cur.ts, cur.id.as_str()));
     }
 
-    let limit = query.limit.clamp(1, 500);
+    // The offset half of the pager. The pushdown path above expresses this as `START n`; here the
+    // matching set is already sorted in memory, so it is a skip. Same precedence as there: a cursor
+    // and an offset together are contradictory, so the cursor wins and the offset is ignored rather
+    // than compounded.
+    //
+    // This is NOT optional just because a tally was asked for. Without it, a caller asking for
+    // `counts` and page 5 was handed page 1 and no error — the wrong page, silently, which is worse
+    // than a refusal because nothing in the reply says so.
+    if query.cursor.is_none() && query.offset > 0 {
+        let skip = query.offset.min(items.len());
+        items.drain(..skip);
+    }
+
+    let limit = query.limit.min(500);
     let has_more = items.len() > limit;
     items.truncate(limit);
     let next = if has_more {
@@ -207,5 +349,9 @@ pub async fn list(
         i.analysis = None;
     }
 
-    Ok(ListPage { items, next })
+    Ok(ListPage {
+        items,
+        next,
+        counts,
+    })
 }

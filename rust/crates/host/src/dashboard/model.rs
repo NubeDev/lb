@@ -345,6 +345,23 @@ pub struct Dashboard {
     /// simply does not appear in a roster the viewer can see.
     #[serde(default, deserialize_with = "null_default", rename = "reportIds")]
     pub report_ids: Vec<String>,
+    /// The board's NAMED QUERIES — the data its panels share (shared-queries scope).
+    ///
+    /// A board names a query once; a panel says which one it reads (`from`) and which part it draws
+    /// (`pick`). Six panels over one query is then ONE call, however differently they slice it —
+    /// where per-panel queries made the shipped Insights board fetch the same rows five times
+    /// (measured: 1,026,953 bytes to draw four integers and a list).
+    ///
+    /// **Opaque to the host beyond serde.** It neither runs these nor validates the tool: the client
+    /// calls them as the viewer, through the same gate a panel's own call passes. Naming a query on a
+    /// board grants nothing (rule 10 — the host never inspects `tool`).
+    ///
+    /// Typed for the same reason `kind`/`reportIds` are, and it is the whole argument: this struct
+    /// DROPS unknown top-level keys, so an untyped `queries` block would survive in memory, render
+    /// correctly, and VANISH on the first save — the author configures a board, watches it work, and
+    /// loses it on reload with no error anywhere.
+    #[serde(default, deserialize_with = "null_default")]
+    pub queries: std::collections::BTreeMap<String, Value>,
     /// The board's saved **export profiles** — named [`ExportOptions`] sets the export dialog offers
     /// (report-pagination-and-export-options scope; see [`ExportProfile`] for why the scope's
     /// "no stored profiles" non-goal was reversed).

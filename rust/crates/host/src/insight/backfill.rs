@@ -52,6 +52,11 @@ pub async fn backfill_insight_facets(store: &Store, ws: &str) -> Result<usize, I
                 filter: Default::default(),
                 cursor: cursor.clone(),
                 limit: PAGE,
+                // A backfill walks the whole table by CURSOR, so it never skips and never needs a
+                // tally: an offset here would fight the cursor, and counts would scan the set again
+                // on every page to answer a question nobody asked.
+                offset: 0,
+                counts: false,
             },
             None,
             None,
