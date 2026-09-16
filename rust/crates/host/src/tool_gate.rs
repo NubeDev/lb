@@ -87,6 +87,17 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // (see the `outbox.enqueue_held` and `media.upload_*` notes below). The host fn re-checks the
         // `store:rule:write` surface inside.
         "rules.save"
+    } else if qualified_tool == "case.assignees" {
+        // case-plane scope §4a: the assign picker's roster. It answers "who do I share a team with",
+        // which is the SAME disclosure this cap already carries — `case.list?lane=mine` resolves the
+        // caller's teams through `me_subjects` under exactly this gate, and the teammates half is
+        // separately viewer-grade via `mcp:members.list:call` (in `VIEWER_CAPS`). It is also the
+        // same PAGE: the queue is gated on `case.list`, so a picker needing a second grant would be
+        // opaquely denied on a surface the operator can otherwise use. No `mcp:case.assignees:call`
+        // exists in any role bundle, so without this arm the picker is `Denied` for every caller
+        // including admins. Gating it on `case.workflow` would be wrong in the other direction — the
+        // roster is a READ, and a viewer who may see the queue may see who could own it.
+        "case.list"
     } else if qualified_tool == "case.members" || qualified_tool == "case.events" {
         // case-plane scope: a case's members and its history ARE the case's detail — a reader who
         // may `case.get` may see which detections it covers and what happened to it. No
@@ -361,6 +372,21 @@ mod ext_boards_gate_tests {
     #[test]
     fn the_read_is_member_level_not_admin() {
         assert_ne!(gate_tool_for("nav.ext_boards.get"), "nav.save");
+    }
+}
+
+#[cfg(test)]
+mod case_gate_tests {
+    use super::gate_tool_for;
+
+    /// The picker's roster rides the cap of the page it serves. A fast tripwire only — it does not
+    /// replace the POSITIVE integration test in `plane_walls.rs`, which is what proves the whole
+    /// path (gate + dispatch + verb) actually resolves for a caller holding only `case.list`.
+    #[test]
+    fn the_assign_picker_rides_the_queue_read_cap() {
+        assert_eq!(gate_tool_for("case.assignees"), "case.list");
+        // And it is NOT the write cap: a viewer who may see the queue may see who could own it.
+        assert_ne!(gate_tool_for("case.assignees"), "case.workflow");
     }
 }
 

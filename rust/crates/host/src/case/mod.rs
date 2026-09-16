@@ -4,7 +4,7 @@
 //! clock, and owns the two reactors the crate is deliberately agnostic of.
 //!
 //! Authorization is the MCP gate through `authorize_tool` (workspace-first §7, then capability
-//! §3.5). Four of the eleven verbs gate on a capability that is **not their own name** — see the
+//! §3.5). Five of the twelve verbs gate on a capability that is **not their own name** — see the
 //! table below — and every one of those needs an arm in `tool_gate.rs`, because the outer gate
 //! consults that table and a missing arm demands a cap no role bundle carries: `Denied` for every
 //! caller, admins included, and only a POSITIVE test catches it.
@@ -12,7 +12,7 @@
 //! | verb | capability |
 //! |---|---|
 //! | `case.get`, `case.members`, `case.events` | `case.get` (viewer) |
-//! | `case.list` | `case.list` (viewer) |
+//! | `case.list`, `case.assignees` | `case.list` (viewer) |
 //! | `case.open`, `case.merge`, `case.split` | `case.open` (member) |
 //! | `case.workflow`, `case.assign`, `case.snooze`, `case.comment` | `case.workflow` (member) |
 //! | `policy.sla.set` | `policy.sla.set` (**admin**) |
@@ -40,6 +40,7 @@
 //! [`spawn_case_reactors`] is its loop driver.
 
 mod assign;
+mod assignees;
 mod breach;
 mod breach_notify;
 mod breach_reminder;
@@ -90,6 +91,7 @@ mod verdict;
 mod workflow;
 
 pub use assign::case_assign;
+pub use assignees::{case_assignees, AssigneeTeam, Assignees};
 // The owner echo: the case is the authority for who owns the work, and every insight it cites
 // carries a copy so the roster's owner column stays a one-read render. `insight.assign` delegates
 // here (case-plane scope, resolved decision 5).

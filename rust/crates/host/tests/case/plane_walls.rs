@@ -24,6 +24,7 @@ async fn every_case_verb_denies_a_principal_without_its_cap() {
     for (tool, input) in [
         ("case.get", json!({ "id": case_id })),
         ("case.list", json!({ "lane": "mine" })),
+        ("case.assignees", json!({})),
         ("case.members", json!({ "case_id": case_id })),
         ("case.events", json!({ "case_id": case_id })),
         (
@@ -97,6 +98,19 @@ async fn each_aliased_case_verb_resolves_to_a_cap_a_role_actually_holds() {
     )
     .await
     .expect("case.events must resolve through the `case.get` alias");
+
+    // The picker's roster rides the LIST cap. Asserted on a FIELD of the payload, not `is_ok`: a
+    // verb that resolved the gate but answered nothing would pass an `is_ok` check and still leave
+    // the popover empty.
+    let lister = principal("user:test", "nube", &[LIST]);
+    let roster = call(&node, &lister, "nube", "case.assignees", json!({}))
+        .await
+        .expect("case.assignees must resolve through the `case.list` alias");
+    assert_eq!(
+        roster.get("me").and_then(|v| v.as_str()),
+        Some("user:test"),
+        "case.assignees must name the caller: {roster}"
+    );
 
     // A token holding ONLY the triage cap reaches all three triage writes.
     let triager = principal("user:test", "nube", &[WORKFLOW]);
