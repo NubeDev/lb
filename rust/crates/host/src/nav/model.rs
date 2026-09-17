@@ -66,6 +66,9 @@ pub const MAX_ICON_COLOR_LEN: usize = 32;
 /// through). Rejected `BadInput` at save like [`MAX_ICON_LEN`].
 pub use lb_ext_loader::NAV_MAX_TITLE_TEMPLATE as MAX_TITLE_TEMPLATE;
 
+/// Cap on a row's [`NavItem::id`] (nav-row-pins scope). Rejected `BadInput` at save.
+pub const MAX_ROW_ID_LEN: usize = 64;
+
 /// The largest hidden-set `nav.hidden.set` accepts (hide-and-pins scope, "Bounds"). Rejected over-cap
 /// (`BadInput`), never silently truncated.
 pub const MAX_HIDDEN: usize = 200;
@@ -116,6 +119,13 @@ pub struct NavFacet {
 /// [`MAX_GROUP_DEPTH`] deep (top-level list = depth 1). Leaf kinds may appear at any depth.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct NavItem {
+    /// The row's **stable id** (nav-row-pins scope) — opaque, `[A-Za-z0-9_-]`, at most
+    /// [`MAX_ROW_ID_LEN`]. What a `nav:<navid>/<rowid>` pin addresses, so a pinned row survives the
+    /// author reordering or re-nesting the menu (a positional path would not). `nav.save` keeps a valid
+    /// id, mints one for a row without, and re-mints a duplicate. Additive: every record written before
+    /// this field reads as empty, and its rows gain ids on their next save.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
     /// `"surface"` | `"dashboard"` | `"ext"` | `"tag-group"` | `"template-group"` | `"group"`.
     pub kind: String,
     /// The display label. Optional for `surface`/`dashboard`/`ext` (the UI derives one from the
@@ -272,8 +282,8 @@ pub struct NavPref {
     #[serde(default)]
     pub active: String,
     /// The member's **pinned favorites** (hide-and-pins scope) — an ORDERED list of item refs in the
-    /// shared ref grammar: a bare surface key (`"rules"`), `ext:<id>` (opaque, rule 10), or
-    /// `dashboard:<id>`. Resolved server-side into `ResolvedNav::pinned` (cap- and hidden-stripped);
+    /// shared ref grammar: a bare surface key (`"rules"`), `ext:<id>` (opaque, rule 10),
+    /// `dashboard:<id>`, or a curated menu row `nav:<navid>/<rowid>` (nav-row-pins scope). Resolved server-side into `ResolvedNav::pinned` (cap- and hidden-stripped);
     /// a stale ref strips silently at resolve WITHOUT mutating this record, so restores are free.
     /// Additive field — a pre-pins record deserializes with no pins.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
