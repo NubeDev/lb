@@ -149,7 +149,7 @@ fn group_or_item_ref(item: &ResolvedItem) -> String {
 /// nothing — the same invariant `resolve_group` enforces for cap-strip). A group with ≥1 surviving
 /// descendant stays. The ref grammar mirrors [`item_ref`]: bare surface key, `ext:<id>`,
 /// `dashboard:<id>` — all matched as opaque strings (rule 10).
-fn strip_hidden(item: ResolvedItem, hidden: &BTreeSet<String>) -> Option<ResolvedItem> {
+pub(super) fn strip_hidden(item: ResolvedItem, hidden: &BTreeSet<String>) -> Option<ResolvedItem> {
     if hidden.is_empty() {
         return Some(item);
     }

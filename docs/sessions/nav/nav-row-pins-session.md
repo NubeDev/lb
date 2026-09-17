@@ -22,20 +22,22 @@ Pinning `dashboard:energy` would have opened the shared board with no site.
   tag-/template-group's generated children carry none). `item_ref` / `readable_nav` widened to
   `pub(super)` for the new resolver; the 8 explicit `ResolvedItem` literals gained the three fields.
 - `resolve_row_pin.rs` (new) — the fifth pin grammar: read the nav through the pick tiers' readability
-  gate, find the row by id (collecting folder labels), resolve it through `resolve_item`, pin a folder
-  as its board (strip one with none), hide beats pin on the row's target ref. Every miss is `Ok(None)`.
+  gate, find the row by id (collecting folder labels), resolve it through `resolve_item` (a folder keeps
+  its whole subtree), then the menu's `strip_hidden` (made `pub(super)`). Every miss is `Ok(None)`.
+  First cut flattened a pinned folder to its board; changed the same day so the folder keeps its pages.
 - `resolve_pins.rs` — routes a `nav:` pin to `resolve_row_pin` first (its own prefix, no overlap).
 
 No new caps, verbs or gateway routes; no migration (an old nav's rows gain ids on their next save).
 
 ## Tests (real `Node::boot()` / `Store::memory()`, no mocks)
 
-`crates/host/tests/nav_row_pins_test.rs` (new, 4):
+`crates/host/tests/nav_row_pins_test.rs` (new, 5):
 - `save_keeps_mints_and_reminted_duplicate_row_ids` — kept / minted / duplicate re-minted, re-save is
   stable, malformed id is `BadInput`.
 - `resolve_echoes_row_ids_at_every_depth`.
 - `row_pin_resolves_as_the_row_binding_label_and_trail` — bound board keeps vars/label/trail/nav_id; a
-  folder pins flat as its board; a board-less folder strips.
+  pinned folder is a `group` with its board and its pages (ids echoed); a board-less folder pins too.
+- `pinned_folder_loses_hidden_pages_and_strips_when_empty`.
 - `row_pin_strips_silently_and_restores_free` — unreadable nav strips; readable nav + private board
   strips; shared board renders; hide strips, un-hide restores; deleted row + malformed refs strip; the
   stored pins are never mutated.
@@ -44,7 +46,7 @@ No new caps, verbs or gateway routes; no migration (an old nav's rows gain ids o
 the minted ids first (`clear_row_ids`) — the save legitimately adds them.
 
 ```
-nav_row_pins_test           4 passed
+nav_row_pins_test           5 passed
 nav_test                   50 passed
 reusable_pages_test         8 passed
 nav_home_test               8 passed
@@ -61,6 +63,9 @@ lb-role-gateway nav_default_route_test 3 passed, nav_reach_test 2 passed
 - In the browser, pinning the vars-bound `Energy` row and the `Chullora` folder heading put
   **Chullora › Energy** and **Chullora** in Pinned; both survived reload and opened
   `dashboards/energy?var-site=chullora` / `dashboards/overview?var-site=chullora`.
+- After the folder change: the pinned **Chullora** shows **Energy** nested under it (open by default);
+  folding the pinned copy leaves the menu's own folder as it was; Energy inside it opens
+  `dashboards/energy?var-site=chullora`.
 - Saving the menu from the rubix-ai builder (title edit) kept every row id; both pins still resolved.
 
 ## Follow-ups

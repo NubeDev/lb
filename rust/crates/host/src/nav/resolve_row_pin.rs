@@ -8,8 +8,11 @@
 //!   1. read the nav through the SAME readability gate the pick tiers use — a nav the caller cannot
 //!      read (unshared, private to someone else, deleted) strips the pin;
 //!   2. find the row by id at any depth, collecting the folder labels above it;
-//!   3. run it through the ordinary `resolve_item` pipeline — a board the caller cannot read strips;
-//!   4. hide still beats pin — the row's underlying target ref in the hidden-set strips it.
+//!   3. run it through the ordinary `resolve_item` pipeline — a board the caller cannot read strips,
+//!      and a FOLDER resolves exactly as it does in the menu: its whole subtree, cap-stripped, empty
+//!      subfolders pruned, its own board beside it when it has a readable one;
+//!   4. hide still beats pin — through the menu's own `strip_hidden`, so a hidden leaf strips and a
+//!      folder loses its hidden descendants (and strips if nothing is left).
 //!
 //! Every miss is `Ok(None)` and the stored `nav_pref` is never touched, so a later re-share, re-grant
 //! or un-hide restores the pin for free (the `resolve_pins` invariant).
@@ -21,7 +24,7 @@ use lb_auth::Principal;
 
 use super::error::NavError;
 use super::model::NavItem;
-use super::resolve::{item_ref, label_or, readable_nav, resolve_item};
+use super::resolve::{label_or, readable_nav, resolve_item, strip_hidden};
 use super::resolved::ResolvedItem;
 use super::row_ids::check_row_id;
 use crate::boot::Node;
@@ -44,22 +47,13 @@ pub(super) async fn resolve_row_pin(
     let Some(row) = find_row(&nav.items, row_id, &mut trail) else {
         return Ok(None); // the author deleted the row
     };
-    let Some(mut resolved) = resolve_item(node, principal, ws, row).await? else {
+    let Some(resolved) = resolve_item(node, principal, ws, row).await? else {
         return Ok(None);
     };
-
-    // The Pinned list is flat. A folder pins AS ITS BOARD; a folder with no readable board — and a
-    // tag-/template-group, which resolves to a board-less group — has nowhere to go.
-    if resolved.kind == "group" {
-        if resolved.dashboard.is_empty() {
-            return Ok(None);
-        }
-        resolved.kind = "dashboard".into();
-        resolved.items.clear();
-    }
-    if hidden.contains(&item_ref(&resolved)) {
+    // A pinned FOLDER keeps everything inside it — the member pinned the folder, not its overview.
+    let Some(mut resolved) = strip_hidden(resolved, hidden) else {
         return Ok(None);
-    }
+    };
 
     resolved.nav_id = nav.id.clone();
     resolved.trail = trail;

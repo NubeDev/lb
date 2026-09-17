@@ -33,16 +33,19 @@ anywhere. This scope makes a curated row pinnable **as the row**.
 - **The pinned row keeps the row's identity.** It carries the row's own label, icon, colour and
   `vars`, plus `nav_id` (so the client reconstructs the ref and lights the right row) and `trail`
   (the ancestor folder labels, so two sites' "Energy" pins read apart).
-- **A folder pins as its board.** A pinned `group` resolves to a `dashboard`-kind item carrying the
-  folder's board + vars (the Pinned list is flat). A folder with no readable board has nowhere to go
-  and strips.
-- **Hide still beats pin.** A pinned row whose underlying target ref is in the hidden-set strips, the
-  same rule every other pin shape follows.
+- **A pinned folder is the folder.** It resolves exactly as it does in the menu — a `group` carrying
+  everything inside it (cap-stripped, empty subfolders pruned, row ids echoed) plus its own board when
+  it has a readable one. A member who pins a site wants the site, not just its overview; and a folder
+  with no board of its own is pinnable too. (Decided 2026-09-17 after first flattening a folder to its
+  board — the pages under it silently went missing from Pinned.)
+- **Hide still beats pin.** Through the menu's own `strip_hidden`: a hidden page strips, a pinned
+  folder loses its hidden descendants, and a folder left empty strips.
 
 ## Non-goals
 
 - **No pinning of generated rows.** A tag-group / template-group expands at resolve time; its children
-  have no stored row and so no id. The group row itself has no destination. Neither is pinnable.
+  have no stored row and so no id, so they cannot be pinned on their own. The group row itself IS a
+  stored row and pins like any folder — with its expansion, re-resolved on every load.
 - **No migration.** A nav saved before this field has no ids; its rows gain them the next time the nav
   is saved. Until then the client draws no pin on an id-less row — exactly today's behaviour.
 - **No new caps or verbs; no change to hide/order grammar.** Pins still ride `nav.pref.set`.

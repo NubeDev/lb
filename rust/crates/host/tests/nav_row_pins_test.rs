@@ -1,7 +1,7 @@
 //! Pinning a curated menu ROW, `nav:<navid>/<rowid>` (nav-row-pins scope), against a real node:
 //! `nav.save` gives every row a stable id (kept / minted / duplicate re-minted / malformed refused),
 //! `nav.resolve` echoes it, and a row pin resolves to the row itself — its bound variables, label and
-//! folder trail — while stripping silently (never touching `nav_pref`) when the row, the nav's
+//! folder trail, and for a folder everything inside it — while stripping silently (never touching `nav_pref`) when the row, the nav's
 //! readability, the board's readability, or the hidden-set says it cannot render.
 
 use std::collections::{BTreeMap, HashSet};
@@ -221,11 +221,7 @@ async fn row_pin_resolves_as_the_row_binding_label_and_trail() {
     pin(&node, &owner, ws, &refs).await;
 
     let p = pinned(&node, &owner, ws).await;
-    assert_eq!(
-        p.len(),
-        2,
-        "the board-less folder has nowhere to go and strips: {p:?}"
-    );
+    assert_eq!(p.len(), 3, "{p:?}");
 
     // A bound board keeps its binding, its own label, and the folder it sits in.
     assert_eq!(p[0].kind, "dashboard");
@@ -238,12 +234,44 @@ async fn row_pin_resolves_as_the_row_binding_label_and_trail() {
     );
     assert_eq!(p[0].trail, vec!["Chullora".to_string()]);
 
-    // A folder pins AS its board, flat.
-    assert_eq!(p[1].kind, "dashboard");
-    assert_eq!(p[1].dashboard, "dashboard:overview");
+    // A pinned folder is the FOLDER: its own board beside it, and everything inside it — with row ids,
+    // so the client can pin (and light) the pages inside the pinned copy too.
+    assert_eq!(p[1].kind, "group");
     assert_eq!(p[1].label, "Chullora");
+    assert_eq!(p[1].dashboard, "dashboard:overview");
     assert_eq!(p[1].vars, vars("chullora"));
-    assert!(p[1].items.is_empty() && p[1].trail.is_empty());
+    assert!(p[1].trail.is_empty());
+    let inside: Vec<_> = p[1]
+        .items
+        .iter()
+        .map(|c| (c.label.as_str(), c.id.as_str()))
+        .collect();
+    assert_eq!(inside, vec![("Energy", energy.as_str())]);
+
+    // A folder with no board of its own is pinnable too — it still has its pages.
+    assert_eq!(p[2].kind, "group");
+    assert_eq!(p[2].label, "Plain");
+    assert!(p[2].dashboard.is_empty());
+    assert_eq!(p[2].items.len(), 1);
+    assert_eq!(p[2].items[0].label, "Water");
+    assert_eq!(p[2].nav_id, "sites");
+}
+
+/// Hide beats pin INSIDE a pinned folder: a hidden page drops out of the pinned copy, and a folder left
+/// with nothing strips entirely — the menu's own `strip_hidden` rule.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn pinned_folder_loses_hidden_pages_and_strips_when_empty() {
+    let ws = "ws-rowpin-folder-hide";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let owner = principal("user:owner", ws, AUTHOR);
+    let (_, _, plain) = seed_sites(&node, &owner, ws).await;
+    pin(&node, &owner, ws, &[format!("nav:sites/{plain}")]).await;
+    assert_eq!(pinned(&node, &owner, ws).await[0].items.len(), 1);
+
+    nav_hidden_set(&node.store, &owner, ws, vec!["dashboard:water".into()], 6)
+        .await
+        .unwrap();
+    assert!(pinned(&node, &owner, ws).await.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
