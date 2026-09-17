@@ -71,6 +71,9 @@ pub async fn resolve_template_group(
         let mut vars = BTreeMap::new();
         vars.insert(item.var.clone(), value.clone());
         children.push(ResolvedItem {
+            id: String::new(),
+            nav_id: String::new(),
+            trail: Vec::new(),
             kind: "dashboard".into(),
             label: value,
             icon: String::new(),
@@ -95,6 +98,9 @@ pub async fn resolve_template_group(
     }
 
     Ok(Some(ResolvedItem {
+        id: String::new(),
+        nav_id: String::new(),
+        trail: Vec::new(),
         kind: "group".into(),
         label: label_or(&item.label, &template.title),
         icon: item.icon.clone(),

@@ -179,7 +179,7 @@ fn strip_hidden(item: ResolvedItem, hidden: &BTreeSet<String>) -> Option<Resolve
 /// its own row instead of every row of that extension. A destination carrying a `dashboard` keeps
 /// its ext identity here (it resolved as a `dashboard`-kind item so it OPENS the board, but it is
 /// still pinned/hidden as the ext destination it is) — so the round-trip is stable in both grammars.
-fn item_ref(item: &ResolvedItem) -> String {
+pub(super) fn item_ref(item: &ResolvedItem) -> String {
     if !item.ext.is_empty() && !item.nav.is_empty() {
         return format!("ext:{}/{}", item.ext, item.nav);
     }
@@ -253,7 +253,7 @@ async fn pick_nav(
 
 /// Read nav `id` and return it only if present, not tombstoned, AND readable by the caller (gate 3).
 /// Any miss returns `None` (the fall-through the pick tiers rely on) rather than erroring.
-async fn readable_nav(
+pub(super) async fn readable_nav(
     store: &Store,
     principal: &Principal,
     ws: &str,
@@ -278,7 +278,7 @@ pub(super) async fn resolve_item(
     ws: &str,
     item: &NavItem,
 ) -> Result<Option<ResolvedItem>, NavError> {
-    match item.kind.as_str() {
+    let resolved = match item.kind.as_str() {
         "surface" => Ok(resolve_surface(principal, ws, item)),
         "dashboard" => resolve_dashboard(node, principal, ws, item).await,
         "ext" => resolve_ext(node, principal, ws, item).await,
@@ -289,7 +289,14 @@ pub(super) async fn resolve_item(
         "group" => resolve_group(node, principal, ws, item).await,
         // Unknown kind — drop it (defensive; `nav.save` bounds already reject unknown kinds).
         _ => Ok(None),
-    }
+    }?;
+    // nav-row-pins scope: echo the stored row's id so the client can pin the row itself. Stamped HERE,
+    // once, rather than at every kind's construction site — and only from the stored item, so a
+    // tag-/template-group's generated children (built inside their own resolvers) carry none.
+    Ok(resolved.map(|mut r| {
+        r.id = item.id.clone();
+        r
+    }))
 }
 
 /// A `surface` item survives iff the caller holds its gate cap (the mirror of `allowedSurfaces`). The
@@ -301,6 +308,9 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         }
     }
     Some(ResolvedItem {
+        id: String::new(),
+        nav_id: String::new(),
+        trail: Vec::new(),
         kind: "surface".into(),
         label: label_or(&item.label, &item.surface),
         icon: item.icon.clone(),
@@ -334,6 +344,9 @@ async fn resolve_dashboard(
     }
     match dashboard_get(&node.store, principal, ws, id).await {
         Ok(d) => Ok(Some(ResolvedItem {
+            id: String::new(),
+            nav_id: String::new(),
+            trail: Vec::new(),
             kind: "dashboard".into(),
             label: label_or(&item.label, &d.title),
             icon: item.icon.clone(),
@@ -381,6 +394,9 @@ async fn resolve_ext(
     let found = installed.iter().find(|row| row.ext == item.ext);
     match found {
         Some(row) => Ok(Some(ResolvedItem {
+            id: String::new(),
+            nav_id: String::new(),
+            trail: Vec::new(),
             kind: "ext".into(),
             icon: item.icon.clone(),
             icon_color: item.icon_color.clone(),
@@ -438,6 +454,9 @@ async fn resolve_tag_group(
         // Reachability: only surface a dashboard the caller can actually read (the tag-group lens).
         if let Ok(d) = dashboard_get(&node.store, principal, ws, id).await {
             children.push(ResolvedItem {
+                id: String::new(),
+                nav_id: String::new(),
+                trail: Vec::new(),
                 kind: "dashboard".into(),
                 label: d.title.clone(),
                 icon: String::new(),
@@ -463,6 +482,9 @@ async fn resolve_tag_group(
     }
 
     Ok(Some(ResolvedItem {
+        id: String::new(),
+        nav_id: String::new(),
+        trail: Vec::new(),
         kind: "group".into(),
         label: label_or(&item.label, "Tagged"),
         icon: item.icon.clone(),
@@ -514,6 +536,9 @@ async fn resolve_group(
         None => (String::new(), BTreeMap::new()),
     };
     Ok(Some(ResolvedItem {
+        id: String::new(),
+        nav_id: String::new(),
+        trail: Vec::new(),
         kind: "group".into(),
         label: label_or(&item.label, "Group"),
         icon: item.icon.clone(),

@@ -1848,6 +1848,14 @@ fn nest_groups(depth: usize, leaf: NavItem) -> NavItem {
     item
 }
 
+/// Clear every row id `nav.save` minted, at every depth, so a round-trip compares authored content.
+fn clear_row_ids(items: &mut [NavItem]) {
+    for it in items {
+        it.id.clear();
+        clear_row_ids(&mut it.items);
+    }
+}
+
 /// Descend into the single nested `group` chain and return the deepest group's items.
 fn deepest_group_items(item: &lb_host::NavResolvedItem) -> &[lb_host::NavResolvedItem] {
     let mut cur = item;
@@ -1870,9 +1878,11 @@ async fn depth_at_cap_accepted_over_cap_rejected() {
     nav_save(&store, &test, ws, "deep", "Deep", vec![at_cap.clone()], 1)
         .await
         .expect("exactly at the depth cap is valid");
-    // Round-trips identically (order + nesting preserved).
-    let got = nav_get(&store, &test, ws, "deep").await.unwrap();
-    assert_eq!(got.items, vec![at_cap], "deep tree round-trips identically");
+    // Round-trips identically (order + nesting preserved) — apart from the row ids `nav.save` mints
+    // (nav-row-pins scope), which are cleared before comparing.
+    let mut got = nav_get(&store, &test, ws, "deep").await.unwrap().items;
+    clear_row_ids(&mut got);
+    assert_eq!(got, vec![at_cap], "deep tree round-trips identically");
 
     // One level deeper: a group at depth `NAV_MAX_GROUP_DEPTH + 1`. Rejected, nothing persists, the
     // error names the limit.
