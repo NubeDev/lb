@@ -7,9 +7,9 @@
 //! caller's clock — determinism §3) and fall back to the host wall clock through
 //! [`super::clock::normalize_ts`], which also rescues a door that stamped epoch SECONDS.
 //!
-//! **Four verbs here gate on a cap that is not their name** (`case.members`/`case.events` on
-//! `case.get`; `case.merge`/`case.split` on `case.open`; `case.assign`/`case.snooze`/`case.comment`
-//! on `case.workflow`). Each of those needs an arm in `tool_gate.rs` — the outer gate consults that
+//! **Five verbs here gate on a cap that is not their name** (`case.members`/`case.events` on
+//! `case.get`; `case.assignees` on `case.list`; `case.merge`/`case.split` on `case.open`;
+//! `case.assign`/`case.snooze`/`case.comment` on `case.workflow`). Each of those needs an arm in `tool_gate.rs` — the outer gate consults that
 //! table, and a missing arm demands a capability that exists in no role bundle, which is `Denied`
 //! for every caller including admins. Only a POSITIVE test catches it.
 
@@ -22,10 +22,10 @@ use serde_json::{json, Value};
 use super::breach::case_breach;
 use super::error::CaseSvcError;
 use super::{
-    case_assign, case_comment, case_events, case_get, case_list, case_members, case_merge,
-    case_open, case_request_list, case_request_nudge, case_request_reply, case_request_send,
-    case_request_view, case_request_withdraw, case_snooze, case_split, case_workflow,
-    rule_scorecard,
+    case_assign, case_assignees, case_comment, case_events, case_get, case_list, case_members,
+    case_merge, case_open, case_request_list, case_request_nudge, case_request_reply,
+    case_request_send, case_request_view, case_request_withdraw, case_snooze, case_split,
+    case_workflow, rule_scorecard,
 };
 use crate::boot::Node;
 
@@ -146,6 +146,13 @@ pub async fn call_case_tool(
                 .await
                 .map_err(svc_to_tool)?;
             Ok(serde_json::to_value(case).unwrap_or(Value::Null))
+        }
+        "case.assignees" => {
+            // No args beyond the workspace: the answer is a property of WHO is asking.
+            let out = case_assignees(store, principal, ws)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(serde_json::to_value(out).unwrap_or(Value::Null))
         }
         "case.list" => {
             let mut query: lb_cases::ListQuery = serde_json::from_value(input.clone())

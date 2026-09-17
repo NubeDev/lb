@@ -49,6 +49,12 @@ pub(super) const CASE: &[HostTool] = &[
         description: "transition to_action/actioned/waiting_on_po/resolved (resolved requires a resolution)",
     },
     HostTool {
+        tool: "case.assignees",
+        group: "case",
+        description: "the subjects this caller may assign work to: themself, their teams, and the \
+                      members of those teams (a suggestion list, not an allow-list)",
+    },
+    HostTool {
         tool: "case.assign",
         group: "case",
         description: "set, re-assign or clear a case's owner (a user: or team: subject)",

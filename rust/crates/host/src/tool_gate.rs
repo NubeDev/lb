@@ -87,6 +87,17 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // (see the `outbox.enqueue_held` and `media.upload_*` notes below). The host fn re-checks the
         // `store:rule:write` surface inside.
         "rules.save"
+    } else if qualified_tool == "case.assignees" {
+        // case-plane scope §4a: the assign picker's roster. It answers "who do I share a team with",
+        // which is the SAME disclosure this cap already carries — `case.list?lane=mine` resolves the
+        // caller's teams through `me_subjects` under exactly this gate, and the teammates half is
+        // separately viewer-grade via `mcp:members.list:call` (in `VIEWER_CAPS`). It is also the
+        // same PAGE: the queue is gated on `case.list`, so a picker needing a second grant would be
+        // opaquely denied on a surface the operator can otherwise use. No `mcp:case.assignees:call`
+        // exists in any role bundle, so without this arm the picker is `Denied` for every caller
+        // including admins. Gating it on `case.workflow` would be wrong in the other direction — the
+        // roster is a READ, and a viewer who may see the queue may see who could own it.
+        "case.list"
     } else if qualified_tool == "case.members" || qualified_tool == "case.events" {
         // case-plane scope: a case's members and its history ARE the case's detail — a reader who
         // may `case.get` may see which detections it covers and what happened to it. No
@@ -302,98 +313,5 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
 }
 
 #[cfg(test)]
-mod media_gate_tests {
-    use super::gate_tool_for;
-
-    /// **THE REGRESSION**: the outer gate asked for a cap that exists in no role bundle, so the
-    /// whole upload surface was unreachable for every caller while the read verbs worked. Each of
-    /// these three re-checks `media.upload` INSIDE itself (`begin.rs`, `chunk.rs`, `commit.rs`);
-    /// the outer gate must ask the same question or the two gates disagree and the strictest wins.
-    #[test]
-    fn the_upload_phases_ride_the_one_upload_cap() {
-        for verb in [
-            "media.upload_begin",
-            "media.chunk_write",
-            "media.upload_commit",
-        ] {
-            assert_eq!(
-                gate_tool_for(verb),
-                "media.upload",
-                "{verb} must gate on mcp:media.upload:call — no per-phase cap is minted"
-            );
-        }
-    }
-
-    /// `media_list` checks `media.get` inside (`get.rs`), so the outer gate must too — otherwise a
-    /// caller holding only `mcp:media.get:call` passes the outer gate and is denied within.
-    #[test]
-    fn list_gates_on_the_same_cap_its_body_checks() {
-        assert_eq!(gate_tool_for("media.list"), "media.get");
-    }
-
-    /// The verbs whose literal name IS their cap must stay unaliased — over-aliasing would widen
-    /// `read`/`delete` onto a grant their bodies never check.
-    #[test]
-    fn the_self_named_media_verbs_are_untouched() {
-        for verb in ["media.read", "media.get", "media.delete"] {
-            assert_eq!(gate_tool_for(verb), verb);
-        }
-    }
-}
-
-#[cfg(test)]
-mod ext_boards_gate_tests {
-    use super::gate_tool_for;
-
-    /// The two host-authored-ext-nav-boards verbs ride EXISTING nav caps — the read with every
-    /// member's `nav.resolve`, the write with the admin's `nav.save`. No `nav.ext_boards.*` cap is
-    /// minted, so without these aliases the outer gate would deny both for every caller while the
-    /// direct-call tests stayed green (they never cross this gate).
-    #[test]
-    fn the_ext_board_verbs_ride_the_existing_nav_caps() {
-        assert_eq!(gate_tool_for("nav.ext_boards.get"), "nav.resolve");
-        assert_eq!(gate_tool_for("nav.ext_boards.set"), "nav.save");
-    }
-
-    /// The read must NOT ride the authoring cap: a board an admin places is rendered in EVERY
-    /// reached member's rail, so gating its read on `nav.save` would make the feature invisible to
-    /// exactly the people it exists for.
-    #[test]
-    fn the_read_is_member_level_not_admin() {
-        assert_ne!(gate_tool_for("nav.ext_boards.get"), "nav.save");
-    }
-}
-
-#[cfg(test)]
-mod report_gate_tests {
-    use super::gate_tool_for;
-
-    /// `report.export` reached the JSON bridge in the reports scope's Track A, and the FIRST
-    /// question a new host-native verb has to answer is the one this file exists for: which cap
-    /// does the outer gate actually demand, and does anything grant it?
-    ///
-    /// The answer here is "its own, and yes" — `mcp:report.export:call` is a concrete cap in the
-    /// AUTHOR bundle (`authz/builtin_roles.rs`, beside `report.save`/`report.share`), deliberately
-    /// NOT covered by any `mcp:*.*:call` wildcard because view-without-export is a real posture.
-    /// So the fall-through arm is correct and no alias is needed.
-    ///
-    /// This test pins that fall-through rather than asserting nothing, because the failure it
-    /// guards against is silent in both directions: an alias added later would quietly widen the
-    /// export gate to whatever it aliased onto (handing export to everyone who can READ a report),
-    /// and the absence of an alias is otherwise indistinguishable from nobody having thought about
-    /// it. Every one of the four incidents this module documents was invisible until someone drove
-    /// the verb on a live node.
-    #[test]
-    fn export_gates_on_its_own_concrete_cap() {
-        assert_eq!(gate_tool_for("report.export"), "report.export");
-    }
-
-    /// The read verbs are viewer-level and must not be dragged up to the author's export cap.
-    #[test]
-    fn the_read_verbs_are_untouched() {
-        for verb in ["report.get", "report.list"] {
-            assert_eq!(gate_tool_for(verb), verb);
-            assert_ne!(gate_tool_for(verb), "report.export");
-        }
-    }
-}
+#[path = "tool_gate_tests.rs"]
+mod tool_gate_tests;
