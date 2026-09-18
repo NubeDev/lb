@@ -41,6 +41,7 @@ pub struct OpenInput {
     pub category: Option<String>,
     pub site: Option<String>,
     pub scope: Option<String>,
+    pub subsystem: Option<String>,
     /// The owner, if known at open (the triage backfill copies the insight's assignee across).
     pub assigned_to: Option<String>,
     /// True when the primary insight carried open data-quality caveats.
@@ -96,6 +97,7 @@ pub async fn open(
         category: input.category,
         site: input.site,
         scope: input.scope,
+        subsystem: input.subsystem,
         severity: input.severity,
         policy_id: None,
         respond_by: None,
