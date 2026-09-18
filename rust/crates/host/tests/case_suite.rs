@@ -90,6 +90,9 @@ mod plane_support;
 #[path = "case/plane_assignees.rs"]
 mod plane_assignees;
 
+#[path = "case/plane_facets.rs"]
+mod plane_facets;
+
 #[path = "case/plane_immunity.rs"]
 mod plane_immunity;
 

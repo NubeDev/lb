@@ -1,12 +1,13 @@
 //! What a case echoes FROM its primary insight — severity, the three workspace facets, and whether
 //! the finding is caveated (case-plane scope).
 //!
-//! One file because it is one decision stated once: a case's `severity`/`category`/`site`/`scope`
-//! are **echoes**, not caller input. They are already properties of the detection, so a second
+//! One file because it is one decision stated once: a case's
+//! `severity`/`category`/`site`/`scope`/`subsystem` are **echoes**, not caller input. They are already properties of the detection, so a second
 //! writer for them is a second thing that can disagree — the discipline `producer` and the tag echo
 //! already hold.
 //!
-//! **Rule 10.** The three facet KEYS (`category`, `site`, `scope`) are lb's own dimension names,
+//! **Rule 10.** The four facet KEYS (`category`, `site`, `scope`, `subsystem`) are lb's own
+//! dimension names,
 //! documented in the case-plane scope's data model. Their VALUES are workspace vocabulary (a
 //! `tag_vocab` row a pack seeds) and nothing here knows one: this reads whatever string the graph
 //! holds and hands it on.
@@ -22,6 +23,11 @@ use lb_insights::Insight;
 const CATEGORY: &str = "category";
 const SITE: &str = "site";
 const SCOPE: &str = "scope";
+/// WHICH TRADE the finding belongs to. A dimension, not a value set: lb ships no list of
+/// subsystems, and `water`/`hvac` are `tag_vocab` rows a pack seeds exactly as `category`'s are.
+/// It earns a column because it is what a DISPATCHER routes on — the queue can rank by severity
+/// all it likes, but the person who fixes a compressor is not the person who fixes a water main.
+const SUBSYSTEM: &str = "subsystem";
 
 /// What a case takes from its primary insight at open time.
 #[derive(Debug, Clone, Default)]
@@ -30,6 +36,7 @@ pub(super) struct CaseFacets {
     pub category: Option<String>,
     pub site: Option<String>,
     pub scope: Option<String>,
+    pub subsystem: Option<String>,
     pub caveated: bool,
 }
 
@@ -40,6 +47,7 @@ pub(super) fn facets_of(insight: &Insight) -> CaseFacets {
         category: insight.tags.get(CATEGORY).cloned(),
         site: insight.tags.get(SITE).cloned(),
         scope: insight.tags.get(SCOPE).cloned(),
+        subsystem: insight.tags.get(SUBSYSTEM).cloned(),
         caveated: caveated(insight),
     }
 }

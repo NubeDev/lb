@@ -280,6 +280,7 @@ pub(super) async fn open_for(
             category: facets.category,
             site: facets.site,
             scope: facets.scope,
+            subsystem: facets.subsystem,
             // The triage backfill: a finding a person already owns opens a case they already own.
             assigned_to: insight.assigned_to.clone(),
             caveated: facets.caveated,

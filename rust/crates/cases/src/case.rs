@@ -168,6 +168,12 @@ pub struct Case {
     /// echoed from the primary insight. Opaque (see `category`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
+    /// The subsystem facet — WHICH TRADE the finding belongs to (`water | electrical | hvac | gas
+    /// | solar` in the seeded vocabulary), echoed from the primary insight. Opaque (see
+    /// `category`). It is the dimension a dispatcher routes on: two faults at the same site with
+    /// the same severity go to different people when their subsystem differs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subsystem: Option<String>,
     /// The severity of the case, echoed from the primary insight's latest firing. A string, not an
     /// enum: this crate does not depend on `lb-insights`, and the queue only ever ranks it
     /// ([`severity_rank`]).

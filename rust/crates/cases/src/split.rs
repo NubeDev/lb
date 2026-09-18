@@ -78,6 +78,7 @@ pub async fn split(
             category: from.category.clone(),
             site: from.site.clone(),
             scope: from.scope.clone(),
+            subsystem: from.subsystem.clone(),
             assigned_to: from.assigned_to.clone(),
             caveated: from.caveated,
             // NO money, deliberately. The other facets above are inherited from the source case
