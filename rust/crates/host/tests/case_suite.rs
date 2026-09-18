@@ -72,6 +72,9 @@ mod sla_clock_calendar;
 #[path = "case/reactor_support.rs"]
 mod reactor_support;
 
+#[path = "case/reactor_facet_backfill.rs"]
+mod reactor_facet_backfill;
+
 #[path = "case/reactor_grouping.rs"]
 mod reactor_grouping;
 

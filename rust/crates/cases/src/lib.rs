@@ -41,6 +41,7 @@ mod deadline_set;
 mod error;
 mod event_append;
 mod events;
+mod facet_refresh;
 mod find_by_insight;
 mod get;
 mod list;
@@ -98,6 +99,7 @@ pub use deadline_set::{set_deadlines, Deadlines};
 pub use error::CasesError;
 pub use event_append::append_event;
 pub use events::{events, EventPage, MAX_EVENT_PAGE};
+pub use facet_refresh::{refresh_facets, FacetFill};
 pub use find_by_insight::{
     find_open_case_for_insight, last_closed_case_for_insight, memberships_of_insight,
 };
