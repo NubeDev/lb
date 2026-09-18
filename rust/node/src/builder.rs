@@ -349,6 +349,12 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             if let Some(dir) = cfg.static_root.as_deref().filter(|d| !d.is_empty()) {
                 gw = gw.with_static_root(dir);
             }
+            // Answer the pre-auth `GET /public/branding` for THIS deployment's workspace when the
+            // request names none (workspace-branding scope). `None`/empty leaves the route exactly as
+            // it was: no `ws`, no brand. lb derives nothing — the embedder named it.
+            if let Some(ws) = cfg.public_brand_ws.as_deref().filter(|w| !w.is_empty()) {
+                gw = gw.with_public_brand_ws(ws);
+            }
             // Terminate a cookie-backed browser session at `/api/*` when the embedder opted in
             // (browser-session scope). `None` leaves the router bearer-only, byte-for-byte as today —
             // no `/api/*` route, no cookies (rubixd, rubix-ai, every existing node).

@@ -239,6 +239,117 @@ async fn every_miss_answers_identically() {
     }
 }
 
+/// The cold-browser case the route exists for (NubeIO/rubix-ai#306, closed here): a sign-in screen
+/// asks for a brand WITHOUT naming a workspace, because a person types an email and a password and
+/// never a workspace. A single-tenant node names its workspace once at boot and answers for it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn answers_for_the_configured_workspace_when_none_is_named() {
+    let (gw, key) = gateway().await;
+    set_default(
+        &gw,
+        &key,
+        "nube",
+        json!({
+            "ui_branding": { "siteName": "ESR", "tagline": "building intelligence" },
+            "ui_theme": { "preset": "corporate", "mode": "dark" }
+        }),
+    )
+    .await;
+    let gw = gw.with_public_brand_ws("nube");
+
+    let resp = router(gw)
+        .oneshot(brand_req("/public/branding", "203.0.113.20"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = serde_json::from_str(&body_text(resp).await).unwrap();
+    assert_eq!(body["ui_branding"]["siteName"], "ESR");
+    assert_eq!(body["ui_theme"]["preset"], "corporate");
+}
+
+/// The configured default is a FALLBACK, never an override: a request that names a workspace is
+/// still answered for that workspace, so a deep link into another workspace paints its own brand.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_named_workspace_still_wins_over_the_configured_one() {
+    let (gw, key) = gateway().await;
+    set_default(
+        &gw,
+        &key,
+        "nube",
+        json!({ "ui_branding": { "siteName": "ESR" } }),
+    )
+    .await;
+    set_default(
+        &gw,
+        &key,
+        "other",
+        json!({ "ui_branding": { "siteName": "Other" } }),
+    )
+    .await;
+    let gw = gw.with_public_brand_ws("nube");
+
+    let resp = router(gw)
+        .oneshot(brand_req("/public/branding?ws=other", "203.0.113.21"))
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_str(&body_text(resp).await).unwrap();
+    assert_eq!(body["ui_branding"]["siteName"], "Other");
+}
+
+/// Configuring a default must not publish the workspace SLUG: the body still carries the two brand
+/// axes and nothing that names the workspace it was resolved from.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_configured_default_does_not_publish_the_workspace_name() {
+    let (gw, key) = gateway().await;
+    set_default(
+        &gw,
+        &key,
+        "nube",
+        json!({ "ui_branding": { "siteName": "ESR" } }),
+    )
+    .await;
+    let gw = gw.with_public_brand_ws("nube");
+
+    let resp = router(gw)
+        .oneshot(brand_req("/public/branding", "203.0.113.22"))
+        .await
+        .unwrap();
+    let body = body_text(resp).await;
+    assert!(
+        !body.contains("nube"),
+        "the workspace slug must not appear in a pre-auth body: {body}"
+    );
+    let parsed: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed.as_object().unwrap().keys().collect::<Vec<_>>(),
+        vec!["ui_branding", "ui_theme"]
+    );
+}
+
+/// An empty configured value is treated as unset — an embedder that fills the field from an unset
+/// env var must not turn the route into "answer for the workspace named empty string".
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_empty_configured_workspace_is_unset() {
+    let (gw, key) = gateway().await;
+    set_default(
+        &gw,
+        &key,
+        "nube",
+        json!({ "ui_branding": { "siteName": "ESR" } }),
+    )
+    .await;
+    let gw = gw.with_public_brand_ws("   ");
+
+    let resp = router(gw)
+        .oneshot(brand_req("/public/branding", "203.0.113.23"))
+        .await
+        .unwrap();
+    assert_eq!(
+        body_text(resp).await,
+        r#"{"ui_branding":null,"ui_theme":null}"#
+    );
+}
+
 /// The route ships rate-limited, per client key, like the other `/public/*` routes. Its own IP, so
 /// the burst cannot starve the tests above (the limiter is process-wide).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
