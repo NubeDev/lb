@@ -33,6 +33,7 @@ mod insight;
 mod layout;
 mod mail;
 mod media;
+mod members;
 mod nav;
 mod notify;
 mod panel;
@@ -86,6 +87,7 @@ const FAMILIES: &[&[HostTool]] = &[
     forms::FORMS,
     host::HOST,
     identity::IDENTITY,
+    members::MEMBERS,
     case::CASE,
     tags::TAGS,
     insight::INSIGHT,
@@ -187,6 +189,35 @@ mod tests {
                 w[0].tool, w[1].tool,
                 "duplicate catalog row `{}`",
                 w[0].tool
+            );
+        }
+    }
+
+    /// The REVERSE of `host_catalog_covers_dispatch_prefixes`, and the one that was missing: every
+    /// catalogued verb must be ROUTABLE. A row whose name matches no dispatch prefix and no exact
+    /// entry is advertised to the console, to the agent menu and to `/system/tools` while every call
+    /// to it answers `no such tool` — a cap and a descriptor are not reachability.
+    ///
+    /// `members.add`/`members.list` sat in exactly that state: caps in the role bundles, service
+    /// code written, authorization tested — and no arm in `tool_call.rs`, so no workspace could put
+    /// a user on a team over MCP and `case.assignees` returned an empty roster on every node. The
+    /// visible damage was the assign picker offering only *Assign to me*.
+    ///
+    /// This asserts the catalog and the dispatcher agree in BOTH directions, so the next family
+    /// that forgets its bridge fails here instead of in a UI months later.
+    #[test]
+    fn every_catalogued_verb_is_dispatchable() {
+        for t in host_catalog() {
+            // `system.` is routed by the gateway/UI directly rather than the MCP bridge, the same
+            // carve-out the forward test makes.
+            if t.tool.starts_with("system.") {
+                continue;
+            }
+            assert!(
+                crate::tool_call::is_host_native(&t.tool),
+                "catalogued verb `{}` matches no dispatch prefix or exact entry — it would answer \
+                 `no such tool` for every caller",
+                t.tool
             );
         }
     }
