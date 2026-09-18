@@ -335,7 +335,7 @@ pub use media::{
     media_list, media_read, media_serve, media_upload_begin, media_upload_commit, plan_serve,
     MediaError, MediaStatus, ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE, MAX_READ_BYTES,
 };
-pub use members::{add_team_member, list_members, remove_member, MembersError};
+pub use members::{add_team_member, call_members_tool, list_members, remove_member, MembersError};
 pub use membership::{
     call_membership_tool, membership_add, membership_list, membership_remove, MembershipError,
     MembershipView,

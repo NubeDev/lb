@@ -13,7 +13,7 @@
 use lb_assets::list_related;
 use lb_authz::{membership_is_member, team_list, MEMBER};
 use lb_insights::{OwnerSubjects, Subscription, SUB_ASSIGNEE_ME};
-use lb_store::Store;
+use lb_store::{Store, StoreError};
 
 use super::error::InsightSvcError;
 
@@ -55,6 +55,40 @@ pub async fn validate_assignee(
     Ok(())
 }
 
+/// The `member` edges of `team`, looked up under BOTH spellings of the team id.
+///
+/// A team record stores whatever id it was created with, VERBATIM — `team_create` normalises
+/// nothing — so `mechanical` and `team:mechanical` are both real, and the product creates both: the
+/// admin console posts a bare id, while `case.assign`/the pickers speak the prefixed form. The
+/// `member` edge is keyed by that same raw string, so a lookup under one spelling silently misses
+/// edges written under the other: no error, just an empty membership, which reads downstream as
+/// "this caller is on no team".
+///
+/// That silence is what makes it worth a named function. It cost the `Mine` lane every team-owned
+/// insight and left `case.assignees` returning an empty roster — the assign picker offering only
+/// *Assign to me* — on any workspace whose teams were made through the admin console.
+///
+/// Both callers below walk the same graph, so they resolve membership the same way, here.
+/// Normalising the id at the STORE is the real repair and belongs with `team_create`; until then a
+/// reader that accepts both spellings is what keeps existing workspaces working.
+pub(crate) async fn team_member_edges(
+    store: &Store,
+    ws: &str,
+    team: &str,
+) -> Result<Vec<String>, StoreError> {
+    let mut members = list_related(store, ws, MEMBER, team).await?;
+    // The other spelling. Only consulted when the first finds nothing, so a correctly-keyed team
+    // costs exactly one read, as before.
+    if members.is_empty() {
+        let other = match team.strip_prefix("team:") {
+            Some(bare) => bare.to_string(),
+            None => format!("team:{team}"),
+        };
+        members = list_related(store, ws, MEMBER, &other).await?;
+    }
+    Ok(members)
+}
+
 /// Every subject the principal counts as for the `assigned_to: "me"` roster view — their own `sub`
 /// plus each team they belong to.
 ///
@@ -68,7 +102,7 @@ pub async fn me_subjects(store: &Store, ws: &str, sub: &str) -> Vec<String> {
     match team_list(store, ws).await {
         Ok(teams) => {
             for team in teams {
-                match list_related(store, ws, MEMBER, &team.team).await {
+                match team_member_edges(store, ws, &team.team).await {
                     Ok(members) if members.iter().any(|m| m == sub) => {
                         subjects.push(if team.team.starts_with("team:") {
                             team.team.clone()
