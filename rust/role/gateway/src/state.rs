@@ -152,6 +152,22 @@ pub struct Gateway {
     /// Behind `Arc` so axum clones the state cheaply per request.
     pub upload_sinks: Arc<Vec<(String, Arc<dyn lb_host::UploadSink>)>>,
 
+    /// The workspace the **pre-auth** `GET /public/branding` answers for when the request names
+    /// none (workspace-branding scope, the cold-browser case). `None` — the default, every test
+    /// seam and the stock binary — keeps the route's shipped behaviour exactly: a request without
+    /// `ws` gets the same empty brand as one naming an unknown workspace.
+    ///
+    /// lb still infers NOTHING. The value is named by the EMBEDDER (`BootConfig::public_brand_ws`),
+    /// which is what keeps property 3 of `routes::public_branding` intact: no node enumerates its
+    /// workspaces pre-auth to find an answer. A single-tenant deployment — one node, one customer,
+    /// one brand — sets it so its sign-in screen is branded on a browser that has never signed in;
+    /// a multi-tenant node leaves it unset and is byte-for-byte unchanged.
+    ///
+    /// It widens nothing: the named workspace's brand is already readable by anyone who can reach
+    /// the host and pass `?ws=<name>`, and the response still carries the brand only — never the
+    /// workspace name, so this does not publish the slug.
+    pub public_brand_ws: Arc<Option<String>>,
+
     /// Candidate addresses `GET /node` publishes. Empty is normal and honest — a wildcard bind with
     /// no embedder-supplied enumeration has no specific address worth naming, and publishing
     /// `0.0.0.0` would hand a client something unroutable. See `routes::node_identity` for why this
@@ -273,6 +289,9 @@ impl Gateway {
             // No upload sinks by default: the `/uploads/*` routes are not mounted (node-update
             // scope §Seam 2). The boot seam fills this from `BootConfig::upload_sinks`.
             upload_sinks: Arc::new(Vec::new()),
+            // No default workspace for the pre-auth brand read: a request without `ws` keeps
+            // getting the empty brand. The boot seam fills this from `BootConfig::public_brand_ws`.
+            public_brand_ws: Arc::new(None),
         }
     }
 
@@ -339,6 +358,19 @@ impl Gateway {
     /// style. Unset (the default) leaves the router with no fallback (unmatched paths 404).
     pub fn with_static_root(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
         self.static_root = Arc::new(Some(dir.into()));
+        self
+    }
+
+    /// Name the workspace the pre-auth `GET /public/branding` answers for when a request names none
+    /// (workspace-branding scope) — builder-style. The boot seam passes `BootConfig::public_brand_ws`;
+    /// an empty string is treated as unset. Never called ⇒ the route is unchanged.
+    pub fn with_public_brand_ws(mut self, ws: impl Into<String>) -> Self {
+        let ws = ws.into();
+        self.public_brand_ws = Arc::new(if ws.trim().is_empty() {
+            None
+        } else {
+            Some(ws.trim().to_string())
+        });
         self
     }
 

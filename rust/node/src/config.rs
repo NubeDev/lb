@@ -222,6 +222,20 @@ pub struct BootConfig {
     /// [`ext_ui_dir`](Self::ext_ui_dir)'s posture exactly.
     pub static_root: Option<String>,
 
+    /// The workspace the pre-auth `GET /public/branding` answers for when a request names none
+    /// (workspace-branding scope). `Some(ws)` ⇒ a browser that has never signed in — no cached
+    /// brand, no `#/t/<ws>` deep link, and a sign-in form that asks for an email and a password and
+    /// never a workspace — still gets THIS deployment's logo, title and theme on its very first
+    /// paint, instead of the product default. `None` (the default, and the standalone binary unless
+    /// `LB_PUBLIC_BRAND_WS` is set) ⇒ today's unchanged behaviour: a request without `ws` gets the
+    /// empty brand.
+    ///
+    /// A SINGLE-TENANT node sets this (typically to [`workspace`](Self::workspace)); a node fronting
+    /// several customers leaves it unset rather than paint one customer's identity for another's
+    /// visitors. lb never derives it — naming the workspace is the embedder's act, which is what
+    /// keeps `routes::public_branding`'s "no pre-auth enumeration" property intact.
+    pub public_brand_ws: Option<String>,
+
     /// Terminate a cookie-backed **browser session** at `/api/*` (browser-session scope). `Some(cfg)`
     /// ⇒ the gateway mints an `HttpOnly` session cookie at `/api/auth/login`, keeps the JWT
     /// server-side in the store, and resolves `ANY /api/{*rest}` to the bearer before dispatching
@@ -552,6 +566,9 @@ impl Default for BootConfig {
             // `None` ⇒ no static-root fallback (unmatched paths 404, today's behaviour); an embedder
             // sets a dir to serve a self-contained web app at `/`.
             static_root: None,
+            // `None` ⇒ a pre-auth brand read without `ws` keeps answering with the empty brand. A
+            // single-tenant embedder names its workspace here (workspace-branding scope).
+            public_brand_ws: None,
             // `None` ⇒ bearer-only, no `/api/*` seam, no cookies (today's behaviour). An embedder
             // whose shell lb serves opts in (browser-session scope).
             browser_session: None,
@@ -659,6 +676,14 @@ impl BootConfig {
             static_root: std::env::var("LB_STATIC_ROOT")
                 .ok()
                 .filter(|p| !p.is_empty()),
+            // The pre-auth brand default, off unless asked for (workspace-branding scope). Same
+            // posture as `static_root`: the standalone binary honours `LB_PUBLIC_BRAND_WS` here, and
+            // it is NOT defaulted to `workspace` — a node that fronts several customers must not
+            // start answering for one of them because it was upgraded.
+            public_brand_ws: std::env::var("LB_PUBLIC_BRAND_WS")
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
             // The `/api/*` browser-session seam, off unless asked for (browser-session scope). Same
             // posture as `static_root`: a new seam with no gateway-internal env read, so the
             // standalone binary honours `LB_BROWSER_SESSION` here. Set it (any non-empty value) to
