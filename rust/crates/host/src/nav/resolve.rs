@@ -27,6 +27,7 @@ use super::authorize::authorize_nav;
 use super::bounds::BUILTIN_PICK;
 use super::error::NavError;
 use super::model::{Nav, NavFacet, NavItem, Visibility, MAX_TAG_GROUP};
+use super::resolve_cache::ResolveCache;
 use super::resolve_pins::resolve_pins;
 use super::resolve_template_group::resolve_template_group;
 use super::resolved::{ResolvedItem, ResolvedNav, ResolvedSource};
@@ -35,7 +36,6 @@ use super::surfaces::surface_gate_cap;
 use super::visibility::may_read_nav;
 use crate::authz::holds_cap;
 use crate::boot::Node;
-use super::resolve_cache::ResolveCache;
 use crate::tags::tags_find;
 
 /// Resolve `principal`'s effective menu in `ws`. Picks the nav (4-tier precedence), expands
