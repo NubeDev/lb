@@ -29,6 +29,7 @@ mod delete;
 mod error;
 pub(crate) mod genui;
 mod get;
+mod head;
 mod grafana;
 mod kind;
 mod list;
@@ -55,6 +56,7 @@ pub use catalog::{catalog_descriptor, dashboard_catalog, ExtWidget, WidgetCatalo
 pub use delete::dashboard_delete;
 pub use error::DashboardError;
 pub use get::dashboard_get;
+pub use head::{dashboard_head, DashboardHead};
 pub use grafana::{
     call_dashboard_grafana_tool, dashboard_export, dashboard_import, export_descriptor,
     import_descriptor, DatasourceRemap, DegradedItem, ImportReport,

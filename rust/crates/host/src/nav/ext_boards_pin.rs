@@ -90,6 +90,7 @@ pub async fn resolve_ext_board_pin(
     principal: &Principal,
     ws: &str,
     pin: &str,
+    cache: &super::resolve_cache::ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     let Some((slot, row_id)) = split_row_ref(pin) else {
         return Ok(None);
@@ -114,7 +115,7 @@ pub async fn resolve_ext_board_pin(
     };
     // The board's own read gate runs inside `resolve_item` under this principal — an unreadable or
     // deleted board strips the pin there, exactly as for any other dashboard item.
-    Ok(resolve_item(node, principal, ws, &item)
+    Ok(resolve_item(node, principal, ws, &item, cache)
         .await?
         .map(|mut r| {
             r.ext = ext.to_string();
