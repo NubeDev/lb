@@ -47,14 +47,14 @@
 //! the reason `assignee.rs` already records: one that outlives a team change makes the picker
 //! silently wrong.
 
-use lb_assets::list_related;
 use lb_auth::Principal;
-use lb_authz::{team_list, MEMBER};
+use lb_authz::{membership_is_member, team_list};
 use lb_mcp::authorize_tool;
 use lb_store::Store;
 use serde::{Deserialize, Serialize};
 
 use super::error::CaseSvcError;
+use crate::insight::team_member_edges;
 
 /// One team the caller is on. The display `name` rides along because a picker that prints
 /// `team:mechanical` where the workspace says "Mechanical crew" is worse than one that does not —
@@ -111,7 +111,10 @@ pub async fn case_assignees(
     };
 
     for team in teams {
-        let members = match list_related(store, ws, MEMBER, &team.team).await {
+        // Both spellings of the team id — see `team_member_edges`. The picker shares the `Mine`
+        // lane's resolution because they must agree on what "my team" means; two walks that
+        // disagreed would offer a team the lane then showed nothing for.
+        let members = match team_member_edges(store, ws, &team.team).await {
             Ok(members) => members,
             Err(e) => {
                 tracing::warn!(ws, team = %team.team, error = ?e,
@@ -148,5 +151,31 @@ pub async fn case_assignees(
     out.teams.dedup_by(|a, b| a.team == b.team);
     out.users.sort();
     out.users.dedup();
+
+    // **Only offer what `case.assign` will accept.** A `member` edge is an unvalidated write: it can
+    // name a subject who never joined this workspace (or who has since been removed), while
+    // `validate_assignee` requires a LIVE workspace membership. Without this filter the picker
+    // offers a row that the assign it exists to perform then refuses with "assignee is not a member
+    // of this workspace" — the control contradicting itself, which reads as a broken assign rather
+    // than a stale roster.
+    //
+    // Filtered here, after the dedup, so each distinct subject costs one membership read no matter
+    // how many teams it shares with the caller. A read that FAILS drops the row: a picker that
+    // silently offers less is the same degrade posture as the unreadable-team arm above, and the
+    // typed box remains the door to anything omitted.
+    //
+    // Teams are NOT filtered this way — `validate_assignee` accepts any team that exists, and the
+    // team was just read out of `team_list`, so it validates by construction.
+    let mut live = Vec::with_capacity(out.users.len());
+    for user in out.users {
+        match membership_is_member(store, ws, &user).await {
+            Ok(true) => live.push(user),
+            Ok(false) => tracing::debug!(ws, user = %user,
+                "case assignees: team member is not a workspace member; omitted from the picker"),
+            Err(e) => tracing::warn!(ws, user = %user, error = ?e,
+                "case assignees: membership unreadable; user omitted from the picker"),
+        }
+    }
+    out.users = live;
     Ok(out)
 }

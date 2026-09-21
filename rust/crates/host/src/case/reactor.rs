@@ -1,6 +1,7 @@
 //! The case-reconcile loop driver (case-plane scope).
 //!
-//! One detached tick per node drives [`super::reconcile_cases`] for each workspace, modelled on
+//! One detached tick per node drives [`super::reconcile_cases`] and [`super::backfill_case_facets`]
+//! for each workspace, modelled on
 //! `insight/reactor.rs::spawn_insight_digest_reactors` — role/config placement under the
 //! `BootConfig::reactors` toggle, not a runtime election. The pass is idempotent, so the idempotence
 //! IS the backstop against accidental double-drive; there is nothing to elect.
@@ -31,6 +32,18 @@ pub fn spawn_case_reactors(node: Arc<Node>, workspaces: Vec<String>, period: Dur
                     }
                     Err(e) => {
                         tracing::warn!(%ws, error = %format!("{e:?}"), "case reconcile tick failed")
+                    }
+                }
+                // Same tick, same idempotence: once the estate is repaired this is one scan that
+                // fills nothing. It rides here rather than on its own timer because a facet gap and
+                // an ungrouped insight are the same kind of debt — a record that predates a change.
+                match super::backfill_case_facets(&node, ws, now).await {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        tracing::info!(%ws, repaired = n, "case facet backfill: missing facet echoes filled")
+                    }
+                    Err(e) => {
+                        tracing::warn!(%ws, error = %format!("{e:?}"), "case facet backfill tick failed")
                     }
                 }
             }

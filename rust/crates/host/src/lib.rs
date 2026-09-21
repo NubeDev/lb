@@ -282,11 +282,11 @@ pub use identity_credential::{
 /// `case_request_authenticate` (a presented token → a two-cap principal scoped to ONE request) and
 /// `case_request_attach` (the upload behind the public route, which mints no third capability).
 pub use case::{
-    call_case_tool, case_assign, case_assignees, case_comment, case_events, case_get, case_list,
-    case_members, case_merge, case_open, case_party_list, case_party_upsert, case_request_attach,
-    case_request_authenticate, case_request_list, case_request_nudge, case_request_reply,
-    case_request_send, case_request_view, case_request_withdraw, case_snooze, case_split,
-    case_workflow, group_insight, hash_request_token, reconcile_cases, reopen_if_held,
+    backfill_case_facets, call_case_tool, case_assign, case_assignees, case_comment, case_events,
+    case_get, case_list, case_members, case_merge, case_open, case_party_list, case_party_upsert,
+    case_request_attach, case_request_authenticate, case_request_list, case_request_nudge,
+    case_request_reply, case_request_send, case_request_view, case_request_withdraw, case_snooze,
+    case_split, case_workflow, group_insight, hash_request_token, reconcile_cases, reopen_if_held,
     rule_scorecard, spawn_case_reactors, workspace_of_token, AssigneeTeam, Assignees,
     AttachmentReceipt, CaseSvcError, ReplyReceipt, RequestTokenError, RequestView, GROUP_ACTOR,
     PARTY_SUB_PREFIX, REPLY_CAP, UNKNOWN_RULE_REF, VIEW_CAP,
@@ -335,7 +335,7 @@ pub use media::{
     media_list, media_read, media_serve, media_upload_begin, media_upload_commit, plan_serve,
     MediaError, MediaStatus, ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE, MAX_READ_BYTES,
 };
-pub use members::{add_team_member, list_members, remove_member, MembersError};
+pub use members::{add_team_member, call_members_tool, list_members, remove_member, MembersError};
 pub use membership::{
     call_membership_tool, membership_add, membership_list, membership_remove, MembershipError,
     MembershipView,

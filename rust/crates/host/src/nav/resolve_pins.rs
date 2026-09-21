@@ -27,11 +27,11 @@ use super::error::NavError;
 use super::ext_boards_pin::resolve_ext_board_pin;
 use super::model::NavItem;
 use super::resolve::{label_or, resolve_item};
+use super::resolve_cache::ResolveCache;
 use super::resolve_row_pin::resolve_row_pin;
 use super::resolved::ResolvedItem;
 use super::store::read_pref;
 use crate::boot::Node;
-use crate::ext::ext_list;
 
 /// Resolve the caller's pinned refs (`nav_pref.pinned`) to rendered items, in the member's order.
 /// Each ref maps to a synthetic [`NavItem`] and runs through the SAME `resolve_item` pipeline as a
@@ -43,6 +43,7 @@ pub(super) async fn resolve_pins(
     principal: &Principal,
     ws: &str,
     hidden: &BTreeSet<String>,
+    cache: &ResolveCache,
 ) -> Result<Vec<ResolvedItem>, NavError> {
     let pref = read_pref(&node.store, ws, principal.sub())
         .await?
@@ -63,23 +64,24 @@ pub(super) async fn resolve_pins(
         // Being resolvable WITHOUT a mount is exactly what makes a host row pinnable at all, so this
         // is the half that turns that claim into behaviour.
         if pin.starts_with("nav:") {
-            if let Some(resolved) = resolve_row_pin(node, principal, ws, pin, hidden).await? {
+            if let Some(resolved) = resolve_row_pin(node, principal, ws, pin, hidden, cache).await?
+            {
                 pinned.push(resolved);
             }
             continue;
         }
-        if let Some(resolved) = resolve_ext_board_pin(node, principal, ws, pin).await? {
+        if let Some(resolved) = resolve_ext_board_pin(node, principal, ws, pin, cache).await? {
             pinned.push(resolved);
             continue;
         }
         if let Some((ext, nav)) = split_ext_subref(pin) {
-            if let Some(resolved) = resolve_ext_nav(node, principal, ws, ext, nav).await? {
+            if let Some(resolved) = resolve_ext_nav(node, principal, ws, ext, nav, cache).await? {
                 pinned.push(resolved);
             }
             continue;
         }
         let item = pin_to_item(pin);
-        if let Some(resolved) = resolve_item(node, principal, ws, &item).await? {
+        if let Some(resolved) = resolve_item(node, principal, ws, &item, cache).await? {
             pinned.push(resolved);
         }
     }
@@ -123,12 +125,15 @@ async fn resolve_ext_nav(
     ws: &str,
     ext: &str,
     nav: &str,
+    cache: &ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     // A caller who cannot even LIST extensions cannot reach this destination — strip the one pin
     // rather than faulting the whole menu. This is the pin path: a member who lacks `ext.list`
     // would otherwise get a blank sidebar on every resolve because of one stale favorite, which is
     // precisely the "a strip is silent, never a fault" invariant `resolve_pins` documents.
-    let Ok(installed) = ext_list(node, principal, ws).await else {
+    // Shared with every other ext item in this resolve (`resolve_cache.rs`) — a menu with ten pins
+    // into extensions read the installed set ten times.
+    let Some(installed) = cache.ext_list(node, principal, ws).await else {
         return Ok(None);
     };
     let Some(row) = installed.iter().find(|row| row.ext == ext) else {
@@ -155,7 +160,7 @@ async fn resolve_ext_nav(
             title_template: decl.title_template.clone(),
             ..NavItem::default()
         };
-        return Ok(resolve_item(node, principal, ws, &item)
+        return Ok(resolve_item(node, principal, ws, &item, cache)
             .await?
             .map(|mut r| {
                 // Carry the ext identity so `item_ref` still reconstructs `ext:<ext>/<navid>` — the

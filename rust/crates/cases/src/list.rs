@@ -51,6 +51,8 @@ pub struct ListFilter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subsystem: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<Workflow>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waiting_on: Option<WaitingOn>,
@@ -188,6 +190,11 @@ fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool 
     }
     if let Some(scope) = &f.scope {
         if case.scope.as_deref() != Some(scope.as_str()) {
+            return false;
+        }
+    }
+    if let Some(subsystem) = &f.subsystem {
+        if case.subsystem.as_deref() != Some(subsystem.as_str()) {
             return false;
         }
     }

@@ -279,6 +279,14 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // every caller including admins — the shipped-but-unusable trap this table exists to stop,
         // and the same shape as the media/retention arms above.
         "tags.find"
+    } else if qualified_tool == "members.remove" {
+        // The inner gate (`members/remove.rs`) checks `mcp:teams.manage:call` — dropping someone
+        // from a team is the team-admin authority, not the `members.add` authority a team lead
+        // holds. No `mcp:members.remove:call` exists in ANY role bundle, so deriving one by
+        // convention would deny the verb for every caller including admins: the shipped-but-unusable
+        // trap this table exists to stop. `members.add`/`members.list` need no arm — their own caps
+        // are real and in the bundles, so the outer gate already agrees with the inner one.
+        "teams.manage"
     } else if qualified_tool == "teams.create" {
         // authz-verbs-mcp-dispatch scope: the inner gate + admin role bundle use
         // `mcp:teams.manage:call` (there is no `mcp:teams.create:call`); align the outer gate.

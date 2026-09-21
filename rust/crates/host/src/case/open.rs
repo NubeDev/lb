@@ -61,6 +61,7 @@ pub async fn case_open(
             category: facets.category,
             site: facets.site,
             scope: facets.scope,
+            subsystem: facets.subsystem,
             assigned_to: insight.assigned_to.clone(),
             caveated: facets.caveated,
             // A person opening a case gets the same money echo a reactor would. The rate is a

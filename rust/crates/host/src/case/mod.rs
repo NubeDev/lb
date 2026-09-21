@@ -50,6 +50,7 @@ mod comment;
 mod echo;
 mod error;
 mod events;
+mod facet_backfill;
 mod facets;
 mod get;
 mod group;
@@ -134,6 +135,7 @@ pub use workflow::case_workflow;
 /// durable reminder row and the dispatcher must answer to the same string years later.
 pub(crate) const NUDGE_TOOL: &str = "case.request.nudge";
 
+pub use facet_backfill::backfill_case_facets;
 pub use group::{group_insight, GROUP_ACTOR};
 pub use hold_down::reopen_if_held;
 pub use reactor::spawn_case_reactors;

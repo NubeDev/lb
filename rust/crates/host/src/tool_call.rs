@@ -72,6 +72,10 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "grants.",
     "roles.",
     "teams.",
+    // The team-membership verbs (`members.add`/`list`/`remove`). They sit beside `teams.` because
+    // they write the `member` edge that a team IS — a team with no membership verb is a name with
+    // nothing in it, which is precisely the state that left `case.assignees` empty on every node.
+    "members.",
     "invite.",
     "media.",
     "device.",
@@ -678,6 +682,12 @@ pub(crate) async fn run_host_verb(
         // WRITE half of the scoped-grant surface reachable over the callback, symmetric with the
         // READ half above.
         crate::call_authz_tool(&node.store, principal, ws, qualified_tool, &input).await?
+    } else if qualified_tool.starts_with("members.") {
+        // The team-membership write+read surface (`members.add`/`list`/`remove`). Kept OUT of the
+        // `authz.`/`teams.` arm above because it is a different service with a different owner:
+        // `teams.*` is the team RECORD (authz), `members.*` is the `member` EDGE (assets), and the
+        // two gate on different caps. The verb re-checks its own cap inside itself.
+        crate::call_members_tool(&node.store, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool.starts_with("ext.") {
         // ext-store-nodes scope: the ext-lifecycle family (`ext.list`/`enable`/`disable`/`uninstall`)
         // over the one MCP bridge, so a flow's `ext-list` node (and any MCP client) reaches it — not

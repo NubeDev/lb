@@ -45,6 +45,12 @@ pub enum EventKind {
     /// `Sla` is: it is a fact about the evidence, not a transition of the work. An operator asking
     /// "why did the contractor button switch off?" has no other place to find the answer.
     Caveat,
+    /// A facet ECHO that was missing got filled in from the primary insight — the repair
+    /// [`crate::refresh_facets`] performs when a new facet key ships and every case opened before
+    /// it carries `None`. Additive and separate from `workflow` for the same reason `Caveat` is:
+    /// it is a fact about how the case is classified, not a transition of the work. An operator
+    /// asking "why is this in the water queue now?" has no other place to find the answer.
+    Facet,
     RequestSent,
     RequestOpened,
     /// We took an ask back. NOT in the case-plane scope's original list, and added deliberately:

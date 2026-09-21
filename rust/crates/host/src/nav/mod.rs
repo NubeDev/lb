@@ -45,6 +45,7 @@ mod pref;
 mod reach;
 mod reach_record;
 mod resolve;
+mod resolve_cache;
 mod resolve_pins;
 mod resolve_row_pin;
 mod resolve_template_group;

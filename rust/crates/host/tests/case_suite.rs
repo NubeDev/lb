@@ -72,6 +72,9 @@ mod sla_clock_calendar;
 #[path = "case/reactor_support.rs"]
 mod reactor_support;
 
+#[path = "case/reactor_facet_backfill.rs"]
+mod reactor_facet_backfill;
+
 #[path = "case/reactor_grouping.rs"]
 mod reactor_grouping;
 
@@ -89,6 +92,9 @@ mod plane_support;
 
 #[path = "case/plane_assignees.rs"]
 mod plane_assignees;
+
+#[path = "case/plane_facets.rs"]
+mod plane_facets;
 
 #[path = "case/plane_immunity.rs"]
 mod plane_immunity;

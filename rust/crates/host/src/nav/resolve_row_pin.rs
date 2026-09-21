@@ -25,6 +25,7 @@ use lb_auth::Principal;
 use super::error::NavError;
 use super::model::NavItem;
 use super::resolve::{label_or, readable_nav, resolve_item, strip_hidden};
+use super::resolve_cache::ResolveCache;
 use super::resolved::ResolvedItem;
 use super::row_ids::check_row_id;
 use crate::boot::Node;
@@ -36,6 +37,7 @@ pub(super) async fn resolve_row_pin(
     ws: &str,
     pin: &str,
     hidden: &BTreeSet<String>,
+    cache: &ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     let Some((nav_id, row_id)) = split_row_ref(pin) else {
         return Ok(None);
@@ -47,7 +49,7 @@ pub(super) async fn resolve_row_pin(
     let Some(row) = find_row(&nav.items, row_id, &mut trail) else {
         return Ok(None); // the author deleted the row
     };
-    let Some(resolved) = resolve_item(node, principal, ws, row).await? else {
+    let Some(resolved) = resolve_item(node, principal, ws, row, cache).await? else {
         return Ok(None);
     };
     // A pinned FOLDER keeps everything inside it — the member pinned the folder, not its overview.

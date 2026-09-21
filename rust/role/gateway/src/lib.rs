@@ -29,6 +29,7 @@ pub mod session;
 mod signing_key;
 mod spa_fallback;
 mod state;
+mod state_builders;
 
 pub use routes::{INVITE_ACCEPT_MAX_PER_WINDOW, INVITE_ACCEPT_WINDOW_SECS};
 // workspace-branding scope: the pre-auth `GET /public/branding` ceiling + cache TTL, so a test (and
