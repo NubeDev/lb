@@ -205,7 +205,9 @@ records (no mocks, rule 9):
   authz-adjacent authoring tool, so it belongs with teams/roles/grants, not a new top-level surface. Its
   own cap-gated route (gated on `mcp:nav.save:call`). *Rejected:* a standalone admin surface — needless
   new nav entry for something that lives next to sharing.
-- **Item cap: 100 items per nav** (counting authored entries incl. `group` children, NOT expanded
+- **Item cap: 5000 items per nav** (raised from 100 on 2026-09-21 to match the SDK's publish cap, once
+  `nav.resolve` stopped scaling with the tree and the sidebar capped the rows it mounts; a portfolio of a few hundred sites needs one group
+  per site) (counting authored entries incl. `group` children, NOT expanded
   tag-group results), **50 dashboards per expanded tag-group** at resolve time. `nav.save` enforces the
   authored cap (`BadInput` over it); `nav.resolve` caps each tag-group's expansion (and logs when it
   truncates — no silent drop, per the testing rule).

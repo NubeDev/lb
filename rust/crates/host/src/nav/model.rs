@@ -38,7 +38,16 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// The largest `items[]` a nav may hold (nav scope, "Resolution cost" / open-question item cap). The
 /// host rejects an over-cap save rather than store it unbounded — the resolver stays cheap. Counts
 /// EVERY node at EVERY depth (groups included); fires independently of [`MAX_GROUP_DEPTH`].
-pub const MAX_ITEMS: usize = 100;
+///
+/// Raised 100 → 5000, the same number as the SDK's `NAV_MAX_ITEMS` (lb-ext-ui-sdk#16) since both
+/// land in one sidebar: a real portfolio menu is one group per site with a handful of pages under each,
+/// so a few hundred sites blow past 100 and the deployment is forced to route through a directory
+/// board instead of its own menu. The two costs that bounded it are paid: `nav.resolve` reads a
+/// board's head once per request (it no longer scales with the tree), and the consumer sidebar
+/// mounts at most 200 rows per open branch. At about 300 bytes a row a full menu is ~1.5 MB, inside
+/// the gateway's 2 MB default body limit. The cap stays a cap — an unbounded tree is still refused,
+/// never truncated.
+pub const MAX_ITEMS: usize = 5000;
 
 /// The deepest a `group` may nest (nested-nav scope). The top-level `items[]` is depth 1; a `group` at
 /// depth 5 may hold leaves but no further `group`. Sourced from ONE place (re-exported on the lib API
@@ -67,8 +76,9 @@ pub const MAX_ICON_COLOR_LEN: usize = 32;
 pub use lb_ext_loader::NAV_MAX_TITLE_TEMPLATE as MAX_TITLE_TEMPLATE;
 
 /// The largest hidden-set `nav.hidden.set` accepts (hide-and-pins scope, "Bounds"). Rejected over-cap
-/// (`BadInput`), never silently truncated.
-pub const MAX_HIDDEN: usize = 200;
+/// (`BadInput`), never silently truncated. Sized with [`MAX_ITEMS`]: a hidden-set names rows of the
+/// same nav, so a member decluttering a large menu must be able to hide as many rows as it holds.
+pub const MAX_HIDDEN: usize = 5000;
 
 /// The most pins one member may hold (`nav_pref.pinned`; hide-and-pins scope, "Bounds"). Rejected
 /// over-cap (`BadInput`), never silently truncated.
@@ -77,7 +87,7 @@ pub const MAX_PINNED: usize = 50;
 /// The largest ordering `nav.hidden.set` accepts (`NavHidden::order`). Sized like [`MAX_HIDDEN`] —
 /// an ordering names the same ref population a hidden-set does, so one bound covers both. Rejected
 /// over-cap (`BadInput`), never silently truncated.
-pub const MAX_ORDER: usize = 200;
+pub const MAX_ORDER: usize = 5000;
 
 /// A nav's visibility tier — the S4 asset-sharing tiers (nav scope, "How it fits"; identical to the
 /// dashboard tiers, so the same gate-3 read check applies unchanged).
