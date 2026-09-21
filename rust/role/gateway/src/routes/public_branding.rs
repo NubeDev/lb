@@ -18,10 +18,23 @@
 //! 2. **Not a workspace-existence oracle.** Unknown workspace, unbranded workspace, malformed slug,
 //!    missing `ws`, and a store failure all return the identical `200 {ui_branding:null,
 //!    ui_theme:null}`. A caller learns nothing from the response that it did not already assert.
-//! 3. **`ws` is required, never inferred.** There is no "the node's own workspace" fallback: a node
-//!    would have to enumerate workspaces pre-auth to find one, which is the enumeration this route
-//!    exists to avoid. The sign-in screen always knows which workspace it is signing into (the
-//!    `#/t/<ws>` deep link, or the workspace field on the form), so it can always say so.
+//! 3. **`ws` is never INFERRED — but it may be CONFIGURED.** No node enumerates its workspaces
+//!    pre-auth to find an answer; that is the enumeration this route exists to avoid. What an
+//!    embedder MAY do is name one workspace up front (`BootConfig::public_brand_ws` →
+//!    `Gateway::with_public_brand_ws`), and a request that names none is answered for exactly that
+//!    one.
+//!
+//!    This exists because the sign-in screen does NOT always know which workspace it is signing
+//!    into. A person types an email and a password — never a workspace — so on a browser with no
+//!    cached brand (a new device, a cleared profile, the first visitor a deployment ever has) there
+//!    is no `#/t/<ws>` hint and nothing to ask about. Those visitors saw the product's own brand
+//!    instead of the deployment's, which is the wrong first impression for the one audience the
+//!    brand is for (NubeIO/rubix-ai#306).
+//!
+//!    It widens nothing. The configured workspace's brand is already readable by anyone who can
+//!    reach the host and pass `?ws=<name>`; naming a default only spares them the guess. The body
+//!    still carries the two blobs and never the workspace name, so the slug is not published. A node
+//!    that configures nothing is byte-for-byte unchanged.
 //! 4. **Rate-limited from day one**, per client, like `POST /public/invite/accept` — see
 //!    `rate_limit.rs`.
 //!
@@ -53,8 +66,10 @@ pub struct BrandingQuery {
 
 /// `GET /public/branding?ws=<ws>` — UNAUTHENTICATED. Returns the workspace-default `ui_branding` and
 /// `ui_theme` blobs (opaque to Rust; the shell's `lib/branding` + theme layer parse them), and
-/// nothing else. Both are `null` when the workspace has set no default, does not exist, or was not
-/// named — one response shape for every miss (property 2 in the module docs).
+/// nothing else. A request naming no workspace is answered for the node's configured
+/// `public_brand_ws` when it has one. Both blobs are `null` when the resolved workspace has set no
+/// default, does not exist, or when there was no workspace to resolve at all — one response shape
+/// for every miss (property 2 in the module docs).
 pub async fn public_branding(
     State(gw): State<Gateway>,
     Query(q): Query<BrandingQuery>,
@@ -63,7 +78,15 @@ pub async fn public_branding(
     // link. It never touches the member link, so this route has no member record to leak even in
     // principle. An `Err` (including the store's own invalid-slug rejection, which is what guards
     // the namespace against injection) collapses into the same `None` as "unset".
-    let prefs = match q.ws.as_deref().map(str::trim).filter(|ws| !ws.is_empty()) {
+    // The request's `ws` wins; a request that names none falls back to the workspace the EMBEDDER
+    // configured (property 3) — never to anything this node discovered for itself.
+    let asked = q.ws.as_deref().map(str::trim).filter(|ws| !ws.is_empty());
+    let configured = gw
+        .public_brand_ws
+        .as_deref()
+        .map(str::trim)
+        .filter(|ws| !ws.is_empty());
+    let prefs = match asked.or(configured) {
         Some(ws) => lb_prefs::get_workspace_prefs(&gw.node.store, ws)
             .await
             .ok()
