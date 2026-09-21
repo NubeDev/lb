@@ -169,6 +169,9 @@ pub struct NavItem {
     /// rendered into the link as `?var-<name>=<value>` — a curated, durable, named page instance
     /// ("Plant-1 Overview"). Opaque data; the resolver carries it through to `ResolvedItem::vars` and
     /// the UI folds it into the href. A `BTreeMap` for deterministic order (round-trip + `PartialEq`).
+    ///
+    /// `surface`: the page's **query parameters** (nav-surface-vars scope), relayed the same way and
+    /// appended by the UI as plain `?<key>=<value>` — a menu entry that opens a page pre-filtered.
     /// Empty for the other kinds.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vars: BTreeMap<String, String>,
