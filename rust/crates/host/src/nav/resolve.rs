@@ -297,7 +297,9 @@ pub(super) async fn resolve_item(
 }
 
 /// A `surface` item survives iff the caller holds its gate cap (the mirror of `allowedSurfaces`). The
-/// label defaults to the surface key when the author left it empty.
+/// label defaults to the surface key when the author left it empty. Its `vars` ride through verbatim
+/// (nav-surface-vars scope): the author's query parameters for the page, which the UI appends to the
+/// page's link as plain `?<key>=<value>`. Opaque data — the core neither reads nor checks them.
 fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<ResolvedItem> {
     if let Some(cap) = surface_gate_cap(&item.surface) {
         if !holds_cap(principal, ws, cap) {
@@ -314,7 +316,7 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         ext: String::new(),
         nav: String::new(),
         items: Vec::new(),
-        vars: BTreeMap::new(),
+        vars: item.vars.clone(),
         title_template: item.title_template.clone(),
         home: item.home,
         footer: item.footer,

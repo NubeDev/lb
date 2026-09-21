@@ -104,7 +104,8 @@ pub struct ResolvedItem {
     pub items: Vec<ResolvedItem>,
     /// The **resolved variable binding** the UI folds into the href as `?var-<name>=<value>`
     /// (reusable-pages scope): a pinned `dashboard` entry's `vars`, or a template-group child's
-    /// `{ <var>: <value> }`. Empty for entries with no binding.
+    /// `{ <var>: <value> }`. On a `surface` entry, the page's query parameters (nav-surface-vars
+    /// scope), which the UI appends as plain `?<key>=<value>`. Empty for entries with no binding.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vars: BTreeMap<String, String>,
     /// The authored [`NavItem::title_template`], relayed verbatim beside `vars` (nav-context-builtins
