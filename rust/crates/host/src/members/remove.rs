@@ -17,14 +17,6 @@ use super::error::MembersError;
 use super::list::MEMBER;
 
 /// Remove `user` from `team` in workspace `ws` as `principal`. Idempotent; workspace-first.
-///
-/// Drops the edge under BOTH spellings of the team id. A team record stores whatever id it was
-/// created with verbatim, so `mechanical` and `team:mechanical` are both real and the product
-/// writes both (see `insight::team_member_edges`). Unrelating only the literal string handed in
-/// makes a remove that targets the other spelling a silent success: the verb returns `Ok`, the UI
-/// reports the member gone, and the edge is still there — the user keeps team-granted read access
-/// with nothing to show why. Idempotency makes that indistinguishable from a genuine no-op, which
-/// is what makes it worth removing both rather than probing first.
 pub async fn remove_member(
     store: &Store,
     principal: &Principal,
@@ -34,12 +26,5 @@ pub async fn remove_member(
 ) -> Result<(), MembersError> {
     authorize_tool(principal, ws, "teams.manage").map_err(|_| MembersError::Denied)?;
     unrelate(store, ws, MEMBER, team, user).await?;
-    // The other spelling. Unconditional: a membership can exist under both ids at once (the admin
-    // console writes one, the pickers the other), and leaving either behind is the bug above.
-    let other = match team.strip_prefix("team:") {
-        Some(bare) => bare.to_string(),
-        None => format!("team:{team}"),
-    };
-    unrelate(store, ws, MEMBER, &other, user).await?;
     Ok(())
 }

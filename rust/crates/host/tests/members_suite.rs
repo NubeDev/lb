@@ -13,6 +13,3 @@ mod bridge;
 
 #[path = "members/picker.rs"]
 mod picker;
-
-#[path = "members/spelling.rs"]
-mod spelling;
