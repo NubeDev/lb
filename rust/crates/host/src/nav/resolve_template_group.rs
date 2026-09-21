@@ -25,7 +25,6 @@ use super::error::NavError;
 use super::model::{NavItem, MAX_TAG_GROUP};
 use super::resolved::ResolvedItem;
 use crate::boot::Node;
-use crate::dashboard::dashboard_get;
 use crate::tags::tags_facet_values;
 use crate::tool_call::call_tool_at_depth;
 
@@ -38,6 +37,7 @@ pub async fn resolve_template_group(
     ws: &str,
     item: &NavItem,
     depth: u32,
+    cache: &super::resolve_cache::ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     // A template-group with no template/parameter is malformed (bounds reject it at save; guard here).
     let dash_id = item
@@ -50,9 +50,10 @@ pub async fn resolve_template_group(
 
     // Gate 1 — the template page must be readable by the caller (three-gate `dashboard.get`). If not,
     // strip the whole entry: no page, no instances (the caller can't see a page they can't read).
-    let template = match dashboard_get(&node.store, principal, ws, dash_id).await {
-        Ok(d) => d,
-        Err(_) => return Ok(None),
+    // The heading is all this needs (the label below) — the template's cells are never read here.
+    let template = match cache.dashboard(node, principal, ws, dash_id).await {
+        Some(d) => d,
+        None => return Ok(None),
     };
 
     // Enumerate the option VALUES under the caller's caps. A denial (missing tags.find cap, or the

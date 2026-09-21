@@ -30,6 +30,7 @@ mod error;
 pub(crate) mod genui;
 mod get;
 mod grafana;
+mod head;
 mod kind;
 mod list;
 mod list_shares;
@@ -59,6 +60,7 @@ pub use grafana::{
     call_dashboard_grafana_tool, dashboard_export, dashboard_import, export_descriptor,
     import_descriptor, DatasourceRemap, DegradedItem, ImportReport,
 };
+pub use head::{dashboard_head, DashboardHead};
 pub use kind::{KIND_DASHBOARD, KIND_REPORT};
 pub use list::dashboard_list;
 pub use list_shares::dashboard_list_shares;

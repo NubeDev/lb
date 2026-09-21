@@ -27,6 +27,7 @@ use super::authorize::authorize_nav;
 use super::bounds::BUILTIN_PICK;
 use super::error::NavError;
 use super::model::{Nav, NavFacet, NavItem, Visibility, MAX_TAG_GROUP};
+use super::resolve_cache::ResolveCache;
 use super::resolve_pins::resolve_pins;
 use super::resolve_template_group::resolve_template_group;
 use super::resolved::{ResolvedItem, ResolvedNav, ResolvedSource};
@@ -35,8 +36,6 @@ use super::surfaces::surface_gate_cap;
 use super::visibility::may_read_nav;
 use crate::authz::holds_cap;
 use crate::boot::Node;
-use crate::dashboard::{dashboard_get, DashboardError};
-use crate::ext::ext_list;
 use crate::tags::tags_find;
 
 /// Resolve `principal`'s effective menu in `ws`. Picks the nav (4-tier precedence), expands
@@ -67,7 +66,11 @@ pub async fn nav_resolve(
 
     // The caller's pins, resolved through the SAME item pipeline (cap-strip + ext-strip), then
     // hidden-stripped (hide beats pin). A stale/stripped pin never mutates the stored record.
-    let pinned = resolve_pins(node, principal, ws, &hidden).await?;
+    // ONE memo for this request's whole walk (`resolve_cache.rs`): the same board named by twenty
+    // items is read once, and `ext.list` is read once rather than per ext item. It spans the pins and
+    // the menu, because a pin and a menu row routinely name the same board.
+    let cache = ResolveCache::new();
+    let pinned = resolve_pins(node, principal, ws, &hidden, &cache).await?;
 
     let (nav, source) = match pick_nav(&node.store, principal, ws).await? {
         Some(picked) => picked,
@@ -88,7 +91,7 @@ pub async fn nav_resolve(
 
     let mut items = Vec::new();
     for item in &nav.items {
-        if let Some(resolved) = resolve_item(node, principal, ws, item).await? {
+        if let Some(resolved) = resolve_item(node, principal, ws, item, &cache).await? {
             if let Some(kept) = strip_hidden(resolved, &hidden) {
                 items.push(kept);
             }
@@ -277,16 +280,17 @@ pub(super) async fn resolve_item(
     principal: &Principal,
     ws: &str,
     item: &NavItem,
+    cache: &ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     match item.kind.as_str() {
         "surface" => Ok(resolve_surface(principal, ws, item)),
-        "dashboard" => resolve_dashboard(node, principal, ws, item).await,
-        "ext" => resolve_ext(node, principal, ws, item).await,
-        "tag-group" => resolve_tag_group(node, principal, ws, item).await,
+        "dashboard" => resolve_dashboard(node, principal, ws, item, cache).await,
+        "ext" => resolve_ext(node, principal, ws, item, cache).await,
+        "tag-group" => resolve_tag_group(node, principal, ws, item, cache).await,
         // reusable-pages scope: ONE dashboard fanned out per option value (`?var-<var>=<value>`).
         // Depth 0 — the outermost resolve entry; the query option source re-enters at depth+1.
-        "template-group" => resolve_template_group(node, principal, ws, item, 0).await,
-        "group" => resolve_group(node, principal, ws, item).await,
+        "template-group" => resolve_template_group(node, principal, ws, item, 0, cache).await,
+        "group" => resolve_group(node, principal, ws, item, cache).await,
         // Unknown kind — drop it (defensive; `nav.save` bounds already reject unknown kinds).
         _ => Ok(None),
     }
@@ -324,6 +328,7 @@ async fn resolve_dashboard(
     principal: &Principal,
     ws: &str,
     item: &NavItem,
+    cache: &ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     let id = item
         .dashboard
@@ -332,8 +337,11 @@ async fn resolve_dashboard(
     if id.is_empty() {
         return Ok(None);
     }
-    match dashboard_get(&node.store, principal, ws, id).await {
-        Ok(d) => Ok(Some(ResolvedItem {
+    // The HEADING, not the page: a menu row renders a title, and `dashboard.get` would additionally
+    // hydrate every library-panel cell under the viewer's gates — a store read per cell, thrown away
+    // here. Same four gates (`dashboard_head`), memoized per request.
+    match cache.dashboard(node, principal, ws, id).await {
+        Some(d) => Ok(Some(ResolvedItem {
             kind: "dashboard".into(),
             label: label_or(&item.label, &d.title),
             icon: item.icon.clone(),
@@ -351,14 +359,11 @@ async fn resolve_dashboard(
             home: item.home,
             footer: item.footer,
         })),
-        // Denied / not-found → stripped (the caller can't read it). Any other is a real fault.
-        // (`ManagedDenied` is a WRITE refusal — a read never produces it — but it IS a denial, so it
-        // strips the nav item exactly like the opaque one rather than faulting the whole menu.)
-        Err(DashboardError::Denied)
-        | Err(DashboardError::ManagedDenied(_))
-        | Err(DashboardError::NotFound) => Ok(None),
-        Err(DashboardError::Store(e)) => Err(NavError::Store(e)),
-        Err(DashboardError::BadInput(m)) => Err(NavError::BadInput(m)),
+        // Unreadable → stripped (the caller can't reach this page — the lens). Denied, not-found and
+        // tombstoned are ONE answer here by design: the cache stores "this caller cannot read it" and
+        // nothing more, because a menu treats all three identically and telling them apart in a
+        // response is exactly the existence signal the gates exist to withhold.
+        None => Ok(None),
     }
 }
 
@@ -370,14 +375,18 @@ async fn resolve_ext(
     principal: &Principal,
     ws: &str,
     item: &NavItem,
+    cache: &ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     if item.ext.is_empty() {
         return Ok(None);
     }
     // `ext.list` is the generic discovery seam — we compare ids as opaque strings, no special-casing.
-    let installed = ext_list(node, principal, ws)
+    // Read once per resolve, not once per ext item: `ext.list` is a full `install` read plus a status
+    // read per native install, and a menu names the same installed set every time.
+    let installed = cache
+        .ext_list(node, principal, ws)
         .await
-        .map_err(|_| NavError::Denied)?;
+        .ok_or(NavError::Denied)?;
     let found = installed.iter().find(|row| row.ext == item.ext);
     match found {
         Some(row) => Ok(Some(ResolvedItem {
@@ -415,6 +424,7 @@ async fn resolve_tag_group(
     principal: &Principal,
     ws: &str,
     item: &NavItem,
+    cache: &ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     let facets = to_facets(&item.facets);
     if facets.is_empty() {
@@ -436,7 +446,7 @@ async fn resolve_tag_group(
             None => continue,
         };
         // Reachability: only surface a dashboard the caller can actually read (the tag-group lens).
-        if let Ok(d) = dashboard_get(&node.store, principal, ws, id).await {
+        if let Some(d) = cache.dashboard(node, principal, ws, id).await {
             children.push(ResolvedItem {
                 kind: "dashboard".into(),
                 label: d.title.clone(),
@@ -490,12 +500,13 @@ async fn resolve_group(
     principal: &Principal,
     ws: &str,
     item: &NavItem,
+    cache: &ResolveCache,
 ) -> Result<Option<ResolvedItem>, NavError> {
     let mut children = Vec::new();
     for child in &item.items {
         // Recurse uniformly — a nested `group` returns `None` here iff its own subtree is empty, so
         // an empty inner folder never contributes a survivor to this group (the post-order prune).
-        if let Some(resolved) = Box::pin(resolve_item(node, principal, ws, child)).await? {
+        if let Some(resolved) = Box::pin(resolve_item(node, principal, ws, child, cache)).await? {
             children.push(resolved);
         }
     }
@@ -509,7 +520,7 @@ async fn resolve_group(
     // overview while its children stay nested, the old product's "click the folder" behaviour. It
     // rides the same readability gate as a `dashboard` item — a folder whose board the caller cannot
     // read stays a plain container rather than a dead link. `vars` ride beside it as on any board link.
-    let (dashboard, vars) = match resolve_dashboard(node, principal, ws, item).await? {
+    let (dashboard, vars) = match resolve_dashboard(node, principal, ws, item, cache).await? {
         Some(target) => (target.dashboard, target.vars),
         None => (String::new(), BTreeMap::new()),
     };
