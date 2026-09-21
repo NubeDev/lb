@@ -15,6 +15,7 @@ use super::authorize::authorize_nav;
 use super::bounds::{check_id, check_items};
 use super::error::NavError;
 use super::model::{Nav, NavItem, Visibility, SCHEMA_VERSION};
+use super::row_ids::assign_row_ids;
 use super::store::{read_nav, write_nav};
 
 /// Upsert nav `id` in `ws` with `title` + `items`, as `principal`, at logical time `now`. Creates on
@@ -26,7 +27,7 @@ pub async fn nav_save(
     ws: &str,
     id: &str,
     title: &str,
-    items: Vec<NavItem>,
+    mut items: Vec<NavItem>,
     now: u64,
 ) -> Result<Nav, NavError> {
     authorize_nav(principal, ws, "nav.save")?;
@@ -35,6 +36,8 @@ pub async fn nav_save(
     }
     check_id(id)?; // no-lockout: reject the reserved `__…__` shape (e.g. the built-in pick sentinel)
     check_items(&items)?;
+    // nav-row-pins scope: every row leaves here with a stable, unique id — kept, minted, or re-minted.
+    assign_row_ids(&mut items)?;
 
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record is
     // treated as absent — a save with that id resurrects it under the new owner (create).

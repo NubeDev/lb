@@ -69,6 +69,20 @@ pub struct ResolvedNav {
 // not mean touching every construction site.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ResolvedItem {
+    /// The stored row's [`super::model::NavItem::id`] (nav-row-pins scope) — echoed on every row
+    /// resolved from a stored item, so the client can pin it as `nav:<nav_id>/<id>`. Empty on a row
+    /// with no stored id (a pre-field record, a tag-/template-group's generated child, a synthetic pin).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    /// The nav a PINNED row lives in (nav-row-pins scope) — set only on a `nav:<navid>/<rowid>` pin,
+    /// so the client reduces it back to the ref it pinned. A menu row doesn't need it: its nav is the
+    /// resolved menu's own `ResolvedNav::nav_id`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub nav_id: String,
+    /// The labels of the folders a PINNED row sits in, outermost first (nav-row-pins scope) — so two
+    /// sites' "Energy" pins read apart. Empty on everything but a row pin.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trail: Vec<String>,
     pub kind: String,
     pub label: String,
     /// The author's icon name, echoed through untouched (opaque — the UI maps it, defaulting per

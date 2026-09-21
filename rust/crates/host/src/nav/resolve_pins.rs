@@ -1,9 +1,11 @@
 //! Resolving the caller's PINNED refs (`nav_pref.pinned`) into rendered items — the pin half of
 //! `nav.resolve`, in its own file so "what can a pin point at" has one owner (FILE-LAYOUT).
 //!
-//! There are now FOUR pin grammars, and they are tried in a deliberate order because two of them
+//! There are now FIVE pin grammars, and they are tried in a deliberate order because two of them
 //! overlap by shape:
 //!
+//!   0. a curated menu ROW, `nav:<navid>/<rowid>` (`resolve_row_pin`, nav-row-pins scope) — its own
+//!      prefix, so it cannot collide with the others;
 //!   1. a HOST-AUTHORED ext board row (`ext_boards_pin`) — tried FIRST, because `ext:<id>/<rowid>`
 //!      is indistinguishable by shape from a declared destination and would otherwise strip;
 //!   2. an `ext:<ext>/<navid>` DECLARED destination — resolved against the install's `[[ui.nav]]`;
@@ -26,6 +28,7 @@ use super::ext_boards_pin::resolve_ext_board_pin;
 use super::model::NavItem;
 use super::resolve::{label_or, resolve_item};
 use super::resolve_cache::ResolveCache;
+use super::resolve_row_pin::resolve_row_pin;
 use super::resolved::ResolvedItem;
 use super::store::read_pref;
 use crate::boot::Node;
@@ -60,6 +63,13 @@ pub(super) async fn resolve_pins(
         // `ext:<id>/<navid>/<rowid>` is refused by `split_ext_subref` as a runtime published child.
         // Being resolvable WITHOUT a mount is exactly what makes a host row pinnable at all, so this
         // is the half that turns that claim into behaviour.
+        if pin.starts_with("nav:") {
+            if let Some(resolved) = resolve_row_pin(node, principal, ws, pin, hidden, cache).await?
+            {
+                pinned.push(resolved);
+            }
+            continue;
+        }
         if let Some(resolved) = resolve_ext_board_pin(node, principal, ws, pin, cache).await? {
             pinned.push(resolved);
             continue;
