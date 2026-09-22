@@ -23,5 +23,6 @@ pub async fn case_comment(
     ts: u64,
 ) -> Result<u64, CaseSvcError> {
     authorize_tool(principal, ws, "case.workflow").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, id).await?;
     Ok(lb_cases::comment(store, ws, id, text, principal.sub(), ts).await?)
 }

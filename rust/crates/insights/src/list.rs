@@ -36,6 +36,12 @@ pub struct ListFilter {
     /// `[from, to]` logical-ts window (inclusive on both ends).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<(u64, u64)>,
+    /// The entity limit the HOST sets for a restricted caller (entity-scoped data): the tag key and
+    /// the values it may read. Never read from the wire (`serde(skip)`): a client cannot send it.
+    /// `Some` narrows to insights whose `tags[key]` is one of the values — an insight without the
+    /// tag matches nothing.
+    #[serde(skip)]
+    pub entity: Option<(String, Vec<String>)>,
     /// Free-text over the insight's NAME (`title`) — the roster's search box, resolved by the
     /// `insight_name` BM25 index rather than by filtering rows in the browser.
     ///

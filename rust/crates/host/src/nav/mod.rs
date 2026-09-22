@@ -32,11 +32,13 @@ mod authorize;
 mod bounds;
 mod default;
 mod delete;
+mod entity;
 mod error;
 mod ext_boards;
 mod ext_boards_model;
 mod ext_boards_pin;
 mod get;
+mod handed;
 mod hidden;
 mod list;
 mod list_shares;
@@ -59,13 +61,19 @@ mod tool;
 mod unshare;
 mod visibility;
 
+pub use admin_lens::is_workspace_admin;
 pub use bounds::BUILTIN_PICK;
 pub use default::{nav_get_default, nav_set_default};
 pub use delete::nav_delete;
+pub use entity::collect_entities;
+#[allow(unused_imports)]
+// named by `NavItem::entity`; re-exported for embedders building menus
+pub use entity::NavEntity;
 pub use error::NavError;
 pub use ext_boards::{ext_nav_boards_get, ext_nav_boards_set};
 pub use ext_boards_model::{ExtBoardRow, ExtNavBoards, MAX_EXT_BOARD_ROWS, MAX_EXT_BOARD_SLOTS};
 pub use get::nav_get;
+pub(crate) use handed::handed_navs;
 pub use hidden::{nav_hidden_get, nav_hidden_set, nav_order_set};
 pub use list::nav_list;
 pub use list_shares::nav_list_shares;

@@ -36,5 +36,14 @@ pub async fn case_list(
             .collect(),
         Lane::Waiting => Default::default(),
     };
+    // Entity-scoped data: a restricted caller sees only cases at their sites. Set here from server
+    // state; the wire can never carry it (`sites_allowed` is `serde(skip)`).
+    let mut query = query;
+    if let Some((_tag, ids)) = crate::insight::entity_limit(store, principal, ws)
+        .await
+        .map_err(|e| CaseSvcError::Store(e.to_string()))?
+    {
+        query.filter.sites_allowed = Some(ids);
+    }
     Ok(lb_cases::list(store, ws, &query, &subjects).await?)
 }

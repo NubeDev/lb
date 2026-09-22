@@ -105,6 +105,19 @@ pub(crate) fn build(
         w.bindings.push(("rto".into(), Value::from(to)));
     }
 
+    // The host-set entity limit (entity-scoped data): the flat tag ECHO is the one source of truth
+    // for "which entity is this", so the predicate reads it directly. The key is a plain identifier
+    // (the host validates it at policy set); anything else fails closed.
+    if let Some((key, values)) = &filter.entity {
+        if plain_ident(key) {
+            w.preds.push(format!("data.tags.{key} IN $entity_ids"));
+            let list: Vec<Value> = values.iter().map(|v| Value::String(v.clone())).collect();
+            w.bindings.push(("entity_ids".into(), Value::Array(list)));
+        } else {
+            w.preds.push("false".into());
+        }
+    }
+
     // The tag facet, already resolved to the ids it admits. An EMPTY set admits NOTHING — the same
     // reading `set.contains(id)` gives in memory, and the opposite of "no filter".
     if let Some(ids) = tag_allow {
@@ -129,4 +142,11 @@ pub(crate) fn build(
 /// A closed enum as the lowercase word it is stored as.
 fn json_of<T: serde::Serialize>(v: T) -> Value {
     serde_json::to_value(v).unwrap_or(Value::Null)
+}
+
+/// A plain lowercase identifier (a safe SurrealQL field name).
+fn plain_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c == '_' || c.is_ascii_lowercase())
+        && chars.all(|c| c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit())
 }

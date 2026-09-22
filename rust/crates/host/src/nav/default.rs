@@ -38,6 +38,7 @@ pub async fn nav_set_default(
 ) -> Result<(), NavError> {
     authorize_nav(principal, ws, "nav.save")?;
     write_default(store, ws, id, now).await?;
+    crate::authz::invalidate_entity_scope(ws);
     Ok(())
 }
 

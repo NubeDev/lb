@@ -241,6 +241,10 @@ pub struct NavItem {
     /// reads as `false` and [`SCHEMA_VERSION`] is unchanged — the `home` precedent.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub footer: bool,
+    /// The row's **entity marker** (entity-scoped-data scope): access to entity `id` of `table` for
+    /// whoever is HANDED this menu. See [`super::entity`]. Additive: absent on every older record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity: Option<super::entity::NavEntity>,
 }
 
 /// A nav record. The persisted menu + sharing metadata (nav scope, "Data").

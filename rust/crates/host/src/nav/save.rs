@@ -62,5 +62,6 @@ pub async fn nav_save(
         deleted: false,
     };
     write_nav(store, ws, &nav).await?;
+    crate::authz::invalidate_entity_scope(ws);
     Ok(nav)
 }

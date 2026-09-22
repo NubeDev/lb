@@ -202,6 +202,7 @@ pub async fn viz_query(
 /// mis-key the leak boundary. Reusing `panel_targets` keeps the two in lockstep. A malformed panel
 /// yields an empty list (no targets → a caller-independent frame → an empty, shared fingerprint).
 #[cfg(feature = "page-cache")]
+#[cfg(feature = "page-cache")]
 pub(crate) fn panel_target_tools(panel: &Value) -> Vec<String> {
     panel_targets(panel)
         .map(|ts| ts.into_iter().map(|t| t.tool).collect())

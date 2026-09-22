@@ -166,6 +166,13 @@ pub async fn insight_raise(
             .await?;
             for d in deliveries {
                 if let Some(sub) = subs.iter().find(|s| s.id == d.sub_id) {
+                    // Entity-scoped data: a delivery is a read by the sub's OWNER; an owner limited
+                    // to other entities never hears about this finding.
+                    if !super::entity_filter::sub_owner_may_see(&node.store, ws, sub, &view.tags)
+                        .await
+                    {
+                        continue;
+                    }
                     let body = immediate_body(&d);
                     // Idempotent per (sub, insight, ts) — a re-raise at the same ts upserts.
                     let item_id = format!("insight-post:{}:{}:{}", d.sub_id, d.insight_id, d.ts);

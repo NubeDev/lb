@@ -48,6 +48,7 @@ mod cites;
 mod clock;
 mod comment;
 mod echo;
+mod entity_filter;
 mod error;
 mod events;
 mod facet_backfill;

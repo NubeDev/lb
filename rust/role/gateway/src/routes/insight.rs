@@ -183,7 +183,7 @@ pub async fn insight_events(
         .await
         .map_err(|e| e.into_response())?;
     let ws = principal.ws().to_string();
-    let sub = lb_host::subscribe_insight_events(&gw.node.bus, &principal, &ws)
+    let sub = lb_host::subscribe_insight_events(&gw.node.bus, &gw.node.store, &principal, &ws)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     let stream = futures::stream::unfold(sub, |sub| async move {

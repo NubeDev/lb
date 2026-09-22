@@ -330,6 +330,7 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         title_template: item.title_template.clone(),
         home: item.home,
         footer: item.footer,
+        entity: item.entity.clone(),
     })
 }
 
@@ -373,6 +374,7 @@ async fn resolve_dashboard(
             title_template: item.title_template.clone(),
             home: item.home,
             footer: item.footer,
+            entity: item.entity.clone(),
         })),
         // Unreadable → stripped (the caller can't reach this page — the lens). Denied, not-found and
         // tombstoned are ONE answer here by design: the cache stores "this caller cannot read it" and
@@ -429,6 +431,7 @@ async fn resolve_ext(
             title_template: item.title_template.clone(),
             home: item.home,
             footer: item.footer,
+            entity: item.entity.clone(),
         })),
         None => Ok(None), // uninstalled → stripped silently.
     }
@@ -489,6 +492,8 @@ async fn resolve_tag_group(
                 title_template: None,
                 home: false,
                 footer: false,
+                // A generated child carries no entity marker of its own.
+                entity: None,
             });
         }
     }
@@ -510,6 +515,7 @@ async fn resolve_tag_group(
         title_template: item.title_template.clone(),
         home: item.home,
         footer: item.footer,
+        entity: item.entity.clone(),
     }))
 }
 
@@ -565,6 +571,7 @@ async fn resolve_group(
         title_template: item.title_template.clone(),
         home: item.home,
         footer: item.footer,
+        entity: item.entity.clone(),
     }))
 }
 

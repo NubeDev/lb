@@ -41,5 +41,6 @@ pub async fn remove_member(
         None => format!("team:{team}"),
     };
     unrelate(store, ws, MEMBER, &other, user).await?;
+    crate::authz::invalidate_entity_scope(ws);
     Ok(())
 }

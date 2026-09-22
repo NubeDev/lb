@@ -101,10 +101,18 @@ pub async fn notify_assignment(
         // Count only the insights matching this sub's FULL filter — the severity floor, tags,
         // origin and dedup axes all still apply. The number in the message is what this subscriber
         // actually gained, not the number of ids the caller passed.
-        let matched: Vec<&Insight> = assigned
+        let mut matched: Vec<&Insight> = assigned
             .iter()
             .filter(|i| non_assignee_axes_match(&sub.filter, i))
             .collect();
+        // Entity-scoped data: the owner hears only about insights inside their entities.
+        let mut kept = Vec::with_capacity(matched.len());
+        for i in matched.drain(..) {
+            if super::entity_filter::sub_owner_may_see(&node.store, ws, sub, &i.tags).await {
+                kept.push(i);
+            }
+        }
+        let matched = kept;
         if matched.is_empty() {
             continue;
         }

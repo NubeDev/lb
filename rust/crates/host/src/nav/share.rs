@@ -54,5 +54,6 @@ pub async fn nav_share(
     nav.visibility = visibility;
     nav.updated_ts = now;
     write_nav(store, ws, &nav).await?;
+    crate::authz::invalidate_entity_scope(ws);
     Ok(nav)
 }

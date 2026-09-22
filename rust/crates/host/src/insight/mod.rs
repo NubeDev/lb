@@ -33,6 +33,8 @@ mod backfill;
 mod comment;
 mod comments;
 mod delete;
+mod entity_filter;
+pub(crate) use entity_filter::{ensure_visible as insight_ensure_visible, entity_limit};
 mod error;
 mod facets;
 mod get;

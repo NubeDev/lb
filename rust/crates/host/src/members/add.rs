@@ -25,5 +25,6 @@ pub async fn add_member(
 ) -> Result<(), MembersError> {
     authorize_tool(principal, ws, "members.add").map_err(|_| MembersError::Denied)?;
     relate(store, ws, MEMBER, team, user).await?;
+    crate::authz::invalidate_entity_scope(ws);
     Ok(())
 }

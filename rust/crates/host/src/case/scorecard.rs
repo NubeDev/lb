@@ -74,7 +74,15 @@ pub async fn rule_scorecard(
 ) -> Result<Vec<ScorecardRow>, CaseSvcError> {
     authorize_tool(principal, ws, "rule.scorecard").map_err(|_| CaseSvcError::Denied)?;
 
-    let cases = lb_cases::resolved_cases(store, ws, &ResolvedFilter { site, since, until }).await?;
+    let mut cases =
+        lb_cases::resolved_cases(store, ws, &ResolvedFilter { site, since, until }).await?;
+    // Entity-scoped data: a restricted caller's scorecard counts only cases at their sites.
+    if let Some((_tag, ids)) = crate::insight::entity_limit(store, principal, ws)
+        .await
+        .map_err(|e| CaseSvcError::Store(e.to_string()))?
+    {
+        cases.retain(|c| c.site.as_deref().is_some_and(|s| ids.contains(s)));
+    }
 
     // One insight may be the primary of several cases (a hold-down reopen closes and reopens the
     // same finding), so the reads are memoized. It does not stop this being an N+1 — it only stops

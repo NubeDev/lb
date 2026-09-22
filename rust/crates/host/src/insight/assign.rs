@@ -147,6 +147,8 @@ async fn assign_one(
     if lb_insights::get(&node.store, ws, id).await?.is_none() {
         return Err(InsightSvcError::BadInput(format!("no such insight: {id}")));
     }
+    // Entity-scoped data: an out-of-scope insight reads exactly like a missing one.
+    super::entity_filter::ensure_visible(&node.store, principal, ws, id).await?;
     // The case is the authority. An insight with no case yet gets one here — the same grouping call
     // the raise path makes, so touching an un-backfilled finding heals it.
     let case_id = crate::case::group_insight(node, ws, id, ts)

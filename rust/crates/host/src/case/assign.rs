@@ -35,6 +35,7 @@ pub async fn case_assign(
     ts: u64,
 ) -> Result<AssignOutcome, CaseSvcError> {
     authorize_tool(principal, ws, "case.workflow").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(&node.store, principal, ws, id).await?;
     if let Some(a) = assignee {
         validate_assignee(&node.store, ws, a)
             .await

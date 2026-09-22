@@ -30,6 +30,7 @@ pub async fn case_workflow(
     ts: u64,
 ) -> Result<Case, CaseSvcError> {
     authorize_tool(principal, ws, "case.workflow").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, id).await?;
     Ok(lb_cases::workflow(
         store,
         ws,

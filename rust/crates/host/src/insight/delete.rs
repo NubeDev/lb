@@ -20,6 +20,8 @@ pub async fn insight_delete(
     id: &str,
 ) -> Result<(), InsightSvcError> {
     authorize_tool(principal, ws, "insight.delete").map_err(|_| InsightSvcError::Denied)?;
+    // Entity-scoped data: an out-of-scope insight reads exactly like a missing one.
+    super::entity_filter::ensure_visible(store, principal, ws, id).await?;
     lb_insights::delete(store, ws, id).await?;
     Ok(())
 }

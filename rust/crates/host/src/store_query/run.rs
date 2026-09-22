@@ -33,6 +33,15 @@ pub async fn store_query_run(
     vars: Vec<(String, Value)>,
 ) -> Result<QueryResult, StoreQueryError> {
     authorize_store_query(principal, ws, "store.query")?;
+    // Entity-scoped data: a raw table read cannot be narrowed to a caller's entities, so a
+    // restricted caller is refused outright (the same rule federation's schema/sample verbs apply).
+    if crate::insight::entity_limit(store, principal, ws)
+        .await
+        .map_err(|_| StoreQueryError::Denied)?
+        .is_some()
+    {
+        return Err(StoreQueryError::Denied);
+    }
 
     // Two different boundaries, in order of who enforces them:
     //
