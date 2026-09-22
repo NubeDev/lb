@@ -40,6 +40,7 @@ mod role;
 mod scope;
 mod subject;
 mod team;
+mod team_edges;
 mod token_revoke;
 
 pub use check_scoped::{check_scoped, check_scoped_with, scope_filter, scope_filter_with};
@@ -80,6 +81,7 @@ pub use role::{role_caps, role_define, role_delete, role_list, Role, ROLE_TABLE}
 pub use scope::{Scope, ScopeFilter};
 pub use subject::Subject;
 pub use team::{team_create, team_delete, team_list, Team, TEAM_TABLE};
+pub use team_edges::{edge_is_user, team_member_edges, team_subject};
 pub use token_revoke::{token_revoke_mark, token_revoked, TOKEN_REVOKE_TABLE};
 
 /// The `member` relation kind — the edge `team -[member]-> user` the S4 `visibility` resolver

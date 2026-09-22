@@ -19,7 +19,6 @@
 
 use std::collections::BTreeMap;
 
-use lb_assets::list_related;
 use lb_store::{Store, StoreError};
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +27,8 @@ use crate::resolve::NoBuiltinRoleCaps;
 use crate::role::role_caps;
 use crate::subject::Subject;
 use crate::team::team_list;
-use crate::{BuiltinRoleCaps, MEMBER};
+use crate::team_edges::{edge_is_user, team_member_edges, team_subject};
+use crate::BuiltinRoleCaps;
 
 /// Where a resolved cap came from — the provenance tag the access console shows beside each cap.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,12 +88,12 @@ pub async fn resolve_caps_sourced_with(
     // Team-inherited: for every team the user is a member of, fold the team's grants + roles. Same
     // membership walk `resolve_caps_with` performs (a membership/visibility relation is the live edge).
     for team in team_list(store, ws).await? {
-        let members = list_related(store, ws, MEMBER, &team.team).await?;
-        if members.iter().any(|m| m == user) {
+        let members = team_member_edges(store, ws, &team.team).await?;
+        if members.iter().any(|m| edge_is_user(m, user)) {
             fold_subject(
                 store,
                 ws,
-                &Subject::Team(team.team.clone()),
+                &team_subject(&team.team),
                 Ctx::TeamInherited(team.team.clone()),
                 builtins,
                 &mut acc,
