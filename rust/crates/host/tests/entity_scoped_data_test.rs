@@ -50,15 +50,31 @@ fn admin() -> Principal {
             "mcp:teams.manage:call",
             "mcp:teams.create:call",
             "mcp:members.add:call",
+            "mcp:insight.raise:call",
+            "mcp:insight.list:call",
+            "mcp:case.list:call",
         ],
     )
 }
 
-/// A group member: the read caps a viewer holds, and no admin marker.
+/// A group member: the read caps a viewer holds (plus `store.query`, to prove it is refused), and no
+/// admin marker.
 fn member() -> Principal {
+    member_named("user:m1")
+}
+
+fn member_named(sub: &str) -> Principal {
     principal(
-        "user:m1",
-        &["mcp:federation.query:call", "mcp:nav.resolve:call"],
+        sub,
+        &[
+            "mcp:federation.query:call",
+            "mcp:nav.resolve:call",
+            "mcp:insight.list:call",
+            "mcp:insight.get:call",
+            "mcp:insight.ack:call",
+            "mcp:case.list:call",
+            "mcp:store.query:call",
+        ],
     )
 }
 
@@ -112,9 +128,9 @@ fn first_number(out: &Value) -> f64 {
         .unwrap_or(-1.0)
 }
 
-async fn setup(enforce: bool) -> Arc<Node> {
+async fn setup(who: &str, enforce: bool) -> Arc<Node> {
     let dir = federation_dir();
-    let db = seed_db(if enforce { "enforced" } else { "open" });
+    let db = seed_db(who);
     let node = Arc::new(Node::boot().await.unwrap());
     let admin = admin();
     let approved = vec![
@@ -137,7 +153,7 @@ async fn setup(enforce: bool) -> Arc<Node> {
         &admin,
         "federation.row_policy_set",
         json!({
-            "source": "esr", "enforce": enforce, "entity_table": "site", "scope_sources": ["nav"],
+            "source": "esr", "enforce": enforce, "entity_table": "site", "scope_sources": ["nav"], "insight_tag": "site",
             "policy": {
                 "tables": {
                     "point_meta_tags": {"kind": "keyed", "columns": ["host_uuid", "point_uuid"]},
@@ -193,7 +209,7 @@ async fn setup(enforce: bool) -> Arc<Node> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_member_reads_only_the_sites_on_their_handed_menu() {
-    let node = setup(true).await;
+    let node = setup("a_member_reads_only_the_sites_on_their_handed_menu", true).await;
     let (admin, member) = (admin(), member());
     let q = |sql: &str| json!({"source": "esr", "sql": sql});
 
@@ -254,7 +270,7 @@ async fn a_member_reads_only_the_sites_on_their_handed_menu() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_unenforced_policy_changes_nothing() {
-    let node = setup(false).await;
+    let node = setup("an_unenforced_policy_changes_nothing", false).await;
     let total = json!({"source": "esr", "sql": "SELECT SUM(v) FROM readings"});
     assert_eq!(
         first_number(
@@ -264,4 +280,197 @@ async fn an_unenforced_policy_changes_nothing() {
         ),
         1010.0
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn no_menu_reads_nothing_a_pick_changes_nothing_and_two_menus_union() {
+    let node = setup(
+        "no_menu_reads_nothing_a_pick_changes_nothing_and_two_menus_union",
+        true,
+    )
+    .await;
+    let admin = admin();
+    let count = json!({"source": "esr", "sql": "SELECT count(*) FROM readings"});
+
+    // A non-admin handed no menu reads NOTHING (fail closed), not everything.
+    let stranger = member_named("user:m2");
+    assert_eq!(
+        first_number(
+            &call(&node, &stranger, "federation.query", count.clone())
+                .await
+                .unwrap()
+        ),
+        0.0
+    );
+
+    // A member's own pick — "show all pages", or picking their team menu by hand — neither zeroes
+    // nor widens what they read: the HANDED menus decide.
+    let m1 = member();
+    call(
+        &node,
+        &m1,
+        "nav.pref.set",
+        json!({"forceBuiltin": true, "now": 5}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        first_number(
+            &call(&node, &m1, "federation.query", count.clone())
+                .await
+                .unwrap()
+        ),
+        1.0
+    );
+    call(
+        &node,
+        &m1,
+        "nav.pref.set",
+        json!({"forceBuiltin": false, "id": "g1menu", "now": 6}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        first_number(
+            &call(&node, &m1, "federation.query", count.clone())
+                .await
+                .unwrap()
+        ),
+        1.0
+    );
+
+    // A second team's menu marks site B; joining that team widens m1 to BOTH — at once, since a
+    // membership change drops the cached scope.
+    call(
+        &node,
+        &admin,
+        "teams.create",
+        json!({"team":"g2","name":"Group 2"}),
+    )
+    .await
+    .unwrap();
+    call(
+        &node,
+        &admin,
+        "nav.save",
+        json!({"id":"g2menu","title":"Group 2","now":3,"items":[
+            {"kind":"group","label":"Site B","entity":{"table":"site","id":"Site B"},"items":[]}
+        ]}),
+    )
+    .await
+    .unwrap();
+    call(
+        &node,
+        &admin,
+        "nav.share",
+        json!({"id":"g2menu","visibility":"team","team":"g2","now":4}),
+    )
+    .await
+    .unwrap();
+    call(
+        &node,
+        &admin,
+        "members.add",
+        json!({"team":"g2","user":"user:m1"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        first_number(&call(&node, &m1, "federation.query", count).await.unwrap()),
+        2.0
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn insights_cases_and_raw_reads_follow_the_same_scope() {
+    let node = setup("insights_cases_and_raw_reads_follow_the_same_scope", true).await;
+    let (admin, m1) = (admin(), member());
+    let raise = |key: &str, site: &str| {
+        json!({
+            "dedup_key": key, "severity": "warning", "title": format!("high usage at {site}"),
+            "origin": {"kind": "rule", "ref": "rule:usage", "run": "job:1"},
+            "tags": {"site": site}, "ts": 10
+        })
+    };
+    let a = call(&node, &admin, "insight.raise", raise("k-a", "Site A"))
+        .await
+        .unwrap();
+    let b = call(&node, &admin, "insight.raise", raise("k-b", "Site B"))
+        .await
+        .unwrap();
+    let (id_a, id_b) = (
+        a["id"].as_str().unwrap().to_string(),
+        b["id"].as_str().unwrap().to_string(),
+    );
+
+    // The list is narrowed to site A's insight; the admin sees both.
+    let mine = call(&node, &m1, "insight.list", json!({"limit": 50}))
+        .await
+        .unwrap();
+    let ids: Vec<&str> = mine["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|i| i["id"].as_str())
+        .collect();
+    assert_eq!(ids, vec![id_a.as_str()], "{mine}");
+    let all = call(&node, &admin, "insight.list", json!({"limit": 50}))
+        .await
+        .unwrap();
+    assert_eq!(all["items"].as_array().map(Vec::len), Some(2));
+
+    // An out-of-scope insight reads as absent: `get` is null, `ack` says "no such insight".
+    assert!(call(&node, &m1, "insight.get", json!({"id": id_a}))
+        .await
+        .unwrap()
+        .is_object());
+    assert!(call(&node, &m1, "insight.get", json!({"id": id_b}))
+        .await
+        .unwrap()
+        .is_null());
+    let err = call(&node, &m1, "insight.ack", json!({"id": id_b, "ts": 11}))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("no such insight"), "{err}");
+
+    // Cases (opened by the raise) follow the insight's site.
+    let cases = call(
+        &node,
+        &m1,
+        "case.list",
+        json!({"lane": "watching", "filter": {}, "now": 12}),
+    )
+    .await
+    .unwrap();
+    let sites: Vec<&str> = cases["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["site"].as_str())
+        .collect();
+    assert_eq!(sites, vec!["Site A"], "{cases}");
+    let all_cases = call(
+        &node,
+        &admin,
+        "case.list",
+        json!({"lane": "watching", "filter": {}, "now": 12}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        all_cases["items"].as_array().map(Vec::len),
+        Some(2),
+        "{all_cases}"
+    );
+
+    // A raw store read cannot be narrowed, so a restricted caller is refused outright.
+    assert!(call(
+        &node,
+        &m1,
+        "store.query",
+        json!({"sql": "SELECT * FROM insight"})
+    )
+    .await
+    .is_err());
 }

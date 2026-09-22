@@ -26,7 +26,10 @@ pub async fn insight_comments(
     id: &str,
 ) -> Result<Vec<Comment>, InsightSvcError> {
     authorize_tool(principal, ws, "insight.get").map_err(|_| InsightSvcError::Denied)?;
-    super::entity_filter::ensure_visible(store, principal, ws, id).await?;
+    // Entity-scoped data: out of scope reads exactly like missing — an empty thread, not an error.
+    if !super::entity_filter::visible_id(store, principal, ws, id).await? {
+        return Ok(Vec::new());
+    }
     let thread = lb_insights::comments(store, ws, id).await?;
     Ok(thread)
 }

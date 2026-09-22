@@ -22,7 +22,10 @@ pub async fn insight_occurrence_delete(
 ) -> Result<(), InsightSvcError> {
     authorize_tool(principal, ws, "insight.occurrence.delete")
         .map_err(|_| InsightSvcError::Denied)?;
-    super::entity_filter::ensure_visible(store, principal, ws, insight_id).await?;
+    // Entity-scoped data: out of scope reads exactly like missing — an idempotent no-op.
+    if !super::entity_filter::visible_id(store, principal, ws, insight_id).await? {
+        return Ok(());
+    }
     lb_insights::delete_occurrence(store, ws, insight_id, oseq).await?;
     Ok(())
 }

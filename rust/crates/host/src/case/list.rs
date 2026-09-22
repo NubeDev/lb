@@ -41,7 +41,7 @@ pub async fn case_list(
     let mut query = query;
     if let Some((_tag, ids)) = crate::insight::entity_limit(store, principal, ws)
         .await
-        .map_err(|_| CaseSvcError::Denied)?
+        .map_err(|e| CaseSvcError::Store(e.to_string()))?
     {
         query.filter.sites_allowed = Some(ids);
     }

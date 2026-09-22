@@ -26,6 +26,12 @@ pub async fn insight_list(
     authorize_tool(principal, ws, "insight.list").map_err(|_| InsightSvcError::Denied)?;
     // Both halves resolve in ONE place — see `resolve_filter`.
     let (tag_allow, assignee) = resolve_filter(store, principal, ws, &query.filter).await?;
+    // Entity-scoped data: a restricted caller's list (and its counts) is limited to their entities'
+    // insights, set here from server state — the wire can never carry it (`entity` is serde(skip)).
+    let mut query = query;
+    if let Some((tag, ids)) = super::entity_filter::entity_limit(store, principal, ws).await? {
+        query.filter.entity = Some((tag, ids.into_iter().collect()));
+    }
     let page = lb_insights::list(store, ws, query, tag_allow.as_ref(), assignee.as_ref()).await?;
     Ok(page)
 }

@@ -15,9 +15,10 @@ use super::error::InsightSvcError;
 /// A live insight-events subscription — deserializes each bus payload back into a [`RaiseEvent`].
 pub struct InsightWatch {
     inner: Subscription,
-    /// Entity-scoped data: a restricted subscriber's `(tag, entity ids)` and the store to check each
-    /// event's insight against. `None` = unrestricted, every event passes (unchanged behaviour).
-    limit: Option<(Store, String, String, std::collections::BTreeSet<String>)>,
+    /// Entity-scoped data: what is needed to re-resolve the subscriber's entity limit per event (both
+    /// the policy and the scope are cached, so this is cheap) — a menu edit narrows a live stream
+    /// without a reconnect. `None` = no policy at subscribe time and no narrowing.
+    limit: Option<(Store, String, Principal)>,
 }
 
 impl InsightWatch {
@@ -32,10 +33,14 @@ impl InsightWatch {
             };
             // An event for an insight outside the subscriber's entities is dropped — its id and
             // dedup key are not theirs to see. An unreadable insight is dropped too (fail closed).
-            if let Some((store, ws, tag, ids)) = &self.limit {
-                let keep = match lb_insights::get(store, ws, &ev.id).await {
-                    Ok(Some(i)) => i.tags.get(tag).is_some_and(|v| ids.contains(v)),
-                    _ => false,
+            if let Some((store, ws, principal)) = &self.limit {
+                let keep = match super::entity_filter::entity_limit(store, principal, ws).await {
+                    Ok(None) => true,
+                    Ok(Some((tag, ids))) => match lb_insights::get(store, ws, &ev.id).await {
+                        Ok(Some(i)) => i.tags.get(&tag).is_some_and(|v| ids.contains(v)),
+                        _ => false,
+                    },
+                    Err(_) => false,
                 };
                 if !keep {
                     continue;
@@ -57,7 +62,7 @@ pub async fn subscribe_insight_events(
     authorize_tool(principal, ws, "insight.watch").map_err(|_| InsightSvcError::Denied)?;
     let limit = super::entity_filter::entity_limit(store, principal, ws)
         .await?
-        .map(|(tag, ids)| (store.clone(), ws.to_string(), tag, ids));
+        .map(|_| (store.clone(), ws.to_string(), principal.clone()));
     // Same relative key the raise path publishes on (`lb_bus::publish(bus, ws, "insight/events")`
     // → `ws/{ws}/insight/events`).
     let inner = subscribe(bus, ws, "insight/events")

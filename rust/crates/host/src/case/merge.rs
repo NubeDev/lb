@@ -28,6 +28,8 @@ pub async fn case_merge(
     ts: u64,
 ) -> Result<Case, CaseSvcError> {
     authorize_tool(principal, ws, "case.open").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(&node.store, principal, ws, from_id).await?;
+    super::entity_filter::ensure_visible(&node.store, principal, ws, into_id).await?;
     let closed = lb_cases::merge(
         &node.store,
         ws,

@@ -40,6 +40,16 @@ pub async fn case_open(
     authorize_tool(principal, ws, "case.open").map_err(|_| CaseSvcError::Denied)?;
 
     let store = &node.store;
+    // Entity-scoped data: every cited insight must be inside the caller's entities (an out-of-scope
+    // one reads exactly like a missing one).
+    crate::insight::insight_ensure_visible(store, principal, ws, primary_insight)
+        .await
+        .map_err(insight_err)?;
+    for id in also {
+        crate::insight::insight_ensure_visible(store, principal, ws, id)
+            .await
+            .map_err(insight_err)?;
+    }
     // Establish the primary exists in THIS workspace before writing anything — a case citing a
     // detection that is not here is a case about nothing.
     let Some(insight) = lb_insights::get(store, ws, primary_insight).await? else {
@@ -108,4 +118,13 @@ pub async fn case_open(
     // than the pre-clock record.
     super::sla_clock::apply_sla(node, ws, &case.id, ts).await?;
     Ok(lb_cases::get(store, ws, &case.id).await?.unwrap_or(case))
+}
+
+/// The insight service's answer, in this service's error type (the two share the same wording).
+fn insight_err(e: crate::insight::InsightSvcError) -> CaseSvcError {
+    match e {
+        crate::insight::InsightSvcError::BadInput(m) => CaseSvcError::BadInput(m),
+        crate::insight::InsightSvcError::Denied => CaseSvcError::Denied,
+        other => CaseSvcError::Store(other.to_string()),
+    }
 }

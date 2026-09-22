@@ -45,6 +45,10 @@ pub async fn case_request_nudge(
     let Some(mut request) = lb_cases::request_get(store, ws, id).await? else {
         return Err(CaseSvcError::BadInput(format!("no such request: {id}")));
     };
+    // Entity-scoped data: a request on an out-of-scope case reads exactly like a missing request.
+    if !super::entity_filter::case_visible_id(store, principal, ws, &request.case_id).await? {
+        return Err(CaseSvcError::BadInput(format!("no such request: {id}")));
+    }
 
     // Answered or withdrawn ⇒ nothing to chase. Cancel whatever is left of the ladder so the
     // remaining rungs do not each re-discover this.

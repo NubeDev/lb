@@ -26,6 +26,7 @@ pub async fn case_split(
     ts: u64,
 ) -> Result<Case, CaseSvcError> {
     authorize_tool(principal, ws, "case.open").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(&node.store, principal, ws, from_id).await?;
     let new_case = lb_cases::split(
         &node.store,
         ws,

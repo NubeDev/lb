@@ -1,17 +1,18 @@
 //! **Entity narrowing for insights** (entity-scoped-data scope). When the workspace's enforced row
 //! policy names an `insight_tag` (e.g. `site`), a restricted principal sees only insights whose tag
-//! value is one of their entities — in lists, counts, and single reads. An insight WITHOUT the tag is
-//! hidden from them (fail closed): nothing ties it to an entity they may read.
+//! value is one of their entities — in lists, counts, single reads, actions, the live stream and
+//! subscription deliveries. An insight WITHOUT the tag is hidden from them (fail closed): nothing
+//! ties it to an entity they may read.
 //!
 //! The entity set is the same one federated reads use (`authz::entity_scope`), so a group sees the
-//! same sites in its charts and in its insights.
+//! same sites in its charts and in its insights. The tag is read from the insight's flat `tags` echo
+//! everywhere (list predicate, point checks, stream) — one source of truth, never the tag graph.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 
 use lb_auth::Principal;
-use lb_insights::Insight;
+use lb_insights::{Insight, Subscription};
 use lb_store::Store;
-use lb_tags::Facet;
 
 use super::error::InsightSvcError;
 use crate::authz::{entity_scope, EntityScope};
@@ -44,57 +45,73 @@ pub(crate) async fn entity_limit(
     }
 }
 
-/// The insight ids `principal` may see, or `None` when unrestricted. Resolved through the tag graph,
-/// one exact facet per entity.
-pub(super) async fn allowed_ids(
-    store: &Store,
-    principal: &Principal,
-    ws: &str,
-) -> Result<Option<HashSet<String>>, InsightSvcError> {
-    let Some((tag, ids)) = entity_limit(store, principal, ws).await? else {
-        return Ok(None);
-    };
-    let mut out = HashSet::new();
-    for id in ids {
-        let facets = [Facet::exact(tag.clone(), serde_json::Value::String(id))];
-        let found = lb_tags::find(store, ws, &facets)
-            .await
-            .map_err(|e| InsightSvcError::Store(e.to_string()))?;
-        out.extend(
-            found
-                .into_iter()
-                .map(|e| e.strip_prefix("insight:").map(str::to_string).unwrap_or(e)),
-        );
+/// Is `insight` inside `limit`? `None` = unrestricted.
+fn within(limit: &Option<(String, BTreeSet<String>)>, insight: &Insight) -> bool {
+    match limit {
+        None => true,
+        Some((tag, ids)) => insight.tags.get(tag).is_some_and(|v| ids.contains(v)),
     }
-    Ok(Some(out))
 }
 
-/// May `principal` see `insight`? For single-record verbs (get, and every write that addresses one).
+/// May `principal` see `insight`?
 pub(super) async fn visible(
     store: &Store,
     principal: &Principal,
     ws: &str,
     insight: &Insight,
 ) -> Result<bool, InsightSvcError> {
-    Ok(match entity_limit(store, principal, ws).await? {
+    Ok(within(&entity_limit(store, principal, ws).await?, insight))
+}
+
+/// May `principal` see insight `id`? `true` when unrestricted, when the insight is missing (the
+/// verb keeps its own missing-id answer), or when it is in scope; `false` only for a real insight
+/// outside the caller's entities.
+pub(super) async fn visible_id(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    id: &str,
+) -> Result<bool, InsightSvcError> {
+    let limit = entity_limit(store, principal, ws).await?;
+    if limit.is_none() {
+        return Ok(true);
+    }
+    Ok(match lb_insights::get(store, ws, id).await? {
+        Some(i) => within(&limit, &i),
         None => true,
-        Some((tag, ids)) => insight.tags.get(&tag).is_some_and(|v| ids.contains(v)),
     })
 }
 
 /// Refuse a single-insight verb on an insight outside `principal`'s entities with EXACTLY the error a
 /// missing id gets ("no such insight"), so an out-of-scope insight's existence is not disclosed.
-pub(super) async fn ensure_visible(
+/// For the verbs whose missing-id answer is an ERROR (ack, resolve, assign, comment, delete).
+pub(crate) async fn ensure_visible(
     store: &Store,
     principal: &Principal,
     ws: &str,
     id: &str,
 ) -> Result<(), InsightSvcError> {
-    if entity_limit(store, principal, ws).await?.is_none() {
-        return Ok(());
+    if visible_id(store, principal, ws, id).await? {
+        Ok(())
+    } else {
+        Err(InsightSvcError::BadInput(format!("no such insight: {id}")))
     }
-    match lb_insights::get(store, ws, id).await? {
-        Some(i) if visible(store, principal, ws, &i).await? => Ok(()),
-        _ => Err(InsightSvcError::BadInput(format!("no such insight: {id}"))),
+}
+
+/// May a subscription's OWNER see an insight with these `tags`? A subscription fires under its
+/// owner's stored principal, so a delivery is a read by the owner and is narrowed like one.
+pub(super) async fn sub_owner_may_see(
+    store: &Store,
+    ws: &str,
+    sub: &Subscription,
+    tags: &std::collections::BTreeMap<String, String>,
+) -> bool {
+    let caps: Vec<String> = serde_json::from_value(sub.principal.clone()).unwrap_or_default();
+    let owner = Principal::routed(&sub.owner, ws, caps);
+    match entity_limit(store, &owner, ws).await {
+        Ok(None) => true,
+        Ok(Some((tag, ids))) => tags.get(&tag).is_some_and(|v| ids.contains(v)),
+        // Fail closed: an unreadable policy delivers nothing out of the ordinary.
+        Err(_) => false,
     }
 }

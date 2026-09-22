@@ -61,6 +61,10 @@ pub async fn case_request_send(
     let Some(case) = lb_cases::get(store, ws, case_id).await? else {
         return Err(CaseSvcError::BadInput(format!("no such case: {case_id}")));
     };
+    // Entity-scoped data: an out-of-scope case reads exactly like a missing one.
+    if !super::entity_filter::visible(store, principal, ws, &case).await? {
+        return Err(CaseSvcError::BadInput(format!("no such case: {case_id}")));
+    }
     let Some(party) = lb_cases::party_get(store, ws, party_id).await? else {
         return Err(CaseSvcError::BadInput(format!("no such party: {party_id}")));
     };

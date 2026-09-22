@@ -29,6 +29,7 @@ pub async fn case_request_list(
     case_id: &str,
 ) -> Result<Vec<Value>, CaseSvcError> {
     authorize_tool(principal, ws, "case.get").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, case_id).await?;
 
     let mut out = Vec::new();
     for mut request in lb_cases::requests_of_case(store, ws, case_id).await? {

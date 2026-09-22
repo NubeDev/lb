@@ -19,7 +19,7 @@ pub(super) async fn visible(
 ) -> Result<bool, CaseSvcError> {
     let limit = crate::insight::entity_limit(store, principal, ws)
         .await
-        .map_err(|_| CaseSvcError::Denied)?;
+        .map_err(|e| CaseSvcError::Store(e.to_string()))?;
     Ok(match limit {
         None => true,
         Some((_tag, ids)) => case.site.as_deref().is_some_and(|s| ids.contains(s)),
@@ -39,4 +39,17 @@ pub(super) async fn ensure_visible(
         // A genuinely missing case keeps whatever answer the verb itself gives.
         None => Ok(()),
     }
+}
+
+/// May `principal` see case `id`? `true` when unrestricted, missing, or in scope.
+pub(super) async fn case_visible_id(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    id: &str,
+) -> Result<bool, CaseSvcError> {
+    Ok(match lb_cases::get(store, ws, id).await? {
+        Some(c) => visible(store, principal, ws, &c).await?,
+        None => true,
+    })
 }

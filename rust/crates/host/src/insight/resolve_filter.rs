@@ -55,16 +55,6 @@ pub(super) async fn resolve_filter(
         )
     };
 
-    // Entity-scoped data: a restricted caller's view is ALSO limited to their entities' insights —
-    // intersected with any tag facet, so a facet can only ever narrow further.
-    let tag_allow = match super::entity_filter::allowed_ids(store, principal, ws).await? {
-        None => tag_allow,
-        Some(scope) => Some(match tag_allow {
-            None => scope,
-            Some(facet) => facet.intersection(&scope).cloned().collect(),
-        }),
-    };
-
     let assignee = match filter.assigned_to.as_deref() {
         None => None,
         Some(ASSIGNEE_NONE) => Some(AssigneeFilter::Unassigned),

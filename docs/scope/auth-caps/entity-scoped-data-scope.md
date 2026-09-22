@@ -71,13 +71,34 @@ by `owner_sub()` so API keys, agents, reminders and report fires inherit their o
    subscriptions) and cases (`list`/facets/scorecard/group/`get`/comment/assign/assignees/breach
    notify) narrowed by the entity tag / facet.
 
+## Boundaries and known limits (reviewed 2026-09-22)
+
+- **Who is unrestricted.** A workspace admin, meaning a principal holding any admin-marker cap
+  (`nav/admin_lens.rs`: `teams.manage`, `grants.assign`, `workspace.delete`, `ext.uninstall`,
+  `apikey.manage`, `webhook.manage`, `members.manage`). A custom role that hands a member one of those
+  caps also lifts them out of the row policy — grant them knowingly.
+- **Menus are access.** With the `nav` source on, `nav.save`/`nav.share`/`nav.set_default` grant
+  data. They sit in the admin bundle; a custom role carrying them can hand any entity to any team.
+- **A derived principal** (an extension backend, the agent) reads with its OWNER's scope and standing.
+  A reactor run with no owner (`node:reactor`) is restricted and, holding no menu, reads nothing; a
+  rule or reminder scheduled by a person runs as that person.
+- **API keys** reach only what a workspace-default menu marks (no team edges, no user grants).
+- **Raw store reads** (`store.query`, member tier) are refused for a restricted caller: an insight or
+  case table cannot be narrowed row by row.
+- **Freshness.** Scopes and policies are cached 30 s per workspace and dropped on every write that can
+  change access (menu save/share/unshare/delete/default, team membership, grants, policy), so a change
+  takes effect at once for callers on this node.
+- **Resource use.** Allow-listed set-returning functions (`generate_series`, `repeat`) are unbounded;
+  a `statement_timeout` on the datasource DSN is the backstop, not the rewrite.
+
 ## Test plan (real store, no mocks)
 - Rewriter attack suite: aliases, CTE shadowing, recursive CTE, subqueries (WHERE/SELECT/LATERAL),
   UNION, `query_to_xml`, `set_config`, `current_setting`, `dblink`, `pg_catalog`,
   `information_schema`, schema-qualified and quoted names, quotes in ids, empty set.
-- Embed: a team whose handed menu marks entity A reads only A; editing the menu widens/narrows it;
-  a personal pick cannot widen; a `grant` source adds; admin unrestricted; cache isolation; insight
-  and case narrowing; reminder and API-key owner scope.
+- Embed (`host/tests/entity_scoped_data_test.rs`): a team whose handed menu marks entity A reads
+  only A with the SQL an admin uses; a principal handed no menu reads nothing; a personal pick or
+  "show all pages" neither widens nor zeroes; two team menus union; insights, cases and `store.query`
+  follow the same scope; an unenforced policy changes nothing.
 
 ## Rollout (first consumer: rubix-ai ESR)
 Deploy with no policy (no-op) → dry-run every board's SQL through the rewriter and tune the policy →

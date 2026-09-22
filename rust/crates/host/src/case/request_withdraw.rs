@@ -37,6 +37,10 @@ pub async fn case_request_withdraw(
     let Some(mut request) = lb_cases::request_get(store, ws, id).await? else {
         return Err(CaseSvcError::BadInput(format!("no such request: {id}")));
     };
+    // Entity-scoped data: a request on an out-of-scope case reads exactly like a missing request.
+    if !super::entity_filter::case_visible_id(store, principal, ws, &request.case_id).await? {
+        return Err(CaseSvcError::BadInput(format!("no such request: {id}")));
+    }
 
     if lb_cases::request_withdraw(store, ws, &mut request, ts).await? {
         cancel_nudges(store, ws, &request.id).await;

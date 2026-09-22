@@ -79,7 +79,7 @@ pub async fn rule_scorecard(
     // Entity-scoped data: a restricted caller's scorecard counts only cases at their sites.
     if let Some((_tag, ids)) = crate::insight::entity_limit(store, principal, ws)
         .await
-        .map_err(|_| CaseSvcError::Denied)?
+        .map_err(|e| CaseSvcError::Store(e.to_string()))?
     {
         cases.retain(|c| c.site.as_deref().is_some_and(|s| ids.contains(s)));
     }
