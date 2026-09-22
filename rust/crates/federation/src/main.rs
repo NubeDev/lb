@@ -46,6 +46,7 @@ mod pool;
 mod profile;
 mod query;
 mod results;
+mod row_policy;
 mod sample;
 mod source;
 mod sql_macros;
@@ -102,6 +103,15 @@ async fn handle_call(req: &Request) -> Reply {
         Err(e) => return Reply::err(req.id, format!("bad input json: {e}")),
     };
 
+    // Entity-scoped data: only `federation.query` knows how to narrow a read. Any other tool handed a
+    // `row_scope` is refused rather than run unscoped (the host never sends one, so this is the
+    // second, independent gate).
+    if params.tool != "federation.query" && input.get("row_scope").is_some() {
+        return Reply::err(
+            req.id,
+            format!("{} is not available for a scoped read", params.tool),
+        );
+    }
     match params.tool.as_str() {
         "federation.query" => federation_query(req.id, &input).await,
         "federation.schema" => federation_schema(req.id, &input).await,
@@ -137,6 +147,17 @@ async fn federation_query(id: u64, input: &Value) -> Reply {
     let sql = match sql_macros::expand(sql, kind, input.get("resolution")) {
         Ok(s) => s,
         Err(e) => return Reply::err(id, e),
+    };
+    // Entity-scoped data: a restricted principal's SELECT is narrowed to their entities AFTER macro
+    // expansion (macros emit their own functions) and BEFORE the cache/pool (the scope rides the
+    // input, so it is part of the result-cache key). No `row_scope` = unrestricted, unchanged.
+    let sql = match row_policy::from_input(input) {
+        Ok(None) => sql,
+        Ok(Some(scope)) => match row_policy::rewrite(&sql, &scope) {
+            Ok(s) => s,
+            Err(e) => return Reply::err(id, e.to_string()),
+        },
+        Err(e) => return Reply::err(id, e.to_string()),
     };
     // The WHOLE input is handed to the cached path: it is what the result-cache key is computed from
     // (minus `cache` and `dsn`), so any field the child receives participates in identity. With no
