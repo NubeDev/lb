@@ -154,9 +154,10 @@ pub async fn open_subject(
             Ok(Box::pin(stream))
         }
         "insights" => {
-            let sub = lb_host::subscribe_insight_events(&gw.node.bus, principal, &ws)
-                .await
-                .map_err(|_| SubjectError::Denied)?;
+            let sub =
+                lb_host::subscribe_insight_events(&gw.node.bus, &gw.node.store, principal, &ws)
+                    .await
+                    .map_err(|_| SubjectError::Denied)?;
             let stream = futures::stream::unfold(sub, |sub| async move {
                 sub.recv().await.map(|ev| (frame("message", &ev), sub))
             });
