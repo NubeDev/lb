@@ -5,7 +5,8 @@
 use std::ops::ControlFlow;
 
 use datafusion::sql::sqlparser::ast::{
-    Expr, Ident, ObjectName, ObjectNamePart, Query, SetExpr, TableAlias, TableFactor, VisitorMut,
+    ArrayElemTypeDef, DataType, Expr, Ident, ObjectName, ObjectNamePart, Query, SetExpr,
+    TableAlias, TableFactor, VisitMut, VisitorMut, With,
 };
 
 use super::{filter, functions, RowScope};
@@ -14,8 +15,14 @@ use crate::validate::ValidationError;
 pub(super) struct Scoper<'a> {
     scope: &'a RowScope,
     /// CTE names visible at each open query level (innermost last). A table reference that names an
-    /// in-scope CTE is left alone — the CTE body itself is rewritten where it is defined.
+    /// in-scope CTE is left alone — the CTE body itself is rewritten where it is defined. A name is
+    /// pushed only once Postgres would see it: for a plain `WITH`, AFTER its own body (so a body
+    /// naming itself, or a later sibling, hits the REAL relation and is gated like one); for
+    /// `WITH RECURSIVE`, before any body.
     ctes: Vec<Vec<String>>,
+    /// Each open query's `with` clause, taken out while its CTE bodies are walked by hand
+    /// (`pre_visit_query`) and restored afterwards (`post_visit_query`).
+    withs: Vec<Option<With>>,
 }
 
 impl<'a> Scoper<'a> {
@@ -23,6 +30,7 @@ impl<'a> Scoper<'a> {
         Self {
             scope,
             ctes: Vec::new(),
+            withs: Vec::new(),
         }
     }
 
@@ -62,6 +70,33 @@ fn relation_name(name: &ObjectName) -> Option<(String, Ident)> {
     }
 }
 
+/// `SELECT ... INTO t` would CREATE a table from a read. Refused at the rewrite too (the cap wrapper
+/// happens to reject it today; that must not be the only gate).
+fn deny_select_into(body: &SetExpr) -> ControlFlow<ValidationError> {
+    match body {
+        SetExpr::Select(s) if s.into.is_some() => deny("SELECT INTO is not allowed"),
+        SetExpr::SetOperation { left, right, .. } => {
+            deny_select_into(left)?;
+            deny_select_into(right)
+        }
+        _ => ControlFlow::Continue(()),
+    }
+}
+
+/// Refuse a cast target that is not a built-in type.
+fn deny_custom_type(t: &DataType) -> ControlFlow<ValidationError> {
+    match t {
+        DataType::Custom(name, _) => deny(format!("cast to {name} is not allowed")),
+        DataType::Regclass => deny("cast to regclass is not allowed"),
+        DataType::Array(
+            ArrayElemTypeDef::AngleBracket(inner)
+            | ArrayElemTypeDef::SquareBracket(inner, _)
+            | ArrayElemTypeDef::Parenthesis(inner),
+        ) => deny_custom_type(inner),
+        _ => ControlFlow::Continue(()),
+    }
+}
+
 /// `TABLE x` and other set-expression shapes that read a relation without a FROM factor.
 fn check_set_expr(body: &SetExpr) -> ControlFlow<ValidationError> {
     match body {
@@ -79,21 +114,46 @@ impl VisitorMut for Scoper<'_> {
 
     fn pre_visit_query(&mut self, query: &mut Query) -> ControlFlow<Self::Break> {
         check_set_expr(&query.body)?;
-        let mut level = Vec::new();
-        if let Some(with) = &query.with {
-            for cte in &with.cte_tables {
-                let name = folded(&cte.alias.name);
-                if self.scope.policy.tables.contains_key(&name) {
+        if !query.locks.is_empty() {
+            return deny("row locking is not allowed for a scoped read");
+        }
+        deny_select_into(&query.body)?;
+        // Walk the CTE bodies BY HAND, in order, so each name becomes visible exactly when Postgres
+        // makes it visible. The derived walk then sees no `with` (restored in `post_visit_query`).
+        let mut with = query.with.take();
+        self.ctes.push(Vec::new());
+        if let Some(w) = with.as_mut() {
+            let names: Vec<String> = w.cte_tables.iter().map(|c| folded(&c.alias.name)).collect();
+            for name in &names {
+                // A CTE named after a policy table — or after the ENTITY KEY table, which the
+                // inserted predicates read by name — would shadow the real relation in Postgres.
+                if self.scope.policy.tables.contains_key(name)
+                    || *name == self.scope.policy.entity_key.table
+                {
                     return deny(format!("a CTE may not shadow the table {name}"));
                 }
-                level.push(name);
+            }
+            if w.recursive {
+                self.ctes
+                    .last_mut()
+                    .expect("level")
+                    .extend(names.iter().cloned());
+                for cte in w.cte_tables.iter_mut() {
+                    cte.query.visit(self)?;
+                }
+            } else {
+                for (i, cte) in w.cte_tables.iter_mut().enumerate() {
+                    cte.query.visit(self)?;
+                    self.ctes.last_mut().expect("level").push(names[i].clone());
+                }
             }
         }
-        self.ctes.push(level);
+        self.withs.push(with);
         ControlFlow::Continue(())
     }
 
-    fn post_visit_query(&mut self, _query: &mut Query) -> ControlFlow<Self::Break> {
+    fn post_visit_query(&mut self, query: &mut Query) -> ControlFlow<Self::Break> {
+        query.with = self.withs.pop().flatten();
         self.ctes.pop();
         ControlFlow::Continue(())
     }
@@ -168,6 +228,14 @@ impl VisitorMut for Scoper<'_> {
     }
 
     fn post_visit_expr(&mut self, expr: &mut Expr) -> ControlFlow<Self::Break> {
+        // A cast to a catalog-object type (`'hosts'::regclass`) or to ANY custom type (every table is
+        // also a composite type: `(NULL::hosts).col`) answers by whether a name EXISTS — a catalog
+        // probe the relation gate would otherwise refuse. Only built-in types are allowed.
+        match expr {
+            Expr::Cast { data_type, .. } => deny_custom_type(data_type)?,
+            Expr::TypedString(ts) => deny_custom_type(&ts.data_type)?,
+            _ => {}
+        }
         if let Expr::Function(f) = expr {
             let allowed = match relation_name(&f.name) {
                 // A schema-qualified call (`public.f`) folds to its bare name; any other qualifier

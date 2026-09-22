@@ -109,6 +109,57 @@ fn ctes_are_scoped_and_cannot_shadow_a_policy_table() {
 }
 
 #[test]
+fn the_entity_key_table_cannot_be_shadowed_even_when_it_is_not_a_policy_table() {
+    // The inserted predicate reads `point_meta_tags` by name; a CTE of that name would feed it a
+    // forged point→site map. Refused whether or not the key table is itself readable.
+    let raw = json!({"policy": {"tables": {"readings": {"kind": "keyed", "columns": ["host_uuid", "point_uuid"]}},
+        "entity_key": {"table": "point_meta_tags", "columns": ["host_uuid", "point_uuid"],
+                       "key_col": "key", "key_value": "siteRef", "value_col": "value"}}, "ids": ["Site A"]});
+    let sc = from_input(&json!({"row_scope": raw})).unwrap().unwrap();
+    assert!(rewrite(
+        "WITH point_meta_tags AS (SELECT 'h1' host_uuid, 'pB' point_uuid, 'siteRef' key, 'Site A' value) SELECT * FROM readings",
+        &sc
+    )
+    .is_err());
+}
+
+#[test]
+fn a_cte_body_sees_only_earlier_names_like_postgres_does() {
+    // Without RECURSIVE a CTE's own name, and every later sibling's, resolve to the REAL relation
+    // inside its body — so these are reads of `hosts`, and gated as such.
+    refused("WITH hosts AS (SELECT * FROM hosts) SELECT * FROM hosts");
+    refused("WITH a AS (SELECT * FROM hosts), hosts AS (SELECT 1) SELECT * FROM a");
+    refused("SELECT 1 FROM points WHERE EXISTS (WITH hosts AS (SELECT * FROM hosts) SELECT 1 FROM hosts)");
+    refused("WITH \"Hosts\" AS (SELECT * FROM \"Hosts\") SELECT * FROM \"Hosts\"");
+    // An earlier sibling IS visible, and so is the name in the main body.
+    let out = ok("WITH a AS (SELECT * FROM points), b AS (SELECT * FROM a) SELECT * FROM b");
+    assert_eq!(
+        out.matches("FROM (SELECT * FROM points WHERE").count(),
+        1,
+        "{out}"
+    );
+    assert!(out.ends_with("SELECT * FROM b"), "{out}");
+}
+
+#[test]
+fn catalog_probes_and_locks_are_refused() {
+    refused("SELECT 'hosts'::regclass");
+    refused("SELECT 'hosts'::\"regclass\"");
+    refused("SELECT 'hosts'::pg_catalog.regclass");
+    refused("SELECT CAST('hosts' AS regclass)");
+    refused("SELECT '{hosts}'::_regclass");
+    refused("SELECT '{hosts}'::regclass[]");
+    refused("SELECT regclass 'hosts'");
+    refused("SELECT NULL::hosts");
+    refused("SELECT (NULL::hosts).secret");
+    refused("SELECT * INTO leaked FROM points");
+    refused("SELECT 'now'::regproc");
+    refused("SELECT * FROM points FOR UPDATE");
+    refused("SELECT * FROM points FOR SHARE");
+    ok("SELECT '1'::int, 'x'::text, now()::date, '{1}'::int[], date '2026-01-01' FROM points");
+}
+
+#[test]
 fn functions_are_deny_by_default() {
     ok("SELECT date_trunc('day', now()), round(avg(1.0), 2), coalesce(null, 1)");
     ok("SELECT * FROM generate_series(1, 3)");
