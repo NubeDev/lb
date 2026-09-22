@@ -9,10 +9,10 @@ use lb_authz::{scope_filter_with, ScopeFilter};
 
 use super::EntityScope;
 use crate::authz::LiveBuiltinRoleCaps;
-use crate::boot::Node;
+use lb_store::Store;
 
 pub(super) async fn entities(
-    node: &Node,
+    store: &Store,
     principal: &Principal,
     ws: &str,
     table: &str,
@@ -23,7 +23,7 @@ pub(super) async fn entities(
     // Read LIVE from the grant store (not the token's minted caps), so a new or revoked grant takes
     // effect within the scope cache window. No such grant → `Ids([])`.
     let cap = format!("data:{table}:read");
-    match scope_filter_with(&node.store, ws, bare, &cap, table, &LiveBuiltinRoleCaps).await {
+    match scope_filter_with(store, ws, bare, &cap, table, &LiveBuiltinRoleCaps).await {
         Ok(ScopeFilter::All) => EntityScope::All,
         Ok(ScopeFilter::Ids(ids)) => EntityScope::Ids(ids.into_iter().collect()),
         Err(e) => {

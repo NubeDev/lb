@@ -98,7 +98,7 @@ pub use record::{
 pub use remove::datasource_remove;
 #[cfg(feature = "page-cache")]
 pub(crate) use row_policy::row_scope_for;
-pub use row_policy::{refuse_if_restricted, row_policy_get, row_policy_set};
+pub use row_policy::{insight_policy, refuse_if_restricted, row_policy_get, row_policy_set};
 pub use sample::{federation_sample, sample_descriptor};
 pub use schema::{federation_schema, schema_descriptor};
 pub use test::datasource_test;

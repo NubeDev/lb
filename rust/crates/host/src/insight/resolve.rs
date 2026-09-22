@@ -19,6 +19,7 @@ pub async fn insight_resolve(
     ts: u64,
 ) -> Result<(), InsightSvcError> {
     authorize_tool(principal, ws, "insight.resolve").map_err(|_| InsightSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, id).await?;
     lb_insights::resolve(store, ws, id, principal.sub(), note, ts).await?;
     Ok(())
 }

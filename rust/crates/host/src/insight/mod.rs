@@ -33,6 +33,7 @@ mod backfill;
 mod comment;
 mod comments;
 mod delete;
+mod entity_filter;
 mod error;
 mod facets;
 mod get;

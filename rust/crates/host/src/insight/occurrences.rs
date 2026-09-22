@@ -19,6 +19,7 @@ pub async fn insight_occurrences(
     limit: usize,
 ) -> Result<OccurrencePage, InsightSvcError> {
     authorize_tool(principal, ws, "insight.occurrences").map_err(|_| InsightSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, insight_id).await?;
     let page = lb_insights::occurrences(store, ws, insight_id, cursor, limit).await?;
     Ok(page)
 }

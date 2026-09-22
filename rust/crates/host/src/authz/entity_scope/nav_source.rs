@@ -7,11 +7,11 @@ use lb_auth::Principal;
 use std::collections::BTreeSet;
 
 use super::EntityScope;
-use crate::boot::Node;
 use crate::nav::{collect_entities, pick_nav, ResolvedSource};
+use lb_store::Store;
 
 pub(super) async fn entities(
-    node: &Node,
+    store: &Store,
     principal: &Principal,
     ws: &str,
     table: &str,
@@ -19,7 +19,7 @@ pub(super) async fn entities(
     let mut out = BTreeSet::new();
     // The same 4-tier pick the menu resolver makes — only the store is needed, not the board
     // hydration the full resolve does.
-    match pick_nav(&node.store, principal, ws).await {
+    match pick_nav(store, principal, ws).await {
         Ok(Some((nav, source)))
             if matches!(
                 source,

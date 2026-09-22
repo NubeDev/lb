@@ -18,6 +18,7 @@ pub async fn insight_ack(
     ts: u64,
 ) -> Result<(), InsightSvcError> {
     authorize_tool(principal, ws, "insight.ack").map_err(|_| InsightSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, id).await?;
     lb_insights::ack(store, ws, id, principal.sub(), ts).await?;
     Ok(())
 }

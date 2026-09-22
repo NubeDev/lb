@@ -17,5 +17,10 @@ pub async fn insight_get(
 ) -> Result<Option<Insight>, InsightSvcError> {
     authorize_tool(principal, ws, "insight.get").map_err(|_| InsightSvcError::Denied)?;
     let insight = lb_insights::get(store, ws, id).await?;
-    Ok(insight)
+    // Entity-scoped data: an insight outside the caller's entities reads as absent, not denied — the
+    // same answer a wrong id gets, so its existence is not disclosed.
+    match insight {
+        Some(i) if !super::entity_filter::visible(store, principal, ws, &i).await? => Ok(None),
+        other => Ok(other),
+    }
 }

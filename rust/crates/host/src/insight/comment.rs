@@ -37,6 +37,7 @@ pub async fn insight_comment(
     ts: u64,
 ) -> Result<u64, InsightSvcError> {
     authorize_tool(principal, ws, "insight.comment").map_err(|_| InsightSvcError::Denied)?;
+    super::entity_filter::ensure_visible(&node.store, principal, ws, id).await?;
 
     // Establish the insight exists BEFORE writing a comment, so a note can never be stranded under
     // a parent that isn't there (the cascade in `delete` only reaches rows whose parent existed).

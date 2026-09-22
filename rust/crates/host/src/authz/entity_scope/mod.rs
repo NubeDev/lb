@@ -18,8 +18,8 @@ use std::collections::BTreeSet;
 
 use lb_auth::Principal;
 
-use crate::boot::Node;
 use crate::nav::is_workspace_admin;
+use lb_store::Store;
 
 /// What a principal may read of one entity table.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +32,7 @@ pub enum EntityScope {
 
 /// Resolve `principal`'s scope over `table` in `ws` from the enabled `sources`.
 pub async fn entity_scope(
-    node: &Node,
+    store: &Store,
     principal: &Principal,
     ws: &str,
     table: &str,
@@ -49,8 +49,8 @@ pub async fn entity_scope(
     let mut all = false;
     for source in sources {
         let got = match source.as_str() {
-            "nav" => nav_source::entities(node, principal, ws, table).await,
-            "grant" => grant_source::entities(node, principal, ws, table).await,
+            "nav" => nav_source::entities(store, principal, ws, table).await,
+            "grant" => grant_source::entities(store, principal, ws, table).await,
             other => {
                 tracing::warn!(
                     ws,

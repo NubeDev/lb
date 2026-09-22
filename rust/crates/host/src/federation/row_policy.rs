@@ -36,8 +36,32 @@ pub struct RowPolicyRecord {
     /// The sidecar's table rules (`{tables, entity_key, extra_functions}`), validated by the sidecar
     /// on every scoped read — a malformed policy refuses restricted reads, it never opens them.
     pub policy: Value,
+    /// The insight tag that carries the entity id (`site`). When set on an ENFORCED policy, insights
+    /// and cases are narrowed to the caller's entities too (at most one enforced policy per workspace
+    /// should set it; the first by source name wins).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insight_tag: Option<String>,
     #[serde(default)]
     pub ts: u64,
+}
+
+/// The enforced policy in `ws` that narrows insights (`insight_tag` set), if any.
+pub async fn insight_policy(
+    store: &Store,
+    ws: &str,
+) -> Result<Option<RowPolicyRecord>, StoreError> {
+    let mut found: Vec<RowPolicyRecord> = lb_store::scan_all(store, ws, TABLE)
+        .await?
+        .into_iter()
+        .filter_map(|row| match row.data {
+            Value::Object(mut o) => o.remove("data"),
+            _ => None,
+        })
+        .filter_map(|v| serde_json::from_value::<RowPolicyRecord>(v).ok())
+        .filter(|r| r.enforce && r.insight_tag.as_deref().is_some_and(|t| !t.is_empty()))
+        .collect();
+    found.sort_by(|a, b| a.source.cmp(&b.source));
+    Ok(found.into_iter().next())
 }
 
 pub async fn get(
@@ -103,7 +127,15 @@ pub async fn row_scope_for(
     if !rec.enforce {
         return Ok(None);
     }
-    match entity_scope(node, caller, ws, &rec.entity_table, &rec.scope_sources).await {
+    match entity_scope(
+        &node.store,
+        caller,
+        ws,
+        &rec.entity_table,
+        &rec.scope_sources,
+    )
+    .await
+    {
         EntityScope::All => Ok(None),
         EntityScope::Ids(ids) => Ok(Some(json!({ "policy": rec.policy, "ids": ids }))),
     }

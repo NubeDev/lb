@@ -22,6 +22,7 @@ pub async fn insight_occurrence_delete(
 ) -> Result<(), InsightSvcError> {
     authorize_tool(principal, ws, "insight.occurrence.delete")
         .map_err(|_| InsightSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, insight_id).await?;
     lb_insights::delete_occurrence(store, ws, insight_id, oseq).await?;
     Ok(())
 }
