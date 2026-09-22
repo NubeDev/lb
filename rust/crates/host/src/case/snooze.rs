@@ -24,5 +24,6 @@ pub async fn case_snooze(
     ts: u64,
 ) -> Result<Case, CaseSvcError> {
     authorize_tool(principal, ws, "case.workflow").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, id).await?;
     Ok(lb_cases::snooze(store, ws, id, until, reason, principal.sub(), ts).await?)
 }

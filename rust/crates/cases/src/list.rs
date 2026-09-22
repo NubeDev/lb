@@ -65,6 +65,11 @@ pub struct ListFilter {
     /// against `query.now`, so an expired snooze reads as live without a sweep having run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snoozed: Option<bool>,
+    /// The sites the CALLER may see (entity-scoped data), set by the host from server state and
+    /// never read from the wire (`serde(skip)` — a client cannot send it). `None` = unrestricted;
+    /// `Some` = a case must carry one of these sites (a case with no site is hidden).
+    #[serde(skip)]
+    pub sites_allowed: Option<BTreeSet<String>>,
 }
 
 /// One row of the roster: the case plus its member count.
@@ -178,6 +183,11 @@ fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool 
         return false;
     }
     let f = &query.filter;
+    if let Some(allowed) = &f.sites_allowed {
+        if !case.site.as_deref().is_some_and(|s| allowed.contains(s)) {
+            return false;
+        }
+    }
     if let Some(site) = &f.site {
         if case.site.as_deref() != Some(site.as_str()) {
             return false;

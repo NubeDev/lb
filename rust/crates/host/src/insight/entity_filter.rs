@@ -18,7 +18,7 @@ use crate::authz::{entity_scope, EntityScope};
 use crate::federation::insight_policy;
 
 /// The insight tag and entity ids `principal` is limited to, or `None` when unrestricted.
-pub(super) async fn entity_limit(
+pub(crate) async fn entity_limit(
     store: &Store,
     principal: &Principal,
     ws: &str,

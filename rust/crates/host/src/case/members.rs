@@ -42,6 +42,7 @@ pub async fn case_members(
     after: Option<&str>,
 ) -> Result<MemberPage, CaseSvcError> {
     authorize_tool(principal, ws, "case.get").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, case_id).await?;
     // Establish the case exists in THIS workspace first: without it a ws-B caller learns nothing,
     // but a caller in ws-A asking for a ws-B case id would get an empty page that reads as "a case
     // with no members" rather than "no such case".

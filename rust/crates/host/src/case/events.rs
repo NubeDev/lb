@@ -20,6 +20,7 @@ pub async fn case_events(
     after: Option<u64>,
 ) -> Result<EventPage, CaseSvcError> {
     authorize_tool(principal, ws, "case.get").map_err(|_| CaseSvcError::Denied)?;
+    super::entity_filter::ensure_visible(store, principal, ws, case_id).await?;
     if lb_cases::get(store, ws, case_id).await?.is_none() {
         return Err(CaseSvcError::BadInput(format!("no such case: {case_id}")));
     }

@@ -16,5 +16,9 @@ pub async fn case_get(
     id: &str,
 ) -> Result<Option<Case>, CaseSvcError> {
     authorize_tool(principal, ws, "case.get").map_err(|_| CaseSvcError::Denied)?;
-    Ok(lb_cases::get(store, ws, id).await?)
+    match lb_cases::get(store, ws, id).await? {
+        // Entity-scoped data: out of scope reads as absent.
+        Some(c) if !super::entity_filter::visible(store, principal, ws, &c).await? => Ok(None),
+        other => Ok(other),
+    }
 }

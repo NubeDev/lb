@@ -34,6 +34,7 @@ mod comment;
 mod comments;
 mod delete;
 mod entity_filter;
+pub(crate) use entity_filter::entity_limit;
 mod error;
 mod facets;
 mod get;
