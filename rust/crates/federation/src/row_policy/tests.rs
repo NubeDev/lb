@@ -154,3 +154,146 @@ fn a_bad_policy_is_refused_not_ignored() {
     assert!(from_input(&mismatched).is_err());
     assert!(from_input(&json!({"row_scope": {"ids": "all"}})).is_err());
 }
+
+/// Dry run over a real workspace's board SQL (entity-scoped-data rollout step 2). Ignored by
+/// default; run with `ROW_POLICY_DRY_RUN=<json [{board,cell,sql}]>` and
+/// `cargo test -p federation --bin federation dry_run -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn dry_run_board_sql() {
+    let Ok(path) = std::env::var("ROW_POLICY_DRY_RUN") else {
+        return;
+    };
+    let rows: Vec<serde_json::Value> =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let policy_path = std::env::var("ROW_POLICY_POLICY").ok();
+    let scope: RowScope = match policy_path {
+        Some(p) => serde_json::from_value(json!({
+            "policy": serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(p).unwrap()).unwrap(),
+            "ids": ["Lot 1 Sargents Estate - Eastern Creek"]
+        }))
+        .unwrap(),
+        None => scope(&["Lot 1"]),
+    };
+    let var = regex_lite_vars();
+    let mut fails: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    let mut passed = 0;
+    for r in &rows {
+        let raw = r["sql"].as_str().unwrap_or("");
+        let sql = var(raw);
+        let window =
+            json!({"from_ms": 1788000000000_i64, "to_ms": 1790000000000_i64, "width_ms": 3600000});
+        let sql = match crate::sql_macros::expand(&sql, "postgres", Some(&window)) {
+            Ok(s) => s,
+            Err(e) => {
+                fails
+                    .entry(format!("macro: {e}"))
+                    .or_default()
+                    .push(format!("{}/{}", r["board"], r["cell"]));
+                continue;
+            }
+        };
+        match rewrite(&sql, &scope) {
+            Ok(out) => {
+                passed += 1;
+                if std::env::var("ROW_POLICY_PRINT").ok().as_deref()
+                    == Some(&format!(
+                        "{}/{}",
+                        r["board"].as_str().unwrap_or(""),
+                        r["cell"].as_str().unwrap_or("")
+                    ))
+                {
+                    println!("REWRITTEN<<{out}>>");
+                }
+            }
+            Err(e) => fails
+                .entry(e.to_string())
+                .or_default()
+                .push(format!("{}/{}", r["board"], r["cell"])),
+        }
+    }
+    println!("passed {passed} of {}", rows.len());
+    for (msg, at) in &fails {
+        println!("{:>4}  {msg}   e.g. {}", at.len(), at[0]);
+    }
+}
+
+/// Fill dashboard variables the way the browser would, closely enough to parse: time built-ins get
+/// epoch-ms numbers; `$name` / `${name}` / `${name:fmt}` inside quotes become a word, outside quotes
+/// a string literal.
+fn regex_lite_vars() -> impl Fn(&str) -> String {
+    |sql: &str| {
+        let mut out = String::with_capacity(sql.len());
+        let b = sql.as_bytes();
+        let mut i = 0;
+        let mut in_quote = false;
+        while i < b.len() {
+            let c = b[i] as char;
+            if !in_quote && c == '-' && i + 1 < b.len() && b[i + 1] == b'-' {
+                let end = sql[i..].find('\n').map(|p| i + p).unwrap_or(b.len());
+                out.push_str(&sql[i..end]);
+                i = end;
+                continue;
+            }
+            if c == '\'' {
+                in_quote = !in_quote;
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            if c == '$'
+                && i + 1 < b.len()
+                && (b[i + 1] == b'{'
+                    || (b[i + 1] as char).is_ascii_alphabetic()
+                    || b[i + 1] == b'_')
+            {
+                let (name, end) = if b[i + 1] == b'{' {
+                    let close = sql[i..].find('}').map(|p| i + p).unwrap_or(b.len() - 1);
+                    (
+                        sql[i + 2..close]
+                            .split(':')
+                            .next()
+                            .unwrap_or("")
+                            .to_string(),
+                        close + 1,
+                    )
+                } else {
+                    let mut j = i + 1;
+                    while j < b.len() && ((b[j] as char).is_ascii_alphanumeric() || b[j] == b'_') {
+                        j += 1;
+                    }
+                    (sql[i + 1..j].to_string(), j)
+                };
+                // `$__timeTable(...)` and other `$__` function macros belong to the macro expander.
+                if name.starts_with("__")
+                    && !matches!(
+                        name.as_str(),
+                        "__from" | "__to" | "__from_prev" | "__to_prev"
+                    )
+                {
+                    out.push_str(&sql[i..end]);
+                    i = end;
+                    continue;
+                }
+                let v = match name.as_str() {
+                    "__from" | "__from_prev" => "1788000000000".to_string(),
+                    "__to" | "__to_prev" => "1790000000000".to_string(),
+                    _ if in_quote => "All".to_string(),
+                    // A table-name variable (`FROM ${aggInterval}`) is filled with a table name.
+                    _ if out.trim_end().to_ascii_uppercase().ends_with("FROM")
+                        || out.trim_end().to_ascii_uppercase().ends_with("JOIN") =>
+                    {
+                        "daily_data".to_string()
+                    }
+                    _ => "'All'".to_string(),
+                };
+                out.push_str(&v);
+                i = end;
+                continue;
+            }
+            out.push(c);
+            i += 1;
+        }
+        out
+    }
+}
