@@ -29,14 +29,13 @@
 
 use std::collections::BTreeSet;
 
-use lb_assets::list_related;
 use lb_store::{Store, StoreError};
 
 use crate::grant::grant_list;
 use crate::role::role_caps;
 use crate::subject::Subject;
 use crate::team::team_list;
-use crate::MEMBER;
+use crate::team_edges::{edge_is_user, team_member_edges, team_subject};
 
 /// The live-built-in-role cap source injected into the resolver (builtin-role-freshness scope).
 ///
@@ -103,16 +102,10 @@ pub async fn resolve_caps_with(
 
     // Team-inherited: for every team the user is a member of, fold the team's grants + roles.
     for team in team_list(store, ws).await? {
-        let members = list_related(store, ws, MEMBER, &team.team).await?;
-        if members.iter().any(|m| m == user) {
-            resolve_subject_caps_with(
-                store,
-                ws,
-                &Subject::Team(team.team.clone()),
-                builtins,
-                &mut caps,
-            )
-            .await?;
+        let members = team_member_edges(store, ws, &team.team).await?;
+        if members.iter().any(|m| edge_is_user(m, user)) {
+            resolve_subject_caps_with(store, ws, &team_subject(&team.team), builtins, &mut caps)
+                .await?;
         }
     }
 

@@ -13,7 +13,6 @@
 
 use std::collections::BTreeMap;
 
-use lb_assets::list_related;
 use lb_store::{Store, StoreError};
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +22,7 @@ use crate::role::role_caps;
 use crate::scope::Scope;
 use crate::subject::Subject;
 use crate::team::team_list;
-use crate::MEMBER;
+use crate::team_edges::{edge_is_user, team_member_edges, team_subject};
 
 /// One resolved cap plus its unioned scope (entity-scoped-grants scope). `scope: All` means the
 /// cap is fully reachable (either an `All` grant or a role expansion); `scope: Ids` means the cap
@@ -64,16 +63,9 @@ pub async fn resolve_caps_scoped_with(
     )
     .await?;
     for team in team_list(store, ws).await? {
-        let members = list_related(store, ws, MEMBER, &team.team).await?;
-        if members.iter().any(|m| m == user) {
-            fold_subject_scoped(
-                store,
-                ws,
-                &Subject::Team(team.team.clone()),
-                builtins,
-                &mut acc,
-            )
-            .await?;
+        let members = team_member_edges(store, ws, &team.team).await?;
+        if members.iter().any(|m| edge_is_user(m, user)) {
+            fold_subject_scoped(store, ws, &team_subject(&team.team), builtins, &mut acc).await?;
         }
     }
     Ok(acc
