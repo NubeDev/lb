@@ -45,7 +45,7 @@ pub async fn entity_scope(
     sources: &[String],
 ) -> EntityScope {
     let owner = principal.owner_sub().to_string();
-    let key = cache::Key::new(ws, &owner, table, sources);
+    let key = cache::Key::new(store.instance_id(), ws, &owner, table, sources);
     if let Some(hit) = cache::get(&key) {
         return hit;
     }

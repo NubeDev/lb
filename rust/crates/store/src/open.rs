@@ -126,6 +126,13 @@ fn scope_sql(ws: &str, sql: &str) -> Result<String, StoreError> {
 }
 
 impl Store {
+    /// An identity for THIS store handle within the process: the address of the shared connection.
+    /// Two stores open in one process (an embedder's test suite, a multi-node test) never share it,
+    /// so a process-wide cache keyed on it can never serve one store's data for another.
+    pub fn instance_id(&self) -> usize {
+        Arc::as_ptr(&self.handle) as *const () as usize
+    }
+
     /// Open an in-memory store (tests / dev). Each call is an isolated ephemeral instance — its
     /// data is gone when the handle drops. Use [`open`](Store::open) for a node that must survive
     /// a restart.

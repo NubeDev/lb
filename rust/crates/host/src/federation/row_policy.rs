@@ -64,7 +64,7 @@ pub async fn enforced_policies(
     store: &Store,
     ws: &str,
 ) -> Result<Vec<RowPolicyRecord>, StoreError> {
-    if let Some(hit) = policy_cache::get(ws) {
+    if let Some(hit) = policy_cache::get(store.instance_id(), ws) {
         return Ok(hit);
     }
     let mut found: Vec<RowPolicyRecord> = lb_store::scan_all(store, ws, TABLE)
@@ -78,7 +78,7 @@ pub async fn enforced_policies(
         .filter(|r| r.enforce)
         .collect();
     found.sort_by(|a, b| a.source.cmp(&b.source));
-    policy_cache::put(ws, found.clone());
+    policy_cache::put(store.instance_id(), ws, found.clone());
     Ok(found)
 }
 
@@ -93,28 +93,31 @@ mod policy_cache {
 
     const TTL: Duration = Duration::from_secs(30);
 
-    fn map() -> &'static Mutex<HashMap<String, (Instant, Vec<RowPolicyRecord>)>> {
-        static MAP: OnceLock<Mutex<HashMap<String, (Instant, Vec<RowPolicyRecord>)>>> =
-            OnceLock::new();
+    /// Keyed on the store instance too (`Store::instance_id`): the cache is process-wide, and two
+    /// nodes in one process must never see each other's policies.
+    type Map = HashMap<(usize, String), (Instant, Vec<RowPolicyRecord>)>;
+
+    fn map() -> &'static Mutex<Map> {
+        static MAP: OnceLock<Mutex<Map>> = OnceLock::new();
         MAP.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
-    pub(super) fn get(ws: &str) -> Option<Vec<RowPolicyRecord>> {
+    pub(super) fn get(store: usize, ws: &str) -> Option<Vec<RowPolicyRecord>> {
         let m = map().lock().ok()?;
-        m.get(ws)
+        m.get(&(store, ws.to_string()))
             .filter(|(at, _)| at.elapsed() < TTL)
             .map(|(_, v)| v.clone())
     }
 
-    pub(super) fn put(ws: &str, v: Vec<RowPolicyRecord>) {
+    pub(super) fn put(store: usize, ws: &str, v: Vec<RowPolicyRecord>) {
         if let Ok(mut m) = map().lock() {
-            m.insert(ws.to_string(), (Instant::now(), v));
+            m.insert((store, ws.to_string()), (Instant::now(), v));
         }
     }
 
     pub(super) fn invalidate(ws: &str) {
         if let Ok(mut m) = map().lock() {
-            m.remove(ws);
+            m.retain(|(_, w), _| w != ws);
         }
     }
 }

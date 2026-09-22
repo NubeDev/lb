@@ -14,16 +14,26 @@ const MAX_ENTRIES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) struct Key {
+    /// The store the scope was read from (`Store::instance_id`): the cache is process-wide, and two
+    /// nodes in one process must never see each other's scopes.
+    store: usize,
     ws: String,
     rest: String,
 }
 
 impl Key {
-    pub(super) fn new(ws: &str, owner: &str, table: &str, sources: &[String]) -> Self {
+    pub(super) fn new(
+        store: usize,
+        ws: &str,
+        owner: &str,
+        table: &str,
+        sources: &[String],
+    ) -> Self {
         let mut sources: Vec<&str> = sources.iter().map(String::as_str).collect();
         sources.sort_unstable();
         sources.dedup();
         Key {
+            store,
             ws: ws.to_string(),
             rest: format!("{owner}\u{1f}{table}\u{1f}{}", sources.join(",")),
         }
