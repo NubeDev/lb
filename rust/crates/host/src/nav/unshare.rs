@@ -54,5 +54,6 @@ pub async fn nav_unshare(
     // record body is otherwise unchanged.
     nav.updated_ts = now;
     write_nav(store, ws, &nav).await?;
+    crate::authz::invalidate_entity_scope(ws);
     Ok(nav)
 }

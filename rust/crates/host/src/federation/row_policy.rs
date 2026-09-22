@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use super::authorize::authorize;
 use super::error::FederationError;
-use crate::authz::{entity_scope, EntityScope};
+use crate::authz::{entity_scope, EntityScope, ENTITY_SCOPE_SOURCES};
 use crate::boot::Node;
 
 pub const TABLE: &str = "datasource_row_policy";
@@ -45,25 +45,6 @@ pub struct RowPolicyRecord {
     pub ts: u64,
 }
 
-/// The enforced policy in `ws` that narrows insights (`insight_tag` set), if any.
-pub async fn insight_policy(
-    store: &Store,
-    ws: &str,
-) -> Result<Option<RowPolicyRecord>, StoreError> {
-    let mut found: Vec<RowPolicyRecord> = lb_store::scan_all(store, ws, TABLE)
-        .await?
-        .into_iter()
-        .filter_map(|row| match row.data {
-            Value::Object(mut o) => o.remove("data"),
-            _ => None,
-        })
-        .filter_map(|v| serde_json::from_value::<RowPolicyRecord>(v).ok())
-        .filter(|r| r.enforce && r.insight_tag.as_deref().is_some_and(|t| !t.is_empty()))
-        .collect();
-    found.sort_by(|a, b| a.source.cmp(&b.source));
-    Ok(found.into_iter().next())
-}
-
 pub async fn get(
     store: &Store,
     ws: &str,
@@ -77,6 +58,78 @@ pub async fn get(
     }
 }
 
+/// Every ENFORCED policy in `ws`, by source name — read through a short per-workspace cache (the
+/// insight and case verbs consult it on every call) that `row_policy_set` clears.
+pub async fn enforced_policies(
+    store: &Store,
+    ws: &str,
+) -> Result<Vec<RowPolicyRecord>, StoreError> {
+    if let Some(hit) = policy_cache::get(ws) {
+        return Ok(hit);
+    }
+    let mut found: Vec<RowPolicyRecord> = lb_store::scan_all(store, ws, TABLE)
+        .await?
+        .into_iter()
+        .filter_map(|row| match row.data {
+            Value::Object(mut o) => o.remove("data"),
+            _ => None,
+        })
+        .filter_map(|v| serde_json::from_value::<RowPolicyRecord>(v).ok())
+        .filter(|r| r.enforce)
+        .collect();
+    found.sort_by(|a, b| a.source.cmp(&b.source));
+    policy_cache::put(ws, found.clone());
+    Ok(found)
+}
+
+/// The per-workspace cache behind [`enforced_policies`]: same TTL as the entity-scope cache, so a
+/// policy flip and a scope change become visible together.
+mod policy_cache {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+
+    use super::RowPolicyRecord;
+
+    const TTL: Duration = Duration::from_secs(30);
+
+    fn map() -> &'static Mutex<HashMap<String, (Instant, Vec<RowPolicyRecord>)>> {
+        static MAP: OnceLock<Mutex<HashMap<String, (Instant, Vec<RowPolicyRecord>)>>> =
+            OnceLock::new();
+        MAP.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    pub(super) fn get(ws: &str) -> Option<Vec<RowPolicyRecord>> {
+        let m = map().lock().ok()?;
+        m.get(ws)
+            .filter(|(at, _)| at.elapsed() < TTL)
+            .map(|(_, v)| v.clone())
+    }
+
+    pub(super) fn put(ws: &str, v: Vec<RowPolicyRecord>) {
+        if let Ok(mut m) = map().lock() {
+            m.insert(ws.to_string(), (Instant::now(), v));
+        }
+    }
+
+    pub(super) fn invalidate(ws: &str) {
+        if let Ok(mut m) = map().lock() {
+            m.remove(ws);
+        }
+    }
+}
+
+/// The enforced policy in `ws` that narrows insights (`insight_tag` set), if any.
+pub async fn insight_policy(
+    store: &Store,
+    ws: &str,
+) -> Result<Option<RowPolicyRecord>, StoreError> {
+    Ok(enforced_policies(store, ws)
+        .await?
+        .into_iter()
+        .find(|r| r.insight_tag.as_deref().is_some_and(|t| !t.is_empty())))
+}
+
 /// `federation.row_policy_set` — admin-only upsert.
 pub async fn row_policy_set(
     node: &Node,
@@ -88,14 +141,40 @@ pub async fn row_policy_set(
     authorize(caller, ws, "federation.row_policy_set")?;
     let mut rec: RowPolicyRecord = serde_json::from_value(input.clone())
         .map_err(|e| FederationError::BadInput(format!("row policy: {e}")))?;
-    if rec.entity_table.is_empty() || !rec.policy.is_object() {
+    if rec.source.is_empty() || !plain_ident(&rec.entity_table) {
         return Err(FederationError::BadInput(
-            "row policy needs entity_table and a policy object".into(),
+            "row policy needs a source and a plain entity_table".into(),
+        ));
+    }
+    if rec.scope_sources.is_empty()
+        || rec
+            .scope_sources
+            .iter()
+            .any(|s| !ENTITY_SCOPE_SOURCES.contains(&s.as_str()))
+    {
+        return Err(FederationError::BadInput(format!(
+            "row policy: scope_sources must be a non-empty subset of {ENTITY_SCOPE_SOURCES:?}"
+        )));
+    }
+    if let Some(tag) = &rec.insight_tag {
+        if !plain_ident(tag) {
+            return Err(FederationError::BadInput(
+                "row policy: insight_tag must be a plain identifier".into(),
+            ));
+        }
+    }
+    let shape_ok = rec.policy.get("tables").is_some_and(Value::is_object)
+        && rec.policy.get("entity_key").is_some_and(Value::is_object);
+    if !shape_ok {
+        return Err(FederationError::BadInput(
+            "row policy: policy needs `tables` and `entity_key` objects".into(),
         ));
     }
     rec.ts = ts;
     let value = serde_json::to_value(&rec).map_err(|e| FederationError::BadInput(e.to_string()))?;
     write(&node.store, ws, TABLE, &rec.source, &value).await?;
+    policy_cache::invalidate(ws);
+    crate::authz::invalidate_entity_scope(ws);
     Ok(json!({ "ok": true }))
 }
 
@@ -164,4 +243,11 @@ pub async fn refuse_if_restricted(
         return Err(FederationError::Denied);
     }
     Ok(())
+}
+
+/// A plain lowercase identifier — what a policy may name as a table, column or tag key.
+fn plain_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c == '_' || c.is_ascii_lowercase())
+        && chars.all(|c| c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit())
 }

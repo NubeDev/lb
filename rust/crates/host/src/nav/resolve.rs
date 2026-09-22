@@ -196,7 +196,7 @@ pub(super) fn item_ref(item: &ResolvedItem) -> String {
 /// The 4-tier pick: personal pick → first team-shared nav → workspace-default → `None` (fallback).
 /// A pick/default pointing at a deleted/unreadable nav falls through to the next tier (nav scope,
 /// "Stale pick").
-pub(crate) async fn pick_nav(
+async fn pick_nav(
     store: &Store,
     principal: &Principal,
     ws: &str,

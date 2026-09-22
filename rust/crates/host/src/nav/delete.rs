@@ -30,6 +30,7 @@ pub async fn nav_delete(
             n.deleted = true;
             n.updated_ts = now;
             write_nav(store, ws, &n).await?;
+            crate::authz::invalidate_entity_scope(ws);
             Ok(())
         }
     }

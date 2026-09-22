@@ -6,10 +6,10 @@ use std::collections::BTreeSet;
 
 use lb_auth::Principal;
 use lb_authz::{scope_filter_with, ScopeFilter};
+use lb_store::Store;
 
 use super::EntityScope;
 use crate::authz::LiveBuiltinRoleCaps;
-use lb_store::Store;
 
 pub(super) async fn entities(
     store: &Store,
@@ -17,9 +17,11 @@ pub(super) async fn entities(
     ws: &str,
     table: &str,
 ) -> EntityScope {
-    // Grants are stored under the BARE user name (see `reminder/fire.rs`).
-    let owner = principal.owner_sub();
-    let bare = owner.strip_prefix("user:").unwrap_or(owner);
+    // Grants are stored under the BARE user name (see `reminder/fire.rs`). Only a `user:` subject
+    // has team edges and user grants; a key or any other subject kind adds nothing here.
+    let Some(bare) = principal.sub().strip_prefix("user:") else {
+        return EntityScope::Ids(BTreeSet::new());
+    };
     // Read LIVE from the grant store (not the token's minted caps), so a new or revoked grant takes
     // effect within the scope cache window. No such grant → `Ids([])`.
     let cap = format!("data:{table}:read");

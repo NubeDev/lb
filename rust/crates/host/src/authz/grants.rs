@@ -39,6 +39,7 @@ pub async fn grants_assign(
         return Err(AuthzError::Widen(cap.to_string()));
     }
     grant_assign_scoped(store, ws, subject, cap, scope).await?;
+    super::invalidate_entity_scope(ws);
     Ok(())
 }
 
@@ -54,6 +55,7 @@ pub async fn grants_revoke(
 ) -> Result<(), AuthzError> {
     authorize_tool(principal, ws, "grants.assign").map_err(|_| AuthzError::Denied)?;
     grant_revoke_scoped(store, ws, subject, cap, scope).await?;
+    super::invalidate_entity_scope(ws);
     Ok(())
 }
 
