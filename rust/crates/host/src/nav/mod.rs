@@ -32,6 +32,7 @@ mod authorize;
 mod bounds;
 mod default;
 mod delete;
+mod entity;
 mod error;
 mod ext_boards;
 mod ext_boards_model;
@@ -59,9 +60,14 @@ mod tool;
 mod unshare;
 mod visibility;
 
+pub use admin_lens::is_workspace_admin;
 pub use bounds::BUILTIN_PICK;
 pub use default::{nav_get_default, nav_set_default};
 pub use delete::nav_delete;
+pub use entity::collect_entities;
+#[allow(unused_imports)]
+// named by `NavItem::entity`; re-exported for embedders building menus
+pub use entity::NavEntity;
 pub use error::NavError;
 pub use ext_boards::{ext_nav_boards_get, ext_nav_boards_set};
 pub use ext_boards_model::{ExtBoardRow, ExtNavBoards, MAX_EXT_BOARD_ROWS, MAX_EXT_BOARD_SLOTS};
@@ -77,6 +83,7 @@ pub use pref::{nav_pref_get, nav_pref_set, nav_pref_set_force_builtin};
 pub use reach::{reach_caps, reach_caps_for, reach_check, REACH_ALL};
 pub use reach_record::{dashboard_reach_ok, reach_record_check, MAX_RECORD_REACH_CAPS};
 pub use resolve::nav_resolve;
+pub(crate) use resolve::pick_nav;
 pub use resolved::{ResolvedItem, ResolvedNav, ResolvedSource};
 pub use save::nav_save;
 pub use share::nav_share;

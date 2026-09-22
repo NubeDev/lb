@@ -676,6 +676,9 @@ const AUTHOR_CAPS: &[&str] = &[
 /// principals or the workspace itself. A `member` token holds NONE of these (the escalation
 /// regression asserts exactly this over `bob`'s live `members.add`/`teams.create`/self-grant).
 const ADMIN_ONLY_CAPS: &[&str] = &[
+    // entity-scoped data: a datasource's row policy decides who reads which rows — admin-only.
+    "mcp:federation.row_policy_set:call",
+    "mcp:federation.row_policy_get:call",
     // membership / teams / roles / grants — the escalation-proof set (bob's 204s → 403s).
     "mcp:members.add:call",
     "mcp:members.manage:call",

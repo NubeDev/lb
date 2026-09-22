@@ -61,6 +61,8 @@ async fn compute_json(
 // ---- feature ON ----
 
 #[cfg(feature = "page-cache")]
+mod entity_fold;
+#[cfg(feature = "page-cache")]
 mod fingerprint;
 #[cfg(feature = "page-cache")]
 mod generation;
@@ -179,7 +181,11 @@ async fn dispatch_subject_scoped(
     // The capability fingerprint over the panel this caller is about to resolve — the provable leak
     // boundary. `viz.query` accepts the panel under `panel` or as the input itself (a bare call).
     let panel = quantised.get("panel").unwrap_or(&quantised);
-    let fingerprint = fingerprint::capability_fingerprint(principal, ws, panel);
+    let mut fingerprint = fingerprint::capability_fingerprint(principal, ws, panel);
+    // Entity-scoped data: callers whose rows differ must never share an entry.
+    if let Some(suffix) = entity_fold::entity_suffix(node, principal, ws, panel).await {
+        fingerprint = format!("{fingerprint}:{suffix}");
+    }
 
     // Read-through + single-flight on the fingerprinted, quantised key. The compute runs on the SAME
     // quantised input, so a miss executes exactly the range the key names.

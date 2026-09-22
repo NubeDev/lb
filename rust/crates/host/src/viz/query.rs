@@ -202,6 +202,25 @@ pub async fn viz_query(
 /// mis-key the leak boundary. Reusing `panel_targets` keeps the two in lockstep. A malformed panel
 /// yields an empty list (no targets → a caller-independent frame → an empty, shared fingerprint).
 #[cfg(feature = "page-cache")]
+/// The datasource names of the panel's `federation.query` targets — what the gateway cache folds the
+/// caller's entity scope over (entity-scoped-data scope).
+pub(crate) fn panel_federation_sources(panel: &Value) -> Vec<String> {
+    panel_targets(panel)
+        .map(|ts| {
+            ts.into_iter()
+                .filter(|t| t.tool == "federation.query")
+                .filter_map(|t| {
+                    t.args
+                        .get("source")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(feature = "page-cache")]
 pub(crate) fn panel_target_tools(panel: &Value) -> Vec<String> {
     panel_targets(panel)
         .map(|ts| ts.into_iter().map(|t| t.tool).collect())

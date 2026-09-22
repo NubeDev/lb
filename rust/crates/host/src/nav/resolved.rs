@@ -145,4 +145,7 @@ pub struct ResolvedItem {
     /// skipped when false, so an old client and a pre-field record read as today.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub footer: bool,
+    /// The authored [`NavItem::entity`](super::model::NavItem::entity), relayed verbatim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity: Option<super::entity::NavEntity>,
 }

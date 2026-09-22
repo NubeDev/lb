@@ -41,4 +41,4 @@ pub use tool::call_viz_tool;
 /// The panel's dispatched target tools — reused by the gateway `subject_scoped` cache's capability
 /// fingerprint so it folds EXACTLY the caps that gate this panel (dashboard-query-acceleration slice 2).
 #[cfg(feature = "page-cache")]
-pub(crate) use query::panel_target_tools;
+pub(crate) use query::{panel_federation_sources, panel_target_tools};

@@ -59,6 +59,12 @@ pub async fn federation_query<L: Launcher>(
     // SELECT-only, host-side (the sidecar re-validates — two independent gates).
     validate_select_host(sql)?;
 
+    // Entity-scoped data: a restricted caller's read is narrowed to their entities by the sidecar.
+    // The scope is resolved HERE from server state and rides the child input (so it is also part of
+    // the child's result-cache key). No enforced policy / an unrestricted caller → `None`, and the
+    // input is byte-for-byte what it was.
+    let row_scope = super::row_policy::row_scope_for(node, caller, ws, source).await?;
+
     // net:* — refuse, opaque, if the source's endpoint is not in the admin-approved grant.
     enforce_endpoint(&node.store, ws, &ds.endpoint).await?;
 
@@ -86,6 +92,9 @@ pub async fn federation_query<L: Launcher>(
     // the result-cache key: two widths of the same macro'd sql are two different queries.
     if let Some(resolution) = resolution {
         input["resolution"] = resolution.clone();
+    }
+    if let Some(row_scope) = row_scope {
+        input["row_scope"] = row_scope;
     }
     let input = input.to_string();
 

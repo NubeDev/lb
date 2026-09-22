@@ -95,6 +95,8 @@ pub async fn resolve_template_group(
             // marker stays on the group below and never lands on an arbitrary generated child.
             home: false,
             footer: false,
+            // A generated child carries no entity marker of its own.
+            entity: None,
         });
     }
 
@@ -118,6 +120,7 @@ pub async fn resolve_template_group(
         // it does for any pure container.
         home: item.home,
         footer: item.footer,
+        entity: item.entity.clone(),
     }))
 }
 

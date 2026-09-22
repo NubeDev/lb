@@ -16,7 +16,8 @@ use super::{
     datasource_add, datasource_list, datasource_remove, datasource_test, datasource_update,
     dbschema_delete, dbschema_get, dbschema_list, dbschema_save, federation_delete,
     federation_export, federation_migrate, federation_mirror, federation_query, federation_sample,
-    federation_schema, federation_write, ExportFrom,
+    federation_schema, federation_write, refuse_if_restricted, row_policy_get, row_policy_set,
+    ExportFrom,
 };
 #[cfg(feature = "datasource-profile")]
 use super::{
@@ -59,8 +60,19 @@ pub async fn call_federation_tool(
             .await?;
             Ok(out)
         }
+        "federation.row_policy_set" => {
+            let out = row_policy_set(node, principal, ws, input, ts).await?;
+            Ok(out)
+        }
+        "federation.row_policy_get" => {
+            let source = str_arg(input, "source")?;
+            let out = row_policy_get(node, principal, ws, source).await?;
+            Ok(out)
+        }
         "federation.schema" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             // `table` is optional: absent → list tables, present → describe that table.
             let table = input.get("table").and_then(|v| v.as_str());
             let out = federation_schema(node, &launcher, principal, ws, source, table, ts).await?;
@@ -68,6 +80,8 @@ pub async fn call_federation_tool(
         }
         "federation.sample" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             // `tables` filters the snapshot to the named tables; `limit` is rows/table (clamped).
             let tables: Option<Vec<String>> =
                 input.get("tables").and_then(|v| v.as_array()).map(|a| {
@@ -95,6 +109,8 @@ pub async fn call_federation_tool(
         #[cfg(feature = "datasource-profile")]
         "federation.profile" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             let tables: Option<Vec<String>> =
                 input.get("tables").and_then(|v| v.as_array()).map(|a| {
                     a.iter()
@@ -117,6 +133,8 @@ pub async fn call_federation_tool(
         #[cfg(feature = "datasource-profile")]
         "federation.profile_get" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             // Opt-in ONLY: the hot path must never be silently converted into a profiling pass.
             let compute = input
                 .get("compute_if_missing")
@@ -138,11 +156,15 @@ pub async fn call_federation_tool(
         #[cfg(feature = "datasource-profile")]
         "federation.profile_refresh" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             let out = federation_profile_refresh(node, principal, ws, source, ts).await?;
             Ok(out)
         }
         "federation.mirror" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             let sql = str_arg(input, "query")?;
             let target = str_arg(input, "target_series")?;
             let job_id = str_arg(input, "job_id")?;
@@ -159,6 +181,8 @@ pub async fn call_federation_tool(
         }
         "federation.write" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             let table = str_arg(input, "table")?;
             let columns: Vec<String> = input
                 .get("columns")
@@ -194,6 +218,8 @@ pub async fn call_federation_tool(
         }
         "federation.delete" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             let table = str_arg(input, "table")?;
             let key: Vec<String> = input
                 .get("key")
@@ -215,6 +241,8 @@ pub async fn call_federation_tool(
         }
         "federation.migrate" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             let schema = input
                 .get("schema")
                 .ok_or_else(|| ToolError::BadInput("missing object arg: schema".into()))?;
@@ -229,6 +257,8 @@ pub async fn call_federation_tool(
         }
         "federation.export" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             let job_id = str_arg(input, "job_id")?;
             let table = str_arg(input, "table")?;
             let from_series = input
@@ -326,6 +356,8 @@ pub async fn call_federation_tool(
         }
         "datasource.test" => {
             let source = str_arg(input, "source")?;
+            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
+            refuse_if_restricted(node, principal, ws, source).await?;
             let out = datasource_test(node, &launcher, principal, ws, source, ts).await?;
             Ok(out)
         }
