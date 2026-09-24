@@ -29,9 +29,23 @@ use lb_ext_loader::{Manifest, NavItem, QueryBlock, QueryField, Widget, WidgetOpt
 /// granted. All-or-nothing (not `narrow_scope`'s partial-list filter): a connect kind missing even
 /// one of its own verbs (e.g. `list` granted but not `create`) is a broken feature, not a narrowed
 /// one, so it's withheld entirely rather than surfaced half-working.
+///
+/// **The host owns the `<ext>.` prefix, so both halves are QUALIFIED here.** The manifest names each
+/// tool BARE (`create_tool = "connection.create"`) — it has to: the loader binds every connect tool to
+/// a declared `[[tools]]` entry, and those are bare. But the capability that gates the verb is
+/// `mcp:<ext>.connection.create:call`, and the name a caller must pass to `mcp.call` (and finds in
+/// `tools.catalog`) is `<ext>.connection.create`. Comparing the bare name against the grant meant no
+/// native extension's connect kind could EVER project — every one requests the qualified cap — so
+/// `ext.list` reported `connect: null` and the Datasources page never offered the kind, silently.
+/// Emitting the qualified names is what lets that page call the tools it is handed, unchanged.
 pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option<ExtConnect> {
     let c = manifest.connect.as_ref()?;
-    let has = |tool: &str| granted.iter().any(|g| g == &format!("mcp:{tool}:call"));
+    let q = |tool: &str| qualify_tool(&manifest.id, tool);
+    let has = |tool: &str| {
+        granted
+            .iter()
+            .any(|g| g == &format!("mcp:{}:call", q(tool)))
+    };
     let tools_ok = has(&c.create_tool)
         && has(&c.list_tool)
         && has(&c.delete_tool)
@@ -45,14 +59,22 @@ pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option
         kind: c.kind.clone(),
         label: c.label.clone(),
         icon: c.icon.clone(),
-        create_tool: c.create_tool.clone(),
-        list_tool: c.list_tool.clone(),
-        delete_tool: c.delete_tool.clone(),
-        probe_tool: c.probe_tool.clone(),
-        update_tool: c.update_tool.clone(),
-        get_tool: c.get_tool.clone(),
+        create_tool: q(&c.create_tool),
+        list_tool: q(&c.list_tool),
+        delete_tool: q(&c.delete_tool),
+        probe_tool: c.probe_tool.as_deref().map(q),
+        update_tool: c.update_tool.as_deref().map(q),
+        get_tool: c.get_tool.as_deref().map(q),
         open_route: c.open_route.clone(),
     })
+}
+
+/// `<ext>.<tool>` — the callable, cap-gated name of a manifest's bare tool. Always prefixed: a
+/// manifest's `[[tools]]` names are bare by construction, and an extension may legitimately name a
+/// verb after its own id (`ros` serves `ros.ping`, callable as `ros.ros.ping`), so "already starts
+/// with the id" is not evidence a name is qualified.
+fn qualify_tool(ext_id: &str, tool: &str) -> String {
+    format!("{ext_id}.{tool}")
 }
 
 /// Project the manifest's `[[query]]` blocks onto their durable `ExtQueryBlock` mirrors
@@ -187,6 +209,9 @@ fn narrow_scope(scope: &[String], granted: &[String]) -> Vec<String> {
 // responsibility is the projection, and FILE-LAYOUT caps a file at 400 lines. Same `#[path]` split
 // the host's test suites already use — the tests stay a private child module, so they keep reaching
 // `pub(crate) project`.
+#[cfg(test)]
+#[path = "ui_decl_connect_tests.rs"]
+mod connect_tests;
 #[cfg(test)]
 #[path = "ui_decl_tests.rs"]
 mod tests;
