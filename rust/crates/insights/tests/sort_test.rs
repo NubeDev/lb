@@ -99,6 +99,7 @@ async fn read(
             limit,
             counts,
             sort: s,
+            tag_counts: None,
         },
         None,
         None,
@@ -191,6 +192,7 @@ async fn a_bad_sort_or_a_sorted_cursor_is_refused() {
         limit: 5,
         counts: false,
         sort: s,
+        tag_counts: None,
     };
     for bad in [
         sort(&["tag:Site"], false),

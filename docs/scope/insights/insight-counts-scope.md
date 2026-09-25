@@ -128,3 +128,11 @@ carry a `case` object beside its filter:
   pays for neither tally and returns neither.
 - **Grant:** a lens needs `mcp:case.list:call` as well as `insight.list`, so a caller who may not
   list cases cannot learn their stages through counts.
+
+## Per-value tag counts and "tag missing"
+
+`insight.list` takes `tag_counts: "<key>"`; with `counts` set, the reply's `tag_counts` maps each
+value of that tag to how many matching insights carry it (`""` for those without it). It is tallied
+in the same pass as the status tally, over the fully filtered set, so a value card or a grouped
+section counts exactly the rows it opens. `tag_missing: "<key>"` (a filter) returns the insights
+without the key: the "No <key>" section. Both keys must be plain lowercase identifiers.

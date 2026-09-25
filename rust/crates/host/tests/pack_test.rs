@@ -1184,6 +1184,7 @@ async fn the_demo_oracle_blank_node_one_apply_raises_a_real_insight() {
             offset: 0,
             counts: false,
             sort: None,
+            tag_counts: None,
         },
         &Default::default(),
     )

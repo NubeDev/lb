@@ -121,6 +121,12 @@ pub(crate) fn build(
         }
     }
 
+    // "No <key>": the echo lacks the key, or carries it empty (`list` validated the key).
+    if let Some(key) = filter.tag_missing.as_ref().filter(|k| plain_ident(k)) {
+        w.preds
+            .push(format!("(data.tags.{key} IS NONE OR data.tags.{key} = '')"));
+    }
+
     // The tag facet, already resolved to the ids it admits. An EMPTY set admits NOTHING — the same
     // reading `set.contains(id)` gives in memory, and the opposite of "no filter".
     if let Some(ids) = tag_allow {

@@ -58,6 +58,7 @@ pub async fn backfill_insight_facets(store: &Store, ws: &str) -> Result<usize, I
                 offset: 0,
                 counts: false,
                 sort: None,
+                tag_counts: None,
             },
             None,
             None,

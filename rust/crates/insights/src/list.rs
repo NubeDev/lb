@@ -58,6 +58,10 @@ pub struct ListFilter {
     /// detection's own `case_id` echo. See [`CaseScope`](crate::CaseScope).
     #[serde(skip)]
     pub case: Option<crate::case_scope::CaseScope>,
+    /// Only insights that do NOT carry this tag key (absent or empty) — the "No <key>" section of a
+    /// roster grouped by that key. A plain lowercase identifier, or the list is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag_missing: Option<String>,
     /// Filter by OWNER — the triage roster's primary axis (insight-triage-scope.md). The raw wire
     /// value, one of:
     ///   - a subject (`user:priya` / `team:mechanical`) — only that subject's insights;
@@ -155,6 +159,11 @@ pub struct ListQuery {
     /// keyset `cursor` walks the default order only, so the two together are refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sort: Option<crate::SortSpec>,
+    /// Also return how many matching insights carry each value of this tag key (`tag_counts` on the
+    /// reply, `""` for none), counted in the same pass as `counts` and only when `counts` is set.
+    /// For a roster's per-value cards and its grouped sections. A plain lowercase identifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag_counts: Option<String>,
 }
 
 fn default_limit() -> usize {
@@ -178,6 +187,10 @@ pub struct ListPage {
     /// stage filter) and honours every other.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub case_counts: Option<BTreeMap<String, u64>>,
+    /// Per-value tally of [`ListQuery::tag_counts`]'s key over every matching insight (all filters
+    /// applied), `""` counting those without it. Present iff that key and `counts` were both asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag_counts: Option<BTreeMap<String, u64>>,
 }
 
 /// List insights in workspace `ws` matching `query`, newest-first, keyset-paged.
@@ -220,13 +233,20 @@ pub async fn list(
         }
     }
     let order = crate::sort_sql::order(query.sort.as_ref(), f.case.as_ref());
+    for key in [&f.tag_missing, &query.tag_counts].into_iter().flatten() {
+        if !crate::search_tags::plain_ident(key) {
+            return Err(InsightsError::BadInput(format!(
+                "tag key {key:?} must be a lowercase identifier (a-z, 0-9, _)"
+            )));
+        }
+    }
 
     // `limit: 0` means "no rows, just the tally" — the counter-panel case. Skipping the scan is the
     // whole point: a tile showing one integer has no business transferring 200 records to compute
     // it, and the aggregate is answered by the engine either way. Anything else pages as before.
     // With a case lens the per-stage tally needs the rows (the stage is looked up per case id), so
     // a counts-only read takes the scan path below and simply returns no rows.
-    if query.limit == 0 && f.case.is_none() {
+    if query.limit == 0 && f.case.is_none() && query.tag_counts.is_none() {
         let counts = if query.counts {
             Some(crate::count::count(store, ws, f, tag_allow, assignee).await?)
         } else {
@@ -237,6 +257,7 @@ pub async fn list(
             next: None,
             counts,
             case_counts: None,
+            tag_counts: None,
         });
     }
 
@@ -277,6 +298,7 @@ pub async fn list(
             next,
             counts: None,
             case_counts: None,
+            tag_counts: None,
         });
     }
 
@@ -350,6 +372,19 @@ pub async fn list(
         .filter(|i| status_ok(i) && stage_ok(i))
         .collect();
 
+    // Per-value, over the fully filtered set: a card or a section counts exactly the rows it opens.
+    let tag_counts = match (&query.tag_counts, query.counts) {
+        (Some(key), true) => {
+            let mut t: BTreeMap<String, u64> = BTreeMap::new();
+            for i in &items {
+                *t.entry(i.tags.get(key).cloned().unwrap_or_default())
+                    .or_default() += 1;
+            }
+            Some(t)
+        }
+        _ => None,
+    };
+
     // The rows arrived in the statement's order (the sort, else newest first by (last_ts, id)) and
     // filtering kept it, so there is nothing to re-sort: a second, Rust-side sort could order
     // differently from the pushed-down page and skip or repeat a row across pages.
@@ -412,5 +447,6 @@ pub async fn list(
         next,
         counts,
         case_counts,
+        tag_counts,
     })
 }
