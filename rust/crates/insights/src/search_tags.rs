@@ -11,7 +11,11 @@
 //! of that `OR` must be answered from an index or the `@@` has nothing to match against. The
 //! indexes are defined with the title's analyzer, so a prefix finds a tag value exactly as it finds a
 //! word of the title. `DEFINE INDEX` builds over the rows already stored, so a key added to the
-//! config is searchable on the next search, with no backfill.
+//! config is searchable once its index is built, with no backfill.
+//!
+//! **The CALLER builds them, once** ([`ensure_search_tag_indexes`]), before a search that names the
+//! keys: `list` does not. Building ten indexes inside every search made concurrent first searches
+//! conflict and fail (the host's `insight/search_schema.rs` has the measurement and the fix).
 //!
 //! One responsibility: validate the configured keys and ensure their indexes.
 
@@ -53,12 +57,13 @@ pub fn validate_search_tags(keys: &[String]) -> Result<(), InsightsError> {
     Ok(())
 }
 
-/// Define the full-text index for each key in `ws`. Idempotent (`IF NOT EXISTS`): after the first
-/// search it costs one round trip of no-ops, the same trade `ensure_insight_schema` makes.
+/// Define the full-text index for each key in `ws`. Idempotent (`IF NOT EXISTS`), so it is safe to
+/// retry; slow on the first run (it builds over every stored row), so call it once per workspace, not
+/// per request.
 ///
 /// A key that is not a plain identifier is skipped here as well as refused at boot, so no path can
 /// splice one into DDL.
-pub(crate) async fn ensure_search_tag_indexes(
+pub async fn ensure_search_tag_indexes(
     store: &Store,
     ws: &str,
     keys: &[String],

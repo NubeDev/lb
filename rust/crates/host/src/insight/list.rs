@@ -14,6 +14,8 @@ use lb_store::Store;
 
 use super::case_lens::{resolve_case_lens, CaseLens};
 use super::error::InsightSvcError;
+use super::resolve_filter::resolve_filter;
+use super::search_schema::SearchSchema;
 
 /// What an `insight.list` call carries beside its wire filter. `Default` is a plain list.
 #[derive(Debug, Clone, Copy, Default)]
@@ -25,8 +27,10 @@ pub struct ListOptions<'a> {
     /// The caller's case lens (`case` beside the filter on the MCP call), resolved against the case
     /// plane before the list runs.
     pub case: Option<&'a CaseLens>,
+    /// The node's once-per-workspace index builder (`Node::insight_search_schema`). `None` builds the
+    /// tag indexes inline on every search (a test or a caller without a node).
+    pub search_schema: Option<&'a SearchSchema>,
 }
-use super::resolve_filter::resolve_filter;
 
 /// List insights in workspace `ws` matching `query`, newest-first, keyset-paged. See
 /// [`ListQuery`] for the filter axes.
@@ -46,6 +50,13 @@ pub async fn insight_list(
     // insights, set here from server state — the wire can never carry it (`entity` is serde(skip)).
     let mut query = query;
     query.filter.search_tags = opts.search_tags.to_vec();
+    // A search over tag keys needs their indexes; build them once per workspace, not per request.
+    if query.filter.search.is_some() && !opts.search_tags.is_empty() {
+        match opts.search_schema {
+            Some(schema) => schema.ensure(store, ws, opts.search_tags).await?,
+            None => lb_insights::ensure_search_tag_indexes(store, ws, opts.search_tags).await?,
+        }
+    }
     if let Some(lens) = opts.case {
         query.filter.case = Some(resolve_case_lens(store, principal, ws, lens).await?);
     }

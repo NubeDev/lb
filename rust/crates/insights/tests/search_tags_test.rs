@@ -54,6 +54,11 @@ fn keys(ks: &[&str]) -> Vec<String> {
 }
 
 async fn search(store: &Store, term: &str, tags: &[String], counts: bool) -> Vec<String> {
+    // The caller builds the tag indexes once, before searching with them (the host does it per
+    // workspace); `list` itself does not.
+    lb_insights::ensure_search_tag_indexes(store, WS, tags)
+        .await
+        .expect("indexes");
     let page = list(
         store,
         WS,
@@ -158,6 +163,9 @@ async fn a_tag_that_is_not_configured_is_not_searched() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_count_agrees_with_the_rows_under_a_tag_search() {
     let store = seeded().await;
+    lb_insights::ensure_search_tag_indexes(&store, WS, &keys(&["state"]))
+        .await
+        .expect("indexes");
     let page = list(
         &store,
         WS,

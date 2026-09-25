@@ -34,6 +34,7 @@ pub async fn list_insights(
     let opts = lb_host::ListOptions {
         search_tags: gw.node.insight_search_tags(),
         case: None,
+        search_schema: Some(gw.node.insight_search_schema()),
     };
     let page = lb_host::insight_list(&gw.node.store, &principal, principal.ws(), query, &opts)
         .await

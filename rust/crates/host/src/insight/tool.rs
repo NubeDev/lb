@@ -88,6 +88,7 @@ pub async fn call_insight_tool(
             let opts = ListOptions {
                 search_tags: node.insight_search_tags(),
                 case: case.as_ref(),
+                search_schema: Some(node.insight_search_schema()),
             };
             let page = insight_list(store, principal, ws, query, &opts)
                 .await

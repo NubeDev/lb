@@ -119,7 +119,7 @@ pub use policy_set::policy_set;
 pub use raise::{raise, read_insight, RaiseInput, RaiseOutcome};
 pub use resolve::resolve;
 pub use schema::ensure_insight_schema;
-pub use search_tags::{validate_search_tags, MAX_SEARCH_TAGS};
+pub use search_tags::{ensure_search_tag_indexes, validate_search_tags, MAX_SEARCH_TAGS};
 pub use severity::Severity;
 pub use sort_sql::SortSpec;
 pub use status::Status;

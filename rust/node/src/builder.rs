@@ -213,6 +213,21 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // The tag keys `insight.list`'s search matches beside the title (validated above). Empty ⇒ the
     // title alone, exactly as before.
     node.install_insight_search_tags(cfg.insight_search_tags.clone());
+    // Build their indexes for the boot workspace in the background, so the first search does not pay
+    // for it (seconds on a real store). A failure only logs: the first search builds them instead.
+    if !cfg.insight_search_tags.is_empty() {
+        let (node, ws) = (node.clone(), cfg.workspace.clone());
+        tokio::spawn(async move {
+            let keys = node.insight_search_tags().to_vec();
+            if let Err(e) = node
+                .insight_search_schema()
+                .ensure(&node.store, &ws, &keys)
+                .await
+            {
+                tracing::warn!(ws, error = %e, "insight search indexes not built at boot; the first search builds them");
+            }
+        });
+    }
     // The UPDATE SEAM (node-update scope §Seam 1): install the embedder's provider + the BOOT
     // workspace the credential seals into, right beside the other install-once-at-boot facts. `None`
     // ⇒ this node cannot replace itself — `update.status` answers `{"supported": false}` and every

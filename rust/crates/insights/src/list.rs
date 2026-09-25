@@ -50,7 +50,8 @@ pub struct ListFilter {
     /// The tag keys [`search`](Self::search) matches beside the title. Set by the HOST from the
     /// node's config (`BootConfig::insight_search_tags`), never read from the wire (`serde(skip)`):
     /// each key needs an index, so a client naming arbitrary keys could make the node build them.
-    /// Empty ⇒ the title alone.
+    /// Empty ⇒ the title alone. The caller builds their indexes first
+    /// ([`ensure_search_tag_indexes`](crate::ensure_search_tag_indexes)); `list` does not.
     #[serde(skip)]
     pub search_tags: Vec<String>,
     /// The case lens — narrow and count by the CASE's stage and the case queue's filters. Set by
@@ -218,7 +219,6 @@ pub async fn list(
     // statement is `IF NOT EXISTS`, so this costs nothing once it is in place.
     if query.filter.search.is_some() {
         crate::schema::ensure_insight_schema(store, ws).await?;
-        crate::search_tags::ensure_search_tag_indexes(store, ws, &query.filter.search_tags).await?;
     }
 
     let f = &query.filter.clone();

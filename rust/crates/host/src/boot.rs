@@ -143,6 +143,8 @@ pub struct Node {
     /// `BootConfig::insight_search_tags`. On the `Node` for the reason `store_budget` is: the list
     /// verb needs it long after the boot layer returned. Never installed ⇒ empty ⇒ title only.
     insight_search_tags: std::sync::OnceLock<Vec<String>>,
+    /// Builds those keys' search indexes once per workspace (`insight/search_schema.rs`).
+    insight_search_schema: crate::insight::SearchSchema,
     pub role: Role,
 }
 
@@ -176,6 +178,7 @@ impl Node {
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
             insight_search_tags: std::sync::OnceLock::new(),
+            insight_search_schema: Default::default(),
             update: std::sync::OnceLock::new(),
             role: Role::Solo,
         })
@@ -206,6 +209,7 @@ impl Node {
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
             insight_search_tags: std::sync::OnceLock::new(),
+            insight_search_schema: Default::default(),
             update: std::sync::OnceLock::new(),
             role,
         })
@@ -235,6 +239,7 @@ impl Node {
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
             insight_search_tags: std::sync::OnceLock::new(),
+            insight_search_schema: Default::default(),
             update: std::sync::OnceLock::new(),
             role,
         })
@@ -361,6 +366,11 @@ impl Node {
     /// `lb_insights::validate_search_tags`); a second call is a no-op.
     pub fn install_insight_search_tags(&self, keys: Vec<String>) {
         let _ = self.insight_search_tags.set(keys);
+    }
+
+    /// The once-per-workspace builder of the search's tag indexes.
+    pub fn insight_search_schema(&self) -> &crate::insight::SearchSchema {
+        &self.insight_search_schema
     }
 
     /// The tag keys `insight.list`'s search matches beside the title; empty when none installed.
