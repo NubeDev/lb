@@ -841,6 +841,7 @@ async fn count_insights(node: &Arc<HostNode>, p: &Principal, ws: &str) -> usize 
             offset: 0,
             counts: false,
         },
+        &[],
     )
     .await
     .unwrap()

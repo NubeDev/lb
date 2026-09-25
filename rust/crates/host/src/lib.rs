@@ -328,6 +328,9 @@ pub use lb_authz::fold_email;
 /// `/admin/invites*` routes) can name the type `invite_list` returns without taking a second,
 /// direct dependency on `lb-authz`. One type across both sides of the seam.
 pub use lb_authz::{Invite, InviteStatus};
+/// The boot-time check on `BootConfig::insight_search_tags` — re-exported so the node builder
+/// validates the list without a direct dependency on `lb-insights`.
+pub use lb_insights::validate_search_tags as validate_insight_search_tags;
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use media::{

@@ -16,6 +16,7 @@ use std::collections::HashSet;
 use serde_json::Value;
 
 use crate::list::{AssigneeFilter, ListFilter};
+use crate::search_tags::plain_ident;
 use crate::severity::Severity;
 
 /// The shortest search term that can match, set by the analyzer's `edgengram(2,15)` lower bound.
@@ -71,7 +72,8 @@ pub(crate) fn build(
         w.bindings.push(("sevs".into(), Value::Array(allowed)));
     }
 
-    // The name search rides the BM25 index (`insight_name`, defined in `schema.rs`). `@@` is
+    // The search rides the BM25 indexes: the title's (`schema.rs`) and one per configured tag key
+    // (`search_tags.rs`). `@@` is
     // SurrealDB's full-text match: it is answered from the index, so this narrows the set the
     // ORDER BY has to sort rather than adding a pass over the rows.
     // Below TWO characters this is not a search. The analyzer indexes prefixes from length 2
@@ -84,7 +86,7 @@ pub(crate) fn build(
         .map(|t| t.trim())
         .filter(|t| t.chars().count() >= MIN_SEARCH_CHARS)
     {
-        w.preds.push("data.title @@ $q".into());
+        w.preds.push(search_predicate(&filter.search_tags));
         w.bindings
             .push(("q".into(), Value::String(text.to_string())));
     }
@@ -144,9 +146,20 @@ fn json_of<T: serde::Serialize>(v: T) -> Value {
     serde_json::to_value(v).unwrap_or(Value::Null)
 }
 
-/// A plain lowercase identifier (a safe SurrealQL field name).
-fn plain_ident(s: &str) -> bool {
-    let mut chars = s.chars();
-    matches!(chars.next(), Some(c) if c == '_' || c.is_ascii_lowercase())
-        && chars.all(|c| c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit())
+/// The search clause: the title, OR any configured tag key, each matched through its own full-text
+/// index. With no keys it is exactly the title-only clause it always was.
+///
+/// Each branch carries its own match reference (`@1@`, `@2@`, …): SurrealDB ties a full-text match to
+/// one index through that number, and two `@@` in one statement would share the default reference.
+/// A key that is not a plain identifier is skipped, so nothing unvalidated reaches the SQL.
+fn search_predicate(keys: &[String]) -> String {
+    let tags: Vec<&String> = keys.iter().filter(|k| plain_ident(k)).collect();
+    if tags.is_empty() {
+        return "data.title @@ $q".into();
+    }
+    let mut branches = vec!["data.title @0@ $q".to_string()];
+    for (i, key) in tags.iter().enumerate() {
+        branches.push(format!("data.tags.{key} @{}@ $q", i + 1));
+    }
+    format!("({})", branches.join(" OR "))
 }

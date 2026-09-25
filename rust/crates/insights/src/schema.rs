@@ -11,10 +11,9 @@
 //!
 //! 2. **`title`, full text** — the roster's search box. `DEFINE ANALYZER` + BM25, the same shape
 //!    `lb_tags::define_text_index` uses. Note the keyword is `FULLTEXT`, not the `SEARCH` of
-//!    SurrealDB 2.x — on 3.x the old spelling is rejected by the parser outright. NAME ONLY, by
-//!    decision: searching the tag-derived
-//!    columns too would mean indexing several more fields for a box most people type a fault name
-//!    into.
+//!    SurrealDB 2.x — on 3.x the old spelling is rejected by the parser outright. The tag columns an
+//!    embedder configures are searched too, each through its own index with this same analyzer
+//!    (`search_tags.rs`); with none configured the search is the title alone.
 //!
 //!    **`edgengram(2,15)` is what makes a PREFIX match.** Measured: with `lowercase` alone the
 //!    analyzer indexes whole words, so `hi` does not find "High Daily Usage" — which is how a
@@ -59,7 +58,7 @@ use crate::insight::OCC_TABLE;
 /// upgraded node that silently keeps answering from the stale index forever.
 /// Named distinctly from the INDEX (`insight_name`): they share a namespace in the reader's head
 /// even if not in the engine, and one name for two things is how a DDL edit goes wrong later.
-const ANALYZER: &str = "insight_text_v2";
+pub(crate) const ANALYZER: &str = "insight_text_v2";
 /// The index name, versioned with the analyzer — a new analyzer needs a new index to use it.
 const NAME_INDEX: &str = "insight_name_v2";
 /// The index this one replaces. Removed on the next raise/search so the planner cannot keep

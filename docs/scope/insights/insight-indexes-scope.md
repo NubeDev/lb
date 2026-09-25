@@ -172,7 +172,24 @@ And `page N of M` needs a true total, which is cheap: `count() GROUP ALL` is 3.9
 | index | why |
 |---|---|
 | `data.dedup_key` | turns the every-raise scan into `IndexScan`; ~3% of data size |
-| `data.title`, BM25 | the search box, server-side over every row; NAME ONLY by decision |
+| `data.title`, BM25 | the search box, server-side over every row |
+| `data.tags.<key>`, BM25, one per configured key | the search box's other columns (below) |
+
+## Search past the name — the embedder's tag columns
+
+The search box also matches the tag keys an embedder lists in `BootConfig::insight_search_tags`
+(rubix-ai: the Site, State and Subsystem columns and the tags its Name column falls back to). lb
+names no key: the list is config, empty by default, so a node without it searches titles only.
+
+- **One BM25 index per key**, `insight_tag_<key>_v2`, same analyzer as the title, so a prefix finds a
+  tag value the way it finds a title word. `DEFINE INDEX` builds over existing rows, so a newly
+  configured key is searchable on the next search with no backfill.
+- **The clause is `title @0@ q OR tags.k1 @1@ q OR …`.** Each branch needs its own match reference.
+  Measured on 3.2.4: the plan is one `Iterate Index` per branch and a `Collector`, no `TableScan`
+  (`tests/search_tags_test.rs` asserts it).
+- **The keys never come from the wire.** The host copies them onto the filter (`serde(skip)`, like the
+  entity limit), because each key is an index a client could otherwise make the node build. The boot
+  refuses a key that is not a plain lowercase identifier, a duplicate, or more than 16 keys.
 
 **No index on `status` or `severity`.** Three values each, matching 39–64% of rows — a scan beats an
 index at that selectivity.

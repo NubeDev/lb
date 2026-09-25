@@ -17,11 +17,16 @@ use super::resolve_filter::resolve_filter;
 
 /// List insights in workspace `ws` matching `query`, newest-first, keyset-paged. See
 /// [`ListQuery`] for the filter axes.
+///
+/// `search_tags` is the node's configured list of tag keys the search box matches beside the title
+/// (`Node::insight_search_tags`, from `BootConfig::insight_search_tags`). It is set on the filter
+/// here, from server state, for the same reason `entity` is: the wire can never carry it.
 pub async fn insight_list(
     store: &Store,
     principal: &Principal,
     ws: &str,
     query: ListQuery,
+    search_tags: &[String],
 ) -> Result<ListPage, InsightSvcError> {
     authorize_tool(principal, ws, "insight.list").map_err(|_| InsightSvcError::Denied)?;
     // Both halves resolve in ONE place — see `resolve_filter`.
@@ -29,6 +34,7 @@ pub async fn insight_list(
     // Entity-scoped data: a restricted caller's list (and its counts) is limited to their entities'
     // insights, set here from server state — the wire can never carry it (`entity` is serde(skip)).
     let mut query = query;
+    query.filter.search_tags = search_tags.to_vec();
     if let Some((tag, ids)) = super::entity_filter::entity_limit(store, principal, ws).await? {
         query.filter.entity = Some((tag, ids.into_iter().collect()));
     }

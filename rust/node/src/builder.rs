@@ -195,6 +195,9 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // The `(series, ts)` index switch, from config — BEFORE anything can commit, because the first
     // commit is what defines (or removes) it. See `BootConfig::series_time_index`.
     lb_ingest::set_series_time_index(cfg.series_time_index);
+    // The insight search's tag keys are spliced into SQL and index names, so a bad list stops the
+    // boot here, before the store opens, rather than searching less than the operator configured.
+    lb_host::validate_insight_search_tags(&cfg.insight_search_tags)?;
 
     // Boot the spine over the config's store. `Arc` so the reactors + role mounts share it.
     let node = Arc::new(Node::boot_with_store(open_store(&cfg).await?).await?);
@@ -207,6 +210,9 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
     // The disk budget (issue #122) — `LB_STORE_MAX_BYTES` reaches `store.status` and the
     // store-compact reactor from here. Unset ⇒ `None` ⇒ the node behaves exactly as before.
     node.install_store_budget(cfg.store_budget_bytes);
+    // The tag keys `insight.list`'s search matches beside the title (validated above). Empty ⇒ the
+    // title alone, exactly as before.
+    node.install_insight_search_tags(cfg.insight_search_tags.clone());
     // The UPDATE SEAM (node-update scope §Seam 1): install the embedder's provider + the BOOT
     // workspace the credential seals into, right beside the other install-once-at-boot facts. `None`
     // ⇒ this node cannot replace itself — `update.status` answers `{"supported": false}` and every

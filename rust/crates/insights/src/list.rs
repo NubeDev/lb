@@ -42,16 +42,17 @@ pub struct ListFilter {
     /// tag matches nothing.
     #[serde(skip)]
     pub entity: Option<(String, Vec<String>)>,
-    /// Free-text over the insight's NAME (`title`) — the roster's search box, resolved by the
-    /// `insight_name` BM25 index rather than by filtering rows in the browser.
-    ///
-    /// NAME ONLY, by decision. The box used to match the tag-derived columns (site, asset, data
-    /// type) as well, but it did so over the rows the browser happened to hold, so it searched a
-    /// window and reported its size as a total. Searching the name server-side searches every row;
-    /// widening it to the tag columns would mean indexing several more fields for a box people type
-    /// a fault name into.
+    /// Free-text over the insight's `title` and the tag keys in [`search_tags`](Self::search_tags) —
+    /// the roster's search box, resolved by BM25 indexes over every row rather than by filtering
+    /// the rows a browser happens to hold (which searched a window and reported its size as a total).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search: Option<String>,
+    /// The tag keys [`search`](Self::search) matches beside the title. Set by the HOST from the
+    /// node's config (`BootConfig::insight_search_tags`), never read from the wire (`serde(skip)`):
+    /// each key needs an index, so a client naming arbitrary keys could make the node build them.
+    /// Empty ⇒ the title alone.
+    #[serde(skip)]
+    pub search_tags: Vec<String>,
     /// Filter by OWNER — the triage roster's primary axis (insight-triage-scope.md). The raw wire
     /// value, one of:
     ///   - a subject (`user:priya` / `team:mechanical`) — only that subject's insights;
@@ -189,6 +190,7 @@ pub async fn list(
     // statement is `IF NOT EXISTS`, so this costs nothing once it is in place.
     if query.filter.search.is_some() {
         crate::schema::ensure_insight_schema(store, ws).await?;
+        crate::search_tags::ensure_search_tag_indexes(store, ws, &query.filter.search_tags).await?;
     }
 
     let f = &query.filter.clone();

@@ -616,6 +616,7 @@ async fn count_insights(node: &Arc<Node>, p: &Principal, ws: &str) -> usize {
             offset: 0,
             counts: false,
         },
+        &[],
     )
     .await
     .unwrap();
@@ -635,6 +636,7 @@ async fn first_insight_id(node: &Arc<Node>, p: &Principal, ws: &str) -> String {
             offset: 0,
             counts: false,
         },
+        &[],
     )
     .await
     .unwrap();

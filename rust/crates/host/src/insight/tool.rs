@@ -75,7 +75,7 @@ pub async fn call_insight_tool(
         "insight.list" => {
             let query: lb_insights::ListQuery = serde_json::from_value(input.clone())
                 .map_err(|e| ToolError::BadInput(format!("list query: {e}")))?;
-            let page = insight_list(store, principal, ws, query)
+            let page = insight_list(store, principal, ws, query, node.insight_search_tags())
                 .await
                 .map_err(svc_to_tool)?;
             Ok(serde_json::to_value(page).unwrap_or(Value::Null))
