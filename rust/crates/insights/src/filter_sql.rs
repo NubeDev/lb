@@ -5,8 +5,8 @@
 //! which one is lying. Two copies of these predicates is precisely how that drift starts, so there
 //! is one copy and both callers use it.
 //!
-//! `include_status` is the ONLY asymmetry: the tally IS the per-status breakdown, so narrowing by
-//! status first would zero three of its four numbers.
+//! `include_status` and `include_stage` are the ONLY asymmetries: each tally IS the breakdown by one
+//! of them, so narrowing by it first would zero the other numbers.
 //!
 //! `tag_allow` and `assignee` arrive pre-resolved from the host (`insight/resolve_filter.rs`) — the
 //! tag graph and team membership live in planes this crate is deliberately agnostic of (README §7).
@@ -46,6 +46,7 @@ pub(crate) fn build(
     tag_allow: Option<&HashSet<String>>,
     assignee: Option<&AssigneeFilter>,
     include_status: bool,
+    include_stage: bool,
 ) -> Where {
     let mut w = Where {
         preds: Vec::new(),
@@ -126,6 +127,41 @@ pub(crate) fn build(
         let list: Vec<Value> = ids.iter().map(|i| Value::String(i.clone())).collect();
         w.preds.push("data.id IN $tagids".into());
         w.bindings.push(("tagids".into(), Value::Array(list)));
+    }
+
+    // The case lens, host-resolved to plain ids (`case_scope.rs`). The allowlist: a detection
+    // with no case never passes (`IN` is false for NONE), exactly as `CaseScope::allows` reads.
+    if let Some(scope) = &filter.case {
+        if let Some(ids) = &scope.allow {
+            let list: Vec<Value> = ids.iter().map(|i| Value::String(i.clone())).collect();
+            w.preds.push("data.case_id IN $case_allow".into());
+            w.bindings.push(("case_allow".into(), Value::Array(list)));
+        }
+        if let (true, Some(stages)) = (include_stage, &scope.stages) {
+            let ids: Vec<Value> = scope
+                .ids_in_stages(stages)
+                .into_iter()
+                .map(Value::String)
+                .collect();
+            w.bindings.push(("stage_ids".into(), Value::Array(ids)));
+            if stages.contains(crate::case_scope::NO_CASE) {
+                // "No case" also covers an echo pointing at a case the host did not return (the
+                // same fallback `CaseScope::stage_of` takes), hence the known-ids test.
+                let known: Vec<Value> = scope
+                    .stage_of
+                    .keys()
+                    .map(|k| Value::String(k.clone()))
+                    .collect();
+                w.bindings.push(("known_cases".into(), Value::Array(known)));
+                w.preds.push(
+                    "(data.case_id IN $stage_ids OR data.case_id IS NONE \
+                     OR data.case_id NOT IN $known_cases)"
+                        .into(),
+                );
+            } else {
+                w.preds.push("data.case_id IN $stage_ids".into());
+            }
+        }
     }
 
     match assignee {

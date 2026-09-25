@@ -71,6 +71,7 @@ mod save;
 mod scorecard;
 mod snooze;
 mod split;
+mod stages;
 mod waiting_on;
 mod workflow;
 
@@ -110,6 +111,7 @@ pub use member_remove::member_remove;
 pub use members::{member_count, members, members_all, MemberPage, MemberRow, MAX_MEMBER_PAGE};
 pub use merge::merge;
 pub use open::{open, OpenInput};
+pub use stages::{stages, CaseStage};
 // The party roster (wave 2). A party is DATA: nothing here names one (rule 10), and the scorecard
 // is derived by query over `case_request`, never stored on the party.
 pub use party::{

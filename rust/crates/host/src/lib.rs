@@ -312,7 +312,8 @@ pub use insight::{
     insight_occurrence_delete, insight_occurrences, insight_policy_get, insight_policy_set,
     insight_raise, insight_resolve, insight_sub_create, insight_sub_delete, insight_sub_get,
     insight_sub_list, insight_sub_mute, react_to_insight_digests, spawn_insight_digest_reactors,
-    subscribe_insight_events, AssignResult, InsightSvcError, InsightWatch, MAX_BULK_ASSIGN,
+    subscribe_insight_events, AssignResult, CaseLens, InsightSvcError, InsightWatch, ListOptions,
+    MAX_BULK_ASSIGN,
 };
 pub use install::install_extension;
 pub use installed::installed;

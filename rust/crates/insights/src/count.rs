@@ -55,11 +55,17 @@ lb_store::surreal_value_via_serde!(TallyRow);
 /// breakdown, so narrowing by status first would zero three of the four numbers. That is the same
 /// contract the SQL in [`count`] keeps, and the count tests pin the two against each other.
 pub fn tally(rows: &[crate::insight::Insight]) -> StatusCounts {
-    let mut c = StatusCounts {
-        total: rows.len() as u64,
-        ..StatusCounts::default()
-    };
+    tally_iter(rows)
+}
+
+/// [`tally`] over any iterator of rows, so a caller narrowing by another axis first need not
+/// collect a second vector.
+pub(crate) fn tally_iter<'a>(
+    rows: impl IntoIterator<Item = &'a crate::insight::Insight>,
+) -> StatusCounts {
+    let mut c = StatusCounts::default();
     for r in rows {
+        c.total += 1;
         match r.status {
             crate::status::Status::Open => c.open += 1,
             crate::status::Status::Acked => c.acked += 1,
@@ -85,7 +91,7 @@ pub async fn count(
 ) -> Result<StatusCounts, InsightsError> {
     // The predicates come from the ONE builder `list`'s pushdown also uses — `include_status:
     // false` because this reply IS the per-status breakdown.
-    let w = crate::filter_sql::build(filter, tag_allow, assignee, false);
+    let w = crate::filter_sql::build(filter, tag_allow, assignee, false, true);
     let where_clause = w.clause();
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));

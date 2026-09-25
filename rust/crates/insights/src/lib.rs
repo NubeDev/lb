@@ -25,6 +25,7 @@ mod ack;
 mod analysis;
 mod assign;
 mod case_ref;
+mod case_scope;
 mod caveat;
 mod comment;
 mod comment_append;
@@ -77,6 +78,7 @@ pub use ack::ack;
 pub use analysis::{validate_analysis, Analysis, Quantity, MAX_ANALYSIS_BYTES};
 pub use assign::{assign, AssignOutcome};
 pub use case_ref::set_case_id;
+pub use case_scope::{CaseScope, NO_CASE};
 pub use caveat::caveats_for;
 pub use comment::{
     validate_comment, Comment, MAX_COMMENTS_PER_INSIGHT, MAX_COMMENT_BYTES, TABLE as COMMENT_TABLE,

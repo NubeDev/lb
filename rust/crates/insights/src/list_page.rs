@@ -37,7 +37,7 @@ pub(crate) async fn read(
     limit: usize,
     offset: usize,
 ) -> Result<Page, StoreError> {
-    let mut w = crate::filter_sql::build(filter, tag_allow, assignee, true);
+    let mut w = crate::filter_sql::build(filter, tag_allow, assignee, true, true);
 
     // The keyset, expressed as SQL: strictly after the cursor in (last_ts DESC, id DESC). The
     // compound form is what makes same-`ts` rows page correctly — a bare `last_ts <` would skip
@@ -96,8 +96,8 @@ pub(crate) async fn read(
 /// rows, so a 5,000-row workspace cost 25 round trips to answer one call. This is the same predicates
 /// in one statement.
 ///
-/// `status` is deliberately NOT applied: the tally is the per-status breakdown, and the page narrows
-/// afterwards in memory over rows already held.
+/// `status` and the case-stage filter are deliberately NOT applied: each tally is the breakdown by
+/// one of them, and the page narrows afterwards in memory over rows already held.
 pub(crate) async fn read_all_matching(
     store: &Store,
     ws: &str,
@@ -106,7 +106,7 @@ pub(crate) async fn read_all_matching(
     assignee: Option<&AssigneeFilter>,
     cap: usize,
 ) -> Result<Vec<Insight>, StoreError> {
-    let w = crate::filter_sql::build(filter, tag_allow, assignee, false);
+    let w = crate::filter_sql::build(filter, tag_allow, assignee, false, false);
     let where_clause = w.clause();
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));

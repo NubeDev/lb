@@ -53,6 +53,11 @@ pub struct ListFilter {
     /// Empty ⇒ the title alone.
     #[serde(skip)]
     pub search_tags: Vec<String>,
+    /// The case lens — narrow and count by the CASE's stage and the case queue's filters. Set by
+    /// the HOST from the case plane (`serde(skip)`, like `entity`); this crate only filters on the
+    /// detection's own `case_id` echo. See [`CaseScope`](crate::CaseScope).
+    #[serde(skip)]
+    pub case: Option<crate::case_scope::CaseScope>,
     /// Filter by OWNER — the triage roster's primary axis (insight-triage-scope.md). The raw wire
     /// value, one of:
     ///   - a subject (`user:priya` / `team:mechanical`) — only that subject's insights;
@@ -163,6 +168,11 @@ pub struct ListPage {
     /// not, so a reader can tell "not requested" from "genuinely none".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub counts: Option<StatusCounts>,
+    /// The per-stage tally ([`crate::NO_CASE`] for detections without a case), present iff counts
+    /// were asked for AND the host set a case lens. Like `counts`, it ignores its own axis (the
+    /// stage filter) and honours every other.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub case_counts: Option<BTreeMap<String, u64>>,
 }
 
 /// List insights in workspace `ws` matching `query`, newest-first, keyset-paged.
@@ -198,7 +208,9 @@ pub async fn list(
     // `limit: 0` means "no rows, just the tally" — the counter-panel case. Skipping the scan is the
     // whole point: a tile showing one integer has no business transferring 200 records to compute
     // it, and the aggregate is answered by the engine either way. Anything else pages as before.
-    if query.limit == 0 {
+    // With a case lens the per-stage tally needs the rows (the stage is looked up per case id), so
+    // a counts-only read takes the scan path below and simply returns no rows.
+    if query.limit == 0 && f.case.is_none() {
         let counts = if query.counts {
             Some(crate::count::count(store, ws, f, tag_allow, assignee).await?)
         } else {
@@ -208,6 +220,7 @@ pub async fn list(
             items: Vec::new(),
             next: None,
             counts,
+            case_counts: None,
         });
     }
 
@@ -246,6 +259,7 @@ pub async fn list(
             items,
             next,
             counts: None,
+            case_counts: None,
         });
     }
 
@@ -283,22 +297,39 @@ pub async fn list(
             .map(|a| a.matches(i.assigned_to.as_ref()))
             .unwrap_or(true)
     })
+    .filter(|i| f.case.as_ref().map(|c| c.allows(i)).unwrap_or(true))
     .collect();
+
+    // The two "own axis" filters, applied below AFTER each tally that ignores its own one.
+    let status_ok = |i: &Insight| f.status.map(|s| i.status == s).unwrap_or(true);
+    let stage_ok = |i: &Insight| f.case.as_ref().map(|c| c.in_stages(i)).unwrap_or(true);
 
     // The tally, when asked for — counted from the rows ALREADY IN HAND. `list` has just scanned and
     // filtered the table, so this is one more pass over memory; asking the database to re-derive it
     // would be a second scan for an answer we are holding. (`limit: 0` never reaches here — that
     // path skips the scan entirely and uses the SQL aggregate, which is the right tool when there
     // are no rows to count.)
+    //
+    // Each tally ignores ITS OWN axis and honours the other: the status tally is taken over the
+    // picked stage, and the stage tally over the picked status.
     let counts = if query.counts {
-        Some(crate::count::tally(&matched))
+        Some(crate::count::tally_iter(
+            matched.iter().filter(|i| stage_ok(i)),
+        ))
     } else {
         None
+    };
+    let case_counts = match (&f.case, query.counts) {
+        (Some(scope), true) => Some(crate::case_scope::stage_tally(
+            scope,
+            matched.iter().filter(|i| status_ok(i)),
+        )),
+        _ => None,
     };
 
     let mut items: Vec<Insight> = matched
         .into_iter()
-        .filter(|i| f.status.map(|s| i.status == s).unwrap_or(true))
+        .filter(|i| status_ok(i) && stage_ok(i))
         .collect();
 
     // Newest-first by (last_ts, id) — id is the ULID tiebreaker for same-ts rows.
@@ -361,5 +392,6 @@ pub async fn list(
         items,
         next,
         counts,
+        case_counts,
     })
 }

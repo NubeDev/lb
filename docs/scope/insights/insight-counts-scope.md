@@ -105,3 +105,26 @@ board approaches it, the honest fix is a stated `truncated` flag, not a bigger n
 
 - `dashboards/shared-queries-scope.md` — the board that turns five calls into one.
 - `caching/dashboard-query-acceleration-scope.md` — `viz.query_batch`, the transport-level sibling.
+
+## Counting by the case's stage — the case lens
+
+The Detections roster counts detections by their CASE's stage ("to action", "actioned", …), not by
+the detection's own status, and narrows by the case queue's filters. An `insight.list` MCP call may
+carry a `case` object beside its filter:
+
+```json
+{ "limit": 50, "counts": true,
+  "case": { "stages": ["actioned"], "filter": { "workflow": "to_action" }, "now": 1788000000000 } }
+```
+
+- **The host resolves it** (`host/src/insight/case_lens.rs`): one scan of the case table
+  (`lb_cases::stages`) gives every case's stage and whether it passes `filter`, using the same
+  matching `case.list` uses. `lb-insights` receives only a `CaseScope` of plain ids and labels, and
+  filters on the detection's own `case_id` echo, so it still knows nothing of cases.
+- **Stage words** are lb's workflow words plus `none` (no case, or a case that no longer exists). An
+  unknown word is refused.
+- **`case_counts`** (reply) tallies every stage on a counted read, ignoring the stage filter and
+  honouring every other axis, the same rule the status tally follows. A page read without `counts`
+  pays for neither tally and returns neither.
+- **Grant:** a lens needs `mcp:case.list:call` as well as `insight.list`, so a caller who may not
+  list cases cannot learn their stages through counts.

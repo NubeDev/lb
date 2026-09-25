@@ -30,16 +30,14 @@ pub async fn list_insights(
     let principal = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let search_tags = gw.node.insight_search_tags();
-    let page = lb_host::insight_list(
-        &gw.node.store,
-        &principal,
-        principal.ws(),
-        query,
-        search_tags,
-    )
-    .await
-    .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    // REST carries no case lens (a query string cannot nest it); the MCP bridge does.
+    let opts = lb_host::ListOptions {
+        search_tags: gw.node.insight_search_tags(),
+        case: None,
+    };
+    let page = lb_host::insight_list(&gw.node.store, &principal, principal.ws(), query, &opts)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     Ok(Json(serde_json::to_value(page).unwrap_or_default()))
 }
 
