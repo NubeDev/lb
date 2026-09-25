@@ -150,6 +150,11 @@ pub struct ListQuery {
     /// [`crate::count`], which computes it.
     #[serde(default)]
     pub counts: bool,
+    /// A column sort ([`SortSpec`](crate::SortSpec)); absent ⇒ newest first. Both read paths order
+    /// by the same SQL, so a counted page 1 and an uncounted page 2 agree. Pages by `offset`: a
+    /// keyset `cursor` walks the default order only, so the two together are refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<crate::SortSpec>,
 }
 
 fn default_limit() -> usize {
@@ -205,6 +210,17 @@ pub async fn list(
 
     let f = &query.filter.clone();
 
+    if let Some(spec) = &query.sort {
+        crate::sort_sql::validate(spec, f.case.as_ref())?;
+        if query.cursor.is_some() {
+            return Err(InsightsError::BadInput(
+                "sort: a keyset cursor walks the default order only; page a sorted list by offset"
+                    .into(),
+            ));
+        }
+    }
+    let order = crate::sort_sql::order(query.sort.as_ref(), f.case.as_ref());
+
     // `limit: 0` means "no rows, just the tally" — the counter-panel case. Skipping the scan is the
     // whole point: a tile showing one integer has no business transferring 200 records to compute
     // it, and the aggregate is answered by the engine either way. Anything else pages as before.
@@ -239,6 +255,7 @@ pub async fn list(
             query.cursor.as_ref(),
             limit,
             query.offset,
+            &order,
         )
         .await?;
         let mut items = page.items;
@@ -273,6 +290,7 @@ pub async fn list(
         tag_allow,
         assignee,
         crate::table_scan::MAX_ROWS,
+        &order,
     )
     .await?
     .into_iter()
@@ -332,8 +350,9 @@ pub async fn list(
         .filter(|i| status_ok(i) && stage_ok(i))
         .collect();
 
-    // Newest-first by (last_ts, id) — id is the ULID tiebreaker for same-ts rows.
-    items.sort_by(|a, b| b.last_ts.cmp(&a.last_ts).then_with(|| b.id.cmp(&a.id)));
+    // The rows arrived in the statement's order (the sort, else newest first by (last_ts, id)) and
+    // filtering kept it, so there is nothing to re-sort: a second, Rust-side sort could order
+    // differently from the pushed-down page and skip or repeat a row across pages.
 
     // Keyset: strictly after the cursor in the (last_ts DESC, id DESC) order.
     if let Some(cur) = &query.cursor {

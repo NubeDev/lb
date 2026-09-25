@@ -67,6 +67,7 @@ async fn search(store: &Store, term: &str, tags: &[String], counts: bool) -> Vec
             offset: 0,
             limit: 50,
             counts,
+            sort: None,
         },
         None,
         None,
@@ -170,6 +171,7 @@ async fn the_count_agrees_with_the_rows_under_a_tag_search() {
             // `limit: 0` is the aggregate-only path (`count`), a separate SQL statement.
             limit: 0,
             counts: true,
+            sort: None,
         },
         None,
         None,

@@ -30,6 +30,9 @@ pub struct CaseScope {
     pub allow: Option<HashSet<String>>,
     /// `Some` ⇒ only detections whose stage label is in the set; [`NO_CASE`] is a legal member.
     pub stages: Option<HashSet<String>>,
+    /// The stage labels in the order a `case_stage` sort ranks them (the host's workflow order). A
+    /// label missing here, and [`NO_CASE`], has no rank and sorts last.
+    pub stage_order: Vec<String>,
 }
 
 impl CaseScope {

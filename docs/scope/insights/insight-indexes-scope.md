@@ -206,6 +206,21 @@ Ordering by `id` (first seen) is free and truly bounded; ordering by `last_ts` (
 sort that grows with the table. That is "newest fault" versus "most recently active", a product call,
 not a technical one. Until it is made, ordering stays as it is — correct, and fine at today's size.
 
+## Column sort
+
+`insight.list` takes `sort: { by: [sources], desc }`. A source is `title`, `tag:<key>`, or one of
+`severity`, `last_ts`, `first_ts`, `count`, `case_stage` (the last needs a case lens). Text sources
+chain (first non-empty wins, so a Name column sorts by `["tag:short_name", "tag:insight", "title"]`);
+a numeric source stands alone. lb names no column.
+
+- **One `ORDER BY` for both read paths** (`sort_sql.rs`). The counted scan used to re-sort in Rust;
+  it now keeps the statement's order, so a counted page 1 and an uncounted page 2 are slices of one
+  order and paging never repeats or skips a row.
+- **Blanks sort last in both directions; text compares lowercased.** Ties fall back to newest first.
+- **Cost is the default order's cost**: every order here was already a sort over the matched set.
+- **Paged by `offset` only.** A keyset cursor walks the default order, so a cursor with a sort is
+  refused.
+
 ## Risks
 
 **The pager still reports a window as a total.** Search is now server-side, but the roster's

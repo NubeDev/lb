@@ -40,6 +40,14 @@ pub struct CaseLens {
     pub now: u64,
 }
 
+/// Every stage, in lb's workflow order.
+const WORKFLOW_ORDER: [Workflow; 4] = [
+    Workflow::ToAction,
+    Workflow::Actioned,
+    Workflow::WaitingOnPo,
+    Workflow::Resolved,
+];
+
 /// The workflow word as it travels on the wire (`to_action`, …) — serde's own spelling, so this
 /// file and `lb_cases` can never disagree about it.
 fn stage_word(w: Workflow) -> String {
@@ -62,16 +70,11 @@ pub(super) async fn resolve_case_lens(
     let stages = if lens.stages.is_empty() {
         None
     } else {
-        let known: HashSet<String> = [
-            Workflow::ToAction,
-            Workflow::Actioned,
-            Workflow::WaitingOnPo,
-            Workflow::Resolved,
-        ]
-        .into_iter()
-        .map(stage_word)
-        .chain([NO_CASE.to_string()])
-        .collect();
+        let known: HashSet<String> = WORKFLOW_ORDER
+            .into_iter()
+            .map(stage_word)
+            .chain([NO_CASE.to_string()])
+            .collect();
         if let Some(bad) = lens.stages.iter().find(|s| !known.contains(*s)) {
             return Err(InsightSvcError::BadInput(format!(
                 "case stage {bad:?} is not one of {known:?}"
@@ -100,5 +103,7 @@ pub(super) async fn resolve_case_lens(
             .collect(),
         allow,
         stages,
+        // lb's own workflow order, the order a `case_stage` sort ranks by.
+        stage_order: WORKFLOW_ORDER.into_iter().map(stage_word).collect(),
     })
 }

@@ -36,6 +36,7 @@ pub(crate) async fn read(
     cursor: Option<&PageCursor>,
     limit: usize,
     offset: usize,
+    order: &crate::sort_sql::Order,
 ) -> Result<Page, StoreError> {
     let mut w = crate::filter_sql::build(filter, tag_allow, assignee, true, true);
 
@@ -52,6 +53,8 @@ pub(crate) async fn read(
     let where_clause = w.clause();
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));
+    bindings.extend(order.bindings.iter().cloned());
+    let (select, order_by) = (&order.select, &order.order_by);
 
     // `+1` is the has-more probe: read one past the page rather than asking the engine a second
     // question. The ordered idioms are SELECTED (`_ts`/`_id`) because SurrealDB requires the ORDER BY
@@ -67,8 +70,8 @@ pub(crate) async fn read(
         String::new()
     };
     let sql = format!(
-        "SELECT data, data.last_ts AS _ts, data.id AS _id FROM type::table($tb){where_clause} \
-         ORDER BY _ts DESC, _id DESC LIMIT {n}{start_clause}"
+        "SELECT data, data.last_ts AS _ts, data.id AS _id{select} FROM type::table($tb){where_clause} \
+         ORDER BY {order_by} LIMIT {n}{start_clause}"
     );
 
     let mut resp = store.query_ws(ws, &sql, bindings).await?;
@@ -105,17 +108,20 @@ pub(crate) async fn read_all_matching(
     tag_allow: Option<&std::collections::HashSet<String>>,
     assignee: Option<&AssigneeFilter>,
     cap: usize,
+    order: &crate::sort_sql::Order,
 ) -> Result<Vec<Insight>, StoreError> {
     let w = crate::filter_sql::build(filter, tag_allow, assignee, false, false);
     let where_clause = w.clause();
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));
+    bindings.extend(order.bindings.iter().cloned());
+    let (select, order_by) = (&order.select, &order.order_by);
 
     // Ordered here so the page below is a slice, not a second sort of the same rows. The cap is the
     // same read-side backstop `scan_all` carried.
     let sql = format!(
-        "SELECT data, data.last_ts AS _ts, data.id AS _id FROM type::table($tb){where_clause} \
-         ORDER BY _ts DESC, _id DESC LIMIT {cap}"
+        "SELECT data, data.last_ts AS _ts, data.id AS _id{select} FROM type::table($tb){where_clause} \
+         ORDER BY {order_by} LIMIT {cap}"
     );
     let mut resp = store.query_ws(ws, &sql, bindings).await?;
     let rows: Vec<Value> = resp

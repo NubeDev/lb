@@ -57,6 +57,7 @@ pub async fn backfill_insight_facets(store: &Store, ws: &str) -> Result<usize, I
                 // on every page to answer a question nobody asked.
                 offset: 0,
                 counts: false,
+                sort: None,
             },
             None,
             None,

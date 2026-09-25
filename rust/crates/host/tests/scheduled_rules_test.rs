@@ -840,6 +840,7 @@ async fn count_insights(node: &Arc<HostNode>, p: &Principal, ws: &str) -> usize 
             limit: 1000,
             offset: 0,
             counts: false,
+            sort: None,
         },
         &Default::default(),
     )

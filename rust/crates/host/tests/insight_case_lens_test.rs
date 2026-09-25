@@ -97,9 +97,13 @@ async fn a_lens_needs_the_case_read_grant_and_a_known_stage() {
 
     // May list detections, may not list cases: the lens is refused, a plain list is not.
     let reader = principal("user:viewer", WS, &[I_LIST]);
-    let err = list(&node, &reader, json!({ "case": { "stages": ["actioned"] } }))
-        .await
-        .expect_err("no case.list ⇒ no lens");
+    let err = list(
+        &node,
+        &reader,
+        json!({ "case": { "stages": ["actioned"] } }),
+    )
+    .await
+    .expect_err("no case.list ⇒ no lens");
     assert!(matches!(err, ToolError::Denied), "{err:?}");
     list(&node, &reader, json!({ "limit": 5 }))
         .await

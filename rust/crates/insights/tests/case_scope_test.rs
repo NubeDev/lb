@@ -65,6 +65,7 @@ fn scope(allow: Option<&[&str]>, stages: Option<&[&str]>) -> CaseScope {
         ]),
         allow: allow.map(set),
         stages: stages.map(set),
+        stage_order: vec!["to_action".into(), "actioned".into()],
     }
 }
 
@@ -81,6 +82,7 @@ async fn page(store: &Store, case: CaseScope, counts: bool, limit: usize) -> lb_
             offset: 0,
             limit,
             counts,
+            sort: None,
         },
         None,
         None,
