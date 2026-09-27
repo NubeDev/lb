@@ -317,3 +317,35 @@ async fn the_candidates_come_from_the_indexes_even_beside_a_filter() {
         "the outer query must not scan the table: {plan}"
     );
 }
+
+/// The index build works on a store UPGRADED from the old analyzer: rows exist, but nothing has been
+/// raised since, so the v3 analyzer the tag indexes name is not defined yet. It must define it, not
+/// rely on a raise having done it (found live: "The analyzer 'insight_text_v3' does not exist").
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_index_build_works_on_an_upgraded_store_before_any_raise() {
+    let store = Store::memory().await.expect("mem store");
+    seed(
+        &store,
+        "t1",
+        Severity::Warning,
+        &[("site", "Lot 1 Sergeants Estate")],
+    )
+    .await;
+    // Back to the pre-upgrade state: the rows stay, the v3 analyzer and its index go.
+    store
+        .query_ws(
+            WS,
+            "REMOVE INDEX IF EXISTS insight_name_v3 ON TABLE insight; \
+             REMOVE ANALYZER IF EXISTS insight_text_v3;",
+            vec![],
+        )
+        .await
+        .expect("downgrade");
+    ensure_search_indexes(&store, WS, &columns())
+        .await
+        .expect("builds on a store with rows and no v3 analyzer");
+    assert_eq!(
+        titles(&store, query("lot 1", ListFilter::default(), true)).await,
+        ["t1"]
+    );
+}

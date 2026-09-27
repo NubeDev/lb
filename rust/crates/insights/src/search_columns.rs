@@ -101,6 +101,10 @@ pub async fn ensure_search_indexes(
     ws: &str,
     columns: &[Vec<String>],
 ) -> Result<(), StoreError> {
+    // The analyzer and the title's index FIRST: the tag indexes name the analyzer, and on a store
+    // upgraded from an older analyzer nothing else may have defined it yet (found live: the build
+    // failed with "analyzer does not exist" until the next raise).
+    crate::schema::ensure_insight_schema(store, ws).await?;
     let ddl: String = tag_keys(columns)
         .into_iter()
         .map(|k| {
