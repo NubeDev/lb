@@ -378,14 +378,15 @@ pub struct BootConfig {
     /// fixed; with it off the index is REMOVED from stores that already carry one.
     pub series_time_index: bool,
 
-    /// The tag keys the Insights search box matches BESIDE the title — the embedder's display
-    /// columns (a site, a region). Empty (the default) ⇒ the title alone, byte-identical to before
-    /// this field existed.
+    /// The columns the Insights search box looks in — the embedder's display columns, each the text
+    /// sources its cell falls back through (`title` or `tag:<key>`, e.g.
+    /// `["tag:short_name", "tag:insight", "title"]`). A search matches text ANYWHERE in a column's
+    /// shown value. Empty (the default) ⇒ the title alone.
     ///
-    /// Each key gets its own full-text index, so this is a short list (at most
-    /// `lb_insights::MAX_SEARCH_TAGS`) of plain lowercase identifiers; anything else fails the boot.
-    /// Config, never a code branch (rule 10): lb names no tag key. `from_env` does not read it.
-    pub insight_search_tags: Vec<String>,
+    /// Each tag key gets its own full-text index, so this is a short list (at most
+    /// `lb_insights::MAX_SEARCH_COLUMNS` columns); a bad source fails the boot. Config, never a code
+    /// branch (rule 10): lb names no column. `from_env` does not read it.
+    pub insight_search_columns: Vec<Vec<String>>,
 
     /// How often the **retention GC reactor** ticks. `None` (the default) ⇒
     /// [`lb_host::RETENTION_PERIOD`] — 300 s, unchanged.
@@ -612,7 +613,7 @@ impl Default for BootConfig {
             // node must not silently acquire a new behaviour on upgrade.
             store_budget_bytes: None,
             series_time_index: false,
-            insight_search_tags: Vec::new(),
+            insight_search_columns: Vec::new(),
             // The stock 300 s retention cadence (disk-budget/series-retention): slow on purpose —
             // a GC pass is a full table scan and nothing waits on an eviction. Configurable so the
             // cadence can be TESTED, not so it can be run fast.
@@ -738,8 +739,8 @@ impl BootConfig {
             store_budget_bytes: store_budget_bytes_from_env(),
             // The `(series, ts)` index is opt-in; see the field.
             series_time_index: series_time_index_from_env(),
-            // The search's tag keys are the embedder's; the standalone binary searches titles only.
-            insight_search_tags: Vec::new(),
+            // The search's columns are the embedder's; the standalone binary searches titles only.
+            insight_search_columns: Vec::new(),
             // The retention-GC cadence from `LB_RETENTION_PERIOD_SECS` (whole seconds);
             // unset/empty/unparseable/`0` ⇒ `None` ⇒ the 300 s default. Read only here.
             retention_period: retention_period_from_env(),

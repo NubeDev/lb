@@ -92,14 +92,14 @@ pub async fn count(
     // The predicates come from the ONE builder `list`'s pushdown also uses — `include_status:
     // false` because this reply IS the per-status breakdown.
     let w = crate::filter_sql::build(filter, tag_allow, assignee, false, true);
-    let where_clause = w.clause();
+    let (source, where_clause) = (w.source(), w.clause());
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));
 
     // `status` is the SELECTED idiom the GROUP BY names — SurrealDB requires the grouped expression
     // to appear in the projection (debugging/store/order-by-needs-selected-idiom.md, same rule).
     let sql = format!(
-        "SELECT data.status AS status, count() AS n FROM type::table($tb){where_clause} \
+        "SELECT data.status AS status, count() AS n FROM {source}{where_clause} \
          GROUP BY status"
     );
 

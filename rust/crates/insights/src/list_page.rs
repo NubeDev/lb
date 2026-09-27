@@ -50,7 +50,7 @@ pub(crate) async fn read(
         w.bindings.push(("cid".into(), Value::String(c.id.clone())));
     }
 
-    let where_clause = w.clause();
+    let (source, where_clause) = (w.source(), w.clause());
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));
     bindings.extend(order.bindings.iter().cloned());
@@ -70,7 +70,7 @@ pub(crate) async fn read(
         String::new()
     };
     let sql = format!(
-        "SELECT data, data.last_ts AS _ts, data.id AS _id{select} FROM type::table($tb){where_clause} \
+        "SELECT data, data.last_ts AS _ts, data.id AS _id{select} FROM {source}{where_clause} \
          ORDER BY {order_by} LIMIT {n}{start_clause}"
     );
 
@@ -111,7 +111,7 @@ pub(crate) async fn read_all_matching(
     order: &crate::sort_sql::Order,
 ) -> Result<Vec<Insight>, StoreError> {
     let w = crate::filter_sql::build(filter, tag_allow, assignee, false, false);
-    let where_clause = w.clause();
+    let (source, where_clause) = (w.source(), w.clause());
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));
     bindings.extend(order.bindings.iter().cloned());
@@ -120,7 +120,7 @@ pub(crate) async fn read_all_matching(
     // Ordered here so the page below is a slice, not a second sort of the same rows. The cap is the
     // same read-side backstop `scan_all` carried.
     let sql = format!(
-        "SELECT data, data.last_ts AS _ts, data.id AS _id{select} FROM type::table($tb){where_clause} \
+        "SELECT data, data.last_ts AS _ts, data.id AS _id{select} FROM {source}{where_clause} \
          ORDER BY {order_by} LIMIT {cap}"
     );
     let mut resp = store.query_ws(ws, &sql, bindings).await?;

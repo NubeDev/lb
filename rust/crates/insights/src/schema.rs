@@ -13,9 +13,12 @@
 //!    `lb_tags::define_text_index` uses. Note the keyword is `FULLTEXT`, not the `SEARCH` of
 //!    SurrealDB 2.x — on 3.x the old spelling is rejected by the parser outright. The tag columns an
 //!    embedder configures are searched too, each through its own index with this same analyzer
-//!    (`search_tags.rs`); with none configured the search is the title alone.
+//!    (`search_columns.rs`); with none configured the search is the title alone.
 //!
-//!    **`edgengram(2,15)` is what makes a PREFIX match.** Measured: with `lowercase` alone the
+//!    **v3 indexes every piece of a word (`ngram(1,15)`)**, so text is found anywhere in a value;
+//!    `search_columns.rs` explains why and how the exact check follows. The v2 history below is
+//!    kept for why the tokenizer is `blank`.
+//!    **`edgengram(2,15)` made a PREFIX match.** Measured: with `lowercase` alone the
 //!    analyzer indexes whole words, so `hi` does not find "High Daily Usage" — which is how a
 //!    search box is actually used. With edgengram it does, while whole words still match.
 //!    `blank` is kept as the only tokenizer on evidence: adding `class` splits letters from digits
@@ -58,12 +61,15 @@ use crate::insight::OCC_TABLE;
 /// upgraded node that silently keeps answering from the stale index forever.
 /// Named distinctly from the INDEX (`insight_name`): they share a namespace in the reader's head
 /// even if not in the engine, and one name for two things is how a DDL edit goes wrong later.
-pub(crate) const ANALYZER: &str = "insight_text_v2";
+///
+/// v3 is `ngram(1,15)`: every piece of a word, so the search finds text anywhere in a value, not only
+/// at word starts (`search_columns.rs` has the measured misses of v2's `edgengram(2,15)`).
+pub(crate) const ANALYZER: &str = "insight_text_v3";
 /// The index name, versioned with the analyzer — a new analyzer needs a new index to use it.
-const NAME_INDEX: &str = "insight_name_v2";
-/// The index this one replaces. Removed on the next raise/search so the planner cannot keep
-/// answering from it — see the note above.
-const SUPERSEDED_INDEX: &str = "insight_name";
+const NAME_INDEX: &str = "insight_name_v3";
+/// The indexes this one replaces. Removed on the next raise/search so the planner cannot keep
+/// answering from them — see the note above.
+const SUPERSEDED_INDEXES: [&str; 2] = ["insight_name", "insight_name_v2"];
 
 /// Define the insight indexes for `ws`. Idempotent (`IF NOT EXISTS`), so it is safe to call on every
 /// write — the pattern `ensure_series_schema` uses, for the same reason: there is no boot-time hook
@@ -73,12 +79,15 @@ pub async fn ensure_insight_schema(store: &Store, ws: &str) -> Result<(), StoreE
         .query_ws(
             ws,
             &format!(
-                "REMOVE INDEX IF EXISTS {SUPERSEDED_INDEX} ON TABLE {OCC_TABLE};
+                "REMOVE INDEX IF EXISTS {old1} ON TABLE {OCC_TABLE};
+                 REMOVE INDEX IF EXISTS {old2} ON TABLE {OCC_TABLE};
                  DEFINE ANALYZER IF NOT EXISTS {ANALYZER} \
-                    TOKENIZERS blank FILTERS lowercase,edgengram(2,15);
+                    TOKENIZERS blank FILTERS lowercase,ngram(1,15);
                  DEFINE INDEX IF NOT EXISTS insight_dedup ON TABLE {OCC_TABLE} FIELDS data.dedup_key;
                  DEFINE INDEX IF NOT EXISTS {NAME_INDEX} ON TABLE {OCC_TABLE} \
-                    FIELDS data.title FULLTEXT ANALYZER {ANALYZER} BM25;"
+                    FIELDS data.title FULLTEXT ANALYZER {ANALYZER} BM25;",
+                old1 = SUPERSEDED_INDEXES[0],
+                old2 = SUPERSEDED_INDEXES[1],
             ),
             vec![],
         )

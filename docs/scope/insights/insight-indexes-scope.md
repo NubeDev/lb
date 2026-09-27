@@ -173,23 +173,33 @@ And `page N of M` needs a true total, which is cheap: `count() GROUP ALL` is 3.9
 |---|---|
 | `data.dedup_key` | turns the every-raise scan into `IndexScan`; ~3% of data size |
 | `data.title`, BM25 | the search box, server-side over every row |
-| `data.tags.<key>`, BM25, one per configured key | the search box's other columns (below) |
+| `data.tags.<key>`, BM25, one per tag key the search columns read | the search box's columns (below) |
 
-## Search past the name — the embedder's tag columns
+## Search by column — what the embedder's table shows
 
-The search box also matches the tag keys an embedder lists in `BootConfig::insight_search_tags`
-(rubix-ai: the Site, State and Subsystem columns and the tags its Name column falls back to). lb
-names no key: the list is config, empty by default, so a node without it searches titles only.
+The search box looks in the columns an embedder lists in `BootConfig::insight_search_columns`, each
+the text sources its cell falls back through (`title` / `tag:<key>`; rubix-ai: Name, Site, State,
+Subsystem, Category). lb names no column; empty searches the title alone. **A row matches when the
+typed text appears anywhere in a column's shown value, case ignored.**
 
-- **One BM25 index per key**, `insight_tag_<key>_v2`, same analyzer as the title, so a prefix finds a
-  tag value the way it finds a title word. `DEFINE INDEX` builds over existing rows, so a newly
-  configured key is searchable on the next search with no backfill.
-- **The clause is `title @0@ q OR tags.k1 @1@ q OR …`.** Each branch needs its own match reference.
-  Measured on 3.2.4: the plan is one `Iterate Index` per branch and a `Collector`, no `TableScan`
-  (`tests/search_tags_test.rs` asserts it).
-- **The keys never come from the wire.** The host copies them onto the filter (`serde(skip)`, like the
-  entity limit), because each key is an index a client could otherwise make the node build. The boot
-  refuses a key that is not a plain lowercase identifier, a duplicate, or more than 16 keys.
+- **Candidates from `ngram(1,15)` indexes** (`insight_text_v3`): one full-text index on the title
+  (`insight_name_v3`) and one per tag key (`insight_tag_<key>_v3`). The earlier `edgengram(2,15)`
+  indexed word STARTS only; on a live store it missed the middle of a word (`raka`), the end of one
+  (`line`), and any search holding a one-character word (`Lot 3` found 0 of 43). The v2 indexes are
+  removed when v3 is defined (the planner answers from the older of two indexes on a field).
+- **Then the exact check**: `string::contains` over each column's shown value (the same expression
+  the column sort uses, `text_expr.rs`), so an index over-match is dropped and a source the cell does
+  not show (a title behind a `short_name`) never matches. Measured: `energy` matched 144 rows on the
+  title-and-tags index, 142 on what the cells show.
+- **The search runs as an INNER query** (`FROM (SELECT * … WHERE title @0@ q OR tags.k @1@ q)`), and
+  every filter and the exact check run over its results. Measured on 3.2.4: several `@@` joined by
+  `OR` use their indexes only when nothing else is AND-ed to them; with any other predicate the
+  planner falls back to `Iterate Table`. `tests/search_columns_test.rs` asserts both plans.
+- **Built once per workspace**, never per request: at boot for the boot workspace, else by the first
+  search, with concurrent first searches sharing one build (`host/src/insight/search_schema.rs`;
+  five concurrent first searches on a fresh on-disk store used to ALL fail with a write conflict).
+- **The columns never come from the wire** (`serde(skip)`, like the entity limit). The boot refuses a
+  source that is not `title` / `tag:<lowercase key>`, more than 8 columns, or more than 16 tag keys.
 
 **No index on `status` or `severity`.** Three values each, matching 39–64% of rows — a scan beats an
 index at that selectivity.

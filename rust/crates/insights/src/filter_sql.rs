@@ -16,20 +16,36 @@ use std::collections::HashSet;
 use serde_json::Value;
 
 use crate::list::{AssigneeFilter, ListFilter};
-use crate::search_tags::plain_ident;
+use crate::search_columns::plain_ident;
 use crate::severity::Severity;
+use crate::text_expr::{column_text, text_source, TextSource};
 
-/// The shortest search term that can match, set by the analyzer's `edgengram(2,15)` lower bound.
+/// The shortest search term: one letter would match nearly every row, which is noise, not a search.
 const MIN_SEARCH_CHARS: usize = 2;
 
 /// A composed clause: the AND-ed predicates and the parameters they bind.
 pub(crate) struct Where {
     pub preds: Vec<String>,
     pub bindings: Vec<(String, Value)>,
+    /// The search's index lookup, run as an INNER query that the rest of the clause filters.
+    ///
+    /// Measured on SurrealDB 3.2.4: full-text matches joined by `OR` are answered from their indexes
+    /// only when nothing else is AND-ed to them; add any other predicate (a severity, the exact
+    /// check) and the planner falls back to `Iterate Table`, a full scan. As an inner query the
+    /// matches still use the indexes, and every other predicate runs over those candidates only.
+    candidates: Option<String>,
 }
 
 impl Where {
-    /// What to append after `FROM type::table($tb)` — EMPTY when nothing is filtered, so an
+    /// What follows `FROM`: the table, or the search's candidates drawn from it.
+    pub(crate) fn source(&self) -> String {
+        match &self.candidates {
+            None => "type::table($tb)".into(),
+            Some(c) => format!("(SELECT * FROM type::table($tb) WHERE {c})"),
+        }
+    }
+
+    /// What to append after `FROM <source>` — EMPTY when nothing is filtered, so an
     /// unfiltered read stays a plain scan rather than `WHERE true`.
     pub(crate) fn clause(&self) -> String {
         if self.preds.is_empty() {
@@ -51,6 +67,7 @@ pub(crate) fn build(
     let mut w = Where {
         preds: Vec::new(),
         bindings: Vec::new(),
+        candidates: None,
     };
 
     if include_status {
@@ -73,8 +90,8 @@ pub(crate) fn build(
         w.bindings.push(("sevs".into(), Value::Array(allowed)));
     }
 
-    // The search rides the BM25 indexes: the title's (`schema.rs`) and one per configured tag key
-    // (`search_tags.rs`). `@@` is
+    // The search rides the full-text indexes (the title's in `schema.rs`, one per tag key in
+    // `search_columns.rs`), then an exact check on each column's shown value. `@@` is
     // SurrealDB's full-text match: it is answered from the index, so this narrows the set the
     // ORDER BY has to sort rather than adding a pass over the rows.
     // Below TWO characters this is not a search. The analyzer indexes prefixes from length 2
@@ -87,9 +104,13 @@ pub(crate) fn build(
         .map(|t| t.trim())
         .filter(|t| t.chars().count() >= MIN_SEARCH_CHARS)
     {
-        w.preds.push(search_predicate(&filter.search_tags));
+        let (candidates, exact) = search_predicate(&filter.search_columns);
+        w.candidates = Some(candidates);
+        w.preds.push(exact);
         w.bindings
             .push(("q".into(), Value::String(text.to_string())));
+        w.bindings
+            .push(("ql".into(), Value::String(text.to_lowercase())));
     }
 
     // `ref` is a SurrealDB keyword, so the field needs backquoting — the serde name is `ref`
@@ -188,20 +209,42 @@ fn json_of<T: serde::Serialize>(v: T) -> Value {
     serde_json::to_value(v).unwrap_or(Value::Null)
 }
 
-/// The search clause: the title, OR any configured tag key, each matched through its own full-text
-/// index. With no keys it is exactly the title-only clause it always was.
+/// The search, in two parts (`search_columns.rs` explains both), returned separately because they
+/// run at different levels (`Where::candidates`):
 ///
-/// Each branch carries its own match reference (`@1@`, `@2@`, …): SurrealDB ties a full-text match to
-/// one index through that number, and two `@@` in one statement would share the default reference.
-/// A key that is not a plain identifier is skipped, so nothing unvalidated reaches the SQL.
-fn search_predicate(keys: &[String]) -> String {
-    let tags: Vec<&String> = keys.iter().filter(|k| plain_ident(k)).collect();
-    if tags.is_empty() {
-        return "data.title @@ $q".into();
+/// 1. `title @0@ q OR tags.k1 @1@ q OR …`: candidates from the full-text indexes, one branch per
+///    source field the columns read. Each branch has its own match reference: SurrealDB ties a match
+///    to one index through that number.
+/// 2. `string::contains(<column 1 as shown>, ql) OR …`: the exact check, so a row matches only when
+///    the typed text really is in a column's shown value.
+///
+/// No columns ⇒ the title alone. Sources that do not parse are skipped (validated at boot too).
+fn search_predicate(columns: &[Vec<String>]) -> (String, String) {
+    let title_only = [vec!["title".to_string()]];
+    let columns: &[Vec<String>] = if columns.is_empty() {
+        &title_only
+    } else {
+        columns
+    };
+    let mut fields: Vec<String> = Vec::new();
+    for src in columns.iter().flatten() {
+        let field = match text_source(src) {
+            Some(TextSource::Title) => "data.title".to_string(),
+            Some(TextSource::Tag(k)) if plain_ident(k) => format!("data.tags.{k}"),
+            _ => continue,
+        };
+        if !fields.contains(&field) {
+            fields.push(field);
+        }
     }
-    let mut branches = vec!["data.title @0@ $q".to_string()];
-    for (i, key) in tags.iter().enumerate() {
-        branches.push(format!("data.tags.{key} @{}@ $q", i + 1));
-    }
-    format!("({})", branches.join(" OR "))
+    let branches: Vec<String> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, f)| format!("{f} @{i}@ $q"))
+        .collect();
+    let exact: Vec<String> = columns
+        .iter()
+        .map(|c| format!("string::contains({}, $ql)", column_text(c)))
+        .collect();
+    (branches.join(" OR "), format!("({})", exact.join(" OR ")))
 }

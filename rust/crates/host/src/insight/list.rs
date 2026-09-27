@@ -20,15 +20,14 @@ use super::search_schema::SearchSchema;
 /// What an `insight.list` call carries beside its wire filter. `Default` is a plain list.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ListOptions<'a> {
-    /// The node's configured tag keys the search box matches beside the title
-    /// (`Node::insight_search_tags`). Set on the filter from server state, as `entity` is: the wire
-    /// can never carry it.
-    pub search_tags: &'a [String],
+    /// The node's configured search columns (`Node::insight_search_columns`). Set on the filter
+    /// from server state, as `entity` is: the wire can never carry it.
+    pub search_columns: &'a [Vec<String>],
     /// The caller's case lens (`case` beside the filter on the MCP call), resolved against the case
     /// plane before the list runs.
     pub case: Option<&'a CaseLens>,
     /// The node's once-per-workspace index builder (`Node::insight_search_schema`). `None` builds the
-    /// tag indexes inline on every search (a test or a caller without a node).
+    /// column indexes inline on every search (a test or a caller without a node).
     pub search_schema: Option<&'a SearchSchema>,
 }
 
@@ -49,12 +48,12 @@ pub async fn insight_list(
     // Entity-scoped data: a restricted caller's list (and its counts) is limited to their entities'
     // insights, set here from server state — the wire can never carry it (`entity` is serde(skip)).
     let mut query = query;
-    query.filter.search_tags = opts.search_tags.to_vec();
-    // A search over tag keys needs their indexes; build them once per workspace, not per request.
-    if query.filter.search.is_some() && !opts.search_tags.is_empty() {
+    query.filter.search_columns = opts.search_columns.to_vec();
+    // A search over tag columns needs their indexes; build them once per workspace, not per request.
+    if query.filter.search.is_some() && !opts.search_columns.is_empty() {
         match opts.search_schema {
-            Some(schema) => schema.ensure(store, ws, opts.search_tags).await?,
-            None => lb_insights::ensure_search_tag_indexes(store, ws, opts.search_tags).await?,
+            Some(schema) => schema.ensure(store, ws, opts.search_columns).await?,
+            None => lb_insights::ensure_search_indexes(store, ws, opts.search_columns).await?,
         }
     }
     if let Some(lens) = opts.case {

@@ -32,7 +32,7 @@ pub async fn list_insights(
         .map_err(|e| e.into_response())?;
     // REST carries no case lens (a query string cannot nest it); the MCP bridge does.
     let opts = lb_host::ListOptions {
-        search_tags: gw.node.insight_search_tags(),
+        search_columns: gw.node.insight_search_columns(),
         case: None,
         search_schema: Some(gw.node.insight_search_schema()),
     };

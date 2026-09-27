@@ -42,18 +42,19 @@ pub struct ListFilter {
     /// tag matches nothing.
     #[serde(skip)]
     pub entity: Option<(String, Vec<String>)>,
-    /// Free-text over the insight's `title` and the tag keys in [`search_tags`](Self::search_tags) —
-    /// the roster's search box, resolved by BM25 indexes over every row rather than by filtering
-    /// the rows a browser happens to hold (which searched a window and reported its size as a total).
+    /// Free text: rows whose [`search_columns`](Self::search_columns) show it anywhere (case ignored)
+    /// — the roster's search box, answered over every row by full-text indexes, never over the rows
+    /// a browser happens to hold (which searched a window and reported its size as a total).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search: Option<String>,
-    /// The tag keys [`search`](Self::search) matches beside the title. Set by the HOST from the
-    /// node's config (`BootConfig::insight_search_tags`), never read from the wire (`serde(skip)`):
-    /// each key needs an index, so a client naming arbitrary keys could make the node build them.
-    /// Empty ⇒ the title alone. The caller builds their indexes first
-    /// ([`ensure_search_tag_indexes`](crate::ensure_search_tag_indexes)); `list` does not.
+    /// The columns [`search`](Self::search) looks in, each the text sources its cell falls back
+    /// through (`title` / `tag:<key>`). Set by the HOST from the node's config
+    /// (`BootConfig::insight_search_columns`), never read from the wire (`serde(skip)`): each tag key
+    /// needs an index, so a client naming arbitrary keys could make the node build them. Empty ⇒ the
+    /// title alone. The caller builds their indexes first
+    /// ([`ensure_search_indexes`](crate::ensure_search_indexes)); `list` does not.
     #[serde(skip)]
-    pub search_tags: Vec<String>,
+    pub search_columns: Vec<Vec<String>>,
     /// The case lens — narrow and count by the CASE's stage and the case queue's filters. Set by
     /// the HOST from the case plane (`serde(skip)`, like `entity`); this crate only filters on the
     /// detection's own `case_id` echo. See [`CaseScope`](crate::CaseScope).
@@ -234,7 +235,7 @@ pub async fn list(
     }
     let order = crate::sort_sql::order(query.sort.as_ref(), f.case.as_ref());
     for key in [&f.tag_missing, &query.tag_counts].into_iter().flatten() {
-        if !crate::search_tags::plain_ident(key) {
+        if !crate::search_columns::plain_ident(key) {
             return Err(InsightsError::BadInput(format!(
                 "tag key {key:?} must be a lowercase identifier (a-z, 0-9, _)"
             )));

@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use crate::case_scope::CaseScope;
 use crate::error::InsightsError;
-use crate::search_tags::plain_ident;
+use crate::text_expr::{column_text, text_source};
 
 /// A column sort (`ListQuery::sort`).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -72,19 +72,14 @@ pub(crate) fn validate(spec: &SortSpec, case: Option<&CaseScope>) -> Result<(), 
 }
 
 enum Source<'a> {
-    Title,
-    Tag(&'a str),
+    Text,
     Numeric(&'a str),
 }
 
 fn source(s: &str) -> Option<Source<'_>> {
     match s {
-        "title" => Some(Source::Title),
         "severity" | "last_ts" | "first_ts" | "count" | "case_stage" => Some(Source::Numeric(s)),
-        _ => s
-            .strip_prefix("tag:")
-            .filter(|k| plain_ident(k))
-            .map(Source::Tag),
+        _ => text_source(s).map(|_| Source::Text),
     }
 }
 
@@ -102,7 +97,7 @@ pub(crate) fn order(spec: Option<&SortSpec>, case: Option<&CaseScope>) -> Order 
         [one] if matches!(source(one), Some(Source::Numeric(_))) => {
             numeric(one, case, &mut bindings)
         }
-        many => text(many),
+        many => column_text(many),
     };
     let dir = if spec.desc { "DESC" } else { "ASC" };
     Order {
@@ -110,20 +105,6 @@ pub(crate) fn order(spec: Option<&SortSpec>, case: Option<&CaseScope>) -> Order 
         order_by: format!("_e ASC, _k {dir}, {DEFAULT_ORDER}"),
         bindings,
     }
-}
-
-/// First non-empty text source, lowercased. `''` when every source is empty.
-fn text(sources: &[String]) -> String {
-    // Built right to left: IF a is non-empty THEN a ELSE (the rest).
-    let mut expr = "''".to_string();
-    for src in sources.iter().rev() {
-        let field = match source(src) {
-            Some(Source::Tag(k)) => format!("data.tags.{k}"),
-            _ => "data.title".to_string(),
-        };
-        expr = format!("(IF {field} != NONE AND {field} != '' THEN {field} ELSE {expr} END)");
-    }
-    format!("string::lowercase({expr})")
 }
 
 fn numeric(src: &str, case: Option<&CaseScope>, bindings: &mut Vec<(String, Value)>) -> String {

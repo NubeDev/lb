@@ -1,7 +1,7 @@
 //! The insight search's tag indexes, built ONCE per workspace per node — never once per request.
 //!
 //! **Why this exists.** The first search in a workspace has to define one full-text index per
-//! configured tag key (`BootConfig::insight_search_tags`), and building them is slow (seconds on a
+//! configured search column's tag keys (`BootConfig::insight_search_columns`), and building them is slow (seconds on a
 //! small store). The Detections page sends several reads the moment a search starts (the page, the
 //! severity counts, the tag band), and each one defining the same indexes in its own transaction made
 //! them conflict: measured on a fresh on-disk store, five concurrent first searches ALL failed after
@@ -35,31 +35,31 @@ pub struct SearchSchema {
 }
 
 impl SearchSchema {
-    /// Ensure `keys`' indexes exist in `ws`. Concurrent callers share ONE build; once it succeeded,
-    /// this is a map lookup. `keys` is the node's fixed configured list, so one cell per workspace
-    /// is enough.
+    /// Ensure the `columns`' indexes exist in `ws`. Concurrent callers share ONE build; once it
+    /// succeeded, this is a map lookup. `columns` is the node's fixed configured list, so one cell per
+    /// workspace is enough.
     pub async fn ensure(
         &self,
         store: &Store,
         ws: &str,
-        keys: &[String],
+        columns: &[Vec<String>],
     ) -> Result<(), InsightSvcError> {
-        if keys.is_empty() {
+        if columns.is_empty() {
             return Ok(());
         }
         // Clone the cell out: never hold a map guard across the await below.
         let cell = self.ready.entry(ws.to_string()).or_default().clone();
-        cell.get_or_try_init(|| build(store, ws, keys)).await?;
+        cell.get_or_try_init(|| build(store, ws, columns)).await?;
         Ok(())
     }
 }
 
 /// Define the indexes, retrying a store error with exponential backoff.
-async fn build(store: &Store, ws: &str, keys: &[String]) -> Result<(), InsightSvcError> {
+async fn build(store: &Store, ws: &str, columns: &[Vec<String>]) -> Result<(), InsightSvcError> {
     let mut wait = FIRST_BACKOFF;
     let mut attempt = 1;
     loop {
-        match lb_insights::ensure_search_tag_indexes(store, ws, keys).await {
+        match lb_insights::ensure_search_indexes(store, ws, columns).await {
             Ok(()) => return Ok(()),
             Err(e) if attempt < ATTEMPTS => {
                 tracing::warn!(ws, attempt, error = %e, "insight search indexes not built yet; retrying");
@@ -81,7 +81,9 @@ mod tests {
     async fn concurrent_first_callers_share_one_build() {
         let store = Store::memory().await.unwrap();
         let schema = Arc::new(SearchSchema::default());
-        let keys: Vec<String> = ["site", "state", "subsystem"].map(String::from).to_vec();
+        let keys: Vec<Vec<String>> = ["tag:site", "tag:state", "tag:subsystem"]
+            .map(|k| vec![k.to_string()])
+            .to_vec();
         // Collected first: every call is spawned (and racing) before any is awaited.
         let calls: Vec<_> = (0..8)
             .map(|_| {

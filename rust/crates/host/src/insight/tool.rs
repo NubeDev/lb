@@ -86,7 +86,7 @@ pub async fn call_insight_tool(
                 ),
             };
             let opts = ListOptions {
-                search_tags: node.insight_search_tags(),
+                search_columns: node.insight_search_columns(),
                 case: case.as_ref(),
                 search_schema: Some(node.insight_search_schema()),
             };
