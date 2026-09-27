@@ -226,3 +226,110 @@ async fn a_tag_search_rides_the_indexes_not_a_table_scan() {
         );
     }
 }
+
+/// The search narrows the FILTERED set, never the whole table: it is one more AND-ed clause beside
+/// every filter, on both read paths, and the tally counts only rows passing both.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_search_is_applied_inside_the_filters_not_over_everything() {
+    let store = seeded().await;
+    let tags = keys(&["site", "state", "subsystem"]);
+    lb_insights::ensure_search_tag_indexes(&store, WS, &tags)
+        .await
+        .expect("indexes");
+    // "ch" alone matches two rows: "Chiller flatline" (title) and "High daily usage" (Chullora).
+    assert_eq!(search(&store, "ch", &tags, false).await.len(), 2);
+    // Echo the case back-ref so a case lens has something to filter on: only the chiller is actioned.
+    let chiller = list(
+        &store,
+        WS,
+        ListQuery {
+            filter: ListFilter {
+                search: Some("flatline".into()),
+                ..Default::default()
+            },
+            cursor: None,
+            offset: 0,
+            limit: 5,
+            counts: false,
+            sort: None,
+            tag_counts: None,
+        },
+        None,
+        None,
+    )
+    .await
+    .expect("find")
+    .items[0]
+        .id
+        .clone();
+    lb_insights::set_case_id(&store, WS, &chiller, Some("case:A"))
+        .await
+        .expect("echo");
+    let actioned = lb_insights::CaseScope {
+        stage_of: [("case:A".to_string(), "actioned".to_string())].into(),
+        stages: Some(["actioned".to_string()].into()),
+        ..Default::default()
+    };
+    for counts in [false, true] {
+        let page = list(
+            &store,
+            WS,
+            ListQuery {
+                filter: ListFilter {
+                    search: Some("ch".into()),
+                    search_tags: tags.clone(),
+                    case: Some(actioned.clone()),
+                    ..Default::default()
+                },
+                cursor: None,
+                offset: 0,
+                limit: 50,
+                counts,
+                sort: None,
+                tag_counts: None,
+            },
+            None,
+            None,
+        )
+        .await
+        .expect("search within a filter");
+        let titles: Vec<_> = page.items.iter().map(|i| i.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            ["Chiller flatline"],
+            "search AND stage filter (counts={counts})"
+        );
+        if counts {
+            assert_eq!(
+                page.counts.expect("tally").total,
+                1,
+                "the tally counts the filtered search"
+            );
+        }
+    }
+    // And a filter the search's match is outside of returns nothing, not the unfiltered match.
+    let page = list(
+        &store,
+        WS,
+        ListQuery {
+            filter: ListFilter {
+                search: Some("chul".into()),
+                search_tags: tags.clone(),
+                severity: Some(Severity::Critical),
+                ..Default::default()
+            },
+            cursor: None,
+            offset: 0,
+            limit: 50,
+            counts: true,
+            sort: None,
+            tag_counts: None,
+        },
+        None,
+        None,
+    )
+    .await
+    .expect("search within severity");
+    assert!(page.items.is_empty());
+    assert_eq!(page.counts.expect("tally").total, 0);
+}
