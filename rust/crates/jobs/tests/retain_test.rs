@@ -250,3 +250,17 @@ async fn retention_is_workspace_scoped() {
         "ws-b trimmed to its cap"
     );
 }
+
+/// A workspace that has never written a job. Under SurrealDB 3 a transaction that reads a table that
+/// does not exist yet is cancelled — the failure `flows::retain_runs` had on every sweep. The job
+/// half of the same sweep must be a quiet zero here, not an error.
+#[tokio::test]
+async fn retain_on_a_workspace_with_no_job_table_is_zero_not_an_error() {
+    let store = lb_store::Store::memory().await.unwrap();
+    assert_eq!(
+        lb_jobs::retain_terminal(&store, "fresh", lb_jobs::DEFAULT_TERMINAL_JOB_CAP)
+            .await
+            .unwrap(),
+        0
+    );
+}

@@ -25,7 +25,8 @@
 //!
 //! Reuses `capped.rs`'s safe-delete idiom (`LET $keep = (SELECT … LIMIT n); DELETE … NOT IN $keep`),
 //! never the inline `DELETE … NOT IN (subquery)` form SurrealDB mis-evaluates. Raw store verb under
-//! the reactor's node-internal authority; workspace-walled via `query_ws`.
+//! the reactor's node-internal authority; workspace-walled via `query_ws`. Not a transaction, and
+//! steps are deleted before runs — see the body for why that is both required and safe.
 
 use lb_store::{Store, StoreError};
 use serde_json::Value;
@@ -46,7 +47,7 @@ const TERMINAL_RUN_STATUSES: [&str; 4] = ["success", "partialFailure", "failed",
 /// Trim workspace `ws`'s finished flow runs to the newest `cap`, deleting the oldest finished runs
 /// beyond it **and** every `flow_step_output` row belonging to a purged run. Non-terminal runs
 /// (`pending`/`suspended`) are never touched. `cap == 0` is clamped to 1. Returns the number of
-/// `flow_run` rows deleted (step rows deleted in the same transaction are not separately counted).
+/// `flow_run` rows deleted (their step rows are deleted in the same pass, not separately counted).
 pub async fn retain_runs(store: &Store, ws: &str, cap: usize) -> Result<usize, StoreError> {
     let n = cap.max(1);
     let terminal = Value::Array(
@@ -56,40 +57,59 @@ pub async fn retain_runs(store: &Store, ws: &str, cap: usize) -> Result<usize, S
             .collect(),
     );
 
-    // One transaction over the two related deletes:
-    //   * `$keep`  = the newest `cap` finished runs' ids (ORDER BY id DESC LIMIT n).
-    //   * `$purge` = the finished runs' `run_id`s that are NOT kept — the runs we are dropping (a plain
-    //                string field, so it drives the step delete and deserializes cleanly).
-    //   * DELETE those flow_run rows, then DELETE their flow_step_output rows (keyed on data.run_id).
+    // Two round-trips, deliberately **not** one transaction:
+    //   1. read the purge set — the finished runs' `run_id`s outside the newest `cap`
+    //      (`capped.rs`'s `LET $keep … NOT IN $keep` idiom), into Rust;
+    //   2. delete their `flow_step_output` rows FIRST, then the `flow_run` rows, keyed on that set.
     // Both the keep-set and the delete are constrained to `data.status IN $terminal`, so a
-    // `pending`/`suspended` run is neither counted nor deleted. The trailing `RETURN count($purge)`
-    // collapses the transaction to a single scalar result (index 0) — the run-delete count.
-    let sql = format!(
-        "BEGIN TRANSACTION;\
-         LET $keep = (SELECT VALUE id FROM type::table($runs) \
-            WHERE data.status IN $terminal ORDER BY id DESC LIMIT {n});\
-         LET $purge = (SELECT VALUE data.run_id FROM type::table($runs) \
-            WHERE data.status IN $terminal AND id NOT IN $keep);\
-         DELETE FROM type::table($runs) \
-            WHERE data.status IN $terminal AND data.run_id IN $purge;\
-         DELETE FROM type::table($steps) WHERE data.run_id IN $purge;\
-         RETURN count($purge);\
-         COMMIT TRANSACTION;"
-    );
-    let bindings = vec![
-        ("runs".into(), Value::String(FLOW_RUN_TABLE.to_string())),
-        ("steps".into(), Value::String(FLOW_STEP_TABLE.to_string())),
-        ("terminal".into(), terminal),
-    ];
-    let mut resp = store.query_ws(ws, &sql, bindings).await?;
+    // `pending`/`suspended` run is neither counted nor deleted.
+    //
+    // **Why no BEGIN/COMMIT.** Under SurrealDB 3, reading or deleting a table that does not exist
+    // yet fails the enclosing transaction — so a workspace with no flow runs ("…due to a cancelled
+    // transaction") or with runs but no step rows ("…due to a failed transaction") failed this sweep
+    // on EVERY cycle, forever, and the warning read as noise. Outside a transaction the same
+    // statements are fine on a missing table.
+    //
+    // **Why steps first.** The transaction only ever protected one thing: a run deleted while its step
+    // rows survive, orphaned for good (a later purge set is keyed on runs that would be gone). Deleting
+    // steps BEFORE runs makes that partial failure harmless — if the run delete fails, the runs are
+    // still there, the next sweep computes the same purge set and finishes. Every step is idempotent.
+    //
+    // **Why the count is Rust's.** A top-level `RETURN` outside a transaction does not give back a
+    // slot the way the in-transaction one did (SurrealDB 3 — measured: 5 statements, 4 empty slots),
+    // and this verb has already under-reported once through a shape change (`take_transaction_return`).
+    // The purge set is in hand, so its length IS the count.
+    let bindings = |purge: Option<Value>| {
+        let mut b = vec![
+            ("runs".into(), Value::String(FLOW_RUN_TABLE.to_string())),
+            ("steps".into(), Value::String(FLOW_STEP_TABLE.to_string())),
+            ("terminal".into(), terminal.clone()),
+        ];
+        if let Some(p) = purge {
+            b.push(("purge".into(), p));
+        }
+        b
+    };
 
-    // Same shape change as `lb_jobs::retain`: SurrealDB 3 gives a transaction one result slot per
-    // statement, so index 0 is `BEGIN` (Null), not the trailing `RETURN`. With `unwrap_or(0)` that
-    // reported "purged 0" while the DELETE really ran — a retention verb quietly under-reporting.
-    let counts: Vec<Value> = resp.take_transaction_return()?;
-    let deleted =
-        counts.first().and_then(|c| c.as_u64()).ok_or_else(|| {
-            StoreError::Decode(format!("retain_runs: no count in RETURN: {counts:?}"))
-        })? as usize;
-    Ok(deleted)
+    let select = format!(
+        "LET $keep = (SELECT VALUE id FROM type::table($runs) \
+            WHERE data.status IN $terminal ORDER BY id DESC LIMIT {n});\
+         SELECT VALUE data.run_id FROM type::table($runs) \
+            WHERE data.status IN $terminal AND id NOT IN $keep;"
+    );
+    let mut resp = store.query_ws(ws, &select, bindings(None)).await?;
+    let purge: Vec<Value> = resp
+        .take(1)
+        .map_err(|e| StoreError::Decode(format!("retain_runs: purge set: {e}")))?;
+    if purge.is_empty() {
+        return Ok(0);
+    }
+
+    let delete = "DELETE FROM type::table($steps) WHERE data.run_id IN $purge;\
+                  DELETE FROM type::table($runs) \
+                     WHERE data.status IN $terminal AND data.run_id IN $purge;";
+    store
+        .query_ws(ws, delete, bindings(Some(Value::Array(purge.clone()))))
+        .await?;
+    Ok(purge.len())
 }

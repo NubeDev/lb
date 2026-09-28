@@ -56,7 +56,7 @@ pub async fn retain_terminal(store: &Store, ws: &str, cap: usize) -> Result<usiz
             .collect(),
     );
 
-    // One transaction, mirroring `capped_insert`'s safe-delete idiom:
+    // Mirroring `capped_insert`'s safe-delete idiom:
     //   * `$keep` = the newest `cap` terminal rows' ids (ORDER BY id DESC LIMIT n).
     //   * DELETE the terminal rows whose id is NOT in `$keep`.
     // The keep-set and the delete are BOTH constrained to `data.status IN $terminal`, so a resumable
@@ -71,30 +71,42 @@ pub async fn retain_terminal(store: &Store, ws: &str, cap: usize) -> Result<usiz
     //             at return time here). Both are plain strings (`<string>id`), so they deserialize and
     //             compare cleanly. Ordering is by `id` (the selected idiom; a cast in ORDER BY is
     //             rejected by this SurrealDB version), which sorts terminal rows in id order.
-    let sql = format!(
-        "BEGIN TRANSACTION;\
-         LET $keep = (SELECT VALUE id FROM type::table($tb) \
+    //
+    // **Two round-trips, not a transaction.** Under SurrealDB 3 a transaction that reads a table that
+    // does not exist yet is cancelled, so on a workspace that had never written a job this verb failed
+    // on every sweep ("…due to a cancelled transaction") — the same trap `flows::retain_runs` fell
+    // into. One table, so nothing needs to move together: if the delete fails, the rows are still
+    // there and the next sweep computes the same set. The count is the set's length, in hand — no
+    // `RETURN` slot to decode (a shape that has already under-reported once, below).
+    let select = format!(
+        "LET $keep = (SELECT VALUE id FROM type::table($tb) \
             WHERE data.status IN $terminal ORDER BY id DESC LIMIT {n});\
-         LET $doomed = (SELECT VALUE <string>id FROM type::table($tb) \
-            WHERE data.status IN $terminal AND id NOT IN $keep);\
-         DELETE FROM type::table($tb) WHERE <string>id IN $doomed;\
-         RETURN count($doomed);\
-         COMMIT TRANSACTION;"
+         SELECT VALUE <string>id FROM type::table($tb) \
+            WHERE data.status IN $terminal AND id NOT IN $keep;"
     );
-    let bindings = vec![
-        ("tb".into(), Value::String(TABLE.to_string())),
-        ("terminal".into(), terminal),
-    ];
-    let mut resp = store.query_ws(ws, &sql, bindings).await?;
-
-    // SurrealDB 3 gives a transaction one result slot PER STATEMENT; SurrealDB 2 collapsed it to a
-    // single slot, which is why this used to read index 0. Under 3, index 0 is `BEGIN` and holds
-    // Null — and with the old `unwrap_or(0)` this verb deleted 45 rows and returned 0. Take the
-    // `RETURN` slot explicitly, and let a shape change be an error rather than a quiet zero.
-    let counts: Vec<Value> = resp.take_transaction_return()?;
-    let deleted =
-        counts.first().and_then(|c| c.as_u64()).ok_or_else(|| {
-            StoreError::Decode(format!("retain: no count in RETURN slot: {counts:?}"))
-        })? as usize;
-    Ok(deleted)
+    let bindings = |doomed: Option<Value>| {
+        let mut b = vec![
+            ("tb".into(), Value::String(TABLE.to_string())),
+            ("terminal".into(), terminal.clone()),
+        ];
+        if let Some(d) = doomed {
+            b.push(("doomed".into(), d));
+        }
+        b
+    };
+    let mut resp = store.query_ws(ws, &select, bindings(None)).await?;
+    let doomed: Vec<Value> = resp
+        .take(1)
+        .map_err(|e| StoreError::Decode(format!("retain: doomed set: {e}")))?;
+    if doomed.is_empty() {
+        return Ok(0);
+    }
+    store
+        .query_ws(
+            ws,
+            "DELETE FROM type::table($tb) WHERE <string>id IN $doomed;",
+            bindings(Some(Value::Array(doomed.clone()))),
+        )
+        .await?;
+    Ok(doomed.len())
 }

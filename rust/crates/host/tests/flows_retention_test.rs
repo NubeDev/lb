@@ -151,3 +151,80 @@ async fn retain_runs_is_workspace_scoped() {
     assert_eq!(count(&store, "ws-a", FLOW_STEP_TABLE).await, 16);
     assert_eq!(count(&store, "ws-b", FLOW_RUN_TABLE).await, 2);
 }
+
+/// The live failure, pinned: a workspace with NO flow tables yet. Under SurrealDB 3 a transaction that
+/// reads a table that does not exist is cancelled, so the old transactional sweep failed here on every
+/// cycle ("…due to a cancelled transaction"). It must be a quiet zero.
+#[tokio::test]
+async fn retain_runs_on_a_workspace_with_no_flow_tables_is_zero_not_an_error() {
+    let store = Store::memory().await.unwrap();
+    assert_eq!(retain_runs(&store, "fresh", 5).await.unwrap(), 0);
+}
+
+/// Finished runs with NO step rows — a flow whose runs wrote none, or a workspace that has only ever
+/// run the run-level half. The old transactional DELETE on the missing step table failed the whole
+/// sweep ("…due to a failed transaction"), so the runs were never trimmed.
+#[tokio::test]
+async fn retain_runs_trims_runs_when_there_is_no_step_table() {
+    let store = Store::memory().await.unwrap();
+    let ws = "nosteps";
+    for i in 0..12u32 {
+        let run = FlowRunRecord {
+            run_id: format!("run-{i:03}"),
+            flow_id: "flow-x".to_string(),
+            flow_version: 1,
+            status: "success".to_string(),
+            params: Value::Null,
+            ts: 0,
+            entry_node: None,
+        };
+        lb_store::write(
+            &store,
+            ws,
+            FLOW_RUN_TABLE,
+            &run.run_id,
+            &serde_json::to_value(&run).unwrap(),
+        )
+        .await
+        .unwrap();
+    }
+    assert_eq!(retain_runs(&store, ws, 4).await.unwrap(), 8);
+    assert_eq!(count(&store, ws, FLOW_RUN_TABLE).await, 4);
+}
+
+/// The concurrency the sweep actually runs under: the reactor keeps writing runs and steps while the
+/// sweep trims. Measured on the real (surrealkv) engine — the lock-free delete order must neither
+/// fail nor orphan a step row.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn retain_runs_under_concurrent_writes_on_surrealkv_leaves_no_orphan_steps() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().to_str().unwrap()).await.unwrap();
+    let ws = "busy";
+    for i in 0..60u32 {
+        seed_run(&store, ws, &format!("old-{i:03}"), "success").await;
+    }
+    let s2 = store.clone();
+    let writer = tokio::spawn(async move {
+        for i in 0..40u32 {
+            seed_run(&s2, ws, &format!("new-{i:03}"), "success").await;
+        }
+    });
+    retain_runs(&store, ws, 10).await.unwrap();
+    writer.await.unwrap();
+
+    // Every surviving step row belongs to a surviving run.
+    let mut resp = store
+        .query_ws(
+            ws,
+            "SELECT VALUE data.run_id FROM type::table($s) \
+             WHERE data.run_id NOT IN (SELECT VALUE data.run_id FROM type::table($r))",
+            vec![
+                ("s".into(), json!(FLOW_STEP_TABLE)),
+                ("r".into(), json!(FLOW_RUN_TABLE)),
+            ],
+        )
+        .await
+        .unwrap();
+    let orphans: Vec<Value> = resp.take(0).unwrap();
+    assert!(orphans.is_empty(), "orphaned step rows: {orphans:?}");
+}
