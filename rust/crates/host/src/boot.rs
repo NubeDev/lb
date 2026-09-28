@@ -139,6 +139,12 @@ pub struct Node {
     /// itself**: `update.status` answers `{"supported": false}` and every other verb is a clean
     /// `Unsupported`. That is what makes the seam additive for every existing embedder.
     update: std::sync::OnceLock<Option<Arc<crate::update::InstalledUpdate>>>,
+    /// The columns `insight.list`'s search looks in (each its text sources), installed once at boot
+    /// from `BootConfig::insight_search_columns`. On the `Node` for the reason `store_budget` is: the list
+    /// verb needs it long after the boot layer returned. Never installed ⇒ empty ⇒ title only.
+    insight_search_columns: std::sync::OnceLock<Vec<Vec<String>>>,
+    /// Builds those columns' search indexes once per workspace (`insight/search_schema.rs`).
+    insight_search_schema: crate::insight::SearchSchema,
     pub role: Role,
 }
 
@@ -171,6 +177,8 @@ impl Node {
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
+            insight_search_columns: std::sync::OnceLock::new(),
+            insight_search_schema: Default::default(),
             update: std::sync::OnceLock::new(),
             role: Role::Solo,
         })
@@ -200,6 +208,8 @@ impl Node {
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
+            insight_search_columns: std::sync::OnceLock::new(),
+            insight_search_schema: Default::default(),
             update: std::sync::OnceLock::new(),
             role,
         })
@@ -228,6 +238,8 @@ impl Node {
             node_id: Mutex::new(fresh_node_id()),
             response_cache: crate::cache::new_slot(),
             store_budget: std::sync::OnceLock::new(),
+            insight_search_columns: std::sync::OnceLock::new(),
+            insight_search_schema: Default::default(),
             update: std::sync::OnceLock::new(),
             role,
         })
@@ -348,6 +360,25 @@ impl Node {
     /// This node's configured disk budget, or `None` when unbudgeted. Lock-free read.
     pub fn store_budget(&self) -> Option<u64> {
         self.store_budget.get().copied().flatten()
+    }
+
+    /// Install the insight search's columns from boot config. Called once by the boot layer (after
+    /// `lb_insights::validate_search_columns`); a second call is a no-op.
+    pub fn install_insight_search_columns(&self, columns: Vec<Vec<String>>) {
+        let _ = self.insight_search_columns.set(columns);
+    }
+
+    /// The once-per-workspace builder of the search's tag indexes.
+    pub fn insight_search_schema(&self) -> &crate::insight::SearchSchema {
+        &self.insight_search_schema
+    }
+
+    /// The columns `insight.list`'s search looks in; empty (the title alone) when none installed.
+    pub fn insight_search_columns(&self) -> &[Vec<String>] {
+        self.insight_search_columns
+            .get()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// Install the embedder's update seam from `BootConfig.update` (node-update scope §Seam 1),

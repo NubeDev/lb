@@ -182,7 +182,29 @@ fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool 
     if case.closed && !query.include_closed {
         return false;
     }
-    let f = &query.filter;
+    if !matches_filter(case, &query.filter, query.now) {
+        return false;
+    }
+
+    match query.lane {
+        Lane::Mine => case
+            .assigned_to
+            .as_deref()
+            .is_some_and(|a| subjects.contains(a)),
+        Lane::Waiting => case.workflow == Workflow::WaitingOnPo || case.waiting_on.is_some(),
+        // Deliberately NOT "everything": the cases the caller owns are already in `Mine`, and a
+        // lane that repeats them makes the two counts add up to more than the workspace has.
+        Lane::Watching => !case
+            .assigned_to
+            .as_deref()
+            .is_some_and(|a| subjects.contains(a)),
+    }
+}
+
+/// The filter axes alone, lane and `closed` aside: the ONE copy of "does this case pass the
+/// filter", shared with [`crate::stages`] so the insight roster's case filter cannot drift from the
+/// queue's. `party` is refused by the callers before this runs.
+pub(crate) fn matches_filter(case: &Case, f: &ListFilter, now: u64) -> bool {
     if let Some(allowed) = &f.sites_allowed {
         if !case.site.as_deref().is_some_and(|s| allowed.contains(s)) {
             return false;
@@ -219,23 +241,10 @@ fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool 
         }
     }
     if let Some(want_snoozed) = f.snoozed {
-        let snoozed = case.snooze_until.is_some_and(|u| u > query.now);
+        let snoozed = case.snooze_until.is_some_and(|u| u > now);
         if snoozed != want_snoozed {
             return false;
         }
     }
-
-    match query.lane {
-        Lane::Mine => case
-            .assigned_to
-            .as_deref()
-            .is_some_and(|a| subjects.contains(a)),
-        Lane::Waiting => case.workflow == Workflow::WaitingOnPo || case.waiting_on.is_some(),
-        // Deliberately NOT "everything": the cases the caller owns are already in `Mine`, and a
-        // lane that repeats them makes the two counts add up to more than the workspace has.
-        Lane::Watching => !case
-            .assigned_to
-            .as_deref()
-            .is_some_and(|a| subjects.contains(a)),
-    }
+    true
 }

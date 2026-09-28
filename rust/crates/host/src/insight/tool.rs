@@ -26,6 +26,7 @@ use super::{
     insight_policy_set, insight_raise, insight_resolve, insight_sub_create, insight_sub_delete,
     insight_sub_get, insight_sub_list, insight_sub_mute, insight_vocab_list, insight_vocab_set,
 };
+use super::{CaseLens, ListOptions};
 use crate::boot::Node;
 
 /// Dispatch an `insight.<verb>` MCP call. The outer `is_host_native` gate already ran
@@ -75,7 +76,21 @@ pub async fn call_insight_tool(
         "insight.list" => {
             let query: lb_insights::ListQuery = serde_json::from_value(input.clone())
                 .map_err(|e| ToolError::BadInput(format!("list query: {e}")))?;
-            let page = insight_list(store, principal, ws, query)
+            // The optional case lens rides beside the flat filter as `case` (the filter ignores
+            // keys it does not know, so a plain list call is unchanged).
+            let case: Option<CaseLens> = match input.get("case") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(
+                    serde_json::from_value(v.clone())
+                        .map_err(|e| ToolError::BadInput(format!("case lens: {e}")))?,
+                ),
+            };
+            let opts = ListOptions {
+                search_columns: node.insight_search_columns(),
+                case: case.as_ref(),
+                search_schema: Some(node.insight_search_schema()),
+            };
+            let page = insight_list(store, principal, ws, query, &opts)
                 .await
                 .map_err(svc_to_tool)?;
             Ok(serde_json::to_value(page).unwrap_or(Value::Null))

@@ -312,7 +312,8 @@ pub use insight::{
     insight_occurrence_delete, insight_occurrences, insight_policy_get, insight_policy_set,
     insight_raise, insight_resolve, insight_sub_create, insight_sub_delete, insight_sub_get,
     insight_sub_list, insight_sub_mute, react_to_insight_digests, spawn_insight_digest_reactors,
-    subscribe_insight_events, AssignResult, InsightSvcError, InsightWatch, MAX_BULK_ASSIGN,
+    subscribe_insight_events, AssignResult, CaseLens, InsightSvcError, InsightWatch, ListOptions,
+    SearchSchema, MAX_BULK_ASSIGN,
 };
 pub use install::install_extension;
 pub use installed::installed;
@@ -328,6 +329,9 @@ pub use lb_authz::fold_email;
 /// `/admin/invites*` routes) can name the type `invite_list` returns without taking a second,
 /// direct dependency on `lb-authz`. One type across both sides of the seam.
 pub use lb_authz::{Invite, InviteStatus};
+/// The boot-time check on `BootConfig::insight_search_columns` — re-exported so the node builder
+/// validates the list without a direct dependency on `lb-insights`.
+pub use lb_insights::validate_search_columns as validate_insight_search_columns;
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use media::{

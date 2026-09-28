@@ -615,7 +615,10 @@ async fn count_insights(node: &Arc<Node>, p: &Principal, ws: &str) -> usize {
             limit: 1000,
             offset: 0,
             counts: false,
+            sort: None,
+            tag_counts: None,
         },
+        &Default::default(),
     )
     .await
     .unwrap();
@@ -634,7 +637,10 @@ async fn first_insight_id(node: &Arc<Node>, p: &Principal, ws: &str) -> String {
             limit: 10,
             offset: 0,
             counts: false,
+            sort: None,
+            tag_counts: None,
         },
+        &Default::default(),
     )
     .await
     .unwrap();

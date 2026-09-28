@@ -60,6 +60,9 @@ pub use lb_ingest::{Policy as RetentionPolicy, Tier as RetentionTier};
 // embedder must be able to NAME it with only the `lb-node` dep — same reason `SigningKey` and `Node`
 // are re-exported above. Without this, opting into the `/api/*` seam forces a direct dep on an
 // internal role crate purely to spell one field's type, which is the leak this block exists to close.
+/// The check `boot_full` runs on `BootConfig::insight_search_columns`, for an embedder to run on its own
+/// list in a test rather than find a bad key at boot.
+pub use lb_host::validate_insight_search_columns;
 /// The optional response-cache config an embedder sets on [`BootConfig::cache`] (response-cache
 /// scope). Re-exported so a downstream host names it with only the `lb-node` dep (the
 /// `BrowserSessionConfig` precedent). Always available; the LIVE cache is `page-cache`-gated.
