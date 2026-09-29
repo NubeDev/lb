@@ -340,6 +340,7 @@ fn respond_by_and_due_at_read_their_own_fields() {
         calendar: office(BRISBANE, &[]),
         party_window_h: 48,
         hold_down_days: 14,
+        auto_close_self_cleared: false,
     };
     let opened = at(BRISBANE, 2026, 10, 2, 16, 0); // Friday
     assert_eq!(

@@ -80,6 +80,8 @@ mod reactor_grouping;
 
 #[path = "case/reactor_hold_down.rs"]
 mod reactor_hold_down;
+#[path = "case/reactor_self_clear.rs"]
+mod reactor_self_clear;
 
 #[path = "case/reactor_reconcile.rs"]
 mod reactor_reconcile;

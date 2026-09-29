@@ -25,6 +25,7 @@ fn policy(id: &str, m: PolicyMatch) -> ServicePolicy {
         calendar: Calendar::Always,
         party_window_h: 48,
         hold_down_days: 14,
+        auto_close_self_cleared: false,
     }
 }
 

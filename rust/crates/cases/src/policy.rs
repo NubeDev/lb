@@ -120,6 +120,16 @@ pub struct ServicePolicy {
     /// How long after a `fixed` resolution a re-fire reopens the case instead of opening a new one.
     #[serde(default = "default_hold_down_days")]
     pub hold_down_days: u32,
+    /// **Close untouched work that cleared by itself.** When every insight in a case this policy
+    /// governs has been resolved (its producer saw the condition clear) and nobody has worked the
+    /// case, the self-clear reactor resolves it as [`crate::Resolution::SelfCleared`].
+    ///
+    /// Opt-in, `false` by default: the case plane's rule is that the case, not the insight, owns
+    /// triage, and closing work is a decision. A policy that turns this on is making that decision
+    /// once, for the work it governs — "a problem that went away and that nobody touched is done" —
+    /// instead of leaving the queue full of cases whose insight already reads resolved.
+    #[serde(default)]
+    pub auto_close_self_cleared: bool,
 }
 
 fn default_party_window_h() -> u32 {
@@ -175,6 +185,7 @@ mod tests {
             calendar: Calendar::Always,
             party_window_h: 48,
             hold_down_days: 14,
+            auto_close_self_cleared: false,
         };
         let wire = serde_json::to_value(&p).unwrap();
         assert!(wire.get("match").is_some(), "wire name is `match`");
