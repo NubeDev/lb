@@ -1,7 +1,7 @@
 //! The case-reconcile loop driver (case-plane scope).
 //!
-//! One detached tick per node drives [`super::reconcile_cases`] and [`super::backfill_case_facets`]
-//! for each workspace, modelled on
+//! One detached tick per node drives [`super::reconcile_cases`], [`super::backfill_case_facets`] and
+//! [`super::close_self_cleared_cases`] for each workspace, modelled on
 //! `insight/reactor.rs::spawn_insight_digest_reactors` — role/config placement under the
 //! `BootConfig::reactors` toggle, not a runtime election. The pass is idempotent, so the idempotence
 //! IS the backstop against accidental double-drive; there is nothing to elect.
@@ -44,6 +44,17 @@ pub fn spawn_case_reactors(node: Arc<Node>, workspaces: Vec<String>, period: Dur
                     }
                     Err(e) => {
                         tracing::warn!(%ws, error = %format!("{e:?}"), "case facet backfill tick failed")
+                    }
+                }
+                // Last, so it judges cases the two passes above have just opened or repaired. A policy
+                // that has not opted in costs one policy read and nothing else.
+                match super::close_self_cleared_cases(&node, ws, now).await {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        tracing::info!(%ws, closed = n, "case self-clear: untouched cases whose insights cleared resolved")
+                    }
+                    Err(e) => {
+                        tracing::warn!(%ws, error = %format!("{e:?}"), "case self-clear tick failed")
                     }
                 }
             }
