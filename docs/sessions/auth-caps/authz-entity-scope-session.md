@@ -53,6 +53,8 @@ test a_membership_change_reaches_the_answer_at_once ... ok
 test result: ok. 7 passed; 0 failed
 $ cargo test -p lb-host --lib -- authz catalog
 test result: ok. 27 passed; 0 failed
+$ cargo test -p lb-host --lib grant_role_tiers
+test result: ok. 3 passed; 0 failed   (a_bare_tool_name_… FAILS on the old line)
 ```
 
 Capability-deny (no verb cap; `subject` without the delegation cap) and workspace isolation are
@@ -60,7 +62,9 @@ both covered.
 
 ## Debugging
 
-None.
+- [A `[[tools]] role` tier on a bare tool name grants nothing](../../debugging/auth-caps/role-tier-on-bare-tool-name-grants-nothing.md)
+  — found while driving the first consumer live; `grant_role_tiers` now qualifies the tool name the
+  way the host gates it. Regression test fails before, passes after.
 
 ## Public / scope updates
 
