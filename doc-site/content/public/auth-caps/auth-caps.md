@@ -33,6 +33,29 @@ gets an opaque `Denied` with no existence signal.
 The verbs (nine): `grants.assign`, `grants.revoke`, `grants.list`, `grants.list_scoped`,
 `roles.define`, `roles.list`, `roles.delete`, `teams.create`, `teams.list`.
 
+## Asking which entities a person may read — `authz.entity_scope`
+
+`authz.entity_scope { table, sources?, subject? }` answers "which ids of `table` (e.g. `site`) may
+this person read?" with the **same resolver** lb narrows federated reads, insights and cases with:
+the union of the entities marked on the menus the person was **handed** (`nav` — a menu row's
+`entity: {table, id}`, shared with their team or set as the workspace default) and their scoped
+`data:<table>:read` grants (`grant`). A workspace admin reaches everything.
+
+Reply: `{ "filter": "all" }` or `{ "filter": { "ids": [...] } }` — the `authz.scope_filter` shape.
+An empty `ids` means "nothing", never "everything".
+
+- **Your own reach** needs only `mcp:authz.entity_scope:call`, which every role holds (viewer tier).
+- **Another user's reach** (`subject: "user:…"`) additionally needs
+  `mcp:authz.delegate_reach:call` — the marker a native extension requests so it can answer for the
+  caller its frame carries. Without it a present `subject` is a hard `Denied`, never a fallback to
+  the caller's own reach. Only `user:` subjects are accepted.
+- `sources` defaults to both; an unknown source name is `BadInput`, not silently ignored.
+- Resolution reads only the caller's workspace, and the answer changes at once when a menu, team
+  membership or grant changes.
+
+Use it rather than `authz.scope_filter` whenever people are handed entities by **menu**:
+`scope_filter` reads grants alone.
+
 ## Subject-scoped `bus.watch` grants (per-entity motion isolation)
 
 The generic bus subscribe (`bus.watch`, backing `GET /bus/{subject}/stream` and the multiplexed

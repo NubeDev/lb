@@ -341,6 +341,9 @@ const VIEWER_CAPS: &[&str] = &[
     // OWN reach (the verbs use the calling principal, never a `user` arg).
     "mcp:authz.check_scoped:call",
     "mcp:authz.scope_filter:call",
+    // entity-scoped-data scope: the same question over the menu + grant union lb enforces with.
+    // Self-only without `subject`; a `subject` needs `mcp:authz.delegate_reach:call`.
+    "mcp:authz.entity_scope:call",
     // push-target scope: a member registers/lists/removes their own devices (self-only).
     "mcp:device.register:call",
     // shared-asset doc/skill store READS (gate-3/ownership owns which specific asset). Writes are author.
