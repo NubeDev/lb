@@ -51,7 +51,7 @@ pub async fn may_read_dashboard(
                 if list_related(store, ws, MEMBER, bare_team(team))
                     .await?
                     .iter()
-                    .any(|m| m == principal.owner_sub())
+                    .any(|m| lb_authz::edge_is_user(m, principal.owner_sub()))
                 {
                     return Ok(());
                 }

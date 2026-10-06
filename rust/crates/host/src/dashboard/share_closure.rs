@@ -318,7 +318,7 @@ async fn team_member_probe(
         if let Some(m) = lb_assets::list_related(store, ws, "member", &key)
             .await?
             .into_iter()
-            .find(|m| m != owner)
+            .find(|m| !lb_authz::edge_is_user(m, owner))
         {
             return Ok(Some(m));
         }
