@@ -30,6 +30,11 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just fixed 2026-10-06 (unreleased) — `federation.migrate` IS RE-RUNNABLE ON POSTGRES.** Applying the
+same design twice planned CREATE TABLE again and failed, and each FK was created twice. Now a
+re-apply plans nothing, so an extension can migrate its own tables at every start-up. Debugging:
+[`federation/migrate-rerun-fails-on-postgres.md`](debugging/federation/migrate-rerun-fails-on-postgres.md).
+
 **Just shipped 2026-09-03 (unreleased — needs the next `node-v*` tag) — THE SIGN-IN SCREEN CAN BE
 BRANDED BEFORE ANYONE HAS EVER SIGNED IN
 ([`frontend/workspace-branding-scope.md`](scope/frontend/workspace-branding-scope.md), session

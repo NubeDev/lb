@@ -42,6 +42,13 @@ pub async fn run_migrate(
             .await
             .map_err(|e| e.to_string())?;
         live.tables.push((table.name.clone(), cols, Vec::new()));
+        // The FKs already on this table, so re-applying the same design does not add them again.
+        live.fk_names.extend(
+            source
+                .list_fk_names(&table.name)
+                .await
+                .map_err(|e| e.to_string())?,
+        );
     }
 
     let plan = match dialect::plan_migrate(schema, &live, kind) {

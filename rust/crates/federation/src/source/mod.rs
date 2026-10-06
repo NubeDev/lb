@@ -10,10 +10,15 @@
 //! Attribution: the embedded-DataFusion + per-table-provider registration pattern is adapted from
 //! `rubix-cube` (its `spice_engine` wrapper over the `datafusion` crate), MIT/Apache-2.0.
 
+mod live_types;
+#[cfg(feature = "postgres")]
+mod pg_catalog;
 #[cfg(feature = "postgres")]
 mod pg_cells;
 #[cfg(feature = "postgres")]
 mod pg_numeric;
+#[cfg(feature = "postgres")]
+mod pg_value;
 #[cfg(feature = "postgres")]
 mod postgres;
 mod sqlite;
@@ -191,6 +196,13 @@ pub trait Source: Send + Sync {
                 nullable: f.is_nullable(),
             })
             .collect())
+    }
+
+    /// The names of the FOREIGN KEY constraints already on `table`, so a re-applied design does not
+    /// add them again. Default: none known — an engine that cannot add an FK to an existing table
+    /// (sqlite) never plans one, so it needs no answer here.
+    async fn list_fk_names(&self, _table: &str) -> Result<Vec<String>, SourceError> {
+        Ok(Vec::new())
     }
 
     /// Apply a batch of DDL statements atomically (one transaction where the dialect allows it —

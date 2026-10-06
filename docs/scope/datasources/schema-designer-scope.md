@@ -66,6 +66,10 @@ a downstream federated source/**sink** — never a second authority.
   schemaless/series/tag model; do not grow this into a SurrealDB table designer.
 - **Postgres (+ the shipped SQLite kind for tests) first.** MySQL/other dialect DDL generation is
   additive later work behind the same `Source` trait.
+- **Re-applying the same design is a no-op** (Postgres and sqlite): the live catalog is read from
+  `information_schema` on Postgres (`source/pg_catalog.rs`), existing FK names are skipped, and a
+  Postgres FK is created once (as `ADD CONSTRAINT`, never also inline). This is what lets an
+  extension run `migrate` with its own schema at every start-up.
 
 ## Intent / approach
 
