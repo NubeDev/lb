@@ -57,7 +57,11 @@ pub async fn federation_migrate<L: Launcher>(
     })
     .to_string();
 
-    let out = crate::native::call_sidecar(
+    // MEDIATED dispatch, like `federation.query`: this verb authorized itself on
+    // `mcp:federation.migrate:call` above and built the child input by enumeration, so the caller needs no
+    // supervisor CONTROL-PLANE reach (`mcp:native.call:call`). Requiring it meant an extension had to
+    // hold "drive any native child" just to write its own rows (`native::tool::call_sidecar_mediated`).
+    let out = crate::native::call_sidecar_mediated(
         node,
         launcher,
         caller,
