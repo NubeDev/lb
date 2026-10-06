@@ -19,10 +19,16 @@ pub(super) const AUTHZ: &[HostTool] = &[
         description: "which rows in a table the calling principal may reach under a cap",
     },
     HostTool {
+        tool: "authz.entity_scope",
+        group: "authz",
+        description:
+            "which ids of an entity table (e.g. site) the calling principal may read — menus + grants",
+    },
+    HostTool {
         tool: "authz.delegate_reach",
         group: "authz",
         description:
-            "marker cap: hold it to name a `subject` on check_scoped/scope_filter (delegated reach)",
+            "marker cap: hold it to name a `subject` on check_scoped/scope_filter/entity_scope (delegated reach)",
     },
     HostTool {
         tool: "authz.resolve",

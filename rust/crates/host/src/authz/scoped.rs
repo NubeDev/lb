@@ -32,7 +32,7 @@ use crate::authz::LiveBuiltinRoleCaps;
 /// The marker cap a caller must hold to name a `subject` other than itself on the reach verbs. It is
 /// an ordinary, admin-revocable grant (install-approved per extension); it dispatches to no verb —
 /// its sole meaning is "may delegate a reach question" (native-caller-identity scope).
-const DELEGATE_REACH_CAP: &str = "mcp:authz.delegate_reach:call";
+pub(super) const DELEGATE_REACH_CAP: &str = "mcp:authz.delegate_reach:call";
 
 /// `authz.check_scoped { cap, table, id, subject? }` — may `subject` (default: the caller) reach
 /// `(table, id)` under `cap`? Returns `{ "allowed": bool }`. Gated by `mcp:authz.check_scoped:call`;

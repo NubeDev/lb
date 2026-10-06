@@ -73,7 +73,7 @@ pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option
 /// manifest's `[[tools]]` names are bare by construction, and an extension may legitimately name a
 /// verb after its own id (`ros` serves `ros.ping`, callable as `ros.ros.ping`), so "already starts
 /// with the id" is not evidence a name is qualified.
-fn qualify_tool(ext_id: &str, tool: &str) -> String {
+pub(crate) fn qualify_tool(ext_id: &str, tool: &str) -> String {
     format!("{ext_id}.{tool}")
 }
 

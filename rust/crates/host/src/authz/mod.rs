@@ -13,6 +13,7 @@
 
 mod builtin_caps;
 mod builtin_roles;
+mod entity_reach;
 mod entity_scope;
 mod error;
 mod grant_role_tiers;
@@ -32,6 +33,7 @@ pub use builtin_roles::{
     admin_only_caps, author_caps, caps_hold_admin, ensure_builtin_authz_roles, member_role_caps,
     viewer_role_caps, workspace_admin_role_caps, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
 };
+pub use entity_reach::authz_entity_scope;
 pub use entity_scope::{entity_scope, invalidate_entity_scope, EntityScope, ENTITY_SCOPE_SOURCES};
 pub use error::AuthzError;
 pub use grant_role_tiers::grant_role_tiers;
