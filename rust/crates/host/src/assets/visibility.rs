@@ -67,7 +67,7 @@ pub async fn may_read_doc(
         if list_related(store, ws, MEMBER, bare_team(subject))
             .await?
             .iter()
-            .any(|m| m == principal.sub())
+            .any(|m| lb_authz::edge_is_user(m, principal.sub()))
         {
             return Ok(());
         }
@@ -116,7 +116,7 @@ pub async fn may_read_asset(
         if list_related(store, ws, MEMBER, subject)
             .await?
             .iter()
-            .any(|m| m == principal.sub())
+            .any(|m| lb_authz::edge_is_user(m, principal.sub()))
         {
             return Ok(());
         }

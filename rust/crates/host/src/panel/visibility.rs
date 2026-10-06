@@ -41,7 +41,7 @@ async fn team_has_member(
         if list_related(store, ws, MEMBER, key)
             .await?
             .iter()
-            .any(|m| m == sub)
+            .any(|m| lb_authz::edge_is_user(m, sub))
         {
             return Ok(true);
         }

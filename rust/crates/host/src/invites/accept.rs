@@ -222,8 +222,10 @@ async fn onboard(
         .await?;
     }
     if !invite.team.is_empty() {
-        // Team membership is via the lb_assets member edge.
-        let _ = lb_assets::relate(store, ws, "member", &invite.team, bare).await;
+        // Team membership is via the lb_assets member edge, keyed by the FULL sub (`user:<email>`) —
+        // the form `members.add` writes and the share checks compare against. A failure fails the
+        // accept, which releases the claim so the invite can be retried.
+        lb_assets::relate(store, ws, "member", &invite.team, sub).await?;
     }
 
     // Copy the invite's locale into the new member's `language` pref (release scope, i18n gap a):
