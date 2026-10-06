@@ -89,6 +89,10 @@ pub struct LiveColumn {
 pub struct LiveCatalog {
     /// table name → (columns, pk column names)
     pub tables: Vec<(String, Vec<LiveColumn>, Vec<String>)>,
+    /// The FK constraint names that already exist on the desired tables. A planned `ADD CONSTRAINT`
+    /// whose name is here is skipped, so re-applying the same design adds nothing (an extension
+    /// migrates at every start-up; re-adding a live constraint fails the whole transaction).
+    pub fk_names: Vec<String>,
 }
 
 /// One planned DDL statement, classified so the host/applier can assert it is on the allow-list.
@@ -168,46 +172,7 @@ pub fn neutral_to_kind(neutral: &str, kind: &str) -> &'static str {
     }
 }
 
-/// Normalize a live catalog type string back to the canonical vocabulary. This is the diff's
-/// load-bearing function: `varchar`/`character varying(255)` must both map to `text`, or the diff
-/// plans a spurious ALTER forever (scope Risk 1). Unknown types map to `text` (a safe widest
-/// type) — the diff then treats an unknown-live vs known-desired as a type-mismatch refusal (safe).
-pub fn canonicalize_live_type(live: &str, kind: &str) -> String {
-    let lc = live.trim().to_ascii_lowercase();
-    let bare = lc.split('(').next().unwrap_or("").trim();
-    let neutral: &'static str = match kind {
-        "sqlite" => match bare {
-            "text" | "varchar" | "char" | "character" | "clob" | "string" => "text",
-            "integer" | "int" | "tinyint" | "smallint" | "mediumint" | "bigint" => "integer",
-            "real" | "float" | "double" | "double precision" => "real",
-            "boolean" | "bool" => "boolean",
-            "blob" | "varbinary" | "binary" => "blob",
-            "timestamp" | "datetime" => "timestamp",
-            "date" => "date",
-            "numeric" | "decimal" => "numeric",
-            "json" => "json",
-            _ => "text", // sqlite is dynamically typed; widen to text rather than refuse
-        },
-        "postgres" | "timescale" => match bare {
-            "text" | "varchar" | "character varying" | "char" | "character" | "bpchar" => "text",
-            "integer" | "int" | "int4" | "smallint" | "int2" | "bigint" | "int8" | "serial"
-            | "bigserial" => "integer",
-            "real" | "float4" | "double precision" | "float8" => "real",
-            "boolean" | "bool" => "boolean",
-            "bytea" | "blob" => "blob",
-            "date" => "date",
-            "timestamp"
-            | "timestamp without time zone"
-            | "timestamp with time zone"
-            | "timestamptz" => "timestamp",
-            "numeric" | "decimal" => "numeric",
-            "json" | "jsonb" => "json",
-            _ => "text",
-        },
-        _ => "text",
-    };
-    neutral.to_string()
-}
+pub use super::live_types::canonicalize_live_type;
 
 /// Diff a desired `DesignSchema` against the `LiveCatalog`, producing the additive DDL plan. A
 /// destructive change (dropped table/column, type change, NOT NULL → NULL narrowing on an existing
@@ -235,10 +200,12 @@ pub fn plan_migrate(
                 // INLINED in the CREATE for sqlite (sqlite has no `ALTER TABLE ADD CONSTRAINT`);
                 // for postgres they're emitted as separate ADD CONSTRAINT statements below so a
                 // CREATE never references a not-yet-created table (postgres checks at CREATE time).
+                // Inlined ONLY for sqlite. Postgres gets them as ADD CONSTRAINT below; inlining them
+                // here too created every FK twice (an unnamed `<table>_<col>_fkey` plus the named one).
                 let fks_for_this: Vec<&DesignFk> = desired
                     .fks
                     .iter()
-                    .filter(|fk| fk.from_table == table.name)
+                    .filter(|fk| kind == "sqlite" && fk.from_table == table.name)
                     .collect();
                 let sql = create_table_sql(table, kind, &fks_for_this);
                 statements.push(DdlStatement::CreateTable {
@@ -317,6 +284,9 @@ pub fn plan_migrate(
             } else {
                 fk.name.clone()
             };
+            if live.fk_names.contains(&name) {
+                continue;
+            }
             let sql = add_fk_sql(fk, &name, kind);
             statements.push(DdlStatement::AddFk {
                 table: fk.from_table.clone(),
@@ -466,6 +436,7 @@ mod tests {
                 cols,
                 pk.iter().map(|s| s.to_string()).collect(),
             )],
+            ..Default::default()
         }
     }
 
@@ -659,6 +630,7 @@ mod tests {
                     vec!["id".into()],
                 ),
             ],
+            ..Default::default()
         };
         let plan = plan_migrate(&desired, &live, "postgres").unwrap();
         // Both tables exist unchanged; only the FK is new.
@@ -730,3 +702,8 @@ mod tests {
         assert_eq!(quote_ident("ev\"il"), "\"ev_il\"");
     }
 }
+
+/// The re-apply (start-up) cases, split out to keep this file from growing (FILE-LAYOUT).
+#[cfg(test)]
+#[path = "dialect_reapply_tests.rs"]
+mod reapply_tests;
