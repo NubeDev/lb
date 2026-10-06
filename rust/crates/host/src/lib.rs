@@ -152,11 +152,11 @@ pub use assets::{
 // write the embedded corpus into the reserved system namespace. Re-exported so the binary reaches it
 // through `lb_host` without depending on `lb_assets` directly.
 pub use authz::{
-    admin_only_caps, author_caps, authz_check_scoped, authz_resolve, authz_scope_filter,
-    call_authz_tool, ensure_builtin_authz_roles, grants_assign, grants_list, grants_list_scoped,
-    grants_revoke, holds_cap, member_role_caps, resolve_caps, resolve_caps_live,
-    resolve_subject_caps_live, revoke_subject, revoke_tokens, roles_define, roles_delete,
-    roles_list, teams_create, teams_list, token_revoked, viewer_role_caps,
+    admin_only_caps, author_caps, authz_check_scoped, authz_entity_scope, authz_resolve,
+    authz_scope_filter, call_authz_tool, ensure_builtin_authz_roles, grants_assign, grants_list,
+    grants_list_scoped, grants_revoke, holds_cap, member_role_caps, resolve_caps,
+    resolve_caps_live, resolve_subject_caps_live, revoke_subject, revoke_tokens, roles_define,
+    roles_delete, roles_list, teams_create, teams_list, token_revoked, viewer_role_caps,
     workspace_admin_role_caps, AuthzError, AuthzRole, CapSource, Grant, Scope, ScopeFilter,
     SourcedCap, Subject, Team, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
 };

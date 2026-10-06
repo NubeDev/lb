@@ -10,9 +10,9 @@ use lb_store::Store;
 use serde_json::{json, Value};
 
 use super::{
-    authz_check_scoped, authz_resolve, authz_scope_filter, grants_assign, grants_list,
-    grants_list_scoped, grants_revoke, revoke_tokens, roles_define, roles_delete, roles_list,
-    teams_create, teams_list, AuthzError,
+    authz_check_scoped, authz_entity_scope, authz_resolve, authz_scope_filter, grants_assign,
+    grants_list, grants_list_scoped, grants_revoke, revoke_tokens, roles_define, roles_delete,
+    roles_list, teams_create, teams_list, AuthzError,
 };
 
 /// Dispatch a `grants.*` / `roles.*` / `teams.*` / `authz.*` MCP call. `input` is the verb's JSON
@@ -109,6 +109,9 @@ pub async fn call_authz_tool(
         // entity-scoped-grants scope — the scoped read API extensions reach via host.call-tool.
         "authz.check_scoped" => authz_check_scoped(store, principal, ws, input).await,
         "authz.scope_filter" => authz_scope_filter(store, principal, ws, input).await,
+        // The menu-aware reach: the same `entity_scope` resolver lb enforces federated reads,
+        // insights and cases with (nav + grant), so an extension never disagrees with the core.
+        "authz.entity_scope" => authz_entity_scope(store, principal, ws, input).await,
         "roles.delete" => {
             let affected = roles_delete(store, principal, ws, str_arg(input, "name")?)
                 .await

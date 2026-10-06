@@ -35,6 +35,12 @@ same design twice planned CREATE TABLE again and failed, and each FK was created
 re-apply plans nothing, so an extension can migrate its own tables at every start-up. Debugging:
 [`federation/migrate-rerun-fails-on-postgres.md`](debugging/federation/migrate-rerun-fails-on-postgres.md).
 
+**Just shipped 2026-10-05 (unreleased — needs the next `node-v*` tag) — EXTENSIONS CAN ASK WHICH
+ENTITIES A PERSON MAY READ, MENUS INCLUDED.** `authz.entity_scope {table, sources?, subject?}` returns
+the same `entity_scope` answer federation, insights and cases enforce (menus + grants; admins all), in
+the `scope_filter` shape; `subject` needs `mcp:authz.delegate_reach:call`. Viewer-tier. Session:
+[`auth-caps/authz-entity-scope-session.md`](sessions/auth-caps/authz-entity-scope-session.md).
+
 **Just shipped 2026-09-03 (unreleased — needs the next `node-v*` tag) — THE SIGN-IN SCREEN CAN BE
 BRANDED BEFORE ANYONE HAS EVER SIGNED IN
 ([`frontend/workspace-branding-scope.md`](scope/frontend/workspace-branding-scope.md), session

@@ -336,11 +336,12 @@ const VIEWER_CAPS: &[&str] = &[
     // sits on this floor; nothing about a reminder makes its detail read more privileged than its
     // list, and the retired `mcp:*.get:call` wildcard is what used to supply it.
     "mcp:reminder.get:call",
-    // entity-scoped-grants scope: every member asks "what can I reach?" — the scoped read API.
-    // These are informational (the enforcement happens at the verb level); a caller only learns its
-    // OWN reach (the verbs use the calling principal, never a `user` arg).
+    // entity-scoped-grants scope: every member asks "what can I reach?" — the scoped read API, and
+    // `entity_scope` the same over the menu + grant union. Informational (the enforcement happens at
+    // the verb level); a caller learns only its OWN reach unless it holds `delegate_reach`.
     "mcp:authz.check_scoped:call",
     "mcp:authz.scope_filter:call",
+    "mcp:authz.entity_scope:call",
     // push-target scope: a member registers/lists/removes their own devices (self-only).
     "mcp:device.register:call",
     // shared-asset doc/skill store READS (gate-3/ownership owns which specific asset). Writes are author.

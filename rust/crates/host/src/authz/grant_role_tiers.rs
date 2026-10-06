@@ -13,6 +13,12 @@
 //!   member → role:member, role:workspace-admin
 //!   admin  → role:workspace-admin
 //!
+//! **The cap is the QUALIFIED name.** A `[[tools]]` name is bare by construction and is callable — and
+//! cap-gated — as `<ext>.<name>` ([`crate::ui_decl::qualify_tool`], the one place that rule lives).
+//! The install's `granted` set is spelled the same way (`mcp:<ext>.<name>:call`), so the tier grant must
+//! be too: built from the bare name it matched nothing in `granted`, and every declared tier was
+//! dropped without a word.
+//!
 //! An undeclared tool gets NOTHING here (fail-closed — reachable only through whatever the UI-scope
 //! admin grant or an explicit console grant supplies). Everything is intersected with `granted`
 //! (`requested ∩ admin_approved`) — a tier declaration can never widen past what the install
@@ -47,7 +53,10 @@ pub async fn grant_role_tiers(store: &Store, ws: &str, manifest: &Manifest, gran
         let Some(tier) = tool.role.as_deref() else {
             continue;
         };
-        let cap = format!("mcp:{}:call", tool.name);
+        let cap = format!(
+            "mcp:{}:call",
+            crate::ui_decl::qualify_tool(&manifest.id, &tool.name)
+        );
         // Only grant what the install actually granted — never widen beyond `requested ∩ approved`.
         if !granted.iter().any(|g| g == &cap) {
             continue;
@@ -67,6 +76,75 @@ pub async fn grant_role_tiers(store: &Store, ws: &str, manifest: &Manifest, gran
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const MANIFEST: &str = r#"
+[extension]
+id = "estate"
+version = "0.1.0"
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.1.0"
+placement = "either"
+[[tools]]
+name = "waste.summary"
+role = "viewer"
+[[tools]]
+name = "waste.entry.upsert_month"
+role = "admin"
+[[tools]]
+name = "waste.untiered"
+[visibility]
+class = "private"
+"#;
+
+    async fn caps_of(store: &Store, role: &str) -> Vec<String> {
+        lb_authz::grant_list(store, "ws", &Subject::Role(role.into()))
+            .await
+            .unwrap()
+    }
+
+    /// The tiers land on the QUALIFIED cap the host gates on — the bare `[[tools]]` name never
+    /// matched the install's `granted` set, so before the fix nothing was granted at all.
+    #[tokio::test]
+    async fn a_bare_tool_name_is_granted_under_its_qualified_cap() {
+        let store = Store::memory().await.unwrap();
+        let manifest = Manifest::parse(MANIFEST).unwrap();
+        let granted: Vec<String> = [
+            "mcp:estate.waste.summary:call",
+            "mcp:estate.waste.entry.upsert_month:call",
+            "mcp:estate.waste.untiered:call",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        grant_role_tiers(&store, "ws", &manifest, &granted).await;
+
+        assert_eq!(
+            caps_of(&store, "viewer").await,
+            ["mcp:estate.waste.summary:call"]
+        );
+        assert_eq!(
+            caps_of(&store, "member").await,
+            ["mcp:estate.waste.summary:call"]
+        );
+        assert_eq!(
+            caps_of(&store, "workspace-admin").await,
+            [
+                "mcp:estate.waste.entry.upsert_month:call",
+                "mcp:estate.waste.summary:call"
+            ]
+        );
+    }
+
+    /// Never past what the install approved: a declared tier whose cap was not granted adds nothing.
+    #[tokio::test]
+    async fn a_tier_never_widens_past_the_granted_set() {
+        let store = Store::memory().await.unwrap();
+        let manifest = Manifest::parse(MANIFEST).unwrap();
+        grant_role_tiers(&store, "ws", &manifest, &[]).await;
+        assert!(caps_of(&store, "viewer").await.is_empty());
+        assert!(caps_of(&store, "workspace-admin").await.is_empty());
+    }
 
     #[test]
     fn tiers_nest_downward() {

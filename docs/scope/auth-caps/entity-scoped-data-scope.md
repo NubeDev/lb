@@ -71,6 +71,13 @@ by `owner_sub()` so API keys, agents, reminders and report fires inherit their o
    subscriptions) and cases (`list`/facets/scorecard/group/`get`/comment/assign/assignees/breach
    notify) narrowed by the entity tag / facet.
 
+### Extensions ask the same resolver
+An extension that keeps its own entity-keyed rows (outside federation) must narrow them by the same
+set, or it disagrees with the core. `authz.entity_scope {table, sources?, subject?}`
+(`host/src/authz/entity_reach.rs`) returns `entity_scope`'s answer in the `scope_filter` shape;
+`subject` (a `user:` id) needs `mcp:authz.delegate_reach:call`, exactly like `scope_filter`. The
+verb is in the viewer bundle (self-only without `subject`). First consumer: ext-ros waste tracking.
+
 ## Boundaries and known limits (reviewed 2026-09-22)
 
 - **Who is unrestricted.** A workspace admin, meaning a principal holding any admin-marker cap
