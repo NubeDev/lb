@@ -11,6 +11,7 @@ debugged twice. **Append-only and symptom-led.**
 
 | Date | Area | Symptom | Status | Entry |
 |---|---|---|---|---|
+| 2026-10-07 | federation / auth-caps | An extension is refused its own table and settings under an enforced row policy (`ext:<id>` has scope "nothing") | fixed | [entry](federation/extension-refused-its-own-tables-under-row-policy.md) |
 | 2026-10-06 | auth-caps | A person invited into a team reaches none of the team's menus, boards or sites (edge written without `user:`) | fixed | [entry](auth-caps/invite-to-a-team-reaches-none-of-its-shares.md) |
 | 2026-10-06 | federation | `federation.write`/`migrate`/`delete` demanded `mcp:native.call:call` on top of their own cap | fixed | [entry](federation/write-migrate-delete-need-native-call.md) |
 | 2026-10-06 | federation | `federation.migrate` fails the second time on Postgres (re-plans CREATE TABLE; every FK created twice) | fixed | [entry](federation/migrate-rerun-fails-on-postgres.md) |

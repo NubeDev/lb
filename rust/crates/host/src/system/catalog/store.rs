@@ -13,6 +13,11 @@ pub(super) const STORE: &[HostTool] = &[
         description: "a bounded, workspace-walled read-only SELECT over the embedded store",
     },
     HostTool {
+        tool: "store.get",
+        group: "store",
+        description: "read one record by id, gated on the table (`store:<table>:read`)",
+    },
+    HostTool {
         tool: "store.schema",
         group: "store",
         description: "the store schema (tables + columns) for the visual query builder",

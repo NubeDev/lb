@@ -204,6 +204,10 @@ impl VisitorMut for Scoper<'_> {
                     return ControlFlow::Continue(());
                 }
                 let Some(rule) = self.scope.policy.tables.get(&table) else {
+                    // The caller's own table (an extension's, created by its migrate): read as is.
+                    if self.scope.own_tables.contains(&table) {
+                        return ControlFlow::Continue(());
+                    }
                     return deny(format!("relation {name} is not readable"));
                 };
                 let subquery = match filter::filtered(&table, rule, self.scope) {

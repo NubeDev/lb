@@ -206,7 +206,7 @@ pub use federation::{
     call_federation_tool, datasource_add, datasource_list, datasource_remove, datasource_test,
     enforce_endpoint, federation_mirror, federation_query, install_federation, put_datasource,
     resolve_datasource, Datasource, DatasourceSummary, FederationError,
-    Installed as FederationInstalled, SeedSource,
+    Installed as FederationInstalled, SeedSource, FEDERATION_OWNED_TABLE, ROW_POLICY_TABLE,
 };
 /// The durable per-source discovery profile (datasource-profile scope). Compiled only under the
 /// `datasource-profile` feature, so an embedder that leaves it off links none of it.

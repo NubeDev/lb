@@ -196,7 +196,9 @@ pub async fn row_policy_get(
 }
 
 /// The `row_scope` to attach to `caller`'s read of `source`, or `None` when the read is unrestricted
-/// (no enforced policy, or the caller's scope is `All`).
+/// (no enforced policy, or the caller's scope is `All`). For an extension acting as itself it also
+/// carries `own_tables` — the tables it created there ([`super::owned`]), which the sidecar reads
+/// unfiltered while every policy table stays narrowed.
 pub async fn row_scope_for(
     node: &Node,
     caller: &Principal,
@@ -219,7 +221,15 @@ pub async fn row_scope_for(
     .await
     {
         EntityScope::All => Ok(None),
-        EntityScope::Ids(ids) => Ok(Some(json!({ "policy": rec.policy, "ids": ids }))),
+        EntityScope::Ids(ids) => {
+            let own_tables = match super::owned::extension_of(caller) {
+                Some(ext) => super::owned::owned_tables(&node.store, ws, ext, source).await?,
+                None => Vec::new(),
+            };
+            Ok(Some(
+                json!({ "policy": rec.policy, "ids": ids, "own_tables": own_tables }),
+            ))
+        }
     }
 }
 
@@ -246,6 +256,24 @@ pub async fn refuse_if_restricted(
         return Err(FederationError::Denied);
     }
     Ok(())
+}
+
+/// Refuse `caller`'s write or delete of `table` in `source` when they are restricted — unless they
+/// are an extension acting as itself and `table` is one it created there ([`super::owned`]).
+pub async fn refuse_unless_owned(
+    node: &Node,
+    caller: &Principal,
+    ws: &str,
+    source: &str,
+    table: &str,
+) -> Result<(), FederationError> {
+    if !restricted(node, caller, ws, source).await? {
+        return Ok(());
+    }
+    match super::owned::extension_of(caller) {
+        Some(ext) if super::owned::owns(&node.store, ws, ext, source, table).await? => Ok(()),
+        _ => Err(FederationError::Denied),
+    }
 }
 
 /// A plain lowercase identifier — what a policy may name as a table, column or tag key.

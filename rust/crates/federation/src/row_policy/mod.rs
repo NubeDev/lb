@@ -18,6 +18,8 @@
 
 mod filter;
 mod functions;
+#[cfg(test)]
+mod own_tables_tests;
 mod relations;
 #[cfg(test)]
 mod tests;
@@ -37,6 +39,11 @@ pub struct RowScope {
     pub policy: RowPolicy,
     /// The entity ids the principal may read. Empty = nothing (fail closed, never "all").
     pub ids: Vec<String>,
+    /// Tables the caller — an extension acting as itself — created in this source. They are read
+    /// unfiltered; every other relation is still a policy table or refused. The host decides this
+    /// list from its ownership records; absent = none.
+    #[serde(default)]
+    pub own_tables: Vec<String>,
 }
 
 /// A datasource's row policy, authored by an admin (host `federation.row_policy_set`).
@@ -82,6 +89,9 @@ pub fn from_input(input: &serde_json::Value) -> Result<Option<RowScope>, Validat
     let scope: RowScope = serde_json::from_value(raw.clone())
         .map_err(|e| ValidationError(format!("bad row_scope: {e}")))?;
     scope.policy.check()?;
+    if let Some(bad) = scope.own_tables.iter().find(|t| !plain_ident(t)) {
+        return Err(ValidationError(format!("row_scope: bad own table {bad:?}")));
+    }
     Ok(Some(scope))
 }
 
