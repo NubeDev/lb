@@ -12,6 +12,7 @@ use lb_mcp::ToolError;
 use lb_supervisor::OsLauncher;
 use serde_json::{json, Value};
 
+use super::row_policy::refuse_unless_owned;
 use super::{
     datasource_add, datasource_list, datasource_remove, datasource_test, datasource_update,
     dbschema_delete, dbschema_get, dbschema_list, dbschema_save, federation_delete,
@@ -181,9 +182,10 @@ pub async fn call_federation_tool(
         }
         "federation.write" => {
             let source = str_arg(input, "source")?;
-            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
-            refuse_if_restricted(node, principal, ws, source).await?;
             let table = str_arg(input, "table")?;
+            // Entity-scoped data: a write cannot be narrowed, so a restricted caller is refused —
+            // except an extension writing a table it created (`federation::owned`).
+            refuse_unless_owned(node, principal, ws, source, table).await?;
             let columns: Vec<String> = input
                 .get("columns")
                 .and_then(|v| v.as_array())
@@ -218,9 +220,9 @@ pub async fn call_federation_tool(
         }
         "federation.delete" => {
             let source = str_arg(input, "source")?;
-            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
-            refuse_if_restricted(node, principal, ws, source).await?;
             let table = str_arg(input, "table")?;
+            // As `federation.write`: refused when restricted, unless it is the caller's own table.
+            refuse_unless_owned(node, principal, ws, source, table).await?;
             let key: Vec<String> = input
                 .get("key")
                 .and_then(|v| v.as_array())
@@ -241,8 +243,8 @@ pub async fn call_federation_tool(
         }
         "federation.migrate" => {
             let source = str_arg(input, "source")?;
-            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
-            refuse_if_restricted(node, principal, ws, source).await?;
+            // The restricted-caller rule (refused, or for an extension: only tables it creates or
+            // owns) is applied inside, where the plan is known (`federation::migrate_owned`).
             let schema = input
                 .get("schema")
                 .ok_or_else(|| ToolError::BadInput("missing object arg: schema".into()))?;

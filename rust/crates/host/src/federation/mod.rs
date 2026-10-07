@@ -33,8 +33,10 @@ mod export;
 mod install;
 mod list;
 mod migrate;
+mod migrate_owned;
 mod mirror;
 mod net;
+mod owned;
 #[cfg(feature = "datasource-profile")]
 mod profile;
 #[cfg(feature = "datasource-profile")]
@@ -73,6 +75,8 @@ pub use list::{datasource_list, DatasourceSummary};
 pub use migrate::{federation_migrate, migrate_descriptor};
 pub use mirror::federation_mirror;
 pub use net::enforce_endpoint;
+pub(crate) use owned::extension_of;
+pub use owned::OWNED_TABLE as FEDERATION_OWNED_TABLE;
 #[cfg(feature = "datasource-profile")]
 pub use profile::{federation_profile, profile_descriptor, ProfileBounds};
 #[cfg(feature = "datasource-profile")]
@@ -98,7 +102,9 @@ pub use record::{
 pub use remove::datasource_remove;
 #[cfg(feature = "page-cache")]
 pub(crate) use row_policy::{enforced_policies, row_scope_for};
-pub use row_policy::{insight_policy, refuse_if_restricted, row_policy_get, row_policy_set};
+pub use row_policy::{
+    insight_policy, refuse_if_restricted, row_policy_get, row_policy_set, TABLE as ROW_POLICY_TABLE,
+};
 pub use sample::{federation_sample, sample_descriptor};
 pub use schema::{federation_schema, schema_descriptor};
 pub use test::datasource_test;

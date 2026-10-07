@@ -53,10 +53,37 @@ pub async fn federation_migrate<L: Launcher>(
         "dsn": dsn,
         "source": source,
         "schema": schema,
-        "dry_run": dry_run,
-    })
-    .to_string();
+    });
 
+    // Entity-scoped data: DDL cannot be narrowed, so a restricted caller is refused — except an
+    // extension acting as itself, which may create and evolve ITS OWN tables
+    // (`federation::migrate_owned`). An extension's migrate also records the tables it creates.
+    let restricted = super::row_policy::restricted(node, caller, ws, source).await?;
+    match super::owned::extension_of(caller) {
+        Some(ext) => {
+            super::migrate_owned::migrate_as_extension(
+                node, launcher, caller, ws, source, ext, schema, restricted, &input, dry_run, ts,
+            )
+            .await
+        }
+        None if restricted => Err(FederationError::Denied),
+        None => {
+            let mut input = input;
+            input["dry_run"] = Value::Bool(dry_run);
+            run_sidecar(node, launcher, caller, ws, &input, ts).await
+        }
+    }
+}
+
+/// Send one migrate `input` (plan or apply, per its `dry_run`) to the federation sidecar.
+pub(super) async fn run_sidecar<L: Launcher>(
+    node: &Node,
+    launcher: &L,
+    caller: &Principal,
+    ws: &str,
+    input: &Value,
+    ts: u64,
+) -> Result<Value, FederationError> {
     // MEDIATED dispatch, like `federation.query`: this verb authorized itself on
     // `mcp:federation.migrate:call` above and built the child input by enumeration, so the caller needs no
     // supervisor CONTROL-PLANE reach (`mcp:native.call:call`). Requiring it meant an extension had to
@@ -68,7 +95,7 @@ pub async fn federation_migrate<L: Launcher>(
         ws,
         FEDERATION_EXT,
         "federation.migrate",
-        &input,
+        &input.to_string(),
         ts,
     )
     .await

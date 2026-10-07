@@ -100,6 +100,11 @@ pub const RESERVED_TABLES: &[&str] = &[
     "media",
     "media_chunk",
     "datasource",
+    // entity-scoped data: a datasource's row policy, and the tables an extension created there
+    // (`host::federation::owned`). Writable through `store.write`, either would let a caller widen
+    // their own reach — rewrite a policy, or forge ownership of an estate table.
+    "datasource_row_policy",
+    "federation_table_owner",
     "db_schema",
     "extraction",
     "query",

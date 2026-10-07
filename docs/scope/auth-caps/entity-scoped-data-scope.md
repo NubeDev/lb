@@ -65,7 +65,8 @@ by `owner_sub()` so API keys, agents, reminders and report fires inherit their o
    be a policy table and is replaced by `(SELECT * FROM rel WHERE <pred>) AS alias`; CTEs may not
    shadow policy tables; `information_schema`, `pg_catalog`, table functions rejected; functions
    deny-by-default (allow-list + policy extras); predicates built as AST literals.
-3. `schema` narrowed to policy tables; `sample`/`profile*`/`mirror`/writes refused when restricted.
+3. `schema` narrowed to policy tables; `sample`/`profile*`/`mirror`/writes refused when restricted —
+   except an extension's own tables (below).
 4. `viz.query` response cache key includes the scope hash.
 5. Insights (`list`/count/facets/`get`/`watch`/occurrences/comments/ack/assign/resolve,
    subscriptions) and cases (`list`/facets/scorecard/group/`get`/comment/assign/assignees/breach
@@ -76,7 +77,26 @@ An extension that keeps its own entity-keyed rows (outside federation) must narr
 set, or it disagrees with the core. `authz.entity_scope {table, sources?, subject?}`
 (`host/src/authz/entity_reach.rs`) returns `entity_scope`'s answer in the `scope_filter` shape;
 `subject` (a `user:` id) needs `mcp:authz.delegate_reach:call`, exactly like `scope_filter`. The
-verb is in the viewer bundle (self-only without `subject`). First consumer: ext-ros waste tracking.
+verb is in the viewer bundle (self-only without `subject`). First consumer: the `waste` extension
+(NubeIO/rust-waste-management).
+
+### An extension's own data
+A native extension's backend acts as itself (`ext:<id>`): it holds no menus or grants, so under an
+enforced policy its scope is "nothing". It still narrows PEOPLE itself (above); its own housekeeping
+is exempt, and nothing else:
+- **Tables it created.** `federation.migrate` called by an extension records each table its plan
+  CREATES as that extension's (`host/src/federation/owned.rs`, reserved table
+  `federation_table_owner`, atomic first claim). On a restricted source the extension may migrate,
+  write and delete only tables it created or owns — never an existing table, never one an FK of its
+  design points at, never another extension's (`migrate_owned.rs`). Its `federation.query` carries
+  `row_scope.own_tables`, read unfiltered by the sidecar while every policy table in the same query
+  stays narrowed and every other relation stays refused.
+- **Its own store records.** `store.get {table, id}` is gated on `store:<table>:read`. An extension
+  whose approved caps name that table EXACTLY is not entity-limited; everyone else is limited as on
+  `store.query`. (`store.query` stays refused: SurrealQL reaches other tables through record links,
+  so a text check cannot prove a statement stays on one table.)
+- **Estate data it reads for a person** is not its own: it is read as that person (the `waste` tile
+  reads a board's `siteRef` with the viewer's own `federation.query`).
 
 ## Boundaries and known limits (reviewed 2026-09-22)
 
@@ -86,12 +106,20 @@ verb is in the viewer bundle (self-only without `subject`). First consumer: ext-
   caps also lifts them out of the row policy — grant them knowingly.
 - **Menus are access.** With the `nav` source on, `nav.save`/`nav.share`/`nav.set_default` grant
   data. They sit in the admin bundle; a custom role carrying them can hand any entity to any team.
-- **A derived principal** (an extension backend, the agent) reads with its OWNER's scope and standing.
+- **A derived principal** (an in-process extension call, the agent) reads with its OWNER's scope and
+  standing. A native extension's backend is NOT derived — it is `ext:<id>`, scope "nothing", with the
+  own-data exemption above.
   A reactor run with no owner (`node:reactor`) is restricted and, holding no menu, reads nothing; a
   rule or reminder scheduled by a person runs as that person.
 - **API keys** reach only what a workspace-default menu marks (no team edges, no user grants).
 - **Raw store reads** (`store.query`, member tier) are refused for a restricted caller: an insight or
-  case table cannot be narrowed row by row.
+  case table cannot be narrowed row by row. `store.get` by id is limited the same way, except for an
+  extension reading a table its caps name exactly.
+- **Row policies and ownership records are reserved tables** (`lb_store::reserved`): `store.write`
+  cannot rewrite a policy or forge an extension's claim on a table.
+- **Plan-to-apply window.** An extension's migrate plans, claims, then applies; the sidecar re-plans
+  on apply. A table a person creates under the same name inside that window would be altered, not
+  created. Another extension cannot take it (the claim is atomic).
 - **Freshness.** Scopes and policies are cached 30 s per workspace and dropped on every write that can
   change access (menu save/share/unshare/delete/default, team membership, grants, policy), so a change
   takes effect at once for callers on this node.
