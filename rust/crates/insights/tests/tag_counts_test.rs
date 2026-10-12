@@ -55,6 +55,7 @@ fn query(filter: ListFilter, limit: usize, counts: bool, tag_counts: Option<&str
         counts,
         sort: None,
         tag_counts: tag_counts.map(str::to_string),
+        severity_counts: false,
     }
 }
 

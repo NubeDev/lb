@@ -84,6 +84,7 @@ async fn page(store: &Store, case: CaseScope, counts: bool, limit: usize) -> lb_
             counts,
             sort: None,
             tag_counts: None,
+            severity_counts: false,
         },
         None,
         None,

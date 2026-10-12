@@ -58,6 +58,7 @@ mod resolve;
 mod schema;
 mod search_columns;
 mod severity;
+mod severity_tally;
 mod sort_sql;
 mod status;
 mod sub_create;

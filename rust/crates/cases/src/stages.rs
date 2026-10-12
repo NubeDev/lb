@@ -11,9 +11,17 @@
 //! The filter check is `list`'s own (`matches_filter`), so a case the queue shows under a filter is
 //! exactly a case the roster keeps under the same filter.
 //!
+//! **Unfiltered reads ask for two fields, not the case.** With no filter axis set (the roster's default
+//! — every page open), `matches` is `true` for every case and only `id` + `workflow` are read, so the
+//! engine projects those two in ONE statement instead of paging every full case record through
+//! `scan_all` and decoding it. On ESR's 5,194 cases that is ~0.37 s → a fraction of it per call, and
+//! the roster makes several such calls per open. A filtered read still decodes whole cases, because
+//! `matches_filter` reads their other fields.
+//!
 //! One responsibility: the stage of every case, and whether it passes the filter.
 
 use lb_store::{scan_all, Store};
+use serde::Deserialize;
 
 use crate::case::Workflow;
 use crate::error::CasesError;
@@ -47,6 +55,9 @@ pub async fn stages(
                 .into(),
         ));
     }
+    if is_unfiltered(filter) {
+        return projected(store, ws).await;
+    }
     Ok(scan_all(store, ws, crate::case::TABLE)
         .await?
         .into_iter()
@@ -55,6 +66,52 @@ pub async fn stages(
             matches: matches_filter(&case, filter, now),
             id: case.id,
             workflow: case.workflow,
+        })
+        .collect())
+}
+
+/// No axis set: every case matches, so nothing but `id` and `workflow` is needed. Decided by the
+/// filter's own serialized shape — every axis is skip-if-none — so a new axis can never be missed here.
+fn is_unfiltered(filter: &ListFilter) -> bool {
+    serde_json::to_value(filter)
+        .map(|v| v.as_object().is_some_and(|o| o.is_empty()))
+        .unwrap_or(false)
+        && filter.sites_allowed.is_none()
+}
+
+/// The two-field row the unfiltered read projects.
+#[derive(Deserialize)]
+struct StageRow {
+    id: Option<String>,
+    workflow: Option<Workflow>,
+}
+
+/// `id` + `workflow` of every case, projected by the engine in one statement. A row missing either
+/// (a record that would not decode as a case) is skipped, as `unwrap_case` skips it on the full read.
+async fn projected(store: &Store, ws: &str) -> Result<Vec<CaseStage>, CasesError> {
+    let sql = "SELECT data.id AS id, data.workflow AS workflow FROM type::table($tb)";
+    let mut resp = store
+        .query_ws(
+            ws,
+            sql,
+            vec![(
+                "tb".into(),
+                serde_json::Value::String(crate::case::TABLE.into()),
+            )],
+        )
+        .await?;
+    let rows: Vec<serde_json::Value> = resp
+        .take(0)
+        .map_err(|e| lb_store::StoreError::Decode(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<StageRow>(v).ok())
+        .filter_map(|r| {
+            Some(CaseStage {
+                id: r.id?,
+                workflow: r.workflow?,
+                matches: true,
+            })
         })
         .collect())
 }
