@@ -45,7 +45,9 @@ mod facet_refresh;
 mod find_by_insight;
 mod get;
 mod list;
+mod list_read;
 mod member_add;
+mod member_counts;
 mod member_remove;
 mod members;
 mod merge;
@@ -108,6 +110,7 @@ pub use find_by_insight::{
 pub use get::get;
 pub use list::{CaseRow, Lane, ListFilter, ListPage, ListQuery, MAX_CASE_PAGE};
 pub use member_add::member_add;
+pub use member_counts::member_counts;
 pub use member_remove::member_remove;
 pub use members::{member_count, members, members_all, MemberPage, MemberRow, MAX_MEMBER_PAGE};
 pub use merge::merge;

@@ -19,12 +19,13 @@
 
 use std::collections::BTreeSet;
 
-use lb_store::{scan_all, Store};
+use lb_store::Store;
 use serde::{Deserialize, Serialize};
 
-use crate::case::{severity_rank, Case, WaitingOn, Workflow, TABLE};
+use crate::case::{severity_rank, Case, WaitingOn, Workflow};
 use crate::error::CasesError;
-use crate::members::member_count;
+use crate::list_read::read_cases;
+use crate::member_counts::member_counts;
 
 /// Which work queue the caller is asking for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +71,11 @@ pub struct ListFilter {
     /// `Some` = a case must carry one of these sites (a case with no site is hidden).
     #[serde(skip)]
     pub sites_allowed: Option<BTreeSet<String>>,
+    /// Only these cases, by id — for a caller that already knows which cases it needs (a roster
+    /// labelling the rows on screen with their case's stage) and should not read whole lanes to find
+    /// them. At most [`MAX_CASE_PAGE`] ids; more is refused rather than silently truncated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ids: Option<Vec<String>>,
 }
 
 /// One row of the roster: the case plus its member count.
@@ -132,12 +138,23 @@ pub async fn list(
         ));
     }
 
-    let mut matched: Vec<Case> = scan_all(store, ws, TABLE)
-        .await?
-        .into_iter()
-        .filter_map(|row| unwrap_case(row.data))
-        .filter(|c| matches(c, query, subjects))
-        .collect();
+    if query
+        .filter
+        .ids
+        .as_ref()
+        .is_some_and(|ids| ids.len() > MAX_CASE_PAGE)
+    {
+        return Err(CasesError::BadInput(format!(
+            "filter `ids` takes at most {MAX_CASE_PAGE} ids — ask in pages"
+        )));
+    }
+
+    let mut matched: Vec<Case> =
+        read_cases(store, ws, query.include_closed, query.filter.ids.as_deref())
+            .await?
+            .into_iter()
+            .filter(|c| matches(c, query, subjects))
+            .collect();
 
     // `due_at` ascending with `None` last, then severity DESCENDING, then the open time so the
     // order is total (two cases with the same deadline and severity must not shuffle between
@@ -156,12 +173,16 @@ pub async fn list(
     let total = matched.len();
     matched.truncate(query.limit.clamp(1, MAX_CASE_PAGE));
 
-    let mut items = Vec::with_capacity(matched.len());
-    for case in matched {
-        // The count is read only for the rows that actually ship, not for every match.
-        let member_count = member_count(store, ws, &case.id).await?;
-        items.push(CaseRow { case, member_count });
-    }
+    // The counts are read only for the rows that actually ship, not for every match, and in one read.
+    let ids: Vec<String> = matched.iter().map(|c| c.id.clone()).collect();
+    let counts = member_counts(store, ws, &ids).await?;
+    let items = matched
+        .into_iter()
+        .map(|case| CaseRow {
+            member_count: counts.get(&case.id).copied().unwrap_or(0),
+            case,
+        })
+        .collect();
     Ok(ListPage { items, total })
 }
 
@@ -205,6 +226,11 @@ fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool 
 /// filter", shared with [`crate::stages`] so the insight roster's case filter cannot drift from the
 /// queue's. `party` is refused by the callers before this runs.
 pub(crate) fn matches_filter(case: &Case, f: &ListFilter, now: u64) -> bool {
+    if let Some(ids) = &f.ids {
+        if !ids.contains(&case.id) {
+            return false;
+        }
+    }
     if let Some(allowed) = &f.sites_allowed {
         if !case.site.as_deref().is_some_and(|s| allowed.contains(s)) {
             return false;
