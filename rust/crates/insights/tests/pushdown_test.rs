@@ -158,6 +158,16 @@ async fn pushdown_returns_what_the_scan_path_returns() {
     both_ways(
         &store,
         ListFilter {
+            severity: Some(Severity::Warning),
+            severity_exact: true,
+            ..Default::default()
+        },
+        50,
+    )
+    .await;
+    both_ways(
+        &store,
+        ListFilter {
             origin_ref: Some("rule:x".into()),
             ..Default::default()
         },
@@ -271,4 +281,50 @@ async fn the_pushdown_still_strips_evidence_and_analysis() {
         .iter()
         .all(|i| i.evidence.is_none() && i.analysis.is_none()));
     assert!(page.counts.is_none(), "no tally was asked for");
+}
+
+/// `severity` is a floor; `severity_exact` narrows it to that one severity, on both paths, and the
+/// tally counts the same rows.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn severity_exact_returns_only_that_severity() {
+    let store = seeded().await;
+
+    for (sev, floor, exact) in [
+        (Severity::Info, 9, 3),
+        (Severity::Warning, 6, 3),
+        (Severity::Critical, 3, 3),
+    ] {
+        for (severity_exact, want) in [(false, floor), (true, exact)] {
+            for counts in [false, true] {
+                let page = list(
+                    &store,
+                    WS,
+                    ListQuery {
+                        filter: ListFilter {
+                            severity: Some(sev),
+                            severity_exact,
+                            ..Default::default()
+                        },
+                        cursor: None,
+                        limit: 50,
+                        offset: 0,
+                        counts,
+                        sort: None,
+                        tag_counts: None,
+                    },
+                    None,
+                    None,
+                )
+                .await
+                .expect("list");
+                assert_eq!(page.items.len(), want, "{sev:?} exact={severity_exact}");
+                if severity_exact {
+                    assert!(page.items.iter().all(|i| i.severity == sev));
+                }
+                if let Some(tally) = page.counts {
+                    assert_eq!(tally.total, want as u64, "the tally counts the same rows");
+                }
+            }
+        }
+    }
 }

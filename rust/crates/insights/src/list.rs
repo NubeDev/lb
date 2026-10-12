@@ -1,6 +1,7 @@
 //! `list` — the faceted insights read (insights umbrella scope).
 //!
-//! AND-composed filter axes (any subset): `status`, `severity` (a floor), `origin_ref`, `tags` (a
+//! AND-composed filter axes (any subset): `status`, `severity` (a floor, or exact with
+//! `severity_exact`), `origin_ref`, `tags` (a
 //! tag-facet subset), `range` (a logical-ts window). Keyset-paged newest-first per the
 //! page-cursor contract (`scope/datasources/page-cursor-scope.md`). Authorization is the host's
 //! job; the workspace wall is structural (the store scan is ws-scoped, README §7).
@@ -27,6 +28,10 @@ pub struct ListFilter {
     /// A severity floor (≥ this severe).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub severity: Option<Severity>,
+    /// Read [`severity`](Self::severity) as an exact match (only that severity) rather than a
+    /// floor. Nothing without a `severity`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub severity_exact: bool,
     /// Filter by producer ref (the rule/flow id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin_ref: Option<String>,
@@ -77,6 +82,18 @@ pub struct ListFilter {
     /// The field stays on the filter so the wire shape is one flat object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_to: Option<String>,
+}
+
+impl ListFilter {
+    /// Whether a row of severity `row` passes the `asked` severity: at least as severe, or with
+    /// [`severity_exact`](Self::severity_exact) the same one.
+    pub(crate) fn severity_passes(&self, row: Severity, asked: Severity) -> bool {
+        if self.severity_exact {
+            row == asked
+        } else {
+            row.at_least(asked)
+        }
+    }
 }
 
 /// The wire literal meaning "unassigned" in [`ListFilter::assigned_to`].
@@ -317,7 +334,11 @@ pub async fn list(
     )
     .await?
     .into_iter()
-    .filter(|i| f.severity.map(|s| i.severity.at_least(s)).unwrap_or(true))
+    .filter(|i| {
+        f.severity
+            .map(|s| f.severity_passes(i.severity, s))
+            .unwrap_or(true)
+    })
     .filter(|i| {
         f.origin_ref
             .as_ref()
