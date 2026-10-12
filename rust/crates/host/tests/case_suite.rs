@@ -116,6 +116,9 @@ mod plane_money;
 #[path = "case/plane_snooze.rs"]
 mod plane_snooze;
 
+#[path = "case/plane_snooze_release.rs"]
+mod plane_snooze_release;
+
 #[path = "case/plane_split.rs"]
 mod plane_split;
 

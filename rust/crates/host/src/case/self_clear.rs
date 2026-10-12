@@ -155,7 +155,7 @@ async fn history_is_platform_only(
 
 /// Every row of `table`, unwrapped from the `{ data, rev }` envelope and decoded. A row that will
 /// not decode is skipped: one bad record must not stop the pass (the `reconcile` precedent).
-async fn decode_all<T: serde::de::DeserializeOwned>(
+pub(super) async fn decode_all<T: serde::de::DeserializeOwned>(
     node: &Arc<Node>,
     ws: &str,
     table: &str,

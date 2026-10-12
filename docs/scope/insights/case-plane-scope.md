@@ -228,6 +228,15 @@ verdict-first opens over whatever resolves and the reconcile loop folds the stra
 with `human_placed: true` is never moved in either direction.
 | **hold-down** | insight reopen | if the member's case closed as `fixed` within `hold_down_days`: reopen it, `reopened` event *repair did not hold*, `reopened_count += 1`; any other resolution → a new case |
 | **sla-clock** | case open · severity escalation | resolve the policy, compute `respond_by`/`due_at` in business hours, schedule the breach reminder; recompute on escalation; **never pause** |
+| **snooze-expiry** | the case tick (`release_expired_snoozes`, before self-clear) | end every open case's snooze whose `snooze_until` has passed, through the ordinary un-snooze gesture (actor `system:snooze-expiry`); idempotent — an ended snooze is cleared |
+
+**The end of a snooze puts parked work back in the queue.** However a snooze ends — un-snooze
+(`until` at or before now), expiry (the snooze-expiry pass) or a severity puncture — a case in
+`actioned` moves back to `to_action` (an ordinary `workflow` event). A snooze is "come back to this
+later"; left in `actioned` the case would read as work in hand that nobody holds, and self-clear,
+which judges only untouched `to_action` cases, would never see it. `waiting_on_po` is blocked on
+somebody else and stays; clearing a snooze that was never set moves nothing. The rule lives once, in
+`lb_cases::snooze_release`, and every door that ends a snooze calls it.
 
 Reactors run under `node:reactor` caps (`reactor_caps()`, extended with the four `case.*` caps),
 never the author's, and the loops are spawned under the `BootConfig::reactors` toggle like every
