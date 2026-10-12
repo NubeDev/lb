@@ -33,7 +33,9 @@ pub mod cell_rect;
 mod chrome;
 mod convert;
 mod error;
+mod fonts;
 pub mod geometry;
+mod letterhead;
 mod model;
 pub mod paginate;
 mod pdf;
@@ -43,8 +45,11 @@ mod world;
 pub use cell_rect::{RectMm, cell_rect_mm, cell_rect_mm_on_page};
 pub use convert::{image_sources, markdown_to_typst, markdown_to_typst_plain};
 pub use error::RenderError;
+pub use fonts::BRAND_FONT_FAMILIES;
 pub use geometry::PageGeometry;
-pub use model::{Assembled, Brand, Colors, Fonts, ImageAsset, Placement, RenderOptions};
+pub use model::{
+    Assembled, Brand, Colors, Fonts, ImageAsset, Letterhead, Placement, RenderOptions,
+};
 pub use paginate::{PagedRow, page_of_row, paginate};
 pub use pdf::render_pdf;
 

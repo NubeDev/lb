@@ -62,6 +62,7 @@ async fn absent_options_and_the_spelled_out_defaults_are_byte_identical() {
             scale: Some(2.0),
             page_numbers: false,
             index: false,
+            ..ExportOptions::default()
         },
     )
     .await;

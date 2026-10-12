@@ -34,7 +34,8 @@ impl RenderWorld {
     /// in `files` as a virtual file the `.typ` can `image(...)`.
     pub(crate) fn new(source: &str, files: &[(String, Vec<u8>)]) -> Self {
         let mut fonts = Vec::new();
-        for data in typst_assets::fonts() {
+        // The embedded default set, then the bundled brand faces (`fonts.rs`).
+        for data in typst_assets::fonts().chain(crate::fonts::BUNDLED.iter().copied()) {
             let bytes = Bytes::new(data);
             let mut index = 0;
             while let Some(font) = Font::new(bytes.clone(), index) {

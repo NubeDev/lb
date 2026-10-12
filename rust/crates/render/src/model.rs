@@ -50,6 +50,26 @@ pub struct Assembled {
     /// pages from a dashboard's cell grid. Absent or empty ⇒ the markdown path, byte-identical to
     /// what shipped, so every existing caller is untouched by this field's existence.
     pub placements: Vec<Vec<Placement>>,
+    /// The four authored corners printed on every body page. `None` ⇒ the brand's running
+    /// header/footer exactly as shipped; `Some` ⇒ the letterhead OWNS both bands (the brand's
+    /// header/footer text and the `page_numbers` counter are not also drawn — an author who wants a
+    /// page number writes `${__report.page}` in a corner).
+    pub letterhead: Option<Letterhead>,
+}
+
+/// A letterhead: one text per page corner. The caller has already resolved its own variables; the
+/// only references left for the renderer are `${__logo}`, `${__report.page}` and `${__report.pages}`
+/// ([`crate::letterhead`]). An empty corner prints nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Letterhead {
+    /// Top band, left half.
+    pub top_left: String,
+    /// Top band, right half.
+    pub top_right: String,
+    /// Bottom band, left half.
+    pub bottom_left: String,
+    /// Bottom band, right half.
+    pub bottom_right: String,
 }
 
 /// One positioned rectangle on a placed page: which image fills it, where it goes, and what to say
@@ -75,6 +95,9 @@ pub struct RenderOptions {
     pub page_numbers: bool,
     /// Prepend a table-of-contents index page listing each page's title.
     pub index: bool,
+    /// Leave the cover page out, so the document opens on its first real page. Spelled as a
+    /// negative so the default (`false`) is the cover every existing caller already gets.
+    pub no_cover: bool,
 }
 
 impl Assembled {
