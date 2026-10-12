@@ -164,6 +164,7 @@ async fn a_due_reminder_fires_from_the_boot_spawned_tick() {
         "nube",
         "nightly-report",
         "* * * * *",
+        "",
         None,
         lb_host::ReminderAction::Outbox {
             target: "report".into(),

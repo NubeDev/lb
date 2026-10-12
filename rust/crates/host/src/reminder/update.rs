@@ -3,12 +3,15 @@
 //! NOT a job. Any field the caller omits is left unchanged (a partial update).
 //!
 //! Re-scheduling recomputes `next_attempt_ts` from the NEW schedule, anchored at `now`, so a
-//! reschedule moves the next fire to the next future slot under the new expression. Toggling
-//! `enabled` from `false` → `true` likewise re-anchors the next fire (a resumed reminder fires at
-//! the next future slot, not at a stale past instant — no backfill on resume).
+//! reschedule moves the next fire to the next future slot under the new expression. A new zone
+//! (`tz`) is a reschedule too — the same cron read in another zone is a different instant.
+//! Toggling `enabled` from `false` → `true` likewise re-anchors the next fire (a resumed reminder
+//! fires at the next future slot, not at a stale past instant — no backfill on resume).
 
 use lb_auth::Principal;
-use lb_reminders::{is_valid, load, next_after, save, Action, Reminder, ReminderError};
+use lb_reminders::{
+    is_valid, is_valid_tz, load, next_after_in, save, Action, Reminder, ReminderError,
+};
 use lb_store::Store;
 
 use super::authorize::authorize_reminder;
@@ -18,6 +21,8 @@ use super::create::best_effort_check_action;
 #[derive(Debug, Default, Clone)]
 pub struct ReminderPatch {
     pub schedule: Option<String>,
+    /// The IANA zone the cron is read in; `Some("")` moves it back to UTC.
+    pub tz: Option<String>,
     pub max_runs: Option<Option<u32>>,
     pub enabled: Option<bool>,
     pub action: Option<Action>,
@@ -37,7 +42,7 @@ pub async fn reminder_update(
 
     let mut reminder = load(store, ws, id).await?.ok_or(ReminderError::NotFound)?;
 
-    let rescheduled = patch.schedule.is_some();
+    let rescheduled = patch.schedule.is_some() || patch.tz.is_some();
     let resumed = matches!(patch.enabled, Some(true));
 
     if let Some(schedule) = patch.schedule {
@@ -45,6 +50,15 @@ pub async fn reminder_update(
             return Err(ReminderError::BadCron(schedule));
         }
         reminder.schedule = schedule;
+    }
+    if let Some(tz) = patch.tz {
+        if !is_valid_tz(&tz) {
+            return Err(ReminderError::BadInput(format!(
+                "unknown timezone: {}",
+                tz.trim()
+            )));
+        }
+        reminder.tz = tz.trim().to_string();
     }
     if let Some(max_runs) = patch.max_runs {
         if let Some(n) = max_runs {
@@ -68,7 +82,7 @@ pub async fn reminder_update(
     // (possibly new) schedule. A pause leaves next_attempt_ts alone (the reminder is skipped while
     // disabled; resume re-anchors). A pure action/max_runs edit does not move the next fire.
     if rescheduled || resumed {
-        reminder.next_attempt_ts = next_after(&reminder.schedule, now)?;
+        reminder.next_attempt_ts = next_after_in(&reminder.schedule, now, &reminder.tz)?;
         // Resuming/rescheduling a `Done` reminder re-activates it (the user asked it to run again).
         if resumed || rescheduled {
             reminder.status = lb_reminders::ReminderStatus::Active;

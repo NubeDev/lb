@@ -5,7 +5,10 @@
 //!
 //! The record carries:
 //!   - `schedule` — a standard 5-field cron string (the storage format; the UI never asks a human
-//!     to type it). Consumed unchanged by `next_after` (croner) on the injected clock.
+//!     to type it). Consumed unchanged by `next_after_in` (croner) on the injected clock.
+//!   - `tz` — the IANA zone the cron's clock fields are read in (`Australia/Sydney`). Empty ⇒ UTC,
+//!     which is what every record written before the field existed means. "0 9 * * *" is 9 AM in
+//!     THIS zone, DST included; the stored `next_attempt_ts` stays a plain logical instant.
 //!   - `max_runs` — an optional hard cap (`Some(n)`, n≥1). `None` = recurring forever. `runs` is
 //!     the count of firings so far; when `runs` reaches `max_runs` the reminder is `Done`.
 //!   - `enabled` — the on/off switch (pause/resume without deleting).
@@ -66,8 +69,12 @@ pub enum Action {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reminder {
     pub id: String,
-    /// The 5-field cron schedule (storage format). Parsed by `next_after` on the injected clock.
+    /// The 5-field cron schedule (storage format). Parsed by `next_after_in` on the injected clock.
     pub schedule: String,
+    /// The IANA zone `schedule`'s hour/day fields are read in. Empty ⇒ UTC (and absent on the wire
+    /// for such a record, so a reader that predates the field sees exactly what it always saw).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tz: String,
     /// `Some(n)` (n≥1) = fire at most `n` times then stop; `None` = recurring forever.
     pub max_runs: Option<u32>,
     /// How many times this reminder has fired. `runs == max_runs` ⇒ `Done`.
@@ -87,9 +94,9 @@ pub struct Reminder {
 }
 
 impl Reminder {
-    /// Build a fresh active reminder. The caller sets `next_attempt_ts` via [`next_after`] (the
+    /// Build a fresh active reminder. The caller sets `next_attempt_ts` via `next_after_in` (the
     /// reactor/create verb does this); this constructor leaves it `0` deliberately so the caller
-    /// must choose the anchor instant explicitly.
+    /// must choose the anchor instant explicitly. `tz` starts empty (UTC); the create verb sets it.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: impl Into<String>,
@@ -102,6 +109,7 @@ impl Reminder {
         Self {
             id: id.into(),
             schedule: schedule.into(),
+            tz: String::new(),
             max_runs,
             runs: 0,
             enabled: true,

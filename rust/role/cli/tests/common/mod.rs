@@ -110,6 +110,7 @@ pub async fn seed_reminder(node: &Node, ws: &str, id: &str, channel: &str, body:
         ws,
         id,
         "0 9 * * *",
+        "",
         None,
         action,
         NOW,

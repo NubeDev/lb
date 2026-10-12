@@ -3,20 +3,22 @@
 //!
 //! What it does, in order:
 //!   1. the CRUD capability gate (`mcp:reminder.create:call`, workspace-first) — the deny path;
-//!   2. a best-effort validation of the cron schedule + the action shape (UX feedback only — the
-//!      authoritative check is at fire time, because tool schemas evolve between create and fire);
+//!   2. a best-effort validation of the cron schedule, its zone + the action shape (UX feedback
+//!      only — the authoritative check is at fire time, because tool schemas evolve between create
+//!      and fire; the zone IS authoritative here — an unknown name never reaches the store);
 //!   3. compute the first `next_attempt_ts` = the next slot strictly after `now` (the injected
-//!      clock), so the reminder first fires in the future;
+//!      clock), reading the cron in the schedule's zone, so the reminder first fires in the future;
 //!   4. persist under the caller's principal (the stored principal the firing re-resolves).
 
 use lb_auth::Principal;
-use lb_reminders::{is_valid, next_after, save, Action, Reminder, ReminderError};
+use lb_reminders::{is_valid, is_valid_tz, next_after_in, save, Action, Reminder, ReminderError};
 use lb_store::Store;
 
 use super::authorize::authorize_reminder;
 
 /// Create a reminder in workspace `ws` as `principal`. Returns the persisted reminder (with its
-/// computed first `next_attempt_ts`). Idempotent on `id` (a re-create upserts).
+/// computed first `next_attempt_ts`). Idempotent on `id` (a re-create upserts). `tz` is the IANA
+/// zone the cron is read in — empty for UTC.
 #[allow(clippy::too_many_arguments)]
 pub async fn reminder_create(
     store: &Store,
@@ -24,6 +26,7 @@ pub async fn reminder_create(
     ws: &str,
     id: &str,
     schedule: &str,
+    tz: &str,
     max_runs: Option<u32>,
     action: Action,
     now: u64,
@@ -32,6 +35,12 @@ pub async fn reminder_create(
 
     if !is_valid(schedule) {
         return Err(ReminderError::BadCron(schedule.to_string()));
+    }
+    if !is_valid_tz(tz) {
+        return Err(ReminderError::BadInput(format!(
+            "unknown timezone: {}",
+            tz.trim()
+        )));
     }
     if let Some(n) = max_runs {
         if n == 0 {
@@ -43,10 +52,11 @@ pub async fn reminder_create(
     // watching — never first judged by the 03:00 firing (relative-time-range scope, step 7).
     super::range::check_action_window(&action)?;
 
-    // First fire: the next slot strictly after `now` (never fire at create time).
-    let next_attempt_ts = next_after(schedule, now)?;
+    // First fire: the next slot strictly after `now` (never fire at create time), in the zone.
+    let next_attempt_ts = next_after_in(schedule, now, tz)?;
 
     let mut reminder = Reminder::new(id, schedule, max_runs, action, principal.sub(), now);
+    reminder.tz = tz.trim().to_string();
     reminder.next_attempt_ts = next_attempt_ts;
     save(store, ws, &reminder).await?;
     Ok(reminder)

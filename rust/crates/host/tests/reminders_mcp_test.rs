@@ -380,3 +380,66 @@ async fn unknown_verb_is_opaque_denied_at_the_gate() {
         body: "".into(),
     }; // exercise tag enum build
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_schedule_fires_at_its_own_zones_clock_time() {
+    // `tz` on create: "0 9 * * *" in Australia/Sydney first fires at 09:00 Sydney — Mon 22:00 UTC
+    // from a Mon 00:00 UTC anchor (AEDT, UTC+11) — and the record carries the zone back out.
+    let ws = "rem-tz";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = principal(
+        "user:test",
+        ws,
+        &["mcp:reminder.create:call", "mcp:reminder.update:call"],
+    );
+    let now: u64 = 1_704_067_200; // Mon 2024-01-01 00:00 UTC
+    let out = call_tool(
+        &node,
+        &p,
+        ws,
+        "reminder.create",
+        &json!({
+            "id": "sydney-9am",
+            "schedule": "0 9 * * *",
+            "tz": "Australia/Sydney",
+            "action": channel_post_action("team", "morning"),
+            "ts": now,
+        })
+        .to_string(),
+    )
+    .await
+    .expect("create with a zone");
+    let r: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(r["tz"], "Australia/Sydney");
+    assert_eq!(r["nextAttemptTs"], 1_704_146_400); // Mon 22:00 UTC = Tue 09:00 AEDT
+
+    // Moving the zone is a reschedule: the same cron read in UTC is Mon 09:00 UTC.
+    let out = call_tool(
+        &node,
+        &p,
+        ws,
+        "reminder.update",
+        &json!({ "id": "sydney-9am", "tz": "", "ts": now }).to_string(),
+    )
+    .await
+    .unwrap();
+    let u: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(u["tz"], "");
+    assert_eq!(u["nextAttemptTs"], 1_704_099_600);
+
+    // An unknown zone is author feedback at save time, not a 03:00 surprise.
+    let err = call_tool(
+        &node,
+        &p,
+        ws,
+        "reminder.create",
+        &json!({
+            "id": "nowhere", "schedule": "0 9 * * *", "tz": "Mars/Olympus",
+            "action": channel_post_action("team", "x"), "ts": now
+        })
+        .to_string(),
+    )
+    .await
+    .expect_err("unknown zone rejected");
+    assert!(matches!(err, ToolError::BadInput(_)), "got {err:?}");
+}

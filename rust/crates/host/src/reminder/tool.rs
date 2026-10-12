@@ -44,6 +44,8 @@ pub async fn call_reminder_tool(
             // fields, what the generic palette posts straight from the form). See `create_action`.
             let action = create_action(input)?;
             let schedule = str_arg(input, "schedule")?;
+            // The zone the cron is read in. Absent ⇒ UTC, exactly what every caller got before.
+            let tz = opt_str(input, "tz").unwrap_or_default();
             // `now`: the flat form omits `ts` (a generic "now" is not reminder knowledge, so the host
             // supplies it from its clock); the nested/test callers still pass an explicit `ts`.
             let now = opt_u64(input, "ts")?.unwrap_or_else(now_ts);
@@ -59,6 +61,7 @@ pub async fn call_reminder_tool(
                 ws,
                 &id,
                 schedule,
+                &tz,
                 opt_u32(input, "max_runs")?,
                 action,
                 now,
@@ -70,6 +73,7 @@ pub async fn call_reminder_tool(
         "update" => {
             let patch = ReminderPatch {
                 schedule: opt_str(input, "schedule"),
+                tz: opt_str(input, "tz"),
                 max_runs: opt_max_runs(input)?,
                 enabled: opt_bool(input, "enabled"),
                 action: opt_action(input)?,
@@ -148,6 +152,7 @@ fn reminder_json(r: &Reminder) -> Value {
     json!({
         "id": r.id,
         "schedule": r.schedule,
+        "tz": r.tz,
         "maxRuns": r.max_runs,
         "runs": r.runs,
         "enabled": r.enabled,

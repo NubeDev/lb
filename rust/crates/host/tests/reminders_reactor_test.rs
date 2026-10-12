@@ -73,6 +73,7 @@ async fn channel_post_firing_writes_a_real_inbox_item_and_advances() {
         ws,
         "standup",
         "* * * * *",
+        "",
         None,
         Action::ChannelPost {
             channel: "team".into(),
@@ -132,6 +133,7 @@ async fn mcp_tool_firing_runs_the_real_tool_under_the_stored_principal() {
         ws,
         "schema",
         "* * * * *",
+        "",
         None,
         action,
         MON_JAN1_0000,
@@ -171,6 +173,7 @@ async fn outbox_firing_enqueues_a_real_effect_relayed_via_the_outbox() {
         ws,
         "notify",
         "* * * * *",
+        "",
         None,
         action,
         MON_JAN1_0000,
@@ -222,6 +225,7 @@ async fn a_re_scan_before_advance_fires_nothing_twice() {
         ws,
         "r1",
         "* * * * *",
+        "",
         None,
         Action::ChannelPost {
             channel: "team".into(),
@@ -259,6 +263,7 @@ async fn max_runs_counts_down_to_done() {
         ws,
         "bounded",
         "* * * * *",
+        "",
         Some(2),
         Action::ChannelPost {
             channel: "team".into(),
@@ -317,6 +322,7 @@ async fn disabled_is_skipped_and_resumes_at_the_next_future_slot() {
         ws,
         "paused",
         "* * * * *",
+        "",
         None,
         Action::ChannelPost {
             channel: "team".into(),
@@ -391,6 +397,7 @@ async fn a_due_during_outage_fires_exactly_once_on_catch_up() {
         ws,
         "catchup",
         "* * * * *", // every minute
+        "",
         None,
         Action::ChannelPost {
             channel: "team".into(),
@@ -437,6 +444,7 @@ async fn a_ws_b_reactor_never_fires_or_advances_a_ws_a_reminder() {
         "react-iso-a",
         "secret",
         "* * * * *",
+        "",
         None,
         Action::ChannelPost {
             channel: "team".into(),
@@ -486,6 +494,7 @@ async fn recurring_multi_day_schedule_on_the_injected_clock() {
         ws,
         "multiday",
         "0 8 * * 0,1",
+        "",
         None,
         Action::ChannelPost {
             channel: "team".into(),

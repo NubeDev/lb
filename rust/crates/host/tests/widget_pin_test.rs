@@ -98,6 +98,7 @@ async fn seed_reminder(node: &Arc<Node>, ws: &str, principal: &Principal, id: &s
         ws,
         id,
         "0 9 * * *", // a valid cron
+        "",
         None,
         ReminderAction::ChannelPost {
             channel: "ops".into(),

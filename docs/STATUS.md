@@ -4236,6 +4236,18 @@ still pins `node-v0.26.0`.
 
 ---
 
+## 2026-10-12 — a reminder fires at its own zone's clock time (BUILT, unreleased)
+
+Branch `feat/reminder-timezone`. Every cron was read in UTC, so a product host's "Daily at
+9:00 AM" fired at 09:00 UTC. The reminder record now carries `tz` (IANA name, blank = UTC, absent
+on the wire for an old row); `lb-reminders::next_after_in` reads the cron in that zone through
+croner's generic `find_next_occurrence` (`chrono-tz`), and `reminder.create` / `reminder.update`
+take `tz` (an unknown name is `BadInput` at save; a zone change re-anchors like a reschedule). The
+reactor advances in the record's zone, so 9 AM stays 9 AM across DST. Packs, the flow cron and the
+rule preview stay UTC. Session: `sessions/reminders/reminder-timezone-session.md`.
+
+---
+
 ## How to keep this current
 
 Every session that changes state updates the relevant cell here as its **last step**
