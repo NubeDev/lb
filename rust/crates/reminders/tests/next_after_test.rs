@@ -84,3 +84,54 @@ fn bad_cron_is_rejected_and_valid_is_accepted() {
     assert!(!is_valid("99 8 * * *")); // minute out of range
     assert!(next_after("garbage", 0).is_err());
 }
+
+// ---- the schedule's own zone (`next_after_in`) -------------------------------------------------
+// "0 9 * * *" in Australia/Sydney is 09:00 Sydney wall-clock, which in January (AEDT, UTC+11) is
+// 22:00 UTC the previous day. The anchors below are all plain UTC-second instants.
+
+use lb_reminders::{is_valid_tz, next_after_in};
+
+const MON_JAN1_0900_UTC: u64 = 1_704_099_600; // Mon 2024-01-01 09:00:00 UTC
+const MON_JAN1_2200_UTC: u64 = 1_704_146_400; // Mon 2024-01-01 22:00:00 UTC = Tue 09:00 AEDT
+
+#[test]
+fn a_zone_reads_the_cron_hour_in_that_zone() {
+    // From Mon 00:00 UTC (= Mon 11:00 AEDT, already past 09:00 Sydney), the next 09:00 Sydney is
+    // Tue 09:00 AEDT = Mon 22:00 UTC — not Mon 09:00 UTC, which is what the UTC reading gives.
+    assert_eq!(
+        next_after_in("0 9 * * *", MON_JAN1_0000, "Australia/Sydney").unwrap(),
+        MON_JAN1_2200_UTC
+    );
+    assert_eq!(
+        next_after_in("0 9 * * *", MON_JAN1_0000, "UTC").unwrap(),
+        MON_JAN1_0900_UTC
+    );
+}
+
+#[test]
+fn an_empty_zone_is_utc_and_matches_next_after() {
+    assert_eq!(
+        next_after_in("0 8 * * 1", MON_JAN1_0000, "").unwrap(),
+        next_after("0 8 * * 1", MON_JAN1_0000).unwrap()
+    );
+}
+
+#[test]
+fn the_weekday_field_follows_the_zone_too() {
+    // "0 8 * * 1" (Mondays 08:00) in Sydney from Mon 00:00 UTC (Mon 11:00 AEDT, past 08:00): the
+    // next is the FOLLOWING Monday 08:00 AEDT = Sun 2024-01-07 21:00 UTC.
+    const SUN_JAN7_2100_UTC: u64 = 1_704_661_200;
+    assert_eq!(
+        next_after_in("0 8 * * 1", MON_JAN1_0000, "Australia/Sydney").unwrap(),
+        SUN_JAN7_2100_UTC
+    );
+}
+
+#[test]
+fn an_unknown_zone_is_refused_by_name() {
+    let err = next_after_in("0 9 * * *", MON_JAN1_0000, "Mars/Olympus").unwrap_err();
+    assert!(err.to_string().contains("Mars/Olympus"), "got {err}");
+    assert!(!is_valid_tz("Mars/Olympus"));
+    assert!(is_valid_tz(""));
+    assert!(is_valid_tz("Australia/Sydney"));
+}

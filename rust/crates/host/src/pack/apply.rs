@@ -522,6 +522,8 @@ async fn apply_reminder(
         ws,
         &r.id,
         &r.schedule,
+        // A pack manifest states no zone: its cron is UTC, as every pack-seeded schedule has been.
+        "",
         r.max_runs,
         super::reminder_action::to_action(r),
         ts,

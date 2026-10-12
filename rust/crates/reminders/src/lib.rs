@@ -9,7 +9,8 @@
 //! - [`save`] — upsert a reminder (create/update share it; idempotent on `id`).
 //! - [`load`] — read by id (`None` cross-workspace — isolation).
 //! - [`list`] / [`due`] — the `list` read + the reactor's due-now scan.
-//! - [`next_after`] — the cron "next after T" math on the injected clock.
+//! - [`next_after`] / [`next_after_in`] — the cron "next after T" math on the injected clock, in
+//!   UTC or in the schedule's own IANA zone.
 
 mod error;
 mod load;
@@ -21,7 +22,7 @@ mod scan;
 pub use error::ReminderError;
 pub use load::load;
 pub use model::{Action, Reminder, ReminderStatus};
-pub use next_after::{is_valid, next_after};
+pub use next_after::{is_valid, is_valid_tz, next_after, next_after_in};
 pub use save::save;
 pub use scan::{due, list};
 

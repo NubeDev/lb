@@ -90,6 +90,11 @@ UI never asks a human to type cron: it renders a **React cron-builder** componen
 - **CRUD:** `reminder.create` / `reminder.update` / `reminder.delete` — the write verbs (one
   tool + capability + file each, FILE-LAYOUT). `update` covers pause/resume (`enabled`) and
   re-scheduling. These are bounded, always-fast single-record writes — synchronous, not jobs.
+  Both write verbs take an optional `tz` (an IANA zone name): the cron's hour/day fields are read
+  in that zone, DST included, so `0 9 * * *` in `Australia/Sydney` is 09:00 Sydney every day.
+  Absent or blank = UTC, which is what every record written before the field existed means; an
+  unknown name is a `BadInput` at save time. A `tz` change re-anchors `next_attempt_ts` exactly
+  like a schedule change (2026-10-12).
 - **Get / list:** `reminder.get` (by id) and `reminder.list` (ws-scoped, filter by
   enabled/kind/channel). Read capability `mcp:reminder.list:call`.
 - **Live feed:** N/A for v1. A reminder's *effects* are observable where they land (the channel

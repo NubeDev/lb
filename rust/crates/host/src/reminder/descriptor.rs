@@ -36,6 +36,8 @@ pub(crate) fn create_schema() -> Value {
         "properties": {
             "schedule": { "type": "string",
                 "x-lb": { "widget": "cron", "label": "Schedule", "description": "When the reminder fires (cron)" } },
+            "tz": { "type": "string",
+                "x-lb": { "label": "Timezone", "description": "The zone the schedule's clock time is read in (IANA name; blank = UTC)" } },
             "action_kind": {
                 "type": "string",
                 "x-lb": { "widget": "select", "options": ["channel-post", "mcp-tool", "outbox"],

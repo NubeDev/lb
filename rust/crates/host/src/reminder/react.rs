@@ -27,7 +27,7 @@
 use std::sync::Arc;
 
 use lb_jobs::{create, load, Job};
-use lb_reminders::{due, next_after, save, Reminder, ReminderError, ReminderStatus};
+use lb_reminders::{due, next_after_in, save, Reminder, ReminderError, ReminderStatus};
 use serde_json::json;
 
 use super::fire::{fire_job_id, fire_reminder, FIRE_KIND};
@@ -119,7 +119,8 @@ async fn advance(
     } else {
         // Fire-once-then-skip: the next fire is the next future slot after NOW (not after the
         // missed instant), so a long outage yields one fire + one advance, never a backfill storm.
-        reminder.next_attempt_ts = next_after(&reminder.schedule, now)?;
+        // Read in the schedule's own zone, so "9 AM" stays 9 AM across a DST change.
+        reminder.next_attempt_ts = next_after_in(&reminder.schedule, now, &reminder.tz)?;
     }
     reminder.ts = now;
     save(store, ws, &reminder).await?;
@@ -139,7 +140,7 @@ async fn reschedule(
     mut reminder: Reminder,
     now: u64,
 ) -> Result<(), ReminderError> {
-    reminder.next_attempt_ts = next_after(&reminder.schedule, now)?;
+    reminder.next_attempt_ts = next_after_in(&reminder.schedule, now, &reminder.tz)?;
     reminder.ts = now;
     save(store, ws, &reminder).await?;
     Ok(())

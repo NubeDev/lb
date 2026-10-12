@@ -76,6 +76,7 @@ async fn a_revoked_action_grant_is_a_logged_deny_with_no_effect() {
         ws,
         "revoked",
         "* * * * *",
+        "",
         None,
         Action::ChannelPost {
             channel: "team".into(),
@@ -172,6 +173,7 @@ async fn a_firing_resolves_the_authors_grants_under_the_bare_handle_the_store_ke
         ws,
         "bare",
         "* * * * *",
+        "",
         None,
         Action::ChannelPost {
             channel: "team".into(),

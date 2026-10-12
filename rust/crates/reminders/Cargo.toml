@@ -15,6 +15,9 @@ thiserror.workspace = true
 # crate layer that interprets the cron string — everything downstream is shipped machinery.
 croner.workspace = true
 chrono.workspace = true
+# The IANA zone a schedule is read in (`next_after_in`): "0 9 * * *" in Australia/Sydney is a
+# different instant from the same cron in UTC. Parsed by name; an unknown zone is a refusal.
+chrono-tz.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
