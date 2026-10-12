@@ -42,9 +42,15 @@ pub(super) const REPORT: &[HostTool] = &[
                       can set an Authorization header, and takes the same optional options. \
                       options: { paper (a4|a3|a5|letter|legal|tabloid), orientation \
                       (portrait|landscape), marginXMm, marginTopMm, marginBottomMm, scale, \
-                      pageNumbers, index } — every field optional; omitted composes the shipped A4 \
-                      portrait document byte-for-byte. An unknown paper/orientation is a 400 naming \
-                      the field, never a silent A4. Own cap: mcp:report.export:call",
+                      pageNumbers, index, cover (false drops the cover page), brandId (which \
+                      brand supplies logo/colours/fonts; empty or unreadable = the neutral default), \
+                      letterhead { topLeft, topRight, bottomLeft, bottomRight } (text per page \
+                      corner on every body page; the renderer fills ${__logo}, ${__report.page} \
+                      and ${__report.pages}, the caller resolves everything else first), logo (an \
+                      inline data:image URI drawn only when the brand supplies no logo) } — every \
+                      field optional; omitted composes the shipped A4 portrait document \
+                      byte-for-byte. An unknown paper/orientation is a 400 naming the field, never \
+                      a silent A4. Own cap: mcp:report.export:call",
     },
     // brand.* — the reusable brand-profile asset (reports scope).
     HostTool {

@@ -3951,6 +3951,12 @@ pages, this slice) (+ `public/SCOPE.md`).
 
 ## Next up
 
+00. **Reports — cover switch, brand pick and a letterhead on `report.export`. BUILT 2026-10-12 on
+    `feat/report-letterhead`, NOT TAGGED.** Three additive `ExportOptions` fields (`cover`, `brandId`,
+    `letterhead`) plus `logo` (a fallback when the brand has none); absent ⇒ the shipped document byte
+    for byte. Also bundles six brand font families (+~0.6 MB; `render/fonts/README.md`). Session:
+    `docs/sessions/reports/report-letterhead-session.md`.
+
 00. **Reports — authored page breaks + a real export-options contract. BUILT 2026-08-27 on
     `feat/report-pagination-and-export-options`, NOT TAGGED.** Scope:
     `docs/scope/reports/report-pagination-and-export-options-scope.md`; session:

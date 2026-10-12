@@ -18,7 +18,7 @@
 //! One responsibility: the export's option vocabulary and what it resolves to.
 
 use lb_render::geometry::PageGeometry;
-use lb_render::RenderOptions;
+use lb_render::{Letterhead, RenderOptions};
 use serde::{Deserialize, Serialize};
 
 use super::error::ReportError;
@@ -56,6 +56,31 @@ pub struct ExportOptions {
     pub page_numbers: bool,
     /// Prepend a table-of-contents index page. Likewise.
     pub index: bool,
+    /// Print the cover page. Absent ⇒ the cover that has always shipped; only an explicit `false`
+    /// drops it. An `Option` rather than a `bool` for exactly that reason: a `bool` defaults to
+    /// `false`, which would silently remove the cover from every caller that never heard of this.
+    pub cover: Option<bool>,
+    /// Which brand supplies the logo, colours and fonts. Empty ⇒ the neutral default, as shipped;
+    /// an id that does not resolve under the caller's grant is the same default, never a failure.
+    pub brand_id: String,
+    /// The four corners printed on every body page. Absent ⇒ the brand's running header/footer.
+    pub letterhead: Option<LetterheadOptions>,
+    /// A logo of LAST RESORT, as an inline `data:image/...;base64,...` URI: drawn only when the brand
+    /// supplies none. For a caller that keeps a workspace logo somewhere this host does not read.
+    /// Empty ⇒ none. Validated by `report/logo.rs` (`fallback_logo`).
+    pub logo: String,
+}
+
+/// The wire shape of a letterhead: one text per page corner, every one optional. The caller has
+/// already resolved its own variables; `${__logo}`, `${__report.page}` and `${__report.pages}` are
+/// the renderer's to fill, because only it holds the logo bytes and the laid-out page count.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LetterheadOptions {
+    pub top_left: String,
+    pub top_right: String,
+    pub bottom_left: String,
+    pub bottom_right: String,
 }
 
 impl ExportOptions {
@@ -140,7 +165,26 @@ impl ExportOptions {
         RenderOptions {
             page_numbers: self.page_numbers,
             index: self.index,
+            no_cover: self.cover == Some(false),
         }
+    }
+
+    /// The letterhead the renderer draws, or `None` to keep the brand's own running bands. A
+    /// letterhead whose four corners are all blank is `None` too — an author who cleared every box
+    /// meant "no letterhead", not "erase the header and footer".
+    #[must_use]
+    pub fn letterhead(&self) -> Option<Letterhead> {
+        let l = self.letterhead.as_ref()?;
+        let all = [&l.top_left, &l.top_right, &l.bottom_left, &l.bottom_right];
+        if all.iter().all(|c| c.trim().is_empty()) {
+            return None;
+        }
+        Some(Letterhead {
+            top_left: l.top_left.clone(),
+            top_right: l.top_right.clone(),
+            bottom_left: l.bottom_left.clone(),
+            bottom_right: l.bottom_right.clone(),
+        })
     }
 }
 
@@ -188,6 +232,7 @@ mod tests {
             scale: Some(2.0),
             page_numbers: false,
             index: false,
+            ..ExportOptions::default()
         };
         assert_eq!(
             spelled.geometry().unwrap(),
@@ -296,5 +341,33 @@ mod tests {
         assert_eq!(parsed.margin_x_mm, Some(10.0));
         assert!(parsed.page_numbers);
         assert!(!parsed.index);
+    }
+
+    /// The three letterhead-era fields ride the same camelCase wire, and each has an absent state
+    /// that is the document that shipped.
+    #[test]
+    fn cover_brand_and_letterhead_parse_and_default_to_the_shipped_document() {
+        let absent = ExportOptions::default();
+        assert!(!absent.render_options().no_cover);
+        assert_eq!(absent.letterhead(), None);
+
+        let parsed: ExportOptions = serde_json::from_str(
+            r#"{"cover":false,"brandId":"acme","letterhead":{"topLeft":"${__logo}"}}"#,
+        )
+        .unwrap();
+        assert!(parsed.render_options().no_cover);
+        assert_eq!(parsed.brand_id, "acme");
+        assert_eq!(parsed.letterhead().unwrap().top_left, "${__logo}");
+
+        let on: ExportOptions = serde_json::from_str(r#"{"cover":true}"#).unwrap();
+        assert!(!on.render_options().no_cover);
+
+        let blank: ExportOptions =
+            serde_json::from_str(r#"{"letterhead":{"topLeft":"  "}}"#).unwrap();
+        assert_eq!(
+            blank.letterhead(),
+            None,
+            "four blank corners are no letterhead"
+        );
     }
 }

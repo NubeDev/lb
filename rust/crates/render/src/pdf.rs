@@ -13,6 +13,7 @@ use typst_layout::PagedDocument;
 use crate::chrome::{cover_page, index_block, running_footer, running_header};
 use crate::convert::{markdown_to_typst, typst_string};
 use crate::error::RenderError;
+use crate::letterhead::{BandStyle, footer_band, header_band};
 use crate::model::Assembled;
 use crate::place::placed_page;
 use crate::world::RenderWorld;
@@ -111,15 +112,33 @@ fn build_template(a: &Assembled, logo_path: Option<&str>, body: &str) -> String 
     // ---- Page geometry + running header/footer (body pages) ---------------
     // The cover suppresses both bands via a page-local `#set page(..)` override,
     // so these only ever decorate body pages.
-    let header = running_header(&a.brand.header_text, &muted, &rule);
-    let footer = running_footer(&a.brand.footer_text, &muted, &rule, a.options.page_numbers);
+    let (header, footer) = match &a.letterhead {
+        Some(l) => {
+            let style = BandStyle {
+                font: &body_font,
+                muted: &muted,
+                rule: &rule,
+            };
+            (
+                header_band(&l.top_left, &l.top_right, logo_path, &style),
+                footer_band(&l.bottom_left, &l.bottom_right, logo_path, &style),
+            )
+        }
+        None => (
+            running_header(&a.brand.header_text, &muted, &rule),
+            running_footer(&a.brand.footer_text, &muted, &rule, a.options.page_numbers),
+        ),
+    };
     // The page box comes from `a.page` rather than a literal `paper: "a4"`: an export can ask for
     // another paper, and the placements it carries were computed against THAT box. Emitted as explicit
     // millimetres instead of a Typst paper NAME so the two sides cannot disagree about what "a4" is —
     // the mm are the same numbers `cell_rect_mm_on_page` placed against.
     let g = a.page;
+    // A letterhead can stack three lines and a logo, so it sits lower in the top margin than the
+    // one-line brand header does — otherwise its first line prints against the paper's edge.
+    let ascent = if a.letterhead.is_some() { "20%" } else { "40%" };
     out.push_str(&format!(
-        "#set page(width: {}mm, height: {}mm, margin: (x: {}mm, top: {}mm, bottom: {}mm), fill: {background}, header: {header}, header-ascent: 40%, footer: {footer}, footer-descent: 40%)\n",
+        "#set page(width: {}mm, height: {}mm, margin: (x: {}mm, top: {}mm, bottom: {}mm), fill: {background}, header: {header}, header-ascent: {ascent}, footer: {footer}, footer-descent: 40%)\n",
         g.w_mm, g.h_mm, g.margin_x_mm, g.margin_top_mm, g.margin_bottom_mm
     ));
 
@@ -167,7 +186,9 @@ fn build_template(a: &Assembled, logo_path: Option<&str>, body: &str) -> String 
     ));
 
     // ---- Cover page -------------------------------------------------------
-    out.push_str(&cover_page(a, logo_path, &primary, &accent, &muted, &rule));
+    if !a.options.no_cover {
+        out.push_str(&cover_page(a, logo_path, &primary, &accent, &muted, &rule));
+    }
 
     // ---- Optional index (table of contents) on its own page --------------
     if a.options.index {
@@ -312,6 +333,7 @@ mod tests {
         .with_options(RenderOptions {
             page_numbers: true,
             index: true,
+            ..RenderOptions::default()
         });
         // The generated template must compile to a real PDF with both the page
         // counter (footer grid) and the index page present.

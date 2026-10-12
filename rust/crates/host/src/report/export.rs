@@ -21,6 +21,7 @@ use lb_store::Store;
 use super::authorize::authorize_report;
 use super::compose::compose_pages;
 use super::error::ReportError;
+use super::logo::{fallback_logo, inline_logo};
 use super::options::ExportOptions;
 use super::rendered::RenderedPanel;
 use crate::brand::{brand_get, Brand};
@@ -56,6 +57,7 @@ pub async fn report_export(
     // Resolve the page BEFORE the record read. A malformed `paper` is the caller's mistake and owes
     // them an immediate, named 400 — not a read, a brand resolve and a Typst compile first.
     let geo = options.geometry()?;
+    let fallback = fallback_logo(&options.logo)?;
 
     // Read + hydrate through the dashboard verb — its own three gates re-run under this principal,
     // so export grants no read it did not already have (the exporter also needs `dashboard.get`).
@@ -69,10 +71,9 @@ pub async fn report_export(
         )));
     }
 
-    // Reports carry no brand id of their own, so the workspace's default brand applies. `resolve_brand`
-    // already treats an empty id as "the default", and a report's branding is a workspace decision,
-    // not a per-page one.
-    let brand = resolve_brand(store, principal, ws, "").await;
+    // The brand is the export's to pick (`options.brandId`): a report record carries none of its own.
+    // Empty — every caller before the option existed — resolves to the neutral default, as shipped.
+    let brand = resolve_brand(store, principal, ws, &options.brand_id).await;
 
     let mut assembled = Assembled::default();
     assembled.title.clone_from(&report.title);
@@ -81,15 +82,28 @@ pub async fn report_export(
     // The two toggles the renderer has always implemented and that nothing ever set. THIS is the line
     // that turns page numbers and the index from dead code into features.
     assembled.options = options.render_options();
+    assembled.letterhead = options.letterhead();
 
-    // Brand logo bytes → the render logo (best-effort; a missing/unreadable logo just drops it).
-    if !brand.logo_asset_id.is_empty() {
+    // Brand logo bytes → the render logo (best-effort; a missing/unreadable logo just drops it). A
+    // brand's `logo_asset_id` is EITHER an asset id or an inline `data:` URI — the brand editor stores
+    // a small logo inline — so the inline form is decoded here rather than looked up as an asset it
+    // is not, which is how an uploaded logo used to print nothing.
+    if let Some((mime, bytes)) = inline_logo(&brand.logo_asset_id) {
+        assembled.logo = Some(ImageAsset::new("logo", logo_filename(&mime), bytes));
+    } else if !brand.logo_asset_id.is_empty() {
         if let Ok(asset) = crate::get_asset(store, principal, ws, &brand.logo_asset_id).await {
             assembled.logo = Some(ImageAsset::new(
                 "logo",
                 logo_filename(&asset.mime),
                 asset.bytes,
             ));
+        }
+    }
+    // The caller's logo of last resort — only when the brand drew none (no brand picked, a brand
+    // with no logo, or one unreadable under this grant). A brand's own logo always wins.
+    if assembled.logo.is_none() {
+        if let Some((mime, bytes)) = fallback {
+            assembled.logo = Some(ImageAsset::new("logo", logo_filename(&mime), bytes));
         }
     }
 
