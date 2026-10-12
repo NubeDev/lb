@@ -77,13 +77,14 @@ pub(crate) fn build(
         }
     }
 
-    // A severity FLOOR, expanded here rather than compared in SQL: the stored value is a lowercase
-    // word, and words do not order by severity ("critical" < "info" as bytes). The set is closed and
-    // tiny, so listing the members that pass the floor is both correct and index-friendly.
-    if let Some(floor) = filter.severity {
+    // A severity FLOOR (or, with `severity_exact`, that one severity), expanded here rather than
+    // compared in SQL: the stored value is a lowercase word, and words do not order by severity
+    // ("critical" < "info" as bytes). The set is closed and tiny, so listing the members that pass
+    // is both correct and index-friendly.
+    if let Some(asked) = filter.severity {
         let allowed: Vec<Value> = [Severity::Info, Severity::Warning, Severity::Critical]
             .into_iter()
-            .filter(|s| s.at_least(floor))
+            .filter(|s| filter.severity_passes(*s, asked))
             .map(json_of)
             .collect();
         w.preds.push("data.severity IN $sevs".into());
