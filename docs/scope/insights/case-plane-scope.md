@@ -126,7 +126,7 @@ not violated by lb knowing the five.
 | verb | cap | gate alias | does |
 |---|---|---|---|
 | `tags.add` / `tags.remove` / `tags.of` / `tags.find` | `tags.add` / `tags.remove` / `tags.find` / `tags.find` | `tags.of → tags.find` | the dispatcher door; `tags.add` with `source: "human"` is the human-correction write |
-| `case.get` / `case.list` | `case.get` / `case.list` | — | `list` takes `lane ∈ {mine, waiting, watching}`, filters, sorts `due_at` asc then severity desc, returns member **count** |
+| `case.get` / `case.list` | `case.get` / `case.list` | — | `list` takes `lane ∈ {mine, waiting, watching}`, filters (incl. `ids`, ≤ 200, for a caller that already knows its cases), sorts `due_at` asc then severity desc, returns member **count**. The engine reads open cases only unless `include_closed`, and the shipped rows' counts in one grouped read |
 | `case.assignees` | `case.list` | → `case.list` | the assign picker's roster: the caller, their teams, and the members of those teams. A **suggestion list, not an allow-list** — `validate_assignee` accepts a wider set on purpose |
 | `case.members` / `case.events` | `case.get` | both → `case.get` | the drawer's two lists, paged. `members` **echoes** each cited insight's `title` + `severity` — see below |
 | `case.open` | `case.open` | — | human-opened over ≥1 insight; the reactor's internal call |
