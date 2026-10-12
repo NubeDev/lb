@@ -183,6 +183,10 @@ pub struct ListQuery {
     /// For a roster's per-value cards and its grouped sections. A plain lowercase identifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag_counts: Option<String>,
+    /// Also return the per-severity tally (`severity_counts` on the reply); needs `counts`. See
+    /// `severity_tally.rs`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub severity_counts: bool,
 }
 
 fn default_limit() -> usize {
@@ -210,6 +214,9 @@ pub struct ListPage {
     /// applied), `""` counting those without it. Present iff that key and `counts` were both asked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag_counts: Option<BTreeMap<String, u64>>,
+    /// Per-severity tally, present iff [`ListQuery::severity_counts`] and `counts` were asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub severity_counts: Option<BTreeMap<String, u64>>,
 }
 
 /// List insights in workspace `ws` matching `query`, newest-first, keyset-paged.
@@ -264,7 +271,8 @@ pub async fn list(
     // it, and the aggregate is answered by the engine either way. Anything else pages as before.
     // With a case lens the per-stage tally needs the rows (the stage is looked up per case id), so
     // a counts-only read takes the scan path below and simply returns no rows.
-    if query.limit == 0 && f.case.is_none() && query.tag_counts.is_none() {
+    if query.limit == 0 && f.case.is_none() && query.tag_counts.is_none() && !query.severity_counts
+    {
         let counts = if query.counts {
             Some(crate::count::count(store, ws, f, tag_allow, assignee).await?)
         } else {
@@ -276,6 +284,7 @@ pub async fn list(
             counts,
             case_counts: None,
             tag_counts: None,
+            severity_counts: None,
         });
     }
 
@@ -317,16 +326,18 @@ pub async fn list(
             counts: None,
             case_counts: None,
             tag_counts: None,
+            severity_counts: None,
         });
     }
 
     // ONE query. Every axis EXCEPT status — the tally is the per-status breakdown, so narrowing by
     // status first would zero three of its four numbers. It comes back already ordered, so the page
     // below is a slice rather than a second sort.
+    let scan_filter = crate::severity_tally::scan_filter(f, query.counts && query.severity_counts);
     let matched: Vec<Insight> = crate::list_page::read_all_matching(
         store,
         ws,
-        f,
+        &scan_filter,
         tag_allow,
         assignee,
         crate::table_scan::MAX_ROWS,
@@ -334,11 +345,6 @@ pub async fn list(
     )
     .await?
     .into_iter()
-    .filter(|i| {
-        f.severity
-            .map(|s| f.severity_passes(i.severity, s))
-            .unwrap_or(true)
-    })
     .filter(|i| {
         f.origin_ref
             .as_ref()
@@ -361,6 +367,17 @@ pub async fn list(
     })
     .filter(|i| f.case.as_ref().map(|c| c.allows(i)).unwrap_or(true))
     .collect();
+
+    let severity_counts =
+        (query.counts && query.severity_counts).then(|| crate::severity_tally::tally(&matched, f));
+    let matched: Vec<Insight> = matched
+        .into_iter()
+        .filter(|i| {
+            f.severity
+                .map(|s| f.severity_passes(i.severity, s))
+                .unwrap_or(true)
+        })
+        .collect();
 
     // The two "own axis" filters, applied below AFTER each tally that ignores its own one.
     let status_ok = |i: &Insight| f.status.map(|s| i.status == s).unwrap_or(true);
@@ -470,5 +487,6 @@ pub async fn list(
         counts,
         case_counts,
         tag_counts,
+        severity_counts,
     })
 }

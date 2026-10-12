@@ -130,6 +130,7 @@ fn query(search: &str, filter: ListFilter, counts: bool) -> ListQuery {
         counts,
         sort: None,
         tag_counts: None,
+        severity_counts: false,
     }
 }
 
@@ -271,6 +272,7 @@ async fn with_no_columns_configured_the_search_is_the_title_alone() {
         counts: false,
         sort: None,
         tag_counts: None,
+        severity_counts: false,
     };
     assert_eq!(
         titles(&store, title_only("spike")).await,

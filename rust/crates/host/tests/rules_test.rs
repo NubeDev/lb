@@ -617,6 +617,7 @@ async fn count_insights(node: &Arc<Node>, p: &Principal, ws: &str) -> usize {
             counts: false,
             sort: None,
             tag_counts: None,
+            severity_counts: false,
         },
         &Default::default(),
     )
@@ -639,6 +640,7 @@ async fn first_insight_id(node: &Arc<Node>, p: &Principal, ws: &str) -> String {
             counts: false,
             sort: None,
             tag_counts: None,
+            severity_counts: false,
         },
         &Default::default(),
     )
