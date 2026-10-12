@@ -9,6 +9,10 @@
 //! itself). One gesture, one verb, and no state where `snooze_until` is in the past but the case
 //! still reads as parked.
 //!
+//! **The end of a snooze is the end of the park.** Whichever way it ends — un-snooze, expiry (the
+//! host's sweep calls the un-snooze gesture once `until` has passed) or a puncture — an `actioned`
+//! case goes back to `to_action` ([`crate::snooze_release`]): parked work is waiting work again.
+//!
 //! [`puncture_snooze`] is the third gesture and the one that matters most: a **severity escalation
 //! punctures a snooze**. A case somebody parked as "watch it next quarter" that has since become
 //! critical is not still parked — leaving it hidden is how a snooze turns into a way to lose a
@@ -41,6 +45,7 @@ pub async fn snooze(
     };
 
     let unsnoozing = until <= ts;
+    let was_snoozed = case.snooze_until.is_some();
     if !unsnoozing && reason.map(str::trim).unwrap_or("").is_empty() {
         return Err(CasesError::BadInput(
             "case.snooze requires a `reason` — a parked case with no stated reason is an \
@@ -74,6 +79,9 @@ pub async fn snooze(
         ts,
     )
     .await?;
+    if unsnoozing && was_snoozed {
+        return crate::snooze_release::release_to_action(store, ws, case, actor, ts).await;
+    }
     Ok(case)
 }
 
@@ -122,5 +130,10 @@ pub async fn puncture_snooze(
         ts,
     )
     .await?;
+    if was_snoozed {
+        return crate::snooze_release::release_to_action(store, ws, case, actor, ts)
+            .await
+            .map(Some);
+    }
     Ok(Some(case))
 }

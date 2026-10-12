@@ -1,8 +1,8 @@
 //! The case-reconcile loop driver (case-plane scope).
 //!
-//! One detached tick per node drives [`super::reconcile_cases`], [`super::backfill_case_facets`] and
-//! [`super::close_self_cleared_cases`] for each workspace, modelled on
-//! `insight/reactor.rs::spawn_insight_digest_reactors` — role/config placement under the
+//! One detached tick per node drives [`super::reconcile_cases`], [`super::backfill_case_facets`],
+//! [`super::release_expired_snoozes`] and [`super::close_self_cleared_cases`] for each workspace,
+//! modelled on `insight/reactor.rs::spawn_insight_digest_reactors` — role/config placement under the
 //! `BootConfig::reactors` toggle, not a runtime election. The pass is idempotent, so the idempotence
 //! IS the backstop against accidental double-drive; there is nothing to elect.
 //!
@@ -46,7 +46,18 @@ pub fn spawn_case_reactors(node: Arc<Node>, workspaces: Vec<String>, period: Dur
                         tracing::warn!(%ws, error = %format!("{e:?}"), "case facet backfill tick failed")
                     }
                 }
-                // Last, so it judges cases the two passes above have just opened or repaired. A policy
+                // Before self-clear: a snooze that has run out is a case back in the queue, and
+                // self-clear must see it as it now stands.
+                match super::release_expired_snoozes(&node, ws, now).await {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        tracing::info!(%ws, released = n, "snooze expiry: expired snoozes ended")
+                    }
+                    Err(e) => {
+                        tracing::warn!(%ws, error = %format!("{e:?}"), "snooze expiry tick failed")
+                    }
+                }
+                // Last, so it judges cases the passes above have just opened, repaired or released. A policy
                 // that has not opted in costs one policy read and nothing else.
                 match super::close_self_cleared_cases(&node, ws, now).await {
                     Ok(0) => {}

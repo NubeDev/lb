@@ -287,10 +287,10 @@ pub use case::{
     case_request_attach, case_request_authenticate, case_request_list, case_request_nudge,
     case_request_reply, case_request_send, case_request_view, case_request_withdraw, case_snooze,
     case_split, case_workflow, close_self_cleared_cases, group_insight, hash_request_token,
-    reconcile_cases, reopen_if_held, rule_scorecard, spawn_case_reactors, workspace_of_token,
-    AssigneeTeam, Assignees, AttachmentReceipt, CaseSvcError, ReplyReceipt, RequestTokenError,
-    RequestView, GROUP_ACTOR, PARTY_SUB_PREFIX, REPLY_CAP, SELF_CLEAR_ACTOR, UNKNOWN_RULE_REF,
-    VIEW_CAP,
+    reconcile_cases, release_expired_snoozes, reopen_if_held, rule_scorecard, spawn_case_reactors,
+    workspace_of_token, AssigneeTeam, Assignees, AttachmentReceipt, CaseSvcError, ReplyReceipt,
+    RequestTokenError, RequestView, GROUP_ACTOR, PARTY_SUB_PREFIX, REPLY_CAP, SELF_CLEAR_ACTOR,
+    SNOOZE_EXPIRY_ACTOR, UNKNOWN_RULE_REF, VIEW_CAP,
 };
 pub use inbox::{list_inbox, record_inbox, record_inbox_with_meta, resolve_inbox, InboxError};
 pub use ingest::{
