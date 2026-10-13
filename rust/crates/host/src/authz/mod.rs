@@ -51,6 +51,6 @@ pub use tool::call_authz_tool;
 // The model types + the two seams admin-crud consumes — re-exported so host callers and the gateway
 // use one set (the same way `tags` re-exports its `lb_tags` value types).
 pub use lb_authz::{
-    resolve_caps, revoke_subject, token_revoked, CapSource, Grant, Role as AuthzRole, Scope,
-    ScopeFilter, SourcedCap, Subject, Team,
+    resolve_caps, revoke_subject, token_revoked, token_revoked_for, CapSource, Grant,
+    Role as AuthzRole, Scope, ScopeFilter, SourcedCap, Subject, Team,
 };

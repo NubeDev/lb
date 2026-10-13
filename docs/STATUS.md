@@ -4254,6 +4254,17 @@ rule preview stay UTC. Session: `sessions/reminders/reminder-timezone-session.md
 
 ---
 
+## 2026-10-13 — a removed member can come back (BUILT, unreleased)
+
+Branch `fix/token-revoke-readmit`. The live-token revoke marker never expired and nothing deleted it, so a
+member once removed (or whose sessions an admin ended) was refused on every request forever, even after
+being added back. The marker now carries `revoked_at`; the gateway refuses only tokens issued at or before
+it (`token_revoked_for`, by the verified token's `iat`), and `membership.add` clears the subject's marker.
+Undated markers from before keep refusing until the person is re-added. Session:
+`sessions/access-console/token-revoke-readmit-session.md`.
+
+---
+
 ## How to keep this current
 
 Every session that changes state updates the relevant cell here as its **last step**

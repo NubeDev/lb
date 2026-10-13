@@ -155,7 +155,7 @@ pub async fn revoke_tokens_route(
         .await
         .map_err(|e| e.into_response())?;
     let subject = parse_subject(&body.subject)?;
-    let revoked = revoke_tokens(&gw.node.store, &p, p.ws(), &subject)
+    let revoked = revoke_tokens(&gw.node.store, &p, p.ws(), &subject, gw.now())
         .await
         .map_err(forbid)?;
     Ok(Json(serde_json::json!({ "grants_revoked": revoked })))

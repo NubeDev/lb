@@ -26,11 +26,14 @@ pub async fn revoke_tokens(
     principal: &Principal,
     ws: &str,
     subject: &Subject,
+    now: u64,
 ) -> Result<usize, AuthzError> {
     authorize_tool(principal, ws, "authz.revoke-tokens").map_err(|_| AuthzError::Denied)?;
     // Live-token half: write the marker the verify path reads on the next request. First, so even a
     // subject with zero grants still has its current token refused.
-    token_revoke_mark(store, ws, subject).await?;
+    // Stamped `now`: only tokens issued up to this instant are refused, so the subject can sign in
+    // again (with whatever grants it still holds) instead of being locked out for good.
+    token_revoke_mark(store, ws, subject, now).await?;
     // Grant-revoke half: tombstone every grant (next-re-mint). Composes — does not duplicate.
     let revoked = revoke_subject(store, ws, subject).await?;
     Ok(revoked)
