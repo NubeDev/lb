@@ -101,7 +101,7 @@ pub async fn call_authz_tool(
             Ok(json!({ "caps": caps }))
         }
         "authz.revoke-tokens" => {
-            let revoked = revoke_tokens(store, principal, ws, &subject(input)?)
+            let revoked = revoke_tokens(store, principal, ws, &subject(input)?, now_or_wall(input))
                 .await
                 .map_err(authz_to_tool)?;
             Ok(json!({ "grants_revoked": revoked }))
@@ -172,4 +172,21 @@ pub(crate) fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolEr
         .get(key)
         .and_then(|v| v.as_str())
         .ok_or_else(|| ToolError::BadInput(format!("missing/!string arg: {key}")))
+}
+
+/// The revoke stamp for a marker written over MCP: the caller's `ts` (unix seconds) when it passes
+/// one, else the host's wall clock — the clock the gateway stamps tokens with, which is what the
+/// marker is compared against. A missing `ts` must NOT become `0`: a zero stamp means "refuse every
+/// token", the old lock-out-for-good behaviour.
+fn now_or_wall(input: &Value) -> u64 {
+    input
+        .get("ts")
+        .and_then(|v| v.as_u64())
+        .filter(|t| *t > 0)
+        .unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        })
 }

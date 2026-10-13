@@ -17,8 +17,8 @@
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, StatusCode};
 use lb_apikey::PREFIX;
-use lb_auth::{verify, Principal};
-use lb_host::{token_revoked, Subject};
+use lb_auth::{claims_unverified, verify, Principal};
+use lb_host::{token_revoked_for, Subject};
 
 use crate::state::Gateway;
 
@@ -69,12 +69,16 @@ pub async fn verify_token(gw: &Gateway, token: &str) -> Result<Principal, AuthRe
     if token.is_empty() {
         return Err(AuthRejection::Missing);
     }
-    let principal = if token.starts_with(PREFIX) {
+    let (principal, issued_at) = if token.starts_with(PREFIX) {
         // API-key path: the bearer carries its own workspace + key id, verified against the store.
-        authenticate_apikey(gw, token).await?
+        // An API key has no issue time, so a revoke marker refuses it by presence alone.
+        (authenticate_apikey(gw, token).await?, None)
     } else {
         // JWT path: verify signature + expiry with the node key at the gateway's clock.
-        verify(&gw.key, token, gw.now()).map_err(|_| AuthRejection::Invalid)?
+        let p = verify(&gw.key, token, gw.now()).map_err(|_| AuthRejection::Invalid)?;
+        // The signature is verified above, so the payload's `iat` is the node's own stamp — safe to
+        // compare against a revoke marker's time.
+        (p, claims_unverified(token).map(|c| c.iat))
     };
     // Live-token revoke (access-console scope): a per-(ws, subject) tombstone marker — written by
     // `authz.revoke-tokens` — refuses the subject's *current* (cached) token on the next request,
@@ -84,7 +88,7 @@ pub async fn verify_token(gw: &Gateway, token: &str) -> Result<Principal, AuthRe
     // opaque `Invalid` (indistinguishable from a genuinely expired/revoked credential — no oracle).
     // A store read error is deny-by-default-false here only to avoid a store outage locking out
     // everyone; a genuinely revoked subject whose marker read fails is still bounded by TTL/expiry.
-    if is_live_revoked(gw, &principal).await {
+    if is_live_revoked(gw, &principal, issued_at).await {
         return Err(AuthRejection::Invalid);
     }
     // Run-status gate (agent-key-lifecycle D3): a run-scoped token (carrying `run_id`) is refused
@@ -104,14 +108,16 @@ pub async fn verify_token(gw: &Gateway, token: &str) -> Result<Principal, AuthRe
     Ok(principal)
 }
 
-/// Did `authz.revoke-tokens` mark this principal's live token in its workspace? One read of the
-/// `token_revoke` marker, keyed by `(ws, subject)`. `false` if the sub does not parse to a known
-/// subject kind (nothing to revoke) or on a store read error (bounded by TTL — see `verify_token`).
-async fn is_live_revoked(gw: &Gateway, principal: &Principal) -> bool {
+/// Did `authz.revoke-tokens` (or `membership.remove`) mark this principal's token in its workspace?
+/// One read of the `token_revoke` marker, keyed by `(ws, subject)`, compared with the token's issue
+/// time: a token issued at or before the marker is refused, a fresh sign-in after it is not.
+/// `false` if the sub does not parse to a known subject kind (nothing to revoke) or on a store read
+/// error (bounded by TTL — see `verify_token`).
+async fn is_live_revoked(gw: &Gateway, principal: &Principal, issued_at: Option<u64>) -> bool {
     let Some(subject) = Subject::parse(principal.sub()) else {
         return false;
     };
-    token_revoked(&gw.node.store, principal.ws(), &subject)
+    token_revoked_for(&gw.node.store, principal.ws(), &subject, issued_at)
         .await
         .unwrap_or(false)
 }

@@ -215,7 +215,7 @@ async fn roster_and_login_path_agree_on_the_one_membership_source() {
     );
 
     // Removal keeps them in step: gone from the roster ⇒ gone from the login path.
-    membership_remove(&store, &admin, "nube", "user:ap")
+    membership_remove(&store, &admin, "nube", "user:ap", 1)
         .await
         .unwrap();
     assert!(
@@ -250,7 +250,7 @@ async fn membership_remove_revokes_grants_and_marks_token() {
         .unwrap();
     assert!(caps.iter().any(|c| c == "role:member"));
 
-    let revoked = membership_remove(&store, &admin, "nube", "user:bob")
+    let revoked = membership_remove(&store, &admin, "nube", "user:bob", 1)
         .await
         .unwrap();
     assert!(revoked >= 1, "role:member grant was revoked");
@@ -280,7 +280,7 @@ async fn removed_membership_tombstone_replays_idempotently() {
     membership_add(&store, &admin, "nube", "user:bob", 1)
         .await
         .unwrap();
-    membership_remove(&store, &admin, "nube", "user:bob")
+    membership_remove(&store, &admin, "nube", "user:bob", 1)
         .await
         .unwrap();
     // A stale synced edge re-applies the SAME remove tombstone (sync §6.8) — bob stays removed, not

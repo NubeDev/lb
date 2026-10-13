@@ -9,7 +9,8 @@ use std::collections::BTreeSet;
 use lb_assets::relate;
 use lb_authz::{
     grant_assign, resolve_caps, resolve_caps_sourced, resolve_subject_caps_sourced, role_define,
-    role_delete, team_create, token_revoke_mark, token_revoked, CapSource, Subject, MEMBER,
+    role_delete, team_create, token_revoke_clear, token_revoke_mark, token_revoked,
+    token_revoked_for, CapSource, Subject, MEMBER, TOKEN_REVOKE_TABLE,
 };
 use lb_store::Store;
 
@@ -155,7 +156,7 @@ async fn token_revoke_marker_round_trips_and_is_per_subject() {
         !token_revoked(&store, WS, &bob).await.unwrap(),
         "absent → not revoked"
     );
-    token_revoke_mark(&store, WS, &bob).await.unwrap();
+    token_revoke_mark(&store, WS, &bob, 1_000).await.unwrap();
     assert!(
         token_revoked(&store, WS, &bob).await.unwrap(),
         "marked → revoked"
@@ -163,8 +164,57 @@ async fn token_revoke_marker_round_trips_and_is_per_subject() {
     // per-subject: carol is unaffected.
     assert!(!token_revoked(&store, WS, &carol).await.unwrap());
     // idempotent re-mark.
-    token_revoke_mark(&store, WS, &bob).await.unwrap();
+    token_revoke_mark(&store, WS, &bob, 1_000).await.unwrap();
     assert!(token_revoked(&store, WS, &bob).await.unwrap());
+}
+
+#[tokio::test]
+async fn a_revoke_marker_ends_older_tokens_but_not_a_fresh_sign_in() {
+    let store = Store::memory().await.unwrap();
+    let bob = Subject::User("bob".into());
+    token_revoke_mark(&store, WS, &bob, 1_000).await.unwrap();
+    // A token issued before or at the revoke instant is refused…
+    assert!(token_revoked_for(&store, WS, &bob, Some(999))
+        .await
+        .unwrap());
+    assert!(token_revoked_for(&store, WS, &bob, Some(1_000))
+        .await
+        .unwrap());
+    // …one issued after it (a fresh sign-in) is not: the marker is not a permanent ban.
+    assert!(!token_revoked_for(&store, WS, &bob, Some(1_001))
+        .await
+        .unwrap());
+    // A credential with no issue time (an API key) is judged by presence alone.
+    assert!(token_revoked_for(&store, WS, &bob, None).await.unwrap());
+    // No marker at all → never refused.
+    let carol = Subject::User("carol".into());
+    assert!(!token_revoked_for(&store, WS, &carol, Some(1))
+        .await
+        .unwrap());
+}
+
+#[tokio::test]
+async fn an_undated_marker_refuses_everything_until_cleared() {
+    let store = Store::memory().await.unwrap();
+    let bob = Subject::User("bob".into());
+    // A marker written before markers carried a time: no `revoked_at` on the record.
+    lb_store::write(
+        &store,
+        WS,
+        TOKEN_REVOKE_TABLE,
+        &bob.as_key(),
+        &serde_json::json!({ "subject": bob.as_key() }),
+    )
+    .await
+    .unwrap();
+    assert!(token_revoked_for(&store, WS, &bob, Some(u64::MAX / 2))
+        .await
+        .unwrap());
+    // Clearing it (the re-admission path) lets every token through again; clearing twice is fine.
+    token_revoke_clear(&store, WS, &bob).await.unwrap();
+    token_revoke_clear(&store, WS, &bob).await.unwrap();
+    assert!(!token_revoked_for(&store, WS, &bob, Some(1)).await.unwrap());
+    assert!(!token_revoked(&store, WS, &bob).await.unwrap());
 }
 
 #[tokio::test]

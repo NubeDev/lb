@@ -8,7 +8,8 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{bearer, body_text, delete_req, gateway, get_req, json_body, json_post, token};
+use common::{bearer, body_text, delete_req, gateway, get_req, json_body, json_post, token, NOW};
+use lb_auth::{mint, Claims, Role};
 use lb_role_gateway::router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -215,6 +216,103 @@ async fn revoke_tokens_refuses_bobs_prior_token_on_next_verify() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK, "carol is unaffected");
+}
+
+/// A token for `sub` issued at `iat` — a sign-in that happens at a chosen moment relative to a revoke.
+fn token_at(key: &lb_auth::SigningKey, sub: &str, caps: &[&str], iat: u64) -> String {
+    mint(
+        key,
+        &Claims {
+            sub: sub.into(),
+            ws: "nube".into(),
+            role: Role::Member,
+            caps: caps.iter().map(|s| s.to_string()).collect(),
+            iat,
+            exp: NOW + 10_000,
+            constraint: None,
+            run_id: None,
+        },
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_sign_in_after_revoke_tokens_works_again() {
+    let (gw, key) = gateway().await;
+    let admin = token(&key, "user:alice", "nube", ADMIN);
+    let caps = &["mcp:workspace.list:call"];
+    let old = token_at(&key, "user:bob", caps, NOW - 1);
+
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            json_post(
+                "/admin/authz/revoke-tokens",
+                json!({ "subject": "user:bob" }),
+            ),
+            &admin,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The session that was live at the revoke is ended…
+    let resp = router(gw.clone())
+        .oneshot(bearer(get_req("/workspaces"), &old))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "the pre-revoke token is refused"
+    );
+
+    // …but a sign-in AFTER it is a new session and is not refused: revoke-tokens ends sessions, it
+    // is not a permanent ban (that is what removing the member is for).
+    let fresh = token_at(&key, "user:bob", caps, NOW + 5);
+    let resp = router(gw)
+        .oneshot(bearer(get_req("/workspaces"), &fresh))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "a post-revoke sign-in works");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_removed_member_who_is_added_back_can_use_the_workspace() {
+    let (gw, key) = gateway().await;
+    let mut caps = ADMIN.to_vec();
+    caps.push("mcp:members.manage:call");
+    let admin = token(&key, "user:alice", "nube", &caps);
+    let bob = token(&key, "user:bob", "nube", &["mcp:workspace.list:call"]);
+
+    // Remove bob: membership tombstoned AND his tokens refused (the live-token marker).
+    let resp = router(gw.clone())
+        .oneshot(bearer(delete_req("/admin/members/user:bob"), &admin))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = router(gw.clone())
+        .oneshot(bearer(get_req("/workspaces"), &bob))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "removed → refused");
+
+    // Add bob back. Before the fix the marker outlived the removal and refused him forever.
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            json_post("/admin/members", json!({ "sub": "user:bob" })),
+            &admin,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    let resp = router(gw)
+        .oneshot(bearer(get_req("/workspaces"), &bob))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "re-admitted → his token works again"
+    );
 }
 
 // ── roles.delete: cascade + built-in immutable + idempotent ──────────────────────────────────

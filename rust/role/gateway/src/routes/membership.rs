@@ -57,7 +57,7 @@ pub async fn remove_member_route(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let revoked = lb_host::membership_remove(&gw.node.store, &p, p.ws(), &sub)
+    let revoked = lb_host::membership_remove(&gw.node.store, &p, p.ws(), &sub, gw.now())
         .await
         .map_err(forbid)?;
     Ok(Json(revoked))

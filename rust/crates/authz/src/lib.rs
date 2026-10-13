@@ -82,7 +82,9 @@ pub use scope::{Scope, ScopeFilter};
 pub use subject::Subject;
 pub use team::{team_create, team_delete, team_list, Team, TEAM_TABLE};
 pub use team_edges::{edge_is_user, team_member_edges, team_subject};
-pub use token_revoke::{token_revoke_mark, token_revoked, TOKEN_REVOKE_TABLE};
+pub use token_revoke::{
+    token_revoke_clear, token_revoke_mark, token_revoked, token_revoked_for, TOKEN_REVOKE_TABLE,
+};
 
 /// The `member` relation kind — the edge `team -[member]-> user` the S4 `visibility` resolver
 /// reads and `lb_host::members` manages. Named here so the resolver can walk team membership.

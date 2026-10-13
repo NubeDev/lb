@@ -16,7 +16,7 @@
 //! workspace on one revoke; a deny-list is an unbounded scan. A workspace+subject-keyed read is the
 //! smallest blast-radius mechanism that composes with the TTL the verify path already enforces.
 
-use lb_store::{read, write, Store, StoreError};
+use lb_store::{delete, read, write, Store, StoreError};
 use serde::{Deserialize, Serialize};
 
 use crate::subject::Subject;
@@ -29,6 +29,13 @@ pub const TOKEN_REVOKE_TABLE: &str = "token_revoke";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenRevoke {
     pub subject: String,
+    /// When the marker was written (unix seconds, the gateway clock tokens are stamped with). A token
+    /// issued AT OR BEFORE this instant is refused; one issued after it (a fresh sign-in) is not —
+    /// the marker ends the sessions that were live, it does not ban the subject for good. `0` on a
+    /// marker written before the field existed: such a marker refuses every token until it is
+    /// cleared (re-adding the member clears it — see [`token_revoke_clear`]).
+    #[serde(default)]
+    pub revoked_at: u64,
 }
 
 /// Stable record id for a subject's marker — the subject's `kind:name` key (the namespace already
@@ -37,16 +44,19 @@ fn marker_id(subject: &Subject) -> String {
     subject.as_key()
 }
 
-/// Write the live-token revoke marker for `subject` in workspace `ws`. Idempotent (re-marking
-/// upserts the same row). After this, the verify chokepoint refuses `subject`'s current token on
-/// the next request in this workspace.
+/// Write the live-token revoke marker for `subject` in workspace `ws`, stamped `now` (unix seconds).
+/// Idempotent (re-marking upserts the same row, moving the stamp forward). After this, the verify
+/// chokepoint refuses every token `subject` was issued at or before `now`, on the next request in
+/// this workspace; a sign-in after `now` is unaffected.
 pub async fn token_revoke_mark(
     store: &Store,
     ws: &str,
     subject: &Subject,
+    now: u64,
 ) -> Result<(), StoreError> {
     let value = serde_json::to_value(TokenRevoke {
         subject: subject.as_key(),
+        revoked_at: now,
     })
     .map_err(|e| StoreError::Decode(e.to_string()))?;
     write(store, ws, TOKEN_REVOKE_TABLE, &marker_id(subject), &value).await
@@ -60,4 +70,36 @@ pub async fn token_revoked(store: &Store, ws: &str, subject: &Subject) -> Result
     Ok(read(store, ws, TOKEN_REVOKE_TABLE, &marker_id(subject))
         .await?
         .is_some())
+}
+
+/// Is a token `subject` was issued at `issued_at` (unix seconds) refused by its revoke marker in
+/// `ws`? `true` when a marker exists and either predates the stamp (`revoked_at == 0`, refuse all)
+/// or the token was issued at or before `revoked_at`. A token without a known issue time is judged
+/// by marker presence alone (pass `None`) — the conservative reading, same as [`token_revoked`].
+pub async fn token_revoked_for(
+    store: &Store,
+    ws: &str,
+    subject: &Subject,
+    issued_at: Option<u64>,
+) -> Result<bool, StoreError> {
+    let Some(v) = read(store, ws, TOKEN_REVOKE_TABLE, &marker_id(subject)).await? else {
+        return Ok(false);
+    };
+    let marker: TokenRevoke =
+        serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string()))?;
+    Ok(match issued_at {
+        Some(iat) if marker.revoked_at > 0 => iat <= marker.revoked_at,
+        _ => true,
+    })
+}
+
+/// Remove `subject`'s revoke marker in `ws` — the re-admission path (`membership.add`). Without it a
+/// subject once removed could never use the workspace again: every token it is issued would be
+/// refused by a marker nothing else deletes. Idempotent (clearing an absent marker is a success).
+pub async fn token_revoke_clear(
+    store: &Store,
+    ws: &str,
+    subject: &Subject,
+) -> Result<(), StoreError> {
+    delete(store, ws, TOKEN_REVOKE_TABLE, &marker_id(subject)).await
 }

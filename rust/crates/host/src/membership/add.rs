@@ -38,6 +38,10 @@ pub async fn membership_add(
         let _ = raw::identity_create(store, sub, None, ts).await;
     }
     if let Some(name) = bare_user(sub) {
+        // Re-admission: a subject removed earlier left a live-token revoke marker behind
+        // (`membership.remove`). Clear it, or every token the returning member is issued is refused
+        // at the verify chokepoint and the join is useless.
+        raw::token_revoke_clear(store, ws, &lb_authz::Subject::User(name.to_string())).await?;
         raw::grant_assign(
             store,
             ws,

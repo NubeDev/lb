@@ -24,6 +24,7 @@ pub async fn membership_remove(
     principal: &Principal,
     ws: &str,
     sub: &str,
+    now: u64,
 ) -> Result<usize, MembershipError> {
     authorize_tool(principal, ws, "members.manage").map_err(|_| MembershipError::Denied)?;
     membership_remove_raw(store, ws, sub).await?;
@@ -31,7 +32,7 @@ pub async fn membership_remove(
         return Ok(0);
     };
     let subject = Subject::User(name.to_string());
-    token_revoke_mark(store, ws, &subject).await?;
+    token_revoke_mark(store, ws, &subject, now).await?;
     let revoked = revoke_subject(store, ws, &subject).await?;
     Ok(revoked)
 }
