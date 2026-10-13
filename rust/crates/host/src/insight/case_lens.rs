@@ -35,7 +35,7 @@ pub struct CaseLens {
     /// stage. The reply's `case_counts` tallies every stage regardless of this.
     #[serde(default)]
     pub stages: Vec<String>,
-    /// The caller's logical now, for the `snoozed` axis (no wall clock in the verb).
+    /// The caller's logical now, for the `snoozed` and `sla` axes (no wall clock in the verb).
     #[serde(default)]
     pub now: u64,
 }

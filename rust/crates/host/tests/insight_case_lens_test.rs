@@ -84,7 +84,21 @@ async fn the_lens_filters_and_counts_by_the_real_case_stage() {
     )
     .await
     .expect("list with a case filter");
-    assert_eq!(ids(&page), [b]);
+    assert_eq!(ids(&page), [b.clone()]);
+
+    // The `sla` axis rides the same filter. No policy clocks these cases, so both have no deadline.
+    let mut both = [a, b];
+    both.sort();
+    for (sla, want) in [("no_deadline", &both[..]), ("breached", &[][..])] {
+        let page = list(
+            &node,
+            &p,
+            json!({ "limit": 50, "case": { "filter": { "sla": sla }, "now": 40 } }),
+        )
+        .await
+        .expect("list with an sla filter");
+        assert_eq!(ids(&page), want, "sla = {sla}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
