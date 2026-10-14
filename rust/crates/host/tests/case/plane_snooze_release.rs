@@ -1,6 +1,7 @@
 //! The end of a snooze puts parked work back in the queue: an `actioned` case whose snooze ends — by
 //! un-park, by expiry (the case tick's sweep) or by a severity puncture — returns to `to_action`.
-//! A `waiting_on_po` case stays where it is, and clearing a snooze that was never set moves nothing.
+//! A `waiting_on_po` case stays where it is, an `actioned` case somebody holds (`waiting_on`) stays
+//! `actioned`, and clearing a snooze that was never set moves nothing.
 //!
 //! Part of the `plane` suite (see `plane_support.rs` for the fixtures and the full preamble). One
 //! binary: `case_suite.rs`.
@@ -11,11 +12,35 @@ const FAR: u64 = 9_999_999_999_999;
 
 /// One parked case: raised, moved to `stage`, snoozed until `until` with a reason.
 async fn parked(node: &Arc<Node>, p: &Principal, key: &str, stage: &str, until: u64) -> String {
+    parked_holding(
+        node,
+        p,
+        key,
+        stage,
+        if stage == "waiting_on_po" {
+            Some("client")
+        } else {
+            None
+        },
+        until,
+    )
+    .await
+}
+
+/// [`parked`], with who holds the case (`waiting_on`) set on the move.
+async fn parked_holding(
+    node: &Arc<Node>,
+    p: &Principal,
+    key: &str,
+    stage: &str,
+    holder: Option<&str>,
+    until: u64,
+) -> String {
     let insight = seed_insight(node, p, "nube", key, 1).await;
     let case_id = case_of(node, p, "nube", &insight).await;
     let mut move_to = json!({ "id": case_id, "workflow": stage, "ts": 2 });
-    if stage == "waiting_on_po" {
-        move_to["waiting_on"] = json!("client");
+    if let Some(h) = holder {
+        move_to["waiting_on"] = json!(h);
     }
     call(node, p, "nube", "case.workflow", move_to)
         .await
@@ -170,4 +195,35 @@ async fn a_severity_puncture_puts_a_parked_actioned_case_back_to_action() {
     assert_eq!(case["severity"], "critical", "{case}");
     assert!(case["snooze_until"].is_null(), "punctured: {case}");
     assert_eq!(case["workflow"], "to_action", "{case}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn un_parking_a_held_actioned_case_keeps_it_actioned() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    // On hold with a contractor, then snoozed: taking the snooze off must not undo the hand-off.
+    let held = parked_holding(&node, &p, "held", "actioned", Some("contractor"), FAR).await;
+    let live = call(
+        &node,
+        &p,
+        "nube",
+        "case.snooze",
+        json!({ "id": held, "until": 10, "ts": 10 }),
+    )
+    .await
+    .expect("un-snooze ok");
+    assert_eq!(
+        live["workflow"], "actioned",
+        "held ⇒ stays actioned: {live}"
+    );
+    assert_eq!(live["waiting_on"], "contractor", "{live}");
+    assert!(live["snooze_until"].is_null(), "{live}");
+
+    // The same on expiry: the sweep ends the snooze and leaves the held case where it is.
+    let ours = parked_holding(&node, &p, "ours", "actioned", Some("internal"), 5_000).await;
+    assert_eq!(sweep(&node, 9_000).await, 1, "the expired snooze ends");
+    let after = get(&node, &p, &ours).await;
+    assert_eq!(after["workflow"], "actioned", "{after}");
+    assert!(after["snooze_until"].is_null(), "{after}");
 }
