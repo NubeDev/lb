@@ -26,6 +26,7 @@ use crate::case::{severity_rank, Case, WaitingOn, Workflow};
 use crate::error::CasesError;
 use crate::list_read::read_cases;
 use crate::member_counts::member_counts;
+use crate::sla_state::{sla_state, SlaState, DEFAULT_DUE_SOON_MS};
 
 /// Which work queue the caller is asking for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +67,14 @@ pub struct ListFilter {
     /// against `query.now`, so an expired snooze reads as live without a sweep having run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snoozed: Option<bool>,
+    /// Only cases in this SLA state (breached, due soon, on track, no deadline, met). Evaluated
+    /// against `query.now`, as `snoozed` is: see [`crate::sla_state`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sla: Option<SlaState>,
+    /// The due-soon window for the `sla` axis, in milliseconds before `due_at`. Absent ⇒
+    /// [`DEFAULT_DUE_SOON_MS`]. Read only with `sla`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_soon_ms: Option<u64>,
     /// The sites the CALLER may see (entity-scoped data), set by the host from server state and
     /// never read from the wire (`serde(skip)` — a client cannot send it). `None` = unrestricted;
     /// `Some` = a case must carry one of these sites (a case with no site is hidden).
@@ -269,6 +278,11 @@ pub(crate) fn matches_filter(case: &Case, f: &ListFilter, now: u64) -> bool {
     if let Some(want_snoozed) = f.snoozed {
         let snoozed = case.snooze_until.is_some_and(|u| u > now);
         if snoozed != want_snoozed {
+            return false;
+        }
+    }
+    if let Some(want) = f.sla {
+        if sla_state(case, now, f.due_soon_ms.unwrap_or(DEFAULT_DUE_SOON_MS)) != want {
             return false;
         }
     }
