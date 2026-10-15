@@ -69,12 +69,19 @@ pub(crate) fn project_connect(manifest: &Manifest, granted: &[String]) -> Option
     })
 }
 
-/// `<ext>.<tool>` — the callable, cap-gated name of a manifest's bare tool. Always prefixed: a
-/// manifest's `[[tools]]` names are bare by construction, and an extension may legitimately name a
-/// verb after its own id (`ros` serves `ros.ping`, callable as `ros.ros.ping`), so "already starts
-/// with the id" is not evidence a name is qualified.
+/// `<ext>.<tool>` — the callable, cap-gated name of a manifest tool.
+///
+/// A manifest MAY name its tools bare (`waste.summary`) or already-qualified (`ros.create`, the
+/// native sidecar's own ABI shape). The registry keys BOTH on the bare form —
+/// `native/descriptors.rs` strips one leading `<ext>.` before registering — so `ros.create` is
+/// registered as `create` and called (and gated) as `ros.create`. This must agree with that, or the
+/// grant and the gate name different caps: prefixing unconditionally turned `ros.create` into
+/// `ros.ros.create`, and on a fresh install every declared role tier of a qualified manifest was
+/// granted under a cap no call ever checks. So: strip one leading `<ext>.`, then prefix — the same
+/// key the registry uses, spelled as the caller spells it.
 pub(crate) fn qualify_tool(ext_id: &str, tool: &str) -> String {
-    format!("{ext_id}.{tool}")
+    let bare = tool.strip_prefix(&format!("{ext_id}.")).unwrap_or(tool);
+    format!("{ext_id}.{bare}")
 }
 
 /// Project the manifest's `[[query]]` blocks onto their durable `ExtQueryBlock` mirrors

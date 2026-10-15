@@ -13,8 +13,9 @@
 //!   member → role:member, role:workspace-admin
 //!   admin  → role:workspace-admin
 //!
-//! **The cap is the QUALIFIED name.** A `[[tools]]` name is bare by construction and is callable — and
-//! cap-gated — as `<ext>.<name>` ([`crate::ui_decl::qualify_tool`], the one place that rule lives).
+//! **The cap is the QUALIFIED name.** A `[[tools]]` name — bare (`waste.summary`) or already-qualified
+//! (`ros.create`) — is callable and cap-gated as `<ext>.<bare name>` ([`crate::ui_decl::qualify_tool`],
+//! the one place that rule lives, matching the registry's key in `native/descriptors.rs`).
 //! The install's `granted` set is spelled the same way (`mcp:<ext>.<name>:call`), so the tier grant must
 //! be too: built from the bare name it matched nothing in `granted`, and every declared tier was
 //! dropped without a word.
@@ -132,6 +133,59 @@ class = "private"
             [
                 "mcp:estate.waste.entry.upsert_month:call",
                 "mcp:estate.waste.summary:call"
+            ]
+        );
+    }
+
+    /// A manifest that names its tools ALREADY-QUALIFIED (the native sidecar shape: `ros.create` in
+    /// extension `ros`) is granted under the cap the call is gated on, `mcp:ros.create:call` — not a
+    /// doubled `mcp:ros.ros.create:call` that nothing checks (every tier was silently dropped on a
+    /// fresh install before this).
+    #[tokio::test]
+    async fn an_already_qualified_tool_name_is_not_prefixed_twice() {
+        const QUALIFIED: &str = r#"
+[extension]
+id = "ros"
+version = "0.1.0"
+[runtime]
+tier = "wasm"
+world = "lazybones:ext/extension@0.1.0"
+placement = "either"
+[[tools]]
+name = "ros.list"
+role = "member"
+[[tools]]
+name = "ros.create"
+role = "admin"
+[[tools]]
+name = "ros.point.get"
+role = "viewer"
+[visibility]
+class = "private"
+"#;
+        let store = Store::memory().await.unwrap();
+        let manifest = Manifest::parse(QUALIFIED).unwrap();
+        let granted: Vec<String> = [
+            "mcp:ros.list:call",
+            "mcp:ros.create:call",
+            "mcp:ros.point.get:call",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        grant_role_tiers(&store, "ws", &manifest, &granted).await;
+
+        assert_eq!(caps_of(&store, "viewer").await, ["mcp:ros.point.get:call"]);
+        assert_eq!(
+            caps_of(&store, "member").await,
+            ["mcp:ros.list:call", "mcp:ros.point.get:call"]
+        );
+        assert_eq!(
+            caps_of(&store, "workspace-admin").await,
+            [
+                "mcp:ros.create:call",
+                "mcp:ros.list:call",
+                "mcp:ros.point.get:call"
             ]
         );
     }
