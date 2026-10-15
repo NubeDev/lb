@@ -144,3 +144,50 @@ async fn part_of_a_number_finds_every_case_containing_it() {
     assert_eq!(hits("12").await, vec![12]);
     assert_eq!(hits("x1").await, Vec::<u64>::new(), "only digits match");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_tick_numbers_existing_cases_without_waiting_for_a_new_one() {
+    let store = Store::memory().await.expect("mem store");
+    let mut old = Vec::new();
+    for n in [1, 2] {
+        let mut c = case(&store, n).await;
+        c.seq = None;
+        write(
+            &store,
+            WS,
+            "case",
+            &c.id,
+            &serde_json::to_value(&c).unwrap(),
+        )
+        .await
+        .unwrap();
+        old.push(c.id);
+    }
+    delete(&store, WS, "case_seq", "case").await.unwrap();
+
+    assert_eq!(
+        lb_cases::number_existing_cases(&store, WS, 9_000)
+            .await
+            .unwrap(),
+        2
+    );
+    let seqs: Vec<_> = seqs_of(&store, &old).await;
+    assert_eq!(seqs, vec![Some(1), Some(2)]);
+    // Second pass: the counter exists, nothing to do.
+    assert_eq!(
+        lb_cases::number_existing_cases(&store, WS, 9_001)
+            .await
+            .unwrap(),
+        0
+    );
+    // And the next open follows on.
+    assert_eq!(case(&store, 3).await.seq, Some(3));
+}
+
+async fn seqs_of(store: &Store, ids: &[String]) -> Vec<Option<u64>> {
+    let mut out = Vec::new();
+    for id in ids {
+        out.push(get(store, WS, id).await.unwrap().unwrap().seq);
+    }
+    out
+}

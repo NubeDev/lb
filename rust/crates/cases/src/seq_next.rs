@@ -7,7 +7,9 @@
 //! the add happens inside one UPSERT, never read-then-write in the host.
 //!
 //! **Backfill on first use.** A workspace that had cases before numbering existed has no counter
-//! record. The first numbered open notices that, numbers every existing case in opening order
+//! record. The host's case tick calls [`number_existing_cases`] so that happens soon after an upgrade
+//! rather than waiting for a new case (on a busy estate most alerts re-fire into cases that already
+//! exist, so a new open can be days away). Failing that, the first numbered open notices it, numbers every existing case in opening order
 //! (oldest first, id as the tie-break), and sets the counter to the count, so the new case follows
 //! the old ones. It runs under a per-workspace lock, so a second open waits rather than numbering
 //! the same cases twice. The backfill writes `seq` only: `last_activity_ts` is left alone, because
@@ -55,8 +57,19 @@ pub(crate) async fn next_seq(store: &Store, ws: &str, ts: u64) -> Result<u64, Ca
     Ok(n.max(1) as u64)
 }
 
+/// Number the workspace's existing cases if it has never numbered one, and return how many were
+/// numbered. Once the counter exists this is one record read and `0`, so it is safe on a timer.
+pub async fn number_existing_cases(store: &Store, ws: &str, ts: u64) -> Result<usize, CasesError> {
+    let lock = ws_lock(ws);
+    let _guard = lock.lock().await;
+    if read(store, ws, SEQ_TABLE, SEQ_ID).await?.is_some() {
+        return Ok(0);
+    }
+    backfill(store, ws, ts).await
+}
+
 /// Number every case in `ws` that has no `seq`, oldest first, and leave the counter at the count.
-async fn backfill(store: &Store, ws: &str, ts: u64) -> Result<(), CasesError> {
+async fn backfill(store: &Store, ws: &str, ts: u64) -> Result<usize, CasesError> {
     let mut cases = read_cases(store, ws, true, None).await?;
     cases.retain(|c| c.seq.is_none());
     cases.sort_by(|a, b| a.opened_ts.cmp(&b.opened_ts).then_with(|| a.id.cmp(&b.id)));
@@ -68,5 +81,5 @@ async fn backfill(store: &Store, ws: &str, ts: u64) -> Result<(), CasesError> {
     }
     // Set the counter even when there was nothing to number, so the check above passes from now on.
     increment(store, ws, SEQ_TABLE, SEQ_ID, total, true, ts).await?;
-    Ok(())
+    Ok(cases.len())
 }
