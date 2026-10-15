@@ -17,8 +17,7 @@ rust/crates/federation/src/profile.rs 481
 rust/crates/federation/src/query.rs 783
 rust/crates/federation/src/results.rs 516
 rust/crates/federation/src/source/dialect.rs 732
-rust/crates/federation/src/source/postgres.rs 439
-rust/crates/federation/src/source/sqlite.rs 503
+rust/crates/federation/src/source/sqlite.rs 425
 rust/crates/federation/src/sql_macros.rs 634
 rust/crates/federation/tests/direct_path_pg_test.rs 480
 rust/crates/federation/tests/result_cache_test.rs 973

@@ -20,9 +20,12 @@ mod pg_numeric;
 #[cfg(feature = "postgres")]
 mod pg_value;
 #[cfg(feature = "postgres")]
+mod pg_write;
+#[cfg(feature = "postgres")]
 mod postgres;
 mod sqlite;
 mod sqlite_cells;
+mod write_sql;
 
 use std::sync::Arc;
 
@@ -38,6 +41,7 @@ pub use postgres::PostgresSource;
 // itself never names K, so the re-export is unused there — that is the point, not an oversight.
 #[allow(unused_imports)]
 pub use sqlite::{SqliteSource, READ_SLOTS};
+pub use write_sql::WriteGuard;
 
 pub mod dialect;
 #[allow(unused_imports)]
@@ -216,13 +220,15 @@ pub trait Source: Send + Sync {
     /// columns, the write is an UPSERT (ON CONFLICT DO UPDATE) — idempotent under redelivery
     /// (scope: a flow firing twice writes the same row once). Returns the affected row count.
     /// Used by `federation.write` and `federation.export`. Values are parameterized (never
-    /// inlined into SQL) — a caller cannot inject SQL through a cell value.
+    /// inlined into SQL) — a caller cannot inject SQL through a cell value. Under a `guard` an
+    /// update reaches only an in-scope row, and the batch is refused unless every row changed.
     async fn write_rows(
         &self,
         table: &str,
         columns: &[String],
         rows: &[Vec<serde_json::Value>],
         key: Option<&[String]>,
+        guard: Option<&WriteGuard>,
     ) -> Result<u64, SourceError>;
 
     /// Delete every row matching a structured key from `table`. `key` names the identifying
@@ -230,12 +236,14 @@ pub trait Source: Send + Sync {
     /// so one row here is one `DELETE ... WHERE k1=? AND k2=? ...`. All the DELETEs run in ONE
     /// transaction (a mid-batch failure rolls everything back). Returns the affected row count.
     /// Used by `federation.delete`. Values are parameterized (never inlined into SQL) — a caller
-    /// cannot inject SQL through a key value, and the caller NEVER supplies SQL.
+    /// cannot inject SQL through a key value, and the caller NEVER supplies SQL. Under a `guard`
+    /// only in-scope rows are deleted.
     async fn delete_rows(
         &self,
         table: &str,
         key: &[String],
         rows: &[Vec<serde_json::Value>],
+        guard: Option<&WriteGuard>,
     ) -> Result<u64, SourceError>;
 
     /// TEST SEAM — run an arbitrary statement (DDL/INSERT) against the real pool, returning nothing.

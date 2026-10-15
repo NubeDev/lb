@@ -30,7 +30,7 @@ pub(super) fn filtered(
         format!("SELECT * FROM {table} WHERE false")
     } else {
         match rule {
-            TableRule::Entity { column } => {
+            TableRule::Entity { column, .. } => {
                 format!("SELECT * FROM {table} WHERE {column} IN ('{ID_MARK}')")
             }
             TableRule::Keyed { columns } => {
