@@ -214,6 +214,13 @@ pub struct Case {
     /// A foreign work-order / ticket reference (an FMS id). Opaque.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_ref: Option<String>,
+    /// The workspace's running number for this case: 1 for the first case it ever opened, then one
+    /// more per case, in opening order ([`crate::seq_next`]). A reference a person can say on a call
+    /// or type into a search, where `id` is for machines. A number only; how it is SHOWN (a prefix,
+    /// padding) is the product's call. Absent on a record written before numbering existed, until
+    /// the workspace's first numbered open backfills it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
     /// Logical timestamp the case was opened.
     pub opened_ts: u64,
     /// Logical timestamp of the last thing that happened on it — bumped by every verb that writes.

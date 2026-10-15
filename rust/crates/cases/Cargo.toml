@@ -19,6 +19,9 @@ lb-store.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# One async lock per workspace around the case-number backfill (src/seq_next.rs). Already in the tree
+# through lb-store.
+tokio.workspace = true
 
 [dev-dependencies]
 # tests/deadline_test.rs writes its cases in LOCAL wall time (the language an SLA contract is
