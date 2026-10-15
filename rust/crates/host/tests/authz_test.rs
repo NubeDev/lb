@@ -228,6 +228,32 @@ async fn no_widening_blocks_granting_a_cap_the_admin_lacks() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn an_admin_grants_entity_reads_but_nothing_else_it_lacks() {
+    let store = Store::memory().await.unwrap();
+    // A workspace admin reads every site without holding `data:site:read` literally, so it may hand
+    // it out (a team then reads all sites under a row policy's `grant` source)...
+    let admin = principal("user:alice", "nube", &["mcp:grants.assign:call"]);
+    let team = Subject::Team("fms".into());
+    grants_assign(&store, &admin, "nube", &team, "data:site:read", &Scope::All)
+        .await
+        .expect("an admin grants an entity read");
+    // ...but not a write, nor any other cap it lacks.
+    for cap in [
+        "data:site:write",
+        "data:site:read:extra",
+        "mcp:hvac.setpoint:call",
+    ] {
+        let err = grants_assign(&store, &admin, "nube", &team, cap, &Scope::All)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, AuthzError::Widen(_)),
+            "{cap} must refuse to widen"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn assign_and_revoke_are_idempotent_and_revoke_seam_strips_all() {
     let store = Store::memory().await.unwrap();
     let admin = principal("user:alice", "nube", ADMIN);
