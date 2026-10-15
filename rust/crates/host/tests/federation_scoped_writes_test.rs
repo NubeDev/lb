@@ -263,7 +263,7 @@ async fn a_table_not_marked_writable_stays_refused_and_an_admin_writes_as_before
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_member_describes_only_the_tables_the_policy_names() {
+async fn a_member_describes_only_the_tables_the_policy_names_and_learns_which_it_writes() {
     let node = setup("schema").await;
     let m = member();
     let schema = |table: Option<&str>| match table {
@@ -274,6 +274,23 @@ async fn a_member_describes_only_the_tables_the_policy_names() {
         .await
         .expect("a named table's columns");
     assert!(out.to_string().contains("site_id"), "{out}");
+    assert_eq!(out["writable"], true, "the policy marks it writable");
+    let note = call(&node, &m, "federation.schema", schema(Some("site_note")))
+        .await
+        .unwrap();
+    assert_eq!(note["writable"], false, "named, readable, not writable");
+    let open = call(
+        &node,
+        &admin(),
+        "federation.schema",
+        schema(Some("site_note")),
+    )
+    .await
+    .unwrap();
+    assert!(
+        open.get("writable").is_none(),
+        "an unrestricted caller's caps decide"
+    );
     for refused in [None, Some("sqlite_master"), Some("other")] {
         let r = call(&node, &m, "federation.schema", schema(refused)).await;
         assert!(matches!(r, Err(ToolError::Denied)), "{refused:?}: {r:?}");

@@ -75,8 +75,12 @@ pub async fn call_federation_tool(
             // `table` is optional: absent → list tables, present → describe that table.
             let table = input.get("table").and_then(|v| v.as_str());
             // Entity-scoped data: a restricted caller may describe only a table it can read.
-            refuse_schema_unless_named(node, principal, ws, source, table).await?;
-            let out = federation_schema(node, &launcher, principal, ws, source, table, ts).await?;
+            let writable = refuse_schema_unless_named(node, principal, ws, source, table).await?;
+            let mut out =
+                federation_schema(node, &launcher, principal, ws, source, table, ts).await?;
+            if let Some(w) = writable {
+                out["writable"] = w.into();
+            }
             Ok(out)
         }
         "federation.sample" => {

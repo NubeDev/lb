@@ -260,25 +260,30 @@ pub async fn refuse_if_restricted(
 
 /// `federation.schema` for a restricted caller: describing a table the policy names (or its own) is
 /// column names and types, no rows, and an entity page cannot build its form without it; listing the
-/// source's tables or describing any other table stays refused.
+/// source's tables or describing any other table stays refused. `Some(writable)` for a restricted
+/// caller (whether [`write_scope_for`] would let them write it, so a page can show it read-only),
+/// `None` for an unrestricted one (their caps decide).
 pub async fn refuse_schema_unless_named(
     node: &Node,
     caller: &Principal,
     ws: &str,
     source: &str,
     table: Option<&str>,
-) -> Result<(), FederationError> {
+) -> Result<Option<bool>, FederationError> {
     let Some(scope) = row_scope_for(node, caller, ws, source).await? else {
-        return Ok(());
+        return Ok(None);
     };
-    let named = table.map(str::to_lowercase).is_some_and(|t| {
-        scope["policy"]["tables"].get(&t).is_some()
-            || scope["own_tables"]
-                .as_array()
-                .is_some_and(|o| o.iter().any(|x| x == &t))
-    });
-    if named {
-        Ok(())
+    let Some(t) = table.map(str::to_lowercase) else {
+        return Err(FederationError::Denied);
+    };
+    let rule = &scope["policy"]["tables"][&t];
+    if scope["own_tables"]
+        .as_array()
+        .is_some_and(|o| o.iter().any(|x| x == &t))
+    {
+        Ok(Some(true))
+    } else if rule.is_object() {
+        Ok(Some(rule["kind"] == "entity" && rule["writable"] == true))
     } else {
         Err(FederationError::Denied)
     }
