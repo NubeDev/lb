@@ -92,7 +92,8 @@ pub async fn case_request_nudge(
         return Ok(false);
     };
 
-    let effect = nudge_effect(&request.id, stage, ws, email, None, ts);
+    let reference = request.brief.as_ref().and_then(|b| b.reference.as_deref());
+    let effect = nudge_effect(&request.id, stage, ws, email, reference, None, ts);
     let change = serde_json::json!({
         "request_id": request.id,
         "stage": stage,

@@ -37,6 +37,9 @@ pub struct RequestView {
     pub party_name: String,
     /// The case's one-line title. The only thing from the case a party sees by name.
     pub title: String,
+    /// The sender's reference for the job ("INS-000042"), so the party can quote it back.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub site: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,6 +109,7 @@ async fn view_of(
         // page must still render. Empty strings, never a placeholder that could be read as data.
         party_name: party.map(|p| p.name).unwrap_or_default(),
         title: case.as_ref().map(|c| c.title.clone()).unwrap_or_default(),
+        reference: brief.reference,
         site: case.as_ref().and_then(|c| c.site.clone()),
         asset: brief.asset,
         severity: case.map(|c| c.severity).unwrap_or_default(),

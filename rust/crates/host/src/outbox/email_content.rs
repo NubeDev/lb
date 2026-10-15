@@ -46,11 +46,18 @@ pub(super) fn content_for(
         language: Some(payload.locale.clone()),
         ..Default::default()
     }]);
-    let args = serde_json::json!({
+    let mut args = serde_json::json!({
         "workspace": payload.workspace,
         "token": payload.token,
         "base_url": base_url.unwrap_or_default(),
     });
+    // The producer's own arguments, beneath the built-in ones: a payload cannot re-point the link.
+    if let Some(map) = args.as_object_mut() {
+        for (k, v) in &payload.args {
+            map.entry(k.clone())
+                .or_insert_with(|| serde_json::Value::String(v.clone()));
+        }
+    }
     let empty = BTreeMap::new();
     let prefix = catalog_prefix(action);
     // `render_message` never returns blank — an absent key renders as the key literal, its documented
@@ -116,6 +123,7 @@ mod tests {
             subject: subject.map(str::to_string),
             body: body.map(str::to_string),
             html: None,
+            args: Default::default(),
         }
     }
 
@@ -206,5 +214,35 @@ mod tests {
             "an empty origin must not produce a protocol-relative `//r/`: {}",
             c.text
         );
+    }
+
+    #[test]
+    fn a_request_mail_names_the_senders_reference_only_when_it_has_one() {
+        let mut with = payload(None, None);
+        with.args = [("reference", "INS-000042"), ("has_reference", "yes")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let c = content_for("request_link", &with, Some("https://x"));
+        assert_eq!(c.subject, "INS-000042: A job needs your response");
+        assert!(c.text.contains("about a job (INS-000042)."), "{}", c.text);
+
+        let mut without = payload(None, None);
+        without.args = [("has_reference".to_string(), "no".to_string())]
+            .into_iter()
+            .collect();
+        let c = content_for("request_link", &without, Some("https://x"));
+        assert_eq!(c.subject, "A job needs your response");
+        assert!(c.text.contains("about a job. Open"), "{}", c.text);
+    }
+
+    #[test]
+    fn a_producer_argument_cannot_re_point_the_link() {
+        let mut p = payload(None, None);
+        p.args = [("base_url".to_string(), "https://evil".to_string())]
+            .into_iter()
+            .collect();
+        let c = content_for("request_link", &p, Some("https://x"));
+        assert!(c.text.contains("https://x/r/lbi_abc123"), "{}", c.text);
     }
 }
