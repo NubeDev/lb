@@ -108,3 +108,39 @@ async fn the_case_filter_finds_a_case_by_its_number() {
         .collect();
     assert_eq!(hits, vec![two.id]);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn part_of_a_number_finds_every_case_containing_it() {
+    let store = Store::memory().await.expect("mem store");
+    let mut by_seq = std::collections::BTreeMap::new();
+    for n in 1..=12 {
+        let c = case(&store, n).await;
+        by_seq.insert(c.id.clone(), c.seq.unwrap());
+    }
+    let hits = |digits: &str| {
+        let filter = lb_cases::ListFilter {
+            seq_match: Some(lb_cases::SeqMatch {
+                digits: digits.into(),
+                width: 6,
+            }),
+            ..Default::default()
+        };
+        let store = store.clone();
+        let by_seq = by_seq.clone();
+        async move {
+            let mut got: Vec<u64> = lb_cases::stages(&store, WS, &filter, 5_000)
+                .await
+                .expect("stages")
+                .into_iter()
+                .filter(|c| c.matches)
+                .map(|c| by_seq[&c.id])
+                .collect();
+            got.sort();
+            got
+        }
+    };
+    // Written 000001, 000010, 000011, 000012: each contains "001".
+    assert_eq!(hits("001").await, vec![1, 10, 11, 12]);
+    assert_eq!(hits("12").await, vec![12]);
+    assert_eq!(hits("x1").await, Vec::<u64>::new(), "only digits match");
+}

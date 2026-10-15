@@ -110,7 +110,7 @@ pub use find_by_insight::{
     find_open_case_for_insight, last_closed_case_for_insight, memberships_of_insight,
 };
 pub use get::get;
-pub use list::{CaseRow, Lane, ListFilter, ListPage, ListQuery, MAX_CASE_PAGE};
+pub use list::{CaseRow, Lane, ListFilter, ListPage, ListQuery, SeqMatch, MAX_CASE_PAGE};
 pub use member_add::member_add;
 pub use member_counts::member_counts;
 pub use member_remove::member_remove;

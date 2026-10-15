@@ -89,6 +89,32 @@ pub struct ListFilter {
     /// or types into a search box. A case with no number yet never matches.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seq: Option<u64>,
+    /// Only cases whose number, written with `width` digits (zero-padded), contains `digits` — a
+    /// part of a reference typed into a search box ("001" finds 1, 10, 100, 1001 …). The width is the
+    /// caller's, because how a number is shown is the product's call, not lb's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq_match: Option<SeqMatch>,
+}
+
+/// Part of a case number, as typed: see [`ListFilter::seq_match`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeqMatch {
+    /// The digits to find. Anything but ASCII digits matches nothing.
+    pub digits: String,
+    /// How many digits the number is written with, zero-padded. Capped at 20 (a u64's width).
+    #[serde(default)]
+    pub width: u32,
+}
+
+impl SeqMatch {
+    /// Whether case number `n` matches.
+    pub fn matches(&self, n: u64) -> bool {
+        if self.digits.is_empty() || !self.digits.bytes().all(|b| b.is_ascii_digit()) {
+            return false;
+        }
+        let width = self.width.min(20) as usize;
+        format!("{n:0width$}").contains(&self.digits)
+    }
 }
 
 /// One row of the roster: the case plus its member count.
@@ -246,6 +272,11 @@ pub(crate) fn matches_filter(case: &Case, f: &ListFilter, now: u64) -> bool {
     }
     if let Some(n) = f.seq {
         if case.seq != Some(n) {
+            return false;
+        }
+    }
+    if let Some(m) = &f.seq_match {
+        if !case.seq.is_some_and(|n| m.matches(n)) {
             return false;
         }
     }
