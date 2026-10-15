@@ -198,7 +198,7 @@ async fn every_reply_kind_moves_the_case_the_documented_way() {
         (
             "quote",
             json!({ "kind": "quote", "amount": 900.0, "currency": "AUD" }),
-            "waiting_on_po",
+            "actioned",
             "client",
         ),
         (
