@@ -418,7 +418,7 @@ impl Source for SqliteSource {
                     let params: Vec<rusqlite::types::Value> = columns
                         .iter()
                         .zip(row.iter())
-                        .map(|(_, v)| json_to_sqlite(v))
+                        .map(|(_, v)| super::sqlite_cells::json_to_sqlite(v))
                         .collect();
                     let params_ref: Vec<&dyn rusqlite::ToSql> =
                         params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
@@ -471,8 +471,10 @@ impl Source for SqliteSource {
                 for row in &rows {
                     // `key[i]` ↔ `row[i]` (key-aligned). Bind each cell as a sqlite Value —
                     // parameterized, never inlined into SQL.
-                    let params: Vec<rusqlite::types::Value> =
-                        row.iter().map(json_to_sqlite).collect();
+                    let params: Vec<rusqlite::types::Value> = row
+                        .iter()
+                        .map(super::sqlite_cells::json_to_sqlite)
+                        .collect();
                     let params_ref: Vec<&dyn rusqlite::ToSql> =
                         params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
                     affected += stmt.execute(params_ref.as_slice())? as u64;
@@ -484,29 +486,5 @@ impl Source for SqliteSource {
         .await
         .map_err(|e| super::SourceError(format!("delete worker: {e}")))?
         .map_err(|e| super::SourceError(format!("delete rows: {e}")))
-    }
-}
-
-/// Map a JSON cell value to a sqlite `Value` (parameterized — never inlined). sqlite is dynamically
-/// typed; we coerce permissively (a number-looking string stays a string) so the engine's own
-/// permissive affinity rules apply at query time.
-fn json_to_sqlite(v: &serde_json::Value) -> rusqlite::types::Value {
-    use rusqlite::types::Value;
-    match v {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Integer(*b as i64),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Integer(i)
-            } else if let Some(f) = n.as_f64() {
-                Value::Real(f)
-            } else {
-                Value::Text(n.to_string())
-            }
-        }
-        serde_json::Value::String(s) => Value::Text(s.clone()),
-        // Structured values (arrays/objects) serialize to JSON text (a `json`/`text` column reads
-        // them back via `json_extract`). A binary column would want bytes — v1 stores JSON text.
-        other => Value::Text(other.to_string()),
     }
 }

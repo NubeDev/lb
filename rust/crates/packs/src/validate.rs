@@ -129,11 +129,9 @@ pub struct Finding {
 pub fn validate(pack: &Pack, plan: &[PlannedObject]) -> Vec<Finding> {
     // Start from the retention lint (`validate_retention`), then add this file's own checks.
     let mut out = crate::validate_retention::lint(&pack.manifest.retention);
-    // …and the entity `refs:` lint (`entity-source-refs-scope.md`): shape-only, manifest-only, so
-    // every finding it makes is an error of the dangling-parent class. It deliberately does NOT check
-    // that a ref's `source` is registered — that is a workspace fact resolved late, never a pack fact.
+    // …and the entity `refs:`/`typed_value:` lints: shape-only, manifest-only errors. Neither checks
+    // that a ref's `source` is registered (a workspace fact) nor reads a row (data is downstream's).
     out.extend(crate::validate_refs::lint(&pack.manifest.entities));
-    // …and the entity `typed_value:` lint (`entity-typed-value-scope.md`): shape-only, never a row.
     out.extend(crate::validate_typed::lint(&pack.manifest.entities));
     // …and the reminder lint (`validate_reminder`): the action kind, its required fields, the cron
     // shape, and the static-`job_id` replay trap.

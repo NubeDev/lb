@@ -5,6 +5,7 @@
 //! applied to ONE workspace. This crate owns everything about that which is a *decision*:
 //!
 //!   - [`manifest`] — the `pack.yaml` shape (`deny_unknown_fields`, line-numbered errors)
+//!   - [`manifest_entity`] — one entity of its `entities:` block (vocabulary + table binding)
 //!   - [`manifest_refs`] — its entity `refs:` block, the declared twin in a federation datasource
 //!   - [`manifest_typed`] — its entity `typed_value:` block, the columns saying what a row's value is
 //!   - [`manifest_retention`] — its `retention:` block, mirroring the `series.retention.set` args
@@ -23,6 +24,7 @@ pub mod binding;
 pub mod bundle;
 pub mod decision;
 pub mod manifest;
+pub mod manifest_entity;
 pub mod manifest_refs;
 pub mod manifest_reminder;
 pub mod manifest_retention;

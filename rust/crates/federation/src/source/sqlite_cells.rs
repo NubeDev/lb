@@ -1,5 +1,5 @@
-//! SQLite → JSON for the sqlite direct read path: each cell by its own storage class, no Arrow
-//! intermediate. Split out of `sqlite.rs`, which owns the pools and the `Source` impl — rendering a
+//! A sqlite cell to and from JSON: the direct read path (each cell by its own storage class, no Arrow
+//! intermediate) and the write path's parameter binding. Split out of `sqlite.rs`, which owns the pools and the `Source` impl — rendering a
 //! cell is its own responsibility (FILE-LAYOUT §9), the sibling of `pg_cells.rs`.
 //!
 //! Why not Arrow: the default `query_direct_json` goes through `query_direct`'s batches, and
@@ -45,7 +45,7 @@ pub(super) async fn read_json(
     .map_err(|e| SourceError(format!("direct query: {e}")))
 }
 
-/// One sqlite cell as JSON (the read side of `sqlite::json_to_sqlite`). A non-finite REAL has no
+/// One sqlite cell as JSON (the read side of [`json_to_sqlite`]). A non-finite REAL has no
 /// JSON form and reads as null; a BLOB reads as lowercase hex, as Arrow's binary-to-JSON did.
 fn cell(v: ValueRef<'_>) -> Value {
     match v {
@@ -58,5 +58,29 @@ fn cell(v: ValueRef<'_>) -> Value {
             .map(|x| format!("{x:02x}"))
             .collect::<String>()
             .into(),
+    }
+}
+
+/// Map a JSON cell value to a sqlite `Value` (parameterized — never inlined). sqlite is dynamically
+/// typed; we coerce permissively (a number-looking string stays a string) so the engine's own
+/// permissive affinity rules apply at query time.
+pub(super) fn json_to_sqlite(v: &serde_json::Value) -> rusqlite::types::Value {
+    use rusqlite::types::Value;
+    match v {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Integer(*b as i64),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Integer(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::Real(f)
+            } else {
+                Value::Text(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Value::Text(s.clone()),
+        // Structured values (arrays/objects) serialize to JSON text (a `json`/`text` column reads
+        // them back via `json_extract`). A binary column would want bytes — v1 stores JSON text.
+        other => Value::Text(other.to_string()),
     }
 }
