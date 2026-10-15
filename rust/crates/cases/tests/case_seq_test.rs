@@ -144,3 +144,78 @@ async fn part_of_a_number_finds_every_case_containing_it() {
     assert_eq!(hits("12").await, vec![12]);
     assert_eq!(hits("x1").await, Vec::<u64>::new(), "only digits match");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_tick_numbers_existing_cases_without_waiting_for_a_new_one() {
+    let store = Store::memory().await.expect("mem store");
+    let mut old = Vec::new();
+    for n in [1, 2] {
+        let mut c = case(&store, n).await;
+        c.seq = None;
+        write(
+            &store,
+            WS,
+            "case",
+            &c.id,
+            &serde_json::to_value(&c).unwrap(),
+        )
+        .await
+        .unwrap();
+        old.push(c.id);
+    }
+    delete(&store, WS, "case_seq", "case").await.unwrap();
+
+    assert_eq!(
+        lb_cases::number_existing_cases(&store, WS, 9_000)
+            .await
+            .unwrap(),
+        2
+    );
+    let seqs: Vec<_> = seqs_of(&store, &old).await;
+    assert_eq!(seqs, vec![Some(1), Some(2)]);
+    // Second pass: the counter exists, nothing to do.
+    assert_eq!(
+        lb_cases::number_existing_cases(&store, WS, 9_001)
+            .await
+            .unwrap(),
+        0
+    );
+    // And the next open follows on.
+    assert_eq!(case(&store, 3).await.seq, Some(3));
+}
+
+async fn seqs_of(store: &Store, ids: &[String]) -> Vec<Option<u64>> {
+    let mut out = Vec::new();
+    for id in ids {
+        out.push(get(store, WS, id).await.unwrap().unwrap().seq);
+    }
+    out
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn numbering_writes_the_number_and_nothing_else() {
+    let store = Store::memory().await.expect("mem store");
+    let c = case(&store, 1).await;
+    // The record as stored by someone else a moment ago: no number yet, and a field this struct
+    // does not know. Writing back the whole record as read would drop the field.
+    let mut raw = serde_json::to_value(&c).unwrap();
+    raw.as_object_mut().unwrap().remove("seq");
+    raw["note_from_elsewhere"] = serde_json::json!("keep me");
+    write(&store, WS, "case", &c.id, &raw).await.unwrap();
+    delete(&store, WS, "case_seq", "case").await.unwrap();
+
+    assert_eq!(
+        lb_cases::number_existing_cases(&store, WS, 9_000)
+            .await
+            .unwrap(),
+        1
+    );
+    let stored = lb_store::read(&store, WS, "case", &c.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let data = stored.get("data").unwrap_or(&stored);
+    assert_eq!(data["seq"], 1);
+    assert_eq!(data["note_from_elsewhere"], "keep me");
+    assert_eq!(data["title"], c.title.as_str());
+}

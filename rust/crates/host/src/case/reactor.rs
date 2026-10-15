@@ -1,7 +1,7 @@
 //! The case-reconcile loop driver (case-plane scope).
 //!
 //! One detached tick per node drives [`super::reconcile_cases`], [`super::backfill_case_facets`],
-//! [`super::release_expired_snoozes`] and [`super::close_self_cleared_cases`] for each workspace,
+//! [`lb_cases::number_existing_cases`], [`super::release_expired_snoozes`] and [`super::close_self_cleared_cases`] for each workspace,
 //! modelled on `insight/reactor.rs::spawn_insight_digest_reactors` — role/config placement under the
 //! `BootConfig::reactors` toggle, not a runtime election. The pass is idempotent, so the idempotence
 //! IS the backstop against accidental double-drive; there is nothing to elect.
@@ -44,6 +44,17 @@ pub fn spawn_case_reactors(node: Arc<Node>, workspaces: Vec<String>, period: Dur
                     }
                     Err(e) => {
                         tracing::warn!(%ws, error = %format!("{e:?}"), "case facet backfill tick failed")
+                    }
+                }
+                // The case numbers, the same kind of debt: cases from before numbering existed get
+                // theirs on the first tick after an upgrade. Afterwards one record read and nothing.
+                match lb_cases::number_existing_cases(&node.store, ws, now).await {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        tracing::info!(%ws, numbered = n, "case numbers: existing cases numbered")
+                    }
+                    Err(e) => {
+                        tracing::warn!(%ws, error = %format!("{e:?}"), "case numbering tick failed")
                     }
                 }
                 // Before self-clear: a snooze that has run out is a case back in the queue, and

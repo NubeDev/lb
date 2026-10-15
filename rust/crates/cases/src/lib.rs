@@ -117,6 +117,7 @@ pub use member_remove::member_remove;
 pub use members::{member_count, members, members_all, MemberPage, MemberRow, MAX_MEMBER_PAGE};
 pub use merge::merge;
 pub use open::{open, OpenInput};
+pub use seq_next::number_existing_cases;
 pub use sla_state::{sla_state, SlaState, DEFAULT_DUE_SOON_MS};
 pub use stages::{stages, CaseStage};
 // The party roster (wave 2). A party is DATA: nothing here names one (rule 10), and the scorecard
