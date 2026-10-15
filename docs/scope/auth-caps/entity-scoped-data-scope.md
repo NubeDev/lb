@@ -67,7 +67,8 @@ by `owner_sub()` so API keys, agents, reminders and report fires inherit their o
    be a policy table and is replaced by `(SELECT * FROM rel WHERE <pred>) AS alias`; CTEs may not
    shadow policy tables; `information_schema`, `pg_catalog`, table functions rejected; functions
    deny-by-default (allow-list + policy extras); predicates built as AST literals.
-3. `schema` narrowed to policy tables; `sample`/`profile*`/`mirror`/writes refused when restricted —
+3. `schema` narrowed to policy tables (a restricted caller describes a table the policy names or its
+   own; listing the source's tables is refused); `sample`/`profile*`/`mirror`/writes refused when restricted —
    except an extension's own tables (below), and an `entity` table the policy marks `writable`, where
    a restricted caller writes only their own entities' rows (`entity-scoped-writes-scope.md`).
 4. `viz.query` response cache key includes the scope hash.

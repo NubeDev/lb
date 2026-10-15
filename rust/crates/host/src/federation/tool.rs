@@ -12,7 +12,7 @@ use lb_mcp::ToolError;
 use lb_supervisor::OsLauncher;
 use serde_json::{json, Value};
 
-use super::row_policy::write_scope_for;
+use super::row_policy::{refuse_schema_unless_named, write_scope_for};
 use super::{
     datasource_add, datasource_list, datasource_remove, datasource_test, datasource_update,
     dbschema_delete, dbschema_get, dbschema_list, dbschema_save, federation_delete,
@@ -72,10 +72,10 @@ pub async fn call_federation_tool(
         }
         "federation.schema" => {
             let source = str_arg(input, "source")?;
-            // Entity-scoped data: a verb that cannot be narrowed is refused for a restricted caller.
-            refuse_if_restricted(node, principal, ws, source).await?;
             // `table` is optional: absent → list tables, present → describe that table.
             let table = input.get("table").and_then(|v| v.as_str());
+            // Entity-scoped data: a restricted caller may describe only a table it can read.
+            refuse_schema_unless_named(node, principal, ws, source, table).await?;
             let out = federation_schema(node, &launcher, principal, ws, source, table, ts).await?;
             Ok(out)
         }
