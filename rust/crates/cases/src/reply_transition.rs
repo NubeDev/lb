@@ -4,7 +4,7 @@
 //! | reply | workflow | `waiting_on` | why |
 //! |---|---|---|---|
 //! | `accept`    | `actioned`      | `contractor` | they said yes; the ball is theirs |
-//! | `quote`     | `waiting_on_po` | `client`     | the job is now blocked on money, not effort (the example flow's step 5→6: the FM raises the PO next) |
+//! | `quote`     | `actioned`      | `client`     | the job is now blocked on money, not effort: the client approves (raises the PO) next |
 //! | `eta`       | `actioned`      | `contractor` | a date is a commitment to attend |
 //! | `done`      | `actioned`      | `internal`   | **not** `resolved` — see below |
 //! | `need_info` | `to_action`     | `internal`   | the ball comes back to us |
@@ -27,7 +27,9 @@ use crate::case_request::ReplyKind;
 pub fn transition_for(kind: ReplyKind) -> (Workflow, WaitingOn) {
     match kind {
         ReplyKind::Accept => (Workflow::Actioned, WaitingOn::Contractor),
-        ReplyKind::Quote => (Workflow::WaitingOnPo, WaitingOn::Client),
+        // `actioned` waiting on the client, not `waiting_on_po`: the hold is said by `waiting_on`, so a
+        // quoted job stays in the working stage every queue already groups and filters as one.
+        ReplyKind::Quote => (Workflow::Actioned, WaitingOn::Client),
         ReplyKind::Eta => (Workflow::Actioned, WaitingOn::Contractor),
         ReplyKind::Done => (Workflow::Actioned, WaitingOn::Internal),
         ReplyKind::NeedInfo => (Workflow::ToAction, WaitingOn::Internal),
@@ -61,7 +63,7 @@ mod tests {
     fn a_quote_blocks_on_money_and_an_acceptance_blocks_on_the_contractor() {
         assert_eq!(
             transition_for(ReplyKind::Quote),
-            (Workflow::WaitingOnPo, WaitingOn::Client)
+            (Workflow::Actioned, WaitingOn::Client)
         );
         assert_eq!(
             transition_for(ReplyKind::Accept),
