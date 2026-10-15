@@ -230,6 +230,15 @@ impl Source for SqliteSource {
             .map_err(|e| SourceError(format!("direct collect: {e}")))
     }
 
+    /// Sqlite rows straight to JSON, each cell by its own storage class — never through Arrow, whose
+    /// first-row type inference blanked a column whose first value was NULL (see `sqlite_cells`).
+    async fn query_direct_json(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<String>, Vec<serde_json::Value>), SourceError> {
+        super::sqlite_cells::read_json(&self.path, sql).await
+    }
+
     async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {
         // Read the source's own catalog via the shared discovery runner (SQLite `sqlite_master`).
         crate::query::run_list_tables(self, "sqlite").await
@@ -393,8 +402,10 @@ async fn run_rows(
             let ids = guard.iter().flat_map(|g| g.ids.iter().cloned());
             let ids: Vec<rusqlite::types::Value> = ids.map(rusqlite::types::Value::Text).collect();
             for (i, row) in rows.iter().enumerate() {
-                let mut params: Vec<rusqlite::types::Value> =
-                    row.iter().map(json_to_sqlite).collect();
+                let mut params: Vec<rusqlite::types::Value> = row
+                    .iter()
+                    .map(super::sqlite_cells::json_to_sqlite)
+                    .collect();
                 params.extend(ids.iter().cloned());
                 let n = stmt
                     .execute(rusqlite::params_from_iter(params))
@@ -413,28 +424,4 @@ async fn run_rows(
     .await
     .map_err(|e| super::SourceError(format!("write worker: {e}")))?
     .map_err(|e| super::SourceError(format!("write rows: {e}")))
-}
-
-/// Map a JSON cell value to a sqlite `Value` (parameterized — never inlined). sqlite is dynamically
-/// typed; we coerce permissively (a number-looking string stays a string) so the engine's own
-/// permissive affinity rules apply at query time.
-fn json_to_sqlite(v: &serde_json::Value) -> rusqlite::types::Value {
-    use rusqlite::types::Value;
-    match v {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Integer(*b as i64),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Integer(i)
-            } else if let Some(f) = n.as_f64() {
-                Value::Real(f)
-            } else {
-                Value::Text(n.to_string())
-            }
-        }
-        serde_json::Value::String(s) => Value::Text(s.clone()),
-        // Structured values (arrays/objects) serialize to JSON text (a `json`/`text` column reads
-        // them back via `json_extract`). A binary column would want bytes — v1 stores JSON text.
-        other => Value::Text(other.to_string()),
-    }
 }

@@ -1,6 +1,7 @@
 //! Build the filtered derived table that stands in for one policy table:
 //! `SELECT * FROM t WHERE (cols) IN (SELECT key cols FROM entity_key WHERE key_col = <key> AND
-//! value_col IN (<ids>))`, or `WHERE col IN (<ids>)` for a table that carries the id directly.
+//! value_col IN (<ids>))`, or `WHERE col IN (<ids>)` for a table that carries the id directly, or the
+//! whole table for a `shared` one (rows no entity owns).
 //!
 //! The shape is parsed from a template whose identifiers are policy-checked plain identifiers
 //! (`RowPolicy::check`); the key value and every entity id are then written into the AST as string
@@ -25,25 +26,24 @@ pub(super) fn filtered(
     rule: &TableRule,
     scope: &RowScope,
 ) -> Result<Box<Query>, ValidationError> {
-    let template = if scope.ids.is_empty() {
+    let template = match rule {
+        // No entity owns these rows: every caller the policy narrows reads them whole.
+        TableRule::Shared => format!("SELECT * FROM {table}"),
         // Fail closed: no entities, no rows.
-        format!("SELECT * FROM {table} WHERE false")
-    } else {
-        match rule {
-            TableRule::Entity { column, .. } => {
-                format!("SELECT * FROM {table} WHERE {column} IN ('{ID_MARK}')")
-            }
-            TableRule::Keyed { columns } => {
-                let ek = &scope.policy.entity_key;
-                format!(
-                    "SELECT * FROM {table} WHERE ({}) IN (SELECT {} FROM {} WHERE {} = '{KEY_MARK}' AND {} IN ('{ID_MARK}'))",
-                    columns.join(", "),
-                    ek.columns.join(", "),
-                    ek.table,
-                    ek.key_col,
-                    ek.value_col,
-                )
-            }
+        _ if scope.ids.is_empty() => format!("SELECT * FROM {table} WHERE false"),
+        TableRule::Entity { column, .. } => {
+            format!("SELECT * FROM {table} WHERE {column} IN ('{ID_MARK}')")
+        }
+        TableRule::Keyed { columns } => {
+            let ek = &scope.policy.entity_key;
+            format!(
+                "SELECT * FROM {table} WHERE ({}) IN (SELECT {} FROM {} WHERE {} = '{KEY_MARK}' AND {} IN ('{ID_MARK}'))",
+                columns.join(", "),
+                ek.columns.join(", "),
+                ek.table,
+                ek.key_col,
+                ek.value_col,
+            )
         }
     };
     let mut statements = Parser::parse_sql(&PostgreSqlDialect {}, &template)

@@ -258,6 +258,37 @@ pub async fn refuse_if_restricted(
     Ok(())
 }
 
+/// `federation.schema` for a restricted caller: describing a table the policy names (or its own) is
+/// column names and types, no rows, and an entity page cannot build its form without it; listing the
+/// source's tables or describing any other table stays refused. `Some(writable)` for a restricted
+/// caller (whether [`write_scope_for`] would let them write it, so a page can show it read-only),
+/// `None` for an unrestricted one (their caps decide).
+pub async fn refuse_schema_unless_named(
+    node: &Node,
+    caller: &Principal,
+    ws: &str,
+    source: &str,
+    table: Option<&str>,
+) -> Result<Option<bool>, FederationError> {
+    let Some(scope) = row_scope_for(node, caller, ws, source).await? else {
+        return Ok(None);
+    };
+    let Some(t) = table.map(str::to_lowercase) else {
+        return Err(FederationError::Denied);
+    };
+    let rule = &scope["policy"]["tables"][&t];
+    if scope["own_tables"]
+        .as_array()
+        .is_some_and(|o| o.iter().any(|x| x == &t))
+    {
+        Ok(Some(true))
+    } else if rule.is_object() {
+        Ok(Some(rule["kind"] == "entity" && rule["writable"] == true))
+    } else {
+        Err(FederationError::Denied)
+    }
+}
+
 /// Decide `caller`'s write or delete of `table` in `source` (`entity-scoped-writes-scope.md`):
 /// unrestricted, or an extension acting as itself on a table it created there ([`super::owned`]) ⇒
 /// `None`, the write runs as before; a table the enforced policy marks a writable `entity` rule ⇒

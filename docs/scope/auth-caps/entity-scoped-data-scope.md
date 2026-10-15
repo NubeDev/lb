@@ -50,7 +50,9 @@ federated SQL, insights, cases — with the SAME boards and menus serving every 
 ### Policy (per datasource, admin-only)
 `datasource_row_policy:{ws}:{source}` — `{enforce, scope_sources: ["nav","grant"], entity_table,
 tables: {<name>: {kind: "point"|"entity", columns...}}, entity_key: {table, key_col, value_col,
-match}, extra_functions: []}`. Verbs `federation.row_policy_set/get`, admin-only cap.
+match}, extra_functions: []}`. Verbs `federation.row_policy_set/get`, admin-only cap. A table whose
+rows belong to no entity (workspace-wide settings beside per-entity ones) is named `{kind: "shared"}`:
+a restricted caller reads it whole and never writes it.
 
 ### Resolution
 `host/src/authz/entity_scope.rs::entity_scope(node, principal, ws, table) -> EntityScope::{All,
@@ -65,7 +67,9 @@ by `owner_sub()` so API keys, agents, reminders and report fires inherit their o
    be a policy table and is replaced by `(SELECT * FROM rel WHERE <pred>) AS alias`; CTEs may not
    shadow policy tables; `information_schema`, `pg_catalog`, table functions rejected; functions
    deny-by-default (allow-list + policy extras); predicates built as AST literals.
-3. `schema` narrowed to policy tables; `sample`/`profile*`/`mirror`/writes refused when restricted —
+3. `schema` narrowed to policy tables (a restricted caller describes a table the policy names or its
+   own, and the reply says `writable: true|false` for them so a page can show it read-only; listing
+   the source's tables is refused); `sample`/`profile*`/`mirror`/writes refused when restricted —
    except an extension's own tables (below), and an `entity` table the policy marks `writable`, where
    a restricted caller writes only their own entities' rows (`entity-scoped-writes-scope.md`).
 4. `viz.query` response cache key includes the scope hash.

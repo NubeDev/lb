@@ -12,7 +12,8 @@ fn scope(ids: &[&str]) -> RowScope {
                 "points": {"kind": "keyed", "columns": ["host_uuid", "uuid"]},
                 "point_meta_tags": {"kind": "keyed", "columns": ["host_uuid", "point_uuid"]},
                 "meter_daily_usage_clean": {"kind": "keyed", "columns": ["host_uuid", "point_uuid"]},
-                "sites": {"kind": "entity", "column": "site"}
+                "sites": {"kind": "entity", "column": "site"},
+                "settings": {"kind": "shared"}
             },
             "entity_key": {
                 "table": "point_meta_tags", "columns": ["host_uuid", "point_uuid"],
@@ -181,6 +182,14 @@ fn ids_are_values_never_sql() {
     )
     .unwrap();
     assert!(out.contains("'O''Brien''); DROP TABLE x; --'"), "{out}");
+}
+
+#[test]
+fn a_shared_table_is_read_whole_even_with_no_entities() {
+    for ids in [&["Lot 1"][..], &[]] {
+        let out = rewrite("SELECT * FROM settings s", &scope(ids)).unwrap();
+        assert!(out.contains("FROM (SELECT * FROM settings) s"), "{out}");
+    }
 }
 
 #[test]

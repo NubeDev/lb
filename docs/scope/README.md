@@ -796,6 +796,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   four-step recipe) that seeds `series.retention.*` policies from a pack — so a pack shipping a
   high-rate producer (EMS's `modbus.*` polls) bounds its raw series tier from first apply instead of
   leaving every deployment to accumulate unbounded raw and slow its reads.
+  `entity-typed-value-scope.md` (the ask) adds an **optional** `entities[].typed_value`
+  (`{type, value, schema?}`) projection naming the columns that say what each row's value is
+  (`number`/`text`/`bool`/`json`, a JSON Schema for `json`), so one settings table serves every row
+  shape; shape-only validation, no data validation in core. Ships with the sqlite read fix it depends
+  on (`source/sqlite_cells.rs`: cells by storage class, not first-row Arrow typing).
 - `sync/` — multi-node sync + authority (S3).
 - `system-map/` — a framework-level **workspace topology + status console**: two admin-gated read
   verbs (`system.overview` status grid · `system.topology` react-flow wiring) that derive a live,

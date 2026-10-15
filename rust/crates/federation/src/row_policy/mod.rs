@@ -76,6 +76,9 @@ pub enum TableRule {
         #[serde(default)]
         writable: bool,
     },
+    /// Rows that belong to no entity (workspace-wide settings beside per-entity ones): a restricted
+    /// caller reads them whole and never writes them (only a writable `Entity` rule writes).
+    Shared,
 }
 
 /// The lookup that maps keyed rows to entity ids: rows of `table` whose `key_col = key_value` carry
@@ -122,6 +125,7 @@ impl RowPolicy {
                     idents.extend(columns.iter().map(String::as_str));
                 }
                 TableRule::Entity { column, .. } => idents.push(column),
+                TableRule::Shared => {}
             }
         }
         if let Some(bad) = idents.into_iter().find(|s| !plain_ident(s)) {

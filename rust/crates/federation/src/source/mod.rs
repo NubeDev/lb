@@ -24,6 +24,7 @@ mod pg_write;
 #[cfg(feature = "postgres")]
 mod postgres;
 mod sqlite;
+mod sqlite_cells;
 mod write_sql;
 
 use std::sync::Arc;
