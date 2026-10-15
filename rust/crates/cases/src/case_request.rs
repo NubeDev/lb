@@ -174,6 +174,11 @@ pub struct Brief {
     pub currency: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<BriefEvidence>,
+    /// The sender's reference for this piece of work ("INS-000042"), as their product shows it. Opaque
+    /// (rule 10): lb neither formats nor parses it, it only carries it into the mail and the page so
+    /// the party can quote it back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 /// A durable request record.

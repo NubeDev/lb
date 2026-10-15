@@ -91,7 +91,8 @@ pub async fn case_request_send(
     let token = generate_request_token(ws);
     let token_hash = hash_request_token(&token);
     let id = new_ulid();
-    let effect = link_effect(&id, ws, &email, &token, None, ts);
+    let reference = brief.as_ref().and_then(|b| b.reference.clone());
+    let effect = link_effect(&id, ws, &email, &token, reference.as_deref(), None, ts);
 
     let request = lb_cases::new_request(
         RequestInput {

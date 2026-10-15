@@ -46,6 +46,7 @@ pub(super) fn link_effect(
     ws: &str,
     recipient: &str,
     token: &str,
+    reference: Option<&str>,
     locale: Option<&str>,
     ts: u64,
 ) -> Effect {
@@ -55,6 +56,7 @@ pub(super) fn link_effect(
         "workspace": ws,
         "token": token,
         "locale": locale,
+        "args": reference_args(reference),
     });
     Effect::new(&id, EMAIL_TARGET, LINK_ACTION, payload.to_string(), &id, ts)
 }
@@ -67,6 +69,7 @@ pub(super) fn nudge_effect(
     stage: &str,
     ws: &str,
     recipient: &str,
+    reference: Option<&str>,
     locale: Option<&str>,
     ts: u64,
 ) -> Effect {
@@ -75,6 +78,7 @@ pub(super) fn nudge_effect(
         "recipients": [recipient],
         "workspace": ws,
         "locale": locale,
+        "args": reference_args(reference),
     });
     Effect::new(
         &id,
@@ -84,4 +88,14 @@ pub(super) fn nudge_effect(
         &id,
         ts,
     )
+}
+
+/// The catalog arguments for the sender's reference: the text (empty when there is none, so a
+/// workspace's own wording can use a plain `{reference}`), and `has_reference` (`yes` / `no`) for the
+/// built-in copy's `select`, so a mail with no reference reads as it always did.
+fn reference_args(reference: Option<&str>) -> serde_json::Value {
+    match reference.map(str::trim).filter(|r| !r.is_empty()) {
+        Some(r) => json!({ "reference": r, "has_reference": "yes" }),
+        None => json!({ "reference": "", "has_reference": "no" }),
+    }
 }

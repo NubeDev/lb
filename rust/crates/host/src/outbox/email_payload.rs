@@ -35,6 +35,9 @@ pub(super) struct EmailPayload {
     pub body: Option<String>,
     /// A payload-authored HTML body.
     pub html: Option<String>,
+    /// Extra catalog arguments the producer supplies (`{"reference": "INS-000042"}`), string values
+    /// only. They never override the built-in ones (`workspace`, `token`, `base_url`).
+    pub args: std::collections::BTreeMap<String, String>,
 }
 
 impl EmailPayload {
@@ -68,6 +71,7 @@ impl EmailPayload {
             subject: field(&json, "subject"),
             body: field(&json, "body"),
             html: field(&json, "html"),
+            args: args(&json),
         };
         // The raw JSON travels on for the attachment resolver, which reads its own keys. Handing it
         // back rather than re-parsing keeps one parse per delivery.
@@ -100,6 +104,16 @@ fn recipients(json: &serde_json::Value) -> Vec<String> {
         }
     }
     out
+}
+
+/// The payload's `args` object, keeping its string values.
+fn args(json: &serde_json::Value) -> std::collections::BTreeMap<String, String> {
+    json.get("args")
+        .and_then(|v| v.as_object())
+        .into_iter()
+        .flatten()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+        .collect()
 }
 
 /// A non-blank string field, or `None`.

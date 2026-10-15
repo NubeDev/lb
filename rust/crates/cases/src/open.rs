@@ -23,6 +23,7 @@ use crate::case_member::MemberRole;
 use crate::error::CasesError;
 use crate::event_append::append_event;
 use crate::member_add::member_add;
+use crate::seq_next::next_seq;
 
 /// What a caller states when opening a case. Everything else on [`Case`] is either derived here or
 /// owned by a later verb/reactor.
@@ -111,6 +112,7 @@ pub async fn open(
         saving_accepted_by: None,
         saving_accepted_ts: None,
         external_ref: None,
+        seq: Some(next_seq(store, ws, ts).await?),
         opened_ts: ts,
         last_activity_ts: ts,
         reopened_count: 0,
