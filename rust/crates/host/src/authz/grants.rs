@@ -35,12 +35,25 @@ pub async fn grants_assign(
     scope: &Scope,
 ) -> Result<(), AuthzError> {
     authorize_tool(principal, ws, "grants.assign").map_err(|_| AuthzError::Denied)?;
-    if !cap.starts_with("role:") && !holds_cap(principal, ws, cap) {
+    if !cap.starts_with("role:")
+        && !holds_cap(principal, ws, cap)
+        && !admin_reads(principal, ws, cap)
+    {
         return Err(AuthzError::Widen(cap.to_string()));
     }
     grant_assign_scoped(store, ws, subject, cap, scope).await?;
     super::invalidate_entity_scope(ws);
     Ok(())
+}
+
+/// An entity read grant (`data:<table>:read`, the `grant` source of an entity scope) handed out by a
+/// workspace admin. Admins already read every entity (`entity_scope` is `All` for them) without
+/// holding the cap literally, so granting it widens nothing; without this no one could ever give a
+/// team "all sites" under a row policy (entity-scoped-data scope).
+fn admin_reads(principal: &Principal, ws: &str, cap: &str) -> bool {
+    let mut parts = cap.split(':');
+    matches!((parts.next(), parts.next(), parts.next(), parts.next()), (Some("data"), Some(t), Some("read"), None) if !t.is_empty())
+        && crate::nav::is_workspace_admin(principal, ws)
 }
 
 /// Revoke `cap` with `scope` from `subject` in `ws`. Gated by `mcp:grants.assign:call` (the same

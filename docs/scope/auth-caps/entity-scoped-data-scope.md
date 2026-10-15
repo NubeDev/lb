@@ -32,6 +32,9 @@ federated SQL, insights, cases — with the SAME boards and menus serving every 
     walked at any depth; a personal pick never widens (valve 2 of `nav-reach-scope.md`).
   - `grant` — the existing entity-scoped grant, `grants.assign {subject, cap: "data:<table>:read",
     scope: {kind:"ids", table, ids}}`, read via `scope_filter`.
+    Without a `scope` the grant is every entity (`All`). A workspace admin may hand out
+    `data:<table>:read` without holding it literally (they already read every entity), so a team
+    such as an all-sites FM team can be made unrestricted on a source that lists `grant`.
   - later sources (e.g. tag rules) are one file each; enforcement never changes.
 - **Fail closed.** Enforcement on + restricted principal + empty or failed set = no rows, never all.
   Workspace admins and `Principal::system` are unrestricted.
