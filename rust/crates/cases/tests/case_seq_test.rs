@@ -191,3 +191,31 @@ async fn seqs_of(store: &Store, ids: &[String]) -> Vec<Option<u64>> {
     }
     out
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn numbering_writes_the_number_and_nothing_else() {
+    let store = Store::memory().await.expect("mem store");
+    let c = case(&store, 1).await;
+    // The record as stored by someone else a moment ago: no number yet, and a field this struct
+    // does not know. Writing back the whole record as read would drop the field.
+    let mut raw = serde_json::to_value(&c).unwrap();
+    raw.as_object_mut().unwrap().remove("seq");
+    raw["note_from_elsewhere"] = serde_json::json!("keep me");
+    write(&store, WS, "case", &c.id, &raw).await.unwrap();
+    delete(&store, WS, "case_seq", "case").await.unwrap();
+
+    assert_eq!(
+        lb_cases::number_existing_cases(&store, WS, 9_000)
+            .await
+            .unwrap(),
+        1
+    );
+    let stored = lb_store::read(&store, WS, "case", &c.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let data = stored.get("data").unwrap_or(&stored);
+    assert_eq!(data["seq"], 1);
+    assert_eq!(data["note_from_elsewhere"], "keep me");
+    assert_eq!(data["title"], c.title.as_str());
+}

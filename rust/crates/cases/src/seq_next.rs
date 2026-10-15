@@ -13,7 +13,8 @@
 //! (oldest first, id as the tie-break), and sets the counter to the count, so the new case follows
 //! the old ones. It runs under a per-workspace lock, so a second open waits rather than numbering
 //! the same cases twice. The backfill writes `seq` only: `last_activity_ts` is left alone, because
-//! numbering a case is not something happening to it.
+//! numbering a case is not something happening to it. It is written field-level (`set_seq`), so a
+//! case someone edits while the backfill runs keeps their edit.
 //!
 //! Numbers are never reused. A case that is later merged away keeps its number and the next case
 //! takes the next one, so gaps are possible and expected.
@@ -23,7 +24,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use lb_store::{increment, read, write, Store};
+use lb_store::{increment, mark_store_written, read, Store};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::case::TABLE;
@@ -74,12 +75,33 @@ async fn backfill(store: &Store, ws: &str, ts: u64) -> Result<usize, CasesError>
     cases.retain(|c| c.seq.is_none());
     cases.sort_by(|a, b| a.opened_ts.cmp(&b.opened_ts).then_with(|| a.id.cmp(&b.id)));
     let total = cases.len() as i64;
-    for (i, case) in cases.iter_mut().enumerate() {
-        case.seq = Some(i as u64 + 1);
-        let value = serde_json::to_value(&*case).map_err(CasesError::decode)?;
-        write(store, ws, TABLE, &case.id, &value).await?;
+    for (i, case) in cases.iter().enumerate() {
+        set_seq(store, ws, &case.id, i as u64 + 1).await?;
     }
     // Set the counter even when there was nothing to number, so the check above passes from now on.
     increment(store, ws, SEQ_TABLE, SEQ_ID, total, true, ts).await?;
     Ok(cases.len())
+}
+
+/// Write `seq` onto case `id` and touch nothing else, in one statement.
+///
+/// **Field-level, never the whole record.** The cases were read a moment ago and people are working
+/// on them: writing back the record as read would undo an assign or a stage change made in between.
+/// This sets only `data.seq` (and bumps `rev`, as every write does, so a watcher sees it), and only
+/// on a case that still has no number, so it can neither lose an edit nor renumber a case.
+async fn set_seq(store: &Store, ws: &str, id: &str, seq: u64) -> Result<(), CasesError> {
+    store
+        .query_ws(
+            ws,
+            "UPDATE type::record($tb, $id) SET data.seq = $seq, rev = (rev ?? 0) + 1 \
+             WHERE data.seq = NONE RETURN NONE",
+            vec![
+                ("tb".into(), serde_json::Value::String(TABLE.into())),
+                ("id".into(), serde_json::Value::String(id.to_string())),
+                ("seq".into(), serde_json::Value::from(seq)),
+            ],
+        )
+        .await?;
+    mark_store_written();
+    Ok(())
 }
