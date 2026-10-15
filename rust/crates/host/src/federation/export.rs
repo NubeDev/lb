@@ -108,6 +108,7 @@ pub async fn federation_export<L: Launcher>(
             &columns_resolved,
             &[row],
             key,
+            None,
             ts,
         )
         .await?;

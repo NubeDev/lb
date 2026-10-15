@@ -21,7 +21,8 @@ pub const ROW_CAP: usize = 1_000;
 /// Run a bounded write against the `kind` source at `dsn`. `rows` is a column-aligned array of
 /// arrays (each inner array is one row's values, in `columns` order). When `key` names conflict
 /// columns, the write is an UPSERT — idempotent under redelivery (a flow firing twice writes the
-/// same row once). Returns `{affected}`.
+/// same row once). Under a `guard` (entity-scoped writes, built by `row_policy::write`) an update may
+/// only reach a row of the caller's entities. Returns `{affected}`.
 pub async fn run_write(
     kind: &str,
     dsn: &str,
@@ -29,6 +30,7 @@ pub async fn run_write(
     columns: &[String],
     rows: &[Value],
     key: Option<&[String]>,
+    guard: Option<&crate::source::WriteGuard>,
 ) -> Result<u64, String> {
     if rows.len() > ROW_CAP {
         return Err(format!(
@@ -72,7 +74,7 @@ pub async fn run_write(
 
     let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
     let affected = source
-        .write_rows(table, columns, &typed_rows, key)
+        .write_rows(table, columns, &typed_rows, key, guard)
         .await
         .map_err(|e| e.to_string())?;
 

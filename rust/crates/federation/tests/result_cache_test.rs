@@ -313,6 +313,7 @@ async fn a_write_evicts_the_cached_results_for_that_source() {
         &["id".to_string()],
         &[serde_json::json!([2])],
         None,
+        None,
     )
     .await
     .expect("federation.write");
@@ -353,6 +354,7 @@ async fn a_write_to_one_source_leaves_another_sources_cache_intact() {
         "marker",
         &["id".to_string()],
         &[serde_json::json!([11])],
+        None,
         None,
     )
     .await

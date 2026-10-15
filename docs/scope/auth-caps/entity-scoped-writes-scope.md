@@ -1,6 +1,6 @@
 # Auth-caps scope — entity-scoped writes (a restricted principal edits only its own entities' rows)
 
-Status: scope (the ask). Promotes to `public/auth-caps/` once shipped.
+Status: **built in this PR** (scope + implementation). Promotes to `public/auth-caps/` once shipped.
 
 > Read with: `entity-scoped-data-scope.md` (the row policy and the resolver this reuses — and the rule
 > this scope relaxes, "writes refused when restricted"), `entity-scoped-grants-scope.md`,
@@ -32,9 +32,10 @@ set, the same resolver, the same fail-closed rule.
   - the NEW value of the entity column is in the caller's set (no writing a row for another entity);
   - for an upsert whose key matches an existing row, that row's CURRENT entity column is in the set
     too (no taking over, or moving, another entity's row);
-  - a delete removes only rows whose current entity column is in the set.
-- **All or nothing.** The check and the write run in one transaction in the sidecar; one row out of
-  scope refuses the whole batch with a plain `Denied`, and nothing is written.
+  - a delete removes only rows whose current entity column is in the set (a key held by another
+    entity's row simply deletes nothing — refusing would reveal that the row exists).
+- **All or nothing.** The batch runs in one transaction in the sidecar; one row out of scope refuses
+  the whole write, and nothing is written.
 - **Fail closed.** Empty set, a NULL or missing entity value, a table not marked writable, a column
   the policy does not name: refused.
 - **The caps wall is unchanged.** The caller still needs `mcp:federation.write:call` /
@@ -57,41 +58,48 @@ set, the same resolver, the same fail-closed rule.
 
 ### Policy
 `TableRule::Entity { column, writable: bool }` (default `false`), set with the existing admin-only
-`federation.row_policy_set`. `RowPolicy::check` refuses `writable` on a `keyed` rule.
+`federation.row_policy_set`. A `keyed` rule has no such flag, so it can never be writable.
 
 ### Host
-`refuse_unless_owned` (host `federation/row_policy.rs`) gains a third outcome: restricted, the table
-is a writable `entity` rule in the enforced policy ⇒ allow, attaching `row_scope {policy, ids}` to the
-sidecar input exactly as `federation.query` does. Everything else is unchanged (own tables still
-pass, other tables still `Denied`).
+`refuse_unless_owned` becomes `write_scope_for` (host `federation/row_policy.rs`), with three
+outcomes: unrestricted, or an extension's own table ⇒ write as before; restricted and the table is a
+writable `entity` rule in the enforced policy ⇒ attach `write_scope {policy, ids}` to the sidecar
+input; anything else ⇒ `Denied`. It rides its own key, not `row_scope`, so the sidecar's existing gate
+("only `federation.query` may carry a `row_scope`") stays exactly as it is.
 
 ### When the entity is part of the key (the simple case)
 If the table's primary key contains the entity column (`site_id + name`, not a bare `id`), an upsert
 can only ever match a row of the SAME entity, so "the existing row is in scope" follows from "the new
-row is in scope" and step 2 below is skipped. This is how the `waste` extension avoids takeover today
-(its key is `site_ref + period + stream_id`, and it fills `site_ref` from the one site it checked). A
-writable table keyed this way needs only the per-row check on the new value; a table keyed by a bare
-id needs the read-before-write in step 2. Recommendation for pack authors: key per-entity tables by
-the entity column plus a name.
+row is in scope" — the statement's guard below never even fires. This is how the `waste` extension
+avoids takeover today (its key is `site_ref + period + stream_id`, and it fills `site_ref` from the
+one site it checked). A table keyed by a bare id relies on the guard. Recommendation for pack
+authors: key per-entity tables by the entity column plus a name.
 
 ### Sidecar
-`write_rows` / `delete_rows` take the optional scope. Under it, inside the existing transaction:
-1. every incoming row's entity column ∈ `ids` (else refuse);
-2. `SELECT key, entity FROM table WHERE key IN (batch keys)` — every existing row's entity ∈ `ids`
-   (else refuse);
-3. write; for a delete, `DELETE … WHERE key IN (…) AND entity IN (ids)` and refuse if the count
-   differs from the request.
-Ids and keys bind as parameters; identifiers come from the checked policy (plain lowercase). Both
-engines (sqlite, postgres) get the same three steps.
+`row_policy::write` turns `write_scope` into a `WriteGuard {column, ids}` — re-checking that the
+policy parses, the table is a writable `entity` rule and the set is non-empty — and checks every
+incoming row's entity value is one of the ids. Then the guard goes INTO the statement, so the check on
+the existing row and the write are one atomic step (no read-then-write window):
+- upsert: `INSERT … ON CONFLICT(key) DO UPDATE SET … WHERE "table"."<entity>" IN (<ids>)`. An
+  existing out-of-scope row is left alone, the statement changes zero rows, and the source refuses
+  and rolls the batch back (`write_sql.rs`, run by `sqlite::run_rows` / `pg_write::run_rows`);
+- delete: `DELETE … WHERE <key> AND "table"."<entity>" IN (<ids>)`.
+Ids, keys and cells bind as parameters; identifiers come from the checked policy. One generator
+(`source/write_sql.rs`) serves both engines — they used to build the same SQL twice.
 
-## Test plan (real sqlite + postgres, real host, no mocks)
-- In scope: insert, update, delete a row for the caller's entity — succeed.
-- Out of scope, each refused with nothing written: insert a row for another entity; update another
-  entity's row by its key; move an own row to another entity; delete another entity's row; a batch
-  mixing one in-scope and one out-of-scope row.
-- Fail closed: empty set; NULL entity value; table not writable; `keyed` table; no policy enforced
-  (today's behaviour).
-- Unchanged: admin unrestricted; an extension's own tables; reads narrowed exactly as before.
+## Tests (real sqlite + postgres, real host, no mocks)
+- `row_policy/write_tests.rs` (sqlite, through the scoped entry points): own rows written; a row for
+  another entity, a takeover of another entity's key, moving an own row out, and a batch mixing one
+  bad row are each refused with nothing written; a delete never reaches another entity's row; not
+  writable and an empty set fail closed; an unrestricted call writes as before. Mutation-checked: an
+  always-true guard, a skipped row check and an always-true delete guard each turn their tests red.
+- `tests/scoped_write_pg_test.rs` (postgres): the guarded upsert's rollback on a takeover and the
+  guarded delete, on a real server (`LB_TEST_PG_DSN`; SKIP without one).
+- `host/tests/federation_scoped_writes_test.rs` (real node, real sidecar): a member whose handed menu
+  marks only Site A writes and deletes Site A's rows of a writable table and nothing of Site B's; a
+  table not marked writable stays `Denied`; an admin writes as before.
+- Unchanged and still green: `entity_scoped_data_test`, `federation_ext_own_tables_test`, every
+  federation test (sqlite and postgres).
 
 ## Precedent: how `waste` does it today, and why a core path is still wanted
 The `waste` extension (NubeIO/rust-waste-management) already gives restricted people per-site

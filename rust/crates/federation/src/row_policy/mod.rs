@@ -23,6 +23,10 @@ mod own_tables_tests;
 mod relations;
 #[cfg(test)]
 mod tests;
+pub mod write;
+#[cfg(test)]
+mod write_tests;
+pub use write::{delete as scoped_delete, write as scoped_write};
 
 use std::collections::BTreeMap;
 
@@ -65,8 +69,13 @@ pub enum TableRule {
     /// Rows keyed by `columns` (e.g. `host_uuid, point_uuid`), resolved to an entity through
     /// [`EntityKey`].
     Keyed { columns: Vec<String> },
-    /// Rows that carry the entity id directly in `column`.
-    Entity { column: String },
+    /// Rows that carry the entity id directly in `column`. `writable` (admin-set, default off) lets a
+    /// restricted caller write and delete its OWN entities' rows (`write::guard`).
+    Entity {
+        column: String,
+        #[serde(default)]
+        writable: bool,
+    },
 }
 
 /// The lookup that maps keyed rows to entity ids: rows of `table` whose `key_col = key_value` carry
@@ -112,7 +121,7 @@ impl RowPolicy {
                     }
                     idents.extend(columns.iter().map(String::as_str));
                 }
-                TableRule::Entity { column } => idents.push(column),
+                TableRule::Entity { column, .. } => idents.push(column),
             }
         }
         if let Some(bad) = idents.into_iter().find(|s| !plain_ident(s)) {
