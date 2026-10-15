@@ -19,6 +19,7 @@ pub use crate::manifest_retention::{
     RetentionAlign, RetentionDeadband, RetentionFilter, RetentionPolicy, RetentionRange,
     RetentionTier,
 };
+pub use crate::manifest_typed::TypedValue;
 
 /// One pack manifest as authored. `deny_unknown_fields` turns a typo'd key into a loud parse error
 /// instead of a silently-ignored line — pack authors run `pack.validate` in CI, and a swallowed key
@@ -189,6 +190,13 @@ pub struct Entity {
     /// twin (today's shape). See [`EntityRef`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub refs: Vec<EntityRef>,
+    /// Optional TYPED VALUE (`entity-typed-value-scope.md`): the columns of `table` that say what each
+    /// row's value is — its type word, its value, and a `json` row's JSON Schema — so one settings
+    /// table serves rows of every shape. The fifth projection beside `geo:`/`charts:`/`refs:`, and the
+    /// same discipline: core carries it, reads no row, and checks no value against it. Absent ⇒
+    /// today's shape. See [`TypedValue`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typed_value: Option<TypedValue>,
 }
 
 /// One `charts:` recipe on an [`Entity`]. A named, windowed read parameterised by the ROW — never a

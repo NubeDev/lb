@@ -22,6 +22,7 @@ mod pg_value;
 #[cfg(feature = "postgres")]
 mod postgres;
 mod sqlite;
+mod sqlite_cells;
 
 use std::sync::Arc;
 

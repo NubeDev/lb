@@ -214,5 +214,7 @@ schema can evolve, the data is the operator's.
 - `crates/host/src/federation/write.rs` + `crates/federation/src/write.rs` — the `federation.write`
   verb whose reach over the in-process sqlite source O-1 must settle.
 - `crates/packs/src/manifest.rs` — the `Entity` struct the four optional fields land on.
+- `entity-typed-value-scope.md` — a later projection on the same binding (`typed_value`: which
+  columns say what a row's value is), routed through its own scope per the "not a fifth field" line.
 - `docs/WORKFLOW-LB.md` (downstream) — the PR → `node-v*` tag → pin-bump flow that lands this for the
   consumer.

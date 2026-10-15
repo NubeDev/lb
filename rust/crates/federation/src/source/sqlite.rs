@@ -230,6 +230,15 @@ impl Source for SqliteSource {
             .map_err(|e| SourceError(format!("direct collect: {e}")))
     }
 
+    /// Sqlite rows straight to JSON, each cell by its own storage class — never through Arrow, whose
+    /// first-row type inference blanked a column whose first value was NULL (see `sqlite_cells`).
+    async fn query_direct_json(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<String>, Vec<serde_json::Value>), SourceError> {
+        super::sqlite_cells::read_json(&self.path, sql).await
+    }
+
     async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {
         // Read the source's own catalog via the shared discovery runner (SQLite `sqlite_master`).
         crate::query::run_list_tables(self, "sqlite").await

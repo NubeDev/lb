@@ -121,6 +121,16 @@ pub fn validate_binding(
             }
         }
     }
+    // The `typed_value:` columns (`entity-typed-value-scope.md`) get the same column check, as a
+    // warning for the same reason: the apply is the oracle where the schema is opaque.
+    for (field, col) in ent.typed_value.iter().flat_map(|t| t.columns()) {
+        if !cols.contains(&col.to_lowercase()) {
+            warnings.push(format!(
+                "entity '{name}' binds typed_value {field} '{col}', which is not a column of table \
+                 '{table}'"
+            ));
+        }
+    }
     (errors, warnings)
 }
 
@@ -241,6 +251,7 @@ mod tests {
             geo: None,
             charts: vec![],
             refs: vec![],
+            typed_value: None,
         }
     }
 
@@ -311,6 +322,25 @@ mod tests {
         );
         assert!(w.iter().any(|m| m.contains("uuid")), "{w:?}");
         assert!(w.iter().any(|m| m.contains("label")), "{w:?}");
+    }
+
+    #[test]
+    fn typed_value_columns_get_the_same_column_check() {
+        let s = SchemaTables::parse(BAS_SCHEMA);
+        let mut site = ent(None, Some("site"), Some("id"), None, Some("name"));
+        site.typed_value = Some(crate::manifest::TypedValue {
+            r#type: "kind".into(),
+            value: "lat".into(),
+            schema: Some("shape".into()),
+        });
+        let (e, w) = validate_binding("site", &site, &s);
+        assert!(e.is_empty(), "a missing column must not gate: {e:?}");
+        assert!(w.iter().any(|m| m.contains("type 'kind'")), "{w:?}");
+        assert!(w.iter().any(|m| m.contains("schema 'shape'")), "{w:?}");
+        assert!(
+            !w.iter().any(|m| m.contains("'lat'")),
+            "lat is a real column: {w:?}"
+        );
     }
 
     #[test]

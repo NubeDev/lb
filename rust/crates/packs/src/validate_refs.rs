@@ -111,7 +111,7 @@ fn lint_chart_sources(name: &str, ent: &Entity, out: &mut Vec<Finding>) {
 
 /// `[A-Za-z_][A-Za-z0-9_]*` — what a derived read can interpolate unquoted in every dialect the
 /// federation layer spans.
-fn is_bare_identifier(s: &str) -> bool {
+pub(crate) fn is_bare_identifier(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
         Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
