@@ -50,7 +50,9 @@ federated SQL, insights, cases — with the SAME boards and menus serving every 
 ### Policy (per datasource, admin-only)
 `datasource_row_policy:{ws}:{source}` — `{enforce, scope_sources: ["nav","grant"], entity_table,
 tables: {<name>: {kind: "point"|"entity", columns...}}, entity_key: {table, key_col, value_col,
-match}, extra_functions: []}`. Verbs `federation.row_policy_set/get`, admin-only cap.
+match}, extra_functions: []}`. Verbs `federation.row_policy_set/get`, admin-only cap. A table whose
+rows belong to no entity (workspace-wide settings beside per-entity ones) is named `{kind: "shared"}`:
+a restricted caller reads it whole and never writes it.
 
 ### Resolution
 `host/src/authz/entity_scope.rs::entity_scope(node, principal, ws, table) -> EntityScope::{All,

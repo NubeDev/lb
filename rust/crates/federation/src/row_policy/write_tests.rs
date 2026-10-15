@@ -162,6 +162,21 @@ async fn fails_closed() {
 }
 
 #[tokio::test]
+async fn a_shared_table_is_never_written_by_a_restricted_caller() {
+    let p = db("shared");
+    let mut shared = call(true, &["a"]);
+    shared["write_scope"]["policy"]["tables"]["setting"] = json!({ "kind": "shared" });
+    assert!(save(&p, &shared, json!([["a1", "a", 5.0]])).await.is_err());
+    let key = ["id".to_string()];
+    assert!(
+        delete(("sqlite", &p, "setting"), &key, &[json!(["b1"])], &shared)
+            .await
+            .is_err()
+    );
+    assert_eq!(rows_of(&p).len(), 2);
+}
+
+#[tokio::test]
 async fn an_unrestricted_call_writes_as_before() {
     let p = db("open");
     assert_eq!(save(&p, &json!({}), json!([["b1", "a", 7.0]])).await, Ok(1));

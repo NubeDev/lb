@@ -122,3 +122,6 @@ Mark the settings table writable in the config source's policy → grant the sin
   a restricted reader cannot read a table the policy does not name. Leave it to the pack to keep
   global settings in a separate source, or allow a policy to list tables as "unscoped, read-only"?
   Recommendation: the latter, as its own small change — it is a read rule, not a write rule.
+  **Resolved:** a policy names such a table `{kind: "shared"}` (`row_policy::TableRule::Shared`):
+  read whole by every restricted caller, entities or not, and never written by one, since only a
+  writable `entity` rule writes.
