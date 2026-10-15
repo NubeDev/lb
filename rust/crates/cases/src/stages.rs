@@ -15,7 +15,12 @@
 //! — every page open), `matches` is `true` for every case and only `id` + `workflow` are read, so the
 //! engine projects those two in ONE statement instead of paging every full case record through
 //! `scan_all` and decoding it. On ESR's 5,194 cases that is ~0.37 s → a fraction of it per call, and
-//! the roster makes several such calls per open. A filtered read still decodes whole cases, because
+//! the roster makes several such calls per open.
+//!
+//! **A number lookup asks for four.** A search by case reference ("INS-005422") filters on the
+//! number alone (`seq` / `seq_match`, plus the caller's site scope), so the same projection carries
+//! `seq` and `site` too and the check runs on those, instead of decoding every case to compare one
+//! number: on ESR that was ~3 s a call. Any other filtered read still decodes whole cases, because
 //! `matches_filter` reads their other fields.
 //!
 //! One responsibility: the stage of every case, and whether it passes the filter.
@@ -56,7 +61,10 @@ pub async fn stages(
         ));
     }
     if is_unfiltered(filter) {
-        return projected(store, ws).await;
+        return projected(store, ws, |_| true).await;
+    }
+    if is_number_only(filter) {
+        return projected(store, ws, |r| number_matches(r, filter)).await;
     }
     Ok(scan_all(store, ws, crate::case::TABLE)
         .await?
@@ -79,17 +87,56 @@ fn is_unfiltered(filter: &ListFilter) -> bool {
         && filter.sites_allowed.is_none()
 }
 
-/// The two-field row the unfiltered read projects.
+/// Only the number axes are set (`seq`, `seq_match`), with or without the caller's site scope: the
+/// projection below can answer it. Decided, like `is_unfiltered`, from the serialized shape, so an
+/// axis added later is never silently ignored here.
+fn is_number_only(filter: &ListFilter) -> bool {
+    serde_json::to_value(filter)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .is_some_and(|o| !o.is_empty() && o.keys().all(|k| k == "seq" || k == "seq_match"))
+}
+
+/// The number axes and the site scope, on the projected row — the same checks `matches_filter` makes.
+fn number_matches(r: &StageRow, f: &ListFilter) -> bool {
+    if let Some(n) = f.seq {
+        if r.seq != Some(n) {
+            return false;
+        }
+    }
+    if let Some(m) = &f.seq_match {
+        if !r.seq.is_some_and(|n| m.matches(n)) {
+            return false;
+        }
+    }
+    if let Some(allowed) = &f.sites_allowed {
+        if !r.site.as_deref().is_some_and(|s| allowed.contains(s)) {
+            return false;
+        }
+    }
+    true
+}
+
+/// The row the projected reads ask for: the stage, and what a number lookup checks.
 #[derive(Deserialize)]
 struct StageRow {
     id: Option<String>,
     workflow: Option<Workflow>,
+    seq: Option<u64>,
+    site: Option<String>,
 }
 
-/// `id` + `workflow` of every case, projected by the engine in one statement. A row missing either
-/// (a record that would not decode as a case) is skipped, as `unwrap_case` skips it on the full read.
-async fn projected(store: &Store, ws: &str) -> Result<Vec<CaseStage>, CasesError> {
-    let sql = "SELECT data.id AS id, data.workflow AS workflow FROM type::table($tb)";
+/// `id`, `workflow`, `seq` and `site` of every case, projected by the engine in one statement, each
+/// marked by `matches`. A row missing `id` or `workflow` (a record that would not decode as a case) is
+/// skipped, as `unwrap_case` skips it on the full read.
+async fn projected(
+    store: &Store,
+    ws: &str,
+    matches: impl Fn(&StageRow) -> bool,
+) -> Result<Vec<CaseStage>, CasesError> {
+    let sql =
+        "SELECT data.id AS id, data.workflow AS workflow, data.seq AS seq, data.site AS site \
+               FROM type::table($tb)";
     let mut resp = store
         .query_ws(
             ws,
@@ -107,10 +154,11 @@ async fn projected(store: &Store, ws: &str) -> Result<Vec<CaseStage>, CasesError
         .into_iter()
         .filter_map(|v| serde_json::from_value::<StageRow>(v).ok())
         .filter_map(|r| {
+            let matches = matches(&r);
             Some(CaseStage {
                 id: r.id?,
                 workflow: r.workflow?,
-                matches: true,
+                matches,
             })
         })
         .collect())
