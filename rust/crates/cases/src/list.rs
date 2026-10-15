@@ -85,6 +85,10 @@ pub struct ListFilter {
     /// them. At most [`MAX_CASE_PAGE`] ids; more is refused rather than silently truncated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ids: Option<Vec<String>>,
+    /// Only the case with this running number ([`Case::seq`]) — the reference a person reads out
+    /// or types into a search box. A case with no number yet never matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
 }
 
 /// One row of the roster: the case plus its member count.
@@ -237,6 +241,11 @@ fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool 
 pub(crate) fn matches_filter(case: &Case, f: &ListFilter, now: u64) -> bool {
     if let Some(ids) = &f.ids {
         if !ids.contains(&case.id) {
+            return false;
+        }
+    }
+    if let Some(n) = f.seq {
+        if case.seq != Some(n) {
             return false;
         }
     }

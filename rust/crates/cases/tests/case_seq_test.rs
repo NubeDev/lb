@@ -89,3 +89,22 @@ async fn cases_from_before_numbering_are_backfilled_oldest_first() {
         "numbering is not activity"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_case_filter_finds_a_case_by_its_number() {
+    let store = Store::memory().await.expect("mem store");
+    let _one = case(&store, 1).await;
+    let two = case(&store, 2).await;
+    let filter = lb_cases::ListFilter {
+        seq: Some(2),
+        ..Default::default()
+    };
+    let hits: Vec<String> = lb_cases::stages(&store, WS, &filter, 5_000)
+        .await
+        .expect("stages")
+        .into_iter()
+        .filter(|c| c.matches)
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(hits, vec![two.id]);
+}
