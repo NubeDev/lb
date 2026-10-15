@@ -219,3 +219,69 @@ async fn numbering_writes_the_number_and_nothing_else() {
     assert_eq!(data["note_from_elsewhere"], "keep me");
     assert_eq!(data["title"], c.title.as_str());
 }
+
+async fn sited(store: &Store, n: u32, site: &str) -> lb_cases::Case {
+    open(
+        store,
+        WS,
+        OpenInput {
+            title: format!("case {n}"),
+            grouping: Grouping::Single,
+            primary_insight: format!("ins-s{n}"),
+            severity: "warning".into(),
+            site: Some(site.into()),
+            ..Default::default()
+        },
+        "user:test",
+        2_000 + u64::from(n),
+    )
+    .await
+    .expect("open")
+}
+
+async fn matching(store: &Store, filter: &lb_cases::ListFilter) -> BTreeSet<String> {
+    lb_cases::stages(store, WS, filter, 5_000)
+        .await
+        .expect("stages")
+        .into_iter()
+        .filter(|c| c.matches)
+        .map(|c| c.id)
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_number_lookup_keeps_the_callers_site_scope_and_agrees_with_the_full_read() {
+    let store = Store::memory().await.expect("mem store");
+    let mut ids = Vec::new();
+    for (n, site) in [(1, "north"), (2, "south"), (3, "north"), (4, "south")] {
+        ids.push(sited(&store, n, site).await.id);
+    }
+    let lookup = lb_cases::ListFilter {
+        seq_match: Some(lb_cases::SeqMatch {
+            digits: "0".into(),
+            width: 6,
+        }),
+        sites_allowed: Some(["north".to_string()].into_iter().collect()),
+        ..Default::default()
+    };
+    let fast = matching(&store, &lookup).await;
+    assert_eq!(fast, [ids[0].clone(), ids[2].clone()].into_iter().collect());
+    // The same question with one more axis that matches every case takes the full-decode path; both
+    // paths must give the same answer.
+    let full = matching(
+        &store,
+        &lb_cases::ListFilter {
+            snoozed: Some(false),
+            ..lookup.clone()
+        },
+    )
+    .await;
+    assert_eq!(fast, full);
+    // And an exact number, scoped out, finds nothing.
+    let scoped_out = lb_cases::ListFilter {
+        seq: Some(2),
+        sites_allowed: Some(["north".to_string()].into_iter().collect()),
+        ..Default::default()
+    };
+    assert!(matching(&store, &scoped_out).await.is_empty());
+}
