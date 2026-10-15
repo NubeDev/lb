@@ -347,135 +347,72 @@ impl Source for SqliteSource {
         columns: &[String],
         rows: &[Vec<serde_json::Value>],
         key: Option<&[String]>,
+        guard: Option<&super::WriteGuard>,
     ) -> Result<u64, super::SourceError> {
         if rows.is_empty() {
             return Ok(0);
         }
-        let path = self.path.clone();
-        let table = table.to_string();
-        let columns: Vec<String> = columns.to_vec();
-        let rows: Vec<Vec<serde_json::Value>> = rows.to_vec();
-        let key: Vec<String> = key.unwrap_or(&[]).to_vec();
-        tokio::task::spawn_blocking(move || -> Result<u64, rusqlite::Error> {
-            let mut conn = rusqlite::Connection::open(&path)?;
-            let tx = conn.transaction()?;
-            let mut affected = 0u64;
-            // Build the SQL once (placeholders + optional ON CONFLICT clause), reuse the prepared
-            // statement per row. Identifiers are quote_ident'd (validated caller-side + defense in
-            // depth here).
-            let quoted_cols: Vec<String> = columns
-                .iter()
-                .map(|c| super::dialect::quote_ident(c))
-                .collect();
-            let placeholders: Vec<String> = (1..=columns.len()).map(|i| format!("?{i}")).collect();
-            let mut sql = format!(
-                "INSERT INTO {} ({}) VALUES ({})",
-                super::dialect::quote_ident(&table),
-                quoted_cols.join(", "),
-                placeholders.join(", ")
-            );
-            if !key.is_empty() {
-                let conflict_cols: Vec<String> =
-                    key.iter().map(|c| super::dialect::quote_ident(c)).collect();
-                let updates: Vec<String> = columns
-                    .iter()
-                    .filter(|c| !key.contains(c))
-                    .map(|c| {
-                        format!(
-                            "{}=excluded.{}",
-                            super::dialect::quote_ident(c),
-                            super::dialect::quote_ident(c)
-                        )
-                    })
-                    .collect();
-                if updates.is_empty() {
-                    sql.push_str(&format!(
-                        " ON CONFLICT({}) DO NOTHING",
-                        conflict_cols.join(", ")
-                    ));
-                } else {
-                    sql.push_str(&format!(
-                        " ON CONFLICT({}) DO UPDATE SET {}",
-                        conflict_cols.join(", "),
-                        updates.join(", ")
-                    ));
-                }
-            }
-            {
-                let mut stmt = tx.prepare(&sql)?;
-                for row in &rows {
-                    // `columns[i]` ↔ `row[i]` (column-aligned). Bind each cell as a sqlite Value —
-                    // parameterized, never inlined into SQL.
-                    let params: Vec<rusqlite::types::Value> = columns
-                        .iter()
-                        .zip(row.iter())
-                        .map(|(_, v)| json_to_sqlite(v))
-                        .collect();
-                    let params_ref: Vec<&dyn rusqlite::ToSql> =
-                        params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
-                    affected += stmt.execute(params_ref.as_slice())? as u64;
-                }
-            }
-            tx.commit()?;
-            Ok(affected)
-        })
-        .await
-        .map_err(|e| super::SourceError(format!("write worker: {e}")))?
-        .map_err(|e| super::SourceError(format!("write rows: {e}")))
+        // Built once, prepared once, run per row (`write_sql` — shared with postgres, guard included).
+        let style = super::write_sql::Placeholder::Numbered;
+        let sql = super::write_sql::upsert(table, columns, key.unwrap_or(&[]), guard, style);
+        run_rows(self.path.clone(), sql, rows.to_vec(), guard.cloned(), true).await
     }
 
-    /// `DELETE FROM <table> WHERE <k1>=?1 AND <k2>=?2 ...`, one statement per key row, with
-    /// parameterized key values — never inlined into SQL (no injection surface). The whole batch
-    /// runs in one transaction so a mid-batch failure rolls everything back (the federation.delete
-    /// invariant). Identifiers are quote_ident'd (validated caller-side + defense in depth here).
     async fn delete_rows(
         &self,
         table: &str,
         key: &[String],
         rows: &[Vec<serde_json::Value>],
+        guard: Option<&super::WriteGuard>,
     ) -> Result<u64, super::SourceError> {
         if rows.is_empty() {
             return Ok(0);
         }
-        let path = self.path.clone();
-        let table = table.to_string();
-        let key: Vec<String> = key.to_vec();
-        let rows: Vec<Vec<serde_json::Value>> = rows.to_vec();
-        tokio::task::spawn_blocking(move || -> Result<u64, rusqlite::Error> {
-            let mut conn = rusqlite::Connection::open(&path)?;
-            let tx = conn.transaction()?;
-            let mut affected = 0u64;
-            // Build the SQL once (one `k=?n` term per key column), reuse the prepared statement per
-            // row. Identifiers are quote_ident'd (validated caller-side + defense in depth here).
-            let predicates: Vec<String> = key
-                .iter()
-                .enumerate()
-                .map(|(i, c)| format!("{}=?{}", super::dialect::quote_ident(c), i + 1))
-                .collect();
-            let sql = format!(
-                "DELETE FROM {} WHERE {}",
-                super::dialect::quote_ident(&table),
-                predicates.join(" AND ")
-            );
-            {
-                let mut stmt = tx.prepare(&sql)?;
-                for row in &rows {
-                    // `key[i]` ↔ `row[i]` (key-aligned). Bind each cell as a sqlite Value —
-                    // parameterized, never inlined into SQL.
-                    let params: Vec<rusqlite::types::Value> =
-                        row.iter().map(json_to_sqlite).collect();
-                    let params_ref: Vec<&dyn rusqlite::ToSql> =
-                        params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
-                    affected += stmt.execute(params_ref.as_slice())? as u64;
-                }
-            }
-            tx.commit()?;
-            Ok(affected)
-        })
-        .await
-        .map_err(|e| super::SourceError(format!("delete worker: {e}")))?
-        .map_err(|e| super::SourceError(format!("delete rows: {e}")))
+        let style = super::write_sql::Placeholder::Numbered;
+        let sql = super::write_sql::delete(table, key, guard, style);
+        run_rows(self.path.clone(), sql, rows.to_vec(), guard.cloned(), false).await
     }
+}
+
+/// Run one prepared statement per row in ONE transaction: each row's cells bind as parameters, then
+/// the guard's ids (`write_sql`). A guarded upsert must change exactly its one row (zero means an
+/// out-of-scope row already holds the key), else the whole batch rolls back. Returns rows changed.
+async fn run_rows(
+    path: String,
+    sql: String,
+    rows: Vec<Vec<serde_json::Value>>,
+    guard: Option<super::WriteGuard>,
+    each_row_must_change: bool,
+) -> Result<u64, super::SourceError> {
+    tokio::task::spawn_blocking(move || -> Result<u64, String> {
+        let mut conn = rusqlite::Connection::open(&path).map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let mut affected = 0u64;
+        {
+            let mut stmt = tx.prepare(&sql).map_err(|e| e.to_string())?;
+            let ids = guard.iter().flat_map(|g| g.ids.iter().cloned());
+            let ids: Vec<rusqlite::types::Value> = ids.map(rusqlite::types::Value::Text).collect();
+            for (i, row) in rows.iter().enumerate() {
+                let mut params: Vec<rusqlite::types::Value> =
+                    row.iter().map(json_to_sqlite).collect();
+                params.extend(ids.iter().cloned());
+                let n = stmt
+                    .execute(rusqlite::params_from_iter(params))
+                    .map_err(|e| e.to_string())?;
+                if guard.is_some() && each_row_must_change && n != 1 {
+                    return Err(format!(
+                        "denied: rows[{i}] would change a row outside the caller's entities"
+                    ));
+                }
+                affected += n as u64;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(affected)
+    })
+    .await
+    .map_err(|e| super::SourceError(format!("write worker: {e}")))?
+    .map_err(|e| super::SourceError(format!("write rows: {e}")))
 }
 
 /// Map a JSON cell value to a sqlite `Value` (parameterized — never inlined). sqlite is dynamically

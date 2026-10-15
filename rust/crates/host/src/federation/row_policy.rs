@@ -258,22 +258,31 @@ pub async fn refuse_if_restricted(
     Ok(())
 }
 
-/// Refuse `caller`'s write or delete of `table` in `source` when they are restricted — unless they
-/// are an extension acting as itself and `table` is one it created there ([`super::owned`]).
-pub async fn refuse_unless_owned(
+/// Decide `caller`'s write or delete of `table` in `source` (`entity-scoped-writes-scope.md`):
+/// unrestricted, or an extension acting as itself on a table it created there ([`super::owned`]) ⇒
+/// `None`, the write runs as before; a table the enforced policy marks a writable `entity` rule ⇒
+/// `Some(write_scope)`, which the sidecar turns into a guard (only the caller's entities' rows, as
+/// written and as they stood); anything else ⇒ `Denied`. The sidecar re-checks every part of it.
+pub async fn write_scope_for(
     node: &Node,
     caller: &Principal,
     ws: &str,
     source: &str,
     table: &str,
-) -> Result<(), FederationError> {
-    if !restricted(node, caller, ws, source).await? {
-        return Ok(());
+) -> Result<Option<Value>, FederationError> {
+    let Some(scope) = row_scope_for(node, caller, ws, source).await? else {
+        return Ok(None);
+    };
+    if let Some(ext) = super::owned::extension_of(caller) {
+        if super::owned::owns(&node.store, ws, ext, source, table).await? {
+            return Ok(None);
+        }
     }
-    match super::owned::extension_of(caller) {
-        Some(ext) if super::owned::owns(&node.store, ws, ext, source, table).await? => Ok(()),
-        _ => Err(FederationError::Denied),
+    let rule = &scope["policy"]["tables"][table.to_lowercase()];
+    if rule["kind"] == "entity" && rule["writable"] == true {
+        return Ok(Some(scope));
     }
+    Err(FederationError::Denied)
 }
 
 /// A plain lowercase identifier — what a policy may name as a table, column or tag key.

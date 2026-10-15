@@ -13,7 +13,6 @@ use datafusion_table_providers::postgres::PostgresTableFactory;
 use datafusion_table_providers::sql::db_connection_pool::postgrespool::PostgresConnectionPool;
 use secrecy::SecretString;
 
-use super::pg_value::PgValue;
 use super::{Source, SourceError};
 
 use arrow::record_batch::RecordBatch;
@@ -267,138 +266,28 @@ impl Source for PostgresSource {
         columns: &[String],
         rows: &[Vec<serde_json::Value>],
         key: Option<&[String]>,
+        guard: Option<&super::WriteGuard>,
     ) -> Result<u64, SourceError> {
         if rows.is_empty() {
             return Ok(0);
         }
-        // Build the SQL once (identifiers quote_ident'd — validated caller-side + defense in depth),
-        // reuse the prepared statement per row.
-        let quoted_cols: Vec<String> = columns
-            .iter()
-            .map(|c| super::dialect::quote_ident(c))
-            .collect();
-        let placeholders: Vec<String> = (1..=columns.len()).map(|i| format!("${i}")).collect();
-        let mut sql = format!(
-            "INSERT INTO {} ({}) VALUES ({})",
-            super::dialect::quote_ident(table),
-            quoted_cols.join(", "),
-            placeholders.join(", ")
-        );
-        if let Some(key) = key.filter(|k| !k.is_empty()) {
-            let conflict_cols: Vec<String> =
-                key.iter().map(|c| super::dialect::quote_ident(c)).collect();
-            let updates: Vec<String> = columns
-                .iter()
-                .filter(|c| !key.contains(c))
-                .map(|c| {
-                    let q = super::dialect::quote_ident(c);
-                    format!("{q}=excluded.{q}")
-                })
-                .collect();
-            if updates.is_empty() {
-                sql.push_str(&format!(
-                    " ON CONFLICT({}) DO NOTHING",
-                    conflict_cols.join(", ")
-                ));
-            } else {
-                sql.push_str(&format!(
-                    " ON CONFLICT({}) DO UPDATE SET {}",
-                    conflict_cols.join(", "),
-                    updates.join(", ")
-                ));
-            }
-        }
-
-        let mut conn = self
-            .pool
-            .connect_direct()
-            .await
-            .map_err(|e| SourceError(format!("write connect: {e}")))?;
-        let tx = conn
-            .conn
-            .transaction()
-            .await
-            .map_err(|e| SourceError(format!("write begin: {e}")))?;
-        let stmt = tx
-            .prepare(&sql)
-            .await
-            .map_err(|e| SourceError(format!("write prepare: {e}")))?;
-        let mut affected = 0u64;
-        for row in rows {
-            // `columns[i]` ↔ `row[i]` (column-aligned). Each cell becomes an owned PgValue that
-            // implements ToSql — parameterized, never inlined.
-            let params: Vec<PgValue> = row.iter().map(PgValue::from_json).collect();
-            let refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params
-                .iter()
-                .map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync))
-                .collect();
-            affected += tx
-                .execute(&stmt, refs.as_slice())
-                .await
-                .map_err(|e| SourceError(format!("write rows: {e}")))?;
-        }
-        tx.commit()
-            .await
-            .map_err(|e| SourceError(format!("write commit: {e}")))?;
-        Ok(affected)
+        let style = super::write_sql::Placeholder::Dollar;
+        let sql = super::write_sql::upsert(table, columns, key.unwrap_or(&[]), guard, style);
+        super::pg_write::run_rows(&self.pool, &sql, rows, guard, true).await
     }
 
-    /// `DELETE FROM <table> WHERE <k1>=$1 AND <k2>=$2 ...`, one statement per key row, with
-    /// parameterized `$n` key values — never inlined into SQL. The whole batch runs in one
-    /// transaction so a mid-batch failure rolls everything back (the federation.delete invariant).
-    /// Identifiers are quote_ident'd (validated caller-side + defense in depth here).
     async fn delete_rows(
         &self,
         table: &str,
         key: &[String],
         rows: &[Vec<serde_json::Value>],
+        guard: Option<&super::WriteGuard>,
     ) -> Result<u64, SourceError> {
         if rows.is_empty() {
             return Ok(0);
         }
-        // Build the SQL once (one `k=$n` term per key column), reuse the prepared statement per row.
-        let predicates: Vec<String> = key
-            .iter()
-            .enumerate()
-            .map(|(i, c)| format!("{}=${}", super::dialect::quote_ident(c), i + 1))
-            .collect();
-        let sql = format!(
-            "DELETE FROM {} WHERE {}",
-            super::dialect::quote_ident(table),
-            predicates.join(" AND ")
-        );
-
-        let mut conn = self
-            .pool
-            .connect_direct()
-            .await
-            .map_err(|e| SourceError(format!("delete connect: {e}")))?;
-        let tx = conn
-            .conn
-            .transaction()
-            .await
-            .map_err(|e| SourceError(format!("delete begin: {e}")))?;
-        let stmt = tx
-            .prepare(&sql)
-            .await
-            .map_err(|e| SourceError(format!("delete prepare: {e}")))?;
-        let mut affected = 0u64;
-        for row in rows {
-            // `key[i]` ↔ `row[i]` (key-aligned). Each cell becomes an owned PgValue that implements
-            // ToSql — parameterized, never inlined.
-            let params: Vec<PgValue> = row.iter().map(PgValue::from_json).collect();
-            let refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params
-                .iter()
-                .map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync))
-                .collect();
-            affected += tx
-                .execute(&stmt, refs.as_slice())
-                .await
-                .map_err(|e| SourceError(format!("delete rows: {e}")))?;
-        }
-        tx.commit()
-            .await
-            .map_err(|e| SourceError(format!("delete commit: {e}")))?;
-        Ok(affected)
+        let style = super::write_sql::Placeholder::Dollar;
+        let sql = super::write_sql::delete(table, key, guard, style);
+        super::pg_write::run_rows(&self.pool, &sql, rows, guard, false).await
     }
 }

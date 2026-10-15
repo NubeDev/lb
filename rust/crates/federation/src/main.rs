@@ -328,7 +328,7 @@ async fn federation_write(id: u64, input: &Value) -> Reply {
     });
 
     let key_ref: Option<&[String]> = key.as_deref();
-    match write::run_write(kind, dsn, table, &columns, &rows, key_ref).await {
+    match row_policy::scoped_write((kind, dsn, table), &columns, &rows, key_ref, input).await {
         Ok(affected) => {
             let out = json!({ "affected": affected });
             Reply::ok(id, out.to_string())
@@ -363,7 +363,7 @@ async fn federation_delete(id: u64, input: &Value) -> Reply {
         .cloned()
         .unwrap_or_default();
 
-    match delete::run_delete(kind, dsn, table, &key, &rows).await {
+    match row_policy::scoped_delete((kind, dsn, table), &key, &rows, input).await {
         Ok(affected) => {
             let out = json!({ "affected": affected });
             Reply::ok(id, out.to_string())

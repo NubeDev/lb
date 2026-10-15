@@ -39,6 +39,7 @@ pub async fn federation_delete<L: Launcher>(
     table: &str,
     key: &[String],
     rows: &[Value],
+    write_scope: Option<Value>,
     ts: u64,
 ) -> Result<Value, FederationError> {
     authorize(caller, ws, "federation.delete")?;
@@ -49,15 +50,19 @@ pub async fn federation_delete<L: Launcher>(
     enforce_endpoint(&node.store, ws, &ds.endpoint).await?;
     let dsn = mediate_dsn(node, ws, &ds.secret_ref).await?;
 
-    let input = json!({
+    let mut input = json!({
         "kind": ds.kind,
         "dsn": dsn,
         "source": source,
         "table": table,
         "key": key,
         "rows": rows,
-    })
-    .to_string();
+    });
+    // A restricted caller's guard (entity-scoped writes): the sidecar deletes only their entities' rows.
+    if let Some(scope) = write_scope {
+        input["write_scope"] = scope;
+    }
+    let input = input.to_string();
 
     // MEDIATED dispatch, like `federation.query`: this verb authorized itself on
     // `mcp:federation.delete:call` above and built the child input by enumeration, so the caller needs no

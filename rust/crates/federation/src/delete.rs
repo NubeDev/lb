@@ -22,12 +22,14 @@ pub const ROW_CAP: usize = 1_000;
 /// Run a bounded delete against the `kind` source at `dsn`. `key` names the identifying columns;
 /// each entry in `rows` is a `key`-aligned array of values, so one row deletes every DB row matching
 /// (`key` columns = the given values). All the DELETEs run in ONE transaction. Returns `{affected}`.
+/// Under a `guard` (entity-scoped writes, built by `row_policy::write`) only the caller's entities' rows go.
 pub async fn run_delete(
     kind: &str,
     dsn: &str,
     table: &str,
     key: &[String],
     rows: &[Value],
+    guard: Option<&crate::source::WriteGuard>,
 ) -> Result<u64, String> {
     if rows.len() > ROW_CAP {
         return Err(format!(
@@ -66,7 +68,7 @@ pub async fn run_delete(
 
     let source = cached_connect(kind, dsn).await.map_err(|e| e.to_string())?;
     let affected = source
-        .delete_rows(table, key, &typed_rows)
+        .delete_rows(table, key, &typed_rows, guard)
         .await
         .map_err(|e| e.to_string())?;
 

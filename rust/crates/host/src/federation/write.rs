@@ -40,6 +40,7 @@ pub async fn federation_write<L: Launcher>(
     columns: &[String],
     rows: &[Value],
     key: Option<&[String]>,
+    write_scope: Option<Value>,
     ts: u64,
 ) -> Result<Value, FederationError> {
     authorize(caller, ws, "federation.write")?;
@@ -60,6 +61,10 @@ pub async fn federation_write<L: Launcher>(
     });
     if let Some(key) = key {
         input["key"] = json!(key);
+    }
+    // A restricted caller's guard (entity-scoped writes): the sidecar writes only their entities' rows.
+    if let Some(scope) = write_scope {
+        input["write_scope"] = scope;
     }
     let input = input.to_string();
 

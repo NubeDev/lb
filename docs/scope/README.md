@@ -175,7 +175,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   one-arm routing gap that blocks the above from the native tier: the MCP dispatcher routes
   `authz.*` to `call_authz_tool` but not `grants.*`/`roles.*`/`teams.*` — which that handler
   already implements — so a native extension can *read* the scoped-grant surface over the
-  host callback but cannot *mint* a grant; additive, no new verb/cap/WIT). The
+  host callback but cannot *mint* a grant; additive, no new verb/cap/WIT).
+  `entity-scoped-writes-scope.md` (the ask) is the write side of `entity-scoped-data-scope.md`: on a
+  table an admin marks `writable` in the row policy, a restricted principal's `federation.write` /
+  `.delete` succeeds only when every row, as written and as it stood, is one of their entities
+  (today every restricted write is refused). The
   **confirmed wire shapes** an out-of-tree native ext reaches all of the above by live in
   `mcp/ems-provisioning-verb-shapes-scope.md` (answers issue #48: the exact request/reply of
   `rules.save`/`series.latest`/`authz.check_scoped`/`scope_filter`/`grants.assign`, each pinned to a

@@ -12,7 +12,7 @@ use lb_mcp::ToolError;
 use lb_supervisor::OsLauncher;
 use serde_json::{json, Value};
 
-use super::row_policy::refuse_unless_owned;
+use super::row_policy::write_scope_for;
 use super::{
     datasource_add, datasource_list, datasource_remove, datasource_test, datasource_update,
     dbschema_delete, dbschema_get, dbschema_list, dbschema_save, federation_delete,
@@ -183,9 +183,9 @@ pub async fn call_federation_tool(
         "federation.write" => {
             let source = str_arg(input, "source")?;
             let table = str_arg(input, "table")?;
-            // Entity-scoped data: a write cannot be narrowed, so a restricted caller is refused —
-            // except an extension writing a table it created (`federation::owned`).
-            refuse_unless_owned(node, principal, ws, source, table).await?;
+            // Entity-scoped data: a restricted caller writes only a writable policy table, guarded to
+            // their own entities, or an extension's own table (`row_policy::write_scope_for`).
+            let write_scope = write_scope_for(node, principal, ws, source, table).await?;
             let columns: Vec<String> = input
                 .get("columns")
                 .and_then(|v| v.as_array())
@@ -213,6 +213,7 @@ pub async fn call_federation_tool(
                 &columns,
                 &rows,
                 key.as_deref(),
+                write_scope,
                 ts,
             )
             .await?;
@@ -221,8 +222,8 @@ pub async fn call_federation_tool(
         "federation.delete" => {
             let source = str_arg(input, "source")?;
             let table = str_arg(input, "table")?;
-            // As `federation.write`: refused when restricted, unless it is the caller's own table.
-            refuse_unless_owned(node, principal, ws, source, table).await?;
+            // As `federation.write`: own entities' rows of a writable table, or the caller's own table.
+            let write_scope = write_scope_for(node, principal, ws, source, table).await?;
             let key: Vec<String> = input
                 .get("key")
                 .and_then(|v| v.as_array())
@@ -236,7 +237,16 @@ pub async fn call_federation_tool(
                 .ok_or_else(|| ToolError::BadInput("missing array arg: rows".into()))?
                 .clone();
             let out = federation_delete(
-                node, &launcher, principal, ws, source, table, &key, &rows, ts,
+                node,
+                &launcher,
+                principal,
+                ws,
+                source,
+                table,
+                &key,
+                &rows,
+                write_scope,
+                ts,
             )
             .await?;
             Ok(out)
