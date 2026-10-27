@@ -51,6 +51,7 @@ pub async fn assign(
     }
     let previous = case.assigned_to.clone();
     case.assigned_to = next.clone();
+    case.assigned_by = next.as_ref().map(|_| actor.to_string());
     save(store, ws, &mut case, ts).await?;
     append_event(
         store,

@@ -360,7 +360,7 @@ the contract. Where they disagree after the code lands, the record wins and this
    (`outbox-delivered-is-not-email-sent.md`). The drawer must never claim an email went out that
    did not.
 
-### 2026-10 — the Insights review (personal pins, SLA pause on hold, closing reasons)
+### 2026-10 — the Insights review (personal pins, SLA pause on hold, closing reasons, My Insights lanes)
 
 8. **A pin is a person's own bookmark.** `case.pin` adds or removes the caller's subject in the
    case's `pinned_by`; the `pinned` list axis reads only the caller's (`pinned_for`, set by the host
@@ -382,6 +382,14 @@ the contract. Where they disagree after the code lands, the record wins and this
     remotely" under `fixed`, "No action required" under `accepted_risk`), kept on the case and the
     `resolved` event. *Rejected: more `Resolution` variants* — the scorecard's precision formula
     and the hold-down both read the closed set, and a product's wording does not belong in it.
+11. **My Insights' five lanes are server lanes, personal and disjoint.** `case.list` takes `lane`
+    `action` / `assigned` / `emailed` / `hold` / `closed` beside the ownership three; `my_lane`
+    puts each case in at most one, in that precedence order: closed by me in the last 7 days →
+    snoozed and mine (or snoozed by me) → emailed by me with the ball still out → mine → assigned
+    by me to someone else. "By me" needed two new facts on the case: `assigned_by` (set by
+    `case.assign`, cleared with the assignment) and `emailed_by` (set by `case.request.send`).
+    *Rejected: lanes computed in the UI* — a second client (ESR) would have to copy the rule, and
+    "by me" is not on the wire without the two fields anyway.
 
 ## Related
 

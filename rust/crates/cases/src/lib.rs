@@ -52,6 +52,7 @@ mod member_counts;
 mod member_remove;
 mod members;
 mod merge;
+mod my_lane;
 mod open;
 mod party;
 mod party_delete;
@@ -161,3 +162,4 @@ pub use workflow::{workflow, workflow_with_reason, MAX_RESOLUTION_REASON};
 // The lane read is a whole-table scan behind one name, so callers never reach for `lb_store::list`
 // with a hand-built filter and re-derive the `{ data, rev }` unwrap.
 pub use list::list;
+pub use my_lane::{my_lane, CLOSED_LANE_MS};

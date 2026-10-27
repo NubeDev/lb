@@ -91,6 +91,8 @@ pub async fn open(
         resolution_reason: None,
         waiting_on: None,
         assigned_to: input.assigned_to,
+        assigned_by: None,
+        emailed_by: None,
         snooze_until: None,
         snooze_reason: None,
         snoozed_by: None,

@@ -1,4 +1,9 @@
-//! `list` — the three work lanes and their filters (case-plane scope).
+//! `list` — the work lanes and their filters (case-plane scope).
+//!
+//! Two sets of lanes. The original three (`mine` / `waiting` / `watching`) split the workspace by
+//! ownership. The five personal ones (`action` / `assigned` / `emailed` / `hold` / `closed`) are
+//! My Insights' (Insights review #16): each case is in at most one of them, decided by
+//! [`crate::my_lane`].
 //!
 //! **Sorted `due_at` ASCENDING, then severity DESCENDING.** That order is the whole product
 //! argument in one line: the queue is ranked by *when the commitment expires*, not by how loud the
@@ -40,6 +45,24 @@ pub enum Lane {
     /// Everything else the caller can see — the unassigned and other people's work. Named
     /// `watching` because that is what looking at it is: oversight, not ownership.
     Watching,
+    /// My Insights: mine to act on — assigned to me, not on hold and not out by email.
+    Action,
+    /// My Insights: I assigned it to someone else.
+    Assigned,
+    /// My Insights: I sent it out for action by email and the ball is still with the party.
+    Emailed,
+    /// My Insights: snoozed, and mine or snoozed by me.
+    Hold,
+    /// My Insights: I closed it in the last seven days. Reads closed cases whatever
+    /// `include_closed` says — it is the lane's whole content.
+    Closed,
+}
+
+impl Lane {
+    /// The lanes that need the caller's subjects (everything but `waiting`).
+    pub fn is_personal(self) -> bool {
+        !matches!(self, Lane::Waiting)
+    }
 }
 
 /// The filter axes, all optional and all ANDed. Every value is an opaque workspace string except
@@ -197,12 +220,16 @@ pub async fn list(
         )));
     }
 
-    let mut matched: Vec<Case> =
-        read_cases(store, ws, query.include_closed, query.filter.ids.as_deref())
-            .await?
-            .into_iter()
-            .filter(|c| matches(c, query, subjects))
-            .collect();
+    let mut matched: Vec<Case> = read_cases(
+        store,
+        ws,
+        include_closed(query),
+        query.filter.ids.as_deref(),
+    )
+    .await?
+    .into_iter()
+    .filter(|c| matches(c, query, subjects))
+    .collect();
 
     // `due_at` ascending with `None` last, then severity DESCENDING, then the open time so the
     // order is total (two cases with the same deadline and severity must not shuffle between
@@ -247,8 +274,12 @@ pub(crate) fn unwrap_case(row: serde_json::Value) -> Option<Case> {
 }
 
 /// Every filter axis, ANDed. Split out so the sort above reads as the product decision it is.
+fn include_closed(query: &ListQuery) -> bool {
+    query.include_closed || query.lane == Lane::Closed
+}
+
 fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool {
-    if case.closed && !query.include_closed {
+    if case.closed && !include_closed(query) {
         return false;
     }
     if !matches_filter(case, &query.filter, query.now) {
@@ -267,6 +298,7 @@ fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool 
             .assigned_to
             .as_deref()
             .is_some_and(|a| subjects.contains(a)),
+        personal => crate::my_lane::my_lane(case, subjects, query.now) == Some(personal),
     }
 }
 

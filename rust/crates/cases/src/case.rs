@@ -146,6 +146,14 @@ pub struct Case {
     /// `assigned_to` is an echo of it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_to: Option<String>,
+    /// Who made the current assignment (Insights review: My Insights' *Assigned* lane is "what I
+    /// gave to someone else"). Set by [`crate::assign`] to the actor, cleared with the assignment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_by: Option<String>,
+    /// Who last sent the case out for action by email (`case.request.send`), for My Insights'
+    /// *Emailed* lane. Set with `waiting_on` by [`crate::set_waiting_on`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emailed_by: Option<String>,
     /// Snoozed until this logical timestamp. A severity escalation **punctures** a snooze
     /// ([`crate::snooze::puncture_snooze`]) — a case that got worse is not still parked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
