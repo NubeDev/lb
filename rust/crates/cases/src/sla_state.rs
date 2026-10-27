@@ -4,9 +4,11 @@
 //! a filter can ask for, so the queue and the insight roster's case lens cannot each grow their own.
 //! It is relative to a clock the CALLER supplies (`now`), like the `snoozed` axis: no wall clock here.
 //!
-//! **The clock never pauses**, so a parked case is still due soon or breached. It does STOP: once a
-//! case is closed nothing is running, and a deadline that passes afterwards is not a breach. A closed
-//! case is therefore `Breached` only if the breach was recorded, and `Met` otherwise.
+//! **The clock pauses only for a snooze with an end date** ([`crate::sla_pause`]): a paused case
+//! reads as it stood when the pause began, so it cannot drift into breached while nobody may act on
+//! it. Any other parked or waiting case is still due soon or breached. The clock STOPS once a case is
+//! closed, and a deadline that passes afterwards is not a breach. A closed case is therefore
+//! `Breached` only if the breach was recorded, and `Met` otherwise.
 //!
 //! One responsibility: a case and a clock to its SLA state.
 
@@ -44,6 +46,7 @@ pub fn sla_state(case: &Case, now: u64, due_soon_ms: u64) -> SlaState {
     if case.closed {
         return SlaState::Met;
     }
+    let now = case.sla_paused_at.map_or(now, |at| at.min(now));
     if now >= due_at {
         SlaState::Breached
     } else if due_at - now <= due_soon_ms {

@@ -29,6 +29,7 @@
 
 mod assign;
 mod breach_mark;
+mod business_span;
 mod calendar;
 mod case;
 mod case_event;
@@ -56,6 +57,7 @@ mod party;
 mod party_delete;
 mod party_list;
 mod party_upsert;
+mod pin;
 mod policy;
 mod policy_delete;
 mod policy_list;
@@ -72,6 +74,7 @@ mod resolved;
 mod save;
 mod scorecard;
 mod seq_next;
+mod sla_pause;
 mod sla_state;
 mod snooze;
 mod snooze_release;
@@ -93,6 +96,7 @@ pub use case_member::{member_id, CaseMember, MemberRole, TABLE as CASE_MEMBER_TA
 // The external-party round trip (wave 2): the ask, the token hash, the reply. `Delivery` is what
 // happened to the MAIL and `RequestStatus` is where the ASK is — never one field (resolved
 // decision 7).
+pub use business_span::business_ms_between;
 pub use case_request::{
     validate_reply, Ask, Brief, BriefEvidence, BriefSeries, CaseRequest, Delivery, Reply,
     ReplyKind, RequestStatus, MAX_REPLY_ATTACHMENTS, MAX_REPLY_TEXT_BYTES,
@@ -100,7 +104,9 @@ pub use case_request::{
 };
 pub use caveat_refresh::refresh_caveat;
 pub use comment::comment;
-pub use deadline::{add_business_hours, due_at, respond_by, MAX_DAYS_SCANNED, NEVER};
+pub use deadline::{
+    add_business_hours, add_business_ms, due_at, respond_by, MAX_DAYS_SCANNED, NEVER,
+};
 pub use deadline_set::{set_deadlines, Deadlines};
 pub use error::CasesError;
 pub use event_append::append_event;
@@ -117,7 +123,9 @@ pub use member_remove::member_remove;
 pub use members::{member_count, members, members_all, MemberPage, MemberRow, MAX_MEMBER_PAGE};
 pub use merge::merge;
 pub use open::{open, OpenInput};
+pub use pin::pin;
 pub use seq_next::number_existing_cases;
+pub use sla_pause::{snooze_pauses, MAX_SLA_PAUSE_MS};
 pub use sla_state::{sla_state, SlaState, DEFAULT_DUE_SOON_MS};
 pub use stages::{stages, CaseStage};
 // The party roster (wave 2). A party is DATA: nothing here names one (rule 10), and the scorecard
@@ -148,7 +156,7 @@ pub use scorecard::{scorecard, ResolvedCase, ScorecardRow};
 pub use snooze::{puncture_snooze, snooze};
 pub use split::split;
 pub use waiting_on::{set_cost_to_fix, set_waiting_on};
-pub use workflow::workflow;
+pub use workflow::{workflow, workflow_with_reason, MAX_RESOLUTION_REASON};
 
 // The lane read is a whole-table scan behind one name, so callers never reach for `lb_store::list`
 // with a hand-built filter and re-derive the `{ data, rev }` unwrap.

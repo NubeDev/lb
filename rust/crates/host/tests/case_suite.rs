@@ -125,6 +125,9 @@ mod plane_split;
 #[path = "case/plane_walls.rs"]
 mod plane_walls;
 
+#[path = "case/plane_pin.rs"]
+mod plane_pin;
+
 #[path = "case/request_support.rs"]
 mod request_support;
 

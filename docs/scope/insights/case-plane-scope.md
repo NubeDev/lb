@@ -77,8 +77,8 @@ Behaviour change in the notify path only: **a caveated insight is never a breakt
 
 **`case`** — `id, title, workflow ∈ {to_action, actioned, waiting_on_po, resolved}, resolution ∈
 {fixed, self_cleared, false_positive, accepted_risk, duplicate}?, resolved_ts?, resolved_by?,
-waiting_on ∈ {internal, client, contractor}?, assigned_to?, snooze_until?, snooze_reason?,
-snoozed_by?, grouping ∈ {verdict, topology, storm, human, single}, primary_insight, category?,
+resolution_reason?, waiting_on ∈ {internal, client, contractor}?, assigned_to?, snooze_until?,
+snooze_reason?, snoozed_by?, sla_paused_at?, sla_paused_ms, pinned_by[], grouping ∈ {verdict, topology, storm, human, single}, primary_insight, category?,
 site?, scope?, severity, policy_id?, respond_by?, due_at?, breached_ts?, breach_waiting_on?,
 impact_rate?, impact_tier ∈ {claimed, modelled, withheld}?, cost_to_fix?, verified_saving?,
 saving_accepted_by?, saving_accepted_ts?, external_ref?, opened_ts, last_activity_ts,
@@ -94,7 +94,8 @@ rows and the case must stay small enough to list.
 (The field is **`eseq`** on the wire — a consumer that reads `seq` gets nothing. Corrected here
 against the built record after the UI mirrored the prose and had to be fixed.)
 `kind ∈ {opened, merged, split, workflow, assigned, snoozed, request_sent, request_opened, reply,
-nudge, breach, fms_ticket, reopened, resolved, verified, saving_accepted, comment}`. `actor` is
+nudge, breach, fms_ticket, reopened, resolved, verified, saving_accepted, comment, sla_paused,
+sla_resumed}`. `actor` is
 `user: | team: | party: | system:` — a contractor reply is attributed to the **party**, not a login.
 
 **`case_request`** — `id, case_id, party_id, ask ∈ {quote, attend, confirm, info}, token_hash,
@@ -131,8 +132,9 @@ not violated by lb knowing the five.
 | `case.members` / `case.events` | `case.get` | both → `case.get` | the drawer's two lists, paged. `members` **echoes** each cited insight's `title` + `severity` — see below |
 | `case.open` | `case.open` | — | human-opened over ≥1 insight; the reactor's internal call |
 | `case.merge` / `case.split` | `case.open` | both → `case.open` | move members; the losing case closes as `duplicate` |
-| `case.workflow` | `case.workflow` | — | transition + `waiting_on`; `resolved` requires `resolution` |
+| `case.workflow` | `case.workflow` | — | transition + `waiting_on`; `resolved` requires `resolution`, and may carry the closer's own `reason` (≤ 200 chars, cleared on a reopen) |
 | `case.assign` / `case.snooze` / `case.comment` | `case.workflow` | all → `case.workflow` | the triage write path; `insight.assign` / `insight.comment` delegate here |
+| `case.pin` | `case.list` | → `case.list` | `{id, pinned}`: the CALLER's own bookmark (subject from the session). No event, no `last_activity_ts` bump; `case.list`'s `pinned` axis reads the caller's pins only |
 | `case.request.send` / `case.request.withdraw` | `case.request.send` | withdraw → send | mint the token, enqueue the effect, schedule nudges, set `waiting_on` |
 | `case.request.view` / `case.request.reply` | **token-only**, scoped to one request | — | the only two verbs a token principal may call |
 | `party.upsert` / `party.list` | `party.upsert` / `party.list` | — | admin |
@@ -227,7 +229,7 @@ verdict-last **merges** the members' existing `single` cases into the verdict ca
 verdict-first opens over whatever resolves and the reconcile loop folds the stragglers in. A member
 with `human_placed: true` is never moved in either direction.
 | **hold-down** | insight reopen | if the member's case closed as `fixed` within `hold_down_days`: reopen it, `reopened` event *repair did not hold*, `reopened_count += 1`; any other resolution → a new case |
-| **sla-clock** | case open · severity escalation | resolve the policy, compute `respond_by`/`due_at` in business hours, schedule the breach reminder; recompute on escalation; **never pause** |
+| **sla-clock** | case open · severity escalation | resolve the policy, compute `respond_by`/`due_at` in business hours, schedule the breach reminder; recompute on escalation; **pause only for a snooze with an end date** (decision 9) |
 | **snooze-expiry** | the case tick (`release_expired_snoozes`, before self-clear) | end every open case's snooze whose `snooze_until` has passed, through the ordinary un-snooze gesture (actor `system:snooze-expiry`); idempotent — an ended snooze is cleared |
 
 **The end of a snooze puts parked work back in the queue.** However a snooze ends — un-snooze
@@ -357,6 +359,29 @@ the contract. Where they disagree after the code lands, the record wins and this
    `LoggingEmailProvider` yields `logged`, never `sent`
    (`outbox-delivered-is-not-email-sent.md`). The drawer must never claim an email went out that
    did not.
+
+### 2026-10 — the Insights review (personal pins, SLA pause on hold, closing reasons)
+
+8. **A pin is a person's own bookmark.** `case.pin` adds or removes the caller's subject in the
+   case's `pinned_by`; the `pinned` list axis reads only the caller's (`pinned_for`, set by the host
+   from the session and never read from the wire). It is not work on the case: no history event, no
+   `last_activity_ts` bump, and it rides the read grant, so a viewer may pin. *Rejected: a team
+   flag* — the product asked for personal pins (a team pin was built first and reversed the same
+   day).
+9. **The SLA pauses for a snooze with an end date, and only for that.** This reverses "never
+   pause" for one gesture. A snooze already needs a reason; to pause it must also end within a
+   year (`MAX_SLA_PAUSE_MS`) — an open-ended snooze keeps the clock running, so a pause cannot
+   become a way to never breach. `waiting_on` (an email out, a purchase order) still never pauses.
+   While paused the case reads as it stood at `sla_paused_at` and no breach is recorded; when the
+   snooze ends (un-snooze, expiry, or a severity puncture) the business time it paused, on the
+   policy's calendar, is added to `sla_paused_ms`, and the deadlines — now a pure function of
+   `(policy, opened_ts, sla_paused_ms)` — move forward by exactly that. History: `sla_paused` /
+   `sla_resumed {paused_ms}`.
+10. **A closing reason in the closer's words rides `resolved`.** The closed `resolution` set stays
+    what the hold-down and the scorecard read; `reason` is the label the person chose ("Fixed
+    remotely" under `fixed`, "No action required" under `accepted_risk`), kept on the case and the
+    `resolved` event. *Rejected: more `Resolution` variants* — the scorecard's precision formula
+    and the hold-down both read the closed set, and a product's wording does not belong in it.
 
 ## Related
 

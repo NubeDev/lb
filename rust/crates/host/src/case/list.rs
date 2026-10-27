@@ -45,5 +45,7 @@ pub async fn case_list(
     {
         query.filter.sites_allowed = Some(ids);
     }
+    // `pinned` reads the caller's own pins, whoever the caller names (a pin is a person's own).
+    query.filter.pinned_for = Some(principal.sub().to_string());
     Ok(lb_cases::list(store, ws, &query, &subjects).await?)
 }

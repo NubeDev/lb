@@ -7,20 +7,19 @@
 //! wall-clock fact a human can argue with and a contract can be held to. Everything here exists to
 //! produce that one instant honestly and to be able to say which clause produced it.
 //!
-//! # The clock never pauses
+//! # The clock pauses only for a snooze with an end date
 //!
-//! Both deadlines are a **pure function of `(policy, opened_ts)`**. `opened_ts` never moves and the
-//! policy only changes when the *contract* or the case's `(site, category, severity)` facts change.
-//! That is not a rule this file remembers to follow — it is the shape of the arithmetic
-//! ([`lb_cases::respond_by`] / [`lb_cases::due_at`], which this file deliberately does NOT
-//! reimplement). Consequences, all structural:
-//!   * a **snooze** cannot move a deadline: it is not an input, so a recompute after one returns
-//!     the identical instants (and [`lb_cases::set_deadlines`] then writes nothing at all);
-//!   * neither can `waiting_on`. Waiting on a purchase order, a client, or a contractor records
-//!     **who holds the ball**; it never stops time. A contract that stopped whenever we were
-//!     waiting on somebody would measure our patience, not our service;
-//!   * a **severity escalation** DOES move it, because severity is a policy-match axis. A case that
-//!     got worse is governed by whatever clause covers the worse thing.
+//! Both deadlines are a **pure function of `(policy, opened_ts, sla_paused_ms)`**. `opened_ts`
+//! never moves; the policy only changes when the *contract* or the case's `(site, category,
+//! severity)` facts change; `sla_paused_ms` only grows, when a snooze with an end date ends
+//! ([`lb_cases`]'s `sla_pause`). That is the shape of the arithmetic ([`lb_cases::respond_by`] /
+//! [`lb_cases::due_at`], which this file deliberately does NOT reimplement). Consequences:
+//!   * a running pause does not move a deadline yet — it holds the breach back, and its END moves
+//!     both deadlines forward by the business time it paused;
+//!   * `waiting_on` never moves one. Waiting on a purchase order, a client, or a contractor records
+//!     **who holds the ball**; it never stops time;
+//!   * a **severity escalation** DOES move it, because severity is a policy-match axis, and it ends
+//!     the pause (it punctures the snooze).
 //!
 //! # Recompute always; write only on a change
 //!
@@ -80,7 +79,7 @@ pub async fn apply_sla(
         Some(&case.severity),
     )
     .await?;
-    let deadlines = deadlines_for(policy.as_ref(), case.opened_ts);
+    let deadlines = deadlines_for(policy.as_ref(), case.opened_ts, case.sla_paused_ms);
 
     let changed = lb_cases::set_deadlines(
         store,
@@ -103,19 +102,19 @@ pub async fn apply_sla(
     Ok(())
 }
 
-/// The two instants `policy` produces for a case opened at `opened_ts`, or both `None` when no
-/// policy governs it.
+/// The two instants `policy` produces for a case opened at `opened_ts` that has spent `paused_ms` of
+/// business time paused, or both `None` when no policy governs it.
 ///
 /// [`lb_cases::NEVER`] (the sentinel a calendar that never opens returns) folds to `None`: "this
 /// case is due at the end of time" is not a deadline, and storing `u64::MAX` would sort it to the
 /// bottom of the queue while still *looking* like a promise. Absent says the true thing.
-fn deadlines_for(policy: Option<&ServicePolicy>, opened_ts: u64) -> Deadlines {
+fn deadlines_for(policy: Option<&ServicePolicy>, opened_ts: u64, paused_ms: u64) -> Deadlines {
     let Some(policy) = policy else {
         return Deadlines::default();
     };
     Deadlines {
-        respond_by: finite(lb_cases::respond_by(policy, opened_ts)),
-        due_at: finite(lb_cases::due_at(policy, opened_ts)),
+        respond_by: finite(lb_cases::respond_by(policy, opened_ts, paused_ms)),
+        due_at: finite(lb_cases::due_at(policy, opened_ts, paused_ms)),
     }
 }
 
@@ -165,7 +164,7 @@ mod tests {
             },
             ..business_policy(2, 8, Vec::new())
         };
-        let d = deadlines_for(Some(&policy), 1_767_000_000_000);
+        let d = deadlines_for(Some(&policy), 1_767_000_000_000, 0);
         assert_eq!(d.respond_by, None);
         assert_eq!(d.due_at, None);
     }
@@ -173,7 +172,7 @@ mod tests {
     /// No policy is not "zero hours" and not "some default" — it is nothing at all.
     #[test]
     fn no_policy_means_no_deadline() {
-        assert_eq!(deadlines_for(None, 123), Deadlines::default());
+        assert_eq!(deadlines_for(None, 123, 0), Deadlines::default());
     }
 
     /// The scope's named case, at this layer: Friday 16:00 + 2 business hours = Monday 10:00.
@@ -181,7 +180,7 @@ mod tests {
     fn friday_afternoon_spills_to_monday_morning() {
         // 2026-01-09 is a Friday. 16:00 UTC.
         let friday_1600 = 1_767_974_400_000_u64;
-        let d = deadlines_for(Some(&business_policy(2, 8, Vec::new())), friday_1600);
+        let d = deadlines_for(Some(&business_policy(2, 8, Vec::new())), friday_1600, 0);
         // Monday 2026-01-12 10:00 UTC.
         assert_eq!(d.respond_by, Some(1_768_212_000_000));
     }

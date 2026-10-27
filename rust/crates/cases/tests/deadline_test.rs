@@ -12,7 +12,10 @@
 use chrono::{TimeZone, Utc};
 use chrono_tz::Tz;
 
-use lb_cases::{add_business_hours, due_at, respond_by, Calendar, DayHours, ServicePolicy, NEVER};
+use lb_cases::{
+    add_business_hours, add_business_ms, business_ms_between, due_at, respond_by, Calendar,
+    DayHours, ServicePolicy, NEVER,
+};
 
 const MS_PER_MINUTE: i64 = 60_000;
 const MS_PER_HOUR: i64 = 3_600_000;
@@ -344,12 +347,15 @@ fn respond_by_and_due_at_read_their_own_fields() {
     };
     let opened = at(BRISBANE, 2026, 10, 2, 16, 0); // Friday
     assert_eq!(
-        local(BRISBANE, respond_by(&policy, opened)),
+        local(BRISBANE, respond_by(&policy, opened, 0)),
         "2026-10-05 10:00"
     );
     // 20 h from the same start: 1 h Friday, then Mon(8) Tue(8) Wed(3) → Wednesday 12:00.
-    assert_eq!(local(BRISBANE, due_at(&policy, opened)), "2026-10-07 12:00");
-    assert!(respond_by(&policy, opened) < due_at(&policy, opened));
+    assert_eq!(
+        local(BRISBANE, due_at(&policy, opened, 0)),
+        "2026-10-07 12:00"
+    );
+    assert!(respond_by(&policy, opened, 0) < due_at(&policy, opened, 0));
 }
 
 /// Seconds on the opening instant are carried, not rounded away — a case opened at 16:00:30 is
@@ -365,4 +371,76 @@ fn sub_minute_precision_survives() {
         "the 30 seconds are still there"
     );
     assert_eq!(local(BRISBANE, got), "2026-10-05 10:00");
+}
+
+// --- business time between two instants (the SLA pause's measure) ----------------------------
+
+/// A pause from Friday 16:00 to Monday 10:00 on an office calendar is two business hours: Friday's
+/// last hour and Monday's first. The weekend between costs nothing.
+#[test]
+fn business_time_between_skips_the_weekend() {
+    let cal = office(BRISBANE, &[]);
+    let from = at(BRISBANE, 2026, 10, 2, 16, 0);
+    let to = at(BRISBANE, 2026, 10, 5, 10, 0);
+    assert_eq!(business_ms_between(&cal, from, to), 2 * MS_PER_HOUR as u64);
+}
+
+/// A span wholly outside business hours is none; a backwards span is none; a span inside one
+/// working day is its wall length; and on an always-open calendar, any span is its wall length.
+#[test]
+fn business_time_between_edges() {
+    let cal = office(BRISBANE, &[]);
+    let sat = at(BRISBANE, 2026, 10, 3, 9, 0);
+    let sun = at(BRISBANE, 2026, 10, 4, 17, 0);
+    assert_eq!(business_ms_between(&cal, sat, sun), 0);
+    assert_eq!(business_ms_between(&cal, sun, sat), 0);
+    let mon_10 = at(BRISBANE, 2026, 10, 5, 10, 0);
+    let mon_10_30 = at(BRISBANE, 2026, 10, 5, 10, 30);
+    assert_eq!(
+        business_ms_between(&cal, mon_10, mon_10_30),
+        30 * MS_PER_MINUTE as u64
+    );
+    assert_eq!(business_ms_between(&Calendar::Always, sat, sun), sun - sat);
+}
+
+/// The two halves agree: adding the business time a span holds to its start lands on its end, when
+/// the end is inside business hours. That is what lets a pause's END move a deadline by exactly the
+/// time it paused.
+#[test]
+fn business_time_between_inverts_add_business_ms() {
+    let cal = office(BRISBANE, &["2026-10-06"]);
+    let from = at(BRISBANE, 2026, 10, 2, 11, 15);
+    let to = at(BRISBANE, 2026, 10, 7, 14, 45);
+    let span = business_ms_between(&cal, from, to);
+    assert_eq!(
+        local(BRISBANE, add_business_ms(&cal, from, span)),
+        "2026-10-07 14:45"
+    );
+}
+
+/// A paused case's deadline is its unpaused one plus the business time it paused.
+#[test]
+fn a_pause_moves_the_deadline_by_its_business_time() {
+    let policy = ServicePolicy {
+        id: "contract-a".into(),
+        name: "Contract A".into(),
+        r#match: Default::default(),
+        active: true,
+        respond_h: 2,
+        resolve_h: 8,
+        calendar: office(BRISBANE, &[]),
+        party_window_h: 48,
+        hold_down_days: 14,
+        auto_close_self_cleared: false,
+    };
+    let opened = at(BRISBANE, 2026, 10, 2, 16, 0);
+    assert_eq!(
+        local(BRISBANE, due_at(&policy, opened, 0)),
+        "2026-10-05 16:00"
+    );
+    let two_hours = 2 * MS_PER_HOUR as u64;
+    assert_eq!(
+        local(BRISBANE, due_at(&policy, opened, two_hours)),
+        "2026-10-06 10:00"
+    );
 }

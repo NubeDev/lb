@@ -44,7 +44,13 @@ pub async fn release_expired_snoozes(
         )
         .await
         {
-            Ok(_) => released += 1,
+            Ok(_) => {
+                released += 1;
+                // An expiry that ended an SLA pause has moved the deadlines; the clock writes them.
+                if let Err(e) = super::sla_clock::apply_sla(node, ws, &case.id, now).await {
+                    tracing::warn!(ws, case_id = %case.id, error = %e, "snooze expiry: sla recompute failed")
+                }
+            }
             // One case that will not release must not stop the pass; the next tick retries it.
             Err(e) => {
                 tracing::warn!(ws, case_id = %case.id, error = %e, "snooze expiry: release failed")

@@ -128,6 +128,10 @@ pub struct Case {
     /// directions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution: Option<Resolution>,
+    /// The closing person's own words for the outcome, beside the closed `resolution` ("Fixed
+    /// remotely" under `fixed`). Free text, optional, only on a resolved case; cleared on a reopen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution_reason: Option<String>,
     /// Logical timestamp of the close. Cleared on a reopen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_ts: Option<u64>,
@@ -152,6 +156,19 @@ pub struct Case {
     /// Who snoozed it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snoozed_by: Option<String>,
+    /// While a snooze with an end date is running, when its SLA pause began (Insights review: "the
+    /// SLA pauses on hold"). Set and cleared only by [`crate::sla_pause`]; the clock reads a paused
+    /// case as it stood at this instant, and no breach is recorded while it is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sla_paused_at: Option<u64>,
+    /// The business time, in ms on the policy's calendar, every ENDED pause has added to the case's
+    /// deadlines. The deadlines stay a pure function — of `(policy, opened_ts, sla_paused_ms)` now.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub sla_paused_ms: u64,
+    /// The subjects who pinned the case for themselves ([`crate::pin`]). A pin is a person's own
+    /// bookmark: the queue's `pinned` axis reads only the caller's, and a pin is not work on the case.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned_by: Vec<String>,
     /// Why these insights are one case (see [`Grouping`]).
     pub grouping: Grouping,
     /// The insight this case is fundamentally ABOUT — for a verdict case the ROOT finding, not the
@@ -239,6 +256,11 @@ pub struct Case {
     /// workspace. [`crate::workflow`] is the only writer; nothing else may set it.
     #[serde(default)]
     pub closed: bool,
+}
+
+/// `skip_serializing_if` for a zero counter: a case that never paused carries no pause field.
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// Rank a severity string low→high for the queue's secondary sort (severity DESCENDING after

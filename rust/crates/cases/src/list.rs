@@ -67,6 +67,15 @@ pub struct ListFilter {
     /// against `query.now`, so an expired snooze reads as live without a sweep having run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snoozed: Option<bool>,
+    /// `Some(true)` = only the cases the CALLER pinned, `Some(false)` = only the ones they did not,
+    /// `None` = both ([`crate::pin`]). Read against `pinned_for`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned: Option<bool>,
+    /// Whose pins `pinned` reads: the caller's subject, set by the host from the session and never
+    /// read from the wire (`serde(skip)`, as `sites_allowed` is) — nobody can ask for another
+    /// person's pins. `None` with `pinned` set matches as "pinned by nobody".
+    #[serde(skip)]
+    pub pinned_for: Option<String>,
     /// Only cases in this SLA state (breached, due soon, on track, no deadline, met). Evaluated
     /// against `query.now`, as `snoozed` is: see [`crate::sla_state`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -312,6 +321,15 @@ pub(crate) fn matches_filter(case: &Case, f: &ListFilter, now: u64) -> bool {
     }
     if let Some(w) = f.waiting_on {
         if case.waiting_on != Some(w) {
+            return false;
+        }
+    }
+    if let Some(want) = f.pinned {
+        let mine = f
+            .pinned_for
+            .as_ref()
+            .is_some_and(|s| case.pinned_by.contains(s));
+        if mine != want {
             return false;
         }
     }
