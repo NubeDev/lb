@@ -327,3 +327,59 @@ async fn unassigning_work_out_by_email_keeps_it_actioned() {
     let case = get(&store, WS, &id).await.unwrap().unwrap();
     assert_eq!(case.workflow, Workflow::Actioned);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn closing_ends_the_email_out_so_a_reopen_starts_clean() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    workflow(
+        &store,
+        WS,
+        &id,
+        Workflow::Actioned,
+        None,
+        None,
+        "user:sam",
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    set_waiting_on(
+        &store,
+        WS,
+        &id,
+        WaitingOn::Contractor,
+        Some("user:sam"),
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    let closed = workflow_with_reason(
+        &store,
+        WS,
+        &id,
+        Workflow::Resolved,
+        Some(Resolution::Fixed),
+        None,
+        Some("Fixed on site"),
+        "user:sam",
+        OPENED + 2 * HOUR,
+    )
+    .await
+    .unwrap();
+    assert_eq!(closed.waiting_on, None);
+    assert_eq!(closed.emailed_by, None);
+    let reopened = workflow(
+        &store,
+        WS,
+        &id,
+        Workflow::Actioned,
+        None,
+        None,
+        "user:sam",
+        OPENED + 3 * HOUR,
+    )
+    .await
+    .unwrap();
+    assert_eq!(reopened.waiting_on, None);
+}
