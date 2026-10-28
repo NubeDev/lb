@@ -154,6 +154,9 @@ mod request_roster_lifecycle;
 #[path = "case/request_send.rs"]
 mod request_send;
 
+#[path = "case/request_party_filter.rs"]
+mod request_party_filter;
+
 #[path = "case/request_token.rs"]
 mod request_token;
 

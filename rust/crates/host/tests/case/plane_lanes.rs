@@ -153,14 +153,17 @@ async fn the_lane_sorts_by_deadline_then_severity() {
     );
 }
 
-/// The `party` filter is REFUSED rather than silently matching everything — the `case_request` plane
-/// it needs is wave 2. A filter that quietly matches every row is how a queue lies.
+/// The `party` filter matches only cases that party holds a live request on, and NEVER everything:
+/// a party with no requests narrows to nothing. (It was refused before the request plane could
+/// answer it; `request_party_filter.rs` holds the positive case.)
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn the_party_filter_refuses_rather_than_matching_everything() {
+async fn the_party_filter_never_matches_everything() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     seed_roster(&node, "nube").await;
     let p = principal("user:test", "nube", ALL);
-    let err = call(
+    let insight = seed_insight(&node, &p, "nube", "party-none", 1).await;
+    case_of(&node, &p, "nube", &insight).await;
+    let page = call(
         &node,
         &p,
         "nube",
@@ -168,6 +171,6 @@ async fn the_party_filter_refuses_rather_than_matching_everything() {
         json!({ "lane": "watching", "filter": { "party": "party:acme-mech" } }),
     )
     .await
-    .unwrap_err();
-    assert!(matches!(err, ToolError::BadInput(_)), "{err:?}");
+    .expect("answered");
+    assert_eq!(page["items"], json!([]), "{page}");
 }

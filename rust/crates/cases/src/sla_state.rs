@@ -4,9 +4,9 @@
 //! a filter can ask for, so the queue and the insight roster's case lens cannot each grow their own.
 //! It is relative to a clock the CALLER supplies (`now`), like the `snoozed` axis: no wall clock here.
 //!
-//! **The clock pauses only for a snooze with an end date** ([`crate::sla_pause`]): a paused case
-//! reads as it stood when the pause began, so it cannot drift into breached while nobody may act on
-//! it. Any other parked or waiting case is still due soon or breached. The clock STOPS once a case is
+//! **A case on hold reads as [`SlaState::Paused`]** — a running snooze with an end, or a pause
+//! [`crate::sla_pause`] recorded — breach or no breach: its clock is not running, so it is neither
+//! overdue nor due. A hold with no end ("until cleared") keeps the clock running and reads as usual. A case waiting on someone else is still due soon or breached. The clock STOPS once a case is
 //! closed, and a deadline that passes afterwards is not a breach. A closed case is therefore
 //! `Breached` only if the breach was recorded, and `Met` otherwise.
 //!
@@ -33,10 +33,22 @@ pub enum SlaState {
     NoDeadline,
     /// Closed with a deadline and no recorded breach.
     Met,
+    /// Open and on hold: a running snooze, or an SLA pause. Its clock is not running, so it is
+    /// neither breached nor due, whatever its deadline says (Insights review 2026-10: "Paused").
+    Paused,
 }
 
 /// The state of `case` at `now`, with `due_soon_ms` as the due-soon window.
 pub fn sla_state(case: &Case, now: u64, due_soon_ms: u64) -> SlaState {
+    // On hold first: a held case's clock is not running, breach recorded or not. A hold with no
+    // end (`until` past [`crate::sla_pause::MAX_SLA_PAUSE_MS`], "until cleared") leaves the clock running, so it
+    // reads as its deadline says, never Paused.
+    let dated_hold = case
+        .snooze_until
+        .is_some_and(|u| u > now && u - now <= crate::sla_pause::MAX_SLA_PAUSE_MS);
+    if !case.closed && (dated_hold || case.sla_paused_at.is_some()) {
+        return SlaState::Paused;
+    }
     if case.breached_ts.is_some() {
         return SlaState::Breached;
     }

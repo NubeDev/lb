@@ -23,19 +23,41 @@ async fn clocked(store: &Store) -> String {
         severity: "warning".into(),
         ..Default::default()
     };
-    let id = open(store, WS, input, "user:test", OPENED).await.unwrap().id;
-    let deadlines = Deadlines { respond_by: None, due_at: Some(DUE) };
-    set_deadlines(store, WS, &id, Some("p1"), deadlines, "system:sla-clock", OPENED)
+    let id = open(store, WS, input, "user:test", OPENED)
         .await
-        .unwrap();
+        .unwrap()
+        .id;
+    let deadlines = Deadlines {
+        respond_by: None,
+        due_at: Some(DUE),
+    };
+    set_deadlines(
+        store,
+        WS,
+        &id,
+        Some("p1"),
+        deadlines,
+        "system:sla-clock",
+        OPENED,
+    )
+    .await
+    .unwrap();
     id
 }
 
 /// Snooze `id` at `ts` until a day on: a dated hold, so the SLA pauses.
 async fn hold(store: &Store, id: &str, ts: u64) {
-    snooze(store, WS, id, ts + 24 * HOUR, Some("Waiting on parts"), "user:sam", ts)
-        .await
-        .unwrap();
+    snooze(
+        store,
+        WS,
+        id,
+        ts + 24 * HOUR,
+        Some("Waiting on parts"),
+        "user:sam",
+        ts,
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -80,9 +102,16 @@ async fn handing_a_held_case_over_ends_the_hold_and_keeps_its_stage() {
     let store = Store::memory().await.unwrap();
     let id = clocked(&store).await;
     hold(&store, &id, OPENED + HOUR).await;
-    assign(&store, WS, &id, Some("user:priya"), "user:sam", OPENED + 2 * HOUR)
-        .await
-        .unwrap();
+    assign(
+        &store,
+        WS,
+        &id,
+        Some("user:priya"),
+        "user:sam",
+        OPENED + 2 * HOUR,
+    )
+    .await
+    .unwrap();
     let case = get(&store, WS, &id).await.unwrap().unwrap();
     assert_eq!(case.assigned_to.as_deref(), Some("user:priya"));
     assert_eq!(case.snooze_until, None);
@@ -94,9 +123,16 @@ async fn emailing_a_held_case_ends_the_hold() {
     let store = Store::memory().await.unwrap();
     let id = clocked(&store).await;
     hold(&store, &id, OPENED + HOUR).await;
-    let case = set_waiting_on(&store, WS, &id, WaitingOn::Contractor, Some("user:sam"), OPENED + 2 * HOUR)
-        .await
-        .unwrap();
+    let case = set_waiting_on(
+        &store,
+        WS,
+        &id,
+        WaitingOn::Contractor,
+        Some("user:sam"),
+        OPENED + 2 * HOUR,
+    )
+    .await
+    .unwrap();
     assert_eq!(case.snooze_until, None);
     assert_eq!(case.waiting_on, Some(WaitingOn::Contractor));
     assert_eq!(case.emailed_by.as_deref(), Some("user:sam"));
@@ -107,9 +143,18 @@ async fn a_move_to_the_same_stage_is_not_a_change_and_keeps_the_hold() {
     let store = Store::memory().await.unwrap();
     let id = clocked(&store).await;
     hold(&store, &id, OPENED + HOUR).await;
-    let case = workflow(&store, WS, &id, Workflow::Actioned, None, None, "user:sam", OPENED + 2 * HOUR)
-        .await
-        .unwrap();
+    let case = workflow(
+        &store,
+        WS,
+        &id,
+        Workflow::Actioned,
+        None,
+        None,
+        "user:sam",
+        OPENED + 2 * HOUR,
+    )
+    .await
+    .unwrap();
     assert!(case.snooze_until.is_some());
 }
 
@@ -117,9 +162,16 @@ async fn a_move_to_the_same_stage_is_not_a_change_and_keeps_the_hold() {
 async fn holding_an_emailed_case_ends_the_email_out() {
     let store = Store::memory().await.unwrap();
     let id = clocked(&store).await;
-    set_waiting_on(&store, WS, &id, WaitingOn::Contractor, Some("user:test"), OPENED + HOUR)
-        .await
-        .unwrap();
+    set_waiting_on(
+        &store,
+        WS,
+        &id,
+        WaitingOn::Contractor,
+        Some("user:test"),
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
     hold(&store, &id, OPENED + 2 * HOUR).await;
     let case = get(&store, WS, &id).await.unwrap().unwrap();
     assert!(case.snooze_until.is_some());

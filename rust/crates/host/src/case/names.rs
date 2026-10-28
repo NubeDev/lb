@@ -89,7 +89,11 @@ pub async fn case_names(
         let set = |v: Option<String>| v.map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let (name, email) = (set(identity.display_name), set(identity.email));
         if name.is_some() || email.is_some() {
-            out.push(SubjectName { sub: sub.clone(), name, email });
+            out.push(SubjectName {
+                sub: sub.clone(),
+                name,
+                email,
+            });
         }
     }
     Ok(out)

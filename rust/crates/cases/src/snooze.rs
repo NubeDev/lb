@@ -72,10 +72,13 @@ pub async fn snooze(
         case.snooze_reason = reason.map(str::to_string);
         case.snoozed_by = Some(actor.to_string());
         // One state at a time, the other way round from `set_waiting_on`: putting work on hold
-        // ends its being out by email, so a held case never also reads as Emailed. The request row
-        // itself is untouched — a party's reply still lands on the case.
-        case.waiting_on = None;
-        case.emailed_by = None;
+        // ends its being out by email, so a held case never also reads as Emailed. Only an email
+        // lb sent (`emailed_by`); a `waiting_on` set by hand is a fact about who has the ball and
+        // stays. The request row itself is untouched — a party's reply still lands on the case.
+        if case.emailed_by.is_some() {
+            case.waiting_on = None;
+            case.emailed_by = None;
+        }
     }
     // Holding work nobody had started puts it in hand: `to_action` moves to `actioned` with the hold.
     let parked_from_open = !unsnoozing && case.workflow == crate::case::Workflow::ToAction;
