@@ -80,7 +80,7 @@ async fn an_expired_snooze_reads_as_live_without_a_sweep() {
         &p,
         "nube",
         "case.list",
-        json!({ "lane": "watching", "now": 1_000, "filter": { "snoozed": true } }),
+        json!({ "lane": "mine", "now": 1_000, "filter": { "snoozed": true } }),
     )
     .await
     .expect("list ok");
@@ -91,7 +91,7 @@ async fn an_expired_snooze_reads_as_live_without_a_sweep() {
         &p,
         "nube",
         "case.list",
-        json!({ "lane": "watching", "now": 9_000, "filter": { "snoozed": true } }),
+        json!({ "lane": "mine", "now": 9_000, "filter": { "snoozed": true } }),
     )
     .await
     .expect("list ok");

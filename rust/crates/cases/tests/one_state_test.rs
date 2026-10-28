@@ -484,3 +484,84 @@ async fn unassigning_a_held_case_keeps_the_hold() {
     assert_eq!(case.assigned_to, None);
     assert_eq!(case.snooze_until, Some(OPENED + 26 * HOUR));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn emailing_or_holding_unowned_work_makes_the_sender_its_owner() {
+    let store = Store::memory().await.unwrap();
+    let emailed = clocked(&store).await;
+    set_waiting_on(
+        &store,
+        WS,
+        &emailed,
+        WaitingOn::Contractor,
+        Some("user:sam"),
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        get(&store, WS, &emailed)
+            .await
+            .unwrap()
+            .unwrap()
+            .assigned_to
+            .as_deref(),
+        Some("user:sam")
+    );
+    let store = Store::memory().await.unwrap();
+    let held = clocked(&store).await;
+    hold(&store, &held, OPENED + HOUR).await;
+    assert_eq!(
+        get(&store, WS, &held)
+            .await
+            .unwrap()
+            .unwrap()
+            .assigned_to
+            .as_deref(),
+        Some("user:sam")
+    );
+    // An owner already there stays; a system actor never takes ownership.
+    let store = Store::memory().await.unwrap();
+    let owned = clocked(&store).await;
+    assign(
+        &store,
+        WS,
+        &owned,
+        Some("user:priya"),
+        "user:priya",
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    hold(&store, &owned, OPENED + 2 * HOUR).await;
+    assert_eq!(
+        get(&store, WS, &owned)
+            .await
+            .unwrap()
+            .unwrap()
+            .assigned_to
+            .as_deref(),
+        Some("user:priya")
+    );
+    let store = Store::memory().await.unwrap();
+    let by_rule = clocked(&store).await;
+    snooze(
+        &store,
+        WS,
+        &by_rule,
+        OPENED + 24 * HOUR,
+        Some("auto"),
+        "system:rule",
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        get(&store, WS, &by_rule)
+            .await
+            .unwrap()
+            .unwrap()
+            .assigned_to,
+        None
+    );
+}
