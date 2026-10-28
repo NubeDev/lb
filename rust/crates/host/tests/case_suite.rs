@@ -78,6 +78,8 @@ mod reactor_facet_backfill;
 #[path = "case/reactor_grouping.rs"]
 mod reactor_grouping;
 
+#[path = "case/reactor_close_stands.rs"]
+mod reactor_close_stands;
 #[path = "case/reactor_hold_down.rs"]
 mod reactor_hold_down;
 #[path = "case/reactor_self_clear.rs"]

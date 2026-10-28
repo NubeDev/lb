@@ -390,6 +390,12 @@ the contract. Where they disagree after the code lands, the record wins and this
     `case.assign`, cleared with the assignment) and `emailed_by` (set by `case.request.send`).
     *Rejected: lanes computed in the UI* — a second client (ESR) would have to copy the rule, and
     "by me" is not on the wire without the two fields anyway.
+12. **A close holds until the alarm fires again.** Closing a case does not resolve its insight, so
+    the reconcile backstop used to reopen a recent `fixed` ("repair did not hold") or open a new
+    case within a tick, for an alarm that had not fired again. It now skips an insight whose last
+    case closed at or after the insight's `last_ts` (`close_stands`). A new firing still goes
+    through the inline grouping at raise, so the hold-down rules are unchanged. *Rejected:
+    resolving the insight on close* — it would mark an alarm cleared while it is still active.
 
 ## Related
 

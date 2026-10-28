@@ -46,6 +46,7 @@ mod breach_notify;
 mod breach_reminder;
 mod cites;
 mod clock;
+mod close_stands;
 mod comment;
 mod echo;
 mod entity_filter;
