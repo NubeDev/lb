@@ -4,8 +4,9 @@
 //! still says it reads as `actioned`. Against a real store.
 
 use lb_cases::{
-    assign, get, open, set_deadlines, set_waiting_on, snooze, workflow, workflow_with_reason,
-    Deadlines, Grouping, OpenInput, Resolution, WaitingOn, Workflow,
+    append_event, assign, get, open, set_deadlines, set_waiting_on, settle_one_state, snooze,
+    workflow, workflow_with_reason, Deadlines, EventKind, Grouping, OpenInput, Resolution,
+    WaitingOn, Workflow, CASE_TABLE,
 };
 use lb_store::Store;
 
@@ -184,4 +185,68 @@ fn a_stored_waiting_on_po_reads_as_actioned() {
     let w: Workflow = serde_json::from_str("\"waiting_on_po\"").unwrap();
     assert_eq!(w, Workflow::Actioned);
     assert_eq!(serde_json::to_string(&w).unwrap(), "\"actioned\"");
+}
+
+/// A case stored before one-state: emailed (lb recorded `emailed_by`) AND on hold. Written straight
+/// to the store, because today's verbs can no longer produce one.
+async fn two_states(store: &Store, held_at: u64, emailed_at: u64, insight: &str) -> String {
+    let input = OpenInput {
+        title: "a job".into(),
+        grouping: Grouping::Single,
+        primary_insight: insight.into(),
+        severity: "warning".into(),
+        ..Default::default()
+    };
+    let id = open(store, WS, input, "user:test", OPENED)
+        .await
+        .unwrap()
+        .id;
+    // Email first or hold first, as the history says.
+    hold(store, &id, held_at).await;
+    // The send the host records beside the email (`case.request.send`).
+    append_event(
+        store,
+        WS,
+        &id,
+        EventKind::RequestSent,
+        "user:test",
+        serde_json::json!({}),
+        emailed_at,
+    )
+    .await
+    .unwrap();
+    let mut case = get(store, WS, &id).await.unwrap().unwrap();
+    case.waiting_on = Some(WaitingOn::Contractor);
+    case.emailed_by = Some("user:test".into());
+    case.snooze_until = Some(held_at + 24 * HOUR);
+    case.snooze_reason = Some("Waiting on parts".into());
+    let value = serde_json::to_value(&case).unwrap();
+    lb_store::write(store, WS, CASE_TABLE, &id, &value)
+        .await
+        .unwrap();
+    id
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn settling_keeps_the_later_of_hold_and_email() {
+    let store = Store::memory().await.unwrap();
+    let held_last = two_states(&store, OPENED + 2 * HOUR, OPENED + HOUR, "ins-a").await;
+    let emailed_last = two_states(&store, OPENED + HOUR, OPENED + 2 * HOUR, "ins-b").await;
+    let now = OPENED + 3 * HOUR;
+    assert_eq!(settle_one_state(&store, WS, now).await.unwrap(), 2);
+
+    let held = get(&store, WS, &held_last).await.unwrap().unwrap();
+    assert!(held.snooze_until.is_some(), "the later hold stands");
+    assert_eq!(held.waiting_on, None);
+    assert_eq!(held.emailed_by, None);
+
+    let out = get(&store, WS, &emailed_last).await.unwrap().unwrap();
+    assert_eq!(out.snooze_until, None, "the later email ends the hold");
+    assert_eq!(out.waiting_on, Some(WaitingOn::Contractor));
+
+    assert_eq!(
+        settle_one_state(&store, WS, now).await.unwrap(),
+        0,
+        "idempotent"
+    );
 }
