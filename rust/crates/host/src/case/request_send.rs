@@ -37,6 +37,9 @@ use super::request_token::{generate_request_token, hash_request_token};
 use super::request_window::{nudge_instants, window_hours_for, HOUR_MS};
 use crate::boot::Node;
 
+/// The longest follow-up window a sender may ask for: thirty days.
+const MAX_WINDOW_H: u32 = 30 * 24;
+
 /// Raise an ask on `case_id` to `party_id`. Returns the durable request row.
 ///
 /// The raw token is **not** returned: it belongs in the mail and nowhere else, and a verb that
@@ -53,6 +56,7 @@ pub async fn case_request_send(
     party_id: &str,
     ask: Ask,
     brief: Option<Brief>,
+    window_h: Option<u32>,
     ts: u64,
 ) -> Result<CaseRequest, CaseSvcError> {
     authorize_tool(principal, ws, "case.request.send").map_err(|_| CaseSvcError::Denied)?;
@@ -85,7 +89,16 @@ pub async fn case_request_send(
         )));
     };
 
-    let window_h = window_hours_for(store, ws, &case, &party).await?;
+    // The sender's own "follow up in", when they chose one; else the party's or the policy's.
+    let window_h = match window_h {
+        Some(h) if (1..=MAX_WINDOW_H).contains(&h) => h,
+        Some(h) => {
+            return Err(CaseSvcError::BadInput(format!(
+                "window_h {h} is out of range: 1..={MAX_WINDOW_H} hours"
+            )))
+        }
+        None => window_hours_for(store, ws, &case, &party).await?,
+    };
     let expires_ts = ts + window_h as u64 * HOUR_MS;
 
     let token = generate_request_token(ws);

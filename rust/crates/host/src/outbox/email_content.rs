@@ -245,7 +245,8 @@ mod tests {
         assert!(
             c.text.starts_with(
                 "Hi,\n\nRubix AI has flagged Continuous Water Flow at 17 Kangaroo Avenue.\n\
-                 Flow has not returned to zero for 18 hours.\n\nPlease reply once attended to: https://x/r/"
+                 Flow has not returned to zero for 18 hours.\n\nPlease reply once attended to.\n\n\
+                 Reply here: https://x/r/"
             ),
             "{}",
             c.text
@@ -267,6 +268,34 @@ mod tests {
                 .starts_with("Hi,\n\nWe have flagged A job.\n\nPlease reply"),
             "{}",
             c.text
+        );
+
+        // The sender's own subject and message win; the reply link still follows, and the HTML body
+        // carries their words escaped.
+        let mut own = payload(None, None);
+        own.args = args(&[
+            ("title", "A job"),
+            ("subject", "Leak at gate 3"),
+            ("has_subject", "yes"),
+            ("message", "Hi Sam,\nplease check <b>gate 3</b>."),
+            (
+                "message_html",
+                "Hi Sam,<br>please check &lt;b&gt;gate 3&lt;/b&gt;.",
+            ),
+            ("has_message", "yes"),
+        ]);
+        let c = content_for("request_link", &own, Some("https://x"));
+        assert_eq!(c.subject, "Leak at gate 3");
+        assert!(
+            c.text
+                .starts_with("Hi Sam,\nplease check <b>gate 3</b>.\n\nReply here: https://x/r/"),
+            "{}",
+            c.text
+        );
+        let html = c.html.unwrap_or_default();
+        assert!(
+            html.contains("&lt;b&gt;gate 3&lt;/b&gt;") && !html.contains("<b>gate"),
+            "{html}"
         );
     }
 
