@@ -55,6 +55,12 @@ pub(super) const CASE: &[HostTool] = &[
                       members of those teams (a suggestion list, not an allow-list)",
     },
     HostTool {
+        tool: "case.names",
+        group: "case",
+        description: "display names and login emails for user: subjects the caller's cases mention \
+                      ({subjects: [...]}, at most 200); live members of this workspace only",
+    },
+    HostTool {
         tool: "case.assign",
         group: "case",
         description: "set, re-assign or clear a case's owner (a user: or team: subject)",

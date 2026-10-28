@@ -41,6 +41,7 @@
 
 mod assign;
 mod assignees;
+mod names;
 mod breach;
 mod breach_notify;
 mod breach_reminder;
@@ -98,6 +99,7 @@ mod workflow;
 
 pub use assign::case_assign;
 pub use assignees::{case_assignees, AssigneeTeam, Assignees};
+pub use names::case_names;
 // The owner echo: the case is the authority for who owns the work, and every insight it cites
 // carries a copy so the roster's owner column stays a one-read render. `insight.assign` delegates
 // here (case-plane scope, resolved decision 5).

@@ -25,6 +25,7 @@ async fn every_case_verb_denies_a_principal_without_its_cap() {
         ("case.get", json!({ "id": case_id })),
         ("case.list", json!({ "lane": "mine" })),
         ("case.assignees", json!({})),
+        ("case.names", json!({ "subjects": ["user:priya"] })),
         ("case.members", json!({ "case_id": case_id })),
         ("case.events", json!({ "case_id": case_id })),
         (
