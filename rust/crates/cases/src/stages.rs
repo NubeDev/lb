@@ -25,12 +25,12 @@
 //!
 //! One responsibility: the stage of every case, and whether it passes the filter.
 
-use lb_store::{scan_all, Store};
+use lb_store::Store;
 use serde::Deserialize;
 
 use crate::case::Workflow;
 use crate::error::CasesError;
-use crate::list::{matches_filter, unwrap_case, ListFilter};
+use crate::list::{matches_filter, ListFilter};
 
 /// One case, reduced to what the roster's case lens reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,10 +63,11 @@ pub async fn stages(
     if is_number_only(filter) {
         return projected(store, ws, |r| number_matches(r, filter)).await;
     }
-    Ok(scan_all(store, ws, crate::case::TABLE)
+    // One `SELECT data` over the table — the read `case.list` makes — not the paged `scan_all`:
+    // a cursor walk of thousands of cases cost seconds per filtered roster read.
+    Ok(crate::list_read::read_cases(store, ws, true, None)
         .await?
         .into_iter()
-        .filter_map(|row| unwrap_case(row.data))
         .map(|case| CaseStage {
             matches: matches_filter(&case, filter, now),
             id: case.id,
