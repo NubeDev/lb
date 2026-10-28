@@ -41,7 +41,6 @@
 
 mod assign;
 mod assignees;
-mod names;
 mod breach;
 mod breach_notify;
 mod breach_reminder;
@@ -62,6 +61,7 @@ mod impact;
 mod list;
 mod members;
 mod merge;
+mod names;
 mod open;
 mod party_delete;
 mod party_list;

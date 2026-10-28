@@ -44,8 +44,7 @@ pub struct CaseStage {
 /// Every case in `ws` with its stage, closed ones included, each marked against `filter` evaluated at
 /// `now` (the `snoozed` axis is relative to it). One scan of the case table.
 ///
-/// `party` is refused, as `list` refuses it: the plane that could answer it does not exist yet, and
-/// a filter that silently matched everything would make the roster lie.
+/// `party` is answered from the request plane first, as `list` answers it.
 // SCOPE: docs/scope/insights/case-plane-scope.md §"Verbs" (case.list)
 pub async fn stages(
     store: &Store,
@@ -53,13 +52,11 @@ pub async fn stages(
     filter: &ListFilter,
     now: u64,
 ) -> Result<Vec<CaseStage>, CasesError> {
-    if filter.party.is_some() {
-        return Err(CasesError::BadInput(
-            "filter `party` needs the case_request plane, which is wave 2 of the case-plane scope \
-             — refused rather than silently matching every case"
-                .into(),
-        ));
+    let mut filter = filter.clone();
+    if let Some(party) = &filter.party {
+        filter.party_cases = Some(crate::party_cases::party_cases(store, ws, party).await?);
     }
+    let filter = &filter;
     if is_unfiltered(filter) {
         return projected(store, ws, |_| true).await;
     }

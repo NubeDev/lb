@@ -44,11 +44,7 @@ pub struct CaseLens {
 const RETIRED_PO: &str = "waiting_on_po";
 
 /// Every stage, in lb's workflow order.
-const WORKFLOW_ORDER: [Workflow; 3] = [
-    Workflow::ToAction,
-    Workflow::Actioned,
-    Workflow::Resolved,
-];
+const WORKFLOW_ORDER: [Workflow; 3] = [Workflow::ToAction, Workflow::Actioned, Workflow::Resolved];
 
 /// The workflow word as it travels on the wire (`to_action`, …) — serde's own spelling, so this
 /// file and `lb_cases` can never disagree about it.
@@ -82,7 +78,13 @@ pub(super) async fn resolve_case_lens(
         let words: Vec<String> = lens
             .stages
             .iter()
-            .map(|s| if s == RETIRED_PO { "actioned".to_string() } else { s.clone() })
+            .map(|s| {
+                if s == RETIRED_PO {
+                    "actioned".to_string()
+                } else {
+                    s.clone()
+                }
+            })
             .collect();
         if let Some(bad) = words.iter().find(|s| !known.contains(*s)) {
             return Err(InsightSvcError::BadInput(format!(

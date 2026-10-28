@@ -28,6 +28,7 @@ use lb_store::Store;
 use serde::{Deserialize, Serialize};
 
 use crate::case::{severity_rank, Case, WaitingOn, Workflow};
+use crate::case_status::{case_status, CaseStatus};
 use crate::error::CasesError;
 use crate::list_read::read_cases;
 use crate::member_counts::member_counts;
@@ -81,11 +82,21 @@ pub struct ListFilter {
     pub workflow: Option<Workflow>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waiting_on: Option<WaitingOn>,
-    /// The external party a case is waiting on. **Not yet answerable**: the `case_request` plane
-    /// that records which party was asked what is wave 2 of this scope. Supplying it is REFUSED
-    /// rather than silently ignored — a filter that quietly matches everything is how a queue lies.
+    /// The external party a case is waiting on: only cases this party (by id) holds a live request
+    /// on — sent or opened, not answered or withdrawn ([`crate::party_cases`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub party: Option<String>,
+    /// The cases `party` holds live requests on, read by [`list`] / [`crate::stages`] before the
+    /// match and never from the wire (`serde(skip)`, as `sites_allowed` is).
+    #[serde(skip)]
+    pub party_cases: Option<BTreeSet<String>>,
+    /// Who holds the case: a `user:`/`team:` subject, or `"none"` for no owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    /// Where the case is, as one word — Open, Assigned, Emailed, On hold, Closed
+    /// ([`crate::case_status`]), read against `query.now` as `snoozed` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<CaseStatus>,
     /// `Some(true)` = only parked cases, `Some(false)` = only live ones, `None` = both. Evaluated
     /// against `query.now`, so an expired snooze reads as live without a sweep having run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -201,13 +212,11 @@ pub async fn list(
     query: &ListQuery,
     subjects: &BTreeSet<String>,
 ) -> Result<ListPage, CasesError> {
-    if query.filter.party.is_some() {
-        return Err(CasesError::BadInput(
-            "filter `party` needs the case_request plane, which is wave 2 of the case-plane scope \
-             — refused rather than silently matching every case"
-                .into(),
-        ));
+    let mut query = query.clone();
+    if let Some(party) = &query.filter.party {
+        query.filter.party_cases = Some(crate::party_cases::party_cases(store, ws, party).await?);
     }
+    let query = &query;
 
     if query
         .filter
@@ -353,6 +362,29 @@ pub(crate) fn matches_filter(case: &Case, f: &ListFilter, now: u64) -> bool {
     }
     if let Some(w) = f.waiting_on {
         if case.waiting_on != Some(w) {
+            return false;
+        }
+    }
+    // `party` without its case set (a caller that skipped the read) matches nothing, never everything.
+    if f.party.is_some()
+        && !f
+            .party_cases
+            .as_ref()
+            .is_some_and(|ids| ids.contains(&case.id))
+    {
+        return false;
+    }
+    if let Some(owner) = &f.owner {
+        let ok = match owner.as_str() {
+            "none" => case.assigned_to.is_none(),
+            who => case.assigned_to.as_deref() == Some(who),
+        };
+        if !ok {
+            return false;
+        }
+    }
+    if let Some(want) = f.status {
+        if case_status(case, now) != want {
             return false;
         }
     }

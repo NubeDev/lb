@@ -50,8 +50,14 @@ async fn more_subjects_than_one_screen_is_refused() {
     seed_roster(&node, "nube").await;
     let lister = principal("user:test", "nube", &[LIST]);
     let many: Vec<String> = (0..201).map(|i| format!("user:u{i}")).collect();
-    let err = call(&node, &lister, "nube", "case.names", json!({ "subjects": many }))
-        .await
-        .expect_err("a call past the bound is refused");
+    let err = call(
+        &node,
+        &lister,
+        "nube",
+        "case.names",
+        json!({ "subjects": many }),
+    )
+    .await
+    .expect_err("a call past the bound is refused");
     assert!(format!("{err:?}").contains("at most 200"), "{err:?}");
 }
