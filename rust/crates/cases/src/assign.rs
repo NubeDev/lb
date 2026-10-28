@@ -51,6 +51,13 @@ pub async fn assign(
     }
     // A hand-over is a new state for the work: it ends a running hold (one state at a time).
     let mut case = crate::snooze::end_hold(store, ws, case, actor, ts).await?;
+    // One state at a time: handing the work to someone ends its being out by email, as it ends a
+    // hold — the latest action is the state (the request row stays; a party's reply still lands).
+    // Taking the owner OFF leaves an email out alone: the email is then what holds the work.
+    if next.is_some() && case.emailed_by.is_some() {
+        case.waiting_on = None;
+        case.emailed_by = None;
+    }
     let previous = case.assigned_to.clone();
     case.assigned_to = next.clone();
     case.assigned_by = next.as_ref().map(|_| actor.to_string());

@@ -383,3 +383,45 @@ async fn closing_ends_the_email_out_so_a_reopen_starts_clean() {
     .unwrap();
     assert_eq!(reopened.waiting_on, None);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn assigning_an_emailed_case_ends_the_email_out() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    workflow(
+        &store,
+        WS,
+        &id,
+        Workflow::Actioned,
+        None,
+        None,
+        "user:sam",
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    set_waiting_on(
+        &store,
+        WS,
+        &id,
+        WaitingOn::Contractor,
+        Some("user:sam"),
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    assign(
+        &store,
+        WS,
+        &id,
+        Some("user:priya"),
+        "user:sam",
+        OPENED + 2 * HOUR,
+    )
+    .await
+    .unwrap();
+    let case = get(&store, WS, &id).await.unwrap().unwrap();
+    assert_eq!(case.assigned_to.as_deref(), Some("user:priya"));
+    assert_eq!(case.waiting_on, None);
+    assert_eq!(case.emailed_by, None);
+}
