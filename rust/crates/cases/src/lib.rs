@@ -107,7 +107,7 @@ pub use case_request::{
     ReplyKind, RequestStatus, SentMail, MAX_REPLY_ATTACHMENTS, MAX_REPLY_TEXT_BYTES,
     TABLE as CASE_REQUEST_TABLE,
 };
-pub use case_status::{case_status, CaseStatus};
+pub use case_status::{case_status, status_of, CaseStatus, StatusFacts};
 pub use caveat_refresh::refresh_caveat;
 pub use comment::comment;
 pub use deadline::{

@@ -29,19 +29,45 @@ pub enum CaseStatus {
 
 /// The status of `case` at `now` (a hold whose end has passed is over).
 pub fn case_status(case: &Case, now: u64) -> CaseStatus {
-    if case.closed {
+    status_of(
+        &StatusFacts {
+            closed: case.closed,
+            workflow: case.workflow,
+            snooze_until: case.snooze_until,
+            waiting_on: case.waiting_on,
+            emailed: case.emailed_by.is_some(),
+            owned: case.assigned_to.is_some(),
+        },
+        now,
+    )
+}
+
+/// The few fields the status is read from, for a caller that holds them without a whole [`Case`]
+/// (the roster's projected read).
+#[derive(Debug, Clone, Copy)]
+pub struct StatusFacts {
+    pub closed: bool,
+    pub workflow: Workflow,
+    pub snooze_until: Option<u64>,
+    pub waiting_on: Option<WaitingOn>,
+    pub emailed: bool,
+    pub owned: bool,
+}
+
+/// [`case_status`] over [`StatusFacts`].
+pub fn status_of(f: &StatusFacts, now: u64) -> CaseStatus {
+    if f.closed {
         return CaseStatus::Closed;
     }
-    if case.snooze_until.is_some_and(|u| u > now) {
+    if f.snooze_until.is_some_and(|u| u > now) {
         return CaseStatus::Hold;
     }
-    let started = case.workflow != Workflow::ToAction;
-    let out = case.waiting_on == Some(WaitingOn::Contractor)
-        || (case.emailed_by.is_some() && case.waiting_on.is_some());
+    let started = f.workflow != Workflow::ToAction;
+    let out = f.waiting_on == Some(WaitingOn::Contractor) || (f.emailed && f.waiting_on.is_some());
     if started && out {
         return CaseStatus::Emailed;
     }
-    if started && case.assigned_to.is_some() {
+    if started && f.owned {
         return CaseStatus::Assigned;
     }
     if started {

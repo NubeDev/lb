@@ -28,7 +28,8 @@
 use lb_store::Store;
 use serde::Deserialize;
 
-use crate::case::Workflow;
+use crate::case::{WaitingOn, Workflow};
+use crate::case_status::{status_of, CaseStatus, StatusFacts};
 use crate::error::CasesError;
 use crate::list::{matches_filter, ListFilter};
 
@@ -37,6 +38,12 @@ use crate::list::{matches_filter, ListFilter};
 pub struct CaseStage {
     pub id: String,
     pub workflow: Workflow,
+    /// The status word at the read's `now` (the roster's Status sort).
+    pub status: CaseStatus,
+    /// Who holds it, if anyone (the roster's Responsible sort).
+    pub owner: Option<String>,
+    /// Its running number (the roster's Ref sort); none yet on a case stored before numbering.
+    pub seq: Option<u64>,
     /// Whether the case passes the filter [`stages`] was given (always `true` for an empty one).
     pub matches: bool,
 }
@@ -58,10 +65,10 @@ pub async fn stages(
     }
     let filter = &filter;
     if is_unfiltered(filter) {
-        return projected(store, ws, |_| true).await;
+        return projected(store, ws, now, |_| true).await;
     }
     if is_number_only(filter) {
-        return projected(store, ws, |r| number_matches(r, filter)).await;
+        return projected(store, ws, now, |r| number_matches(r, filter)).await;
     }
     // One `SELECT data` over the table — the read `case.list` makes — not the paged `scan_all`:
     // a cursor walk of thousands of cases cost seconds per filtered roster read.
@@ -70,6 +77,9 @@ pub async fn stages(
         .into_iter()
         .map(|case| CaseStage {
             matches: matches_filter(&case, filter, now),
+            status: crate::case_status::case_status(&case, now),
+            owner: case.assigned_to.clone(),
+            seq: case.seq,
             id: case.id,
             workflow: case.workflow,
         })
@@ -115,25 +125,36 @@ fn number_matches(r: &StageRow, f: &ListFilter) -> bool {
     true
 }
 
-/// The row the projected reads ask for: the stage, and what a number lookup checks.
+/// The row the projected reads ask for: the stage, what a number lookup checks, and what the status
+/// word and the owner are read from.
 #[derive(Deserialize)]
 struct StageRow {
     id: Option<String>,
     workflow: Option<Workflow>,
     seq: Option<u64>,
     site: Option<String>,
+    #[serde(default)]
+    closed: Option<bool>,
+    snooze_until: Option<u64>,
+    waiting_on: Option<WaitingOn>,
+    emailed_by: Option<String>,
+    assigned_to: Option<String>,
 }
 
-/// `id`, `workflow`, `seq` and `site` of every case, projected by the engine in one statement, each
-/// marked by `matches`. A row missing `id` or `workflow` (a record that would not decode as a case) is
+/// `id`, `workflow`, `seq`, `site` and the status fields of every case, projected by the engine in
+/// one statement, each marked by `matches`. A row missing `id` or `workflow` (a record that would not decode as a case) is
 /// skipped, as `unwrap_case` skips it on the full read.
 async fn projected(
     store: &Store,
     ws: &str,
+    now: u64,
     matches: impl Fn(&StageRow) -> bool,
 ) -> Result<Vec<CaseStage>, CasesError> {
     let sql =
-        "SELECT data.id AS id, data.workflow AS workflow, data.seq AS seq, data.site AS site \
+        "SELECT data.id AS id, data.workflow AS workflow, data.seq AS seq, data.site AS site, \
+                data.closed AS closed, data.snooze_until AS snooze_until, \
+                data.waiting_on AS waiting_on, data.emailed_by AS emailed_by, \
+                data.assigned_to AS assigned_to \
                FROM type::table($tb)";
     let mut resp = store
         .query_ws(
@@ -153,9 +174,21 @@ async fn projected(
         .filter_map(|v| serde_json::from_value::<StageRow>(v).ok())
         .filter_map(|r| {
             let matches = matches(&r);
+            let workflow = r.workflow?;
+            let facts = StatusFacts {
+                closed: r.closed.unwrap_or(false),
+                workflow,
+                snooze_until: r.snooze_until,
+                waiting_on: r.waiting_on,
+                emailed: r.emailed_by.is_some(),
+                owned: r.assigned_to.is_some(),
+            };
             Some(CaseStage {
                 id: r.id?,
-                workflow: r.workflow?,
+                workflow,
+                status: status_of(&facts, now),
+                owner: r.assigned_to,
+                seq: r.seq,
                 matches,
             })
         })

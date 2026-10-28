@@ -33,6 +33,15 @@ pub struct CaseScope {
     /// The stage labels in the order a `case_stage` sort ranks them (the host's workflow order). A
     /// label missing here, and [`NO_CASE`], has no rank and sorts last.
     pub stage_order: Vec<String>,
+    /// Every known case id with its status word (`case_status` sort), and the order those words rank
+    /// in. A word missing from the order, and a detection with no case, sort last.
+    pub status_of: HashMap<String, String>,
+    pub status_order: Vec<String>,
+    /// The case ids someone holds, with the key their holder sorts by (`case_owner` sort); an
+    /// unowned case is absent and sorts last.
+    pub owner_of: HashMap<String, String>,
+    /// The case ids with a running number (`case_ref` sort); a case with none sorts last.
+    pub seq_of: HashMap<String, u64>,
 }
 
 impl CaseScope {

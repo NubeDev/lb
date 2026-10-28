@@ -219,3 +219,47 @@ async fn a_bad_sort_or_a_sorted_cursor_is_refused() {
         "a keyset cursor walks the default order only"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn case_status_owner_and_ref_sorts_follow_the_lens_and_no_case_is_last() {
+    let store = Store::memory().await.expect("mem store");
+    let a = seed(&store, "a", Severity::Info, 1, &[]).await;
+    let b = seed(&store, "b", Severity::Info, 2, &[]).await;
+    let c = seed(&store, "c", Severity::Info, 3, &[]).await;
+    seed(&store, "d", Severity::Info, 4, &[]).await; // no case
+    set_case_id(&store, WS, &a, Some("case:A")).await.unwrap();
+    set_case_id(&store, WS, &b, Some("case:B")).await.unwrap();
+    set_case_id(&store, WS, &c, Some("case:C")).await.unwrap();
+    let scope = CaseScope {
+        status_of: HashMap::from([
+            ("case:A".into(), "hold".into()),
+            ("case:B".into(), "assigned".into()),
+            ("case:C".into(), "emailed".into()),
+        ]),
+        status_order: ["open", "actioned", "assigned", "emailed", "hold", "closed"]
+            .map(String::from)
+            .to_vec(),
+        // C has no owner.
+        owner_of: HashMap::from([
+            ("case:A".into(), "zoe".into()),
+            ("case:B".into(), "amir".into()),
+        ]),
+        seq_of: HashMap::from([
+            ("case:A".into(), 30),
+            ("case:B".into(), 10),
+            ("case:C".into(), 20),
+        ]),
+        ..Default::default()
+    };
+    let got = |by: &'static str, desc: bool| {
+        let (store, scope) = (store.clone(), scope.clone());
+        async move { read(&store, sort(&[by], desc), Some(scope), 0, 50, true).await }
+    };
+    assert_eq!(got("case_status", false).await, ["b", "c", "a", "d"]);
+    assert_eq!(got("case_status", true).await, ["a", "c", "b", "d"]);
+    // No owner (C) and no case (D) are both empty: last, newest first between them.
+    assert_eq!(got("case_owner", false).await, ["b", "a", "d", "c"]);
+    assert_eq!(got("case_owner", true).await, ["a", "b", "d", "c"]);
+    assert_eq!(got("case_ref", false).await, ["b", "c", "a", "d"]);
+    assert_eq!(got("case_ref", true).await, ["a", "c", "b", "d"]);
+}
