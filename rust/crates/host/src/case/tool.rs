@@ -92,6 +92,10 @@ pub async fn call_case_tool(
                 str_arg(input, "party_id")?,
                 enum_arg(input, "ask")?,
                 brief,
+                input
+                    .get("window_h")
+                    .and_then(Value::as_u64)
+                    .map(|h| h.min(u32::MAX as u64) as u32),
                 ts,
             )
             .await

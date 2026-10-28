@@ -105,19 +105,44 @@ pub(super) fn link_args(
     let site = pick(brief.and_then(|b| b.site.as_ref())).or_else(|| pick(case.site.as_ref()));
     let mut args = reference_args(brief.and_then(|b| b.reference.as_deref()));
     let map = args.as_object_mut().expect("reference_args is an object");
+    map.insert("title_html".into(), json!(html_escape(&title)));
     map.insert("title".into(), json!(title));
     for (key, value) in [
         ("site", site),
         ("finding", pick(brief.and_then(|b| b.finding.as_ref()))),
         ("sender", pick(brief.and_then(|b| b.sender.as_ref()))),
+        ("subject", pick(brief.and_then(|b| b.subject.as_ref()))),
+        ("message", pick(brief.and_then(|b| b.message.as_ref()))),
     ] {
-        map.insert(key.into(), json!(value.clone().unwrap_or_default()));
+        let text = value.clone().unwrap_or_default();
+        // The HTML body reads `*_html`: the sender's words escaped, so they stay words, never markup.
+        map.insert(
+            format!("{key}_html"),
+            json!(html_escape(&text).replace('\n', "<br>")),
+        );
+        map.insert(key.into(), json!(text));
         map.insert(
             format!("has_{key}"),
             json!(if value.is_some() { "yes" } else { "no" }),
         );
     }
     args
+}
+
+/// `text` safe inside HTML: the five characters that could open markup or an attribute, escaped.
+fn html_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 fn reference_args(reference: Option<&str>) -> serde_json::Value {

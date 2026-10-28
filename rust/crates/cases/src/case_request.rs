@@ -193,6 +193,13 @@ pub struct Brief {
     /// (rule 10). Absent ⇒ the copy says "We".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sender: Option<String>,
+    /// The subject the sender wrote, in place of the default one. The mail is still lb's to send.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    /// The message the sender wrote, in place of the default body. lb adds the reply link after it,
+    /// so the party can always answer, whatever the sender wrote.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 /// The email a request went out as — its subject and plain-text body, recorded at send so the
