@@ -132,7 +132,7 @@ pub async fn case_request_send(
     // The ball is now with the party. `waiting_on` is what makes a breach attributable, so it is
     // recorded on the case rather than inferred from "is there an open request".
     let waiting_on = waiting_on_for(&party.kind);
-    lb_cases::set_waiting_on(store, ws, case_id, waiting_on, ts).await?;
+    lb_cases::set_waiting_on(store, ws, case_id, waiting_on, Some(principal.sub()), ts).await?;
     lb_cases::append_event(
         store,
         ws,

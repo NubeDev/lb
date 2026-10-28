@@ -98,6 +98,11 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // including admins. Gating it on `case.workflow` would be wrong in the other direction — the
         // roster is a READ, and a viewer who may see the queue may see who could own it.
         "case.list"
+    } else if qualified_tool == "case.pin" {
+        // 2026-10 Insights review: a pin is the caller's own bookmark and changes nothing anyone else
+        // sees, so it rides the queue's READ grant — a viewer may bookmark what they may list.
+        // Re-checked inside.
+        "case.list"
     } else if qualified_tool == "case.members" || qualified_tool == "case.events" {
         // case-plane scope: a case's members and its history ARE the case's detail — a reader who
         // may `case.get` may see which detections it covers and what happened to it. No

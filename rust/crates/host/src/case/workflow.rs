@@ -27,17 +27,19 @@ pub async fn case_workflow(
     next: Workflow,
     resolution: Option<Resolution>,
     waiting_on: Option<WaitingOn>,
+    reason: Option<&str>,
     ts: u64,
 ) -> Result<Case, CaseSvcError> {
     authorize_tool(principal, ws, "case.workflow").map_err(|_| CaseSvcError::Denied)?;
     super::entity_filter::ensure_visible(store, principal, ws, id).await?;
-    Ok(lb_cases::workflow(
+    Ok(lb_cases::workflow_with_reason(
         store,
         ws,
         id,
         next,
         resolution,
         waiting_on,
+        reason,
         principal.sub(),
         ts,
     )

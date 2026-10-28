@@ -15,6 +15,12 @@
 //! than only the current one. Resolving appends [`EventKind::Resolved`] (the kind the audit and the
 //! scorecard read); every other move appends [`EventKind::Workflow`].
 //!
+//! **A closing reason in the person's words** ([`workflow_with_reason`]) may ride the `resolved`
+//! transition beside the closed `resolution` — "Fixed remotely" is a `fixed`, "No action required"
+//! an `accepted_risk`. The resolution stays the fact the hold-down and the scorecard read; the reason
+//! is what the person chose, kept so the history and the export can say it. Like the resolution it is
+//! refused on any other transition and cleared on a reopen.
+//!
 //! `closed` is re-derived from the workflow on every write ([`crate::save`]) — leaving `resolved`
 //! REOPENS the case, clearing `resolution`/`resolved_ts`/`resolved_by` so a reopened job never
 //! carries the last repair's closure reason.
@@ -26,6 +32,9 @@ use crate::case_event::EventKind;
 use crate::error::CasesError;
 use crate::event_append::append_event;
 use crate::save::save;
+
+/// The longest closing reason accepted, in characters: a label or a short phrase, not a report.
+pub const MAX_RESOLUTION_REASON: usize = 200;
 
 /// Move case `id` in workspace `ws` to `next` as `actor` at logical ts `ts`.
 ///
@@ -47,6 +56,37 @@ pub async fn workflow(
     actor: &str,
     ts: u64,
 ) -> Result<Case, CasesError> {
+    workflow_with_reason(store, ws, id, next, resolution, waiting_on, None, actor, ts).await
+}
+
+/// [`workflow`], with the closing person's own `reason` for a `resolved` transition (see the module
+/// note). A blank reason is no reason; one on any other transition, or longer than
+/// [`MAX_RESOLUTION_REASON`], is `BadInput`.
+#[allow(clippy::too_many_arguments)]
+pub async fn workflow_with_reason(
+    store: &Store,
+    ws: &str,
+    id: &str,
+    next: Workflow,
+    resolution: Option<Resolution>,
+    waiting_on: Option<WaitingOn>,
+    reason: Option<&str>,
+    actor: &str,
+    ts: u64,
+) -> Result<Case, CasesError> {
+    let reason = reason.map(str::trim).filter(|r| !r.is_empty());
+    if let Some(r) = reason {
+        if !next.is_terminal() {
+            return Err(CasesError::BadInput(format!(
+                "`reason` is only legal on the `resolved` transition, not `{next:?}`"
+            )));
+        }
+        if r.chars().count() > MAX_RESOLUTION_REASON {
+            return Err(CasesError::BadInput(format!(
+                "`reason` is at most {MAX_RESOLUTION_REASON} characters"
+            )));
+        }
+    }
     let Some(mut case) = crate::get::get(store, ws, id).await? else {
         return Err(CasesError::BadInput(format!("no such case: {id}")));
     };
@@ -77,12 +117,14 @@ pub async fn workflow(
 
     if next.is_terminal() {
         case.resolution = resolution;
+        case.resolution_reason = reason.map(str::to_string);
         case.resolved_ts = Some(ts);
         case.resolved_by = Some(actor.to_string());
     } else if previous.is_terminal() {
         // Leaving `resolved` is a REOPEN: the last repair's closure reason is history, not the
         // state of the job that is open again.
         case.resolution = None;
+        case.resolution_reason = None;
         case.resolved_ts = None;
         case.resolved_by = None;
     }
@@ -104,6 +146,7 @@ pub async fn workflow(
             "from": previous,
             "to": next,
             "resolution": case.resolution,
+            "reason": case.resolution_reason,
             "waiting_on": case.waiting_on,
         }),
         ts,

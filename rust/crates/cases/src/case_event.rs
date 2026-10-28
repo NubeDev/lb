@@ -45,6 +45,12 @@ pub enum EventKind {
     /// `Sla` is: it is a fact about the evidence, not a transition of the work. An operator asking
     /// "why did the contractor button switch off?" has no other place to find the answer.
     Caveat,
+    /// A snooze with an end date stopped the SLA clock ([`crate::sla_pause`]). Its own kind, like
+    /// `Sla`: a pause is a fact about the deadline, and "why did the due date move?" must have an
+    /// answer in the history.
+    SlaPaused,
+    /// The pause ended; `data.paused_ms` is the business time it added to both deadlines.
+    SlaResumed,
     /// A facet ECHO that was missing got filled in from the primary insight — the repair
     /// [`crate::refresh_facets`] performs when a new facet key ships and every case opened before
     /// it carries `None`. Additive and separate from `workflow` for the same reason `Caveat` is:

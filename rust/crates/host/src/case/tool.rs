@@ -23,7 +23,7 @@ use super::breach::case_breach;
 use super::error::CaseSvcError;
 use super::{
     case_assign, case_assignees, case_comment, case_events, case_get, case_list, case_members,
-    case_merge, case_open, case_request_list, case_request_nudge, case_request_reply,
+    case_merge, case_open, case_pin, case_request_list, case_request_nudge, case_request_reply,
     case_request_send, case_request_view, case_request_withdraw, case_snooze, case_split,
     case_workflow, rule_scorecard,
 };
@@ -250,6 +250,7 @@ pub async fn call_case_tool(
                 workflow,
                 resolution,
                 waiting_on,
+                input.get("reason").and_then(Value::as_str),
                 ts,
             )
             .await
@@ -271,7 +272,7 @@ pub async fn call_case_tool(
                 .and_then(Value::as_u64)
                 .ok_or_else(|| ToolError::BadInput("missing or non-u64 arg: until".into()))?;
             let case = case_snooze(
-                store,
+                node,
                 principal,
                 ws,
                 str_arg(input, "id")?,
@@ -281,6 +282,16 @@ pub async fn call_case_tool(
             )
             .await
             .map_err(svc_to_tool)?;
+            Ok(serde_json::to_value(case).unwrap_or(Value::Null))
+        }
+        "case.pin" => {
+            let pinned = input
+                .get("pinned")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| ToolError::BadInput("missing or non-bool arg: pinned".into()))?;
+            let case = case_pin(store, principal, ws, str_arg(input, "id")?, pinned)
+                .await
+                .map_err(svc_to_tool)?;
             Ok(serde_json::to_value(case).unwrap_or(Value::Null))
         }
         "case.comment" => {

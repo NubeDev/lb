@@ -49,8 +49,15 @@ const MS_PER_HOUR: i64 = 3_600_000;
 /// epoch-ms instant. [`Calendar::Always`] is plain wall arithmetic. Returns [`NEVER`] if the
 /// calendar never opens (see the module note).
 pub fn add_business_hours(cal: &Calendar, from_ms: u64, hours: u32) -> u64 {
+    add_business_ms(cal, from_ms, hours as u64 * MS_PER_HOUR as u64)
+}
+
+/// [`add_business_hours`] to the millisecond: what an SLA pause adds, since a pause is measured in
+/// business ms ([`crate::business_ms_between`]) and rounding it to hours would move a deadline by
+/// time nobody paused.
+pub fn add_business_ms(cal: &Calendar, from_ms: u64, ms: u64) -> u64 {
     match cal {
-        Calendar::Always => from_ms.saturating_add(hours as u64 * MS_PER_HOUR as u64),
+        Calendar::Always => from_ms.saturating_add(ms),
         Calendar::Business {
             hours: week,
             holidays,
@@ -61,24 +68,28 @@ pub fn add_business_hours(cal: &Calendar, from_ms: u64, hours: u32) -> u64 {
                 // write door. Fail to "never due" rather than to an arbitrary instant.
                 return NEVER;
             };
-            step(tz, week, holidays, from_ms, hours)
+            step(tz, week, holidays, from_ms, ms.min(i64::MAX as u64) as i64)
         }
     }
 }
 
-/// When the first response is due: `opened_ms` plus `respond_h` business hours.
-pub fn respond_by(policy: &ServicePolicy, opened_ms: u64) -> u64 {
-    add_business_hours(&policy.calendar, opened_ms, policy.respond_h)
+/// When the first response is due: `opened_ms` plus `respond_h` business hours, plus the business
+/// time the case has spent paused (`paused_ms`, [`crate::Case::sla_paused_ms`]).
+pub fn respond_by(policy: &ServicePolicy, opened_ms: u64, paused_ms: u64) -> u64 {
+    let h = policy.respond_h as u64 * MS_PER_HOUR as u64;
+    add_business_ms(&policy.calendar, opened_ms, h.saturating_add(paused_ms))
 }
 
-/// When resolution is due: `opened_ms` plus `resolve_h` business hours. This is the queue's sort
-/// key — the deadline that stands in for a priority score.
-pub fn due_at(policy: &ServicePolicy, opened_ms: u64) -> u64 {
-    add_business_hours(&policy.calendar, opened_ms, policy.resolve_h)
+/// When resolution is due: `opened_ms` plus `resolve_h` business hours, plus the business time the
+/// case has spent paused. This is the queue's sort key — the deadline that stands in for a priority
+/// score.
+pub fn due_at(policy: &ServicePolicy, opened_ms: u64, paused_ms: u64) -> u64 {
+    let h = policy.resolve_h as u64 * MS_PER_HOUR as u64;
+    add_business_ms(&policy.calendar, opened_ms, h.saturating_add(paused_ms))
 }
 
-/// Walk local days from `from_ms`, consuming open time until `hours` is spent.
-fn step(tz: Tz, week: &[DayHours; 7], holidays: &[String], from_ms: u64, hours: u32) -> u64 {
+/// Walk local days from `from_ms`, consuming open time until `ms` of it is spent.
+fn step(tz: Tz, week: &[DayHours; 7], holidays: &[String], from_ms: u64, ms: i64) -> u64 {
     let Some(from) = Utc.timestamp_millis_opt(from_ms as i64).single() else {
         return NEVER;
     };
@@ -86,7 +97,7 @@ fn step(tz: Tz, week: &[DayHours; 7], holidays: &[String], from_ms: u64, hours: 
     let mut date = local.date_naive();
     // Exact time-of-day in ms, so a `from` with seconds on it is not silently rounded down.
     let start_of_day = date.and_time(NaiveTime::MIN);
-    let mut remaining = hours as i64 * MS_PER_HOUR;
+    let mut remaining = ms;
     let mut first_day = true;
 
     for _ in 0..MAX_DAYS_SCANNED {
@@ -125,7 +136,7 @@ fn step(tz: Tz, week: &[DayHours; 7], holidays: &[String], from_ms: u64, hours: 
 
 /// Whether `date` (a local civil date) is in the holiday list. Holidays are `YYYY-MM-DD` in the
 /// calendar's own local time, so this compares local date to local date — no conversion.
-fn is_holiday(holidays: &[String], date: NaiveDate) -> bool {
+pub(crate) fn is_holiday(holidays: &[String], date: NaiveDate) -> bool {
     if holidays.is_empty() {
         return false;
     }
@@ -140,7 +151,7 @@ fn is_holiday(holidays: &[String], date: NaiveDate) -> bool {
 ///   the same choice `lb-schedules` makes. Earlier is the conservative one for a deadline.
 /// * **Nonexistent** (clocks went forward; the local time never happens) — step forward a minute at
 ///   a time to the first instant that does exist, i.e. the moment the clock jumps to.
-fn to_epoch_ms(tz: Tz, date: NaiveDate, ms_past_midnight: i64) -> u64 {
+pub(crate) fn to_epoch_ms(tz: Tz, date: NaiveDate, ms_past_midnight: i64) -> u64 {
     // A window closing at 1440 (midnight) lands on the next date at 00:00.
     let (date, ms) = if ms_past_midnight >= MS_PER_DAY {
         match date.succ_opt() {

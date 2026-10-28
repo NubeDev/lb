@@ -17,18 +17,23 @@ use crate::error::CasesError;
 use crate::save::save;
 
 /// Set case `id`'s `waiting_on` in workspace `ws` at logical ts `ts`, returning the saved case.
+/// `sent_by` is who sent the ask (recorded as `emailed_by`, for My Insights' *Emailed* lane).
 /// Bumps `last_activity_ts` like every write (that is [`crate::save`]'s job, in one place).
 pub async fn set_waiting_on(
     store: &Store,
     ws: &str,
     id: &str,
     waiting_on: WaitingOn,
+    sent_by: Option<&str>,
     ts: u64,
 ) -> Result<Case, CasesError> {
     let Some(mut case) = crate::get::get(store, ws, id).await? else {
         return Err(CasesError::BadInput(format!("no such case: {id}")));
     };
     case.waiting_on = Some(waiting_on);
+    if let Some(by) = sent_by {
+        case.emailed_by = Some(by.to_string());
+    }
     save(store, ws, &mut case, ts).await?;
     Ok(case)
 }

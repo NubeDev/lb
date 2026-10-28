@@ -15,11 +15,12 @@
 //! quiet for three weeks and one that says we were late. It is captured here, at the moment of the
 //! breach, because five minutes later somebody moves the case and the answer is gone for ever.
 //!
-//! # The clock never pauses
+//! # The clock pauses only for a snooze with an end date
 //!
-//! Nothing in this file consults `snooze_until`, and nothing about `waiting_on` stops the deadline
-//! from arriving. `waiting_on` records who holds the ball; it never stops time. A snooze hides a
-//! case from a lane — it does not buy an extension, because the client's contract did not pause.
+//! `waiting_on` records who holds the ball; it never stops time. A snooze with an end date does
+//! ([`crate::sla_pause`]): while it runs no breach is recorded here, and when it ends the deadline
+//! has moved forward by the business time it paused, so a breach armed for the old deadline finds
+//! the case not yet due. An open-ended snooze pauses nothing.
 
 use lb_store::Store;
 
@@ -31,12 +32,12 @@ use crate::save::save;
 
 /// Mark case `id` breached at `at` (the deadline instant that was missed), attributing it to the
 /// `waiting_on` the case holds right now. `Ok(None)` when the case is already breached, is closed,
-/// has no `due_at`, or has not reached it yet — every one of those is a legitimate no-op, so the
+/// is paused, has no `due_at`, or has not reached it yet — every one of those is a legitimate no-op, so the
 /// caller may run this as often as it likes.
 ///
 /// `at` is the DEADLINE, not the moment the reactor noticed. A reactor that ticks late must not
 /// make a case look less late than it was.
-// SCOPE: docs/scope/insights/case-plane-scope.md §"Reactors" (sla-clock, "never pause")
+// SCOPE: docs/scope/insights/case-plane-scope.md §"Reactors" (sla-clock, "pause on hold")
 pub async fn mark_breached(
     store: &Store,
     ws: &str,
@@ -55,6 +56,10 @@ pub async fn mark_breached(
     // A case that was resolved before its deadline did not breach. Note the ORDER: this is checked
     // after the set-once guard, so a case that breached and was LATER resolved keeps its breach.
     if case.closed {
+        return Ok(None);
+    }
+    // A paused clock does not breach; the deadline moves when the pause ends.
+    if case.sla_paused_at.is_some() {
         return Ok(None);
     }
     let Some(due_at) = case.due_at else {

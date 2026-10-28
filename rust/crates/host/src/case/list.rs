@@ -11,7 +11,7 @@
 //! showing the team-owned jobs the `team:` subject decision exists to support.
 
 use lb_auth::Principal;
-use lb_cases::{Lane, ListPage, ListQuery};
+use lb_cases::{ListPage, ListQuery};
 use lb_mcp::authorize_tool;
 use lb_store::Store;
 
@@ -30,11 +30,11 @@ pub async fn case_list(
     // Costs nothing on the lanes that do not need it: only `Mine` and `Watching` are defined
     // relative to the caller, and `Waiting` is a property of the case alone.
     let subjects = match query.lane {
-        Lane::Mine | Lane::Watching => me_subjects(store, ws, principal.sub())
+        lane if lane.is_personal() => me_subjects(store, ws, principal.sub())
             .await
             .into_iter()
             .collect(),
-        Lane::Waiting => Default::default(),
+        _ => Default::default(),
     };
     // Entity-scoped data: a restricted caller sees only cases at their sites. Set here from server
     // state; the wire can never carry it (`sites_allowed` is `serde(skip)`).
@@ -45,5 +45,7 @@ pub async fn case_list(
     {
         query.filter.sites_allowed = Some(ids);
     }
+    // `pinned` reads the caller's own pins, whoever the caller names (a pin is a person's own).
+    query.filter.pinned_for = Some(principal.sub().to_string());
     Ok(lb_cases::list(store, ws, &query, &subjects).await?)
 }

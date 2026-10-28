@@ -83,7 +83,10 @@ pub(super) async fn resolve_case_lens(
         Some(lens.stages.iter().cloned().collect())
     };
 
-    let cases = lb_cases::stages(store, ws, &lens.filter, lens.now).await?;
+    // `pinned` reads the caller's own pins (`case.pin`); the subject is the session's, never the wire's.
+    let mut filter = lens.filter.clone();
+    filter.pinned_for = Some(principal.sub().to_string());
+    let cases = lb_cases::stages(store, ws, &filter, lens.now).await?;
     // An empty filter serializes to `{}` (every axis is skip-if-none): no allowlist at all, rather
     // than one listing every case, which would wrongly drop the detections that have no case.
     let filtered = serde_json::to_value(&lens.filter)

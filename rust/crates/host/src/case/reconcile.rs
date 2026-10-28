@@ -1,6 +1,7 @@
 //! `reconcile_cases` — the restart-safe backstop AND the triage backfill (case-plane scope).
 //!
-//! It does one thing: **every OPEN insight with no open case gets one.** That is the invariant the
+//! It does one thing: **every OPEN insight with no open case gets one** — unless its last case was
+//! closed after it last fired ([`super::close_stands`]): a close holds until the alarm fires again. That is the invariant the
 //! inline grouping at raise maintains going forward; this is what makes it true for records that
 //! were raised before the case plane existed, and for the window where a node died between the
 //! insight write and the grouping call.
@@ -37,6 +38,10 @@ pub async fn reconcile_cases(node: &Arc<Node>, ws: &str, now: u64) -> Result<usi
             .await?
             .is_some()
         {
+            continue;
+        }
+        // Closed by a person after its last firing: the close stands until it fires again.
+        if super::close_stands::close_stands(&node.store, ws, &insight).await? {
             continue;
         }
         let case_id = match group_insight(node, ws, &insight.id, now).await {

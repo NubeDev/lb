@@ -17,6 +17,9 @@
 //! punctures a snooze**. A case somebody parked as "watch it next quarter" that has since become
 //! critical is not still parked — leaving it hidden is how a snooze turns into a way to lose a
 //! fault. It lives here because clearing a snooze is this file's one responsibility, whoever asked.
+//!
+//! **A snooze with an end date pauses the SLA** ([`crate::sla_pause`]); every door here that sets or
+//! clears a snooze starts or ends that pause, so the two can never disagree.
 
 use lb_store::Store;
 
@@ -79,6 +82,13 @@ pub async fn snooze(
         ts,
     )
     .await?;
+    // The SLA pause follows the snooze ([`crate::sla_pause`]): one with an end date stops the
+    // clock; ending it, or turning it open-ended, starts it again.
+    let case = if !unsnoozing && crate::sla_pause::snooze_pauses(&case, until, ts) {
+        crate::sla_pause::pause(store, ws, case, actor, ts).await?
+    } else {
+        crate::sla_pause::resume(store, ws, case, actor, ts).await?
+    };
     if unsnoozing && was_snoozed {
         return crate::snooze_release::release_to_action(store, ws, case, actor, ts).await;
     }
@@ -130,6 +140,8 @@ pub async fn puncture_snooze(
         ts,
     )
     .await?;
+    // A case that got worse is on the clock again.
+    let case = crate::sla_pause::resume(store, ws, case, actor, ts).await?;
     if was_snoozed {
         return crate::snooze_release::release_to_action(store, ws, case, actor, ts)
             .await

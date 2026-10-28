@@ -46,7 +46,7 @@ pub(super) const CASE: &[HostTool] = &[
     HostTool {
         tool: "case.workflow",
         group: "case",
-        description: "transition to_action/actioned/waiting_on_po/resolved (resolved requires a resolution)",
+        description: "transition to_action/actioned/waiting_on_po/resolved (resolved requires a resolution, and may carry the closer's own reason)",
     },
     HostTool {
         tool: "case.assignees",
@@ -70,6 +70,11 @@ pub(super) const CASE: &[HostTool] = &[
         tool: "rule.scorecard",
         group: "case",
         description: "detector precision per origin.ref per site over resolved cases: fixed / (fixed + false_positive + self_cleared), plus the median time to fix",
+    },
+    HostTool {
+        tool: "case.pin",
+        group: "case",
+        description: "pin a case for yourself, or unpin it (pinned: bool); case.list's `pinned` filter reads the caller's own pins",
     },
     HostTool {
         tool: "case.comment",
