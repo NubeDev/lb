@@ -46,7 +46,7 @@ pub(super) const CASE: &[HostTool] = &[
     HostTool {
         tool: "case.workflow",
         group: "case",
-        description: "transition to_action/actioned/waiting_on_po/resolved (resolved requires a resolution, and may carry the closer's own reason)",
+        description: "transition to_action/actioned/resolved (resolved requires a resolution, and may carry the closer's own reason)",
     },
     HostTool {
         tool: "case.assignees",

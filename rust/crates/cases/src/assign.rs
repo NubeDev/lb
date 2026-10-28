@@ -39,7 +39,7 @@ pub async fn assign(
     actor: &str,
     ts: u64,
 ) -> Result<AssignOutcome, CasesError> {
-    let Some(mut case) = crate::get::get(store, ws, id).await? else {
+    let Some(case) = crate::get::get(store, ws, id).await? else {
         return Err(CasesError::BadInput(format!("no such case: {id}")));
     };
     let next = assignee.map(str::to_string);
@@ -49,6 +49,8 @@ pub async fn assign(
             changed: false,
         });
     }
+    // A hand-over is a new state for the work: it ends a running hold (one state at a time).
+    let mut case = crate::snooze::end_hold(store, ws, case, actor, ts).await?;
     let previous = case.assigned_to.clone();
     case.assigned_to = next.clone();
     case.assigned_by = next.as_ref().map(|_| actor.to_string());

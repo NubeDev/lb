@@ -188,7 +188,7 @@ async fn waiting_on_someone_moves_neither_deadline() {
         &admin,
         ws,
         "case.workflow",
-        json!({ "id": case_id, "workflow": "waiting_on_po", "waiting_on": "client", "ts": FRIDAY_1600 }),
+        json!({ "id": case_id, "workflow": "actioned", "waiting_on": "client", "ts": FRIDAY_1600 }),
     )
     .await
     .expect("case.workflow");

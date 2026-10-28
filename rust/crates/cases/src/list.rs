@@ -39,7 +39,7 @@ use crate::sla_state::{sla_state, SlaState, DEFAULT_DUE_SOON_MS};
 pub enum Lane {
     /// Assigned to the caller or to a team they are on.
     Mine,
-    /// Blocked on somebody — `waiting_on_po`, or any case with a `waiting_on` party set. The lane
+    /// Blocked on somebody — any case with a `waiting_on` party set. The lane
     /// that exists because "waiting" is the most common honest answer and it needs its own screen.
     Waiting,
     /// Everything else the caller can see — the unassigned and other people's work. Named
@@ -291,7 +291,7 @@ fn matches(case: &Case, query: &ListQuery, subjects: &BTreeSet<String>) -> bool 
             .assigned_to
             .as_deref()
             .is_some_and(|a| subjects.contains(a)),
-        Lane::Waiting => case.workflow == Workflow::WaitingOnPo || case.waiting_on.is_some(),
+        Lane::Waiting => case.waiting_on.is_some(),
         // Deliberately NOT "everything": the cases the caller owns are already in `Mine`, and a
         // lane that repeats them makes the two counts add up to more than the workspace has.
         Lane::Watching => !case
