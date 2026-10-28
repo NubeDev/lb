@@ -250,3 +250,80 @@ async fn settling_keeps_the_later_of_hold_and_email() {
         "idempotent"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn unassigning_work_nothing_else_holds_returns_it_to_the_queue() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    assign(
+        &store,
+        WS,
+        &id,
+        Some("user:priya"),
+        "user:sam",
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    workflow(
+        &store,
+        WS,
+        &id,
+        Workflow::Actioned,
+        None,
+        None,
+        "user:sam",
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    assign(&store, WS, &id, None, "user:sam", OPENED + 2 * HOUR)
+        .await
+        .unwrap();
+    let case = get(&store, WS, &id).await.unwrap().unwrap();
+    assert_eq!(case.assigned_to, None);
+    assert_eq!(case.workflow, Workflow::ToAction);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn unassigning_work_out_by_email_keeps_it_actioned() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    assign(
+        &store,
+        WS,
+        &id,
+        Some("user:priya"),
+        "user:sam",
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    workflow(
+        &store,
+        WS,
+        &id,
+        Workflow::Actioned,
+        None,
+        None,
+        "user:sam",
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    set_waiting_on(
+        &store,
+        WS,
+        &id,
+        WaitingOn::Contractor,
+        Some("user:sam"),
+        OPENED + HOUR,
+    )
+    .await
+    .unwrap();
+    assign(&store, WS, &id, None, "user:sam", OPENED + 2 * HOUR)
+        .await
+        .unwrap();
+    let case = get(&store, WS, &id).await.unwrap().unwrap();
+    assert_eq!(case.workflow, Workflow::Actioned);
+}
