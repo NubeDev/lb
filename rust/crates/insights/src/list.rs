@@ -219,6 +219,9 @@ pub struct ListPage {
     pub severity_counts: Option<BTreeMap<String, u64>>,
 }
 
+/// The longest case allowlist the tally scan sends to SQL; past it the list is applied in memory.
+const SQL_ALLOW_MAX: usize = 200;
+
 /// List insights in workspace `ws` matching `query`, newest-first, keyset-paged.
 ///
 /// `tag_allow` is the tag-facet gate: when `query.filter.tags` is non-empty, the host pre-resolves
@@ -333,7 +336,21 @@ pub async fn list(
     // ONE query. Every axis EXCEPT status — the tally is the per-status breakdown, so narrowing by
     // status first would zero three of its four numbers. It comes back already ordered, so the page
     // below is a slice rather than a second sort.
-    let scan_filter = crate::severity_tally::scan_filter(f, query.counts && query.severity_counts);
+    let mut scan_filter =
+        crate::severity_tally::scan_filter(f, query.counts && query.severity_counts);
+    // A LONG case allowlist is checked here in memory (`CaseScope::allows`, a hash lookup, below)
+    // rather than in the scan's SQL: `case_id IN $list` walks the whole list per row, and with
+    // thousands of matching cases that alone cost seconds. A short one stays in the SQL, where it
+    // narrows what the scan reads.
+    if let Some(scope) = scan_filter.case.as_mut() {
+        if scope
+            .allow
+            .as_ref()
+            .is_some_and(|ids| ids.len() > SQL_ALLOW_MAX)
+        {
+            scope.allow = None;
+        }
+    }
     let matched: Vec<Insight> = crate::list_page::read_all_matching(
         store,
         ws,

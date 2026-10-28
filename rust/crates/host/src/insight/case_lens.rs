@@ -110,10 +110,22 @@ pub(super) async fn resolve_case_lens(
             .map(|c| c.id.clone())
             .collect()
     });
+    // The three stage words once, not one serialisation per case (thousands of them).
+    let words: Vec<(Workflow, String)> = WORKFLOW_ORDER
+        .into_iter()
+        .map(|w| (w, stage_word(w)))
+        .collect();
+    let word = |w: Workflow| {
+        words
+            .iter()
+            .find(|(k, _)| *k == w)
+            .map(|(_, s)| s.clone())
+            .unwrap_or_else(|| stage_word(w))
+    };
     Ok(CaseScope {
         stage_of: cases
-            .into_iter()
-            .map(|c| (c.id, stage_word(c.workflow)))
+            .iter()
+            .map(|c| (c.id.clone(), word(c.workflow)))
             .collect(),
         allow,
         stages,
