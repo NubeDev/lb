@@ -98,6 +98,11 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // including admins. Gating it on `case.workflow` would be wrong in the other direction — the
         // roster is a READ, and a viewer who may see the queue may see who could own it.
         "case.list"
+    } else if qualified_tool == "case.names" {
+        // 2026-10 Insights review: the display names of the people the queue's cases mention. The
+        // same page as the queue and a READ of what it shows, so it rides `case.list` like the
+        // picker's roster; no `mcp:case.names:call` exists in any role bundle. Re-checked inside.
+        "case.list"
     } else if qualified_tool == "case.pin" {
         // 2026-10 Insights review: a pin is the caller's own bookmark and changes nothing anyone else
         // sees, so it rides the queue's READ grant — a viewer may bookmark what they may list.

@@ -22,7 +22,7 @@ use serde_json::{json, Value};
 use super::breach::case_breach;
 use super::error::CaseSvcError;
 use super::{
-    case_assign, case_assignees, case_comment, case_events, case_get, case_list, case_members,
+    case_assign, case_assignees, case_comment, case_names, case_events, case_get, case_list, case_members,
     case_merge, case_open, case_pin, case_request_list, case_request_nudge, case_request_reply,
     case_request_send, case_request_view, case_request_withdraw, case_snooze, case_split,
     case_workflow, rule_scorecard,
@@ -150,6 +150,18 @@ pub async fn call_case_tool(
         "case.assignees" => {
             // No args beyond the workspace: the answer is a property of WHO is asking.
             let out = case_assignees(store, principal, ws)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(serde_json::to_value(out).unwrap_or(Value::Null))
+        }
+        "case.names" => {
+            // `subjects`: the people the caller's cases mention, as subjects.
+            let subjects: Vec<String> = match input.get("subjects") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(v) => serde_json::from_value(v.clone())
+                    .map_err(|e| ToolError::BadInput(format!("case.names subjects: {e}")))?,
+            };
+            let out = case_names(store, principal, ws, &subjects)
                 .await
                 .map_err(svc_to_tool)?;
             Ok(serde_json::to_value(out).unwrap_or(Value::Null))
