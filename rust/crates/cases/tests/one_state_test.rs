@@ -425,3 +425,62 @@ async fn assigning_an_emailed_case_ends_the_email_out() {
     assert_eq!(case.waiting_on, None);
     assert_eq!(case.emailed_by, None);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn reopening_to_open_returns_the_job_to_the_queue() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    assign(&store, WS, &id, Some("user:sam"), "user:sam", OPENED + HOUR)
+        .await
+        .unwrap();
+    workflow_with_reason(
+        &store,
+        WS,
+        &id,
+        Workflow::Resolved,
+        Some(Resolution::Fixed),
+        None,
+        Some("Fixed"),
+        "user:sam",
+        OPENED + 2 * HOUR,
+    )
+    .await
+    .unwrap();
+    let closed = get(&store, WS, &id).await.unwrap().unwrap();
+    assert_eq!(
+        closed.assigned_to.as_deref(),
+        Some("user:sam"),
+        "Close keeps the owner on record"
+    );
+    let reopened = workflow(
+        &store,
+        WS,
+        &id,
+        Workflow::ToAction,
+        None,
+        None,
+        "user:sam",
+        OPENED + 3 * HOUR,
+    )
+    .await
+    .unwrap();
+    assert_eq!(reopened.workflow, Workflow::ToAction);
+    assert_eq!(reopened.assigned_to, None);
+    assert_eq!(reopened.assigned_by, None);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn unassigning_a_held_case_keeps_the_hold() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    assign(&store, WS, &id, Some("user:sam"), "user:sam", OPENED + HOUR)
+        .await
+        .unwrap();
+    hold(&store, &id, OPENED + 2 * HOUR).await;
+    assign(&store, WS, &id, None, "user:sam", OPENED + 3 * HOUR)
+        .await
+        .unwrap();
+    let case = get(&store, WS, &id).await.unwrap().unwrap();
+    assert_eq!(case.assigned_to, None);
+    assert_eq!(case.snooze_until, Some(OPENED + 26 * HOUR));
+}
