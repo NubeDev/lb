@@ -167,9 +167,17 @@ async fn owner_filters_by_holder_or_none() {
         owner: Some("none".into()),
         ..Default::default()
     };
-    let mut want = vec![open_, emailed, held, closed];
+    // The emailed and held cases are their sender's: emailing or holding unowned work owns it.
+    let mut want = vec![open_, closed];
     want.sort();
     assert_eq!(ids(&store, none, T).await, want);
+    let test = ListFilter {
+        owner: Some("user:test".into()),
+        ..Default::default()
+    };
+    let mut want = vec![emailed, held];
+    want.sort();
+    assert_eq!(ids(&store, test, T).await, want);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

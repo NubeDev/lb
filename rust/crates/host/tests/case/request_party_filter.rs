@@ -13,7 +13,7 @@ async fn waiting_on(node: &Arc<Node>, p: &Principal, ws: &str, party: &str) -> V
         p,
         ws,
         "case.list",
-        json!({ "lane": "watching", "filter": { "party": party }, "now": T0 + 1 }),
+        json!({ "lane": "mine", "filter": { "party": party }, "now": T0 + 1 }),
     )
     .await
     .expect("a party filter is answered, not refused");

@@ -35,8 +35,13 @@ pub async fn set_waiting_on(
         case = crate::snooze::end_hold(store, ws, case, by, ts).await?;
         case.emailed_by = Some(by.to_string());
     }
+    // Emailed work nobody owned is the sender's to chase.
+    let claimed = sent_by.is_some_and(|by| crate::own_unowned::claim(&mut case, by));
     case.waiting_on = Some(waiting_on);
     save(store, ws, &mut case, ts).await?;
+    if let (true, Some(by)) = (claimed, sent_by) {
+        crate::own_unowned::record(store, ws, id, by, ts).await?;
+    }
     Ok(case)
 }
 

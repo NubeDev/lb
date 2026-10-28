@@ -80,12 +80,17 @@ pub async fn snooze(
             case.emailed_by = None;
         }
     }
+    // Held work nobody owned is the holder's to pick up when the hold ends.
+    let claimed = !unsnoozing && crate::own_unowned::claim(&mut case, actor);
     // Holding work nobody had started puts it in hand: `to_action` moves to `actioned` with the hold.
     let parked_from_open = !unsnoozing && case.workflow == crate::case::Workflow::ToAction;
     if parked_from_open {
         case.workflow = crate::case::Workflow::Actioned;
     }
     save(store, ws, &mut case, ts).await?;
+    if claimed {
+        crate::own_unowned::record(store, ws, id, actor, ts).await?;
+    }
     if parked_from_open {
         append_event(
             store,
