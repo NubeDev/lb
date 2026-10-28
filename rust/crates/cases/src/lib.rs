@@ -103,7 +103,7 @@ pub use case_member::{member_id, CaseMember, MemberRole, TABLE as CASE_MEMBER_TA
 pub use business_span::business_ms_between;
 pub use case_request::{
     validate_reply, Ask, Brief, BriefEvidence, BriefSeries, CaseRequest, Delivery, Reply,
-    ReplyKind, RequestStatus, MAX_REPLY_ATTACHMENTS, MAX_REPLY_TEXT_BYTES,
+    ReplyKind, RequestStatus, SentMail, MAX_REPLY_ATTACHMENTS, MAX_REPLY_TEXT_BYTES,
     TABLE as CASE_REQUEST_TABLE,
 };
 pub use case_status::{case_status, CaseStatus};
