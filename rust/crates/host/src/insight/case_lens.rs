@@ -15,7 +15,7 @@
 use std::collections::HashSet;
 
 use lb_auth::Principal;
-use lb_cases::Workflow;
+use lb_cases::{CaseStatus, Workflow};
 use lb_insights::{CaseScope, NO_CASE};
 use lb_mcp::authorize_tool;
 use lb_store::Store;
@@ -45,6 +45,34 @@ const RETIRED_PO: &str = "waiting_on_po";
 
 /// Every stage, in lb's workflow order.
 const WORKFLOW_ORDER: [Workflow; 3] = [Workflow::ToAction, Workflow::Actioned, Workflow::Resolved];
+
+/// The order a `case_status` sort ranks the status words in: Open, then the Actioned family as work
+/// moves through it (Actioned, Assigned, Emailed, On hold), then Closed.
+const STATUS_ORDER: [CaseStatus; 6] = [
+    CaseStatus::Open,
+    CaseStatus::Actioned,
+    CaseStatus::Assigned,
+    CaseStatus::Emailed,
+    CaseStatus::Hold,
+    CaseStatus::Closed,
+];
+
+/// A status as its wire word (`hold`, `emailed`, …).
+fn status_word(s: CaseStatus) -> String {
+    serde_json::to_value(s)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// What a holder sorts by: the subject without its kind (`user:`, `team:`), case-blind, so a person
+/// and their address read in one alphabet.
+fn owner_key(subject: &str) -> String {
+    subject
+        .split_once(':')
+        .map_or(subject, |(_, rest)| rest)
+        .to_lowercase()
+}
 
 /// The workflow word as it travels on the wire (`to_action`, …) — serde's own spelling, so this
 /// file and `lb_cases` can never disagree about it.
@@ -131,5 +159,18 @@ pub(super) async fn resolve_case_lens(
         stages,
         // lb's own workflow order, the order a `case_stage` sort ranks by.
         stage_order: WORKFLOW_ORDER.into_iter().map(stage_word).collect(),
+        status_of: cases
+            .iter()
+            .map(|c| (c.id.clone(), status_word(c.status)))
+            .collect(),
+        status_order: STATUS_ORDER.into_iter().map(status_word).collect(),
+        owner_of: cases
+            .iter()
+            .filter_map(|c| Some((c.id.clone(), owner_key(c.owner.as_deref()?))))
+            .collect(),
+        seq_of: cases
+            .iter()
+            .filter_map(|c| Some((c.id.clone(), c.seq?)))
+            .collect(),
     })
 }
