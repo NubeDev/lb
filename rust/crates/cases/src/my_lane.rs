@@ -4,9 +4,11 @@
 //! that is both mine and snoozed reads *On hold*, and one I emailed reads *Emailed* rather than
 //! *My action*:
 //!
-//! 1. **closed** — closed by me in the last seven days;
+//! 1. **closed** — closed in the last seven days, by me or while mine (someone else closing my
+//!    work does not make it vanish from my view);
 //! 2. **hold** — open, snoozed now, and mine or snoozed by me;
-//! 3. **emailed** — open, sent out by me, and the ball is still with the party (`waiting_on`);
+//! 3. **emailed** — open, out by email with the ball still with the party (`waiting_on`), and sent
+//!    by me or mine (whoever sent it: work of mine waiting on a party is not mine to act on);
 //! 4. **action** — open and mine;
 //! 5. **assigned** — open, assigned by me to someone who is not me.
 //!
@@ -28,14 +30,16 @@ pub fn my_lane(case: &Case, me: &BTreeSet<String>, now: u64) -> Option<Lane> {
         let recent = case
             .resolved_ts
             .is_some_and(|t| now.saturating_sub(t) <= CLOSED_LANE_MS);
-        return (recent && is_me(&case.resolved_by)).then_some(Lane::Closed);
+        return (recent && (is_me(&case.resolved_by) || is_me(&case.assigned_to)))
+            .then_some(Lane::Closed);
     }
     let mine = is_me(&case.assigned_to);
     let snoozed = case.snooze_until.is_some_and(|u| u > now);
     if snoozed && (mine || is_me(&case.snoozed_by)) {
         return Some(Lane::Hold);
     }
-    if case.waiting_on.is_some() && is_me(&case.emailed_by) {
+    let out_by_email = case.waiting_on.is_some() && case.emailed_by.is_some();
+    if out_by_email && (is_me(&case.emailed_by) || mine) {
         return Some(Lane::Emailed);
     }
     if mine {
