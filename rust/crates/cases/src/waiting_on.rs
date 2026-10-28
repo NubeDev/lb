@@ -30,10 +30,12 @@ pub async fn set_waiting_on(
     let Some(mut case) = crate::get::get(store, ws, id).await? else {
         return Err(CasesError::BadInput(format!("no such case: {id}")));
     };
-    case.waiting_on = Some(waiting_on);
+    // Sending it out by email is a new state for the work: it ends a running hold first.
     if let Some(by) = sent_by {
+        case = crate::snooze::end_hold(store, ws, case, by, ts).await?;
         case.emailed_by = Some(by.to_string());
     }
+    case.waiting_on = Some(waiting_on);
     save(store, ws, &mut case, ts).await?;
     Ok(case)
 }

@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use lb_cases::{
     events, get, list, mark_breached, open, pin, set_deadlines, sla_state, snooze, workflow,
     workflow_with_reason, Deadlines, EventKind, Grouping, Lane, ListFilter, ListQuery, OpenInput,
-    Resolution, SlaState, Workflow, MAX_SLA_PAUSE_MS,
+    Resolution, SlaState, WaitingOn, Workflow, MAX_SLA_PAUSE_MS,
 };
 use lb_store::Store;
 
@@ -179,9 +179,9 @@ async fn waiting_on_someone_and_a_case_with_no_deadline_never_pause() {
         &store,
         WS,
         &id,
-        Workflow::WaitingOnPo,
+        Workflow::Actioned,
         None,
-        None,
+        Some(WaitingOn::Client),
         "user:sam",
         t1,
     )

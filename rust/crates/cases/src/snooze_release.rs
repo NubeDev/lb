@@ -9,9 +9,8 @@
 //!
 //! Only an `actioned` case that nobody holds moves. One with a `waiting_on` stays: someone has the
 //! ball (the client, a contractor, or us — "on hold" / "investigating" in the UI), and ending a snooze
-//! takes the snooze off, not that hand-off. `waiting_on_po` is blocked on somebody else and stays
-//! where it is; `to_action` is already there; a resolved case is closed and a snooze ending does not
-//! reopen it.
+//! takes the snooze off, not that hand-off. `to_action` is already there; a resolved case is closed
+//! and a snooze ending does not reopen it.
 //!
 //! It is called by every door that ends a snooze — [`crate::snooze`] (un-park and expiry) and
 //! [`crate::puncture_snooze`] — and only when the case WAS snoozed, so clearing a snooze that was

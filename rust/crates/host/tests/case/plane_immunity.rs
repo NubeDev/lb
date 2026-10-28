@@ -33,7 +33,7 @@ async fn fifty_re_raises_leave_the_human_plane_untouched() {
         &p,
         "nube",
         "case.workflow",
-        json!({ "id": case_id, "workflow": "waiting_on_po", "waiting_on": "client", "ts": 3 }),
+        json!({ "id": case_id, "workflow": "actioned", "waiting_on": "client", "ts": 3 }),
     )
     .await
     .expect("workflow ok");

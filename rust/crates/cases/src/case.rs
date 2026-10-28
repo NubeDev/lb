@@ -30,11 +30,15 @@ pub const TABLE: &str = "case";
 pub enum Workflow {
     /// Nobody has started. The default a case opens in.
     ToAction,
-    /// Someone did something — a visit, a reset, a parameter change.
+    /// Someone did something — a visit, a reset, a parameter change, an email, a hold. Who holds
+    /// the work now is said by the case's other fields (`assigned_to`, `waiting_on`, a running
+    /// snooze), not by a stage of its own.
+    ///
+    /// `waiting_on_po` was a fourth stage ("blocked on a purchase order") and is retired: a stored
+    /// record that still says it reads as `actioned`, and is written back as `actioned` the next
+    /// time it is saved. Who is being waited on stays in `waiting_on`.
+    #[serde(alias = "waiting_on_po")]
     Actioned,
-    /// Blocked on money/authority, not on effort. Its own state because "waiting" is the single
-    /// most common honest answer and folding it into `actioned` loses the queue that matters.
-    WaitingOnPo,
     /// Closed. Requires a [`Resolution`], sets `resolved_ts`/`resolved_by` and `closed`.
     Resolved,
 }
@@ -66,8 +70,8 @@ pub enum Resolution {
     Duplicate,
 }
 
-/// Who the case is blocked on while it waits. Orthogonal to [`Workflow`]: a case can be
-/// `waiting_on_po` on the client or `actioned` and waiting on a contractor's return visit.
+/// Who the case is blocked on while it waits. Orthogonal to [`Workflow`]: an `actioned` case can be
+/// waiting on the client (a purchase order) or on a contractor's return visit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WaitingOn {

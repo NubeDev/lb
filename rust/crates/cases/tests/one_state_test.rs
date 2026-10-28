@@ -1,0 +1,135 @@
+//! One state at a time (Insights review 2026-10): a hold is a state like the rest, so holding work
+//! nobody had started puts it in hand, and moving a held case on — a stage change, a hand-over, an
+//! email — ends the hold, SLA pause and all. And `waiting_on_po` is retired: a stored record that
+//! still says it reads as `actioned`. Against a real store.
+
+use lb_cases::{
+    assign, get, open, set_deadlines, set_waiting_on, snooze, workflow, workflow_with_reason,
+    Deadlines, Grouping, OpenInput, Resolution, WaitingOn, Workflow,
+};
+use lb_store::Store;
+
+const WS: &str = "ops";
+const HOUR: u64 = 3_600_000;
+const OPENED: u64 = 1_000;
+const DUE: u64 = OPENED + 8 * HOUR;
+
+/// An Open case with a deadline, so a dated snooze pauses its SLA.
+async fn clocked(store: &Store) -> String {
+    let input = OpenInput {
+        title: "a job".into(),
+        grouping: Grouping::Single,
+        primary_insight: "ins-1".into(),
+        severity: "warning".into(),
+        ..Default::default()
+    };
+    let id = open(store, WS, input, "user:test", OPENED).await.unwrap().id;
+    let deadlines = Deadlines { respond_by: None, due_at: Some(DUE) };
+    set_deadlines(store, WS, &id, Some("p1"), deadlines, "system:sla-clock", OPENED)
+        .await
+        .unwrap();
+    id
+}
+
+/// Snooze `id` at `ts` until a day on: a dated hold, so the SLA pauses.
+async fn hold(store: &Store, id: &str, ts: u64) {
+    snooze(store, WS, id, ts + 24 * HOUR, Some("Waiting on parts"), "user:sam", ts)
+        .await
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn holding_open_work_puts_it_in_hand() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    hold(&store, &id, OPENED + HOUR).await;
+    let case = get(&store, WS, &id).await.unwrap().unwrap();
+    assert_eq!(case.workflow, Workflow::Actioned);
+    assert!(case.snooze_until.is_some());
+    assert!(case.sla_paused_at.is_some());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn closing_a_held_case_ends_the_hold_and_its_pause() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    hold(&store, &id, OPENED + HOUR).await;
+    let closed = workflow_with_reason(
+        &store,
+        WS,
+        &id,
+        Workflow::Resolved,
+        Some(Resolution::Fixed),
+        None,
+        Some("Fixed remotely"),
+        "user:sam",
+        OPENED + 2 * HOUR,
+    )
+    .await
+    .unwrap();
+    assert_eq!(closed.workflow, Workflow::Resolved);
+    assert_eq!(closed.snooze_until, None);
+    assert_eq!(closed.snooze_reason, None);
+    assert_eq!(closed.sla_paused_at, None);
+    // The hour on hold is credited, as any ended pause is.
+    assert_eq!(closed.sla_paused_ms, HOUR);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn handing_a_held_case_over_ends_the_hold_and_keeps_its_stage() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    hold(&store, &id, OPENED + HOUR).await;
+    assign(&store, WS, &id, Some("user:priya"), "user:sam", OPENED + 2 * HOUR)
+        .await
+        .unwrap();
+    let case = get(&store, WS, &id).await.unwrap().unwrap();
+    assert_eq!(case.assigned_to.as_deref(), Some("user:priya"));
+    assert_eq!(case.snooze_until, None);
+    assert_eq!(case.workflow, Workflow::Actioned);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn emailing_a_held_case_ends_the_hold() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    hold(&store, &id, OPENED + HOUR).await;
+    let case = set_waiting_on(&store, WS, &id, WaitingOn::Contractor, Some("user:sam"), OPENED + 2 * HOUR)
+        .await
+        .unwrap();
+    assert_eq!(case.snooze_until, None);
+    assert_eq!(case.waiting_on, Some(WaitingOn::Contractor));
+    assert_eq!(case.emailed_by.as_deref(), Some("user:sam"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_move_to_the_same_stage_is_not_a_change_and_keeps_the_hold() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    hold(&store, &id, OPENED + HOUR).await;
+    let case = workflow(&store, WS, &id, Workflow::Actioned, None, None, "user:sam", OPENED + 2 * HOUR)
+        .await
+        .unwrap();
+    assert!(case.snooze_until.is_some());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn holding_an_emailed_case_ends_the_email_out() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    set_waiting_on(&store, WS, &id, WaitingOn::Contractor, Some("user:test"), OPENED + HOUR)
+        .await
+        .unwrap();
+    hold(&store, &id, OPENED + 2 * HOUR).await;
+    let case = get(&store, WS, &id).await.unwrap().unwrap();
+    assert!(case.snooze_until.is_some());
+    assert_eq!(case.waiting_on, None);
+    assert_eq!(case.emailed_by, None);
+}
+
+#[test]
+fn a_stored_waiting_on_po_reads_as_actioned() {
+    let w: Workflow = serde_json::from_str("\"waiting_on_po\"").unwrap();
+    assert_eq!(w, Workflow::Actioned);
+    assert_eq!(serde_json::to_string(&w).unwrap(), "\"actioned\"");
+}
