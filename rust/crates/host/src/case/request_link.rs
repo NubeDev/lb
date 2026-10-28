@@ -46,7 +46,7 @@ pub(super) fn link_effect(
     ws: &str,
     recipient: &str,
     token: &str,
-    reference: Option<&str>,
+    args: serde_json::Value,
     locale: Option<&str>,
     ts: u64,
 ) -> Effect {
@@ -56,7 +56,7 @@ pub(super) fn link_effect(
         "workspace": ws,
         "token": token,
         "locale": locale,
-        "args": reference_args(reference),
+        "args": args,
     });
     Effect::new(&id, EMAIL_TARGET, LINK_ACTION, payload.to_string(), &id, ts)
 }
@@ -93,6 +93,33 @@ pub(super) fn nudge_effect(
 /// The catalog arguments for the sender's reference: the text (empty when there is none, so a
 /// workspace's own wording can use a plain `{reference}`), and `has_reference` (`yes` / `no`) for the
 /// built-in copy's `select`, so a mail with no reference reads as it always did.
+/// The link email's words: the sender's name for the work, where it is, what was found, who
+/// flagged it, and their reference — each with its `has_*` switch so the copy reads well without it.
+/// `title`/`site` fall back to the case's own.
+pub(super) fn link_args(
+    brief: Option<&lb_cases::Brief>,
+    case: &lb_cases::Case,
+) -> serde_json::Value {
+    let pick = |v: Option<&String>| v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let title = pick(brief.and_then(|b| b.title.as_ref())).unwrap_or_else(|| case.title.clone());
+    let site = pick(brief.and_then(|b| b.site.as_ref())).or_else(|| pick(case.site.as_ref()));
+    let mut args = reference_args(brief.and_then(|b| b.reference.as_deref()));
+    let map = args.as_object_mut().expect("reference_args is an object");
+    map.insert("title".into(), json!(title));
+    for (key, value) in [
+        ("site", site),
+        ("finding", pick(brief.and_then(|b| b.finding.as_ref()))),
+        ("sender", pick(brief.and_then(|b| b.sender.as_ref()))),
+    ] {
+        map.insert(key.into(), json!(value.clone().unwrap_or_default()));
+        map.insert(
+            format!("has_{key}"),
+            json!(if value.is_some() { "yes" } else { "no" }),
+        );
+    }
+    args
+}
+
 fn reference_args(reference: Option<&str>) -> serde_json::Value {
     match reference.map(str::trim).filter(|r| !r.is_empty()) {
         Some(r) => json!({ "reference": r, "has_reference": "yes" }),

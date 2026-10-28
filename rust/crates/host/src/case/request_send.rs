@@ -31,7 +31,7 @@ use lb_mcp::authorize_tool;
 use lb_store::new_ulid;
 
 use super::error::CaseSvcError;
-use super::request_link::link_effect;
+use super::request_link::{link_args, link_effect};
 use super::request_nudge_schedule::schedule_nudges;
 use super::request_token::{generate_request_token, hash_request_token};
 use super::request_window::{nudge_instants, window_hours_for, HOUR_MS};
@@ -91,8 +91,18 @@ pub async fn case_request_send(
     let token = generate_request_token(ws);
     let token_hash = hash_request_token(&token);
     let id = new_ulid();
-    let reference = brief.as_ref().and_then(|b| b.reference.clone());
-    let effect = link_effect(&id, ws, &email, &token, reference.as_deref(), None, ts);
+    let effect = link_effect(
+        &id,
+        ws,
+        &email,
+        &token,
+        link_args(brief.as_ref(), &case),
+        None,
+        ts,
+    );
+    // The record of what the party receives, rendered as the mail will be (`outbox::sent_copy`).
+    let mail = crate::outbox::sent_copy(&effect, &token)
+        .map(|(subject, body)| lb_cases::SentMail { subject, body });
 
     let request = lb_cases::new_request(
         RequestInput {
@@ -111,6 +121,8 @@ pub async fn case_request_send(
         },
         ts,
     )?;
+    let mut request = request;
+    request.mail = mail;
 
     // The ask and its mail, atomically. A crash after this point costs a nudge, never the link.
     let value = serde_json::to_value(&request)

@@ -22,9 +22,9 @@ invite.email.body_html = <p>You have been invited to workspace <strong>{workspac
 # their copy from the ACTION NAME (`request_link` / `request_nudge` → `{action}.email.*`), which is
 # why adding an emailed action is a catalog change and never a new match arm in `email_content.rs`.
 # `{token}` is the raw link token — it exists only here and in the mail; nothing stores it.
-request_link.email.subject = {has_reference, select, yes{{reference}: } other{}}A job needs your response
-request_link.email.body = You have been asked to respond about a job{has_reference, select, yes{ ({reference})} other{}}. Open the link to see the detail and reply: {base_url}/r/{token}
-request_link.email.body_html = <p>You have been asked to respond about a job{has_reference, select, yes{ ({reference})} other{}}.</p><p><a href="{base_url}/r/{token}">Open the request and reply</a></p>
+request_link.email.subject = Action required: {title}{has_site, select, yes{ at {site}} other{}}{has_reference, select, yes{ ({reference})} other{}}
+request_link.email.body = Hi,\n\n{has_sender, select, yes{{sender} has} other{We have}} flagged {title}{has_site, select, yes{ at {site}} other{}}.{has_finding, select, yes{\n{finding}} other{}}\n\nPlease reply once attended to: {base_url}/r/{token}
+request_link.email.body_html = <p>Hi,</p><p>{has_sender, select, yes{{sender} has} other{We have}} flagged {title}{has_site, select, yes{ at {site}} other{}}.{has_finding, select, yes{<br>{finding}} other{}}</p><p>Please reply once attended to: <a href="{base_url}/r/{token}">open the request and reply</a></p>
 # The nudge carries NO link, deliberately. The raw token exists exactly once (in the original
 # mail) and is unrecoverable from the stored hash; minting a second one would kill the link already
 # in the recipient's inbox and put two live tokens on one ask. So the reminder points back at the
