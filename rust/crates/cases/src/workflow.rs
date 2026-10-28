@@ -143,6 +143,13 @@ pub async fn workflow_with_reason(
         case.resolved_ts = None;
         case.resolved_by = None;
     }
+    // A job reopened to Open goes back to the queue: whoever picks it up owns it, as with a new one.
+    let unowned = (previous.is_terminal() && next == Workflow::ToAction)
+        .then(|| case.assigned_to.take())
+        .flatten();
+    if unowned.is_some() {
+        case.assigned_by = None;
+    }
 
     save(store, ws, &mut case, ts).await?;
 
@@ -167,6 +174,18 @@ pub async fn workflow_with_reason(
         ts,
     )
     .await?;
+    if let Some(from) = unowned {
+        append_event(
+            store,
+            ws,
+            id,
+            EventKind::Assigned,
+            actor,
+            serde_json::json!({ "from": from, "to": null }),
+            ts,
+        )
+        .await?;
+    }
 
     Ok(case)
 }
