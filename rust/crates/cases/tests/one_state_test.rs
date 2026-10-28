@@ -565,3 +565,27 @@ async fn emailing_or_holding_unowned_work_makes_the_sender_its_owner() {
         None
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn ending_a_hold_on_owned_work_leaves_it_with_its_owner() {
+    let store = Store::memory().await.unwrap();
+    let id = clocked(&store).await;
+    hold(&store, &id, OPENED + HOUR).await;
+    let ended = snooze(
+        &store,
+        WS,
+        &id,
+        OPENED + 2 * HOUR,
+        None,
+        "user:sam",
+        OPENED + 2 * HOUR,
+    )
+    .await
+    .unwrap();
+    assert_eq!(ended.assigned_to.as_deref(), Some("user:sam"));
+    assert_eq!(
+        ended.workflow,
+        Workflow::Actioned,
+        "Assigned, not back to Open"
+    );
+}
