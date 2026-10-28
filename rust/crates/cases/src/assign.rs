@@ -54,6 +54,14 @@ pub async fn assign(
     let previous = case.assigned_to.clone();
     case.assigned_to = next.clone();
     case.assigned_by = next.as_ref().map(|_| actor.to_string());
+    // Taking the owner off work that nothing else holds (no email out, and the hold just ended)
+    // returns it to the queue: Actioned is a state somebody is in, and nobody is any more.
+    let to_queue = next.is_none()
+        && case.workflow == crate::case::Workflow::Actioned
+        && case.waiting_on.is_none();
+    if to_queue {
+        case.workflow = crate::case::Workflow::ToAction;
+    }
     save(store, ws, &mut case, ts).await?;
     append_event(
         store,
@@ -65,6 +73,24 @@ pub async fn assign(
         ts,
     )
     .await?;
+    if to_queue {
+        append_event(
+            store,
+            ws,
+            id,
+            EventKind::Workflow,
+            actor,
+            serde_json::json!({
+                "from": crate::case::Workflow::Actioned,
+                "to": crate::case::Workflow::ToAction,
+                "resolution": null,
+                "reason": null,
+                "waiting_on": null,
+            }),
+            ts,
+        )
+        .await?;
+    }
     Ok(AssignOutcome {
         assigned_to: next,
         changed: true,
