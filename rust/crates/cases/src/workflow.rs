@@ -116,6 +116,13 @@ pub async fn workflow_with_reason(
 
     if next != case.workflow {
         case = crate::snooze::end_hold(store, ws, case, actor, ts).await?;
+        // Closing ends the email-out too, and a reopened case starts clean: it is never "Emailed"
+        // on the strength of a send made before it closed. (Any other move keeps it — the send's
+        // own Open → Actioned step must not undo the send.)
+        if next == Workflow::Resolved || case.workflow == Workflow::Resolved {
+            case.waiting_on = None;
+            case.emailed_by = None;
+        }
     }
     let previous = case.workflow;
     case.workflow = next;
