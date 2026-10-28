@@ -71,3 +71,6 @@ rules/flows/attention planes. Start with the umbrella; the rest compose onto it.
   data-quality `caveats[]` stamp (demote, never suppress), `category` validated against a
   workspace-declared vocabulary, and `month_hist[12]` + `pattern`. The **product** half — personas,
   the money tiers, the four surfaces — stays in `NubeIO/rubix-ai`.
+  - **Case states — one at a time** (resolved decision 13): a case reads as exactly one of Open,
+    Assigned, Emailed, On hold, Closed; each verb ends the state before it, and the decision carries
+    the full start-state × action table. Diagram: <https://claude.ai/artifact/CCHSZfJH56Rs3bAPyVop64>.
