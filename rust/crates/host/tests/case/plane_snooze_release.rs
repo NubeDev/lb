@@ -1,7 +1,8 @@
 //! The end of a snooze puts parked work back in the queue: an `actioned` case whose snooze ends — by
 //! un-park, by expiry (the case tick's sweep) or by a severity puncture — returns to `to_action`.
-//! An `actioned` case somebody holds (`waiting_on`) stays `actioned`, and clearing a snooze that was
-//! never set moves nothing.
+//! An `actioned` case somebody holds (`waiting_on`, or an owner — it goes back to them) stays
+//! `actioned`, and clearing a snooze that was never set moves nothing. The parks here are made by an
+//! agent, so nobody owns the work: a person's park would make them its owner (one state at a time).
 //!
 //! Part of the `plane` suite (see `plane_support.rs` for the fixtures and the full preamble). One
 //! binary: `case_suite.rs`.
@@ -33,9 +34,11 @@ async fn parked_holding(
     call(node, p, "nube", "case.workflow", move_to)
         .await
         .expect("workflow ok");
+    // An agent parks it, so the work stays unowned (a person's park would make them the owner).
+    let agent = principal("agent:park", "nube", ALL);
     call(
         node,
-        p,
+        &agent,
         "nube",
         "case.snooze",
         json!({ "id": case_id, "until": until, "reason": "Park", "ts": 3 }),

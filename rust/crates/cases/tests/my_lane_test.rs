@@ -124,3 +124,42 @@ async fn unassigning_forgets_who_assigned() {
     assign(&store, WS, &id, None, ME, T0 + 1).await.unwrap();
     assert!(lane(&store, ME, Lane::Assigned, T0 + 2).await.is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn my_work_others_emailed_or_closed_stays_in_my_view() {
+    let store = Store::memory().await.unwrap();
+    let now = T0 + 10;
+    // Mine, and Sam sent it to a contractor: Emailed for me (not My action), and for Sam.
+    let sent = case(&store, "sent").await;
+    assign(&store, WS, &sent, Some(ME), ME, T0).await.unwrap();
+    set_waiting_on(&store, WS, &sent, WaitingOn::Contractor, Some(SAM), T0)
+        .await
+        .unwrap();
+    // Mine, and Sam closed it: in my Closed lane, and his.
+    let shut = case(&store, "shut").await;
+    assign(&store, WS, &shut, Some(ME), ME, T0).await.unwrap();
+    workflow(
+        &store,
+        WS,
+        &shut,
+        Workflow::Resolved,
+        Some(Resolution::Fixed),
+        None,
+        SAM,
+        T0,
+    )
+    .await
+    .unwrap();
+    // Mine with a hand-set waiting_on (no email sent): still mine to act on.
+    let told = case(&store, "told").await;
+    assign(&store, WS, &told, Some(ME), ME, T0).await.unwrap();
+    set_waiting_on(&store, WS, &told, WaitingOn::Client, None, T0)
+        .await
+        .unwrap();
+
+    assert_eq!(lane(&store, ME, Lane::Emailed, now).await, ["sent"]);
+    assert_eq!(lane(&store, ME, Lane::Action, now).await, ["told"]);
+    assert_eq!(lane(&store, ME, Lane::Closed, now).await, ["shut"]);
+    assert_eq!(lane(&store, SAM, Lane::Emailed, now).await, ["sent"]);
+    assert_eq!(lane(&store, SAM, Lane::Closed, now).await, ["shut"]);
+}
