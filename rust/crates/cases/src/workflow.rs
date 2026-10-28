@@ -39,8 +39,13 @@ pub const MAX_RESOLUTION_REASON: usize = 200;
 /// Move case `id` in workspace `ws` to `next` as `actor` at logical ts `ts`.
 ///
 /// `resolution` is REQUIRED for [`Workflow::Resolved`] and forbidden otherwise. `waiting_on` is
-/// optional and orthogonal: `None` leaves the stored value alone, so a caller moving
-/// `waiting_on_po → actioned` does not have to restate who they are waiting on.
+/// optional and orthogonal: `None` leaves the stored value alone, so a caller moving a case on does
+/// not have to restate who they are waiting on.
+///
+/// **A stage change ends a hold.** A case is in one state at a time: moving it to another stage
+/// (closing, reopening, sending it back to the queue) clears a running snooze first
+/// ([`crate::snooze::end_hold`]), SLA pause and all. A move to the stage it is already in is not a
+/// change and leaves the hold alone.
 // SCOPE: docs/scope/insights/case-plane-scope.md §"Verbs" (case.workflow)
 // Eight arguments, deliberately positional: every one is a distinct fact about the write, and a
 // parameter struct here would add a type whose only job is to be destructured one line later. The
@@ -109,6 +114,16 @@ pub async fn workflow_with_reason(
         _ => {}
     }
 
+    if next != case.workflow {
+        case = crate::snooze::end_hold(store, ws, case, actor, ts).await?;
+        // Closing ends the email-out too, and a reopened case starts clean: it is never "Emailed"
+        // on the strength of a send made before it closed. (Any other move keeps it — the send's
+        // own Open → Actioned step must not undo the send.)
+        if next == Workflow::Resolved || case.workflow == Workflow::Resolved {
+            case.waiting_on = None;
+            case.emailed_by = None;
+        }
+    }
     let previous = case.workflow;
     case.workflow = next;
     if let Some(w) = waiting_on {
@@ -127,6 +142,13 @@ pub async fn workflow_with_reason(
         case.resolution_reason = None;
         case.resolved_ts = None;
         case.resolved_by = None;
+    }
+    // A job reopened to Open goes back to the queue: whoever picks it up owns it, as with a new one.
+    let unowned = (previous.is_terminal() && next == Workflow::ToAction)
+        .then(|| case.assigned_to.take())
+        .flatten();
+    if unowned.is_some() {
+        case.assigned_by = None;
     }
 
     save(store, ws, &mut case, ts).await?;
@@ -152,6 +174,18 @@ pub async fn workflow_with_reason(
         ts,
     )
     .await?;
+    if let Some(from) = unowned {
+        append_event(
+            store,
+            ws,
+            id,
+            EventKind::Assigned,
+            actor,
+            serde_json::json!({ "from": from, "to": null }),
+            ts,
+        )
+        .await?;
+    }
 
     Ok(case)
 }

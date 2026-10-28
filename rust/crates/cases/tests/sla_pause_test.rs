@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use lb_cases::{
     events, get, list, mark_breached, open, pin, set_deadlines, sla_state, snooze, workflow,
     workflow_with_reason, Deadlines, EventKind, Grouping, Lane, ListFilter, ListQuery, OpenInput,
-    Resolution, SlaState, Workflow, MAX_SLA_PAUSE_MS,
+    Resolution, SlaState, WaitingOn, Workflow, MAX_SLA_PAUSE_MS,
 };
 use lb_store::Store;
 
@@ -73,10 +73,10 @@ async fn a_snooze_with_an_end_pauses_and_its_end_adds_the_paused_time() {
     .unwrap();
     assert_eq!(paused.sla_paused_at, Some(t1));
 
-    // While paused the case reads as it stood at the pause, however late it gets, and the breach
-    // alarm for the old deadline records nothing.
+    // While paused the case reads as Paused, however late it gets, and the breach alarm for the old
+    // deadline records nothing.
     let late = DUE + HOUR;
-    assert_eq!(sla_state(&paused, late, HOUR), SlaState::OnTrack);
+    assert_eq!(sla_state(&paused, late, HOUR), SlaState::Paused);
     assert!(
         mark_breached(&store, WS, &id, late, "system:sla-clock", late)
             .await
@@ -179,9 +179,9 @@ async fn waiting_on_someone_and_a_case_with_no_deadline_never_pause() {
         &store,
         WS,
         &id,
-        Workflow::WaitingOnPo,
+        Workflow::Actioned,
         None,
-        None,
+        Some(WaitingOn::Client),
         "user:sam",
         t1,
     )

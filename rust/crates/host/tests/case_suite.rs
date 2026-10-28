@@ -97,6 +97,9 @@ mod plane_support;
 #[path = "case/plane_assignees.rs"]
 mod plane_assignees;
 
+#[path = "case/plane_names.rs"]
+mod plane_names;
+
 #[path = "case/plane_facets.rs"]
 mod plane_facets;
 
@@ -150,6 +153,9 @@ mod request_roster_lifecycle;
 
 #[path = "case/request_send.rs"]
 mod request_send;
+
+#[path = "case/request_party_filter.rs"]
+mod request_party_filter;
 
 #[path = "case/request_token.rs"]
 mod request_token;

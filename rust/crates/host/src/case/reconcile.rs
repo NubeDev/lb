@@ -14,6 +14,9 @@
 //!     **keeping its original author and timestamp** — a migration that restamped every note with
 //!     `system:` and today's date would destroy exactly the record it was meant to preserve.
 //!
+//! It also settles cases stored before "one state at a time" that are both on hold and out by
+//! email ([`lb_cases::settle_one_state`]: the later of the two stands).
+//!
 //! **Idempotent.** A second pass returns `0`: every insight it touched now has an open case, so the
 //! grouping call returns that case and this loop skips it. It re-derives rather than remembers,
 //! which is what makes it safe to run on a timer for ever.
@@ -54,6 +57,17 @@ pub async fn reconcile_cases(node: &Arc<Node>, ws: &str, now: u64) -> Result<usi
         };
         backfill_comments(node, ws, &insight, &case_id).await;
         grouped += 1;
+    }
+    // The one-state migration: a case stored both on hold and out by email keeps the later of the
+    // two (`lb_cases::settle_one_state`). Idempotent, so a timer pass after the first touches nothing.
+    match lb_cases::settle_one_state(&node.store, ws, now).await {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(
+            ws,
+            settled = n,
+            "case reconcile: settled cases in two states"
+        ),
+        Err(e) => tracing::warn!(ws, error = %e, "case reconcile: one-state settle failed"),
     }
     Ok(grouped)
 }

@@ -46,13 +46,19 @@ pub(super) const CASE: &[HostTool] = &[
     HostTool {
         tool: "case.workflow",
         group: "case",
-        description: "transition to_action/actioned/waiting_on_po/resolved (resolved requires a resolution, and may carry the closer's own reason)",
+        description: "transition to_action/actioned/resolved (resolved requires a resolution, and may carry the closer's own reason)",
     },
     HostTool {
         tool: "case.assignees",
         group: "case",
         description: "the subjects this caller may assign work to: themself, their teams, and the \
                       members of those teams (a suggestion list, not an allow-list)",
+    },
+    HostTool {
+        tool: "case.names",
+        group: "case",
+        description: "display names and login emails for user: subjects the caller's cases mention \
+                      ({subjects: [...]}, at most 200); live members of this workspace only",
     },
     HostTool {
         tool: "case.assign",

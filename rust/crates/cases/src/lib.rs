@@ -35,6 +35,7 @@ mod case;
 mod case_event;
 mod case_member;
 mod case_request;
+mod case_status;
 mod caveat_refresh;
 mod comment;
 mod deadline;
@@ -53,8 +54,11 @@ mod member_remove;
 mod members;
 mod merge;
 mod my_lane;
+mod one_state_settle;
 mod open;
+mod own_unowned;
 mod party;
+mod party_cases;
 mod party_delete;
 mod party_list;
 mod party_upsert;
@@ -100,9 +104,10 @@ pub use case_member::{member_id, CaseMember, MemberRole, TABLE as CASE_MEMBER_TA
 pub use business_span::business_ms_between;
 pub use case_request::{
     validate_reply, Ask, Brief, BriefEvidence, BriefSeries, CaseRequest, Delivery, Reply,
-    ReplyKind, RequestStatus, MAX_REPLY_ATTACHMENTS, MAX_REPLY_TEXT_BYTES,
+    ReplyKind, RequestStatus, SentMail, MAX_REPLY_ATTACHMENTS, MAX_REPLY_TEXT_BYTES,
     TABLE as CASE_REQUEST_TABLE,
 };
+pub use case_status::{case_status, CaseStatus};
 pub use caveat_refresh::refresh_caveat;
 pub use comment::comment;
 pub use deadline::{
@@ -123,7 +128,9 @@ pub use member_counts::member_counts;
 pub use member_remove::member_remove;
 pub use members::{member_count, members, members_all, MemberPage, MemberRow, MAX_MEMBER_PAGE};
 pub use merge::merge;
+pub use one_state_settle::{settle_one_state, SETTLE_ACTOR};
 pub use open::{open, OpenInput};
+pub use party_cases::party_cases;
 pub use pin::pin;
 pub use seq_next::number_existing_cases;
 pub use sla_pause::{snooze_pauses, MAX_SLA_PAUSE_MS};

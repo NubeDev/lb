@@ -79,6 +79,7 @@ mod case_gate_tests {
     #[test]
     fn the_assign_picker_rides_the_queue_read_cap() {
         assert_eq!(gate_tool_for("case.assignees"), "case.list");
+        assert_eq!(gate_tool_for("case.names"), "case.list");
         // And it is NOT the write cap: a viewer who may see the queue may see who could own it.
         assert_ne!(gate_tool_for("case.assignees"), "case.workflow");
     }

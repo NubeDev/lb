@@ -90,6 +90,7 @@ pub fn new_request(input: RequestInput, ts: u64) -> Result<CaseRequest, CasesErr
         nudges_sent: 0,
         effect_id: input.effect_id,
         brief: input.brief,
+        mail: None,
     };
     Ok(request)
 }

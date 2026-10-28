@@ -82,7 +82,8 @@ pub(super) fn content_for(
         text: payload
             .body
             .clone()
-            .or_else(|| catalog("body"))
+            // A catalog line holds one message, so a text body writes its line breaks as `\n`.
+            .or_else(|| catalog("body").map(|b| b.replace("\\n", "\n")))
             .unwrap_or_default(),
         html: payload.html.clone().or_else(|| catalog("body_html")),
     }
@@ -217,23 +218,85 @@ mod tests {
     }
 
     #[test]
-    fn a_request_mail_names_the_senders_reference_only_when_it_has_one() {
+    fn a_request_mail_reads_as_the_senders_action_required() {
+        let args = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
         let mut with = payload(None, None);
-        with.args = [("reference", "INS-000042"), ("has_reference", "yes")]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
+        with.args = args(&[
+            ("title", "Continuous Water Flow"),
+            ("site", "17 Kangaroo Avenue"),
+            ("has_site", "yes"),
+            ("finding", "Flow has not returned to zero for 18 hours."),
+            ("has_finding", "yes"),
+            ("sender", "Rubix AI"),
+            ("has_sender", "yes"),
+            ("reference", "INS-000042"),
+            ("has_reference", "yes"),
+        ]);
         let c = content_for("request_link", &with, Some("https://x"));
-        assert_eq!(c.subject, "INS-000042: A job needs your response");
-        assert!(c.text.contains("about a job (INS-000042)."), "{}", c.text);
+        assert_eq!(
+            c.subject,
+            "Action required: Continuous Water Flow at 17 Kangaroo Avenue (INS-000042)"
+        );
+        assert!(
+            c.text.starts_with(
+                "Hi,\n\nRubix AI has flagged Continuous Water Flow at 17 Kangaroo Avenue.\n\
+                 Flow has not returned to zero for 18 hours.\n\nPlease reply once attended to.\n\n\
+                 Reply here: https://x/r/"
+            ),
+            "{}",
+            c.text
+        );
 
-        let mut without = payload(None, None);
-        without.args = [("has_reference".to_string(), "no".to_string())]
-            .into_iter()
-            .collect();
-        let c = content_for("request_link", &without, Some("https://x"));
-        assert_eq!(c.subject, "A job needs your response");
-        assert!(c.text.contains("about a job. Open"), "{}", c.text);
+        // Nothing but a title: no site, finding, sender or reference — and it still reads.
+        let mut bare = payload(None, None);
+        bare.args = args(&[
+            ("title", "A job"),
+            ("has_site", "no"),
+            ("has_finding", "no"),
+            ("has_sender", "no"),
+            ("has_reference", "no"),
+        ]);
+        let c = content_for("request_link", &bare, Some("https://x"));
+        assert_eq!(c.subject, "Action required: A job");
+        assert!(
+            c.text
+                .starts_with("Hi,\n\nWe have flagged A job.\n\nPlease reply"),
+            "{}",
+            c.text
+        );
+
+        // The sender's own subject and message win; the reply link still follows, and the HTML body
+        // carries their words escaped.
+        let mut own = payload(None, None);
+        own.args = args(&[
+            ("title", "A job"),
+            ("subject", "Leak at gate 3"),
+            ("has_subject", "yes"),
+            ("message", "Hi Sam,\nplease check <b>gate 3</b>."),
+            (
+                "message_html",
+                "Hi Sam,<br>please check &lt;b&gt;gate 3&lt;/b&gt;.",
+            ),
+            ("has_message", "yes"),
+        ]);
+        let c = content_for("request_link", &own, Some("https://x"));
+        assert_eq!(c.subject, "Leak at gate 3");
+        assert!(
+            c.text
+                .starts_with("Hi Sam,\nplease check <b>gate 3</b>.\n\nReply here: https://x/r/"),
+            "{}",
+            c.text
+        );
+        let html = c.html.unwrap_or_default();
+        assert!(
+            html.contains("&lt;b&gt;gate 3&lt;/b&gt;") && !html.contains("<b>gate"),
+            "{html}"
+        );
     }
 
     #[test]

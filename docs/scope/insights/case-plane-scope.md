@@ -396,6 +396,36 @@ the contract. Where they disagree after the code lands, the record wins and this
     case closed at or after the insight's `last_ts` (`close_stands`). A new firing still goes
     through the inline grouping at raise, so the hold-down rules are unchanged. *Rejected:
     resolving the insight on close* — it would mark an alarm cleared while it is still active.
+13. **One state at a time; the latest action is the state.** A case reads as exactly one of Open,
+    Assigned, Emailed, On hold, Closed (`case_status`), with the owner beside it, never instead
+    of it. Each verb ends the state before it:
+    - **Assign** someone new ends a running hold and an lb-sent email-out (`emailed_by`); the
+      request row stays and a reply still lands. Assigning the owner they already have changes
+      nothing.
+    - **Unassign** leaves a hold or an email-out in place (it is then what holds the work); work
+      nothing else holds goes back to Open.
+    - **Email** (`case.request.send`) ends a hold; **hold** (`case.snooze`) ends an lb-sent
+      email-out. Either one, by a person (`user:`), on work with no owner makes that person the
+      owner (`assigned` event); a system actor never takes ownership.
+    - **Hold ending** goes back to Assigned when there is an owner, else Open.
+    - **Close** ends the hold and the email-out and keeps the owner on record. **Reopen** to Open
+      clears the owner too (`assigned` event): a reopened job goes back to the queue, as a new one.
+
+    | Start | Assign me | Assign other | Unassign | Email | Hold | End hold | Close | Reopen |
+    |---|---|---|---|---|---|---|---|---|
+    | Open · – | Assigned · me | Assigned · other | – | Emailed · me | On hold · me | – | Closed · – | – |
+    | Assigned · me | no change | Assigned · other | Open · – | Emailed · me | On hold · me | – | Closed · me | – |
+    | Assigned · other | Assigned · me | Assigned · other | Open · – | Emailed · other | On hold · other | – | Closed · other | – |
+    | Emailed · me | no change | Assigned · other | Emailed · – | Emailed · me | On hold · me | – | Closed · me | – |
+    | Emailed · other | Assigned · me | Assigned · other | Emailed · – | Emailed · other | On hold · other | – | Closed · other | – |
+    | Emailed · – | Assigned · me | Assigned · other | – | Emailed · me | On hold · me | – | Closed · – | – |
+    | On hold · me | no change | Assigned · other | On hold · – | Emailed · me | On hold · me | Assigned · me | Closed · me | – |
+    | On hold · other | Assigned · me | Assigned · other | On hold · – | Emailed · other | On hold · other | Assigned · other | Closed · other | – |
+    | On hold · – | Assigned · me | Assigned · other | – | Emailed · me | On hold · me | Open · – | Closed · – | – |
+    | Closed | – | – | – | – | – | – | – | Open · – |
+
+    *Rejected: Reopen assigns the reopener* (the mock-up's choice) — a case that reopens itself on
+    a new firing has no one to give it to, and the bulk Reopen already went to Open.
 
 ## Related
 

@@ -20,6 +20,12 @@
 //!
 //! **A snooze with an end date pauses the SLA** ([`crate::sla_pause`]); every door here that sets or
 //! clears a snooze starts or ends that pause, so the two can never disagree.
+//!
+//! **A hold is a state, and a case is in one state at a time.** Snoozing a case that nobody has
+//! started (`to_action`) moves it to `actioned` in the same call: held work is work in hand. And
+//! [`end_hold`] is the fourth door — moving the case on (a stage change, a hand-over, an email)
+//! ends a running hold, SLA pause and all, without sending it back to the queue: the new state
+//! decides where it sits.
 
 use lb_store::Store;
 
@@ -65,8 +71,44 @@ pub async fn snooze(
         case.snooze_until = Some(until);
         case.snooze_reason = reason.map(str::to_string);
         case.snoozed_by = Some(actor.to_string());
+        // One state at a time, the other way round from `set_waiting_on`: putting work on hold
+        // ends its being out by email, so a held case never also reads as Emailed. Only an email
+        // lb sent (`emailed_by`); a `waiting_on` set by hand is a fact about who has the ball and
+        // stays. The request row itself is untouched — a party's reply still lands on the case.
+        if case.emailed_by.is_some() {
+            case.waiting_on = None;
+            case.emailed_by = None;
+        }
+    }
+    // Held work nobody owned is the holder's to pick up when the hold ends.
+    let claimed = !unsnoozing && crate::own_unowned::claim(&mut case, actor);
+    // Holding work nobody had started puts it in hand: `to_action` moves to `actioned` with the hold.
+    let parked_from_open = !unsnoozing && case.workflow == crate::case::Workflow::ToAction;
+    if parked_from_open {
+        case.workflow = crate::case::Workflow::Actioned;
     }
     save(store, ws, &mut case, ts).await?;
+    if claimed {
+        crate::own_unowned::record(store, ws, id, actor, ts).await?;
+    }
+    if parked_from_open {
+        append_event(
+            store,
+            ws,
+            id,
+            EventKind::Workflow,
+            actor,
+            serde_json::json!({
+                "from": crate::case::Workflow::ToAction,
+                "to": crate::case::Workflow::Actioned,
+                "resolution": null,
+                "reason": null,
+                "waiting_on": case.waiting_on,
+            }),
+            ts,
+        )
+        .await?;
+    }
 
     append_event(
         store,
@@ -93,6 +135,38 @@ pub async fn snooze(
         return crate::snooze_release::release_to_action(store, ws, case, actor, ts).await;
     }
     Ok(case)
+}
+
+/// End `case`'s running hold because it is moving to another state — a stage change, a hand-over,
+/// an email. Clears the snooze fields, records a `snoozed` event marked `ended_by: "state_change"`
+/// and ends the SLA pause (crediting the paused time), and does NOT send the case back to the queue:
+/// the caller's new state decides where it sits. A case with no snooze is returned untouched (no
+/// write, no event).
+pub(crate) async fn end_hold(
+    store: &Store,
+    ws: &str,
+    mut case: Case,
+    actor: &str,
+    ts: u64,
+) -> Result<Case, CasesError> {
+    if case.snooze_until.is_none() {
+        return Ok(case);
+    }
+    case.snooze_until = None;
+    case.snooze_reason = None;
+    case.snoozed_by = None;
+    save(store, ws, &mut case, ts).await?;
+    append_event(
+        store,
+        ws,
+        &case.id.clone(),
+        EventKind::Snoozed,
+        actor,
+        serde_json::json!({ "until": null, "reason": null, "cleared": true, "ended_by": "state_change" }),
+        ts,
+    )
+    .await?;
+    crate::sla_pause::resume(store, ws, case, actor, ts).await
 }
 
 /// Clear a snooze because the case got WORSE — the severity escalation puncture.

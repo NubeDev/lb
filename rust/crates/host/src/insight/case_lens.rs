@@ -31,7 +31,7 @@ pub struct CaseLens {
     #[serde(default)]
     pub filter: lb_cases::ListFilter,
     /// Keep only detections whose case is at one of these stages: lb's workflow words
-    /// (`to_action`, `actioned`, `waiting_on_po`, `resolved`) or `none` for no case. Empty ⇒ every
+    /// (`to_action`, `actioned`, `resolved`) or `none` for no case. Empty ⇒ every
     /// stage. The reply's `case_counts` tallies every stage regardless of this.
     #[serde(default)]
     pub stages: Vec<String>,
@@ -40,13 +40,11 @@ pub struct CaseLens {
     pub now: u64,
 }
 
+/// The retired fourth stage's word, still accepted on the wire as `actioned`.
+const RETIRED_PO: &str = "waiting_on_po";
+
 /// Every stage, in lb's workflow order.
-const WORKFLOW_ORDER: [Workflow; 4] = [
-    Workflow::ToAction,
-    Workflow::Actioned,
-    Workflow::WaitingOnPo,
-    Workflow::Resolved,
-];
+const WORKFLOW_ORDER: [Workflow; 3] = [Workflow::ToAction, Workflow::Actioned, Workflow::Resolved];
 
 /// The workflow word as it travels on the wire (`to_action`, …) — serde's own spelling, so this
 /// file and `lb_cases` can never disagree about it.
@@ -75,12 +73,25 @@ pub(super) async fn resolve_case_lens(
             .map(stage_word)
             .chain([NO_CASE.to_string()])
             .collect();
-        if let Some(bad) = lens.stages.iter().find(|s| !known.contains(*s)) {
+        // `waiting_on_po` is a retired stage (it reads as `actioned` now); a caller built before the
+        // retirement still sends it beside `actioned`, so it is taken as `actioned`, not refused.
+        let words: Vec<String> = lens
+            .stages
+            .iter()
+            .map(|s| {
+                if s == RETIRED_PO {
+                    "actioned".to_string()
+                } else {
+                    s.clone()
+                }
+            })
+            .collect();
+        if let Some(bad) = words.iter().find(|s| !known.contains(*s)) {
             return Err(InsightSvcError::BadInput(format!(
                 "case stage {bad:?} is not one of {known:?}"
             )));
         }
-        Some(lens.stages.iter().cloned().collect())
+        Some(words.into_iter().collect())
     };
 
     // `pinned` reads the caller's own pins (`case.pin`); the subject is the session's, never the wire's.
@@ -99,10 +110,22 @@ pub(super) async fn resolve_case_lens(
             .map(|c| c.id.clone())
             .collect()
     });
+    // The three stage words once, not one serialisation per case (thousands of them).
+    let words: Vec<(Workflow, String)> = WORKFLOW_ORDER
+        .into_iter()
+        .map(|w| (w, stage_word(w)))
+        .collect();
+    let word = |w: Workflow| {
+        words
+            .iter()
+            .find(|(k, _)| *k == w)
+            .map(|(_, s)| s.clone())
+            .unwrap_or_else(|| stage_word(w))
+    };
     Ok(CaseScope {
         stage_of: cases
-            .into_iter()
-            .map(|c| (c.id, stage_word(c.workflow)))
+            .iter()
+            .map(|c| (c.id.clone(), word(c.workflow)))
             .collect(),
         allow,
         stages,

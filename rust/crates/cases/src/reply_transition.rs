@@ -27,7 +27,7 @@ use crate::case_request::ReplyKind;
 pub fn transition_for(kind: ReplyKind) -> (Workflow, WaitingOn) {
     match kind {
         ReplyKind::Accept => (Workflow::Actioned, WaitingOn::Contractor),
-        // `actioned` waiting on the client, not `waiting_on_po`: the hold is said by `waiting_on`, so a
+        // `actioned` waiting on the client: the hold is said by `waiting_on`, so a
         // quoted job stays in the working stage every queue already groups and filters as one.
         ReplyKind::Quote => (Workflow::Actioned, WaitingOn::Client),
         ReplyKind::Eta => (Workflow::Actioned, WaitingOn::Contractor),

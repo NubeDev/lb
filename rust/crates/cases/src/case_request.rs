@@ -179,6 +179,36 @@ pub struct Brief {
     /// the party can quote it back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
+    /// The work's name as the sender shows it ("Continuous Water Flow") — the email's subject and
+    /// first line. Opaque; absent ⇒ the case title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Where the work is ("17 Kangaroo Avenue - Eastern Creek"). Opaque; absent ⇒ the case's site.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site: Option<String>,
+    /// What was found, in a sentence ("Flow has not returned to zero for 18 hours…"). Opaque.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finding: Option<String>,
+    /// Who flagged it, as the sending product names itself ("Rubix AI") — lb names no product
+    /// (rule 10). Absent ⇒ the copy says "We".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    /// The subject the sender wrote, in place of the default one. The mail is still lb's to send.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    /// The message the sender wrote, in place of the default body. lb adds the reply link after it,
+    /// so the party can always answer, whatever the sender wrote.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// The email a request went out as — its subject and plain-text body, recorded at send so the
+/// sender's record shows what the party received. The reply link reads "(reply link)": the raw
+/// token is never stored.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SentMail {
+    pub subject: String,
+    pub body: String,
 }
 
 /// A durable request record.
@@ -215,6 +245,9 @@ pub struct CaseRequest {
     /// The frozen snapshot the party is shown (see [`Brief`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub brief: Option<Brief>,
+    /// The email it went out as (subject + body), recorded at send. Absent on requests sent before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mail: Option<SentMail>,
 }
 
 /// The cap on a reply's free text. Generous for a contractor typing what they found, small enough

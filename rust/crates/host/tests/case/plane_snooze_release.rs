@@ -1,7 +1,8 @@
 //! The end of a snooze puts parked work back in the queue: an `actioned` case whose snooze ends — by
 //! un-park, by expiry (the case tick's sweep) or by a severity puncture — returns to `to_action`.
-//! A `waiting_on_po` case stays where it is, an `actioned` case somebody holds (`waiting_on`) stays
-//! `actioned`, and clearing a snooze that was never set moves nothing.
+//! An `actioned` case somebody holds (`waiting_on`, or an owner — it goes back to them) stays
+//! `actioned`, and clearing a snooze that was never set moves nothing. The parks here are made by an
+//! agent, so nobody owns the work: a person's park would make them its owner (one state at a time).
 //!
 //! Part of the `plane` suite (see `plane_support.rs` for the fixtures and the full preamble). One
 //! binary: `case_suite.rs`.
@@ -12,19 +13,7 @@ const FAR: u64 = 9_999_999_999_999;
 
 /// One parked case: raised, moved to `stage`, snoozed until `until` with a reason.
 async fn parked(node: &Arc<Node>, p: &Principal, key: &str, stage: &str, until: u64) -> String {
-    parked_holding(
-        node,
-        p,
-        key,
-        stage,
-        if stage == "waiting_on_po" {
-            Some("client")
-        } else {
-            None
-        },
-        until,
-    )
-    .await
+    parked_holding(node, p, key, stage, None, until).await
 }
 
 /// [`parked`], with who holds the case (`waiting_on`) set on the move.
@@ -45,9 +34,11 @@ async fn parked_holding(
     call(node, p, "nube", "case.workflow", move_to)
         .await
         .expect("workflow ok");
+    // An agent parks it, so the work stays unowned (a person's park would make them the owner).
+    let agent = principal("agent:park", "nube", ALL);
     call(
         node,
-        p,
+        &agent,
         "nube",
         "case.snooze",
         json!({ "id": case_id, "until": until, "reason": "Park", "ts": 3 }),
@@ -124,7 +115,7 @@ async fn an_expired_snooze_is_released_by_the_sweep_once() {
     seed_roster(&node, "nube").await;
     let p = principal("user:test", "nube", ALL);
     let actioned = parked(&node, &p, "expires", "actioned", 5_000).await;
-    let waiting = parked(&node, &p, "waits", "waiting_on_po", 5_000).await;
+    let waiting = parked_holding(&node, &p, "waits", "actioned", Some("client"), 5_000).await;
     let later = parked(&node, &p, "later", "actioned", FAR).await;
 
     assert_eq!(
@@ -144,7 +135,7 @@ async fn an_expired_snooze_is_released_by_the_sweep_once() {
     assert!(back["snooze_until"].is_null(), "{back}");
     let blocked = get(&node, &p, &waiting).await;
     assert_eq!(
-        blocked["workflow"], "waiting_on_po",
+        blocked["workflow"], "actioned",
         "blocked on someone stays: {blocked}"
     );
     assert!(blocked["snooze_until"].is_null(), "{blocked}");

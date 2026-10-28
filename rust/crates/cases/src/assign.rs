@@ -39,7 +39,7 @@ pub async fn assign(
     actor: &str,
     ts: u64,
 ) -> Result<AssignOutcome, CasesError> {
-    let Some(mut case) = crate::get::get(store, ws, id).await? else {
+    let Some(case) = crate::get::get(store, ws, id).await? else {
         return Err(CasesError::BadInput(format!("no such case: {id}")));
     };
     let next = assignee.map(str::to_string);
@@ -49,9 +49,31 @@ pub async fn assign(
             changed: false,
         });
     }
+    // A hand-over is a new state for the work: it ends a running hold (one state at a time).
+    // Taking the owner OFF leaves a hold alone: the hold is then what holds the work.
+    let mut case = if next.is_some() {
+        crate::snooze::end_hold(store, ws, case, actor, ts).await?
+    } else {
+        case
+    };
+    // One state at a time: handing the work to someone ends its being out by email, as it ends a
+    // hold — the latest action is the state (the request row stays; a party's reply still lands).
+    // Taking the owner OFF leaves an email out alone: the email is then what holds the work.
+    if next.is_some() && case.emailed_by.is_some() {
+        case.waiting_on = None;
+        case.emailed_by = None;
+    }
     let previous = case.assigned_to.clone();
     case.assigned_to = next.clone();
     case.assigned_by = next.as_ref().map(|_| actor.to_string());
+    // Taking the owner off work that nothing else holds (no email out, and the hold just ended)
+    // returns it to the queue: Actioned is a state somebody is in, and nobody is any more.
+    let to_queue = next.is_none()
+        && case.workflow == crate::case::Workflow::Actioned
+        && case.waiting_on.is_none();
+    if to_queue {
+        case.workflow = crate::case::Workflow::ToAction;
+    }
     save(store, ws, &mut case, ts).await?;
     append_event(
         store,
@@ -63,6 +85,24 @@ pub async fn assign(
         ts,
     )
     .await?;
+    if to_queue {
+        append_event(
+            store,
+            ws,
+            id,
+            EventKind::Workflow,
+            actor,
+            serde_json::json!({
+                "from": crate::case::Workflow::Actioned,
+                "to": crate::case::Workflow::ToAction,
+                "resolution": null,
+                "reason": null,
+                "waiting_on": null,
+            }),
+            ts,
+        )
+        .await?;
+    }
     Ok(AssignOutcome {
         assigned_to: next,
         changed: true,
