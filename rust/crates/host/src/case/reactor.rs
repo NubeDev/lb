@@ -1,7 +1,7 @@
 //! The case-reconcile loop driver (case-plane scope).
 //!
 //! One detached tick per node drives [`super::reconcile_cases`], [`super::backfill_case_facets`],
-//! [`lb_cases::number_existing_cases`], [`super::release_expired_snoozes`] and [`super::close_self_cleared_cases`] for each workspace,
+//! [`lb_cases::number_existing_cases`], [`super::release_expired_snoozes`], [`super::follow_sla_clocks`] and [`super::close_self_cleared_cases`] for each workspace,
 //! modelled on `insight/reactor.rs::spawn_insight_digest_reactors` — role/config placement under the
 //! `BootConfig::reactors` toggle, not a runtime election. The pass is idempotent, so the idempotence
 //! IS the backstop against accidental double-drive; there is nothing to elect.
@@ -66,6 +66,17 @@ pub fn spawn_case_reactors(node: Arc<Node>, workspaces: Vec<String>, period: Dur
                     }
                     Err(e) => {
                         tracing::warn!(%ws, error = %format!("{e:?}"), "snooze expiry tick failed")
+                    }
+                }
+                // After the releases, so a hold that just ended is judged as the case now stands: the
+                // SLA clock runs only while a case is Open, and its deadline moves with it.
+                match super::follow_sla_clocks(&node, ws, now).await {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        tracing::info!(%ws, moved = n, "sla follow: clocks stopped or restarted")
+                    }
+                    Err(e) => {
+                        tracing::warn!(%ws, error = %format!("{e:?}"), "sla follow tick failed")
                     }
                 }
                 // Last, so it judges cases the passes above have just opened, repaired or released. A policy

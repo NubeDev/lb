@@ -79,7 +79,7 @@ mod resolved;
 mod save;
 mod scorecard;
 mod seq_next;
-mod sla_pause;
+mod sla_follow;
 mod sla_state;
 mod snooze;
 mod snooze_release;
@@ -133,7 +133,7 @@ pub use open::{open, OpenInput};
 pub use party_cases::party_cases;
 pub use pin::pin;
 pub use seq_next::number_existing_cases;
-pub use sla_pause::{snooze_pauses, MAX_SLA_PAUSE_MS};
+pub use sla_follow::{is_open, settle_all as settle_sla_clocks, SLA_FOLLOW_ACTOR};
 pub use sla_state::{sla_state, SlaState, DEFAULT_DUE_SOON_MS};
 pub use stages::{stages, CaseStage};
 // The party roster (wave 2). A party is DATA: nothing here names one (rule 10), and the scorecard

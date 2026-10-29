@@ -73,7 +73,7 @@ async fn holding_open_work_puts_it_in_hand() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn closing_a_held_case_ends_the_hold_and_its_pause() {
+async fn closing_a_held_case_ends_the_hold_and_its_clock_stays_stopped() {
     let store = Store::memory().await.unwrap();
     let id = clocked(&store).await;
     hold(&store, &id, OPENED + HOUR).await;
@@ -93,9 +93,14 @@ async fn closing_a_held_case_ends_the_hold_and_its_pause() {
     assert_eq!(closed.workflow, Workflow::Resolved);
     assert_eq!(closed.snooze_until, None);
     assert_eq!(closed.snooze_reason, None);
-    assert_eq!(closed.sla_paused_at, None);
-    // The hour on hold is credited, as any ended pause is.
-    assert_eq!(closed.sla_paused_ms, HOUR);
+    // The clock stopped when the case left Open for the hold, and a closed case's clock stays
+    // stopped for good: nothing is credited, and the case met its SLA.
+    assert_eq!(closed.sla_paused_at, Some(OPENED + HOUR));
+    assert_eq!(closed.sla_paused_ms, 0);
+    assert_eq!(
+        lb_cases::sla_state(&closed, OPENED + 30 * HOUR, HOUR),
+        lb_cases::SlaState::Met
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

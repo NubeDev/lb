@@ -332,7 +332,7 @@ fn an_ambiguous_local_time_takes_the_earlier_instant() {
 /// `respond_by` and `due_at` are the two hour fields fed through the same arithmetic — the
 /// scope's Friday-16:00 case, read off a real policy row.
 #[test]
-fn respond_by_and_due_at_read_their_own_fields() {
+fn the_sla_deadline_is_the_respond_target() {
     let policy = ServicePolicy {
         id: "contract-a".into(),
         name: "Contract A".into(),
@@ -350,12 +350,13 @@ fn respond_by_and_due_at_read_their_own_fields() {
         local(BRISBANE, respond_by(&policy, opened, 0)),
         "2026-10-05 10:00"
     );
-    // 20 h from the same start: 1 h Friday, then Mon(8) Tue(8) Wed(3) → Wednesday 12:00.
+    // The SLA is the time to a first response (Insights review 2026-10-29): `due_at`, the deadline
+    // a breach is recorded against, is the respond target too; `resolve_h` does not move it.
     assert_eq!(
         local(BRISBANE, due_at(&policy, opened, 0)),
-        "2026-10-07 12:00"
+        "2026-10-05 10:00"
     );
-    assert!(respond_by(&policy, opened, 0) < due_at(&policy, opened, 0));
+    assert_eq!(respond_by(&policy, opened, 0), due_at(&policy, opened, 0));
 }
 
 /// Seconds on the opening instant are carried, not rounded away — a case opened at 16:00:30 is
@@ -418,7 +419,7 @@ fn business_time_between_inverts_add_business_ms() {
     );
 }
 
-/// A paused case's deadline is its unpaused one plus the business time it paused.
+/// A case's deadline is its unpaused one plus the business time it spent out of Open.
 #[test]
 fn a_pause_moves_the_deadline_by_its_business_time() {
     let policy = ServicePolicy {
@@ -434,13 +435,14 @@ fn a_pause_moves_the_deadline_by_its_business_time() {
         auto_close_self_cleared: false,
     };
     let opened = at(BRISBANE, 2026, 10, 2, 16, 0);
+    // 2 h respond target: 1 h Friday, 1 h Monday.
     assert_eq!(
         local(BRISBANE, due_at(&policy, opened, 0)),
-        "2026-10-05 16:00"
+        "2026-10-05 10:00"
     );
     let two_hours = 2 * MS_PER_HOUR as u64;
     assert_eq!(
         local(BRISBANE, due_at(&policy, opened, two_hours)),
-        "2026-10-06 10:00"
+        "2026-10-05 12:00"
     );
 }
