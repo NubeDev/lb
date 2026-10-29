@@ -19,6 +19,7 @@ use std::sync::Arc;
 use lb_auth::Principal;
 use lb_cases::AssignOutcome;
 use lb_mcp::authorize_tool;
+use lb_store::Store;
 
 use super::error::CaseSvcError;
 use crate::boot::Node;
@@ -43,7 +44,7 @@ pub async fn case_assign(
     }
     let outcome = lb_cases::assign(&node.store, ws, id, assignee, principal.sub(), ts).await?;
     if outcome.changed {
-        echo_owner_to_members(node, ws, id, assignee).await;
+        echo_owner_to_members(&node.store, ws, id, assignee).await;
     }
     Ok(outcome)
 }
@@ -51,15 +52,10 @@ pub async fn case_assign(
 /// Push the case's owner onto every insight it cites. Best-effort per member: the case already
 /// holds the durable answer, so a failed echo is a stale roster column the next assign repairs —
 /// not a reason to fail a write that landed.
-pub async fn echo_owner_to_members(
-    node: &Arc<Node>,
-    ws: &str,
-    case_id: &str,
-    assignee: Option<&str>,
-) {
+pub async fn echo_owner_to_members(store: &Store, ws: &str, case_id: &str, assignee: Option<&str>) {
     // `members_all`, not the paged `members`: the echo wants the membership, and the paged read
     // resolves titles for a drawer that is not on screen here.
-    let members = match lb_cases::members_all(&node.store, ws, case_id).await {
+    let members = match lb_cases::members_all(store, ws, case_id).await {
         Ok(members) => members,
         Err(e) => {
             tracing::warn!(ws, case_id, error = %e, "case owner echo skipped: members unreadable");
@@ -67,7 +63,7 @@ pub async fn echo_owner_to_members(
         }
     };
     for member in members {
-        if let Err(e) = lb_insights::assign(&node.store, ws, &member.insight_id, assignee).await {
+        if let Err(e) = lb_insights::assign(store, ws, &member.insight_id, assignee).await {
             tracing::warn!(
                 ws, case_id, insight_id = %member.insight_id, error = %e,
                 "case owner echo not written onto the insight"

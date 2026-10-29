@@ -143,7 +143,21 @@ pub async fn workflow_with_reason(
         case.resolved_ts = None;
         case.resolved_by = None;
     }
+    // A close, by hand or by a reactor, ends the work: the owner comes off, so a finding that comes
+    // back starts the whole workflow again with nobody holding it. Who held it is kept for the
+    // *Closed* lane (`owned_at_close`) and in the close event below.
+    let owner_at_close = if next.is_terminal() && !previous.is_terminal() {
+        let owner = case.assigned_to.take();
+        case.assigned_by = None;
+        case.owned_at_close = owner.clone();
+        owner
+    } else {
+        None
+    };
     // A job reopened to Open goes back to the queue: whoever picks it up owns it, as with a new one.
+    if previous.is_terminal() && !next.is_terminal() {
+        case.owned_at_close = None;
+    }
     let unowned = (previous.is_terminal() && next == Workflow::ToAction)
         .then(|| case.assigned_to.take())
         .flatten();
@@ -170,6 +184,7 @@ pub async fn workflow_with_reason(
             "resolution": case.resolution,
             "reason": case.resolution_reason,
             "waiting_on": case.waiting_on,
+            "owner": owner_at_close,
         }),
         ts,
     )

@@ -239,9 +239,13 @@ async fn a_worked_case_closes_too_and_its_open_ask_is_withdrawn() {
         );
     }
     let assigned = case(&node, &p, &worked[1].1).await;
+    assert!(
+        assigned["assigned_to"].is_null(),
+        "a self-clear takes the owner off like any close: {assigned}"
+    );
     assert_eq!(
-        assigned["assigned_to"], "user:priya",
-        "the owner stays on the closed case"
+        assigned["owned_at_close"], "user:priya",
+        "who held it is kept for the Closed lane"
     );
 
     let emailed = &worked[4].1;

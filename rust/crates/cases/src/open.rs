@@ -92,6 +92,7 @@ pub async fn open(
         waiting_on: None,
         assigned_to: input.assigned_to,
         assigned_by: None,
+        owned_at_close: None,
         emailed_by: None,
         snooze_until: None,
         snooze_reason: None,

@@ -154,6 +154,12 @@ pub struct Case {
     /// gave to someone else"). Set by [`crate::assign`] to the actor, cleared with the assignment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_by: Option<String>,
+    /// Who owned the case when it closed. A close takes the owner off ([`crate::workflow`]: a closed
+    /// case is done, and if the finding comes back the work starts over with nobody holding it), so
+    /// this keeps the one thing the owner still matters for: My Insights' *Closed* lane shows it to
+    /// them for the week after. Set on the close, cleared on a reopen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owned_at_close: Option<String>,
     /// Who last sent the case out for action by email (`case.request.send`), for My Insights'
     /// *Emailed* lane. Set with `waiting_on` by [`crate::set_waiting_on`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
