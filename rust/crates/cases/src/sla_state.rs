@@ -7,9 +7,10 @@
 //! **The clock runs only while the case is Open** ([`crate::sla_follow`], Insights review
 //! 2026-10-29). An open case in any other status — actioned, assigned, emailed, on hold — reads as
 //! [`SlaState::Paused`]: its clock is stopped, so it is neither overdue nor due, and it carries on
-//! from where it stopped if the case comes back to Open. A breach already recorded is history and
-//! reads [`SlaState::Breached`] whatever the case does next. The clock stops for good once a case is
-//! closed: `Breached` only if the breach was recorded, `Met` otherwise.
+//! from where it stopped if the case comes back to Open. A breach already recorded is history: it is
+//! never cleared (`breached_ts`, the `breach` event), but the READING follows the status — out of Open
+//! a breached case reads Paused like any other, back in Open it reads Breached again. The clock stops
+//! for good once a case is closed: `Breached` if the breach was recorded, `Met` otherwise.
 //!
 //! One responsibility: a case and a clock to its SLA state.
 
@@ -24,7 +25,7 @@ pub const DEFAULT_DUE_SOON_MS: u64 = 4 * 3_600_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SlaState {
-    /// The breach is recorded, or the case is open and its deadline has passed.
+    /// Open with its deadline passed (recorded or not), or closed with a breach on record.
     Breached,
     /// Open, not breached, and inside the due-soon window.
     DueSoon,
@@ -35,26 +36,36 @@ pub enum SlaState {
     /// Closed with a deadline and no recorded breach.
     Met,
     /// Open work out of the Open status (actioned, assigned, emailed, on hold): its clock is not
-    /// running, so it is neither breached nor due, whatever its deadline says.
+    /// running, so it reads neither breached nor due — a breach on record included, which stays in
+    /// the record and reads again if the case comes back to Open.
     Paused,
 }
 
 /// The state of `case` at `now`, with `due_soon_ms` as the due-soon window.
 pub fn sla_state(case: &Case, now: u64, due_soon_ms: u64) -> SlaState {
-    // A breach is history: it reads first, whatever the case has done since.
-    if case.breached_ts.is_some() {
+    let breached = case.breached_ts.is_some();
+    if case.closed {
+        return if breached {
+            SlaState::Breached
+        } else if case.due_at.is_some() {
+            SlaState::Met
+        } else {
+            SlaState::NoDeadline
+        };
+    }
+    if case.due_at.is_none() && !breached {
+        return SlaState::NoDeadline;
+    }
+    // Out of Open the clock is stopped — a recorded breach included: somebody has the work now.
+    if !crate::sla_follow::is_open(case, now) || case.sla_paused_at.is_some() {
+        return SlaState::Paused;
+    }
+    if breached {
         return SlaState::Breached;
     }
     let Some(due_at) = case.due_at else {
         return SlaState::NoDeadline;
     };
-    if case.closed {
-        return SlaState::Met;
-    }
-    // Out of Open the clock is stopped; a pause still being booked reads the same.
-    if !crate::sla_follow::is_open(case, now) || case.sla_paused_at.is_some() {
-        return SlaState::Paused;
-    }
     if now >= due_at {
         SlaState::Breached
     } else if due_at - now <= due_soon_ms {
