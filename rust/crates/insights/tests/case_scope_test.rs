@@ -66,6 +66,7 @@ fn scope(allow: Option<&[&str]>, stages: Option<&[&str]>) -> CaseScope {
         allow: allow.map(set),
         stages: stages.map(set),
         stage_order: vec!["to_action".into(), "actioned".into()],
+        ..Default::default()
     }
 }
 

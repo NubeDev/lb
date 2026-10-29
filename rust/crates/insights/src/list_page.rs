@@ -53,7 +53,6 @@ pub(crate) async fn read(
     let (source, where_clause) = (w.source(), w.clause());
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));
-    bindings.extend(order.bindings.iter().cloned());
     let (select, order_by) = (&order.select, &order.order_by);
 
     // `+1` is the has-more probe: read one past the page rather than asking the engine a second
@@ -114,7 +113,6 @@ pub(crate) async fn read_all_matching(
     let (source, where_clause) = (w.source(), w.clause());
     let mut bindings = w.bindings;
     bindings.push(("tb".into(), Value::String(OCC_TABLE.to_string())));
-    bindings.extend(order.bindings.iter().cloned());
     let (select, order_by) = (&order.select, &order.order_by);
 
     // Ordered here so the page below is a slice, not a second sort of the same rows. The cap is the

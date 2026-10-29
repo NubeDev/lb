@@ -251,15 +251,30 @@ async fn case_status_owner_and_ref_sorts_follow_the_lens_and_no_case_is_last() {
         ]),
         ..Default::default()
     };
-    let got = |by: &'static str, desc: bool| {
-        let (store, scope) = (store.clone(), scope.clone());
-        async move { read(&store, sort(&[by], desc), Some(scope), 0, 50, true).await }
-    };
-    assert_eq!(got("case_status", false).await, ["b", "c", "a", "d"]);
-    assert_eq!(got("case_status", true).await, ["a", "c", "b", "d"]);
-    // No owner (C) and no case (D) are both empty: last, newest first between them.
-    assert_eq!(got("case_owner", false).await, ["b", "a", "d", "c"]);
-    assert_eq!(got("case_owner", true).await, ["a", "b", "d", "c"]);
-    assert_eq!(got("case_ref", false).await, ["b", "c", "a", "d"]);
-    assert_eq!(got("case_ref", true).await, ["a", "c", "b", "d"]);
+    // Both read paths: a lens sort is made in memory either way, so they must agree.
+    for counts in [false, true] {
+        let got = |by: &'static str, desc: bool| {
+            let (store, scope) = (store.clone(), scope.clone());
+            async move { read(&store, sort(&[by], desc), Some(scope), 0, 50, counts).await }
+        };
+        assert_eq!(got("case_status", false).await, ["b", "c", "a", "d"]);
+        assert_eq!(got("case_status", true).await, ["a", "c", "b", "d"]);
+        // No owner (C) and no case (D) are both empty: last, newest first between them.
+        assert_eq!(got("case_owner", false).await, ["b", "a", "d", "c"]);
+        assert_eq!(got("case_owner", true).await, ["a", "b", "d", "c"]);
+        assert_eq!(got("case_ref", false).await, ["b", "c", "a", "d"]);
+        assert_eq!(got("case_ref", true).await, ["a", "c", "b", "d"]);
+    }
+    // A counted page one and an uncounted page two are slices of the one order.
+    let one = read(
+        &store,
+        sort(&["case_ref"], false),
+        Some(scope.clone()),
+        0,
+        2,
+        true,
+    )
+    .await;
+    let two = read(&store, sort(&["case_ref"], false), Some(scope), 2, 2, false).await;
+    assert_eq!([one, two].concat(), ["b", "c", "a", "d"]);
 }
