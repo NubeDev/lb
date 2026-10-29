@@ -1,22 +1,21 @@
-//! `close_self_cleared_cases` — resolve untouched work whose insights all cleared by themselves.
+//! `close_self_cleared_cases` — close open work whose insights all cleared by themselves.
 //!
 //! The case owns triage (case-plane scope, decision 5): a producer resolving its insight does NOT
-//! close the case, because closing work is somebody's decision. Left alone that is honest but it
-//! reads wrong at scale — a meter that went flat for a day and came back leaves a case in "to
-//! action" for ever, the queue counts it as open work, and an export of the insights says
-//! "resolved" beside a case that says the opposite.
+//! close the case on the spot. Left alone that reads wrong at scale — a meter that went flat for a
+//! day and came back leaves a case open for ever, the queue counts it as work, and an export of the
+//! insights says "resolved" beside a case that says the opposite.
 //!
-//! A service policy can take that decision once, for the work it governs:
-//! `auto_close_self_cleared`. When it is on, this pass resolves a case as
-//! [`lb_cases::Resolution::SelfCleared`] when BOTH hold:
+//! A service policy takes that decision once, for the work it governs: `auto_close_self_cleared`.
+//! When it is on, this pass resolves a case as [`lb_cases::Resolution::SelfCleared`] as soon as
+//! **every** insight in the case is resolved — a grouped case with one member still firing is still
+//! live work, whatever its primary says.
 //!
-//!   1. **every** insight in the case is resolved — a grouped case with one member still firing is
-//!      still live work, whatever its primary says;
-//!   2. **nobody has worked it**: still `to_action`, no assignee, not waiting on anyone, not snoozed,
-//!      never reopened by the hold-down, and no event in its history from anyone but the platform
-//!      (`system:` actors — grouping, the SLA clock, the facet backfill). A comment, an assignment or
-//!      a stage change by a person, including a comment the reconcile replayed from the insight, keeps
-//!      the case for a person to close.
+//! **From any stage** (Insights review 2026-10-29). It used to close only work nobody had touched;
+//! an assigned, emailed or held case stayed open after its problem went away, and the reader had a
+//! hollow dot to tell the two apart. Now the problem going away closes the case wherever it is: the
+//! owner stays on the closed case (who had it), a hold ends (the close path ends it), and an ask
+//! still out to a party is withdrawn in the same pass, so the contractor's link dies with the job and
+//! the nudge ladder stops chasing them. A REPLIED ask stays as it is: the answer is history.
 //!
 //! It never reopens anything and never touches a closed case. A problem that comes back raises its
 //! insight again, and the grouping pass opens a NEW case for it — `SelfCleared` is not held down
@@ -24,24 +23,24 @@
 //!
 //! Same shape as [`super::reconcile`] and [`super::facet_backfill`]: derived from the durable records
 //! each tick, idempotent (a second pass closes nothing), best-effort per case. It reads the insights,
-//! the open cases and the memberships ONCE per tick and decides in memory; only a case that passes
-//! every cheap check has its history read.
+//! the open cases and the memberships ONCE per tick and decides in memory.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use lb_cases::{Case, CaseMember, Resolution, Workflow};
+use lb_cases::{Case, CaseMember, EventKind, Resolution, Workflow};
 use lb_insights::{Insight, Status};
 use lb_store::scan_all;
 
 use super::error::CaseSvcError;
+use super::request_nudge_schedule::cancel_nudges;
 use crate::boot::Node;
 
 /// The actor stamped on the resolution. Not a person: a policy decided this, the platform did it.
 pub const SELF_CLEAR_ACTOR: &str = "system:self-clear";
 
-/// Close every untouched open case, under a policy that opts in, whose insights are all resolved.
-/// Returns how many cases were closed.
+/// Close every open case, under a policy that opts in, whose insights are all resolved, and withdraw
+/// the asks still out on it. Returns how many cases were closed.
 // SCOPE: docs/scope/insights/case-self-clear-scope.md
 pub async fn close_self_cleared_cases(
     node: &Arc<Node>,
@@ -64,7 +63,6 @@ pub async fn close_self_cleared_cases(
         .into_iter()
         .filter(|c| !c.closed)
         .filter(|c| c.policy_id.as_deref().is_some_and(|p| opted_in.contains(p)))
-        .filter(untouched_fields)
         .collect();
     if candidates.is_empty() {
         return Ok(0);
@@ -92,14 +90,6 @@ pub async fn close_self_cleared_cases(
         if !insights.iter().all(|id| resolved.contains(id)) {
             continue;
         }
-        match history_is_platform_only(node, ws, &case.id).await {
-            Ok(true) => {}
-            Ok(false) => continue,
-            Err(e) => {
-                tracing::warn!(ws, case_id = %case.id, error = %e, "case self-clear: history unreadable");
-                continue;
-            }
-        }
         match lb_cases::workflow(
             &node.store,
             ws,
@@ -112,7 +102,10 @@ pub async fn close_self_cleared_cases(
         )
         .await
         {
-            Ok(_) => closed += 1,
+            Ok(_) => {
+                closed += 1;
+                withdraw_open_asks(node, ws, &case.id, now).await;
+            }
             // One case that will not close must not stop the pass; the next tick retries it.
             Err(e) => {
                 tracing::warn!(ws, case_id = %case.id, error = %e, "case self-clear: resolve failed")
@@ -122,33 +115,39 @@ pub async fn close_self_cleared_cases(
     Ok(closed)
 }
 
-/// The cheap half of "nobody has worked it" — the fields on the case itself. Any of these is a
-/// person's decision (or, for `reopened_count`, a hold-down reopen after a person said "fixed").
-fn untouched_fields(c: &Case) -> bool {
-    c.workflow == Workflow::ToAction
-        && c.assigned_to.is_none()
-        && c.waiting_on.is_none()
-        && c.snooze_until.is_none()
-        && c.snoozed_by.is_none()
-        && c.reopened_count == 0
-}
-
-/// The expensive half: every event in the case's history came from the platform (`system:`).
-async fn history_is_platform_only(
-    node: &Arc<Node>,
-    ws: &str,
-    case_id: &str,
-) -> Result<bool, CaseSvcError> {
-    let mut after = None;
-    loop {
-        let page =
-            lb_cases::events(&node.store, ws, case_id, lb_cases::MAX_EVENT_PAGE, after).await?;
-        if page.items.iter().any(|e| !e.actor.starts_with("system:")) {
-            return Ok(false);
+/// Withdraw every ask still out on a case that just closed itself: the token dies with the job and
+/// the nudge ladder stops. Best-effort per ask, like the pass: one that will not withdraw is logged.
+async fn withdraw_open_asks(node: &Arc<Node>, ws: &str, case_id: &str, now: u64) {
+    let asks = match lb_cases::requests_of_case(&node.store, ws, case_id).await {
+        Ok(asks) => asks,
+        Err(e) => {
+            tracing::warn!(ws, case_id, error = %e, "case self-clear: asks unreadable");
+            return;
         }
-        match page.next {
-            Some(n) => after = Some(n),
-            None => return Ok(true),
+    };
+    for mut ask in asks.into_iter().filter(|r| r.status.is_live()) {
+        match lb_cases::request_withdraw(&node.store, ws, &mut ask, now).await {
+            Ok(true) => {
+                cancel_nudges(&node.store, ws, &ask.id).await;
+                let event = serde_json::json!({ "request_id": ask.id, "party_id": ask.party_id });
+                if let Err(e) = lb_cases::append_event(
+                    &node.store,
+                    ws,
+                    case_id,
+                    EventKind::RequestWithdrawn,
+                    SELF_CLEAR_ACTOR,
+                    event,
+                    now,
+                )
+                .await
+                {
+                    tracing::warn!(ws, case_id, error = %e, "case self-clear: withdraw event not written");
+                }
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::warn!(ws, case_id, request_id = %ask.id, error = %e, "case self-clear: ask not withdrawn")
+            }
         }
     }
 }

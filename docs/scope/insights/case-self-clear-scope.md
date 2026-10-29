@@ -4,6 +4,17 @@ Status: **shipped** (2026-09-29). Session:
 [`sessions/insights/case-self-clear-session.md`](../../sessions/insights/case-self-clear-session.md).
 Extends [`case-plane-scope.md`](case-plane-scope.md) §"Reactors".
 
+> **Amended 2026-10-29 — any stage, not only untouched work.** The "nobody has worked it" guard is
+> gone. Under an opted-in policy, a case whose insights have ALL resolved now closes `self_cleared`
+> from any stage: commented, assigned, actioned, on hold or emailed. The insight going inactive is
+> the answer; an assigned case left open after its problem cleared was the queue disagreeing with
+> itself again, and the roster needed a hollow dot to say so. On close: the owner stays on the case
+> (who had it), the close path ends any hold and clears `waiting_on`, and every ask still live on the
+> case (`sent` / `opened`) is withdrawn by `system:self-clear` — its token dies and its nudge ladder
+> is cancelled. A replied ask is left as it is. A problem that comes back still opens a NEW case.
+> The goals and tests below that speak of "untouched" describe the 2026-09-29 version;
+> `reactor_self_clear::a_worked_case_closes_too_and_its_open_ask_is_withdrawn` is the current rule.
+
 The case plane made the case the owner of triage (case-plane decision 5): a producer resolving its
 insight does not close the case, because closing work is somebody's decision. That is right for work
 a person is doing, and wrong for the far larger share nobody ever touched. On a metering estate a rule
