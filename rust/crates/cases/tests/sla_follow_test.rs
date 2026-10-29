@@ -220,7 +220,7 @@ async fn every_status_out_of_open_stops_the_clock() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_breach_while_open_is_history_and_a_close_without_one_is_met() {
+async fn a_breach_stays_on_record_but_out_of_open_reads_paused() {
     let store = Store::memory().await.unwrap();
 
     // Left Open past its deadline: breached, and it stays breached once actioned, closed or reopened.
@@ -250,7 +250,12 @@ async fn a_breach_while_open_is_history_and_a_close_without_one_is_met() {
     )
     .await
     .unwrap();
-    assert_eq!(sla_state(&actioned, late + 2, HOUR), SlaState::Breached);
+    // Picked up: the reading is Paused — somebody has it — but the breach stays on the record.
+    assert_eq!(sla_state(&actioned, late + 2, HOUR), SlaState::Paused);
+    assert!(
+        actioned.breached_ts.is_some(),
+        "the breach is never cleared"
+    );
     let closed = workflow(
         &store,
         WS,
