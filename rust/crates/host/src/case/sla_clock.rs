@@ -7,23 +7,24 @@
 //! wall-clock fact a human can argue with and a contract can be held to. Everything here exists to
 //! produce that one instant honestly and to be able to say which clause produced it.
 //!
-//! # The clock pauses only for a snooze with an end date
+//! # The clock runs only while the case is Open
 //!
+//! The SLA is the time to a first response (Insights review 2026-10-29): `due_at` is the policy's
+//! `respond_h` on its calendar, and the clock stops the moment the case leaves Open — actioned,
+//! assigned, emailed, on hold, closed — and carries on if it comes back (`lb_cases`'s `sla_follow`).
 //! Both deadlines are a **pure function of `(policy, opened_ts, sla_paused_ms)`**. `opened_ts`
 //! never moves; the policy only changes when the *contract* or the case's `(site, category,
-//! severity)` facts change; `sla_paused_ms` only grows, when a snooze with an end date ends
-//! ([`lb_cases`]'s `sla_pause`). That is the shape of the arithmetic ([`lb_cases::respond_by`] /
-//! [`lb_cases::due_at`], which this file deliberately does NOT reimplement). Consequences:
-//!   * a running pause does not move a deadline yet — it holds the breach back, and its END moves
-//!     both deadlines forward by the business time it paused;
-//!   * `waiting_on` never moves one. Waiting on a purchase order, a client, or a contractor records
-//!     **who holds the ball**; it never stops time;
-//!   * a **severity escalation** DOES move it, because severity is a policy-match axis, and it ends
-//!     the pause (it punctures the snooze).
+//! severity)` facts change; `sla_paused_ms` only grows, when the case comes back to Open. That is
+//! the shape of the arithmetic ([`lb_cases::respond_by`] / [`lb_cases::due_at`], which this file
+//! deliberately does NOT reimplement). Consequences:
+//!   * a running pause does not move a deadline yet — it holds the breach back, and the return to
+//!     Open moves the deadline forward by the business time the case spent out;
+//!   * a **severity escalation** DOES move it, because severity is a policy-match axis.
 //!
 //! # Recompute always; write only on a change
 //!
-//! [`apply_sla`] is called on every grouping pass rather than only at open. It is cheap and
+//! [`apply_sla`] is called on every grouping pass and every case tick ([`super::follow_sla_clocks`])
+//! rather than only at open. It is cheap and
 //! idempotent — the crate verb no-ops when the answer is unchanged — and it means there is exactly
 //! ONE code path that sets a deadline, so the escalation case cannot drift from the open case.
 //!

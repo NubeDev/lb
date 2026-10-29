@@ -1,4 +1,4 @@
-//! The business calendar: a Friday afternoon that responds Monday, a holiday that pushes on, an escalation that recomputes, a dated snooze that pauses the clock, and a wait that moves neither deadline.
+//! The business calendar: a Friday afternoon that responds Monday, a holiday that pushes on, an escalation that recomputes, and the clock that runs only while a case is Open — a hold or an action stops it, coming back moves the deadline by the business time spent out (Insights review 2026-10-29).
 //!
 //! Part of the `sla_clock` suite (see `sla_clock_support.rs` for the fixtures and the
 //! full preamble). One binary: `case_suite.rs`.
@@ -41,7 +41,11 @@ async fn friday_afternoon_under_two_business_hours_responds_monday_morning() {
         Some(MONDAY_1000),
         "Friday 16:00 + 2 business hours spills over the weekend to Monday 10:00"
     );
-    assert_eq!(u64_field(&case, "due_at"), Some(MONDAY_1600));
+    assert_eq!(
+        u64_field(&case, "due_at"),
+        Some(MONDAY_1000),
+        "the SLA is the time to a first response: the deadline is the respond target, not resolve's 8h"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -82,7 +86,7 @@ async fn an_escalation_recomputes_the_deadline_and_punctures_the_snooze() {
     let case = raise_and_case(&node, &admin, ws, "k1", "warning", FRIDAY_1600).await;
     let case_id = case["id"].as_str().unwrap().to_string();
     assert_eq!(case["policy_id"], json!("default"));
-    assert_eq!(u64_field(&case, "due_at"), Some(MONDAY_1600));
+    assert_eq!(u64_field(&case, "due_at"), Some(MONDAY_1000));
 
     // Park it. A snooze is a lane gesture, not a contract amendment.
     call(
@@ -107,7 +111,7 @@ async fn an_escalation_recomputes_the_deadline_and_punctures_the_snooze() {
         u64_field(&case, "due_at"),
         Some(FRIDAY_1700),
         "the tighter clause is one business hour, and Friday 16:00 + 1h is still inside Friday — \
-         the escalation pulled the deadline in from Monday 16:00 to the same afternoon"
+         the escalation pulled the deadline in from Monday 10:00 to the same afternoon"
     );
     assert!(
         case.get("snooze_until").map(Value::is_null).unwrap_or(true),
@@ -116,12 +120,12 @@ async fn an_escalation_recomputes_the_deadline_and_punctures_the_snooze() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-// 4. A snooze with an end date pauses the clock; its end moves both deadlines by the business time
-//    it paused. Waiting on somebody moves nothing.
+// 4. The clock runs only while the case is Open: a hold stops it and coming back to Open moves the
+//    deadline by the business time spent out; actioning it (waiting on somebody) stops it too.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_dated_snooze_moves_both_deadlines_by_the_business_time_it_paused() {
+async fn a_hold_stops_the_clock_and_coming_back_moves_the_deadline_by_the_time_out() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "acme";
     seed_roster(&node, ws).await;
@@ -130,7 +134,7 @@ async fn a_dated_snooze_moves_both_deadlines_by_the_business_time_it_paused() {
 
     let before = raise_and_case(&node, &admin, ws, "k1", "warning", FRIDAY_1600).await;
     let case_id = before["id"].as_str().unwrap().to_string();
-    assert_eq!(u64_field(&before, "due_at"), Some(MONDAY_1600));
+    assert_eq!(u64_field(&before, "due_at"), Some(MONDAY_1000));
 
     let parked = call(
         &node,
@@ -145,14 +149,15 @@ async fn a_dated_snooze_moves_both_deadlines_by_the_business_time_it_paused() {
     // A re-raise at the same severity while paused recomputes the same instants: the pause has not
     // ended, so it has added nothing yet.
     let during = raise_and_case(&node, &admin, ws, "k1", "warning", FRIDAY_1600 + 60_000).await;
-    assert_eq!(u64_field(&during, "due_at"), Some(MONDAY_1600));
+    assert_eq!(u64_field(&during, "due_at"), Some(MONDAY_1000));
     assert!(
         during["snooze_until"].is_u64(),
         "a same-severity re-raise must not puncture: {during}"
     );
 
-    // Un-parked Monday 10:00: Friday's last hour and Monday's first were paused — two business
-    // hours, not the weekend's sixty-six wall hours.
+    // Un-parked Monday 10:00. The hold claimed the case for whoever parked it, and owned work stays
+    // Assigned when its hold ends — still out of Open, so the clock is still stopped and the
+    // deadline has not moved.
     let back = call(
         &node,
         &admin,
@@ -162,17 +167,41 @@ async fn a_dated_snooze_moves_both_deadlines_by_the_business_time_it_paused() {
     )
     .await
     .expect("un-snooze");
-    assert_eq!(back.get("sla_paused_at"), None, "{back}");
-    assert_eq!(u64_field(&back, "sla_paused_ms"), Some(2 * 3_600_000));
+    assert_eq!(back["workflow"], json!("actioned"), "{back}");
     assert_eq!(
-        u64_field(&back, "respond_by"),
+        u64_field(&back, "sla_paused_at"),
+        Some(FRIDAY_1600),
+        "{back}"
+    );
+    assert_eq!(u64_field(&back, "due_at"), Some(MONDAY_1000));
+
+    // Sent back to the queue at the same instant: back in Open. Friday's last hour and Monday's
+    // first were spent out of Open — two business hours, not the weekend's sixty-six wall hours —
+    // so the two-hour respond target, which had used none of its time, now lands at Monday 12:00,
+    // and the verb moves it at once rather than on the next tick.
+    let reopened = call(
+        &node,
+        &admin,
+        ws,
+        "case.workflow",
+        json!({ "id": case_id, "workflow": "to_action", "ts": MONDAY_1000 }),
+    )
+    .await
+    .expect("case.workflow");
+    assert_eq!(reopened.get("sla_paused_at"), None, "{reopened}");
+    assert_eq!(u64_field(&reopened, "sla_paused_ms"), Some(2 * 3_600_000));
+    assert_eq!(
+        u64_field(&reopened, "respond_by"),
         Some(MONDAY_1000 + 2 * 3_600_000)
     );
-    assert_eq!(u64_field(&back, "due_at"), Some(TUESDAY_1000));
+    assert_eq!(
+        u64_field(&reopened, "due_at"),
+        Some(MONDAY_1000 + 2 * 3_600_000)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn waiting_on_someone_moves_neither_deadline() {
+async fn actioning_a_case_stops_the_clock_and_moves_no_deadline_while_out() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "acme";
     seed_roster(&node, ws).await;
@@ -181,8 +210,8 @@ async fn waiting_on_someone_moves_neither_deadline() {
 
     let before = raise_and_case(&node, &admin, ws, "k1", "warning", FRIDAY_1600).await;
     let case_id = before["id"].as_str().unwrap().to_string();
-    // Put the ball in somebody else's court. `waiting_on` records who holds it; it never stops
-    // time, and this is the assertion that says so.
+    // Actioned, the ball in somebody else's court: the case is out of Open, so the clock stops
+    // where it stood. It stops; it does not move — the deadline only moves if the case comes back.
     call(
         &node,
         &admin,
@@ -199,7 +228,7 @@ async fn waiting_on_someone_moves_neither_deadline() {
         u64_field(&before, "respond_by")
     );
     assert_eq!(u64_field(&after, "due_at"), u64_field(&before, "due_at"));
-    assert_eq!(after.get("sla_paused_at"), None);
+    assert_eq!(u64_field(&after, "sla_paused_at"), Some(FRIDAY_1600));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

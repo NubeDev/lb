@@ -271,6 +271,19 @@ pub async fn call_case_tool(
             )
             .await
             .map_err(svc_to_tool)?;
+            // Back in Open, the SLA clock runs again from the time it already used: move the deadline
+            // (and re-arm its alarm) now rather than on the next tick.
+            let case = if lb_cases::is_open(&case, ts) {
+                super::sla_clock::apply_sla(node, ws, &case.id, ts)
+                    .await
+                    .map_err(svc_to_tool)?;
+                lb_cases::get(store, ws, &case.id)
+                    .await
+                    .map_err(|e| svc_to_tool(e.into()))?
+                    .unwrap_or(case)
+            } else {
+                case
+            };
             Ok(serde_json::to_value(case).unwrap_or(Value::Null))
         }
         "case.assign" => {

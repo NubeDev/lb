@@ -69,6 +69,9 @@ mod sla_clock_breach;
 #[path = "case/sla_clock_calendar.rs"]
 mod sla_clock_calendar;
 
+#[path = "case/sla_clock_follow.rs"]
+mod sla_clock_follow;
+
 #[path = "case/reactor_support.rs"]
 mod reactor_support;
 

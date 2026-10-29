@@ -26,7 +26,7 @@ use crate::case::Case;
 use crate::case_event::EventKind;
 use crate::error::CasesError;
 use crate::event_append::append_event;
-use crate::save::save;
+use crate::save::save_quiet;
 
 /// The deadlines a policy produced for one case. All three move together — a `policy_id` without
 /// deadlines, or deadlines with no policy to trace them to, is not a defensible answer.
@@ -79,7 +79,8 @@ pub async fn set_deadlines(
     case.policy_id = next_policy.clone();
     case.respond_by = deadlines.respond_by;
     case.due_at = deadlines.due_at;
-    save(store, ws, &mut case, ts).await?;
+    // A recomputed deadline is the platform's bookkeeping, not activity on the case.
+    save_quiet(store, ws, &mut case, ts).await?;
 
     let previous = Previous {
         policy_id: from_policy,

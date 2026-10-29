@@ -1,4 +1,4 @@
-//! The breach record — who held it at that instant, never rewritten — and the absent deadlines when no policy matches.
+//! The breach record — only while the case is Open, who held it at that instant, never rewritten — and the absent deadlines when no policy matches.
 //!
 //! Part of the `sla_clock` suite (see `sla_clock_support.rs` for the fixtures and the
 //! full preamble). One binary: `case_suite.rs`.
@@ -16,17 +16,8 @@ async fn the_breach_records_the_holder_at_that_instant_and_is_never_rewritten() 
 
     let case = raise_and_case(&node, &admin, ws, "k1", "warning", FRIDAY_1600).await;
     let case_id = case["id"].as_str().unwrap().to_string();
-
-    // The contractor has the ball at the moment the deadline passes.
-    call(
-        &node,
-        &admin,
-        ws,
-        "case.workflow",
-        json!({ "id": case_id, "workflow": "actioned", "waiting_on": "contractor", "ts": MONDAY_1000 }),
-    )
-    .await
-    .expect("case.workflow");
+    // Nobody has picked it up: it is still Open when its two-hour respond deadline (Monday 10:00)
+    // passes, so its clock is running and the breach is real.
 
     // ── RED: without the cap the alarm's own door refuses, and nothing is written. ──────────────
     let capless = principal(SLA_ACTOR, ws, &[]);
@@ -66,22 +57,22 @@ async fn the_breach_records_the_holder_at_that_instant_and_is_never_rewritten() 
     assert_eq!(out["breached"], json!(true));
     assert_eq!(
         u64_field(&out["case"], "breached_ts"),
-        Some(MONDAY_1600),
+        Some(MONDAY_1000),
         "the breach is stamped with the DEADLINE, not the moment the alarm rang"
     );
-    assert_eq!(
-        out["case"]["breach_waiting_on"],
-        json!("contractor"),
-        "the holder at that instant is what makes a breach attributable"
+    assert!(
+        out["case"]["breach_waiting_on"].is_null(),
+        "nobody held it at that instant — which is exactly what made it late: {}",
+        out["case"]
     );
 
-    // The ball moves back to us, and somebody runs the alarm again.
+    // Now somebody picks it up and hands it to a contractor, and the alarm runs again.
     call(
         &node,
         &admin,
         ws,
         "case.workflow",
-        json!({ "id": case_id, "workflow": "actioned", "waiting_on": "internal", "ts": MONDAY_1600 + 2 }),
+        json!({ "id": case_id, "workflow": "actioned", "waiting_on": "contractor", "ts": MONDAY_1600 + 2 }),
     )
     .await
     .expect("case.workflow");
@@ -103,11 +94,10 @@ async fn the_breach_records_the_holder_at_that_instant_and_is_never_rewritten() 
     let final_case = call(&node, &admin, ws, "case.get", json!({ "id": case_id }))
         .await
         .expect("case.get");
-    assert_eq!(u64_field(&final_case, "breached_ts"), Some(MONDAY_1600));
-    assert_eq!(
-        final_case["breach_waiting_on"],
-        json!("contractor"),
-        "the recorded holder must NOT drift to whoever holds the case today"
+    assert_eq!(u64_field(&final_case, "breached_ts"), Some(MONDAY_1000));
+    assert!(
+        final_case["breach_waiting_on"].is_null(),
+        "the recorded holder must NOT drift to whoever holds the case today: {final_case}"
     );
 
     // Exactly one `breach` event, ever.
@@ -127,6 +117,57 @@ async fn the_breach_records_the_holder_at_that_instant_and_is_never_rewritten() 
         .filter(|e| e["kind"] == json!("breach"))
         .count();
     assert_eq!(breaches, 1, "one breach, one event: {events}");
+}
+
+/// **Out of Open at the deadline, no breach** (Insights review 2026-10-29). Picked up before its
+/// respond deadline, the case's clock stopped when it left Open; the alarm firing at the old
+/// deadline finds a stopped clock and writes nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_case_picked_up_before_its_deadline_does_not_breach() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ws = "acme";
+    seed_roster(&node, ws).await;
+    let admin = principal("user:admin", ws, ALL);
+    let clock = principal(SLA_ACTOR, ws, &[BREACH]);
+    set_policy(&node, &admin, ws, "default", None, 2, 8, &[]).await;
+
+    let case = raise_and_case(&node, &admin, ws, "k1", "warning", FRIDAY_1600).await;
+    let case_id = case["id"].as_str().unwrap().to_string();
+    let picked = call(
+        &node,
+        &admin,
+        ws,
+        "case.workflow",
+        json!({ "id": case_id, "workflow": "actioned", "waiting_on": "contractor", "ts": FRIDAY_1600 + 60_000 }),
+    )
+    .await
+    .expect("case.workflow");
+    assert_eq!(
+        u64_field(&picked, "sla_paused_at"),
+        Some(FRIDAY_1600 + 60_000)
+    );
+
+    let out = call(
+        &node,
+        &clock,
+        ws,
+        "case.breach",
+        json!({ "case_id": case_id, "ts": MONDAY_1600 }),
+    )
+    .await
+    .expect("case.breach");
+    assert_eq!(
+        out["breached"],
+        json!(false),
+        "a stopped clock does not breach: {out}"
+    );
+    let after = call(&node, &admin, ws, "case.get", json!({ "id": case_id }))
+        .await
+        .expect("case.get");
+    assert!(
+        after.get("breached_ts").map(Value::is_null).unwrap_or(true),
+        "{after}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

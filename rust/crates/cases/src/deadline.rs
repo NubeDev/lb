@@ -80,11 +80,13 @@ pub fn respond_by(policy: &ServicePolicy, opened_ms: u64, paused_ms: u64) -> u64
     add_business_ms(&policy.calendar, opened_ms, h.saturating_add(paused_ms))
 }
 
-/// When resolution is due: `opened_ms` plus `resolve_h` business hours, plus the business time the
-/// case has spent paused. This is the queue's sort key — the deadline that stands in for a priority
-/// score.
+/// The SLA deadline: `opened_ms` plus `respond_h` business hours, plus the business time the case has
+/// spent out of Open. The SLA is the time to a first response (Insights review 2026-10-29): its clock
+/// runs only while the case is Open ([`crate::sla_follow`]), so the respond target is the one it is
+/// held to. This is the queue's sort key — the deadline that stands in for a priority score — and
+/// the one a breach is recorded against. `resolve_h` stays on the policy, unused by the clock.
 pub fn due_at(policy: &ServicePolicy, opened_ms: u64, paused_ms: u64) -> u64 {
-    let h = policy.resolve_h as u64 * MS_PER_HOUR as u64;
+    let h = policy.respond_h as u64 * MS_PER_HOUR as u64;
     add_business_ms(&policy.calendar, opened_ms, h.saturating_add(paused_ms))
 }
 

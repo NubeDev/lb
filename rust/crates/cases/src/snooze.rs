@@ -24,8 +24,8 @@
 //! **A hold is a state, and a case is in one state at a time.** Snoozing a case that nobody has
 //! started (`to_action`) moves it to `actioned` in the same call: held work is work in hand. And
 //! [`end_hold`] is the fourth door — moving the case on (a stage change, a hand-over, an email)
-//! ends a running hold, SLA pause and all, without sending it back to the queue: the new state
-//! decides where it sits.
+//! ends a running hold without sending it back to the queue: the new state decides where it sits,
+//! and with it whether the SLA clock runs ([`crate::sla_follow`]: only while Open).
 
 use lb_store::Store;
 
@@ -124,13 +124,8 @@ pub async fn snooze(
         ts,
     )
     .await?;
-    // The SLA pause follows the snooze ([`crate::sla_pause`]): one with an end date stops the
-    // clock; ending it, or turning it open-ended, starts it again.
-    let case = if !unsnoozing && crate::sla_pause::snooze_pauses(&case, until, ts) {
-        crate::sla_pause::pause(store, ws, case, actor, ts).await?
-    } else {
-        crate::sla_pause::resume(store, ws, case, actor, ts).await?
-    };
+    // The SLA clock follows the status on the write itself ([`crate::sla_follow`]): a hold is not
+    // Open, so it stopped the clock; the case's next state decides whether it runs again.
     if unsnoozing && was_snoozed {
         return crate::snooze_release::release_to_action(store, ws, case, actor, ts).await;
     }
@@ -138,10 +133,9 @@ pub async fn snooze(
 }
 
 /// End `case`'s running hold because it is moving to another state — a stage change, a hand-over,
-/// an email. Clears the snooze fields, records a `snoozed` event marked `ended_by: "state_change"`
-/// and ends the SLA pause (crediting the paused time), and does NOT send the case back to the queue:
-/// the caller's new state decides where it sits. A case with no snooze is returned untouched (no
-/// write, no event).
+/// an email. Clears the snooze fields, records a `snoozed` event marked `ended_by: "state_change"`,
+/// and does NOT send the case back to the queue: the caller's new state decides where it sits (and
+/// whether the SLA clock runs). A case with no snooze is returned untouched (no write, no event).
 pub(crate) async fn end_hold(
     store: &Store,
     ws: &str,
@@ -166,7 +160,7 @@ pub(crate) async fn end_hold(
         ts,
     )
     .await?;
-    crate::sla_pause::resume(store, ws, case, actor, ts).await
+    Ok(case)
 }
 
 /// Clear a snooze because the case got WORSE — the severity escalation puncture.
@@ -214,8 +208,6 @@ pub async fn puncture_snooze(
         ts,
     )
     .await?;
-    // A case that got worse is on the clock again.
-    let case = crate::sla_pause::resume(store, ws, case, actor, ts).await?;
     if was_snoozed {
         return crate::snooze_release::release_to_action(store, ws, case, actor, ts)
             .await

@@ -15,12 +15,12 @@
 //! quiet for three weeks and one that says we were late. It is captured here, at the moment of the
 //! breach, because five minutes later somebody moves the case and the answer is gone for ever.
 //!
-//! # The clock pauses only for a snooze with an end date
+//! # The clock runs only while the case is Open
 //!
-//! `waiting_on` records who holds the ball; it never stops time. A snooze with an end date does
-//! ([`crate::sla_pause`]): while it runs no breach is recorded here, and when it ends the deadline
-//! has moved forward by the business time it paused, so a breach armed for the old deadline finds
-//! the case not yet due. An open-ended snooze pauses nothing.
+//! The SLA is the time to a first response ([`crate::sla_follow`]): once the case moves out of Open
+//! — actioned, assigned, emailed, on hold — no breach is recorded here, and if it comes back to Open
+//! its deadline has moved forward by the time it spent out, so a breach armed for the old deadline
+//! finds the case not yet due.
 
 use lb_store::Store;
 
@@ -58,8 +58,9 @@ pub async fn mark_breached(
     if case.closed {
         return Ok(None);
     }
-    // A paused clock does not breach; the deadline moves when the pause ends.
-    if case.sla_paused_at.is_some() {
+    // A stopped clock does not breach: out of Open, or a pause still being booked. The deadline
+    // moves if the case comes back to Open.
+    if case.sla_paused_at.is_some() || !crate::sla_follow::is_open(&case, ts) {
         return Ok(None);
     }
     let Some(due_at) = case.due_at else {

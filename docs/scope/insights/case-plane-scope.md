@@ -229,7 +229,7 @@ verdict-last **merges** the members' existing `single` cases into the verdict ca
 verdict-first opens over whatever resolves and the reconcile loop folds the stragglers in. A member
 with `human_placed: true` is never moved in either direction.
 | **hold-down** | insight reopen | if the member's case closed as `fixed` within `hold_down_days`: reopen it, `reopened` event *repair did not hold*, `reopened_count += 1`; any other resolution → a new case |
-| **sla-clock** | case open · severity escalation | resolve the policy, compute `respond_by`/`due_at` in business hours, schedule the breach reminder; recompute on escalation; **pause only for a snooze with an end date** (decision 9) |
+| **sla-clock** | case open · severity escalation | resolve the policy, compute `respond_by`/`due_at` in business hours, schedule the breach reminder; recompute on escalation; **runs only while the case is Open** — `due_at` is the respond target (decision 9, amended 2026-10-29) |
 | **snooze-expiry** | the case tick (`release_expired_snoozes`, before self-clear) | end every open case's snooze whose `snooze_until` has passed, through the ordinary un-snooze gesture (actor `system:snooze-expiry`); idempotent — an ended snooze is cleared |
 
 **The end of a snooze puts parked work back in the queue.** However a snooze ends — un-snooze
@@ -377,6 +377,21 @@ the contract. Where they disagree after the code lands, the record wins and this
    policy's calendar, is added to `sla_paused_ms`, and the deadlines — now a pure function of
    `(policy, opened_ts, sla_paused_ms)` — move forward by exactly that. History: `sla_paused` /
    `sla_resumed {paused_ms}`.
+
+   > **Amended 2026-10-29 — the clock runs only while the case is Open.** The SLA is now the time
+   > to a first response. `due_at` is the policy's `respond_h` on its calendar (`resolve_h` stays on
+   > the policy, unused by the clock), and the clock stops the moment the case leaves Open — actioned,
+   > assigned, emailed (`waiting_on` included), on hold with or without an end date, or closed — and
+   > carries on from the time already used if it comes back to Open: only time spent Open counts.
+   > The one write path (`lb_cases` `save`, via `sla_follow`) starts and ends the pause on every
+   > move, so no verb has to remember; the host's case tick (`follow_sla_clocks`) pauses cases
+   > stored before the rule from their last activity and recomputes every open case's deadline,
+   > which on the first tick after the upgrade moves them onto the respond target. A recomputed
+   > deadline is not activity (`save_quiet`). Out of Open the case reads `paused` and no breach is
+   > recorded; a breach already recorded stays history — through an action, a close and a manual
+   > reopen; a close without one reads `met`. A reopen moves the deadline at once (`case.workflow`
+   > recomputes it). The "open-ended snooze keeps the clock running" and "`waiting_on` never
+   > pauses" clauses above describe the earlier rule.
 10. **A closing reason in the closer's words rides `resolved`.** The closed `resolution` set stays
     what the hold-down and the scorecard read; `reason` is the label the person chose ("Fixed
     remotely" under `fixed`, "No action required" under `accepted_risk`), kept on the case and the

@@ -215,7 +215,7 @@ async fn a_held_case_reads_paused_not_overdue() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_hold_until_cleared_keeps_the_clock_and_reads_by_its_deadline() {
+async fn a_hold_until_cleared_stops_the_clock_like_any_hold() {
     let store = Store::memory().await.unwrap();
     let id = case(&store, 1).await;
     let d = Deadlines {
@@ -242,11 +242,13 @@ async fn a_hold_until_cleared_keeps_the_clock_and_reads_by_its_deadline() {
         sla: Some(s),
         ..Default::default()
     };
-    assert!(ids(&store, sla(SlaState::Paused), now).await.is_empty());
+    // A hold is not Open, so the SLA clock stopped when it began (Insights review 2026-10-29), end
+    // date or none: the case reads Paused, not overdue.
     assert_eq!(
-        ids(&store, sla(SlaState::Breached), now).await,
+        ids(&store, sla(SlaState::Paused), now).await,
         vec![id.clone()]
     );
+    assert!(ids(&store, sla(SlaState::Breached), now).await.is_empty());
     let status = ListFilter {
         status: Some(CaseStatus::Hold),
         ..Default::default()
