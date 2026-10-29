@@ -1,5 +1,5 @@
-//! The self-clear reactor: an untouched case whose insights all cleared is resolved `self_cleared`,
-//! under a service policy that opts in (`docs/scope/insights/case-self-clear-scope.md`).
+//! The self-clear reactor: an open case whose insights all cleared is resolved `self_cleared`, from
+//! any stage, under a service policy that opts in (`docs/scope/insights/case-self-clear-scope.md`).
 //!
 //! Part of the `reactor` suite (see `reactor_support.rs` for the fixtures and the full preamble). One
 //! binary: `case_suite.rs`.
@@ -15,11 +15,13 @@ use super::reactor_support::*;
 const RESOLVE: &str = "mcp:insight.resolve:call";
 const POL_SET: &str = "mcp:policy.sla.set:call";
 const COMMENT: &str = "mcp:case.comment:call";
+const SEND: &str = "mcp:case.request.send:call";
+const P_UPSERT: &str = "mcp:party.upsert:call";
 const DAY: u64 = 24 * 60 * 60 * 1000;
 
 fn caps() -> Vec<&'static str> {
     let mut c = ALL.to_vec();
-    c.extend([RESOLVE, POL_SET, COMMENT]);
+    c.extend([RESOLVE, POL_SET, COMMENT, SEND, P_UPSERT]);
     c
 }
 
@@ -158,72 +160,112 @@ async fn a_case_still_firing_stays_open() {
     assert_eq!(case(&node, &p, &case_id).await["workflow"], "to_action");
 }
 
-/// **Worked cases stay for a person**: a comment, an assignment, a stage change — each on its own case,
-/// each insight resolved — and the pass closes none of them, while an untouched sibling does close
-/// (so the zero is the guard working, not the pass being dead).
+/// **Worked cases close too** (Insights review 2026-10-29): commented, assigned, actioned, on hold,
+/// emailed — each insight resolved, each case closes `self_cleared`. The owner stays on the closed
+/// case, and the ask still out to a contractor is withdrawn so its link dies with the job.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_worked_case_stays_for_a_person() {
+async fn a_worked_case_closes_too_and_its_open_ask_is_withdrawn() {
     let node = Arc::new(Node::boot().await.expect("node boots"));
     seed_roster(&node, "nube").await;
     let p = principal("user:test", "nube", &caps());
     install_policy(&node, &p, true).await;
+    call(
+        &node,
+        &p,
+        "nube",
+        "party.upsert",
+        json!({
+            "id": "northern",
+            "kind": "contractor",
+            "name": "northern services",
+            "contact": { "email": "northern@example.com" },
+            "default_ask_window_h": 48,
+        }),
+    )
+    .await
+    .expect("party.upsert ok");
 
     let mut worked = Vec::new();
-    for (key, action) in [
-        ("c-comment", "comment"),
-        ("c-assign", "assign"),
-        ("c-stage", "stage"),
-    ] {
-        let id = raise(&node, &p, key, DAY).await;
+    for action in ["comment", "assign", "actioned", "hold", "email"] {
+        let id = raise(&node, &p, &format!("w-{action}"), DAY).await;
         let case_id = case_of(&node, &p, "nube", &id).await;
-        match action {
-            "comment" => call(
-                &node,
-                &p,
-                "nube",
+        let (verb, args) = match action {
+            "comment" => (
                 "case.comment",
-                json!({ "id": case_id, "text": "looking into it", "ts": DAY + 1 }),
+                json!({ "id": case_id, "text": "looking into it" }),
             ),
-            "assign" => call(
-                &node,
-                &p,
-                "nube",
+            "assign" => (
                 "case.assign",
-                json!({ "id": case_id, "assignee": "user:priya", "ts": DAY + 1 }),
+                json!({ "id": case_id, "assignee": "user:priya" }),
             ),
-            _ => call(
-                &node,
-                &p,
-                "nube",
+            "actioned" => (
                 "case.workflow",
-                json!({ "id": case_id, "workflow": "actioned", "ts": DAY + 1 }),
+                json!({ "id": case_id, "workflow": "actioned" }),
             ),
-        }
-        .await
-        .unwrap_or_else(|e| panic!("{action}: {e:?}"));
+            "hold" => (
+                "case.snooze",
+                json!({ "id": case_id, "until": 9_999_999_999_999u64, "reason": "parts on order" }),
+            ),
+            _ => (
+                "case.request.send",
+                json!({ "case_id": case_id, "party_id": "northern", "ask": "quote",
+                        "brief": { "ask_text": "Please have a look." } }),
+            ),
+        };
+        let mut args = args;
+        args["ts"] = json!(DAY + 1);
+        call(&node, &p, "nube", verb, args)
+            .await
+            .unwrap_or_else(|e| panic!("{action}: {e:?}"));
         resolve(&node, &p, &id, 2 * DAY).await;
+        // RED (pre-pass): resolved insight, open case.
+        assert_eq!(case(&node, &p, &case_id).await["closed"], false, "{action}");
         worked.push((action, case_id));
     }
-    let untouched = raise(&node, &p, "c-untouched", DAY).await;
-    let untouched_case = case_of(&node, &p, "nube", &untouched).await;
-    resolve(&node, &p, &untouched, 2 * DAY).await;
 
     assert_eq!(
         pass(&node, 3 * DAY).await,
-        1,
-        "only the untouched case closes"
+        worked.len(),
+        "every worked case closes"
     );
-    assert_eq!(
-        case(&node, &p, &untouched_case).await["resolution"],
-        "self_cleared"
-    );
-    for (action, case_id) in worked {
-        let c = case(&node, &p, &case_id).await;
-        assert_eq!(
-            c["closed"], false,
-            "a case with a {action} must stay open: {c}"
+    for (action, case_id) in &worked {
+        let c = case(&node, &p, case_id).await;
+        assert_eq!(c["resolution"], "self_cleared", "{action}: {c}");
+        assert_eq!(c["closed"], true, "{action}: {c}");
+        assert!(c["snooze_until"].is_null(), "{action}: the hold ended: {c}");
+        assert!(
+            c["waiting_on"].is_null(),
+            "{action}: nobody is waited on: {c}"
         );
     }
+    let assigned = case(&node, &p, &worked[1].1).await;
+    assert_eq!(
+        assigned["assigned_to"], "user:priya",
+        "the owner stays on the closed case"
+    );
+
+    let emailed = &worked[4].1;
+    let asks = call(
+        &node,
+        &p,
+        "nube",
+        "case.request.list",
+        json!({ "case_id": emailed }),
+    )
+    .await
+    .expect("request.list ok");
+    let asks = asks
+        .get("items")
+        .unwrap_or(&asks)
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(asks.len(), 1, "{asks:?}");
+    assert_eq!(
+        asks[0]["status"], "withdrawn",
+        "the open ask is taken back: {asks:?}"
+    );
+    assert_eq!(pass(&node, 4 * DAY).await, 0, "idempotent");
 }
 
 /// **A grouped case waits for EVERY member.** The verdict case holds the root, two symptoms and the
