@@ -399,7 +399,8 @@ the contract. Where they disagree after the code lands, the record wins and this
     and the hold-down both read the closed set, and a product's wording does not belong in it.
 11. **My Insights' five lanes are server lanes, personal and disjoint.** `case.list` takes `lane`
     `action` / `assigned` / `emailed` / `hold` / `closed` beside the ownership three; `my_lane`
-    puts each case in at most one, in that precedence order: closed by me in the last 7 days →
+    puts each case in at most one, in that precedence order: closed by me, or mine when it closed
+    (`owned_at_close`, decision 14), in the last 7 days →
     snoozed and mine (or snoozed by me) → emailed by me with the ball still out → mine → assigned
     by me to someone else. "By me" needed two new facts on the case: `assigned_by` (set by
     `case.assign`, cleared with the assignment) and `emailed_by` (set by `case.request.send`).
@@ -423,24 +424,42 @@ the contract. Where they disagree after the code lands, the record wins and this
       email-out. Either one, by a person (`user:`), on work with no owner makes that person the
       owner (`assigned` event); a system actor never takes ownership.
     - **Hold ending** goes back to Assigned when there is an owner, else Open.
-    - **Close** ends the hold and the email-out and keeps the owner on record. **Reopen** to Open
-      clears the owner too (`assigned` event): a reopened job goes back to the queue, as a new one.
+    - **Close** ends the hold and the email-out and takes the owner off (decision 14); who held it
+      is kept as `owned_at_close`. **Reopen** to Open leaves it unowned (`assigned` event): a
+      reopened job goes back to the queue, as a new one.
 
     | Start | Assign me | Assign other | Unassign | Email | Hold | End hold | Close | Reopen |
     |---|---|---|---|---|---|---|---|---|
     | Open · – | Assigned · me | Assigned · other | – | Emailed · me | On hold · me | – | Closed · – | – |
-    | Assigned · me | no change | Assigned · other | Open · – | Emailed · me | On hold · me | – | Closed · me | – |
-    | Assigned · other | Assigned · me | Assigned · other | Open · – | Emailed · other | On hold · other | – | Closed · other | – |
-    | Emailed · me | no change | Assigned · other | Emailed · – | Emailed · me | On hold · me | – | Closed · me | – |
-    | Emailed · other | Assigned · me | Assigned · other | Emailed · – | Emailed · other | On hold · other | – | Closed · other | – |
+    | Assigned · me | no change | Assigned · other | Open · – | Emailed · me | On hold · me | – | Closed · – | – |
+    | Assigned · other | Assigned · me | Assigned · other | Open · – | Emailed · other | On hold · other | – | Closed · – | – |
+    | Emailed · me | no change | Assigned · other | Emailed · – | Emailed · me | On hold · me | – | Closed · – | – |
+    | Emailed · other | Assigned · me | Assigned · other | Emailed · – | Emailed · other | On hold · other | – | Closed · – | – |
     | Emailed · – | Assigned · me | Assigned · other | – | Emailed · me | On hold · me | – | Closed · – | – |
-    | On hold · me | no change | Assigned · other | On hold · – | Emailed · me | On hold · me | Assigned · me | Closed · me | – |
-    | On hold · other | Assigned · me | Assigned · other | On hold · – | Emailed · other | On hold · other | Assigned · other | Closed · other | – |
+    | On hold · me | no change | Assigned · other | On hold · – | Emailed · me | On hold · me | Assigned · me | Closed · – | – |
+    | On hold · other | Assigned · me | Assigned · other | On hold · – | Emailed · other | On hold · other | Assigned · other | Closed · – | – |
     | On hold · – | Assigned · me | Assigned · other | – | Emailed · me | On hold · me | Open · – | Closed · – | – |
-    | Closed | – | – | – | – | – | – | – | Open · – |
+    | Closed · – | – | – | – | – | – | – | – | Open · – |
+
+    The finding firing again after a close: a `fixed` close inside the hold-down window reopens
+    the same case, Open · –; any other close, or a later firing, opens a new case, Open · –
+    (decision 14).
 
     *Rejected: Reopen assigns the reopener* (the mock-up's choice) — a case that reopens itself on
     a new firing has no one to give it to, and the bulk Reopen already went to Open.
+14. **A close restarts the workflow** (2026-10-29, asked for by ESR's ops lead). Every close, by a
+    person or by self-clear, takes the owner off the case (`assigned_to`, `assigned_by`) and off
+    its insights' echo. Who held it moves to `owned_at_close` and onto the close event (`owner`),
+    which is what the *Closed* lane reads (decision 11); a reopen clears it. When the finding
+    fires again the new case opens Open with nobody on it, its SLA clock running, in the open
+    queue. Grouping and `case.open` take an owner only from an insight that has never been in a
+    case (a finding a person triaged before the case plane existed). The trigger: ten re-fired
+    ESR findings opened new cases that copied the insight's echo of the previous case's owner,
+    and sat in that person's My action as "Open · You" with nobody having picked them up.
+    *Rejected: start such a case as Assigned* — it would carry a weeks-old hand-off into new work
+    and pause its SLA from the first minute. *Rejected: keep the owner on the closed case and only
+    stop the inheritance* — the closed case would still read as somebody's, and the insight's echo
+    would keep a person on a finding nobody is working.
 
 ## Related
 

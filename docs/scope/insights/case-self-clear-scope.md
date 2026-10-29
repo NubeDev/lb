@@ -8,8 +8,9 @@ Extends [`case-plane-scope.md`](case-plane-scope.md) §"Reactors".
 > gone. Under an opted-in policy, a case whose insights have ALL resolved now closes `self_cleared`
 > from any stage: commented, assigned, actioned, on hold or emailed. The insight going inactive is
 > the answer; an assigned case left open after its problem cleared was the queue disagreeing with
-> itself again, and the roster needed a hollow dot to say so. On close: the owner stays on the case
-> (who had it), the close path ends any hold and clears `waiting_on`, and every ask still live on the
+> itself again, and the roster needed a hollow dot to say so. On close: the owner comes off the case
+> and its insights, kept as `owned_at_close` for the Closed lane (case-plane decision 14), the close
+> path ends any hold and clears `waiting_on`, and every ask still live on the
 > case (`sent` / `opened`) is withdrawn by `system:self-clear` — its token dies and its nudge ladder
 > is cancelled. A replied ask is left as it is. A problem that comes back still opens a NEW case.
 > The goals and tests below that speak of "untouched" describe the 2026-09-29 version;
