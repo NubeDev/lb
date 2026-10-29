@@ -4,8 +4,9 @@
 //!
 //! **lb names no column.** A sort is a list of SOURCES tried left to right, the first non-empty one
 //! wins: `title`, `tag:<key>`, or one of the numeric facts (`severity`, `last_ts`, `first_ts`,
-//! `count`, and the case lens's `case_stage`, `case_status`, `case_owner` and `case_ref`). A roster whose Name column shows `short_name`, else the `insight` tag, else
-//! the title sorts by `["tag:short_name", "tag:insight", "title"]`.
+//! `count`). A roster whose Name column shows `short_name`, else the `insight` tag, else the title
+//! sorts by `["tag:short_name", "tag:insight", "title"]`. The case lens's `case_stage`,
+//! `case_status`, `case_owner` and `case_ref` are validated here but sorted in memory (`lens_sort`).
 //!
 //! **Empty values sort last in BOTH directions** (`_e` is ordered before the key): a column of dashes
 //! is not information, and a descending sort that put every blank first would bury the rows that
@@ -16,8 +17,6 @@
 //! sort costs what the default costs.
 //!
 //! One responsibility: validate a sort and render it as SQL.
-
-use serde_json::Value;
 
 use crate::case_scope::CaseScope;
 use crate::error::InsightsError;
@@ -43,7 +42,6 @@ pub(crate) struct Order {
     pub select: String,
     /// The `ORDER BY` list.
     pub order_by: String,
-    pub bindings: Vec<(String, Value)>,
 }
 
 /// The default order: newest activity first, the id breaking same-`ts` ties.
@@ -85,99 +83,33 @@ fn source(s: &str) -> Option<Source<'_>> {
 }
 
 /// Render `spec` (already [`validate`]d) as SQL. `None` ⇒ the default order, unchanged.
-pub(crate) fn order(spec: Option<&SortSpec>, case: Option<&CaseScope>) -> Order {
-    let Some(spec) = spec else {
+pub(crate) fn order(spec: Option<&SortSpec>) -> Order {
+    // The case lens's sorts are done in memory over the matched set (`lens_sort`), not here.
+    let Some(spec) = spec.filter(|_| crate::lens_sort::lens_source(spec).is_none()) else {
         return Order {
             select: String::new(),
             order_by: DEFAULT_ORDER.into(),
-            bindings: Vec::new(),
         };
     };
-    let mut bindings = Vec::new();
     let key = match spec.by.as_slice() {
-        [one] if matches!(source(one), Some(Source::Numeric(_))) => {
-            numeric(one, case, &mut bindings)
-        }
+        [one] if matches!(source(one), Some(Source::Numeric(_))) => numeric(one),
         many => column_text(many),
     };
     let dir = if spec.desc { "DESC" } else { "ASC" };
     Order {
         select: format!(", {key} AS _k, ({key} IS NONE OR {key} = '') AS _e"),
         order_by: format!("_e ASC, _k {dir}, {DEFAULT_ORDER}"),
-        bindings,
     }
 }
 
-fn numeric(src: &str, case: Option<&CaseScope>, bindings: &mut Vec<(String, Value)>) -> String {
+fn numeric(src: &str) -> String {
     match src {
         // The closed set, ranked as `Severity::rank` ranks it (a stored word does not order).
         "severity" => "(IF data.severity = 'critical' THEN 2 \
                        ELSE IF data.severity = 'warning' THEN 1 ELSE 0 END)"
             .into(),
-        // The host's stage order; a detection with no known case has no stage (empty ⇒ last).
-        "case_stage" => match case {
-            Some(scope) => ranked("stage_rank", &scope.stage_of, &scope.stage_order, bindings),
-            None => "NONE".into(),
-        },
-        // The status word, in the host's order (the chip the Status column draws).
-        "case_status" => match case {
-            Some(scope) => ranked(
-                "status_rank",
-                &scope.status_of,
-                &scope.status_order,
-                bindings,
-            ),
-            None => "NONE".into(),
-        },
-        // Who holds it, alphabetically by the host's key; nobody holds it ⇒ empty ⇒ last.
-        "case_owner" => match case {
-            Some(scope) => {
-                let mut order: Vec<String> = scope.owner_of.values().cloned().collect();
-                order.sort();
-                order.dedup();
-                ranked("owner_rank", &scope.owner_of, &order, bindings)
-            }
-            None => "NONE".into(),
-        },
-        // The case's running number, looked up by the detection's case id in one bound object (one
-        // binding however many cases); no case or no number ⇒ empty ⇒ last.
-        "case_ref" => match case {
-            Some(scope) => {
-                let map: serde_json::Map<String, Value> = scope
-                    .seq_of
-                    .iter()
-                    .map(|(id, n)| (id.clone(), Value::from(*n)))
-                    .collect();
-                bindings.push(("case_seq".into(), Value::Object(map)));
-                "$case_seq[data.case_id]".into()
-            }
-            None => "NONE".into(),
-        },
         other => format!("data.{other}"),
     }
-}
-
-/// A rank per case id: `values` maps a case id to its label, `order` ranks the labels. One bound id
-/// list per label, so the SQL carries no value of its own. A case whose label is unranked, and a
-/// detection with no case, has no rank (empty ⇒ last).
-fn ranked(
-    prefix: &str,
-    values: &std::collections::HashMap<String, String>,
-    order: &[String],
-    bindings: &mut Vec<(String, Value)>,
-) -> String {
-    let mut expr = "NONE".to_string();
-    for (rank, label) in order.iter().enumerate().rev() {
-        let name = format!("{prefix}_{rank}");
-        let ids: Vec<Value> = values
-            .iter()
-            .filter(|(_, l)| *l == label)
-            .map(|(id, _)| Value::String(id.clone()))
-            .collect();
-        bindings.push((name.clone(), Value::Array(ids)));
-        expr = format!("(IF data.case_id IN ${name} THEN {rank} ELSE {expr} END)");
-    }
-    expr
 }
 
 #[cfg(test)]

@@ -38,6 +38,7 @@ mod filter_sql;
 mod get;
 mod intent;
 mod ladder;
+mod lens_sort;
 mod list;
 mod list_page;
 mod match_subs;

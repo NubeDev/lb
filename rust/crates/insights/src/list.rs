@@ -260,7 +260,8 @@ pub async fn list(
             ));
         }
     }
-    let order = crate::sort_sql::order(query.sort.as_ref(), f.case.as_ref());
+    let order = crate::sort_sql::order(query.sort.as_ref());
+    let lens_sort = crate::lens_sort::lens_source(query.sort.as_ref());
     for key in [&f.tag_missing, &query.tag_counts].into_iter().flatten() {
         if !crate::search_columns::plain_ident(key) {
             return Err(InsightsError::BadInput(format!(
@@ -295,7 +296,9 @@ pub async fn list(
     // the limit all push down, so a 50-row page reads 50 rows instead of the whole table. The scan
     // path below stays for the tally case, where the counts cover the WHOLE matching set and every
     // matching row must therefore be seen.
-    if !query.counts {
+    // A case lens sort is the exception: it orders in memory (`lens_sort`), so it reads the matched
+    // set below even without a tally, and every page is sliced from that one sort.
+    if !query.counts && lens_sort.is_none() {
         let limit = query.limit.min(500);
         let page = crate::list_page::read(
             store,
@@ -443,7 +446,11 @@ pub async fn list(
 
     // The rows arrived in the statement's order (the sort, else newest first by (last_ts, id)) and
     // filtering kept it, so there is nothing to re-sort: a second, Rust-side sort could order
-    // differently from the pushed-down page and skip or repeat a row across pages.
+    // differently from the pushed-down page and skip or repeat a row across pages. A case lens sort
+    // never pushes down (above), so it is the one order made here.
+    if let (Some(src), Some(scope), Some(spec)) = (lens_sort, f.case.as_ref(), &query.sort) {
+        crate::lens_sort::sort(&mut items, src, spec.desc, scope);
+    }
 
     // Keyset: strictly after the cursor in the (last_ts DESC, id DESC) order.
     if let Some(cur) = &query.cursor {
