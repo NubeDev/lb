@@ -3,10 +3,12 @@
 //! email — ends the hold, SLA pause and all. And `waiting_on_po` is retired: a stored record that
 //! still says it reads as `actioned`. Against a real store.
 
+use std::collections::BTreeSet;
+
 use lb_cases::{
-    append_event, assign, get, open, set_deadlines, set_waiting_on, settle_one_state, snooze,
-    workflow, workflow_with_reason, Deadlines, EventKind, Grouping, OpenInput, Resolution,
-    WaitingOn, Workflow, CASE_TABLE,
+    append_event, assign, get, my_lane, open, set_deadlines, set_waiting_on, settle_one_state,
+    snooze, workflow, workflow_with_reason, Deadlines, EventKind, Grouping, Lane, OpenInput,
+    Resolution, WaitingOn, Workflow, CASE_TABLE,
 };
 use lb_store::Store;
 
@@ -452,10 +454,18 @@ async fn reopening_to_open_returns_the_job_to_the_queue() {
     .await
     .unwrap();
     let closed = get(&store, WS, &id).await.unwrap().unwrap();
+    assert_eq!(closed.assigned_to, None, "a close takes the owner off");
+    assert_eq!(closed.assigned_by, None);
     assert_eq!(
-        closed.assigned_to.as_deref(),
+        closed.owned_at_close.as_deref(),
         Some("user:sam"),
-        "Close keeps the owner on record"
+        "who held it is kept"
+    );
+    // ...so the Closed lane still shows it to them, whoever closed it.
+    let sam = BTreeSet::from(["user:sam".to_string()]);
+    assert_eq!(
+        my_lane(&closed, &sam, OPENED + 3 * HOUR),
+        Some(Lane::Closed)
     );
     let reopened = workflow(
         &store,
@@ -472,6 +482,10 @@ async fn reopening_to_open_returns_the_job_to_the_queue() {
     assert_eq!(reopened.workflow, Workflow::ToAction);
     assert_eq!(reopened.assigned_to, None);
     assert_eq!(reopened.assigned_by, None);
+    assert_eq!(
+        reopened.owned_at_close, None,
+        "a reopen forgets the last close's owner"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

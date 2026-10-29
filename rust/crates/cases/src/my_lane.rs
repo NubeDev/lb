@@ -30,7 +30,7 @@ pub fn my_lane(case: &Case, me: &BTreeSet<String>, now: u64) -> Option<Lane> {
         let recent = case
             .resolved_ts
             .is_some_and(|t| now.saturating_sub(t) <= CLOSED_LANE_MS);
-        return (recent && (is_me(&case.resolved_by) || is_me(&case.assigned_to)))
+        return (recent && (is_me(&case.resolved_by) || is_me(&case.owned_at_close)))
             .then_some(Lane::Closed);
     }
     let mine = is_me(&case.assigned_to);

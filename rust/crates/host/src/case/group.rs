@@ -281,8 +281,15 @@ pub(super) async fn open_for(
             site: facets.site,
             scope: facets.scope,
             subsystem: facets.subsystem,
-            // The triage backfill: a finding a person already owns opens a case they already own.
-            assigned_to: insight.assigned_to.clone(),
+            // A finding a person owned before it ever had a case (the triage backfill) opens a case
+            // they own. One that has been in a case before starts unowned: its `assigned_to` is an
+            // echo of that EARLIER case's owner, and a finding that comes back after a close is new
+            // work for whoever picks it up, not a quiet hand-back to the last holder.
+            assigned_to: insight
+                .case_id
+                .is_none()
+                .then(|| insight.assigned_to.clone())
+                .flatten(),
             caveated: facets.caveated,
             impact_rate: impact.rate,
             impact_tier: impact.tier,

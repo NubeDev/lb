@@ -32,7 +32,7 @@ pub async fn case_workflow(
 ) -> Result<Case, CaseSvcError> {
     authorize_tool(principal, ws, "case.workflow").map_err(|_| CaseSvcError::Denied)?;
     super::entity_filter::ensure_visible(store, principal, ws, id).await?;
-    Ok(lb_cases::workflow_with_reason(
+    let case = lb_cases::workflow_with_reason(
         store,
         ws,
         id,
@@ -43,5 +43,11 @@ pub async fn case_workflow(
         principal.sub(),
         ts,
     )
-    .await?)
+    .await?;
+    // A close took the owner off the case (`lb_cases::workflow`); the insights' echo follows, so a
+    // finding that fires again carries no owner into its next case.
+    if case.owned_at_close.is_some() && case.closed {
+        super::echo_case_owner(store, ws, id, None).await;
+    }
+    Ok(case)
 }

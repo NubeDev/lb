@@ -158,7 +158,7 @@ async fn assign_one(
         .await
         .map_err(InsightSvcError::from)?;
     if outcome.changed {
-        crate::case::echo_case_owner(node, ws, &case_id, assignee).await;
+        crate::case::echo_case_owner(&node.store, ws, &case_id, assignee).await;
     }
     Ok(outcome.changed)
 }

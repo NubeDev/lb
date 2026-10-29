@@ -72,7 +72,12 @@ pub async fn case_open(
             site: facets.site,
             scope: facets.scope,
             subsystem: facets.subsystem,
-            assigned_to: insight.assigned_to.clone(),
+            // Owner as a reactor's open takes it (`group.rs`): only from a finding never in a case.
+            assigned_to: insight
+                .case_id
+                .is_none()
+                .then(|| insight.assigned_to.clone())
+                .flatten(),
             caveated: facets.caveated,
             // A person opening a case gets the same money echo a reactor would. The rate is a
             // property of the finding, not of who filed the work — and a case whose figure depended

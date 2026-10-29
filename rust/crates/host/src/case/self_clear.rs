@@ -102,9 +102,13 @@ pub async fn close_self_cleared_cases(
         )
         .await
         {
-            Ok(_) => {
+            Ok(after) => {
                 closed += 1;
                 withdraw_open_asks(node, ws, &case.id, now).await;
+                // The close took the owner off; so does the insights' echo (see `workflow.rs`).
+                if after.owned_at_close.is_some() {
+                    super::echo_case_owner(&node.store, ws, &case.id, None).await;
+                }
             }
             // One case that will not close must not stop the pass; the next tick retries it.
             Err(e) => {

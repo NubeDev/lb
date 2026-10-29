@@ -234,3 +234,95 @@ async fn a_re_fire_long_after_a_fix_opens_a_new_case() {
         "outside the window the repair DID hold; this is new work"
     );
 }
+
+/// **A close restarts the workflow.** An owned case closes (by hand here; self-clear takes the same
+/// path) and the finding fires again: the new case is Open with NOBODY on it, and the insight carries
+/// no owner either. Before, the insight's echo of the old owner rode into the new case, which then
+/// sat in that person's queue as Open, the clock running, with nobody having picked it up.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_re_fire_after_a_close_opens_unowned() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    seed_roster(&node, "nube").await;
+    let p = principal("user:test", "nube", ALL);
+    let day: u64 = 24 * 60 * 60 * 1000;
+
+    let id = call(
+        &node,
+        &p,
+        "nube",
+        "insight.raise",
+        raise_input("own-1", day),
+    )
+    .await
+    .expect("ok")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let first = case_of(&node, &p, "nube", &id).await;
+    call(
+        &node,
+        &p,
+        "nube",
+        "case.assign",
+        json!({ "id": first, "assignee": "user:priya", "ts": day + 1 }),
+    )
+    .await
+    .expect("assign ok");
+    let held = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get ok");
+    assert_eq!(
+        held["assigned_to"], "user:priya",
+        "the insight echoes its case's owner"
+    );
+
+    call(
+        &node,
+        &p,
+        "nube",
+        "case.workflow",
+        json!({ "id": first, "workflow": "resolved", "resolution": "accepted_risk", "ts": 2 * day }),
+    )
+    .await
+    .expect("close ok");
+    let closed = call(&node, &p, "nube", "case.get", json!({ "id": first }))
+        .await
+        .expect("get ok");
+    assert!(
+        closed["assigned_to"].is_null(),
+        "a close takes the owner off: {closed}"
+    );
+    assert_eq!(
+        closed["owned_at_close"], "user:priya",
+        "who held it is kept"
+    );
+    let freed = call(&node, &p, "nube", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get ok");
+    assert!(
+        freed["assigned_to"].is_null(),
+        "the insight's echo follows: {freed}"
+    );
+
+    // The fault comes back: a new case (not a Fixed close, so no reopen), starting from scratch.
+    call(
+        &node,
+        &p,
+        "nube",
+        "insight.raise",
+        raise_input("own-1", 3 * day),
+    )
+    .await
+    .expect("re-raise ok");
+    let second = case_of(&node, &p, "nube", &id).await;
+    assert_ne!(second, first, "a new case, not the closed one");
+    let fresh = call(&node, &p, "nube", "case.get", json!({ "id": second }))
+        .await
+        .expect("get ok");
+    assert_eq!(fresh["workflow"], "to_action");
+    assert!(
+        fresh["assigned_to"].is_null(),
+        "the new case is nobody's yet: {fresh}"
+    );
+    assert!(fresh["owned_at_close"].is_null());
+}
