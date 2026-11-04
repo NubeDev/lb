@@ -28,12 +28,19 @@ pub fn parse_local(s: &str) -> Result<NaiveDateTime, ScheduleError> {
         value: s.to_string(),
         reason,
     };
-    let dt = NaiveDateTime::parse_from_str(s, FORMAT).map_err(|e| invalid(e.to_string()))?;
-    // chrono accepts unpadded fields ("2026-2-1T1:00"); formatting back catches them.
-    if dt.format(FORMAT).to_string() != s {
+    // chrono accepts signs, long years and unpadded fields, so the shape is checked first.
+    let b = s.as_bytes();
+    let shaped = b.len() == 16
+        && b.iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            10 => *c == b'T',
+            13 => *c == b':',
+            _ => c.is_ascii_digit(),
+        });
+    if !shaped {
         return Err(invalid("expected YYYY-MM-DDTHH:MM".to_string()));
     }
-    Ok(dt)
+    NaiveDateTime::parse_from_str(s, FORMAT).map_err(|e| invalid(e.to_string()))
 }
 
 /// rubix-ce's lowercase day names.

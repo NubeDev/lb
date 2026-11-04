@@ -159,6 +159,8 @@ fn times_have_exactly_the_documented_shape() {
         "2026-02-01T10:00:00",
         "2026-2-1T10:00",
         "2026-02-01T1:00",
+        "-0001-01-01T00:00",
+        "+10000-01-01T00:00",
     ] {
         let mut d = offices();
         d["schedules"]["events"]["e1"]["dates"] =
