@@ -23,6 +23,7 @@ mod evaluate;
 mod evaluator;
 mod exceptions;
 mod key_order;
+mod next_change;
 mod parse;
 mod schedule;
 mod types;
@@ -36,6 +37,7 @@ pub use doc::{DateWindow, DatedEntry, DocConfig, DocSchedules, ScheduleDoc, Week
 pub use error::ScheduleError;
 pub use evaluate::{evaluate_local, Running, ScheduleNow};
 pub use evaluator::ScheduleEvaluator;
+pub use next_change::next_change;
 pub use parse::{minutes_of, parse_local, weekday_from_name};
 pub use schedule::{ExceptionEntry, Schedule};
 pub use types::{CombinedStats, Entry, ScheduleState, ScheduleStatus, TimeRange, Weekday};
