@@ -14,4 +14,8 @@ pub enum ScheduleError {
     /// A datetime string was not in the expected layout.
     #[error("invalid datetime string '{value}': {reason}")]
     InvalidDatetime { value: String, reason: String },
+
+    /// A schedule document broke a save rule; the message names the entry.
+    #[error("{0}")]
+    Invalid(String),
 }

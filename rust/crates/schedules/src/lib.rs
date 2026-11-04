@@ -17,15 +17,21 @@
 //! ```
 
 mod bulk;
+mod doc;
 mod error;
 mod evaluator;
 mod exceptions;
+mod parse;
 mod schedule;
 mod types;
 mod weekly;
+mod zone;
 
 pub use bulk::{create_bulk_override, create_date_range_override, create_scheduled_override};
+pub use doc::{DateWindow, DatedEntry, DocConfig, DocSchedules, ScheduleDoc, WeeklyEntry};
 pub use error::ScheduleError;
 pub use evaluator::ScheduleEvaluator;
+pub use parse::{minutes_of, parse_local, weekday_from_name};
 pub use schedule::{ExceptionEntry, Schedule};
 pub use types::{CombinedStats, Entry, ScheduleState, ScheduleStatus, TimeRange, Weekday};
+pub use zone::Zone;
