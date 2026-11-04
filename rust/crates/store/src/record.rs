@@ -11,7 +11,7 @@
 //! invisible to the plain [`read`](crate::read) path (which still returns just the host `data`),
 //! and surfaced explicitly via [`read_versioned`](crate::read_versioned).
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 /// The very first revision a record gets on its first write. A fresh write of a never-seen id
@@ -25,13 +25,18 @@ pub const FIRST_REV: u64 = 1;
 pub(crate) struct Record {
     pub data: Value,
     /// Store-managed monotonic revision. Defaults to [`FIRST_REV`] for records written before
-    /// `rev` existed (forward-compatible read of legacy rows).
-    #[serde(default = "default_rev")]
+    /// `rev` existed (forward-compatible read of legacy rows). `SELECT data, rev` hands such a row's
+    /// missing `rev` over as an explicit none, not an absent key, so `default` alone is not enough.
+    #[serde(default = "default_rev", deserialize_with = "rev_or_first")]
     pub rev: u64,
 }
 
 fn default_rev() -> u64 {
     FIRST_REV
+}
+
+fn rev_or_first<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    Ok(Option::<u64>::deserialize(d)?.unwrap_or(FIRST_REV))
 }
 
 // Delegated, NOT `#[derive(SurrealValue)]`: the derive does not read serde attributes, so it would
