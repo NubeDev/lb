@@ -7,9 +7,13 @@ use crate::error::ScheduleError;
 /// Minute of the day for `HH:MM` (`00:00` is 0, `23:59` is 1439). `24:00` is refused.
 pub fn minutes_of(hhmm: &str) -> Result<u32, ScheduleError> {
     let bad = || ScheduleError::InvalidTimeFormat(hhmm.to_string());
-    let (h, m) = hhmm.split_once(':').ok_or_else(bad)?;
-    let h: u32 = h.parse().map_err(|_| bad())?;
-    let m: u32 = m.parse().map_err(|_| bad())?;
+    // Exactly two digits, a colon, two digits: `7:5` and `+7:05` are refused.
+    let b = hhmm.as_bytes();
+    if b.len() != 5 || b[2] != b':' || ![0, 1, 3, 4].iter().all(|&i| b[i].is_ascii_digit()) {
+        return Err(bad());
+    }
+    let h: u32 = hhmm[..2].parse().map_err(|_| bad())?;
+    let m: u32 = hhmm[3..].parse().map_err(|_| bad())?;
     if h > 23 || m > 59 {
         return Err(bad());
     }
@@ -17,12 +21,19 @@ pub fn minutes_of(hhmm: &str) -> Result<u32, ScheduleError> {
 }
 
 /// A dated entry's local wall time, exactly as rubix-ce writes it (`YYYY-MM-DDTHH:MM`). Impossible
-/// dates (`2026-02-30`) are refused.
+/// dates (`2026-02-30`), seconds, offsets and unpadded fields are refused.
 pub fn parse_local(s: &str) -> Result<NaiveDateTime, ScheduleError> {
-    NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").map_err(|e| ScheduleError::InvalidDatetime {
+    const FORMAT: &str = "%Y-%m-%dT%H:%M";
+    let invalid = |reason: String| ScheduleError::InvalidDatetime {
         value: s.to_string(),
-        reason: e.to_string(),
-    })
+        reason,
+    };
+    let dt = NaiveDateTime::parse_from_str(s, FORMAT).map_err(|e| invalid(e.to_string()))?;
+    // chrono accepts unpadded fields ("2026-2-1T1:00"); formatting back catches them.
+    if dt.format(FORMAT).to_string() != s {
+        return Err(invalid("expected YYYY-MM-DDTHH:MM".to_string()));
+    }
+    Ok(dt)
 }
 
 /// rubix-ce's lowercase day names.

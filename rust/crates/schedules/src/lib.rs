@@ -24,6 +24,7 @@ mod exceptions;
 mod parse;
 mod schedule;
 mod types;
+mod validate;
 mod weekly;
 mod zone;
 
@@ -34,4 +35,5 @@ pub use evaluator::ScheduleEvaluator;
 pub use parse::{minutes_of, parse_local, weekday_from_name};
 pub use schedule::{ExceptionEntry, Schedule};
 pub use types::{CombinedStats, Entry, ScheduleState, ScheduleStatus, TimeRange, Weekday};
+pub use validate::{validate, PayloadLimits};
 pub use zone::Zone;
