@@ -9,6 +9,12 @@ const QUERIES: &[(&str, &[&str])] = &[
     (r#"crates/store/src/read.rs:23"#, &[r#"SELECT data FROM ONLY type::record($tb, $id)"#]),
     (r#"crates/store/src/read_versioned.rs:26"#, &[r#"SELECT data, rev FROM ONLY type::record($tb, $id)"#]),
     (r#"crates/store/src/delete.rs:21"#, &[r#"DELETE type::record($tb, $id) RETURN NONE"#]),
+    (r#"crates/store/src/write_if_rev.rs:20"#, &[r#"BEGIN TRANSACTION;
+    LET $live = IF type::record($tb, $id).data = NONE { 0 } ELSE { type::record($tb, $id).rev ?? $first };
+    IF $live != $expected { THROW 'rev-mismatch' };
+    UPSERT type::record($tb, $id) CONTENT { data: $data, rev: $expected + 1 } RETURN NONE;
+    COMMIT TRANSACTION;"#]),
+    (r#"crates/store/src/write_if_rev.rs:28"#, &[r#"RETURN IF type::record($tb, $id).data = NONE { 0 } ELSE { type::record($tb, $id).rev ?? $first };"#]),
     (r#"crates/store/tests/capped_test.rs:25"#, &[r#"SELECT count() AS c FROM type::table($tb) WHERE cap_key = $key GROUP ALL"#]),
     (r#"crates/store/tests/capped_test.rs:43"#, &[r#"SELECT VALUE seq FROM type::table($tb) WHERE cap_key = $key ORDER BY seq ASC"#]),
     (r#"crates/store/tests/capped_test.rs:227"#, &[r#"SELECT * OMIT id FROM type::record($tb, $id)"#]),
