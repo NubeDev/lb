@@ -23,7 +23,8 @@ or delete it. A flow `schedule` node following it holds its last state until the
 `schedule.get` and `schedule.list` return `rev`. Send it back with `schedule.save`. A save without
 `rev` (or with `0`) creates, and is refused with `schedule_exists` if the id is
 taken. If the record changed since you read it the save is refused with `schedule_stale` ("changed
-elsewhere, reload"). A save answers `{id, rev}`.
+elsewhere, reload"). A save answers `{id, rev}`. Treat `rev` as opaque, and read the schedule again after a delete: a recreated id starts again at
+`rev` 1.
 
 ## Evaluating
 
@@ -32,6 +33,8 @@ elsewhere, reload"). A save answers `{id, rev}`.
 together, exceptions switch the schedule off, and where entries overlap the one that started first
 gives the name and value. On a tie a weekly entry beats an event, then keys sort naturally (`w2`
 before `w10`). `next_transition` is a UTC instant and is `null` when the schedule is disabled.
+
+`exception_active` is true whenever an exception covers now, even if nothing would otherwise have run.
 
 A yearly entry that starts on 29 February is skipped in years without one; a yearly end on a
 missing 29 February becomes 1 March at midnight.
