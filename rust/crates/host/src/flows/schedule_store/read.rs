@@ -45,7 +45,7 @@ pub async fn read_schedule_internal(
         return Err(old_shape(id, live.rev));
     }
     let mut record: ScheduleRecord =
-        serde_json::from_value(value).map_err(|e| FlowsError::Internal(e.to_string()))?;
+        serde_json::from_value(value).map_err(|_| old_shape(id, live.rev))?;
     record.rev = Some(live.rev);
     Ok(Some(record))
 }

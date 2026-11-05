@@ -11,5 +11,11 @@ mod read_rev;
 #[path = "schedule/evaluate.rs"]
 mod evaluate;
 
+#[path = "schedule/save_rev.rs"]
+mod save_rev;
+
+#[path = "schedule/save_shape.rs"]
+mod save_shape;
+
 #[path = "schedule/flow_node.rs"]
 mod flow_node;

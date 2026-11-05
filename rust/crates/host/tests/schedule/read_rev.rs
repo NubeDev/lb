@@ -166,3 +166,21 @@ async fn an_old_row_without_a_rev_is_named_with_rev_1() {
         }]
     );
 }
+
+#[tokio::test]
+async fn a_row_that_does_not_decode_is_refused_naming_the_id() {
+    let store = Store::memory().await.unwrap();
+    let ws = "ws-sched-garbage-get";
+    seed(
+        &store,
+        ws,
+        json!({ "id": "bad", "schedule": { "schedules": { "weekly": "not a map" } } }),
+    )
+    .await;
+    let p = principal(ws, &[READ]);
+    let refusal = "schedule_old_shape: schedule `bad` is in the old shape (no `schedule` document); save over it with rev 1 or delete it";
+    assert_eq!(
+        bad_input(schedule_get(&store, &p, ws, "bad").await),
+        refusal
+    );
+}

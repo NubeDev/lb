@@ -140,10 +140,9 @@ async fn dispatch(
         // its own right, so it has its own CRUD rather than living inside one node's config. The
         // `schedule` flow node and the dashboard widget are both plain readers of these verbs.
         "schedule.save" => {
-            let record: schedule_store::ScheduleRecord = serde_json::from_value(input.clone())
-                .map_err(|e| FlowsError::BadInput(e.to_string()))?;
-            let id = schedule_store::schedule_save(&node.store, principal, ws, &record).await?;
-            Ok(json!({ "id": id }))
+            let save = schedule_store::ScheduleSave::from_input(input)?;
+            let saved = schedule_store::schedule_save(&node.store, principal, ws, &save).await?;
+            Ok(json!({ "id": saved.id, "rev": saved.rev }))
         }
         "schedule.get" => {
             let id = str_arg(input, "id")?;

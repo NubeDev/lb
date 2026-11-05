@@ -23,8 +23,7 @@ const GUARDED_UPSERT: &str = "BEGIN TRANSACTION;
     UPSERT type::record($tb, $id) CONTENT { data: $data, rev: $expected + 1 } RETURN NONE;
     COMMIT TRANSACTION;";
 
-/// The live revision alone, by the same rule as the guard. Not `read_versioned`: that cannot decode
-/// a row stored without a `rev`.
+/// The live revision alone, by the same rule as the guard.
 const LIVE_REV: &str =
     "RETURN IF type::record($tb, $id).data = NONE { 0 } ELSE { type::record($tb, $id).rev ?? $first };";
 

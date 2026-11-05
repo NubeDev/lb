@@ -18,8 +18,8 @@ pub use delete::schedule_delete;
 pub use evaluate::schedule_evaluate;
 pub use read::{read_schedule_internal, schedule_get, schedule_list};
 pub use record::{ScheduleEvaluation, ScheduleListing, ScheduleRecord, UnreadableSchedule};
-pub use refusal::SCHEDULE_OLD_SHAPE;
-pub use save::schedule_save;
+pub use refusal::{SCHEDULE_EXISTS, SCHEDULE_LEGACY_FIELDS, SCHEDULE_OLD_SHAPE, SCHEDULE_STALE};
+pub use save::{schedule_save, SavedSchedule, ScheduleSave};
 
 /// The SurrealDB table holding workspace-scoped global schedule records.
 pub const SCHEDULE_TABLE: &str = "schedule";
