@@ -282,6 +282,106 @@ async fn an_unenforced_policy_changes_nothing() {
     );
 }
 
+/// Switch the seeded policy to the `nav_pin` source and hand m1 a menu whose row PINS site B while its
+/// marker still says site A.
+async fn use_nav_pin(node: &Arc<Node>) {
+    let admin = admin();
+    let mut rec = call(
+        node,
+        &admin,
+        "federation.row_policy_get",
+        json!({"source": "esr"}),
+    )
+    .await
+    .unwrap();
+    rec["scope_sources"] = json!(["nav_pin"]);
+    call(node, &admin, "federation.row_policy_set", rec)
+        .await
+        .unwrap();
+    call(
+        node,
+        &admin,
+        "nav.save",
+        json!({"id":"g1menu","title":"Group 1","now":3,"items":[
+            {"kind":"group","label":"VIC","items":[{
+                "kind":"group","label":"Site B",
+                "vars":{"siteRef":"Site B","state":"VIC"},
+                "entity":{"table":"site","id":"Site A"},
+                "items":[]
+            }]}
+        ]}),
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn with_nav_pin_the_pin_grants_and_the_marker_does_not() {
+    let node = setup("with_nav_pin_the_pin_grants_and_the_marker_does_not", true).await;
+    use_nav_pin(&node).await;
+    let total = json!({"source": "esr", "sql": "SELECT SUM(v) FROM readings"});
+    assert_eq!(
+        first_number(
+            &call(&node, &member(), "federation.query", total.clone())
+                .await
+                .unwrap()
+        ),
+        1000.0
+    );
+    assert_eq!(
+        first_number(
+            &call(&node, &admin(), "federation.query", total)
+                .await
+                .unwrap()
+        ),
+        1010.0
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn with_nav_pin_a_menu_without_the_pin_reads_nothing() {
+    let node = setup("with_nav_pin_a_menu_without_the_pin_reads_nothing", true).await;
+    use_nav_pin(&node).await;
+    call(
+        &node,
+        &admin(),
+        "nav.save",
+        json!({"id":"g1menu","title":"Group 1","now":4,"items":[
+            {"kind":"group","label":"Site A","entity":{"table":"site","id":"Site A"},"items":[]}
+        ]}),
+    )
+    .await
+    .unwrap();
+    let rows = call(
+        &node,
+        &member(),
+        "federation.query",
+        json!({"source": "esr", "sql": "SELECT v FROM readings"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(rows["rows"].as_array().map(Vec::len), Some(0), "{rows}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nav_pin_is_refused_without_a_key_to_read() {
+    let node = setup("nav_pin_is_refused_without_a_key_to_read", true).await;
+    let admin = admin();
+    let mut rec = call(
+        &node,
+        &admin,
+        "federation.row_policy_get",
+        json!({"source": "esr"}),
+    )
+    .await
+    .unwrap();
+    rec["scope_sources"] = json!(["nav_pin"]);
+    rec["policy"]["entity_key"]["key_value"] = json!(" ");
+    assert!(call(&node, &admin, "federation.row_policy_set", rec)
+        .await
+        .is_err());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn no_menu_reads_nothing_a_pick_changes_nothing_and_two_menus_union() {
     let node = setup(

@@ -78,7 +78,7 @@ async fn whose(
     Ok(Principal::routed(subject, ws, caps))
 }
 
-/// The sources to union. Absent → every source lb knows (`nav` + `grant`). Present → each must be a
+/// The sources to union. Absent → every source lb knows (`nav`, `nav_pin`, `grant`). Present → each must be a
 /// known source: an unknown name is refused rather than silently contributing nothing, so a typo can
 /// never quietly shrink a scope to "nothing" and read as a denial of access.
 fn sources_arg(input: &Value) -> Result<Vec<String>, ToolError> {
@@ -110,10 +110,13 @@ mod tests {
 
     #[test]
     fn absent_sources_mean_every_known_source() {
-        assert_eq!(sources_arg(&json!({})).unwrap(), vec!["nav", "grant"]);
+        assert_eq!(
+            sources_arg(&json!({})).unwrap(),
+            vec!["nav", "nav_pin", "grant"]
+        );
         assert_eq!(
             sources_arg(&json!({"sources": null})).unwrap(),
-            vec!["nav", "grant"]
+            vec!["nav", "nav_pin", "grant"]
         );
     }
 

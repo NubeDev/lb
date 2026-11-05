@@ -100,6 +100,7 @@ pub use record::{
     datasource_tag, put as put_datasource, resolve as resolve_datasource, Datasource, TABLE,
 };
 pub use remove::datasource_remove;
+pub(crate) use row_policy::nav_pin_keys;
 #[cfg(feature = "page-cache")]
 pub(crate) use row_policy::{enforced_policies, row_scope_for};
 pub use row_policy::{
