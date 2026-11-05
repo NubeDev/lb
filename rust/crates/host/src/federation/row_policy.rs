@@ -82,6 +82,32 @@ pub async fn enforced_policies(
     Ok(found)
 }
 
+/// The pins the `nav_pin` source reads for `table`: `entity_key.key_value` of each enforced policy over
+/// that table that enabled the source. None enabled means the source adds nothing, so a caller asking
+/// for every source (`authz.entity_scope` with no list) gets no pin-derived ids by accident.
+pub(crate) async fn nav_pin_keys(
+    store: &Store,
+    ws: &str,
+    table: &str,
+) -> Result<Vec<String>, StoreError> {
+    Ok(enforced_policies(store, ws)
+        .await?
+        .iter()
+        .filter(|r| r.entity_table == table && r.scope_sources.iter().any(|s| s == "nav_pin"))
+        .filter_map(entity_key_value)
+        .map(str::to_string)
+        .collect())
+}
+
+/// The tag a policy's ids are matched against. Blank counts as absent.
+fn entity_key_value(rec: &RowPolicyRecord) -> Option<&str> {
+    rec.policy
+        .get("entity_key")?
+        .get("key_value")?
+        .as_str()
+        .filter(|v| !v.trim().is_empty())
+}
+
 /// The per-workspace cache behind [`enforced_policies`]: same TTL as the entity-scope cache, so a
 /// policy flip and a scope change become visible together.
 mod policy_cache {
@@ -171,6 +197,11 @@ pub async fn row_policy_set(
     if !shape_ok {
         return Err(FederationError::BadInput(
             "row policy: policy needs `tables` and `entity_key` objects".into(),
+        ));
+    }
+    if rec.scope_sources.iter().any(|s| s == "nav_pin") && entity_key_value(&rec).is_none() {
+        return Err(FederationError::BadInput(
+            "row policy: nav_pin needs policy.entity_key.key_value to name the pin".into(),
         ));
     }
     rec.ts = ts;

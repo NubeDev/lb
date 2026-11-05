@@ -62,6 +62,16 @@ a restricted caller reads it whole and never writes it.
 Ids}`; live (not minted into the token), ~30 s cache cleared on nav/grant/team/member events; keyed
 by `owner_sub()` so API keys, agents, reminders and report fires inherit their owner's scope.
 
+Sources: `nav` (markers on handed menus), `grant` (`data:<table>:read`), and `nav_pin`, added
+2026-11-05. `nav_pin` reads the same handed menus but takes each id from the row's pin named by the
+policy's `entity_key.key_value`, so a workspace keeps one value per row instead of a pin and a marker
+that can disagree (the failure seen on ESR: retagged sites where the pin moved and the marker did
+not, blank for non-admins, and markers granting a different site from the one the row opens).
+
+The trade: with `nav_pin` a pin is a grant, including one set only to pre-select a page, and a row
+with the pin cannot opt out. That is why it is opt-in per policy and `nav` stays the default. It
+reads stored rows only, so a `template-group` that fans out its pin at resolve time grants nothing.
+
 ### Enforcement
 1. `federation.query` (the one choke point for `query.run`, rules, `viz.query`, channel worker):
    restricted + no policy → deny; else `row_scope {policy, ids}` rides the sidecar input (and so its

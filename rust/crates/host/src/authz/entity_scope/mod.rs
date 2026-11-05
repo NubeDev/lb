@@ -5,6 +5,7 @@
 //!
 //! The scope is the UNION of the enabled sources (`scope_sources` on the datasource's row policy):
 //! - `nav` — entities marked on the menus the principal was HANDED ([`nav_source`]);
+//! - `nav_pin` — the same menus, reading the pin the policy's `entity_key` names instead of a marker;
 //! - `grant` — the entity-scoped grant `data:<table>:read` ([`grant_source`]).
 //!
 //! Fail closed: an unknown source, a source error, or no marked entities adds nothing. Only an
@@ -66,6 +67,7 @@ pub async fn entity_scope(
         for source in sources {
             let got = match source.as_str() {
                 "nav" => nav_source::entities(store, &acting, ws, table).await,
+                "nav_pin" => nav_source::pinned(store, &acting, ws, table).await,
                 "grant" => grant_source::entities(store, &acting, ws, table).await,
                 other => {
                     tracing::warn!(
@@ -99,4 +101,4 @@ pub fn invalidate_entity_scope(ws: &str) {
 }
 
 /// The source names a row policy may enable.
-pub const ENTITY_SCOPE_SOURCES: &[&str] = &["nav", "grant"];
+pub const ENTITY_SCOPE_SOURCES: &[&str] = &["nav", "nav_pin", "grant"];

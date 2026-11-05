@@ -65,10 +65,10 @@ pub use admin_lens::is_workspace_admin;
 pub use bounds::BUILTIN_PICK;
 pub use default::{nav_get_default, nav_set_default};
 pub use delete::nav_delete;
-pub use entity::collect_entities;
 #[allow(unused_imports)]
 // named by `NavItem::entity`; re-exported for embedders building menus
 pub use entity::NavEntity;
+pub use entity::{collect_entities, collect_pinned};
 pub use error::NavError;
 pub use ext_boards::{ext_nav_boards_get, ext_nav_boards_set};
 pub use ext_boards_model::{ExtBoardRow, ExtNavBoards, MAX_EXT_BOARD_ROWS, MAX_EXT_BOARD_SLOTS};
