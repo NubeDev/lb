@@ -19,3 +19,6 @@ mod save_shape;
 
 #[path = "schedule/flow_node.rs"]
 mod flow_node;
+
+#[path = "schedule/tool_path.rs"]
+mod tool_path;
