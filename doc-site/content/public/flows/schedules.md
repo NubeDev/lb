@@ -12,7 +12,7 @@ has a name, times, its own `value` and `color`. Dated entries may carry `kind` (
 in the record's `timezone`. Weekly ends are inclusive (`17:59` runs to 17:59:59); dated ends are
 exact.
 
-Since `node-v0.55.0` the old `weekly` / `exceptions` fields are gone. A record still stored in that
+Since `node-v0.56.0` the old `weekly` / `exceptions` fields are gone. A record still stored in that
 shape is refused: `schedule.get` and `schedule.evaluate` answer `schedule_old_shape`, and
 `schedule.list` names it under `unreadable` with its `rev`. A row whose `schedule` document is
 present but does not decode is treated the same way. Save over it in the new shape with that `rev`,
