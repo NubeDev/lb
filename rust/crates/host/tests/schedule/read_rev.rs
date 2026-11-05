@@ -178,9 +178,13 @@ async fn a_row_that_does_not_decode_is_refused_naming_the_id() {
     )
     .await;
     let p = principal(ws, &[READ]);
-    let refusal = "schedule_old_shape: schedule `bad` is in the old shape (no `schedule` document); save over it with rev 1 or delete it";
-    assert_eq!(
-        bad_input(schedule_get(&store, &p, ws, "bad").await),
-        refusal
+    let refusal = bad_input(schedule_get(&store, &p, ws, "bad").await);
+    assert!(
+        refusal.starts_with("schedule_old_shape: schedule `bad` does not read as a schedule ("),
+        "{refusal}"
+    );
+    assert!(
+        refusal.ends_with("); save over it with rev 1 or delete it"),
+        "{refusal}"
     );
 }

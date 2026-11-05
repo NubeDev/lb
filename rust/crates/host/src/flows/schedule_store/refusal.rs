@@ -21,6 +21,14 @@ pub(super) fn old_shape(id: &str, rev: u64) -> FlowsError {
     ))
 }
 
+/// A row with a `schedule` document that does not decode. Same code as the old shape: the client's
+/// answer is the same (save over it or delete it).
+pub(super) fn undecodable(id: &str, rev: u64, why: impl Display) -> FlowsError {
+    FlowsError::BadInput(format!(
+        "{SCHEDULE_OLD_SHAPE}: schedule `{id}` does not read as a schedule ({why}); save over it with rev {rev} or delete it"
+    ))
+}
+
 pub(super) fn stale(id: &str) -> FlowsError {
     FlowsError::BadInput(format!(
         "{SCHEDULE_STALE}: schedule `{id}` changed elsewhere, reload"

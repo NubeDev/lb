@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::authorize::authorize_read;
 use super::record::{ScheduleListing, ScheduleRecord, UnreadableSchedule};
-use super::refusal::old_shape;
+use super::refusal::{old_shape, undecodable};
 use super::SCHEDULE_TABLE;
 use crate::flows::error::FlowsError;
 
@@ -45,7 +45,7 @@ pub async fn read_schedule_internal(
         return Err(old_shape(id, live.rev));
     }
     let mut record: ScheduleRecord =
-        serde_json::from_value(value).map_err(|_| old_shape(id, live.rev))?;
+        serde_json::from_value(value).map_err(|e| undecodable(id, live.rev, e))?;
     record.rev = Some(live.rev);
     Ok(Some(record))
 }
