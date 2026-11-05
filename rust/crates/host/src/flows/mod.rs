@@ -151,8 +151,15 @@ async fn dispatch(
             serde_json::to_value(record).map_err(|e| FlowsError::Internal(e.to_string()))
         }
         "schedule.list" => {
-            let schedules = schedule_store::schedule_list(&node.store, principal, ws).await?;
-            Ok(json!({ "schedules": schedules }))
+            let listing = schedule_store::schedule_list(&node.store, principal, ws).await?;
+            // `unreadable` names old-shape and undecodable rows with their `rev`, so a script can
+            // find them and save over them. `rev_checked` is the version floor (design §5): it says
+            // this lb has the rubix-ce shape and rev-checked saves, even with no schedules yet.
+            Ok(json!({
+                "schedules": listing.schedules,
+                "unreadable": listing.unreadable,
+                "rev_checked": true,
+            }))
         }
         "schedule.delete" => {
             let id = str_arg(input, "id")?;

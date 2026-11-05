@@ -34,7 +34,6 @@ rust/crates/host/src/dashboard/model.rs 1056
 rust/crates/host/src/dashboard/pin.rs 623
 rust/crates/host/src/dashboard/share_closure.rs 462
 rust/crates/host/src/flows/run_store.rs 1008
-rust/crates/host/src/flows/schedule_store.rs 433
 rust/crates/host/src/lib.rs 507
 rust/crates/host/src/nav/reach.rs 534
 rust/crates/host/src/nav/resolve.rs 532
