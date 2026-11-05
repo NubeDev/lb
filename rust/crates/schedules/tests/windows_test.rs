@@ -51,3 +51,18 @@ fn a_29_february_start_is_skipped_in_a_short_year() {
         vec![(t(2028, 2, 29, 0, 0), t(2028, 3, 1, 0, 0))]
     );
 }
+
+#[test]
+fn a_29_february_end_becomes_1_march_in_a_short_year() {
+    let e = entry(
+        json!({ "name": "Occupied", "kind": "holiday", "yearly": true,
+        "dates": [{ "start": "2028-02-28T00:00", "end": "2028-02-29T00:00" }] }),
+    );
+    assert_eq!(
+        occurrences(&e, &[2028, 2029]),
+        vec![
+            (t(2028, 2, 28, 0, 0), t(2028, 2, 29, 0, 0)),
+            (t(2029, 2, 28, 0, 0), t(2029, 3, 1, 0, 0)),
+        ]
+    );
+}
