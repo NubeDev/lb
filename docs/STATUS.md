@@ -30,6 +30,13 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped 2026-11-04 (unreleased, needs the next `node-v*` tag; BREAKING for `schedule.*`):
+GLOBAL SCHEDULES IN THE RUBIX-CE SHAPE.** A schedule record is now the rubix-ce schedule document,
+evaluated by the box's rules with the running entry's name and value; saves are checked against
+the record's `rev`; the old `weekly`/`exceptions` fields and engine are removed and old-shape rows
+are refused until saved over. Session:
+[`flows/schedule-rubix-ce-shape-session.md`](sessions/flows/schedule-rubix-ce-shape-session.md).
+
 **Just fixed 2026-10-06 (unreleased) — `federation.migrate` IS RE-RUNNABLE ON POSTGRES.** Applying the
 same design twice planned CREATE TABLE again and failed, and each FK was created twice. Now a
 re-apply plans nothing, so an extension can migrate its own tables at every start-up. Debugging:

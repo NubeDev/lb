@@ -37,6 +37,7 @@ mod tables;
 mod taint;
 mod write;
 mod write_batch;
+mod write_if_rev;
 mod write_journaled;
 mod write_locked;
 mod write_tx;
@@ -134,6 +135,7 @@ pub use taint::{
 };
 pub use write::write;
 pub use write_batch::{write_batch, DeleteBatch, UpsertBatch, MAX_BATCH};
+pub use write_if_rev::{write_if_rev, RevWrite};
 pub use write_journaled::{write_journaled, JournalWrite};
 pub use write_locked::write_locked;
 pub use write_tx::{write_tx, Upsert};

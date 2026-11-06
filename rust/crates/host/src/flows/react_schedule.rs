@@ -129,6 +129,8 @@ async fn fire_one_schedule(
     // Evaluate the referenced GLOBAL schedule. A schedule that has been deleted (or was never
     // created) evaluates as inactive rather than erroring: one removed record must not wedge every
     // flow that referenced it, and an operator deleting a schedule reasonably means "nothing is on".
+    // A row in the old shape (or one that does not decode) is an error instead: it returns before
+    // the cursor is written, so the node keeps its last state and retries next pass.
     let record = read_schedule_internal(&node.store, ws, &trig.schedule_id).await?;
     let active = match &record {
         Some(r) => r.evaluate()?.is_active,

@@ -63,3 +63,22 @@ async fn rev_is_per_record_not_global() {
         "b's rev is independent of a's"
     );
 }
+
+/// A row written before `rev` existed (no `rev` field at all) reads as `FIRST_REV`, never a decode
+/// error: the schedule list and get name such a row with the rev to save over it with.
+#[tokio::test]
+async fn a_row_stored_without_a_rev_reads_as_first_rev() {
+    let store = Store::memory().await.unwrap();
+    let ws = "rev-legacy";
+    store
+        .query_ws(
+            ws,
+            "UPSERT type::record('kv', 'old') CONTENT { data: { n: 1 } } RETURN NONE",
+            vec![],
+        )
+        .await
+        .unwrap();
+    let v = read_versioned(&store, ws, "kv", "old").await.unwrap();
+    assert_eq!(v.rev, lb_store::FIRST_REV);
+    assert_eq!(v.value, Some(json!({"n": 1})));
+}

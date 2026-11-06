@@ -1,31 +1,25 @@
-//! Timezone-aware scheduling library.
+//! Timezone-aware schedules in the rubix-ce document shape (`weekly` / `events` / `exception` maps,
+//! the same key names rubix-ce and the box use), evaluated by the box's rules.
 //!
-//! # Quick start
-//!
-//! ```rust
-//! use lb_schedules::{Schedule, ScheduleEvaluator};
-//! use chrono::Weekday;
-//!
-//! let mut local = Schedule::new("hvac", false, "America/New_York", 1).unwrap();
-//! local.add_weekly_time_range(Weekday::Mon, "08:00", "17:00").unwrap();
-//!
-//! let mut eval = ScheduleEvaluator::new();
-//! eval.set_local_schedule(local);
-//!
-//! let state = eval.get_state();
-//! println!("active={}, source={}", state.is_active, state.active_source);
-//! ```
+//! Everything here is pure and clock-injected: [`evaluate_local`] and [`next_change`] take a local
+//! wall time, and [`Zone`] converts between instants and wall times (DST included). [`validate`]
+//! holds the save-time rules.
 
-mod bulk;
+mod doc;
 mod error;
-mod evaluator;
-mod exceptions;
-mod schedule;
-mod types;
-mod weekly;
+mod evaluate;
+mod key_order;
+mod next_change;
+mod parse;
+mod validate;
+mod windows;
+mod zone;
 
-pub use bulk::{create_bulk_override, create_date_range_override, create_scheduled_override};
+pub use doc::{DateWindow, DatedEntry, DocConfig, DocSchedules, ScheduleDoc, WeeklyEntry};
 pub use error::ScheduleError;
-pub use evaluator::ScheduleEvaluator;
-pub use schedule::{ExceptionEntry, Schedule};
-pub use types::{CombinedStats, Entry, ScheduleState, ScheduleStatus, TimeRange, Weekday};
+pub use evaluate::{evaluate_local, Running, ScheduleNow};
+pub use next_change::next_change;
+pub use parse::{minutes_of, parse_local, weekday_from_name};
+pub use validate::{validate, PayloadLimits};
+pub use windows::occurrences;
+pub use zone::Zone;

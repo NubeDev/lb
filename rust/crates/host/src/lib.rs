@@ -220,8 +220,9 @@ pub use flows::error::FlowsError;
 /// The global-schedule surface (`schedule.*`): the record shape + its CRUD/evaluate entry points, so
 /// an embedder (rubix-ai) can read and seed schedules through the library API.
 pub use flows::schedule_store::{
-    schedule_delete, schedule_evaluate, schedule_get, schedule_list, schedule_save,
-    DayScheduleSpec, ExceptionSpec, ScheduleEvaluation, ScheduleRecord, TimeRangeSpec,
+    schedule_delete, schedule_evaluate, schedule_get, schedule_list, schedule_save, SavedSchedule,
+    ScheduleEvaluation, ScheduleListing, ScheduleRecord, ScheduleSave, UnreadableSchedule,
+    SCHEDULE_EXISTS, SCHEDULE_LEGACY_FIELDS, SCHEDULE_OLD_SHAPE, SCHEDULE_STALE,
 };
 pub use flows::{
     arm_source, cron_is_valid, cron_run_id, disarm_source, fire_flipflop_node, fire_schedule_node,

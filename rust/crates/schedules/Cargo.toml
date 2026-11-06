@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Timezone-aware scheduling: weekly patterns, date exceptions, and priority-based evaluation"
+description = "Timezone-aware schedules in the rubix-ce document shape, evaluated by the box's rules"
 
 [lib]
 name = "lb_schedules"
@@ -15,3 +15,6 @@ chrono = { workspace = true, features = ["serde"] }
 chrono-tz = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

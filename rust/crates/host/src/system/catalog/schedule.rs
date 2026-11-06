@@ -13,7 +13,7 @@ pub(super) const SCHEDULE: &[HostTool] = &[
     HostTool {
         tool: "schedule.save",
         group: "schedule",
-        description: "create or update a global schedule (weekly windows + date exceptions)",
+        description: "create or update a global schedule (the rubix-ce document; send the rev you read, or no rev to create)",
     },
     HostTool {
         tool: "schedule.get",
@@ -33,6 +33,6 @@ pub(super) const SCHEDULE: &[HostTool] = &[
     HostTool {
         tool: "schedule.evaluate",
         group: "schedule",
-        description: "evaluate a schedule now: active state, which source won, next transition",
+        description: "evaluate a schedule now: active state, the running entry and its value, next transition",
     },
 ];
