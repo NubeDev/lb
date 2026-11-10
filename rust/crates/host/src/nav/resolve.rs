@@ -554,6 +554,14 @@ async fn resolve_group(
         Some(target) => (target.dashboard, target.vars),
         None => (String::new(), BTreeMap::new()),
     };
+    // A folder may open a core/extension PAGE instead of a board (nav-folder-target over a surface):
+    // `ext:<id>/<path>` opens that extension page, a core surface key opens that page. It rides the
+    // SAME readability gate a `surface` item does — a folder whose page the caller cannot reach stays
+    // a plain container, never a dead link. An empty `surface` is no page target, exactly as before.
+    let surface = match surface_gate_cap(&item.surface) {
+        Some(cap) if !holds_cap(principal, ws, cap) => String::new(),
+        _ => item.surface.clone(),
+    };
     Ok(Some(ResolvedItem {
         id: String::new(),
         nav_id: String::new(),
@@ -562,7 +570,7 @@ async fn resolve_group(
         label: label_or(&item.label, "Group"),
         icon: item.icon.clone(),
         icon_color: item.icon_color.clone(),
-        surface: String::new(),
+        surface,
         dashboard,
         ext: String::new(),
         nav: String::new(),
