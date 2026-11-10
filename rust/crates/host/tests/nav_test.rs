@@ -928,6 +928,78 @@ async fn group_carries_its_own_dashboard_when_readable_and_stays_a_container_oth
     }
 }
 
+// --- nav-folder-target over a surface: a group may open a PAGE of its own ------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn group_carries_its_own_surface_page_when_readable_and_strips_it_otherwise() {
+    let ws = "ws-nav-folder-surface";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+
+    // An EXTENSION page target is ungated (`surface_gate_cap` has no entry for `ext:…`): a folder
+    // opens its extension's overview, and every caller who sees the folder can reach it.
+    let owner = principal("user:test", ws, &[SAVE, RESOLVE]);
+    let mut ext_folder = group_item("UART", vec![surface_item("Channels", "channels")]);
+    ext_folder.surface = "ext:uart/overview".into();
+    nav_save(store, &owner, ws, "uart", "UART", vec![ext_folder], 1)
+        .await
+        .unwrap();
+    nav_pref_set(store, &owner, ws, Some("uart"), None, 2)
+        .await
+        .unwrap();
+    let r = nav_resolve(&node, &owner, ws).await.unwrap();
+    let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
+    assert_eq!(
+        grp.surface, "ext:uart/overview",
+        "folder opens its extension page"
+    );
+    assert_eq!(grp.dashboard, "", "a page target is not a board target");
+    assert_eq!(
+        grp.items.len(),
+        1,
+        "children still nest under a folder with a page target"
+    );
+
+    // A GATED core page (`rules`) rides the SAME readability gate a `surface` item does: a folder
+    // whose page the caller cannot reach stays a plain container rather than a dead link.
+    let mut rules_folder = group_item("Rules folder", vec![surface_item("Channels", "channels")]);
+    rules_folder.surface = "rules".into();
+    let with = principal("user:with", ws, &[SAVE, RESOLVE, RULES_RUN]);
+    nav_save(store, &with, ws, "rf", "RF", vec![rules_folder.clone()], 3)
+        .await
+        .unwrap();
+    nav_pref_set(store, &with, ws, Some("rf"), None, 4)
+        .await
+        .unwrap();
+    let grp = nav_resolve(&node, &with, ws)
+        .await
+        .unwrap()
+        .items
+        .into_iter()
+        .find(|i| i.kind == "group")
+        .unwrap();
+    assert_eq!(
+        grp.surface, "rules",
+        "caller with the page's cap keeps the target"
+    );
+
+    let without = principal("user:without", ws, &[SAVE, RESOLVE]);
+    nav_save(store, &without, ws, "rf2", "RF2", vec![rules_folder], 5)
+        .await
+        .unwrap();
+    nav_pref_set(store, &without, ws, Some("rf2"), None, 6)
+        .await
+        .unwrap();
+    let grp = nav_resolve(&node, &without, ws)
+        .await
+        .unwrap()
+        .items
+        .into_iter()
+        .find(|i| i.kind == "group")
+        .unwrap();
+    assert_eq!(grp.surface, "", "unreadable page → plain container");
+}
+
 // --- share roster: list_shares + unshare (the add/remove team surface) --------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
