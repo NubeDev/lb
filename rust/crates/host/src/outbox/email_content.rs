@@ -194,7 +194,8 @@ mod tests {
     #[test]
     fn a_public_origin_makes_the_invite_link_absolute() {
         // A relative `/accept?token=…` reaches Gmail as `http:///accept?token=…`, a dead link. The
-        // invite copy takes the same `{base_url}` as the request link.
+        // invite copy takes the same `{base_url}` as the request link. The accept page also needs
+        // the workspace (`ws`) to verify the token, so the link carries both.
         let c = content_for(
             "send_invite",
             &payload(None, None),
@@ -202,14 +203,16 @@ mod tests {
         );
         assert!(
             c.text
-                .contains("https://insights.example.com/accept?token=lbi_abc123"),
-            "text body must carry an absolute link: {}",
+                .contains("https://insights.example.com/accept?token=lbi_abc123&ws=nube"),
+            "text body must carry an absolute link with the workspace: {}",
             c.text
         );
         let html = c.html.expect("the catalog ships an HTML alternative");
         assert!(
-            html.contains("href=\"https://insights.example.com/accept?token=lbi_abc123\""),
-            "html href must be absolute: {html}"
+            html.contains(
+                "href=\"https://insights.example.com/accept?token=lbi_abc123&amp;ws=nube\""
+            ),
+            "html href must be absolute and carry the workspace: {html}"
         );
     }
 
