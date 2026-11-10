@@ -192,6 +192,28 @@ mod tests {
     }
 
     #[test]
+    fn a_public_origin_makes_the_invite_link_absolute() {
+        // A relative `/accept?token=…` reaches Gmail as `http:///accept?token=…`, a dead link. The
+        // invite copy takes the same `{base_url}` as the request link.
+        let c = content_for(
+            "send_invite",
+            &payload(None, None),
+            Some("https://insights.example.com"),
+        );
+        assert!(
+            c.text
+                .contains("https://insights.example.com/accept?token=lbi_abc123"),
+            "text body must carry an absolute link: {}",
+            c.text
+        );
+        let html = c.html.expect("the catalog ships an HTML alternative");
+        assert!(
+            html.contains("href=\"https://insights.example.com/accept?token=lbi_abc123\""),
+            "html href must be absolute: {html}"
+        );
+    }
+
+    #[test]
     fn without_a_public_origin_the_link_stays_relative_and_still_carries_the_token() {
         // The RED half of the case above, and the documented pre-existing behaviour: a node that was
         // never told its public name renders `{base_url}` empty rather than the literal `{base_url}`.
