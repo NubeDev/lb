@@ -10,8 +10,8 @@ notify.welcome = ¡Bienvenido, {name}!
 notify.new_messages = {name} te envió {count, plural, one{un mensaje} other{# mensajes}}
 report.reading = Lectura: {value, quantity, temperature} registrada el {ts, date}
 invite.email.subject = Te han invitado a unirte a {workspace}
-invite.email.body = Has sido invitado al espacio de trabajo {workspace}. Haz clic en el enlace para aceptar: /accept?token={token}
-invite.email.body_html = <p>Has sido invitado al espacio de trabajo <strong>{workspace}</strong>.</p><p><a href="/accept?token={token}">Aceptar la invitación</a></p>
+invite.email.body = Has sido invitado al espacio de trabajo {workspace}. Haz clic en el enlace para aceptar: {base_url}/accept?token={token}
+invite.email.body_html = <p>Has sido invitado al espacio de trabajo <strong>{workspace}</strong>.</p><p><a href="{base_url}/accept?token={token}">Aceptar la invitación</a></p>
 
 # El circuito con el contratista (case-plane scope, wave 2). `case.request.send` envía a una parte un
 # enlace a una página con token; después la escalera la avisa al 50 %/80 % de su ventana. Ambas

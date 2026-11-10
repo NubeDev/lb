@@ -363,9 +363,9 @@ so a host can turn it on.
   construction and by error mapping, and exercised by hand against a real relay.
 - **Postmark's wire is untested** — its validation and error classification are, the HTTP call is not (it
   is a true external with no local equivalent).
-- **The invite link is relative** (`/accept?token=…`), as it was before this slice: not clickable in a
-  mail client. A host can already fix it per workspace via a catalog override; a node-level public base
-  URL is a separate small ask against `invite_create`, not the transport.
+- ~~**The invite link is relative**~~ — fixed 2026-11-10: the `invite.email.*` copy now writes
+  `{base_url}/accept?token={token}`, the same public origin the request link uses, so a node with its
+  public URL set mails a clickable link (Gmail had turned `/accept?…` into the dead `http:///accept?…`).
 - **Double-send keeps its irreducible window** — a crash between "the relay accepted" and "the marker is
   committed" duplicates. Two mitigations, neither exactly-once.
 - **The push delivered ledger was not migrated** to the outbox-level one (above).

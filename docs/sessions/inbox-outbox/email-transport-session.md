@@ -204,6 +204,8 @@ accepted, which no test can own.
   that is not clickable. A host can already fix it per workspace via a catalog override
   (`message.set_catalog`), which is the honest answer for now; a node-level public base URL is a separate
   small ask that touches `invite_create`, not the transport.
+  **Update 2026-11-10:** fixed — the invite copy now uses `{base_url}` (the node's public origin, already
+  passed to every email render for the request link), so the link is absolute wherever the origin is set.
 - **Double-send has an irreducible window.** A crash between "the relay accepted" and "the marker is
   committed" duplicates on retry. Two mitigations (marker + stable `Message-ID`), neither exactly-once.
 - **Postmark is unexercised against the real API** — its config validation and error classification are
