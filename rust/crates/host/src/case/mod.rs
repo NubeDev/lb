@@ -41,6 +41,7 @@
 
 mod assign;
 mod assignees;
+mod assignees_all;
 mod breach;
 mod breach_notify;
 mod breach_reminder;

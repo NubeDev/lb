@@ -170,3 +170,57 @@ async fn every_subject_the_picker_offers_is_one_the_write_accepts() {
         .unwrap_or_else(|e| panic!("case.assign refused an offered subject {subject}: {e:?}"));
     }
 }
+
+/// The wide picker cap (`case/assignees_all.rs`). A caller on NO team, who would learn nothing from
+/// the narrow walk, sees every team and every live member once the workspace grants them
+/// `mcp:case.assignees.all:call` — the service-desk case the cap exists for.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_all_cap_offers_every_team_and_member() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    seed_roster(&node, "nube").await;
+    membership_add_raw(&node.store, "nube", "user:dana", 1)
+        .await
+        .expect("dana joins, on no team");
+
+    let desk = principal("user:test", "nube", &[LIST, "mcp:case.assignees.all:call"]);
+    let out = call(&node, &desk, "nube", "case.assignees", json!({}))
+        .await
+        .expect("the roster read");
+
+    assert_eq!(out["me"], json!("user:test"));
+    assert_eq!(
+        out["teams"],
+        json!([{ "team": "team:mechanical", "name": "Mechanical crew" }]),
+        "every team, including one the caller is not on: {out}"
+    );
+    assert_eq!(
+        out["users"],
+        json!(["user:dana", "user:priya"]),
+        "every live member except the caller, team or no team: {out}"
+    );
+}
+
+/// MANDATORY: the wide list is still one workspace's roster. A ws-B member never appears in ws-A's
+/// wide picker, however the cap was granted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_all_cap_stops_at_the_workspace_wall() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    seed_roster(&node, "nube").await;
+    membership_add_raw(&node.store, "acme", "user:dana", 1)
+        .await
+        .expect("dana joins acme only");
+    team_create(&node.store, "acme", "team:acme-crew", "Acme crew")
+        .await
+        .expect("acme team created");
+
+    let desk = principal("user:test", "nube", &[LIST, "mcp:case.assignees.all:call"]);
+    let out = call(&node, &desk, "nube", "case.assignees", json!({}))
+        .await
+        .expect("the roster read");
+
+    let blob = out.to_string();
+    assert!(
+        !blob.contains("dana") && !blob.contains("acme"),
+        "the wide picker leaked another workspace's member or team: {blob}"
+    );
+}

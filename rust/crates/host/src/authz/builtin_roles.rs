@@ -838,6 +838,10 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     // resolves the party by id.
     "mcp:party.upsert:call",
     "mcp:party.list:call",
+    // The WIDE assign picker (`case/assignees_all.rs`): every team and member instead of the
+    // caller's own teams. Admin only, because an admin already reads the roster through
+    // `membership.list`; a workspace grants it to anyone else (usually a team) on purpose.
+    "mcp:case.assignees.all:call",
     // The destructive half of the roster, its own cap for the reason above. Note that deleting is
     // the RARE gesture here: a party with history cannot be deleted at all (it would orphan the
     // requests sent to it) — retiring it with `active: false` is the everyday answer, and that
