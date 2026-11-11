@@ -53,6 +53,7 @@ use lb_mcp::authorize_tool;
 use lb_store::Store;
 use serde::{Deserialize, Serialize};
 
+use super::assignees_all::{whole_workspace, ASSIGNEES_ALL};
 use super::error::CaseSvcError;
 use crate::insight::team_member_edges;
 
@@ -95,6 +96,13 @@ pub async fn case_assignees(
     authorize_tool(principal, ws, "case.list").map_err(|_| CaseSvcError::Denied)?;
 
     let sub = principal.sub();
+    // A caller trusted with the whole roster gets it (`assignees_all.rs`); a failed read there falls
+    // through to the narrow walk below rather than failing the popover.
+    if authorize_tool(principal, ws, ASSIGNEES_ALL).is_ok() {
+        if let Some(all) = whole_workspace(store, ws, sub).await {
+            return Ok(all);
+        }
+    }
     let mut out = Assignees {
         me: sub.to_string(),
         ..Default::default()
