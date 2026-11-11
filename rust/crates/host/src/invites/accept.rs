@@ -196,22 +196,23 @@ async fn onboard(
         .await
         .map_err(|e| InviteError::Store(e.to_string()))?;
 
-    // Ensure built-in roles exist, then join the workspace (membership + role:member grant).
+    // Ensure built-in roles exist, then join the workspace. Membership is the membership row, not a
+    // role; the role decides only what the newcomer may do.
     ensure_builtin_authz_roles(store, ws).await?;
     raw::membership_add_raw(store, ws, sub, now).await?;
     let bare = sub.strip_prefix("user:").unwrap_or(sub);
-    raw::grant_assign_scoped(
-        store,
-        ws,
-        &Subject::User(bare.to_string()),
-        "role:member",
-        &raw::Scope::All,
-    )
-    .await?;
 
-    // Apply the invite's role/team grants (system-grant, not gated — the invite is the authority).
-    if !invite.role.is_empty() {
-        let role_cap = format!("role:{}", invite.role);
+    // Grant exactly the invite's role (system-grant, not gated — the invite is the authority). An
+    // invite that names no role falls back to `member`, so the newcomer is never left with no caps.
+    // `member` used to be granted on EVERY accept on top of the invite's role; roles only add, so an
+    // invite for `viewer` or a narrower custom role still landed a member who could edit boards and
+    // rules until an admin revoked it by hand.
+    {
+        let role_cap = if invite.role.is_empty() {
+            "role:member".to_string()
+        } else {
+            format!("role:{}", invite.role)
+        };
         raw::grant_assign_scoped(
             store,
             ws,
