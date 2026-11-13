@@ -26,3 +26,10 @@ request_link.email.body_html = {has_message, select, yes{{message_html}} other{<
 request_nudge.email.subject = Recordatorio: {has_reference, select, yes{{reference}: } other{}}un trabajo espera tu respuesta
 request_nudge.email.body = Un trabajo{has_reference, select, yes{ ({reference})} other{}} sigue esperando tu respuesta. Abre el enlace de la solicitud que te enviamos antes y responde.
 request_nudge.email.body_html = <p>Un trabajo{has_reference, select, yes{ ({reference})} other{}} sigue esperando tu respuesta.</p><p>Abre el enlace de la solicitud que te enviamos antes y responde.</p>
+
+# La escalación interna (case-escalate scope). `case.escalate` asigna un caso a un miembro o equipo
+# del espacio de trabajo y envía esto a cada persona. Sin token: el destinatario inicia sesión, así
+# que el enlace solo abre el caso.
+case_escalate.email.subject = {has_subject, select, yes{{subject}} other{Te han escalado: {title}{has_site, select, yes{ en {site}} other{}}}}
+case_escalate.email.body = {has_message, select, yes{{message}} other{Hola,\n\n{has_sender, select, yes{{sender} te ha} other{Un colega te ha}} escalado {title}{has_site, select, yes{ en {site}} other{}}.}}\n\nAbrir el caso: {base_url}/#/t/{workspace}/insights?tab=cases&case={case_id}
+case_escalate.email.body_html = {has_message, select, yes{<p>{message_html}</p>} other{<p>Hola,</p><p>{has_sender, select, yes{{sender_html} te ha} other{Un colega te ha}} escalado {title_html}{has_site, select, yes{ en {site_html}} other{}}.</p>}}<p><a href="{base_url}/#/t/{workspace}/insights?tab=cases&amp;case={case_id}">Abrir el caso</a></p>

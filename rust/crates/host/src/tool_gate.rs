@@ -139,6 +139,12 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // bundle, so without this arm both would be `Denied` for every caller including admins.
         // Both re-check inside.
         "case.request.send"
+    } else if qualified_tool == "case.escalate" {
+        // case-escalate scope: emailing a workspace member about a case (and handing it to them) is
+        // the grant "may email people about a case" already expresses — the internal twin of an ask.
+        // No `mcp:case.escalate:call` exists in any bundle, so without this arm the verb would be
+        // `Denied` for every caller. The assign half also checks `case.workflow` inside.
+        "case.request.send"
     } else if qualified_tool == "case.request.list" {
         // The asks raised on a case ARE the case's detail, exactly like its members and its history
         // — so the drawer's third list rides `case.get` beside the other two. No

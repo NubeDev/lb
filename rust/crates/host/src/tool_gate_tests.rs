@@ -83,6 +83,14 @@ mod case_gate_tests {
         // And it is NOT the write cap: a viewer who may see the queue may see who could own it.
         assert_ne!(gate_tool_for("case.assignees"), "case.workflow");
     }
+
+    /// The escalation rides the ask's cap: "may email people about a case" is the grant, so no new
+    /// one is minted on customer nodes. Not the viewer read cap — it sends mail and reassigns.
+    #[test]
+    fn the_escalation_rides_the_ask_cap() {
+        assert_eq!(gate_tool_for("case.escalate"), "case.request.send");
+        assert_ne!(gate_tool_for("case.escalate"), "case.list");
+    }
 }
 
 #[cfg(test)]

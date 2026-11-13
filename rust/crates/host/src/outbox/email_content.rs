@@ -325,6 +325,52 @@ mod tests {
     }
 
     #[test]
+    fn an_escalation_mail_carries_the_words_and_a_link_to_the_case() {
+        let mut p = payload(None, None);
+        p.token = String::new();
+        p.args = [
+            ("title", "Leak"),
+            ("site", "Gate 3"),
+            ("has_site", "yes"),
+            ("has_sender", "no"),
+            ("has_subject", "no"),
+            ("has_message", "no"),
+            ("case_id", "c1"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let c = content_for("case_escalate", &p, Some("https://x"));
+        assert_eq!(c.subject, "Escalated to you: Leak at Gate 3");
+        assert!(
+            c.text.ends_with(
+                "to you.\n\nOpen the case: https://x/#/t/nube/insights?tab=cases&case=c1"
+            ),
+            "{}",
+            c.text
+        );
+        let html = c.html.expect("the catalog ships an HTML alternative");
+        assert!(
+            html.contains("href=\"https://x/#/t/nube/insights?tab=cases&amp;case=c1\""),
+            "{html}"
+        );
+
+        // The sender's own subject and message win; the link still follows.
+        p.args.insert("has_subject".into(), "yes".into());
+        p.args.insert("subject".into(), "Please look".into());
+        p.args.insert("has_message".into(), "yes".into());
+        p.args.insert("message".into(), "Over to you.".into());
+        let c = content_for("case_escalate", &p, Some("https://x"));
+        assert_eq!(c.subject, "Please look");
+        assert!(
+            c.text
+                .starts_with("Over to you.\n\nOpen the case: https://x/#/t/nube/"),
+            "{}",
+            c.text
+        );
+    }
+
+    #[test]
     fn a_producer_argument_cannot_re_point_the_link() {
         let mut p = payload(None, None);
         p.args = [("base_url".to_string(), "https://evil".to_string())]

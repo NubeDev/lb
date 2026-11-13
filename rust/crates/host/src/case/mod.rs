@@ -19,6 +19,7 @@
 //! | `policy.sla.list` | `policy.sla.list` (**admin**) |
 //! | `case.request.send` | `case.request.send` (member) |
 //! | `case.request.withdraw`, `case.request.nudge` | `case.request.send` (member) |
+//! | `case.escalate` | `case.request.send` (member) **and** `case.workflow` (the assign half) |
 //! | `case.request.list` | `case.get` (viewer) |
 //! | `case.request.view`, `case.request.reply` | **their own caps, in NO bundle** — token-only |
 //! | `party.upsert` | `party.upsert` (**admin**) |
@@ -52,6 +53,9 @@ mod comment;
 mod echo;
 mod entity_filter;
 mod error;
+mod escalate;
+mod escalate_mail;
+mod escalate_recipients;
 mod events;
 mod facet_backfill;
 mod facets;
@@ -108,6 +112,8 @@ pub use names::case_names;
 pub use assign::echo_owner_to_members as echo_case_owner;
 pub use comment::case_comment;
 pub use error::CaseSvcError;
+// The internal twin of `case.request.send`: assign to a member/team and mail them a link to the case.
+pub use escalate::{case_escalate, Escalation};
 pub use events::case_events;
 pub use get::case_get;
 pub use list::case_list;

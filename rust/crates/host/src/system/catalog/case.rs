@@ -98,6 +98,11 @@ pub(super) const CASE: &[HostTool] = &[
                       emails it, schedules the nudges and sets waiting_on",
     },
     HostTool {
+        tool: "case.escalate",
+        group: "case",
+        description: "hand a case to a workspace member or team and email them the message with a link to it",
+    },
+    HostTool {
         tool: "case.request.withdraw",
         group: "case",
         description: "take an ask back — kills the link, cancels the nudges",

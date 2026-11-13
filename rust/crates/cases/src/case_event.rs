@@ -73,6 +73,11 @@ pub enum EventKind {
     Verified,
     SavingAccepted,
     Comment,
+    /// The case was handed to a workspace member or team AND they were emailed about it
+    /// (`case.escalate`). Its own kind rather than an `assigned` row: the history must say that
+    /// people were told, and by whom. `data` carries the subject escalated to, the mail count and the
+    /// sender's words — never an address (identities are admin-only data). Additive.
+    Escalated,
 }
 
 /// One row of a case's history.
