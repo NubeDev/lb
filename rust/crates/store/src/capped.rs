@@ -16,11 +16,12 @@
 //! ## FIFO ordering — ULID, not wall-clock
 //!
 //! The record id is a **ULID** (monotonic-ish, lexicographically sortable, no clock dependency and no
-//! counter row — the scope's resolved open question). Trim orders by `id ASC` and keeps the newest
-//! `cap`; the ULID gives a total, insertion-correlated order without `Date::now` (banned in some
-//! paths) and without a per-key sequence counter. Two same-millisecond concurrent inserts may sort in
-//! either order, but the trim still leaves exactly `cap` survivors — the invariant is the *count* and
-//! the *oldest-evicted* property, not a wall-clock-exact order.
+//! counter row — the scope's resolved open question). The id is copied into a `seq` field; the trim
+//! orders by `seq DESC` and keeps the newest `cap`; the ULID gives a total, insertion-correlated
+//! order without `Date::now` (banned in some paths) and without a per-key sequence counter. Two
+//! same-millisecond concurrent inserts may sort in either order, but the trim still leaves exactly
+//! `cap` survivors — the invariant is the *count* and the *oldest-evicted* property, not a
+//! wall-clock-exact order.
 //!
 //! ## The key selector is the caller's choice (per-source OR global, same helper)
 //!
@@ -42,6 +43,9 @@
 //! - **Reaper job as the primary mechanism** — overshoots the cap in a burst. At most an optional
 //!   secondary safety net; the transactional trim is the guarantee.
 //! - **Count-then-delete in two statements without a transaction** — races into over-eviction.
+//! - **Amortized trim (every m inserts)** — cuts the trim cost by m but every trim still scans; it
+//!   also gives up the "never exceeds cap" invariant. The trim is indexed instead
+//!   (`capped_index.rs`), which makes each one proportional to one key's rows.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -56,7 +60,7 @@ use crate::taint::mark_store_written;
 /// Per-key serialization for the insert+trim transaction.
 ///
 /// SurrealDB's `kv-mem` engine uses optimistic, snapshot-isolated transactions: two concurrent
-/// `capped_insert`s on the *same* key can each compute `$keep` from a snapshot that does **not** yet
+/// `capped_insert`s on the *same* key can each compute `$cut` from a snapshot that does **not** yet
 /// see the sibling's just-inserted row, so each trim under-deletes and the ring overgrows the cap by
 /// the number of overlapping in-flight inserts (observed as a flaky `count == cap + k`). The engine
 /// does not reliably raise a write-conflict for this read-set/write-set shape, so a retry loop alone
@@ -86,8 +90,8 @@ fn key_lock(ns: &str, table: &str, cap_key: &str) -> Arc<AsyncMutex<()>> {
 /// always matches the rows this call governs. `cap == 0` is clamped to 1 (a zero cap would delete
 /// every row including the one just written — never useful and surprising).
 ///
-/// `id` should be a ULID (see [`new_ulid`]) so the `ORDER BY id` trim is a true FIFO order; any
-/// lexicographically-sortable, monotonic string works.
+/// `id` should be a ULID (see [`new_ulid`]) so the `ORDER BY seq` trim (`seq` = `id`) is a true FIFO
+/// order; any lexicographically-sortable, monotonic string works.
 pub async fn capped_insert(
     store: &Store,
     ws: &str,
@@ -99,6 +103,10 @@ pub async fn capped_insert(
 ) -> Result<(), StoreError> {
     let n = cap.max(1);
 
+    // The trim reads one key's rows by `seq`; without this index each insert scans the whole ring.
+    // Refuses a non-identifier `table`; a failed index build is logged, not returned.
+    crate::capped_index::ensure_capped_index(store, ws, table).await?;
+
     // Serialize the insert+trim for this bucket so concurrent inserts can't each trim against a
     // snapshot that misses the other's new row (see `key_lock`). Held across the transaction; other
     // keys proceed unblocked.
@@ -108,27 +116,34 @@ pub async fn capped_insert(
     // Inject `cap_key` (the FIFO bucket this row belongs to) and `seq` (the monotonic insert-seq —
     // the same ULID as the record id) into the stored body. The trim orders by `seq`, NOT by `id`:
     // SurrealDB requires an `ORDER BY` idiom to be literally selected, and `seq` is a plain field
-    // (a string), which orders cleanly, can be indexed (telemetry scope names an insert-seq index),
-    // and needs no special handling. The body author passes neither field.
+    // (a string), which orders cleanly, is indexed with `cap_key` (`capped_index.rs`), and needs no
+    // special handling. The body author passes neither field.
     let mut obj = value.as_object().cloned().unwrap_or_default();
     obj.insert("cap_key".into(), Value::String(key.to_string()));
     obj.insert("seq".into(), Value::String(id.to_string()));
     let merged = Value::Object(obj);
 
-    // One transaction: create the row, then delete every row for this key that is NOT among the
-    // newest `cap` (ordered by insert-seq descending). The subquery sees the just-inserted row, so a
-    // flood past the cap trims back to exactly `cap` on the same COMMIT.
+    // One transaction: create the row, then delete every row for this key at or older than the
+    // first one past the newest `cap` (ordered by insert-seq descending). The subquery sees the
+    // just-inserted row, so a flood past the cap trims back to exactly `cap` on the same COMMIT.
     //
-    // We compute `$keep` into a LET variable and `DELETE ... NOT IN $keep`, NOT an inline
-    // `DELETE ... NOT IN (subquery)`: SurrealDB mis-evaluates the inline `NOT IN (SELECT ...)` form
-    // inside a DELETE (it drops every row, not just the complement — verified in the capped spike).
-    // The LET-bound array compares correctly. `LIMIT {n}` is a formatted integer literal (the only
-    // cross-version-safe shape SurrealDB accepts for LIMIT); `n` is a caller constant, not runtime.
+    // A CUTOFF, not a keep-list. The first version bound the newest `cap` seqs into `$keep` and ran
+    // `DELETE ... seq NOT IN $keep`, which compares every row against a `cap`-long array: at the
+    // default cap of 1000 that was the dominant CPU cost of a busy node. `seq` is unique per row (it
+    // is the record id), so "older than or equal to the (cap+1)th newest" is exactly the same set.
+    // Under the cap the subquery is empty and `$cut[0]` is NONE. `$cut[0] != NONE` stops the delete
+    // there outright: on its own, `seq <= NONE` would still match a row that has no `seq` at all
+    // (NONE <= NONE), which the keep-list version left alone.
+    //
+    // The value is LET-bound, never an inline subquery inside the DELETE: SurrealDB mis-evaluated
+    // the inline `NOT IN (SELECT ...)` form (it dropped every row — verified in the capped spike),
+    // so the trim keeps to the shape that was proven. `START {n}` is a formatted integer literal
+    // (the cross-version-safe shape for LIMIT/START); `n` is a caller constant, not runtime input.
     let sql = format!(
         "BEGIN TRANSACTION;\
          CREATE type::record($tb, $id) CONTENT $value;\
-         LET $keep = (SELECT VALUE seq FROM type::table($tb) WHERE cap_key = $key ORDER BY seq DESC LIMIT {n});\
-         DELETE FROM type::table($tb) WHERE cap_key = $key AND seq NOT IN $keep;\
+         LET $cut = (SELECT VALUE seq FROM type::table($tb) WHERE cap_key = $key ORDER BY seq DESC LIMIT 1 START {n});\
+         DELETE FROM type::table($tb) WHERE cap_key = $key AND $cut[0] != NONE AND seq <= $cut[0];\
          COMMIT TRANSACTION;"
     );
     // Retry on a SurrealDB **retryable transaction conflict**. The per-key lock above prevents two

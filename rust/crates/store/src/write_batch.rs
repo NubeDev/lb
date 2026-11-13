@@ -40,7 +40,7 @@ pub struct DeleteBatch<'a> {
 /// the `DEFINE TABLE` note in [`write_batch`]). Deliberately narrower than SurrealDB's own quoted
 /// identifiers: everything lb writes is a bare identifier, so a name that is not one is a caller
 /// bug, and refusing it keeps the "no caller string in the query text" rule true in spirit.
-fn is_bare_ident(s: &str) -> bool {
+pub(crate) fn is_bare_ident(s: &str) -> bool {
     let mut c = s.chars();
     matches!(c.next(), Some(f) if f.is_ascii_alphabetic() || f == '_')
         && c.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')

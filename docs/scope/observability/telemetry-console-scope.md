@@ -236,7 +236,10 @@ Mandatory categories from [`../testing/testing-scope.md`](../testing/testing-sco
 - **Cardinality / unbounded filters.** Free-text and `trace_id` filters over a large ring need an
   index; without one a busy node's `query` scans the whole table. Define the SurrealDB indexes
   (`ws`, `trace_id`, `level`, `source`, insert-seq) up front; the cap keeps the table small enough
-  that this stays cheap.
+  that this stays cheap. *(2026-11-13: only `(cap_key, seq)` ships, for the trim —
+  `lb_store`'s `capped_index.rs`. The `ws`/`trace_id`/`level`/`source` indexes still do not, so
+  `telemetry.query` still scans the ring. Not measured; the old trim's equivalent scan of a ~20k-row
+  ring took ~0.5 s in a debug build.)*
 - **Audit dependency ordering.** Audit may not have shipped when this does. The console must degrade to
   telemetry-only with an honest empty state, and the unified-view code must not hard-depend on audit
   tables existing — flagged so the implementing session sequences it.
@@ -251,6 +254,11 @@ Mandatory categories from [`../testing/testing-scope.md`](../testing/testing-sco
   cap, the hard invariant the feature exists for. Amortized (every *m* inserts, a documented/tested
   slack bound) is a deferred optimization, not needed until a benchmark shows the strict trim costs on
   a busy ingest path.
+  - **2026-11-13 — the benchmark arrived; still strict, now indexed.** A busy embedded node pegged
+    4–7 cores: the strict trim scanned the whole ring (~20k rows at 1000/source) on every event,
+    because nothing indexed `cap_key` ([debug](../../debugging/store/capped-insert-trim-scans-whole-ring.md)).
+    Fixed with a `(cap_key, seq)` index plus a cutoff delete, which keeps the strict invariant;
+    amortizing was rejected because it would still scan, just less often.
 - **Does `telemetry.tail` reuse the agent-run SSE plumbing or get its own route?** ✅ **Resolved: its
   own `routes/telemetry_stream.rs`** (modelled on `run_stream.rs`, sharing token-verify + ws-wall
   helpers) — one responsibility per file.

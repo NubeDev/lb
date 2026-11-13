@@ -238,3 +238,22 @@ async fn stores_body_with_injected_cap_key() {
         "cap_key is injected into the stored body"
     );
 }
+
+/// Lowering a ring's cap trims it to the new cap in one insert, keeping the newest rows.
+#[tokio::test]
+async fn lowering_the_cap_trims_to_the_new_cap_in_one_insert() {
+    let store = Store::memory().await.expect("open store");
+    for _ in 0..10 {
+        capped_insert(&store, "ws", "ring", &new_ulid(), "k", 10, &json!({}))
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+    let before = key_ids(&store, "ws", "ring", "k").await;
+    let last = new_ulid();
+    capped_insert(&store, "ws", "ring", &last, "k", 3, &json!({}))
+        .await
+        .unwrap();
+    let after = key_ids(&store, "ws", "ring", "k").await;
+    assert_eq!(after, vec![before[8].clone(), before[9].clone(), last]);
+}

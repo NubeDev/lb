@@ -18,9 +18,10 @@
 //!   new opportunity to capture a secret.
 //!
 //! The trim is the single-transaction primitive ([`lb_store::capped_insert`]); the strictest trim
-//! cadence (every insert) is used for v1 so the table NEVER exceeds the cap. Amortized trim (every m
-//! inserts, a documented bounded slack) is a deferred optimization — the design holds the hard
-//! invariant first.
+//! cadence (every insert) is used so the table NEVER exceeds the cap. It stays cheap because the trim
+//! is indexed on `(cap_key, seq)` (`lb_store`'s `capped_index.rs`): before that index, every event
+//! scanned the whole ring and a busy node pegged several cores. Amortized trim was considered and
+//! rejected for that fix (it would still scan, just less often).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
