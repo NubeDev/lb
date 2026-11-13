@@ -71,8 +71,12 @@ pub async fn retain_terminal(store: &Store, ws: &str, cap: usize) -> Result<usiz
     //             at return time here). Both are plain strings (`<string>id`), so they deserialize and
     //             compare cleanly. Ordering is by `id` (the selected idiom; a cast in ORDER BY is
     //             rejected by this SurrealDB version), which sorts terminal rows in id order.
+    // The table is declared first, in the same transaction: a workspace with no jobs has no `job`
+    // table, and SurrealDB 3's `NotFoundError::Table` on the SELECT cancels the whole transaction
+    // (`lb_store` reads an absent table as empty only outside one). Same fix as `undo/src/prune.rs`.
     let sql = format!(
         "BEGIN TRANSACTION;\
+         DEFINE TABLE IF NOT EXISTS {TABLE};\
          LET $keep = (SELECT VALUE id FROM type::table($tb) \
             WHERE data.status IN $terminal ORDER BY id DESC LIMIT {n});\
          LET $doomed = (SELECT VALUE <string>id FROM type::table($tb) \

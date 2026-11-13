@@ -250,3 +250,11 @@ async fn retention_is_workspace_scoped() {
         "ws-b trimmed to its cap"
     );
 }
+
+#[tokio::test]
+async fn retention_on_a_workspace_with_no_jobs_is_a_no_op() {
+    // No job was ever created here, so the `job` table does not exist. Before it was declared inside
+    // the transaction, SurrealDB 3 cancelled the trim with "cancelled transaction".
+    let store = Store::memory().await.unwrap();
+    assert_eq!(retain_terminal(&store, "ws-empty", 5).await.unwrap(), 0);
+}

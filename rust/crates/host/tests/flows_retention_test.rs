@@ -151,3 +151,11 @@ async fn retain_runs_is_workspace_scoped() {
     assert_eq!(count(&store, "ws-a", FLOW_STEP_TABLE).await, 16);
     assert_eq!(count(&store, "ws-b", FLOW_RUN_TABLE).await, 2);
 }
+
+#[tokio::test]
+async fn retain_runs_on_a_workspace_with_no_flow_tables_is_a_no_op() {
+    // No flow has ever run here, so neither table exists. Before the tables were declared inside the
+    // transaction, SurrealDB 3 cancelled it and every sweep logged "cancelled transaction".
+    let store = Store::memory().await.unwrap();
+    assert_eq!(retain_runs(&store, "ws-empty", 5).await.unwrap(), 0);
+}
