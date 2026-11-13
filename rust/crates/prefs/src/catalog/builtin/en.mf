@@ -32,3 +32,11 @@ request_link.email.body_html = {has_message, select, yes{{message_html}} other{<
 request_nudge.email.subject = Reminder: {has_reference, select, yes{{reference}: } other{}}a job is waiting on your response
 request_nudge.email.body = A job{has_reference, select, yes{ ({reference})} other{}} is still waiting on your response. Please open the request link we sent you earlier and reply.
 request_nudge.email.body_html = <p>A job{has_reference, select, yes{ ({reference})} other{}} is still waiting on your response.</p><p>Please open the request link we sent you earlier and reply.</p>
+
+# The internal escalation (case-escalate scope). `case.escalate` assigns a case to a workspace member
+# or team and mails each person this, from the ACTION NAME (`case_escalate` → `case_escalate.email.*`).
+# No token: the recipient signs in, so the link only opens the case. The sender's own subject and
+# message win when they typed them; `{case_id}` and `{workspace}` build the deep link.
+case_escalate.email.subject = {has_subject, select, yes{{subject}} other{Escalated to you: {title}{has_site, select, yes{ at {site}} other{}}}}
+case_escalate.email.body = {has_message, select, yes{{message}} other{Hi,\n\n{has_sender, select, yes{{sender} has} other{A colleague has}} escalated {title}{has_site, select, yes{ at {site}} other{}} to you.}}\n\nOpen the case: {base_url}/#/t/{workspace}/insights?tab=cases&case={case_id}
+case_escalate.email.body_html = {has_message, select, yes{<p>{message_html}</p>} other{<p>Hi,</p><p>{has_sender, select, yes{{sender_html} has} other{A colleague has}} escalated {title_html}{has_site, select, yes{ at {site_html}} other{}} to you.</p>}}<p><a href="{base_url}/#/t/{workspace}/insights?tab=cases&amp;case={case_id}">Open the case</a></p>

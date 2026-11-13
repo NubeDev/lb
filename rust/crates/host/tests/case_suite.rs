@@ -165,3 +165,6 @@ mod request_token;
 
 #[path = "case/request_walls.rs"]
 mod request_walls;
+
+#[path = "case/escalate.rs"]
+mod escalate;

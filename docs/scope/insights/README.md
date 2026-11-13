@@ -74,3 +74,7 @@ rules/flows/attention planes. Start with the umbrella; the rest compose onto it.
   - **Case states — one at a time** (resolved decision 13): a case reads as exactly one of Open,
     Assigned, Emailed, On hold, Closed; each verb ends the state before it, and the decision carries
     the full start-state × action table. Diagram: <https://claude.ai/artifact/CCHSZfJH56Rs3bAPyVop64>.
+  - [`case-escalate-scope.md`](case-escalate-scope.md) — **SHIPPED** — `case.escalate`, the internal
+    twin of `case.request.send`: assign to a `user:`/`team:` subject and email them (every live team
+    member) a link to the case. Rides the `case.request.send` cap; no token, nudge or `waiting_on`;
+    addresses resolved server-side and never returned or stored in history.

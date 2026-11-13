@@ -22,10 +22,10 @@ use serde_json::{json, Value};
 use super::breach::case_breach;
 use super::error::CaseSvcError;
 use super::{
-    case_assign, case_assignees, case_comment, case_events, case_get, case_list, case_members,
-    case_merge, case_names, case_open, case_pin, case_request_list, case_request_nudge,
-    case_request_reply, case_request_send, case_request_view, case_request_withdraw, case_snooze,
-    case_split, case_workflow, rule_scorecard,
+    case_assign, case_assignees, case_comment, case_escalate, case_events, case_get, case_list,
+    case_members, case_merge, case_names, case_open, case_pin, case_request_list,
+    case_request_nudge, case_request_reply, case_request_send, case_request_view,
+    case_request_withdraw, case_snooze, case_split, case_workflow, rule_scorecard,
 };
 use crate::boot::Node;
 
@@ -103,6 +103,24 @@ pub async fn call_case_tool(
             // The raw token is deliberately absent from this reply: it belongs in the mail, and a
             // verb that returned it would put a working link in every caller's response log.
             Ok(serde_json::to_value(request).unwrap_or(Value::Null))
+        }
+        // The internal twin of `case.request.send`: assign to a `user:`/`team:` subject and mail
+        // them a link to the case. Rides `case.request.send` (a `tool_gate.rs` alias); the assign half
+        // also needs `case.workflow`, checked inside. The reply carries a COUNT, never an address.
+        "case.escalate" => {
+            let escalation = case_escalate(
+                node,
+                principal,
+                ws,
+                str_arg(input, "case_id")?,
+                str_arg(input, "to")?,
+                input.get("subject").and_then(Value::as_str),
+                input.get("message").and_then(Value::as_str),
+                ts,
+            )
+            .await
+            .map_err(svc_to_tool)?;
+            Ok(serde_json::to_value(escalation).unwrap_or(Value::Null))
         }
         "case.request.withdraw" => {
             let request = case_request_withdraw(store, principal, ws, str_arg(input, "id")?, ts)
