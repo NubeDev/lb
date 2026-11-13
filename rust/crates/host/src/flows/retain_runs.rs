@@ -64,8 +64,15 @@ pub async fn retain_runs(store: &Store, ws: &str, cap: usize) -> Result<usize, S
     // Both the keep-set and the delete are constrained to `data.status IN $terminal`, so a
     // `pending`/`suspended` run is neither counted nor deleted. The trailing `RETURN count($purge)`
     // collapses the transaction to a single scalar result (index 0) — the run-delete count.
+    //
+    // Both tables are declared first, in the same transaction: a workspace where no flow has run has
+    // neither, and SurrealDB 3 raises `NotFoundError::Table` for the SELECT, which inside a
+    // transaction cancels every statement. `lb_store` reads an absent table as empty only outside a
+    // transaction, so every sweep logged "cancelled transaction". Same fix as `undo/src/prune.rs`.
     let sql = format!(
         "BEGIN TRANSACTION;\
+         DEFINE TABLE IF NOT EXISTS {FLOW_RUN_TABLE};\
+         DEFINE TABLE IF NOT EXISTS {FLOW_STEP_TABLE};\
          LET $keep = (SELECT VALUE id FROM type::table($runs) \
             WHERE data.status IN $terminal ORDER BY id DESC LIMIT {n});\
          LET $purge = (SELECT VALUE data.run_id FROM type::table($runs) \

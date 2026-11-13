@@ -11,6 +11,7 @@ debugged twice. **Append-only and symptom-led.**
 
 | Date | Area | Symptom | Status | Entry |
 |---|---|---|---|---|
+| 2026-11-13 | flows / jobs | Every retention sweep logged "cancelled transaction" for a workspace with no flow history: the flow-run and job trims SELECT a never-written table inside a transaction, SurrealDB 3 cancels the whole transaction, and `lb_store`'s absent-table shim cannot reach inside one. Fixed by declaring the tables first, as `undo/src/prune.rs` does | fixed | [entry](flows/retention-sweep-cancelled-transaction-on-empty-workspace.md) |
 | 2026-11-13 | store / observability | A busy node pegged 4–7 cores: every telemetry event's `capped_insert` trim scanned the whole ring (no index on `cap_key`; ~20k rows at 1000/source) and compared each row against a 1000-item keep-list. Fixed with a lazily-ensured `(cap_key, seq)` index and a cutoff delete; 621 ms → 6.8 ms per insert (local debug `mem://` measurement) | fixed | [entry](store/capped-insert-trim-scans-whole-ring.md) |
 | 2026-10-07 | federation / auth-caps | An extension is refused its own table and settings under an enforced row policy (`ext:<id>` has scope "nothing") | fixed | [entry](federation/extension-refused-its-own-tables-under-row-policy.md) |
 | 2026-10-06 | auth-caps | A person invited into a team reaches none of the team's menus, boards or sites (edge written without `user:`) | fixed | [entry](auth-caps/invite-to-a-team-reaches-none-of-its-shares.md) |
