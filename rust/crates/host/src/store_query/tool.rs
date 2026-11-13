@@ -12,7 +12,7 @@ use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::Value;
 
-use super::{store_get_run, store_query_run, store_schema_read, StoreQueryError};
+use super::{store_get_run, store_list_run, store_query_run, store_schema_read, StoreQueryError};
 
 /// Dispatch a read-only SQL MCP call. `input` is the verb's JSON arguments; the return is the verb's
 /// JSON result. Each verb authorizes first; denials are opaque.
@@ -35,6 +35,17 @@ pub async fn call_store_query_tool(
         "store.get" => {
             let (table, id) = (str_arg(input, "table")?, str_arg(input, "id")?);
             store_get_run(store, principal, ws, table, id)
+                .await
+                .map_err(to_tool)
+        }
+        "store.list" => {
+            let table = str_arg(input, "table")?;
+            let after = input.get("after").and_then(Value::as_str);
+            let limit = input
+                .get("limit")
+                .and_then(Value::as_u64)
+                .map_or(lb_store::MAX_SCAN_LIMIT, |n| n as usize);
+            store_list_run(store, principal, ws, table, after, limit)
                 .await
                 .map_err(to_tool)
         }

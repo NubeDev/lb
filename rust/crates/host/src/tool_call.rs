@@ -153,6 +153,7 @@ pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
     "store.query",
     "store.schema",
     "store.get",
+    "store.list",
     "store.write",
     "store.delete",
     // online-compaction scope: the operational pair — observability read + the compaction job.
@@ -861,7 +862,10 @@ pub(crate) async fn run_host_verb(
         // telemetry ring (query/trace/purge). Writes come from the SurrealCappedLayer only —
         // there is no telemetry.write verb; the ws wall is enforced inside each read.
         crate::call_telemetry_tool(node, principal, ws, qualified_tool, &input).await?
-    } else if matches!(qualified_tool, "store.query" | "store.schema" | "store.get") {
+    } else if matches!(
+        qualified_tool,
+        "store.query" | "store.schema" | "store.get" | "store.list"
+    ) {
         crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
     } else if qualified_tool == "store.write" || qualified_tool == "store.delete" {
         // The generic per-table mutation surface (the write half of the direct-store contract).

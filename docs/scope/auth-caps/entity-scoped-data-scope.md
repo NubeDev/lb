@@ -109,9 +109,9 @@ is exempt, and nothing else:
   design points at, never another extension's (`migrate_owned.rs`). Its `federation.query` carries
   `row_scope.own_tables`, read unfiltered by the sidecar while every policy table in the same query
   stays narrowed and every other relation stays refused.
-- **Its own store records.** `store.get {table, id}` is gated on `store:<table>:read`. An extension
-  whose approved caps name that table EXACTLY is not entity-limited; everyone else is limited as on
-  `store.query`. (`store.query` stays refused: SurrealQL reaches other tables through record links,
+- **Its own store records.** `store.get {table, id}` and `store.list {table, after?, limit?}` (one
+  table, a page at a time, id-cursor) are gated on `store:<table>:read`. An extension whose approved
+  caps name that table EXACTLY is not entity-limited; everyone else is limited as on `store.query`. (`store.query` stays refused: SurrealQL reaches other tables through record links,
   so a text check cannot prove a statement stays on one table.)
 - **Estate data it reads for a person** is not its own: it is read as that person (the `waste` tile
   reads a board's `siteRef` with the viewer's own `federation.query`).
@@ -131,8 +131,8 @@ is exempt, and nothing else:
   rule or reminder scheduled by a person runs as that person.
 - **API keys** reach only what a workspace-default menu marks (no team edges, no user grants).
 - **Raw store reads** (`store.query`, member tier) are refused for a restricted caller: an insight or
-  case table cannot be narrowed row by row. `store.get` by id is limited the same way, except for an
-  extension reading a table its caps name exactly.
+  case table cannot be narrowed row by row. `store.get` by id and `store.list` are limited the same way,
+  except for an extension reading a table its caps name exactly.
 - **Row policies and ownership records are reserved tables** (`lb_store::reserved`): `store.write`
   cannot rewrite a policy or forge an extension's claim on a table.
 - **Plan-to-apply window.** An extension's migrate plans, claims, then applies; the sidecar re-plans

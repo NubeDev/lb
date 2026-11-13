@@ -28,11 +28,26 @@ pub async fn store_get_run(
     table: &str,
     id: &str,
 ) -> Result<Value, StoreQueryError> {
-    authorize_store_query(principal, ws, "store.get")?;
-    if table.trim().is_empty() || id.trim().is_empty() {
-        return Err(StoreQueryError::Rejected(
-            "table and id are required".into(),
-        ));
+    authorize_table_read(store, principal, ws, "store.get", table).await?;
+    if id.trim().is_empty() {
+        return Err(StoreQueryError::Rejected("id is required".into()));
+    }
+    let value = lb_store::read(store, ws, table, id).await?;
+    Ok(json!({ "table": table, "id": id, "value": value }))
+}
+
+/// The gate `store.get` and `store.list` share: `mcp:store.<verb>:call`, never a secret-plane table,
+/// `store:<table>:read`, then the entity limit (with the own-records exception below).
+pub(super) async fn authorize_table_read(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    verb: &str,
+    table: &str,
+) -> Result<(), StoreQueryError> {
+    authorize_store_query(principal, ws, verb)?;
+    if table.trim().is_empty() {
+        return Err(StoreQueryError::Rejected("table is required".into()));
     }
     ensure_no_secret_tables(table, &[])?;
     let req = Request::new(ws, Surface::Store, table, Action::Read);
@@ -47,8 +62,7 @@ pub async fn store_get_run(
     {
         return Err(StoreQueryError::Denied);
     }
-    let value = lb_store::read(store, ws, table, id).await?;
-    Ok(json!({ "table": table, "id": id, "value": value }))
+    Ok(())
 }
 
 /// An extension acting as itself, reading a table its approved caps name exactly.
