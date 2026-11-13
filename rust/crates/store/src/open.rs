@@ -105,6 +105,8 @@ pub struct Store {
     readers: Arc<crate::reader::Readers>,
     /// The per-boot password for those reader users. In memory only, never logged.
     reader_secret: Arc<str>,
+    /// Which `(ws, table)` capped rings already have their trim index (`capped_index.rs`).
+    capped_indexes: Arc<crate::capped_index::CappedIndexes>,
 }
 
 /// A workspace id is a slug — validate it before interpolating into `USE NS <ws>`, so a `ws` can
@@ -144,6 +146,7 @@ impl Store {
             last_compaction: Arc::new(std::sync::Mutex::new(None)),
             readers: Arc::new(crate::reader::Readers::default()),
             reader_secret: Arc::from(crate::reader::new_secret()),
+            capped_indexes: Arc::default(),
         })
     }
 
@@ -195,7 +198,13 @@ impl Store {
             )),
             readers: Arc::new(crate::reader::Readers::default()),
             reader_secret: Arc::from(crate::reader::new_secret()),
+            capped_indexes: Arc::default(),
         })
+    }
+
+    /// The capped-ring index memory (`capped_index.rs` reads and fills it).
+    pub(crate) fn capped_indexes(&self) -> &crate::capped_index::CappedIndexes {
+        &self.capped_indexes
     }
 
     /// The on-disk directory (`None` for a memory store).

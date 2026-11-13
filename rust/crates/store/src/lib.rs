@@ -9,6 +9,7 @@
 
 mod boot_guard;
 mod capped;
+mod capped_index;
 mod compact;
 mod compaction_record;
 mod conflict;

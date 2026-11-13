@@ -5,6 +5,20 @@ crossing **before** you upgrade the binary — some of these delete rows on the 
 
 ---
 
+## Capped rings get a trim index on first write
+
+Nothing to do. The capped tables (`telemetry`, `insight_occ`, `entity_version`) gain a
+`capped_key_seq` index on `(cap_key, seq)`. Each workspace builds it on the first write to each
+table after the upgrade, over the rows already there. That one write is slower; measured locally in
+a debug build, ~384 ms for a 20k-row telemetry ring. Concurrent writers wait for that one build.
+From then on each trim reads one key's rows instead of scanning the ring, which is what stops a busy
+node with the telemetry ring on (`LB_TELEMETRY_SINK=both`) from pegging several cores.
+
+If the index cannot be built, writes still land and are still trimmed, just without the speed-up;
+the node logs `capped ring index not ensured` at WARN.
+
+---
+
 ## SurrealDB 3 / SurrealKV 0.21 — your existing store cannot be opened
 
 > **Stop. This one destroys nothing, but it strands everything.**
