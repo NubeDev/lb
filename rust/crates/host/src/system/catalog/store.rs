@@ -18,6 +18,11 @@ pub(super) const STORE: &[HostTool] = &[
         description: "read one record by id, gated on the table (`store:<table>:read`)",
     },
     HostTool {
+        tool: "store.list",
+        group: "store",
+        description: "read one table a page at a time, gated on the table (`store:<table>:read`)",
+    },
+    HostTool {
         tool: "store.schema",
         group: "store",
         description: "the store schema (tables + columns) for the visual query builder",

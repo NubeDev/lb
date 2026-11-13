@@ -149,6 +149,7 @@ fn is_read_only(tool: &str) -> bool {
             | "inbox.list"
             | "store.schema"
             | "store.get"
+            | "store.list"
             | "history.list"
             | "history.compensations"
             | "assets.get_doc"

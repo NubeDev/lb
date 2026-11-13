@@ -20,6 +20,7 @@ mod authorize;
 mod descriptor;
 mod error;
 mod get;
+mod list;
 mod model;
 mod parse;
 mod run;
@@ -32,6 +33,7 @@ pub use authorize::authorize_store_query;
 pub use descriptor::query_descriptor;
 pub use error::StoreQueryError;
 pub use get::store_get_run;
+pub use list::store_list_run;
 pub use model::{
     QueryResult, Schema, SchemaColumn, SchemaTable, MAX_QUERY_ROWS, QUERY_TIMEOUT_SECS,
 };

@@ -39,6 +39,7 @@ const DATA_CAPS: &[&str] = &[
     "mcp:federation.delete:call",
     "mcp:federation.query:call",
     "mcp:store.get:call",
+    "mcp:store.list:call",
 ];
 
 /// An extension backend's token: the data verbs, and its one store table named exactly.
@@ -342,4 +343,80 @@ async fn store_get_reads_an_extensions_own_record_and_limits_everyone_else() {
     // No table cap at all: denied by the gate.
     let bare = principal("ext:bare", &["mcp:store.get:call"]);
     denied(call(&node, &bare, "store.get", args).await, "no table cap");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn store_list_pages_an_extensions_own_table_and_limits_everyone_else() {
+    let node = setup("list").await;
+    for (id, n) in [("a", 1), ("b", 2), ("c", 3)] {
+        lb_store::write(&node.store, WS, "waste_config", id, &json!({ "n": n }))
+            .await
+            .unwrap();
+    }
+    // Another workspace's row under the same table name never shows up (the namespace wall).
+    lb_store::write(
+        &node.store,
+        "elsewhere",
+        "waste_config",
+        "z",
+        &json!({ "n": 99 }),
+    )
+    .await
+    .unwrap();
+
+    let ext = extension("waste");
+    let first = call(
+        &node,
+        &ext,
+        "store.list",
+        json!({"table": "waste_config", "limit": 2}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        first["rows"],
+        json!([{"id": "a", "value": {"n": 1}}, {"id": "b", "value": {"n": 2}}])
+    );
+    let next = first["next"]
+        .as_str()
+        .expect("a full page hands back a cursor");
+    let rest = call(
+        &node,
+        &ext,
+        "store.list",
+        json!({"table": "waste_config", "limit": 2, "after": next}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(rest["rows"], json!([{"id": "c", "value": {"n": 3}}]));
+    assert_eq!(rest["next"], Value::Null, "a short page is the end");
+
+    let args = json!({"table": "waste_config"});
+    let wildcard = principal("ext:wild", &["mcp:store.list:call", "store:*:read"]);
+    denied(
+        call(&node, &wildcard, "store.list", args.clone()).await,
+        "wildcard ext",
+    );
+    let person = principal(
+        "user:m1",
+        &["mcp:store.list:call", "store:waste_config:read"],
+    );
+    denied(
+        call(&node, &person, "store.list", args.clone()).await,
+        "restricted person",
+    );
+    let bare = principal("ext:bare", &["mcp:store.list:call"]);
+    denied(call(&node, &bare, "store.list", args).await, "no table cap");
+    // Holding the table cap but not the verb: refused at the verb gate.
+    let no_verb = principal("ext:waste", &["store:waste_config:read"]);
+    denied(
+        call(
+            &node,
+            &no_verb,
+            "store.list",
+            json!({"table": "waste_config"}),
+        )
+        .await,
+        "no verb cap",
+    );
 }
